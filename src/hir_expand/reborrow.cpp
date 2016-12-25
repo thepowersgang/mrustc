@@ -17,12 +17,12 @@ namespace {
 #define NEWNODE(TY, CLASS, ...)  mk_exprnodep(new HIR::ExprNode_##CLASS(__VA_ARGS__), TY)
 
 namespace {
-    
+
     class ExprVisitor_Mutate:
         public ::HIR::ExprVisitorDef
     {
         const ::HIR::Crate& m_crate;
-        
+
     public:
         ExprVisitor_Mutate(const ::HIR::Crate& crate):
             m_crate(crate)
@@ -32,9 +32,9 @@ namespace {
             const auto& node_ref = *root;
             const char* node_ty = typeid(node_ref).name();
             TRACE_FUNCTION_FR(&*root << " " << node_ty << " : " << root->m_res_type, node_ty);
-            
+
             root->visit(*this);
-            
+
             // 1. Convert into an ExprNodeP
             auto np = root.into_unique();
             // 2. Pass to do_reborrow
@@ -42,7 +42,7 @@ namespace {
             // 3. Convert back
             root.reset( np.release() );
         }
-        
+
         void visit_node_ptr(::HIR::ExprNodeP& node) override {
             const auto& node_ref = *node;
             const char* node_ty = typeid(node_ref).name();
@@ -50,7 +50,7 @@ namespace {
             assert( node );
             node->visit(*this);
         }
-        
+
         ::HIR::ExprNodeP do_reborrow(::HIR::ExprNodeP node_ptr)
         {
             TU_IFLET( ::HIR::TypeRef::Data, node_ptr->m_res_type.m_data, Borrow, e,
@@ -86,7 +86,7 @@ namespace {
             )
             return node_ptr;
         }
-        
+
         void visit(::HIR::ExprNode_Assign& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             node.m_value = do_reborrow(mv$(node.m_value));
@@ -109,7 +109,7 @@ namespace {
                 arg = do_reborrow(mv$(arg));
             }
         }
-        
+
         void visit(::HIR::ExprNode_ArrayList& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             for(auto& arg : node.m_vals) {
@@ -154,12 +154,12 @@ namespace {
             m_crate(crate)
         {
         }
-        
+
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
         void visit_expr(::HIR::ExprPtr& exp) override {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
-        
+
         void visit_type(::HIR::TypeRef& ty) override
         {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
@@ -209,7 +209,7 @@ namespace {
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
                     DEBUG("Enum value " << p << " - " << var.first);
-                    
+
                     ExprVisitor_Mutate  ev(m_crate);
                     ev.visit_node_ptr(e.expr);
                 )

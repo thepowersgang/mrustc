@@ -24,11 +24,11 @@ public:
         m_first(ptr),
         m_len(len)
     {}
-    
+
     ::std::vector<T> to_vec() const {
         return ::std::vector<T>(begin(), end());
     }
-    
+
     unsigned int size() const {
         return m_len;
     }
@@ -42,7 +42,7 @@ public:
         assert(ofs + len <= m_len);
         return slice { m_first + ofs, len };
     }
-    
+
     T* begin() const { return m_first; }
     T* end() const { return m_first + m_len; }
 
@@ -73,7 +73,7 @@ class option
 {
     char    m_data[ sizeof(T) ];
     bool    m_set;
-    
+
           void* data_ptr()       { return m_data; }
     const void* data_ptr() const { return m_data; }
 public:
@@ -90,15 +90,15 @@ public:
             reinterpret_cast<T*>(data_ptr())->~T();
         }
     }
-    
+
     bool is_none() const { return !m_set; }
     bool is_some() const { return m_set; }
-    
+
     const T& unwrap() const {
         assert(is_some());
         return *reinterpret_cast<const T*>(m_data);
     }
-    
+
     void if_set(::std::function<void (const T&)> f) const {
         if( m_set ) {
             return f(m_data);
@@ -125,7 +125,7 @@ public:
     option():
         m_ptr(nullptr)
     {}
-    
+
     bool is_none() const { return m_ptr == nullptr; }
     bool is_some() const { return m_ptr != nullptr; }
     T& unwrap() const {

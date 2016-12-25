@@ -31,7 +31,7 @@ namespace {
             // Make sure we don't infinite loop
             if( bb == target.terminator.as_Goto() )
                 return bb;
-            
+
             auto rv = get_new_target(state, target.terminator.as_Goto());
             DEBUG(bb << " => " << rv);
             return rv;
@@ -44,7 +44,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     static Span sp;
     TRACE_FUNCTION_F(path);
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
-    
+
     // >> Replace targets that point to a block that is just a goto
     for(auto& block : fcn.blocks)
     {
@@ -74,7 +74,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             )
         )
     }
-    
+
     // >> Merge blocks where a block goto-s to a single-use block.
     {
         ::std::vector<unsigned int> uses( fcn.blocks.size() );
@@ -106,7 +106,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 )
             )
         }
-         
+
         unsigned int i = 0;
         for(auto& block : fcn.blocks)
         {
@@ -116,9 +116,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 if( uses[tgt] != 1 )
                     break ;
                 DEBUG("Append bb " << tgt << " to bb" << i);
-                
+
                 assert( &fcn.blocks[tgt] != &block );
-                
+
                 for(auto& stmt : fcn.blocks[tgt].statements)
                     block.statements.push_back( mv$(stmt) );
                 block.terminator = mv$( fcn.blocks[tgt].terminator );
@@ -126,17 +126,17 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             i ++;
         }
     }
-    
+
     // >> Combine Duplicate Blocks
     // TODO:
 
-    
+
     // >> Propagate dead assignments
     // TODO: This requires kowing that doing so has no effect.
     // - Can use little heristics like a Call pointing to an assignment of its RV
     // - Count the read/write count of a variable, if it's 1,1 then this optimisation is correct.
     // - If the count is read=*,write=1 and the write is of an argument, replace with the argument.
-    
+
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.
     {
@@ -147,7 +147,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         {
             auto bb = to_visit.back(); to_visit.pop_back();
             visited[bb] = true;
-            
+
             const auto& block = fcn.blocks[bb];
             TU_MATCHA( (block.terminator), (e),
             (Incomplete,
@@ -181,7 +181,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 )
             )
         }
-        
+
         ::std::vector<unsigned int> rewrite_table;
         for(unsigned int i = 0, j = 0; i < fcn.blocks.size(); i ++)
         {
@@ -192,7 +192,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 rewrite_table.push_back(~0u);
             }
         }
-        
+
         auto it = fcn.blocks.begin();
         for(unsigned int i = 0; i < visited.size(); i ++)
         {
@@ -230,7 +230,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     e.panic_block = rewrite_table[e.panic_block];
                     )
                 )
-                
+
                 ++it;
             }
         }

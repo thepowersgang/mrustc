@@ -26,12 +26,12 @@ public:
         assert(m_default.is_wildcard());
         m_default = ::std::move(type);
     }
-    
+
     const ::std::string&    name() const { return m_name; }
-    
+
     const TypeRef& get_default() const { return m_default; }
           TypeRef& get_default()       { return m_default; }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeParam& tp);
 };
 
@@ -69,13 +69,13 @@ TAGGED_UNION_EX( GenericBound, (), Lifetime,
         TypeRef replacement;
         })
     ),
-    
+
     (, span(x.span) ), ( span = x.span; ),
     (
     public:
-        
+
         Span    span;
-        
+
         GenericBound clone() const {
             TU_MATCH(GenericBound, ( (*this) ), (ent),
             (Lifetime,     return make_Lifetime({ent.test, ent.bound});     ),
@@ -102,7 +102,7 @@ public:
     GenericParams(GenericParams&& x) = default;
     GenericParams& operator=(GenericParams&& x) = default;
     GenericParams(const GenericParams& x) = delete;
-    
+
     GenericParams clone() const {
         GenericParams   rv;
         rv.m_type_params = ::std::vector<TypeParam>( m_type_params );   // Copy-constructable
@@ -112,23 +112,23 @@ public:
             rv.m_bounds.push_back( e.clone() );
         return rv;
     }
-    
+
     const ::std::vector<TypeParam>& ty_params() const { return m_type_params; }
           ::std::vector<TypeParam>& ty_params()       { return m_type_params; }
     const ::std::vector< ::std::string>&    lft_params() const { return m_lifetime_params; }
     const ::std::vector<GenericBound>& bounds() const { return m_bounds; }
           ::std::vector<GenericBound>& bounds()       { return m_bounds; }
-    
+
     void add_ty_param(TypeParam param) { m_type_params.push_back( ::std::move(param) ); }
     void add_lft_param(::std::string name) { m_lifetime_params.push_back( ::std::move(name) ); }
     void add_bound(GenericBound bound) {
         m_bounds.push_back( ::std::move(bound) );
     }
-    
+
     int find_name(const char* name) const;
     bool check_params(Crate& crate, const ::std::vector<TypeRef>& types) const;
     bool check_params(Crate& crate, ::std::vector<TypeRef>& types, bool allow_infer) const;
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const GenericParams& tp);
 };
 

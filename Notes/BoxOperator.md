@@ -22,7 +22,7 @@ struct ExprNode_Emplace
         Placer,
         Boxer,
     };
-    
+
     Type    m_type;
     ExprNodeP   m_place;
     ExprNodeP   m_value;

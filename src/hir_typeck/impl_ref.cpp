@@ -127,7 +127,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
         if( e.impl == nullptr ) {
             BUG(Span(), "nullptr");
         }
-        
+
         return monomorphise_path_params_with(sp, e.impl->m_trait_args, this->get_cb_monomorph_traitimpl(sp), true);
         ),
     (BoundedPtr,

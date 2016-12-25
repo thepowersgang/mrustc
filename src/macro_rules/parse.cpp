@@ -26,9 +26,9 @@ public:
 {
     TRACE_FUNCTION;
     Token tok;
-    
+
     ::std::vector<MacroPatEnt>  ret;
-    
+
      int    depth = 0;
     while( GET_TOK(tok, lex) != close || depth > 0 )
     {
@@ -42,7 +42,7 @@ public:
                 throw ParseError::Generic(FMT("Unmatched " << Token(close) << " in macro pattern"));
             depth --;
         }
-        
+
         switch(tok.type())
         {
         case TOK_DOLLAR:
@@ -53,11 +53,11 @@ public:
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 ::std::string   type = mv$(tok.str());
-                
+
                 unsigned int idx = ::std::find( names.begin(), names.end(), name ) - names.begin();
                 if( idx == names.size() )
                     names.push_back( name );
-                
+
                 if(0)
                     ;
                 else if( type == "tt" )
@@ -119,7 +119,7 @@ public:
             break;
         }
     }
-    
+
     return ret;
 }
 
@@ -132,10 +132,10 @@ public:
     )
 {
     TRACE_FUNCTION;
-    
+
     Token tok;
     ::std::vector<MacroExpansionEnt> ret;
-    
+
      int    depth = 0;
     while( GET_TOK(tok, lex) != close || depth > 0 )
     {
@@ -144,7 +144,7 @@ public:
         }
         if( tok.type() == TOK_NULL )
             continue ;
-        
+
         if( tok.type() == open )
         {
             DEBUG("depth++");
@@ -157,19 +157,19 @@ public:
                 ERROR(lex.getPosition(), E0000, "Unmatched " << Token(close) << " in macro content");
             depth --;
         }
-        
+
         // `$` - Macro metavars
         if( tok.type() == TOK_DOLLAR )
         {
             GET_TOK(tok, lex);
-            
+
             // `$(`
             if( tok.type() == TOK_PAREN_OPEN )
-            {   
+            {
                 ::std::map<unsigned int, bool> var_set;
                 auto content = Parse_MacroRules_Cont(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, var_names, &var_set);
                 // ^^ The above will eat the PAREN_CLOSE
-                
+
                 GET_TOK(tok, lex);
                 enum eTokenType joiner = TOK_NULL;
                 if( tok.type() != TOK_PLUS && tok.type() != TOK_STAR )
@@ -197,7 +197,7 @@ public:
                 default:
                     throw ParseError::Unexpected(lex, tok);
                 }
-                
+
             }
             else if( tok.type() == TOK_IDENT )
             {
@@ -225,7 +225,7 @@ public:
             ret.push_back( MacroExpansionEnt( mv$(tok) ) );
         }
     }
-    
+
     return ret;
 }
 
@@ -234,9 +234,9 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token tok;
-    
+
     MacroRule   rule;
-    
+
     // Pattern
     enum eTokenType close;
     switch(GET_TOK(tok, lex))
@@ -249,7 +249,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     // - Pattern entries
     ::std::vector< ::std::string>   names;
     rule.m_pattern = Parse_MacroRules_Pat(lex, tok.type(), close,  names);
-    
+
     GET_CHECK_TOK(tok, lex, TOK_FATARROW);
 
     // Replacement
@@ -263,7 +263,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     rule.m_contents = Parse_MacroRules_Cont(lex, tok.type(), close, names);
 
     DEBUG("Rule - ["<<rule.m_pattern<<"] => "<<rule.m_contents<<"");
-    
+
     return rule;
 }
 
@@ -271,11 +271,11 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
 {
     if( left.type > right.type )
         return patterns_are_same(sp, right, left);
-    
+
     //if( left.name != right.name ) {
     //    TODO(sp, "Handle different binding names " << left << " != " << right);
     //}
-    
+
     // NOTE: left.type <= right.type
     switch(right.type)
     {
@@ -295,13 +295,13 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
         default:
             assert( !"" );
         }
-    
+
     case MacroPatEnt::PAT_TT:
         if( left.type == right.type )
             return true;
         ERROR(sp, E0000, "Incompatible macro fragments - " << right << " used with " << left);
         break;
-    
+
     case MacroPatEnt::PAT_PAT:
         switch(left.type)
         {
@@ -444,15 +444,15 @@ void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::st
 MacroRulesPtr Parse_MacroRules(TokenStream& lex)
 {
     TRACE_FUNCTION_F("");
-    
+
     Token tok;
-    
+
     // Parse the patterns and replacements
     ::std::vector<MacroRule>    rules;
     while( GET_TOK(tok, lex) != TOK_EOF )
     {
         lex.putback(tok);
-        
+
         rules.push_back( Parse_MacroRules_Var(lex) );
         if(GET_TOK(tok, lex) != TOK_SEMICOLON) {
             CHECK_TOK(tok, TOK_EOF);
@@ -460,22 +460,22 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
         }
     }
     DEBUG("- " << rules.size() << " rules");
-    
+
     ::std::vector<MacroRulesArm>    rule_arms;
-    
+
     // Re-parse the patterns into a unified form
     for(auto& rule : rules)
     {
         MacroRulesArm   arm = MacroRulesArm( mv$(rule.m_pattern), mv$(rule.m_contents) );
-        
+
         enumerate_names(arm.m_pattern,  arm.m_param_names);
-        
+
         rule_arms.push_back( mv$(arm) );
     }
-    
+
     auto rv = new MacroRules( );
     rv->m_hygiene = lex.getHygiene();
     rv->m_rules = mv$(rule_arms);
-    
+
     return MacroRulesPtr(rv);
 }

@@ -43,7 +43,6 @@ Rule Generation Algorithm
  - EXPECT pat
  - COMPLETE
  - LOOP
-- 
 
 Example Application: `vec!`
 ---------------------------
@@ -65,7 +64,7 @@ Merging
  - "EXPECT `:expr`" + (2) "EXPECT `:expr`"
   - "EXPECT `:expr`"
  - "EXPECT `;`" + "IF NOT `,` BREAK"
-  - "IF `;` { EXPECT `;` ... } LOOP { IF 
+  - "IF `;` { EXPECT `;` ... } LOOP { IF
   - TODO: This needs to break out of the loop.
 
 Problem: Generating LOOP

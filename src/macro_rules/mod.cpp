@@ -31,7 +31,7 @@ bool is_token_pat(eTokenType tt) {
     {
     case TOK_PAREN_OPEN:
     case TOK_SQUARE_OPEN:
-    
+
     case TOK_UNDERSCORE:
     case TOK_AMP:
     case TOK_RWORD_BOX:
@@ -79,12 +79,12 @@ bool is_token_expr(eTokenType tt) {
     case TOK_MACRO:
     case TOK_PAREN_OPEN:    // Parenthesised
     case TOK_SQUARE_OPEN:   // Array
-    
+
     // Flow
     case TOK_RWORD_RETURN:
     case TOK_RWORD_BREAK:
     case TOK_RWORD_CONTINUE:
-    
+
     // Blocks
     case TOK_BRACE_OPEN:
     case TOK_RWORD_MATCH:
@@ -93,12 +93,12 @@ bool is_token_expr(eTokenType tt) {
     case TOK_RWORD_WHILE:
     case TOK_RWORD_LOOP:
     case TOK_RWORD_UNSAFE:
-    
+
     // Closures
     case TOK_RWORD_MOVE:
     case TOK_PIPE:
     case TOK_DOUBLE_PIPE:
-    
+
     // Literal tokens
     case TOK_INTEGER:
     case TOK_FLOAT:
@@ -106,7 +106,7 @@ bool is_token_expr(eTokenType tt) {
     case TOK_BYTESTRING:
     case TOK_RWORD_TRUE:
     case TOK_RWORD_FALSE:
-    
+
     case TOK_INTERPOLATED_EXPR:
         return true;
     default:
@@ -131,7 +131,7 @@ bool is_token_item(eTokenType tt) {
     switch( tt )
     {
     case TOK_ATTR_OPEN:
-    
+
     case TOK_RWORD_PUB:
     case TOK_RWORD_UNSAFE:
     case TOK_RWORD_TYPE:

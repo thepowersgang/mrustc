@@ -21,7 +21,7 @@ public:
     ~TTStream();
 
     TTStream& operator=(const TTStream& x) { m_stack = x.m_stack; return *this; }
-    
+
     Position getPosition() const override;
 
 protected:
@@ -44,7 +44,7 @@ public:
 
     TTStreamO& operator=(const TTStreamO& x) { m_stack = x.m_stack; return *this; }
     TTStreamO& operator=(TTStreamO&& x) = default;
-    
+
     Position getPosition() const override;
 
 protected:

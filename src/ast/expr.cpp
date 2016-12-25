@@ -5,7 +5,7 @@
 
 namespace AST {
 
-    
+
 Expr::Expr(unique_ptr<ExprNode> node):
     m_node(node.release())
 {
@@ -188,7 +188,7 @@ NODE(ExprNode_Match, {
             os << " " << pat;
         if( arm.m_cond )
             os << " if " << *arm.m_cond;
-        
+
         os << " => " << *arm.m_code << ",";
     }
     os << "}";
@@ -258,11 +258,11 @@ NODE(ExprNode_StructLiteral, {
     os << "/* todo: sl */";
 },{
     ExprNode_StructLiteral::t_values    vals;
-    
+
     for(const auto& v : m_values) {
         vals.push_back( ::std::make_pair(v.first, v.second->clone()) );
     }
-    
+
     return NEWNODE(ExprNode_StructLiteral, AST::Path(m_path), OPT_CLONE(m_base_value), mv$(vals) );
 })
 

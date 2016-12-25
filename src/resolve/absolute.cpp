@@ -20,7 +20,7 @@ struct GenericSlot
         Method,
     } level;
     unsigned short  index;
-    
+
     unsigned int to_binding() const {
         if(level == Level::Method && index != 0xFFFF) {
             return (unsigned int)index + 256;
@@ -63,7 +63,7 @@ struct Context
     unsigned int m_var_count;
     unsigned int m_block_level;
     bool m_frozen_bind_set;
-    
+
     Context(const ::AST::Crate& crate, const ::AST::Module& mod):
         m_crate(crate),
         m_mod(mod),
@@ -71,11 +71,11 @@ struct Context
         m_block_level(0),
         m_frozen_bind_set( false )
     {}
-    
+
     void push(const ::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
         auto   e = Ent::make_Generic({});
         auto& data = e.as_Generic();
-        
+
         if( has_self ) {
             //assert( level == GenericSlot::Level::Top );
             data.types.push_back( Named<GenericSlot> { "Self", GenericSlot { level, 0xFFFF } } );
@@ -90,7 +90,7 @@ struct Context
         if( params.lft_params().size() > 0 ) {
             //TODO(Span(), "resolve/absolute.cpp - Context::push(GenericParams) - Lifetime params - " << params);
         }
-        
+
         m_name_context.push_back(mv$(e));
     }
     void pop(const ::AST::GenericParams& , bool has_self=false) {
@@ -111,7 +111,7 @@ struct Context
             BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
         m_name_context.pop_back();
     }
-    
+
     class RootBlockScope {
         friend struct Context;
         Context& ctxt;
@@ -133,7 +133,7 @@ struct Context
     RootBlockScope clear_rootblock() {
         return RootBlockScope(*this, ~0u);
     }
-    
+
     void push_self(const TypeRef& tr) {
         m_name_context.push_back( Ent::make_ConcreteSelf(&tr) );
     }
@@ -224,7 +224,7 @@ struct Context
         }
         m_block_level -= 1;
     }
-    
+
     /// Indicate that a multiple-pattern binding is started
     void start_patbind() {
         assert( m_block_level > 0 );
@@ -239,8 +239,8 @@ struct Context
     void end_patbind() {
         m_frozen_bind_set = false;
     }
-   
-    
+
+
     enum class LookupMode {
         Namespace,
         Type,
@@ -292,7 +292,7 @@ struct Context
                 }
             }
             break;
-        
+
         case LookupMode::Type:
             //if( name == "IntoIterator" ) {
             //    DEBUG("lookup_in_mod(mod="<<mod.path()<<")");
@@ -406,14 +406,14 @@ struct Context
                 )
             )
         }
-        
+
         // Top-level module
         DEBUG("- Top module (" << m_mod.path() << ")");
         ::AST::Path rv;
         if( this->lookup_in_mod(m_mod, name, mode,  rv) ) {
             return rv;
         }
-        
+
         DEBUG("- Primitives");
         switch(mode)
         {
@@ -429,7 +429,7 @@ struct Context
         default:
             break;
         }
-        
+
         return AST::Path();
     }
 
@@ -468,10 +468,10 @@ struct Context
                 )
             )
         }
-        
+
         ERROR(sp, E0000, "Unable to find local " << (mode == LookupMode::Variable ? "variable" : "type") << " '" << name << "'");
     }
-    
+
     /// Clones the context, including only the module-level items (i.e. just the Module entries)
     Context clone_mod() const {
         auto rv = Context(this->m_crate, this->m_mod);
@@ -543,18 +543,18 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
         nodes.erase( nodes.begin() );
         path = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(span, mv$(inner_path)), ::AST::Path(), mv$(nodes) );
     }
-    
+
     const auto& ufcs = path.m_class.as_UFCS();
     if( ufcs.nodes.size() == 0 ) {
-        
+
         if( mode == Context::LookupMode::Type && ufcs.trait && *ufcs.trait == ::AST::Path() ) {
             return ;
         }
-        
+
         BUG(sp, "UFCS with no nodes encountered - " << path);
     }
     const auto& node = ufcs.nodes.at(0);
-    
+
     if( ufcs.trait && ufcs.trait->is_valid() )
     {
         // Trait is specified, definitely a trait item
@@ -567,7 +567,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
             return ;
         assert( pb.as_Trait().trait_ );
         const auto& tr = *pb.as_Trait().trait_;
-        
+
         switch(mode)
         {
         case Context::LookupMode::Pattern:
@@ -637,18 +637,18 @@ namespace {
         const auto& path_abs = path.m_class.as_Absolute();
         auto type_path = ::AST::Path( path );
         type_path.m_class.as_Absolute().nodes.resize( i+1 );
-        
+
         auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
         for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
             new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
-        
+
         return new_path;
     }
     AST::Path split_replace_into_ufcs_path(const Span& sp, AST::Path path, unsigned int i, const AST::Path& ty_path_tpl)
     {
         auto& path_abs = path.m_class.as_Absolute();
         auto& n = path_abs.nodes[i];
-        
+
         auto type_path = ::AST::Path(ty_path_tpl);
         if( ! n.args().is_empty() ) {
             type_path.nodes().back().args() = mv$(n.args());
@@ -656,10 +656,10 @@ namespace {
         auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
         for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
             new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
-        
+
         return new_path;
     }
-    
+
     void Resolve_Absolute_Path_BindAbsolute__hir_from_import(Context& context, const Span& sp, bool is_value, AST::Path& path, const ::HIR::SimplePath& p)
     {
         TRACE_FUNCTION_FR("path="<<path<<", p="<<p, path);
@@ -671,7 +671,7 @@ namespace {
             auto it = hmod->m_mod_items.find(name);
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find path component '" << name << "' of " << p);
-            
+
             TU_MATCH_DEF(::HIR::TypeItem, (it->second->ent), (e),
             (
                 TODO(sp, "Unknown item type in path - " << i << " " << p << " - " << it->second->ent.tag_str());
@@ -685,7 +685,7 @@ namespace {
                 ASSERT_BUG(sp, it != e.m_variants.end(), "Extern crate import path points to non-present variant - " << p);
                 unsigned int var_idx = it - e.m_variants.begin();
                 auto pb = ::AST::PathBinding::make_EnumVar({nullptr, var_idx, &e});
-                
+
                 // Construct output path (with same set of parameters)
                 AST::Path   rv( p.m_crate_name, {} );
                 rv.nodes().reserve( p.m_components.size() );
@@ -694,7 +694,7 @@ namespace {
                 rv.nodes().back().args() = mv$( path.nodes().back().args() );
                 rv.bind( mv$(pb) );
                 path = mv$(rv);
-                
+
                 return ;
                 ),
             (Module,
@@ -702,9 +702,9 @@ namespace {
                 )
             )
         }
-        
+
         ::AST::PathBinding  pb;
-        
+
         const auto& name = p.m_components.back();
         if( is_value )
         {
@@ -763,7 +763,7 @@ namespace {
                 )
             )
         }
-        
+
         // Construct output path (with same set of parameters)
         AST::Path   rv( p.m_crate_name, {} );
         rv.nodes().reserve( p.m_components.size() );
@@ -773,12 +773,12 @@ namespace {
         rv.bind( mv$(pb) );
         path = mv$(rv);
     }
-    
+
     void Resolve_Absolute_Path_BindAbsolute__hir_from(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path, const AST::ExternCrate& crate, unsigned int start)
     {
         TRACE_FUNCTION_FR(path << " start=" << start, path);
         auto& path_abs = path.m_class.as_Absolute();
-        
+
         if( path_abs.nodes.empty() ) {
             switch(mode)
             {
@@ -789,7 +789,7 @@ namespace {
                 TODO(sp, "");
             }
         }
-        
+
         const ::HIR::Module* hmod = &crate.m_hir->m_root_module;
         for(unsigned int i = start; i < path_abs.nodes.size() - 1; i ++ )
         {
@@ -798,7 +798,7 @@ namespace {
             auto it = hmod->m_mod_items.find(n.name());
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find path component '" << n.name() << "' of " << path);
-            
+
             TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
             (Import,
                 // - Update path then restart
@@ -830,7 +830,7 @@ namespace {
                     }
                 }
                 trait_path.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
-                
+
                 ::AST::Path new_path;
                 const auto& next_node = path_abs.nodes[i+1];
                 // If the named item can't be found in the trait, fall back to it being a type binding
@@ -847,7 +847,7 @@ namespace {
                     found = (e.m_values.find( next_node.name() ) != e.m_values.end());
                     break;
                 }
-                
+
                 if( !found ) {
                     new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(trait_path)));
                 }
@@ -856,7 +856,7 @@ namespace {
                 }
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
-                
+
                 path = mv$(new_path);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
@@ -881,7 +881,7 @@ namespace {
                 for( const auto& var : e.m_variants )
                 {
                     if( var.first == last_node.name() ) {
-                        
+
                         if( i != path_abs.nodes.size() - 2 ) {
                             ERROR(sp, E0000, "Unexpected enum in path " << path);
                         }
@@ -889,7 +889,7 @@ namespace {
                         if( ! n.args().is_empty() ) {
                             ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
                         }
-                        
+
                         path.bind( ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned int>(&var - &*e.m_variants.begin()), &e}) );
                         path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                         return;
@@ -901,7 +901,7 @@ namespace {
                 )
             )
         }
-        
+
         const auto& name = path_abs.nodes.back().name();
         switch(mode)
         {
@@ -942,7 +942,7 @@ namespace {
                 }
             }
             break;
-        
+
         case Context::LookupMode::Pattern:
             {
                 auto v = hmod->m_mod_items.find(name);
@@ -1028,14 +1028,14 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
 {
     TRACE_FUNCTION_FR("path = " << path, path);
     auto& path_abs = path.m_class.as_Absolute();
-    
+
     if( path_abs.crate != "" ) {
         // TODO: Handle items from other crates (back-converting HIR paths)
         Resolve_Absolute_Path_BindAbsolute__hir_from(context, sp, mode, path,  context.m_crate.m_extern_crates.at(path_abs.crate), 0);
         return ;
     }
-    
-    
+
+
     const ::AST::Module*    mod = &context.m_crate.m_root_module;
     for(unsigned int i = 0; i < path_abs.nodes.size() - 1; i ++ )
     {
@@ -1045,11 +1045,11 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             if( ! n.args().is_empty() ) {
                 ERROR(sp, E0000, "Type parameters were not expected here");
             }
-            
+
             if( n.name() == "#" ) {
                 TODO(sp, "magic module");
             }
-            
+
             char c;
             unsigned int idx;
             ::std::stringstream ss( n.name() );
@@ -1067,7 +1067,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             }
             const auto& name_ref = it->second;
             DEBUG("#" << i << " \"" << n.name() << "\" = " << name_ref.path << (name_ref.is_import ? " (import)" : "") );
-            
+
             TU_MATCH_DEF(::AST::PathBinding, (name_ref.path.binding()), (e),
             (
                 ERROR(sp, E0000, "Encountered non-namespace item '" << n.name() << "' ("<<name_ref.path<<") in path " << path);
@@ -1143,7 +1143,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 }
                 for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
                     new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
-                
+
                 path = mv$(new_path);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 ),
@@ -1164,7 +1164,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                     const auto& last_node = path_abs.nodes.back();
                     for( const auto& var : e.enum_->variants() ) {
                         if( var.m_name == last_node.name() ) {
-                            
+
                             if( i != path_abs.nodes.size() - 2 ) {
                                 ERROR(sp, E0000, "Unexpected enum in path " << path);
                             }
@@ -1172,12 +1172,12 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                             if( ! n.args().is_empty() ) {
                                 ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
                             }
-                            
+
                             path.bind_enum_var(*e.enum_, var.m_name);
                             return;
                         }
                     }
-                    
+
                     path = split_replace_into_ufcs_path(sp, mv$(path), i,  name_ref.path);
                     return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
                 }
@@ -1210,14 +1210,14 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             )
         }
     }
-    
+
     // Set binding to binding of node in last module
     ::AST::Path tmp;
     if( ! Context::lookup_in_mod(*mod, path_abs.nodes.back().name(), mode,  tmp) ) {
         ERROR(sp, E0000, "Couldn't find " << Context::lookup_mode_msg(mode) << " '" << path_abs.nodes.back().name() << "' of " << path);
     }
     assert( ! tmp.binding().is_Unbound() );
-    
+
     // Replaces the path with the one returned by `lookup_in_mod`, ensuring that `use` aliases are eliminated
     DEBUG("Replace " << path << " with " << tmp);
     auto args = mv$(path.nodes().back().args());
@@ -1235,7 +1235,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
 void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::LookupMode mode,  ::AST::Path& path)
 {
     TRACE_FUNCTION_FR("mode = " << mode << ", path = " << path, path);
-    
+
     TU_MATCH(::AST::Path::Class, (path.m_class), (e),
     (Invalid,
         BUG(sp, "Attempted resolution of invalid path");
@@ -1270,7 +1270,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     if( !pe.module_ ) {
                         assert( pe.hir );
                         const auto& mod = *pe.hir;
-                        
+
                         switch( e.nodes.size() == 2 ? mode : Context::LookupMode::Namespace )
                         {
                         case Context::LookupMode::Namespace:
@@ -1321,11 +1321,11 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                         auto ct = coretype_fromstring(e.nodes[0].name());
                         p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                     }
-                    
+
                     DEBUG("Primitive module hack yeilded " << p);
                 )
             }
-            
+
             if( e.nodes.size() > 1 )
             {
                 // Only primitive types turn `Local` paths
@@ -1355,7 +1355,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             }
             path = mv$(p);
         }
-        
+
         if( !path.is_trivial() )
             Resolve_Absolute_PathNodes(context, sp,  path.nodes());
         ),
@@ -1372,7 +1372,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         unsigned int start_len = e.count > mp_nodes.size() ? 0 : mp_nodes.size() - e.count;
         while( start_len > 0 && mp_nodes[start_len-1].name()[0] == '#' )
             start_len --;
-        
+
         // - Create a new path
         ::AST::Path np("", {});
         auto& np_nodes = np.nodes();
@@ -1381,10 +1381,10 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             np_nodes.push_back( mp_nodes[i] );
         for(auto& en : e.nodes)
             np_nodes.push_back( mv$(en) );
-        
+
         if( !path.is_trivial() )
             Resolve_Absolute_PathNodes(context, sp,  np_nodes);
-        
+
         path = mv$(np);
         ),
     (Absolute,
@@ -1398,11 +1398,11 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         if( e.trait && *e.trait != ::AST::Path() ) {
             Resolve_Absolute_Path(context, sp, Context::LookupMode::Type, *e.trait);
         }
-        
+
         Resolve_Absolute_PathNodes(context, sp,  e.nodes);
         )
     )
-    
+
     DEBUG("path = " << path);
     // TODO: Should this be deferred until the HIR?
     // - Doing it here so the HIR lowering has a bit more information
@@ -1424,7 +1424,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
         )
     )
-    
+
     // TODO: Expand default type parameters?
     // - Helps with cases like PartialOrd<Self>, but hinders when the default is a hint (in expressions)
 }
@@ -1495,7 +1495,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             }
             assert( ufcs.nodes.size() == 1);
         )
-        
+
         TU_IFLET(::AST::PathBinding, e.path.binding(), Trait, be,
             auto ty = ::TypeRef( type.span(), {}, ::make_vec1(mv$(e.path)) );
             type = mv$(ty);
@@ -1534,12 +1534,12 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
         public AST::NodeVisitorDef
     {
         Context& context;
-        
+
         NV(Context& context):
             context(context)
         {
         }
-        
+
         void visit(AST::ExprNode_Block& node) override {
             DEBUG("ExprNode_Block");
             if( node.m_local_mod ) {
@@ -1556,7 +1556,7 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
                 this->context.pop( *node.m_local_mod );
             }
         }
-        
+
         void visit(AST::ExprNode_Match& node) override {
             DEBUG("ExprNode_Match");
             node.m_val->visit( *this );
@@ -1579,12 +1579,12 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
                 else {
                     Resolve_Absolute_Pattern(this->context, true,  arm.m_patterns[0]);
                 }
-                
+
                 if(arm.m_cond)
                     arm.m_cond->visit( *this );
                 assert( arm.m_code );
                 arm.m_code->visit( *this );
-                
+
                 this->context.pop_block();
             }
         }
@@ -1606,7 +1606,7 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
             node.m_code->visit( *this );
             this->context.pop_block();
         }
-        
+
         void visit(AST::ExprNode_LetBinding& node) override {
             DEBUG("ExprNode_LetBinding");
             Resolve_Absolute_Type(this->context, node.m_type);
@@ -1616,14 +1616,14 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
         void visit(AST::ExprNode_IfLet& node) override {
             DEBUG("ExprNode_IfLet");
             node.m_value->visit( *this );
-            
+
             this->context.push_block();
             Resolve_Absolute_Pattern(this->context, true, node.m_pattern);
-            
+
             assert( node.m_true );
             node.m_true->visit( *this );
             this->context.pop_block();
-            
+
             if(node.m_false)
                 node.m_false->visit(*this);
         }
@@ -1653,17 +1653,17 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
         }
         void visit(AST::ExprNode_Closure& node) override {
             DEBUG("ExprNode_Closure");
-            
+
             Resolve_Absolute_Type(this->context,  node.m_return);
-            
+
             this->context.push_block();
             for( auto& arg : node.m_args ) {
                 Resolve_Absolute_Type(this->context,  arg.second);
                 Resolve_Absolute_Pattern(this->context, false,  arg.first);
             }
-            
+
             node.m_code->visit(*this);
-            
+
             this->context.pop_block();
         }
     } expr_iter(context);
@@ -1744,7 +1744,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         }
         else {
             auto name = mv$( e.name );
-            
+
             pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
             pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
         }
@@ -1828,32 +1828,32 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
             assert( e.params().lft_params().size() == 0 );
             item_context.push( e.params(), GenericSlot::Level::Method, true );
             Resolve_Absolute_Generic(item_context,  e.params());
-            
+
             Resolve_Absolute_Type( item_context, e.type() );
-            
+
             item_context.pop( e.params(), true );
             ),
         (Function,
             DEBUG("Function - " << i.name);
             item_context.push( e.params(), GenericSlot::Level::Method );
             Resolve_Absolute_Generic(item_context,  e.params());
-            
+
             Resolve_Absolute_Type( item_context, e.rettype() );
             for(auto& arg : e.args())
                 Resolve_Absolute_Type( item_context, arg.second );
-            
+
             {
                 auto _h = item_context.enter_rootblock();
                 item_context.push_block();
                 for(auto& arg : e.args()) {
                     Resolve_Absolute_Pattern( item_context, false, arg.first );
                 }
-                
+
                 Resolve_Absolute_Expr( item_context, e.code() );
-                
+
                 item_context.pop_block();
             }
-            
+
             item_context.pop( e.params() );
             ),
         (Static,
@@ -1891,9 +1891,9 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
             assert( e.params().lft_params().size() == 0 );
             item_context.push( e.params(), GenericSlot::Level::Method, true );
             Resolve_Absolute_Generic(item_context,  e.params());
-            
+
             Resolve_Absolute_Type( item_context, e.type() );
-            
+
             item_context.pop( e.params(), true );
             ),
         (Function,
@@ -1925,9 +1925,9 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn)
         for(auto& arg : fcn.args()) {
             Resolve_Absolute_Pattern( item_context, false, arg.first );
         }
-        
+
         Resolve_Absolute_Expr( item_context, fcn.code() );
-        
+
         item_context.pop_block();
     }
 
@@ -1944,7 +1944,7 @@ void Resolve_Absolute_Struct(Context& item_context, ::AST::Struct& e)
 {
     item_context.push( e.params(), GenericSlot::Level::Top );
     Resolve_Absolute_Generic(item_context,  e.params());
-    
+
     TU_MATCH(::AST::StructData, (e.m_data), (s),
     (Tuple,
         for(auto& field : s.ents) {
@@ -1957,25 +1957,25 @@ void Resolve_Absolute_Struct(Context& item_context, ::AST::Struct& e)
         }
         )
     )
-    
+
     item_context.pop( e.params() );
 }
 void Resolve_Absolute_Union(Context& item_context, ::AST::Union& e)
 {
     item_context.push( e.m_params, GenericSlot::Level::Top );
     Resolve_Absolute_Generic(item_context,  e.m_params);
-    
+
     for(auto& field : e.m_variants) {
         Resolve_Absolute_Type(item_context,  field.m_type);
     }
-    
+
     item_context.pop( e.m_params );
 }
 void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
 {
     item_context.push( e.params(), GenericSlot::Level::Top, true );
     Resolve_Absolute_Generic(item_context,  e.params());
-    
+
     for(auto& st : e.supertraits()) {
         if( !st.ent.is_valid() ) {
             DEBUG("- ST 'static");
@@ -1985,16 +1985,16 @@ void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
             Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent);
         }
     }
-    
+
     Resolve_Absolute_ImplItems(item_context, e.items());
-    
+
     item_context.pop( e.params(), true );
 }
 void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
 {
     item_context.push( e.params(), GenericSlot::Level::Top );
     Resolve_Absolute_Generic(item_context,  e.params());
-    
+
     for(auto& variant : e.variants())
     {
         TU_MATCH(::AST::EnumVariantData, (variant.m_data), (s),
@@ -2014,7 +2014,7 @@ void Resolve_Absolute_Enum(Context& item_context, ::AST::Enum& e)
             )
         )
     }
-    
+
     item_context.pop( e.params() );
 }
 
@@ -2024,7 +2024,7 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod) {
 void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 {
     TRACE_FUNCTION_F("(mod="<<mod.path()<<")");
-    
+
     for( auto& i : mod.items() )
     {
         TU_MATCH(AST::Item, (i.data), (e),
@@ -2062,13 +2062,13 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                 Resolve_Absolute_Generic(item_context,  def.params());
                 assert( def.trait().ent.is_valid() );
                 Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
-                
+
                 if( e.items().size() != 0 ) {
                     ERROR(def.span(), E0000, "impl Trait for .. with methods");
                 }
-                
+
                 item_context.pop(def.params());
-                
+
                 const_cast< ::AST::Trait*>(def.trait().ent.binding().as_Trait().trait_)->set_is_marker();
             }
             else
@@ -2076,14 +2076,14 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                 item_context.push_self( def.type() );
                 item_context.push(def.params(), GenericSlot::Level::Top);
                 Resolve_Absolute_Generic(item_context,  def.params());
-                
+
                 Resolve_Absolute_Type(item_context, def.type());
                 if( def.trait().ent.is_valid() ) {
                     Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
                 }
-                
+
                 Resolve_Absolute_ImplItems(item_context,  e.items());
-                
+
                 item_context.pop(def.params());
                 item_context.pop_self( def.type() );
             }
@@ -2093,14 +2093,14 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             item_context.push_self( impl_def.type() );
             item_context.push(impl_def.params(), GenericSlot::Level::Top);
             Resolve_Absolute_Generic(item_context,  impl_def.params());
-            
+
             Resolve_Absolute_Type(item_context, impl_def.type());
             if( !impl_def.trait().ent.is_valid() )
                 BUG(impl_def.span(), "Encountered negative impl with no trait");
             Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
-            
+
             // No items
-            
+
             item_context.pop(impl_def.params());
             item_context.pop_self( impl_def.type() );
             ),
@@ -2123,9 +2123,9 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             DEBUG("Type - " << i.name);
             item_context.push( e.params(), GenericSlot::Level::Top, true );
             Resolve_Absolute_Generic(item_context,  e.params());
-            
+
             Resolve_Absolute_Type( item_context, e.type() );
-            
+
             item_context.pop( e.params(), true );
             ),
         (Struct,
@@ -2146,7 +2146,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             )
         )
     }
-    
+
     // - Run through the indexed items and fix up those paths
     static Span sp;
     DEBUG("mod = " << mod.path());

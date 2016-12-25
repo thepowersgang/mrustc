@@ -20,7 +20,7 @@ bool Ident::Hygiene::is_visible(const Hygiene& src) const
     if( this->contexts.size() == 0 ) {
         return src.contexts.size() == 0;
     }
-    
+
     auto des = this->contexts.back();
     for(const auto& c : src.contexts)
         if( des == c )

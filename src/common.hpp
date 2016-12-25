@@ -117,14 +117,14 @@ Ordering ord(const ::std::vector<T>& l, const ::std::vector<T>& r)
     {
         if( i >= r.size() )
             return OrdGreater;
-        
+
         auto rv = ::ord( it, r[i] );
         if( rv != OrdEqual )
             return rv;
-        
+
         i ++;
     }
-    
+
     if( i < r.size() )
         return OrdLess;
     return OrdEqual;
@@ -152,7 +152,7 @@ struct LList
 {
     const LList*  m_prev;
     T   m_item;
-    
+
     LList():
         m_prev(nullptr)
     {}
@@ -161,7 +161,7 @@ struct LList
         m_item( ::std::move(item) )
     {
     }
-    
+
     LList end() const {
         return LList();
     }

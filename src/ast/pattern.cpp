@@ -123,7 +123,7 @@ namespace AST {
             os << ent.leading;
             needs_comma = true;
         }
-        
+
         if( needs_comma ) {
             os << ", ";
         }
@@ -131,7 +131,7 @@ namespace AST {
             os << ent.extra_bind.m_name;
         os << "..";
         needs_comma = true;
-        
+
         if(ent.trailing.size()) {
             if( needs_comma ) {
                 os << ", ";
@@ -167,7 +167,7 @@ AST::Pattern AST::Pattern::clone() const
     AST::Pattern    rv;
     rv.m_span = m_span;
     rv.m_binding = PatternBinding(m_binding);
-    
+
     struct H {
         static ::std::unique_ptr<Pattern> clone_sp(const ::std::unique_ptr<Pattern>& p) {
             return ::std::make_unique<Pattern>( p->clone() );
@@ -198,7 +198,7 @@ AST::Pattern AST::Pattern::clone() const
             throw "";
         }
     };
-    
+
     TU_MATCH(Pattern::Data, (m_data), (e),
     (Any,
         rv.m_data = Data::make_Any(e);
@@ -237,7 +237,7 @@ AST::Pattern AST::Pattern::clone() const
         rv.m_data = Data::make_SplitSlice({ H::clone_list(e.leading), e.extra_bind, H::clone_list(e.trailing) });
         )
     )
-    
+
     return rv;
 }
 

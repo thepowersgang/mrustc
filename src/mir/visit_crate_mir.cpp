@@ -36,7 +36,7 @@ void MIR::OuterVisitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
         DEBUG("Function code " << p);
         // TODO: Get span without needing hir/expr.hpp
         static Span sp;
-        
+
         // Replace ErasedType instances in `ret_type`
         const auto& ret_type = item.m_return;
         auto ret_type_v = clone_ty_with(sp, ret_type, [&](const auto& tpl, auto& rv) {
@@ -71,10 +71,10 @@ void MIR::OuterVisitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 void MIR::OuterVisitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {
     auto _ = this->m_resolve.set_item_generics(item.m_params);
-    
+
     // TODO: Use a different type depding on repr()
     auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
-    
+
     for(auto& var : item.m_variants)
     {
         TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,

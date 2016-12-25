@@ -38,9 +38,9 @@ enum class CoreType
     U16, I16,
     U32, I32,
     U64, I64,
-    
+
     F32, F64,
-    
+
     Bool,
     Char, Str,
 };
@@ -80,7 +80,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const BorrowType& bt);
 struct LifetimeRef
 {
     ::std::string   name;
-    
+
     bool operator==(const LifetimeRef& x) const {
         return name == x.name;
     }
@@ -101,7 +101,7 @@ public:
     // - Primitive
     // - Parameter
     // - Path
-    
+
     // - Array
     // - Tuple
     // - Borrow
@@ -169,15 +169,15 @@ public:
         ::std::vector<TypeRef>  m_arg_types;
         })
     );
-    
+
     Data   m_data;
-    
+
     TypeRef() {}
     TypeRef(TypeRef&& ) = default;
     TypeRef(const TypeRef& ) = delete;
     TypeRef& operator=(TypeRef&& ) = default;
     TypeRef& operator=(const TypeRef&) = delete;
-    
+
     struct TagUnit {};
     TypeRef(TagUnit ):
         m_data( Data::make_Tuple({}) )
@@ -227,27 +227,27 @@ public:
     static TypeRef new_closure(::HIR::ExprNode_Closure* node_ptr, ::std::vector< ::HIR::TypeRef> args, ::HIR::TypeRef rv) {
         return TypeRef(Data::make_Closure({ node_ptr, box$(mv$(rv)), mv$(args) }));
     }
-    
+
     TypeRef clone() const;
-    
+
     void fmt(::std::ostream& os) const;
-    
+
     bool operator==(const ::HIR::TypeRef& x) const;
     bool operator!=(const ::HIR::TypeRef& x) const { return !(*this == x); }
     bool operator<(const ::HIR::TypeRef& x) const { return ord(x) == OrdLess; }
     Ordering ord(const ::HIR::TypeRef& x) const;
 
     bool contains_generics() const;
-    
+
     // Match generics in `this` with types from `x`
     // Raises a bug against `sp` if there is a form mismatch or `this` has an infer
     void match_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
-    
+
     bool match_test_generics(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
-    
+
     // Compares this type with another, calling the first callback to resolve placeholders in the other type, and the second callback for generics in this type
     ::HIR::Compare match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const;
-    
+
     // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`
     Compare compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const;
 };

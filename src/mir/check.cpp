@@ -35,10 +35,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 continue ;
             }
             visited_bbs[block] = true;
-            
-            
+
+
             state.set_cur_stmt_term(block);
-            
+
             #define PUSH_BB(idx, desc)  do {\
                 if( !(idx < fcn.blocks.size() ) )   MIR_BUG(state,  "Invalid target block - " << desc << " bb" << idx);\
                 if( visited_bbs[idx] == false ) {\
@@ -81,7 +81,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             DEBUG("- Function doesn't return.");
         }
     }
-    
+
     // [ValState] = Value state tracking (use after move, uninit, ...)
     // - [ValState] No drops or usage of uninitalised values (Uninit, Moved, or Dropped)
     // - [ValState] Temporaries are write-once.
@@ -98,7 +98,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             ::std::vector<State> arguments;
             ::std::vector<State> temporaries;
             ::std::vector<State> variables;
-            
+
             ValStates() {}
             ValStates(size_t n_args, size_t n_temps, size_t n_vars):
                 arguments(n_args, State::Valid),
@@ -106,11 +106,11 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 variables(n_vars)
             {
             }
-            
+
             bool empty() const {
                 return arguments.empty() && temporaries.empty() && variables.empty();
             }
-            
+
             bool merge(ValStates& other)
             {
                 if( this->empty() )
@@ -131,7 +131,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     return rv;
                 }
             }
-            
+
             void mark_validity(const ::MIR::TypeResolve& state, const ::MIR::LValue& lv, bool is_valid)
             {
                 TU_MATCH_DEF( ::MIR::LValue, (lv), (e),
@@ -228,7 +228,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             auto val_state = mv$( to_visit_blocks.back().second );
             to_visit_blocks.pop_back();
             assert(block < fcn.blocks.size());
-            
+
             // 1. Apply current state to `block_start_states` (merging if needed)
             // - If no change happened, skip.
             if( ! block_start_states.at(block).merge( val_state ) ) {
@@ -241,7 +241,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             {
                 const auto& stmt = bb.statements[stmt_idx];
                 state.set_cur_stmt(block, stmt_idx);
-                
+
                 if( stmt.is_Drop() )
                 {
                     // Invalidate the slot
@@ -366,14 +366,14 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             {
                 const auto& stmt = bb.statements[stmt_idx];
                 state.set_cur_stmt(bb_idx, stmt_idx);
-                
+
                 switch( stmt.tag() )
                 {
                 case ::MIR::Statement::TAGDEAD:
                     throw "";
                 case ::MIR::Statement::TAG_Assign: {
                     const auto& a = stmt.as_Assign();
-                    
+
                     auto check_type = [&](const auto& src_ty) {
                         ::HIR::TypeRef  tmp;
                         const auto& dst_ty = state.get_lvalue_type(tmp, a.dst);
@@ -528,7 +528,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     break;
                 }
             }
-            
+
             state.set_cur_stmt_term(bb_idx);
             TU_MATCH(::MIR::Terminator, (bb.terminator), (e),
             (Incomplete,

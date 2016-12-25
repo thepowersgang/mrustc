@@ -50,7 +50,7 @@ namespace MIR {
         )
         return os;
     }
-    
+
     ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
     {
         TU_MATCHA( (x), (e),
@@ -116,13 +116,13 @@ namespace MIR {
             case ::MIR::eBinOp::SUB_OV: os << "SUB_OV"; break;
             case ::MIR::eBinOp::MUL_OV: os << "MUL_OV"; break;
             case ::MIR::eBinOp::DIV_OV: os << "DIV_OV"; break;
-            
+
             case ::MIR::eBinOp::BIT_OR : os << "BIT_OR" ; break;
             case ::MIR::eBinOp::BIT_AND: os << "BIT_AND"; break;
             case ::MIR::eBinOp::BIT_XOR: os << "BIT_XOR"; break;
             case ::MIR::eBinOp::BIT_SHL: os << "BIT_SHL"; break;
             case ::MIR::eBinOp::BIT_SHR: os << "BIT_SHR"; break;
-            
+
             case ::MIR::eBinOp::EQ: os << "EQ"; break;
             case ::MIR::eBinOp::NE: os << "NE"; break;
             case ::MIR::eBinOp::GT: os << "GT"; break;
@@ -159,7 +159,7 @@ namespace MIR {
         )
         return os;
     }
-    
+
     ::std::ostream& operator<<(::std::ostream& os, const Terminator& x)
     {
         TU_MATCHA( (x), (e),

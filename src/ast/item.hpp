@@ -12,7 +12,7 @@ struct NamedNS
     ::std::string   name;
     T   data;
     bool    is_pub;
-    
+
     NamedNS():
         is_pub(false)
     {}
@@ -25,7 +25,7 @@ struct NamedNS
         is_pub( is_pub )
     {
     }
-    
+
     //friend ::std::ostream& operator<<(::std::ostream& os, const Named& i) {
     //    return os << (i.is_pub ? "pub " : " ") << i.name << ": " << i.data;
     //}

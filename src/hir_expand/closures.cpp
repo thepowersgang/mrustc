@@ -17,10 +17,10 @@ namespace {
 #define NEWNODE(TY, CLASS, ...)  mk_exprnodep(new HIR::ExprNode_##CLASS(__VA_ARGS__), TY)
 
 namespace {
-    
+
     typedef ::std::function< ::HIR::SimplePath(::HIR::Struct )>   new_type_cb_t;
     typedef ::std::vector< ::std::pair< ::HIR::ExprNode_Closure::Class, ::HIR::TraitImpl> > out_impls_t;
-    
+
     template<typename K, typename V>
     ::std::map<K,V> make_map1(K k1, V v1) {
         ::std::map<K,V> rv;
@@ -44,7 +44,7 @@ namespace {
         rv.push_back( mv$(v3) );
         return rv;
     }
-    
+
     /// Mutate the contents of a closure to update captures, variables, and types
     class ExprVisitor_Mutate:
         public ::HIR::ExprVisitorDef
@@ -52,10 +52,10 @@ namespace {
         const ::HIR::TypeRef&   m_closure_type;
         const ::std::vector<unsigned int>&  m_local_vars;
         const ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> >&  m_captures;
-        
+
         typedef ::std::function< const ::HIR::TypeRef&(const ::HIR::TypeRef&)>  t_monomorph_cb;
         t_monomorph_cb m_monomorph_cb;
-        
+
         ::HIR::ExprNodeP    m_replacement;
     public:
         ExprVisitor_Mutate(
@@ -71,7 +71,7 @@ namespace {
             m_monomorph_cb(mcb)
         {
         }
-        
+
         void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override {
             if( pat.m_binding.is_valid() ) {
                 auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), pat.m_binding.m_slot);
@@ -83,14 +83,14 @@ namespace {
                     BUG(sp, "Pattern binds to non-local");
                 }
             }
-            
+
             TU_IFLET(::HIR::Pattern::Data, (pat.m_data), SplitSlice, e,
                 TODO(sp, "Fixup binding in split slice");
             )
-            
+
             ::HIR::ExprVisitorDef::visit_pattern(sp, pat);
         }
-        
+
         void visit_type(::HIR::TypeRef& ty) override {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                 auto n = m_monomorph_cb(ty).clone();
@@ -101,24 +101,24 @@ namespace {
                 ::HIR::ExprVisitorDef::visit_type(ty);
             }
         }
-        
+
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
             assert( node_ptr );
             auto& node = *node_ptr;
             const char* node_ty = typeid(node).name();
             TRACE_FUNCTION_FR(&node << " " << node_ty << " : " << node.m_res_type, node_ty);
             node.visit(*this);
-            
+
             if( m_replacement ) {
                 node_ptr = mv$(m_replacement);
             }
-            
+
             visit_type( node_ptr->m_res_type );
         }
         void visit(::HIR::ExprNode_Closure& node) override
         {
             assert( ! node.m_code );
-            
+
             // Fix params in path
             visit_generic_path( ::HIR::Visitor::PathContext::VALUE, node.m_obj_path );
             // Visit captures
@@ -138,7 +138,7 @@ namespace {
                     return ;
                 }
             }
-            
+
             // 2. Is it a capture?
             {
                 auto binding_it = ::std::find_if(m_captures.begin(), m_captures.end(), [&](const auto& x){return x.first == node.m_slot;});
@@ -150,7 +150,7 @@ namespace {
                         );
                     if( binding_it->second != ::HIR::ValueUsage::Move ) {
                         auto bt = (binding_it->second == ::HIR::ValueUsage::Mutate ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
-                        
+
                         m_replacement->m_res_type = ::HIR::TypeRef::new_borrow( bt, mv$(m_replacement->m_res_type) );
                         m_replacement = NEWNODE(node.m_res_type.clone(), Deref, node.span(),  mv$(m_replacement));
                     }
@@ -158,10 +158,10 @@ namespace {
                     return ;
                 }
             }
-            
+
             BUG(node.span(), "Encountered non-captured and unknown-origin variable - " << node.m_name << " #" << node.m_slot);
         }
-        
+
         ::HIR::ExprNodeP get_self(const Span& sp) const
         {
             ::HIR::ExprNodeP    self;
@@ -187,7 +187,7 @@ namespace {
             return self;
         }
     };
-    
+
     /// Visitor to replace closure types with actual type
     class ExprVisitor_Fixup:
         public ::HIR::ExprVisitorDef
@@ -200,7 +200,7 @@ namespace {
             m_monomorph_cb( mv$(monomorph_cb) )
         {
         }
-        
+
         static void fix_type(const ::HIR::Crate& crate, t_cb_generic monomorph_cb, ::HIR::TypeRef& ty) {
             TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Closure, e,
                 DEBUG("Closure: " << e.node->m_obj_path_base);
@@ -210,28 +210,28 @@ namespace {
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
             )
         }
-        
+
         void visit_root(::HIR::ExprPtr& root)
         {
             TRACE_FUNCTION;
-            
+
             root->visit(*this);
             visit_type(root->m_res_type);
-            
+
             DEBUG("Locals");
             for(auto& ty : root.m_bindings)
                 visit_type(ty);
-            
+
             for(auto& ty : root.m_erased_types)
                 visit_type(ty);
         }
-        
+
         void visit_node_ptr(::HIR::ExprNodeP& node) override
         {
             node->visit(*this);
             visit_type(node->m_res_type);
         }
-        
+
         void visit(::HIR::ExprNode_CallValue& node) override
         {
             TU_IFLET( ::HIR::TypeRef::Data, node.m_value->m_res_type.m_data, Closure, e,
@@ -251,17 +251,17 @@ namespace {
                     break;
                 }
             )
-            
+
             ::HIR::ExprVisitorDef::visit(node);
         }
-        
+
         void visit_type(::HIR::TypeRef& ty) override
         {
             fix_type(m_crate, m_monomorph_cb, ty);
             ::HIR::ExprVisitorDef::visit_type(ty);
         }
     };
-    
+
     struct H {
         static void fix_fn_params(::HIR::ExprPtr& code, const ::HIR::TypeRef& self_ty, const ::HIR::TypeRef& args_ty)
         {
@@ -390,7 +390,7 @@ namespace {
                 };
         }
     };
-    
+
     class ExprVisitor_Extract:
         public ::HIR::ExprVisitorDef
     {
@@ -399,13 +399,13 @@ namespace {
             Mutate,
             Move,
         };
-        
+
         struct ClosureScope {
             ::HIR::ExprNode_Closure&    node;
             ::std::vector<unsigned int> local_vars;
             // - Lists captured variables to be stored in autogenerated struct (and how they're used, influencing the borrow type)
             ::std::vector< ::std::pair<unsigned int, ::HIR::ValueUsage> > captured_vars;
-            
+
             ClosureScope(::HIR::ExprNode_Closure& node):
                 node(node)
             {
@@ -415,14 +415,14 @@ namespace {
         const StaticTraitResolve& m_resolve;
         const ::HIR::TypeRef*   m_self_type;
         ::std::vector< ::HIR::TypeRef>& m_variable_types;
-        
+
         // Outputs
         out_impls_t&    m_out_impls;
         const new_type_cb_t&    m_new_type;
-        
+
         /// Stack of active closures
         ::std::vector<ClosureScope> m_closure_stack;
-        
+
     public:
         ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::HIR::TypeRef* self_type, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls, const new_type_cb_t& new_type):
             m_resolve(resolve),
@@ -432,30 +432,30 @@ namespace {
             m_new_type( new_type )
         {
         }
-        
+
         void visit_root(::HIR::ExprNode& root)
         {
             root.visit(*this);
         }
-        
+
         void visit(::HIR::ExprNode_Closure& node) override
         {
             const auto& sp = node.span();
-            
+
             TRACE_FUNCTION_F("Extract closure - " << node.m_res_type);
-            
+
             // --- Determine borrow set ---
             m_closure_stack.push_back( ClosureScope(node) );
-            
+
             for(const auto& arg : node.m_args) {
                 add_closure_def_from_pattern(node.span(), arg.first);
             }
-            
+
             ::HIR::ExprVisitorDef::visit(node);
-            
+
             auto ent = mv$( m_closure_stack.back() );
             m_closure_stack.pop_back();
-            
+
             // - If this closure is a move closure, mutate `captured_vars` such that all captures are tagged with ValueUsage::Move
             if( node.m_is_move )
             {
@@ -474,9 +474,9 @@ namespace {
                 }
             }
 
-            
+
             // --- Extract and mutate code into a trait impl on the closure type ---
-            
+
             // 1. Construct closure type (saving path/index in the node)
             ::HIR::GenericParams    params;
             ::HIR::PathParams   constructor_path_params;
@@ -506,7 +506,7 @@ namespace {
                 params_placeholders.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
                 impl_path_params.m_types.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
             }
-            
+
             auto monomorph_cb = [&](const auto& ty)->const auto& {
                 const auto& ge = ty.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
@@ -537,8 +537,8 @@ namespace {
                 }
                 //else if( tpl.m_data.is_ErasedType() ) {
                 //    const auto& e = tpl.m_data.as_ErasedType();
-                //    
-                //    // TODO: Share code with 
+                //
+                //    // TODO: Share code with
                 //    TODO(sp, "Repalce ErasedType with origin " << e.m_origin << " #" << e.m_index);
                 //    //ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
                 //    //const auto& erased_type_replacement = fcn_ptr->m_code.m_erased_types.at(e.m_index);
@@ -549,7 +549,7 @@ namespace {
                     return false;
                 }
                 };
-            
+
             // - Clone the bounds (from both levels)
             auto monomorph_bound = [&](const ::HIR::GenericBound& b)->auto {
                 TU_MATCHA( (b), (e),
@@ -570,13 +570,13 @@ namespace {
             for(const auto& bound : m_resolve.item_generics().m_bounds ) {
                 params.m_bounds.push_back( monomorph_bound(bound) );
             }
-            
+
             DEBUG("--- Mutate inner code");
             // 2. Iterate over the nodes and rewrite variable accesses to either renumbered locals, or field accesses
             ExprVisitor_Mutate    ev { node.m_res_type, ent.local_vars, ent.captured_vars, monomorph_cb };
             ev.visit_node_ptr( node.m_code );
             // NOTE: `ev` is used down in `Args` to convert the argument destructuring pattern
-            
+
             // - Types of local variables
             DEBUG("--- Build locals and captures");
             ::std::vector< ::HIR::TypeRef>  local_types;
@@ -599,10 +599,10 @@ namespace {
 
                 const auto& cap_ty = m_variable_types.at(binding_idx);
                 auto ty_mono = monomorphise_type_with(sp, cap_ty, monomorph_cb);
-                
+
                 auto val_node = NEWNODE(cap_ty.clone(), Variable,  sp, "", binding_idx);
                 ::HIR::BorrowType   bt;
-                
+
                 switch(binding_type)
                 {
                 case ::HIR::ValueUsage::Unknown:
@@ -624,7 +624,7 @@ namespace {
                     capture_nodes.push_back( mv$(val_node) );
                     break;
                 }
-                
+
                 // - Fix type to replace closure types with known paths
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
                 fixup.visit_type(ty_mono);
@@ -638,7 +638,7 @@ namespace {
                     }
                 );
             const auto& closure_struct_ref = m_resolve.m_crate.get_struct_by_path(sp, closure_struct_path);
-            
+
             // Mark the object pathname in the closure.
             node.m_obj_path = ::HIR::GenericPath( closure_struct_path, mv$(constructor_path_params) );
             node.m_obj_path_base = node.m_obj_path.clone();
@@ -647,11 +647,11 @@ namespace {
             DEBUG("-- Object name: " << node.m_obj_path);
             ::HIR::TypeRef  closure_type = ::HIR::TypeRef( ::HIR::GenericPath(node.m_obj_path.m_path.clone(), mv$(impl_path_params)) );
             closure_type.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Struct({ &closure_struct_ref });
-            
+
             // - Args
             ::std::vector< ::HIR::Pattern>  args_pat_inner;
             ::std::vector< ::HIR::TypeRef>  args_ty_inner;
-            
+
             for(const auto& arg : node.m_args) {
                 args_pat_inner.push_back( arg.first.clone() );
                 ev.visit_pattern(sp, args_pat_inner.back() );
@@ -660,23 +660,23 @@ namespace {
             ::HIR::TypeRef  args_ty { mv$(args_ty_inner) };
             ::HIR::Pattern  args_pat { {}, ::HIR::Pattern::Data::make_Tuple({ mv$(args_pat_inner) }) };
             ::HIR::TypeRef  ret_type = clone_ty_with(sp, node.m_return, cb_replace);
-            
+
             DEBUG("args_ty = " << args_ty << ", ret_type = " << ret_type);
-            
+
             ::HIR::ExprPtr body_code { mv$(node.m_code) };
             body_code.m_bindings = mv$(local_types);
-            
+
             {
                 DEBUG("-- Fixing types in body code");
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
                 fixup.visit_root( body_code );
-                
+
                 DEBUG("-- Fixing types in signature");
                 fixup.visit_type( args_ty );
                 fixup.visit_type( ret_type );
                 // TODO: Replace erased types too
             }
-            
+
             // ---
             // 3. Create trait impls
             // ---
@@ -690,7 +690,7 @@ namespace {
             case ::HIR::ExprNode_Closure::Class::Shared: {
                 const auto& lang_Fn = m_resolve.m_crate.get_lang_item_path(node.span(), "fn");
                 const auto method_self_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, closure_type.clone() );
-                
+
                 // - FnOnce
                 {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
@@ -730,7 +730,7 @@ namespace {
                         H::make_fnmut( params.clone(), trait_params.clone(), closure_type.clone(), mv$(args_arg), ret_type.clone(), mv$(dispatch_node) )
                         ));
                 }
-                
+
                 // - Fn
                 m_out_impls.push_back(::std::make_pair(
                     ::HIR::ExprNode_Closure::Class::Shared,
@@ -740,7 +740,7 @@ namespace {
             case ::HIR::ExprNode_Closure::Class::Mut: {
                 const auto& lang_FnMut = m_resolve.m_crate.get_lang_item_path(node.span(), "fn_mut");
                 const auto method_self_ty = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Unique, closure_type.clone() );
-                
+
                 // - FnOnce
                 {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
@@ -760,7 +760,7 @@ namespace {
                         H::make_fnonce( params.clone(), trait_params.clone(), closure_type.clone(), mv$(args_arg), ret_type.clone(), mv$(dispatch_node) )
                         ));
                 }
-                
+
                 // - FnMut (code)
                 m_out_impls.push_back(::std::make_pair(
                     ::HIR::ExprNode_Closure::Class::Mut,
@@ -776,7 +776,7 @@ namespace {
                 break;
             }
         }
-        
+
         void visit_pattern(const Span& sp, ::HIR::Pattern& pat) override
         {
             if( !m_closure_stack.empty() )
@@ -792,7 +792,7 @@ namespace {
             }
             ::HIR::ExprVisitorDef::visit(node);
         }
-        
+
         void visit(::HIR::ExprNode_CallValue& node) override
         {
             const auto& fcn_ty = node.m_value->m_res_type;
@@ -844,13 +844,13 @@ namespace {
                 ::HIR::ExprVisitorDef::visit(node);
             }
         }
-        
+
     private:
         void add_closure_def(unsigned int slot)
         {
             assert(m_closure_stack.size() > 0);
             auto& closure_defs = m_closure_stack.back().local_vars;
-            
+
             auto it = ::std::lower_bound(closure_defs.begin(), closure_defs.end(), slot);
             if( it == closure_defs.end() || *it != slot ) {
                 closure_defs.insert(it, slot);
@@ -863,7 +863,7 @@ namespace {
                 const auto& pb = pat.m_binding;
                 add_closure_def(pb.m_slot);
             }
-            
+
             // Recurse
             TU_MATCH(::HIR::Pattern::Data, (pat.m_data), (e),
             (Any,
@@ -901,7 +901,7 @@ namespace {
                     add_closure_def(e.extra_bind.m_slot);
                 }
                 ),
-            
+
             // - Enums/Structs
             (StructValue,
                 ),
@@ -937,7 +937,7 @@ namespace {
                 return ;
             }
 
-            
+
             if( usage == ::HIR::ValueUsage::Move ) {
                 if( m_resolve.type_is_copy(sp, m_variable_types.at(slot)) ) {
                     usage = ::HIR::ValueUsage::Borrow;
@@ -948,11 +948,11 @@ namespace {
                 else {
                 }
             }
-            
+
             assert(m_closure_stack.size() > 0 );
             auto& closure_rec = m_closure_stack.back();
             auto& closure = closure_rec.node;
-            
+
             auto it = ::std::lower_bound(closure_rec.captured_vars.begin(), closure_rec.captured_vars.end(), slot, [](const auto& a, const auto& b){ return a.first < b; });
             if( it == closure_rec.captured_vars.end() || it->first != slot ) {
                 closure_rec.captured_vars.insert( it, ::std::make_pair(slot, usage) );
@@ -960,7 +960,7 @@ namespace {
             else {
                 it->second = ::std::max(it->second, usage);
             }
-            
+
             const char* cap_type_name = "?";
             switch( usage )
             {
@@ -987,7 +987,7 @@ namespace {
             DEBUG("Captured " << slot << " - " << m_variable_types.at(slot) << " :: " << cap_type_name);
         }
     };
-    
+
     class OuterVisitor:
         public ::HIR::Visitor
     {
@@ -1001,11 +1001,11 @@ namespace {
             m_resolve(crate),
             m_cur_mod_path( nullptr )
         {}
-        
+
         void visit_crate(::HIR::Crate& crate) override
         {
             Span    sp;
-            
+
             unsigned int closure_count = 0;
             ::HIR::SimplePath   root_mod_path("",{});
             m_cur_mod_path = &root_mod_path;
@@ -1016,9 +1016,9 @@ namespace {
                 crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
                 return ::HIR::SimplePath() + name;
                 };
-            
+
             ::HIR::Visitor::visit_crate(crate);
-            
+
             for(auto& impl : m_new_trait_impls)
             {
                 const auto& trait =
@@ -1030,13 +1030,13 @@ namespace {
             }
             m_new_trait_impls.resize(0);
         }
-        
+
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
             auto saved = m_cur_mod_path;
             auto path = p.get_simple_path();
             m_cur_mod_path = &path;
-            
+
             unsigned int closure_count = 0;
             auto saved_nt = mv$(m_new_type);
             m_new_type = [&](auto s)->auto {
@@ -1046,18 +1046,18 @@ namespace {
                 mod.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
                 return (p + name).get_simple_path();
                 };
-            
+
             ::HIR::Visitor::visit_module(p, mod);
-            
+
             m_cur_mod_path = saved;
             m_new_type = mv$(saved_nt);
         }
-        
+
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
         void visit_expr(::HIR::ExprPtr& exp) override {
             BUG(Span(), "visit_expr hit in OuterVisitor");
         }
-        
+
         void visit_type(::HIR::TypeRef& ty) override
         {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
@@ -1083,12 +1083,12 @@ namespace {
             {
                 assert( m_cur_mod_path );
                 DEBUG("Function code " << p);
-                
+
                 {
                     ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_code.m_bindings, m_new_trait_impls, m_new_type);
                     ev.visit_root( *item.m_code );
                 }
-                
+
                 {
                     ExprVisitor_Fixup   fixup(m_resolve.m_crate, [](const auto& x)->const auto&{ return x; });
                     fixup.visit_root( item.m_code );
@@ -1129,7 +1129,7 @@ namespace {
                 )
             }
         }
-        
+
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             auto _ = this->m_resolve.set_impl_generics(item.m_params);
@@ -1138,16 +1138,16 @@ namespace {
             ::HIR::Visitor::visit_trait(p, item);
             m_self_type = nullptr;
         }
-        
-        
+
+
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
             m_self_type = &impl.m_type;
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
-            
+
             ::HIR::Visitor::visit_type_impl(impl);
-            
+
             m_self_type = nullptr;
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
@@ -1155,9 +1155,9 @@ namespace {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             m_self_type = &impl.m_type;
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
-            
+
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
-            
+
             m_self_type = nullptr;
         }
     };

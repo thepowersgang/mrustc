@@ -17,17 +17,17 @@ AST::PathParams Parse_Path_GenericList(TokenStream& lex);
 AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
 {
     TRACE_FUNCTION_F("generic_mode="<<generic_mode);
-    
+
     Token   tok;
     switch( GET_TOK(tok, lex) )
     {
     case TOK_INTERPOLATED_PATH:
         return mv$(tok.frag_path());
-    
+
     case TOK_RWORD_SELF:
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         return Parse_Path(lex, false, generic_mode);
-    
+
     case TOK_RWORD_SUPER: {
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         unsigned int count = 1;
@@ -38,10 +38,10 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         }
         return AST::Path(AST::Path::TagSuper(), count, Parse_PathNodes(lex, generic_mode));
         }
-    
+
     case TOK_DOUBLE_COLON:
         return Parse_Path(lex, true, generic_mode);
-    
+
     case TOK_DOUBLE_LT:
         lex.putback( Token(TOK_LT) );
     case TOK_LT: {
@@ -69,7 +69,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
             return AST::Path(AST::Path::TagUfcs(), mv$(ty), AST::Path(), Parse_PathNodes(lex, generic_mode));
         }
         throw ""; }
-    
+
     default:
         PUTBACK(tok, lex);
         return Parse_Path(lex, false, generic_mode);
@@ -102,7 +102,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
 ::std::vector<AST::PathNode> Parse_PathNodes(TokenStream& lex, eParsePathGenericMode generic_mode)
 {
     TRACE_FUNCTION_F("generic_mode="<<generic_mode);
-    
+
     Token tok;
     ::std::vector<AST::PathNode>    ret;
 
@@ -122,7 +122,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 // HACK! Handle breaking << into < <
                 if( tok.type() == TOK_DOUBLE_LT )
                     lex.putback( Token(TOK_LT) );
-                
+
                 // Type-mode generics "::path::to::Type<A,B>"
                 params = Parse_Path_GenericList(lex);
                 GET_TOK(tok, lex);
@@ -146,7 +146,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                     } while( GET_TOK(tok, lex) == TOK_COMMA );
                 }
                 CHECK_TOK(tok, TOK_PAREN_CLOSE);
-                
+
                 TypeRef ret_type = TypeRef( TypeRef::TagUnit(), Span(tok.get_pos()) );
                 if( GET_TOK(tok, lex) == TOK_THINARROW ) {
                     ret_type = Parse_Type(lex, false);
@@ -155,14 +155,14 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                     PUTBACK(tok, lex);
                 }
                 DEBUG("- Fn("<<args<<")->"<<ret_type<<"");
-                
+
                 // Encode into path, by converting Fn(A,B)->C into Fn<(A,B),Ret=C>
                 params = ::AST::PathParams {
                     {},
                     ::make_vec1( TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(args)) ),
                     ::make_vec1( ::std::make_pair( ::std::string("Output"), mv$(ret_type) ) )
                     };
-                
+
                 GET_TOK(tok, lex);
             }
             else
@@ -179,7 +179,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
             // HACK! Handle breaking << into < <
             if( tok.type() == TOK_DOUBLE_LT )
                 lex.putback( Token(TOK_LT) );
-            
+
             // Expr-mode generics "::path::to::function::<Type1,Type2>(arg1, arg2)"
             params = Parse_Path_GenericList(lex);
             if( GET_TOK(tok, lex) != TOK_DOUBLE_COLON ) {
@@ -205,7 +205,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     ::std::vector<TypeRef>  types;
     ::std::vector< ::std::string>   lifetimes;
     ::std::vector< ::std::pair< ::std::string, TypeRef > > assoc_bounds;
-    
+
     do {
         if( LOOK_AHEAD(lex) == TOK_GT || LOOK_AHEAD(lex) == TOK_DOUBLE_GT || LOOK_AHEAD(lex) == TOK_GTE || LOOK_AHEAD(lex) == TOK_DOUBLE_GT_EQUAL ) {
             GET_TOK(tok, lex);
@@ -244,7 +244,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     else {
         CHECK_TOK(tok, TOK_GT);
     }
-    
+
     return ::AST::PathParams {
         mv$( lifetimes ),
         mv$( types ),

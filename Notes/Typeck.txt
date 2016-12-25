@@ -1,5 +1,4 @@
-Type inferrence
-
+Type inference
 
 # Type equality procedure
 
@@ -27,7 +26,6 @@ Needs to be able to point to functions in:
 
 
 Maybe can use separate types for each usecase?
-- 
 
 <!-- vim: ft=markdown
 -->

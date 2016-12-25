@@ -12,7 +12,7 @@ class MetaItems
 public:
     Span    m_span;
     ::std::vector<MetaItem> m_items;
-    
+
     virtual ~MetaItems();
     MetaItems() {}
     MetaItems(MetaItems&&) = default;
@@ -23,17 +23,17 @@ public:
         m_items( mv$(items) )
     {
     }
-    
+
     void push_back(MetaItem i);
-    
+
     MetaItems clone() const;
-    
+
     MetaItem* get(const char *name) { return const_cast<MetaItem*>( const_cast<const MetaItems*>(this)->get(name)); }
     const MetaItem* get(const char *name) const;
     bool has(const char *name) const {
         return get(name) != 0;
     }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const MetaItems& x) {
         return os << "[" << x.m_items << "]";
     }
@@ -74,21 +74,21 @@ public:
         m_data( MetaItemData::make_List({mv$(items)}) )
     {
     }
-    
+
     MetaItem clone() const;
-    
+
     void mark_used() {}
     const ::std::string& name() const { return m_name; }
-    
+
     bool has_noarg() const { return m_data.is_None(); }
-    
+
     bool has_string() const { return m_data.is_String(); }
     const ::std::string& string() const { return m_data.as_String().val; }
-    
+
     bool has_sub_items() const { return m_data.is_List(); }
     const ::std::vector<MetaItem>& items() const { return m_data.as_List().sub_items; }
           ::std::vector<MetaItem>& items()       { return m_data.as_List().sub_items; }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const MetaItem& x) {
         os << x.m_name;
         TU_MATCH(MetaItemData, (x.m_data), (e),

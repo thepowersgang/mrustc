@@ -275,7 +275,7 @@ Token Lexer::getTokenInt()
     try
     {
         Codepoint ch = this->getc();
-        
+
         if( ch == '#' && m_line == 1 && m_line_ofs == 1 ) {
             switch( (ch = this->getc()).v )
             {
@@ -326,8 +326,8 @@ Token Lexer::getTokenInt()
                     DEC,
                     HEX,
                 } num_mode = DEC;
-                
-                
+
+
                 // Handle integers/floats
                 uint64_t    val = 0;
                 if( ch == '0' ) {
@@ -390,7 +390,7 @@ Token Lexer::getTokenInt()
                     if( ch == '.' )
                     {
                         ch = this->getc();
-                        
+
                         // Double/Triple Dot
                         if( ch == '.' )
                         {
@@ -403,7 +403,7 @@ Token Lexer::getTokenInt()
                             }
                             return Token(val, CORETYPE_ANY);
                         }
-                        
+
                         // Single dot followed by a non-digit, could be a float or an integer with a method/field access
                         if( !ch.isdigit() )
                         {
@@ -428,8 +428,8 @@ Token Lexer::getTokenInt()
                     }
                     if( num_mode != DEC )
                         TODO(this->getPosition(), "Non-decimal floats");
-                    
-                    
+
+
                     this->ungetc();
                     double fval = this->parseFloat(val);
                     if( issym(ch = this->getc()) )
@@ -441,7 +441,7 @@ Token Lexer::getTokenInt()
                             ch = this->getc();
                         }
                         this->ungetc();
-                        
+
                         if(0)   ;
                         else if(suffix == "f32") num_type = CORETYPE_F32;
                         else if(suffix == "f64") num_type = CORETYPE_F64;
@@ -464,7 +464,7 @@ Token Lexer::getTokenInt()
                         ch = this->getc();
                     }
                     this->ungetc();
-                    
+
                     if(0)   ;
                     else if(suffix == "i8")  num_type = CORETYPE_I8;
                     else if(suffix == "i16") num_type = CORETYPE_I16;
@@ -495,13 +495,13 @@ Token Lexer::getTokenInt()
                     is_byte = true;
                     ch = this->getc();
                 }
-                
+
                 if(ch == 'r') {
                     return this->getTokenInt_RawString(is_byte);
                 }
                 else {
                     assert(is_byte);
-                    
+
                     // Byte string
                     if( ch == '"' ) {
                         ::std::string str;
@@ -579,7 +579,7 @@ Token Lexer::getTokenInt()
                 while(true)
                 {
                     ch = this->getc();
-                    
+
                     if( ch == '/' ) {
                         str += ch;
                         ch = this->getc();
@@ -704,7 +704,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
         catch( Lexer::EndOfFile e ) {
             throw ParseError::Generic(*this, "EOF reached in raw string");
         }
-        
+
         if( terminating_hashes > 0 )
         {
             assert(terminating_hashes > 0);
@@ -715,7 +715,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
                     terminating_hashes += 1;
                 }
                 terminating_hashes = 0;
-                
+
                 this->ungetc();
             }
             else {
@@ -800,9 +800,9 @@ double Lexer::parseFloat(uint64_t whole)
     }
     this->ungetc();
     buf[ofs] = 0;
-    
+
     DEBUG("buf = " << buf << ", ch = '" << ch << "'");
-    
+
     return ::std::strtod(buf, NULL);
 }
 
@@ -920,7 +920,7 @@ Codepoint Lexer::getc_cp()
         // Two bytes
         uint8_t e1 = this->getc_byte();
         if( (e1 & 0xC0) != 0x80 )  return {0xFFFE};
-        
+
         uint32_t outval
             = ((v1 & 0x1F) << 6)
             | ((e1 & 0x3F) <<0)
@@ -933,7 +933,7 @@ Codepoint Lexer::getc_cp()
         if( (e1 & 0xC0) != 0x80 )  return {0xFFFE};
         uint8_t e2 = this->getc_byte();
         if( (e2 & 0xC0) != 0x80 )  return {0xFFFE};
-        
+
         uint32_t outval
             = ((v1 & 0x0F) << 12)
             | ((e1 & 0x3F) <<  6)
@@ -949,7 +949,7 @@ Codepoint Lexer::getc_cp()
         if( (e2 & 0xC0) != 0x80 )  return {0xFFFE};
         uint8_t e3 = this->getc_byte();
         if( (e3 & 0xC0) != 0x80 )  return {0xFFFE};
-        
+
         uint32_t outval
             = ((v1 & 0x07) << 18)
             | ((e1 & 0x3F) << 12)
@@ -1004,7 +1004,7 @@ bool Codepoint::isxdigit() const {
         s += (char)cp.v;
     }
     else if( cp.v < (0x1F+1)<<(1*6) ) {
-        
+
         s += (char)(0xC0 | ((cp.v >> 6) & 0x1F));
         s += (char)(0x80 | ((cp.v >> 0) & 0x3F));
     }

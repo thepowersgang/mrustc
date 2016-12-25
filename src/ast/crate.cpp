@@ -61,13 +61,13 @@ void Crate::load_externs()
         }
         };
     iterate_module(m_root_module, cb);
-    
+
     // Check for no_std or no_core, and load libstd/libcore
     // - Duplicates some of the logic in "Expand", but also helps keep crate loading separate to most of expand
     // NOTE: Not all crates are loaded here, any crates loaded by macro invocations will be done during expand.
     bool no_std  = false;
     bool no_core = false;
-    
+
     for( const auto& a : this->m_attrs.m_items )
     {
         if( a.name() == "no_std" )
@@ -105,7 +105,7 @@ void Crate::load_extern_crate(Span sp, const ::std::string& name)
     ::std::string   path;
     for(const auto& p : paths){
         path = p + "lib" + name + ".hir";
-        
+
         if( ::std::ifstream(path).good() ) {
             break ;
         }
@@ -113,10 +113,10 @@ void Crate::load_extern_crate(Span sp, const ::std::string& name)
     if( !::std::ifstream(path).good() ) {
         ERROR(sp, E0000, "Unable to locate crate '" << name << "'");
     }
-    
+
     auto res = m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, path } ));
     auto crate_ext_list = mv$( res.first->second.m_hir->m_ext_crates );
-    
+
     // Load referenced crates
     for( const auto& ext : crate_ext_list )
     {
@@ -132,7 +132,7 @@ ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
 {
     TRACE_FUNCTION_F("name=" << name << ", path='" << path << "'");
     m_hir = HIR_Deserialise(path, name);
-    
+
     m_hir->post_load_update(name);
 }
 

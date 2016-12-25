@@ -12,13 +12,13 @@
 #include "main_bindings.hpp"
 
 namespace {
-    
+
     class ExprVisitor_Mark:
         public ::HIR::ExprVisitor//Def
     {
         const StaticTraitResolve&    m_resolve;
         ::std::vector< ::HIR::ValueUsage>   m_usage;
-        
+
         struct UsageGuard
         {
             ExprVisitor_Mark& m_parent;
@@ -35,7 +35,7 @@ namespace {
                 }
             }
         };
-        
+
         ::HIR::ValueUsage get_usage() const {
             return (m_usage.empty() ? ::HIR::ValueUsage::Move : m_usage.back());
         }
@@ -48,12 +48,12 @@ namespace {
                 return UsageGuard(*this, true);
             }
         }
-        
+
     public:
         ExprVisitor_Mark(const StaticTraitResolve& resolve):
             m_resolve(resolve)
         {}
-        
+
         void visit_root(::HIR::ExprPtr& root_ptr)
         {
             assert(root_ptr);
@@ -65,27 +65,27 @@ namespace {
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
         {
             assert(node_ptr);
-            
+
             const auto& node_ref = *node_ptr;
             const char* node_tyname = typeid(node_ref).name();
             TRACE_FUNCTION_FR(&*node_ptr << " " << node_tyname, node_ptr->m_usage);
-            
+
             node_ptr->m_usage = this->get_usage();
-            
+
             auto expected_size = m_usage.size();
             node_ptr->visit( *this );
             assert( m_usage.size() == expected_size );
         }
-        
+
         void visit(::HIR::ExprNode_Block& node) override
         {
             auto _ = this->push_usage( ::HIR::ValueUsage::Move );
-            
+
             for( auto& subnode : node.m_nodes ) {
                 this->visit_node_ptr(subnode);
             }
         }
-        
+
         void visit(::HIR::ExprNode_Return& node) override
         {
             auto _ = this->push_usage( ::HIR::ValueUsage::Move );
@@ -115,13 +115,13 @@ namespace {
                 ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Unknown;
                 for( const auto& arm : node.m_arms )
                 {
-                    for( const auto& pat : arm.m_patterns ) 
+                    for( const auto& pat : arm.m_patterns )
                         vu = ::std::max( vu, this->get_usage_for_pattern(node.span(), pat, val_ty) );
                 }
                 auto _ = this->push_usage( vu );
                 this->visit_node_ptr( node.m_value );
             }
-            
+
             auto _ = this->push_usage( ::HIR::ValueUsage::Move );
             for(auto& arm : node.m_arms)
             {
@@ -140,7 +140,7 @@ namespace {
                 this->visit_node_ptr( node.m_false );
             }
         }
-        
+
         void visit(::HIR::ExprNode_Assign& node) override
         {
             {
@@ -155,9 +155,9 @@ namespace {
         void visit(::HIR::ExprNode_UniOp& node) override
         {
             m_usage.push_back( ::HIR::ValueUsage::Move );
-            
+
             this->visit_node_ptr(node.m_value);
-            
+
             m_usage.pop_back();
         }
         void visit(::HIR::ExprNode_Borrow& node) override
@@ -174,12 +174,12 @@ namespace {
                 m_usage.push_back( ::HIR::ValueUsage::Move );
                 break;
             }
-            
+
             this->visit_node_ptr(node.m_value);
-            
+
             m_usage.pop_back();
         }
-        
+
         void visit(::HIR::ExprNode_BinOp& node) override
         {
             switch(node.m_op)
@@ -196,10 +196,10 @@ namespace {
                 m_usage.push_back( ::HIR::ValueUsage::Move );
                 break;
             }
-            
+
             this->visit_node_ptr(node.m_left);
             this->visit_node_ptr(node.m_right);
-            
+
             m_usage.pop_back();
         }
         void visit(::HIR::ExprNode_Cast& node) override
@@ -222,7 +222,7 @@ namespace {
             else {
                 this->visit_node_ptr(node.m_value);
             }
-            
+
             auto _ = push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr(node.m_index);
         }
@@ -241,7 +241,7 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
         }
-        
+
         void visit(::HIR::ExprNode_Emplace& node) override
         {
             if( node.m_type == ::HIR::ExprNode_Emplace::Type::Noop ) {
@@ -256,7 +256,7 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
         }
-        
+
         void visit(::HIR::ExprNode_Field& node) override
         {
             bool is_copy = m_resolve.type_is_copy(node.span(), node.m_res_type);
@@ -270,18 +270,18 @@ namespace {
                 this->visit_node_ptr(node.m_value);
             }
         }
-        
+
         void visit(::HIR::ExprNode_TupleVariant& node) override
         {
             auto _ = push_usage( ::HIR::ValueUsage::Move );
-            
+
             for( auto& val : node.m_args )
                 this->visit_node_ptr(val);
         }
         void visit(::HIR::ExprNode_CallPath& node) override
         {
             auto _ = push_usage( ::HIR::ValueUsage::Move );
-            
+
             for( auto& val : node.m_args )
                 this->visit_node_ptr(val);
         }
@@ -311,7 +311,7 @@ namespace {
                 auto _ = push_usage( vu );
                 this->visit_node_ptr(node.m_value);
             }
-            
+
             auto _ = push_usage( ::HIR::ValueUsage::Move );
             for( auto& val : node.m_args )
                 this->visit_node_ptr(val);
@@ -319,12 +319,12 @@ namespace {
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
             auto _ = push_usage( ::HIR::ValueUsage::Move );
-            
+
             this->visit_node_ptr(node.m_value);
             for( auto& val : node.m_args )
                 this->visit_node_ptr(val);
         }
-        
+
         void visit(::HIR::ExprNode_Literal& node) override
         {
         }
@@ -358,7 +358,7 @@ namespace {
                     unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == fld.first; }) - fields.begin();
                     provided_mask[idx] = true;
                 }
-                
+
                 const auto monomorph_cb = monomorphise_type_get_cb(node.span(), nullptr, &node.m_path.m_params, nullptr);
                 for( unsigned int i = 0; i < fields.size(); i ++ ) {
                     if( ! provided_mask[i] ) {
@@ -372,12 +372,12 @@ namespace {
                         }
                     }
                 }
-                
+
                 // If only Copy fields will be used, set usage to Borrow
                 auto _ = push_usage( is_moved ? ::HIR::ValueUsage::Move : ::HIR::ValueUsage::Borrow );
                 this->visit_node_ptr(node.m_base_value);
             }
-            
+
             auto _ = push_usage( ::HIR::ValueUsage::Move );
             for( auto& fld_val : node.m_values ) {
                 this->visit_node_ptr(fld_val.second);
@@ -407,13 +407,13 @@ namespace {
             auto _ = push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr(node.m_val);
         }
-        
+
         void visit(::HIR::ExprNode_Closure& node) override
         {
             auto _ = push_usage( ::HIR::ValueUsage::Move );
             this->visit_node_ptr(node.m_code);
         }
-        
+
     private:
         ::HIR::ValueUsage get_usage_for_pattern_binding(const Span& sp, const ::HIR::PatternBinding& pb, const ::HIR::TypeRef& ty) const
         {
@@ -431,13 +431,13 @@ namespace {
             }
             throw "";
         }
-        
+
         ::HIR::ValueUsage get_usage_for_pattern(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
         {
             if( pat.m_binding.is_valid() ) {
                 return get_usage_for_pattern_binding(sp, pat.m_binding, ty);
             }
-            
+
             TU_MATCHA( (pat.m_data), (pe),
             (Any,
                 return ::HIR::ValueUsage::Borrow;
@@ -477,7 +477,7 @@ namespace {
                 const auto& flds = str.m_data.as_Tuple();
                 assert(pe.sub_patterns.size() == flds.size());
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
-                
+
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < flds.size(); i ++) {
                     auto sty = monomorphise_type_with(sp, flds[i].ent, monomorph_cb);
@@ -489,13 +489,13 @@ namespace {
                 const auto& str = *pe.binding;
                 const auto& flds = str.m_data.as_Named();
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
-                
+
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& fld_pat : pe.sub_patterns)
                 {
                     auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
                     ASSERT_BUG(sp, fld_it != flds.end(), "");
-                    
+
                     auto sty = monomorphise_type_with(sp, fld_it->second.ent, monomorph_cb);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
                 }
@@ -516,7 +516,7 @@ namespace {
                 const auto& flds = var.second.as_Tuple();
                 assert(pe.sub_patterns.size() == flds.size());
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
-                
+
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < flds.size(); i ++) {
                     auto sty = monomorphise_type_with(sp, flds[i].ent, monomorph_cb);
@@ -529,13 +529,13 @@ namespace {
                 const auto& var = enm.m_variants.at(pe.binding_idx);
                 const auto& flds = var.second.as_Struct();
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
-                
+
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(const auto& fld_pat : pe.sub_patterns)
                 {
                     auto fld_it = ::std::find_if(flds.begin(), flds.end(), [&](const auto& x){return x.first == fld_pat.first;});
                     ASSERT_BUG(sp, fld_it != flds.end(), "");
-                    
+
                     auto sty = monomorphise_type_with(sp, fld_it->second.ent, monomorph_cb);
                     rv = ::std::max(rv, get_usage_for_pattern(sp, fld_pat.second, sty));
                 }
@@ -564,7 +564,7 @@ namespace {
         }
     };
 
-    
+
     class OuterVisitor:
         public ::HIR::Visitor
     {
@@ -573,7 +573,7 @@ namespace {
         OuterVisitor(const ::HIR::Crate& crate):
             m_resolve(crate)
         {}
-        
+
         void visit_expr(::HIR::ExprPtr& exp) override {
             if( exp )
             {
@@ -581,7 +581,7 @@ namespace {
                 ev.visit_root( exp );
             }
         }
-        
+
         // ------
         // Code-containing items
         // ------
@@ -602,25 +602,25 @@ namespace {
             auto _ = this->m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
         }
-        
-        
+
+
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override {
             auto _ = this->m_resolve.set_impl_generics(item.m_params);
             ::HIR::Visitor::visit_trait(p, item);
         }
-        
+
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << impl.m_type);
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
-            
+
             ::HIR::Visitor::visit_type_impl(impl);
         }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
-            
+
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
     };

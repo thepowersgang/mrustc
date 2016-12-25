@@ -46,7 +46,7 @@ public:
     ValueUsage  m_usage = ValueUsage::Unknown;
 
     const Span& span() const { return m_span; }
-    
+
     virtual void visit(ExprVisitor& v) = 0;
     ExprNode(Span sp):
         m_span( mv$(sp) )
@@ -72,7 +72,7 @@ struct ExprNode_Block:
 
     ::HIR::SimplePath   m_local_mod;
     t_trait_list    m_traits;
-    
+
     ExprNode_Block(Span sp):
         ExprNode(mv$(sp)),
         m_is_unsafe(false),
@@ -84,20 +84,20 @@ struct ExprNode_Block:
         m_nodes( mv$(nodes) ),
         m_yields_final(false)
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Return:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    
+
     ExprNode_Return(Span sp, ::HIR::ExprNodeP value):
         ExprNode(mv$(sp), ::HIR::TypeRef::new_diverge()),
         m_value( mv$(value) )
     {
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Loop:
@@ -106,14 +106,14 @@ struct ExprNode_Loop:
     ::std::string   m_label;
     ::HIR::ExprNodeP    m_code;
     bool    m_diverges = false;
-    
+
     ExprNode_Loop(Span sp, ::std::string label, ::HIR::ExprNodeP code):
         //ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
         ExprNode(mv$(sp), ::HIR::TypeRef()),
         m_label( mv$(label) ),
         m_code( mv$(code) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_LoopControl:
@@ -128,7 +128,7 @@ struct ExprNode_LoopControl:
         m_label( mv$(label) ),
         m_continue( cont )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Let:
@@ -137,14 +137,14 @@ struct ExprNode_Let:
     ::HIR::Pattern  m_pattern;
     ::HIR::TypeRef  m_type;
     ::HIR::ExprNodeP    m_value;
-    
+
     ExprNode_Let(Span sp, ::HIR::Pattern pat, ::HIR::TypeRef ty, ::HIR::ExprNodeP val):
         ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
         m_pattern( mv$(pat) ),
         m_type( mv$(ty) ),
         m_value( mv$(val) )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -157,7 +157,7 @@ struct ExprNode_Match:
         ::HIR::ExprNodeP    m_cond;
         ::HIR::ExprNodeP    m_code;
     };
-    
+
     ::HIR::ExprNodeP    m_value;
     ::std::vector<Arm> m_arms;
 
@@ -176,14 +176,14 @@ struct ExprNode_If:
     ::HIR::ExprNodeP    m_cond;
     ::HIR::ExprNodeP    m_true;
     ::HIR::ExprNodeP    m_false;
-    
+
     ExprNode_If(Span sp, ::HIR::ExprNodeP cond, ::HIR::ExprNodeP true_code, ::HIR::ExprNodeP false_code):
         ExprNode( mv$(sp) ),
         m_cond( mv$(cond) ),
         m_true( mv$(true_code) ),
         m_false( mv$(false_code) )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -206,17 +206,17 @@ struct ExprNode_Assign:
         case Op::Mul: return "*";
         case Op::Div: return "/";
         case Op::Mod: return "%";
-        
+
         case Op::And: return "&";
         case Op::Or:  return "|";
         case Op::Xor: return "^";
-        
+
         case Op::Shr: return ">>";
         case Op::Shl: return "<<";
         }
         throw "";
     }
-    
+
     Op  m_op;
     ExprNodeP   m_slot;
     ExprNodeP   m_value;
@@ -227,7 +227,7 @@ struct ExprNode_Assign:
         m_slot( mv$(slot) ),
         m_value( mv$(value) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_BinOp:
@@ -240,7 +240,7 @@ struct ExprNode_BinOp:
         CmpLtE,
         CmpGt,
         CmpGtE,
-        
+
         BoolAnd,
         BoolOr,
 
@@ -258,20 +258,20 @@ struct ExprNode_BinOp:
         case Op::CmpLtE:    return "<=";
         case Op::CmpGt:     return ">";
         case Op::CmpGtE:    return ">=";
-        
+
         case Op::BoolAnd:   return "&&";
         case Op::BoolOr:    return "||";
-        
+
         case Op::Add: return "+";
         case Op::Sub: return "-";
         case Op::Mul: return "*";
         case Op::Div: return "/";
         case Op::Mod: return "%";
-        
+
         case Op::And: return "&";
         case Op::Or:  return "|";
         case Op::Xor: return "^";
-        
+
         case Op::Shr: return ">>";
         case Op::Shl: return "<<";
         }
@@ -300,7 +300,7 @@ struct ExprNode_BinOp:
             break;
         }
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_UniOp:
@@ -317,7 +317,7 @@ struct ExprNode_UniOp:
         }
         throw "";
     }
-    
+
     Op  m_op;
     ::HIR::ExprNodeP    m_value;
 
@@ -326,7 +326,7 @@ struct ExprNode_UniOp:
         m_op(op),
         m_value( mv$(value) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Borrow:
@@ -340,7 +340,7 @@ struct ExprNode_Borrow:
         m_type(bt),
         m_value( mv$(value) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Cast:
@@ -353,7 +353,7 @@ struct ExprNode_Cast:
         ExprNode( mv$(sp), mv$(dst_type) ),
         m_value( mv$(value) )
     {}
-    
+
     NODE_METHODS();
 };
 // Magical pointer unsizing operation:
@@ -369,7 +369,7 @@ struct ExprNode_Unsize:
         ExprNode( mv$(sp), mv$(dst_type) ),
         m_value( mv$(value) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Index:
@@ -377,13 +377,13 @@ struct ExprNode_Index:
 {
     ::HIR::ExprNodeP    m_value;
     ::HIR::ExprNodeP    m_index;
-    
+
     ExprNode_Index(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprNodeP index):
         ExprNode(mv$(sp)),
         m_value( mv$(val) ),
         m_index( mv$(index) )
     {}
-    
+
     NODE_METHODS();
 };
 // unary `*`
@@ -391,12 +391,12 @@ struct ExprNode_Deref:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    
+
     ExprNode_Deref(Span sp, ::HIR::ExprNodeP val):
         ExprNode(mv$(sp)),
         m_value( mv$(val) )
     {}
-    
+
     NODE_METHODS();
 };
 /// `box` and `in`/`<-`
@@ -409,11 +409,11 @@ struct ExprNode_Emplace:
         Placer,
         Boxer,
     };
-    
+
     Type    m_type;
     ExprNodeP   m_place;
     ExprNodeP   m_value;
-    
+
     ExprNode_Emplace(Span sp, Type ty, ::HIR::ExprNodeP place, ::HIR::ExprNodeP val):
         ExprNode( mv$(sp) ),
         m_type(ty),
@@ -421,7 +421,7 @@ struct ExprNode_Emplace:
         m_value( mv$(val) )
     {
     }
-    
+
     NODE_METHODS();
 };
 
@@ -432,17 +432,17 @@ struct ExprNode_TupleVariant:
     ::HIR::GenericPath m_path;
     bool    m_is_struct;
     ::std::vector<ExprNodeP> m_args;
-    
+
     // - Cache for typeck
     ::std::vector< ::HIR::TypeRef>  m_arg_types;
-    
+
     ExprNode_TupleVariant(Span sp, ::HIR::GenericPath path, bool is_struct, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),
         m_path( mv$(path) ),
         m_is_struct( is_struct ),
         m_args( mv$(args) )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -452,7 +452,7 @@ struct ExprCallCache
     const ::HIR::GenericParams* m_fcn_params;
     const ::HIR::GenericParams* m_top_params;
     const ::HIR::Function*  m_fcn;
-    
+
     ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>   m_monomorph_cb;
 };
 
@@ -461,16 +461,16 @@ struct ExprNode_CallPath:
 {
     ::HIR::Path m_path;
     ::std::vector<ExprNodeP> m_args;
-    
+
     // - Cache for typeck
     ExprCallCache   m_cache;
-    
+
     ExprNode_CallPath(Span sp, ::HIR::Path path, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),
         m_path( mv$(path) ),
         m_args( mv$(args) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_CallValue:
@@ -478,13 +478,13 @@ struct ExprNode_CallValue:
 {
     ::HIR::ExprNodeP m_value;
     ::std::vector<ExprNodeP> m_args;
-    
+
     // - Argument types used as coercion targets
     ::std::vector< ::HIR::TypeRef>  m_arg_ivars;
-    
+
     // - Cache for typeck
     ::std::vector< ::HIR::TypeRef>  m_arg_types;
-    
+
     // Indicates what trait should/is being used for this call
     // - Determined by typeck using the present trait bound (also adds borrows etc)
     // - If the called value is a closure, this stays a Unknown until closure expansion
@@ -495,13 +495,13 @@ struct ExprNode_CallValue:
         FnOnce,
     };
     TraitUsed   m_trait_used = TraitUsed::Unknown;
-    
+
     ExprNode_CallValue(Span sp, ::HIR::ExprNodeP val, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode(mv$(sp)),
         m_value( mv$(val) ),
         m_args( mv$(args) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_CallMethod:
@@ -511,12 +511,12 @@ struct ExprNode_CallMethod:
     ::std::string   m_method;
     ::HIR::PathParams  m_params;
     ::std::vector< ::HIR::ExprNodeP>    m_args;
-    
+
     // - Set during typeck to the real path to the method
     ::HIR::Path m_method_path;
     // - Cache of argument/return types
     ExprCallCache   m_cache;
-    
+
     // - List of possible traits (in-scope traits that contain this method)
     t_trait_list    m_traits;
     // - A pool of ivars to use for searching for trait impls
@@ -528,11 +528,11 @@ struct ExprNode_CallMethod:
         m_method( mv$(method_name) ),
         m_params( mv$(params) ),
         m_args( mv$(args) ),
-        
+
         m_method_path( ::HIR::SimplePath("",{}) )
     {
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Field:
@@ -540,13 +540,13 @@ struct ExprNode_Field:
 {
     ::HIR::ExprNodeP    m_value;
     ::std::string   m_field;
-    
+
     ExprNode_Field(Span sp, ::HIR::ExprNodeP val, ::std::string field):
         ExprNode(mv$(sp)),
         m_value( mv$(val) ),
         m_field( mv$(field) )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -607,7 +607,7 @@ struct ExprNode_Literal:
             )
         )
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_UnitVariant:
@@ -616,13 +616,13 @@ struct ExprNode_UnitVariant:
     // Path to variant/struct
     ::HIR::GenericPath m_path;
     bool    m_is_struct;
-    
+
     ExprNode_UnitVariant(Span sp, ::HIR::GenericPath path, bool is_struct):
         ExprNode(mv$(sp)),
         m_path( mv$(path) ),
         m_is_struct( is_struct )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_PathValue:
@@ -638,13 +638,13 @@ struct ExprNode_PathValue:
     };
     ::HIR::Path m_path;
     Target  m_target;
-    
+
     ExprNode_PathValue(Span sp, ::HIR::Path path, Target target):
         ExprNode(mv$(sp)),
         m_path( mv$(path) ),
         m_target( target )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Variable:
@@ -652,13 +652,13 @@ struct ExprNode_Variable:
 {
     ::std::string   m_name;
     unsigned int    m_slot;
-    
+
     ExprNode_Variable(Span sp, ::std::string name, unsigned int slot):
         ExprNode(mv$(sp)),
         m_name( mv$(name) ),
         m_slot( slot )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -666,15 +666,15 @@ struct ExprNode_StructLiteral:
     public ExprNode
 {
     typedef ::std::vector< ::std::pair< ::std::string, ExprNodeP > > t_values;
-    
+
     ::HIR::GenericPath  m_path;
     bool    m_is_struct;
     ::HIR::ExprNodeP    m_base_value;
     t_values    m_values;
-    
+
     /// Monomorphised types of each field.
     ::std::vector< ::HIR::TypeRef>  m_value_types;
-    
+
     ExprNode_StructLiteral(Span sp, ::HIR::GenericPath path, bool is_struct, ::HIR::ExprNodeP base_value, t_values values):
         ExprNode( mv$(sp) ),
         m_path( mv$(path) ),
@@ -685,7 +685,7 @@ struct ExprNode_StructLiteral:
         // TODO: set m_res_type based on path?
         // - Defer, because it requires binding ivars between m_path and m_res_type
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_UnionLiteral:
@@ -694,9 +694,9 @@ struct ExprNode_UnionLiteral:
     ::HIR::GenericPath  m_path;
     ::std::string   m_variant_name;
     ::HIR::ExprNodeP    m_value;
-    
+
     unsigned int    m_variant_index = ~0;
-    
+
     ExprNode_UnionLiteral(Span sp, ::HIR::GenericPath path, ::std::string name, ::HIR::ExprNodeP value):
         ExprNode( mv$(sp) ),
         m_path( mv$(path) ),
@@ -704,31 +704,31 @@ struct ExprNode_UnionLiteral:
         m_value( mv$(value) )
     {
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Tuple:
     public ExprNode
 {
     ::std::vector< ::HIR::ExprNodeP>    m_vals;
-    
+
     ExprNode_Tuple(Span sp, ::std::vector< ::HIR::ExprNodeP> vals):
         ExprNode(mv$(sp)),
         m_vals( mv$(vals) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_ArrayList:
     public ExprNode
 {
     ::std::vector< ::HIR::ExprNodeP>    m_vals;
-    
+
     ExprNode_ArrayList(Span sp, ::std::vector< ::HIR::ExprNodeP> vals):
         ExprNode( mv$(sp), ::HIR::TypeRef::new_array( ::HIR::TypeRef(), vals.size() ) ),
         m_vals( mv$(vals) )
     {}
-    
+
     NODE_METHODS();
 };
 struct ExprNode_ArraySized:
@@ -737,14 +737,14 @@ struct ExprNode_ArraySized:
     ::HIR::ExprNodeP    m_val;
     ::HIR::ExprNodeP    m_size; // TODO: Has to be constant
     size_t  m_size_val;
-    
+
     ExprNode_ArraySized(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprNodeP size):
         ExprNode(mv$(sp)),
         m_val( mv$(val) ),
         m_size( mv$(size) ),
         m_size_val( ~0u )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -752,12 +752,12 @@ struct ExprNode_Closure:
     public ExprNode
 {
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
-    
+
     args_t  m_args;
     ::HIR::TypeRef  m_return;
     ::HIR::ExprNodeP    m_code;
     bool    m_is_move = false;
-    
+
     enum class Class {
         Unknown,
         NoCapture,
@@ -765,12 +765,12 @@ struct ExprNode_Closure:
         Mut,
         Once,
     } m_class = Class::Unknown;
-    
+
     // - Path to the generated closure type
     ::HIR::GenericPath  m_obj_path_base;
     ::HIR::GenericPath  m_obj_path;
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
-    
+
     ExprNode_Closure(Span sp, args_t args, ::HIR::TypeRef rv, ::HIR::ExprNodeP code, bool is_move):
         ExprNode(mv$(sp)),
         m_args( ::std::move(args) ),
@@ -778,7 +778,7 @@ struct ExprNode_Closure:
         m_code( ::std::move(code) ),
         m_is_move(is_move)
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -790,7 +790,7 @@ public:
     virtual void visit_node_ptr(::std::unique_ptr<ExprNode>& node_ptr);
     virtual void visit_node(ExprNode& node);
     #define NV(nt)  virtual void visit(nt& n) = 0;
-    
+
     NV(ExprNode_Block)
     NV(ExprNode_Return)
     NV(ExprNode_Let)
@@ -798,7 +798,7 @@ public:
     NV(ExprNode_LoopControl)
     NV(ExprNode_Match)
     NV(ExprNode_If)
-    
+
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
@@ -808,7 +808,7 @@ public:
     NV(ExprNode_Index)
     NV(ExprNode_Deref)
     NV(ExprNode_Emplace)
-    
+
     NV(ExprNode_TupleVariant);
     NV(ExprNode_CallPath);
     NV(ExprNode_CallValue);
@@ -819,13 +819,13 @@ public:
     NV(ExprNode_UnitVariant);
     NV(ExprNode_PathValue);
     NV(ExprNode_Variable);
-    
+
     NV(ExprNode_StructLiteral);
     NV(ExprNode_UnionLiteral);
     NV(ExprNode_Tuple);
     NV(ExprNode_ArrayList);
     NV(ExprNode_ArraySized);
-    
+
     NV(ExprNode_Closure);
     #undef NV
 };
@@ -835,7 +835,7 @@ class ExprVisitorDef:
 {
 public:
     #define NV(nt)  virtual void visit(nt& n);
-    
+
     NV(ExprNode_Block)
     NV(ExprNode_Return)
     NV(ExprNode_Let)
@@ -843,7 +843,7 @@ public:
     NV(ExprNode_LoopControl)
     NV(ExprNode_Match)
     NV(ExprNode_If)
-    
+
     NV(ExprNode_Assign)
     NV(ExprNode_BinOp)
     NV(ExprNode_UniOp)
@@ -853,7 +853,7 @@ public:
     NV(ExprNode_Index)
     NV(ExprNode_Deref)
     NV(ExprNode_Emplace)
-    
+
     NV(ExprNode_TupleVariant);
     NV(ExprNode_CallPath);
     NV(ExprNode_CallValue);
@@ -864,16 +864,16 @@ public:
     NV(ExprNode_UnitVariant);
     NV(ExprNode_PathValue);
     NV(ExprNode_Variable);
-    
+
     NV(ExprNode_StructLiteral);
     NV(ExprNode_UnionLiteral);
     NV(ExprNode_Tuple);
     NV(ExprNode_ArrayList);
     NV(ExprNode_ArraySized);
-    
+
     NV(ExprNode_Closure);
     #undef NV
-    
+
     virtual void visit_pattern(const Span& sp, ::HIR::Pattern& pat);
     virtual void visit_type(::HIR::TypeRef& ty);
     virtual void visit_trait_path(::HIR::TraitPath& p);

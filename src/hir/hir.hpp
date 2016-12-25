@@ -78,10 +78,10 @@ struct Linkage
         Weak,   // Weak linkage (multiple definitions are allowed
         External, // Force the symbol to be externally visible
     };
-    
+
     // Linkage type
     Type    type = Type::Auto;
-    
+
     // External symbol name
     ::std::string   name;
 };
@@ -92,16 +92,16 @@ public:
     Linkage m_linkage;
     bool    m_is_mut;
     TypeRef m_type;
-    
+
     ExprPtr m_value;
-    
+
     Literal   m_value_res;
 };
 struct Constant
 {
     // NOTE: The generics can't influence the value of this `const`
     GenericParams   m_params;
-    
+
     TypeRef m_type;
     ExprPtr m_value;
     Literal   m_value_res;
@@ -119,24 +119,24 @@ public:
         //PointerConst,
         Box,
     };
-    
+
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
-    
+
     Linkage m_linkage;
-    
+
     Receiver    m_receiver;
     ::std::string   m_abi;
     bool    m_unsafe;
     bool    m_const;
-    
+
     GenericParams   m_params;
-    
+
     args_t  m_args;
     bool    m_variadic;
     TypeRef m_return;
-    
+
     ExprPtr m_code;
-    
+
     //::HIR::TypeRef make_ty(const Span& sp, const ::HIR::PathParams& params) const;
 };
 
@@ -157,17 +157,17 @@ struct TraitMarkings
 {
     /// There is at least one Unsize impl for this type
     bool    can_unsize = false;
-    
+
     /// Indicates that there is at least one Deref impl
     bool    has_a_deref = false;
-    
+
     /// Indicates that there is a Drop impl
     /// - If there is an impl, there must be an applicable impl to every instance.
     bool has_drop_impl = false;
-    
+
     // If populated, indicates the field that is the coercable pointer.
     unsigned int coerce_unsized_index = ~0u;
-    
+
     // TODO: This would have to be changed for custom DSTs
     enum class DstType {
         None,   // Sized
@@ -176,7 +176,7 @@ struct TraitMarkings
         TraitObject,    // (Trait)
     }   dst_type;
     unsigned int unsized_field = ~0u;
-    
+
     /// `true` if there is a Copy impl
     bool    is_copy = false;
 
@@ -186,7 +186,7 @@ struct TraitMarkings
         // Implementation state
         bool is_impled;
     };
-    
+
     // General auto trait impls
     mutable ::std::map< ::HIR::SimplePath, AutoMarking>    auto_impls;
 };
@@ -209,13 +209,13 @@ public:
         C,
         U8, U16, U32,
     };
-    
+
     GenericParams   m_params;
     Repr    m_repr;
     ::std::vector< ::std::pair< ::std::string, Variant > >    m_variants;
-    
+
     TraitMarkings   m_markings;
-    
+
     const Variant* get_variant(const ::std::string& ) const;
 };
 class Struct
@@ -233,11 +233,11 @@ public:
         (Tuple, t_tuple_fields),
         (Named, t_struct_fields)
         );
-    
+
     GenericParams   m_params;
     Repr    m_repr;
     Data    m_data;
-    
+
     TraitMarkings   m_markings;
 };
 class Union
@@ -248,11 +248,11 @@ public:
         Rust,
         C,
     };
-    
+
     GenericParams   m_params;
     Repr    m_repr;
     t_struct_fields m_variants;
-    
+
     TraitMarkings   m_markings;
 };
 
@@ -273,17 +273,17 @@ struct Trait
     GenericParams   m_params;
     ::std::string   m_lifetime;
     ::std::vector< ::HIR::TraitPath >  m_parent_traits;
-    
+
     bool    m_is_marker;    // aka OIBIT
-    
+
     ::std::unordered_map< ::std::string, AssociatedType >   m_types;
     ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
-    
+
     // Indexes into the vtable for each present method and value
     ::std::unordered_multimap< ::std::string, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
     // Indexes in the vtable parameter list for each associated type
     ::std::unordered_map< ::std::string, unsigned int > m_type_indexes;
-    
+
     Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::TraitPath> parents):
         m_params( mv$(gps) ),
         m_lifetime( mv$(lifetime) ),
@@ -297,12 +297,12 @@ class Module
 public:
     // List of in-scope traits in this module
     ::std::vector< ::HIR::SimplePath>   m_traits;
-    
+
     // Contains all values and functions (including type constructors)
     ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
     // Contains types, traits, and modules
     ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
-    
+
     Module() {}
     Module(const Module&) = delete;
     Module(Module&& x) = default;
@@ -344,12 +344,12 @@ public:
 
     ::HIR::GenericParams    m_params;
     ::HIR::TypeRef  m_type;
-    
+
     ::std::map< ::std::string, VisImplEnt< ::HIR::Function> >   m_methods;
     ::std::map< ::std::string, VisImplEnt< ::HIR::Constant> >   m_constants;
 
     ::HIR::SimplePath   m_src_module;
-    
+
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
         return matches_type(tr, [](const auto& x)->const auto&{ return x; });
@@ -368,20 +368,20 @@ public:
     ::HIR::GenericParams    m_params;
     ::HIR::PathParams   m_trait_args;
     ::HIR::TypeRef  m_type;
-    
+
     ::std::map< ::std::string, ImplEnt< ::HIR::Function> > m_methods;
     ::std::map< ::std::string, ImplEnt< ::HIR::Constant> > m_constants;
     ::std::map< ::std::string, ImplEnt< ::HIR::Static> > m_statics;
-    
+
     ::std::map< ::std::string, ImplEnt< ::HIR::TypeRef> > m_types;
-    
+
     ::HIR::SimplePath   m_src_module;
-    
+
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
         return matches_type(tr, [](const auto& x)->const auto&{ return x; });
     }
-    
+
     bool more_specific_than(const TraitImpl& x) const;
 };
 
@@ -392,9 +392,9 @@ public:
     ::HIR::PathParams   m_trait_args;
     bool    is_positive;
     ::HIR::TypeRef  m_type;
-    
+
     ::HIR::SimplePath   m_src_module;
-    
+
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
         return matches_type(tr, [](const auto& x)->const auto&{ return x; });
@@ -405,35 +405,35 @@ class Crate
 {
 public:
     Module  m_root_module;
-    
+
     /// Impl blocks on just a type
     ::std::vector< ::HIR::TypeImpl > m_type_impls;
     /// Impl blocks
     ::std::multimap< ::HIR::SimplePath, ::HIR::TraitImpl > m_trait_impls;
     ::std::multimap< ::HIR::SimplePath, ::HIR::MarkerImpl > m_marker_impls;
-    
+
     /// Macros exported by this crate
     ::std::unordered_map< ::std::string, ::MacroRulesPtr >  m_exported_macros;
-    
+
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
-    
+
     ::std::unordered_map< ::std::string, ::HIR::CratePtr>  m_ext_crates;
-    
+
     /// Method called to populate runtime state after deserialisation
     /// See hir/crate_post_load.cpp
     void post_load_update(const ::std::string& loaded_name);
-    
+
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
     const ::HIR::SimplePath& get_lang_item_path_opt(const char* name) const;
-    
+
     const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false) const;
     const ::HIR::Trait& get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Struct& get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Union& get_union_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Enum& get_enum_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Module& get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
-    
+
     const ::HIR::ValueItem& get_valitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false) const;
     const ::HIR::Function& get_function_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Static& get_static_by_path(const Span& sp, const ::HIR::SimplePath& path) const {
@@ -454,7 +454,7 @@ public:
             BUG(sp, "`const` path " << path << " didn't point to an enum");
         }
     }
-    
+
     bool find_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const;
     bool find_auto_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::MarkerImpl&)> callback) const;
     bool find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const;

@@ -1,4 +1,3 @@
-
 Mutabah's Rust Compiler
 
 _In-progress_ alternative rust compiler.

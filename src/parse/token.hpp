@@ -26,7 +26,7 @@ public:
     RcString    filename;
     unsigned int    line;
     unsigned int    ofs;
-    
+
     Position():
         filename(""),
         line(0),
@@ -71,11 +71,11 @@ class Token:
         }),
     (Fragment, void*)
     );
-    
+
     enum eTokenType m_type;
     Data    m_data;
     Position    m_pos;
-    
+
 public:
     virtual ~Token();
     Token();
@@ -95,7 +95,7 @@ public:
     }
     Token(const Token& t);
     Token clone() const;
-    
+
     Token(enum eTokenType type);
     Token(enum eTokenType type, ::std::string str);
     Token(uint64_t val, enum eCoreType datatype);
@@ -110,14 +110,14 @@ public:
     enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) }
     uint64_t intval() const { return m_data.as_Integer().m_intval; }
     double floatval() const { return m_data.as_Float().m_floatval; }
-    
+
     TypeRef& frag_type() { assert(m_type == TOK_INTERPOLATED_TYPE); return *reinterpret_cast<TypeRef*>( m_data.as_Fragment() ); }
     AST::Path& frag_path() { assert(m_type == TOK_INTERPOLATED_PATH); return *reinterpret_cast<AST::Path*>( m_data.as_Fragment() ); }
     AST::Pattern& frag_pattern() { assert(m_type == TOK_INTERPOLATED_PATTERN); return *reinterpret_cast<AST::Pattern*>( m_data.as_Fragment() ); }
     AST::MetaItem& frag_meta() { assert(m_type == TOK_INTERPOLATED_META); return *reinterpret_cast<AST::MetaItem*>( m_data.as_Fragment() ); }
     ::std::unique_ptr<AST::ExprNode> take_frag_node();
     ::AST::Named<AST::Item> take_frag_item();
-    
+
     bool operator==(const Token& r) const {
         if(type() != r.type())
             return false;
@@ -133,13 +133,13 @@ public:
     bool operator!=(const Token& r) const { return !(*this == r); }
 
     ::std::string to_str() const;
-    
+
     void set_pos(Position pos) { m_pos = pos; }
     const Position& get_pos() const { return m_pos; }
-    
+
     static const char* typestr(enum eTokenType type);
     static eTokenType typefromstr(const ::std::string& s);
-    
+
     SERIALISABLE_PROTOTYPES();
 
     friend ::std::ostream&  operator<<(::std::ostream& os, const Token& tok);

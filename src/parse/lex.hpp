@@ -40,7 +40,7 @@ class Lexer:
     bool    m_last_char_valid;
     Codepoint   m_last_char;
     Token   m_next_token;   // Used when lexing generated two tokens
-    
+
     Ident::Hygiene m_hygiene;
 public:
     Lexer(const ::std::string& filename);
@@ -51,7 +51,7 @@ public:
 
 private:
     Token getTokenInt();
-    
+
     signed int getSymbol();
     Token getTokenInt_RawString(bool is_byte);
     Token getTokenInt_Identifier(Codepoint ch, Codepoint ch2='\0');

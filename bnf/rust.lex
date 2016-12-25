@@ -162,10 +162,10 @@ b?r#*\"	{ auto rs = handle_raw_string( (*yytext=='b' ? yytext+2 : yytext+1) ); l
 %%
 uint32_t parse_char_literal(const char *_s) {
 	const uint8_t* s = (const uint8_t*)_s;
-	
+
 	assert(*s++ == '\'');
 	uint32_t rv = 0;
-	
+
 	if( *s == '\\' ) {
 		s ++;
 		switch(*s)
@@ -205,9 +205,9 @@ uint32_t parse_char_literal(const char *_s) {
 		s ++;
 	}
 	assert(*s++ == '"');
-	
+
 	::std::string rv;
-	
+
 	for( ; *s != '"'; s ++ )
 	{
 		if( *s == '\\' )
@@ -281,9 +281,9 @@ loop:
 		num_hash ++;
 	assert(*s == '"');
 	printf("handle_raw_string - num_hash=%i\n", num_hash);
-	
+
 	::std::string rv;
-	
+
 	for(;;)
 	{
 		char	c;
@@ -303,7 +303,7 @@ loop:
 			// Didn't find enough, append to output
 			rv += '"';
 			while(i--)	rv += '#';
-			
+
 		}
 		else if( c <= 0 ) {
 			break;
@@ -312,6 +312,6 @@ loop:
 			rv += c;
 		}
 	}
-	
+
 	return rv;
 }

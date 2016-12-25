@@ -18,14 +18,14 @@ namespace AST {
     struct StructItem;
     struct TupleItem;
     struct EnumVariant;
-    
+
     class Module;
     class Item;
-    
+
     class Expr;
     class ExprNode;
     struct ExprNode_Match_Arm;
-    
+
     class ImplDef;
 }
 
@@ -40,7 +40,7 @@ class ExpandDecorator
     void unexpected(const Span& sp, const AST::MetaItem& mi, const char* loc_str) const;
 public:
     virtual AttrStage   stage() const = 0;
-    
+
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const { unexpected(sp, mi, "item"); }
     // NOTE: To delete, set the type to `_`
@@ -51,7 +51,7 @@ public:
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& si) const { unexpected(sp, mi, "tuple item"); }
     // NOTE: To delete, clear the name
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const { unexpected(sp, mi, "enum variant"); }
-    
+
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const { unexpected(sp, mi, "expression"); }
     // NOTE: To delete, clear the patterns vector
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const { unexpected(sp, mi, "match arm"); }

@@ -25,7 +25,7 @@ struct LowerHIR_ExprNode_Visitor:
     public ::AST::NodeVisitor
 {
     ::std::unique_ptr< ::HIR::ExprNode> m_rv;
-    
+
     virtual void visit(::AST::ExprNode_Block& v) override {
         auto rv = new ::HIR::ExprNode_Block(v.span());
         for(const auto& n : v.m_nodes)
@@ -34,13 +34,13 @@ struct LowerHIR_ExprNode_Visitor:
             rv->m_nodes.push_back( LowerHIR_ExprNode_Inner( *n ) );
         }
         rv->m_yields_final = v.m_yields_final_value;
-        
+
         if( v.m_local_mod )
         {
             // TODO: Populate m_traits from the local module's import list
             rv->m_local_mod = LowerHIR_SimplePath(v.span(), v.m_local_mod->path());
         }
-        
+
         m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );
     }
     virtual void visit(::AST::ExprNode_Macro& v) override {
@@ -78,15 +78,15 @@ struct LowerHIR_ExprNode_Visitor:
                 case ::AST::ExprNode_Assign::NONE:  return ::HIR::ExprNode_Assign::Op::None;
                 case ::AST::ExprNode_Assign::ADD:   return ::HIR::ExprNode_Assign::Op::Add;
                 case ::AST::ExprNode_Assign::SUB:   return ::HIR::ExprNode_Assign::Op::Sub;
-                
+
                 case ::AST::ExprNode_Assign::DIV:   return ::HIR::ExprNode_Assign::Op::Mul;
                 case ::AST::ExprNode_Assign::MUL:   return ::HIR::ExprNode_Assign::Op::Div;
                 case ::AST::ExprNode_Assign::MOD:   return ::HIR::ExprNode_Assign::Op::Mod;
-                
+
                 case ::AST::ExprNode_Assign::AND:   return ::HIR::ExprNode_Assign::Op::And;
                 case ::AST::ExprNode_Assign::OR :   return ::HIR::ExprNode_Assign::Op::Or ;
                 case ::AST::ExprNode_Assign::XOR:   return ::HIR::ExprNode_Assign::Op::Xor;
-                
+
                 case ::AST::ExprNode_Assign::SHR:   return ::HIR::ExprNode_Assign::Op::Shr;
                 case ::AST::ExprNode_Assign::SHL:   return ::HIR::ExprNode_Assign::Op::Shl;
                 }
@@ -109,13 +109,13 @@ struct LowerHIR_ExprNode_Visitor:
             auto path_RangeFrom = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeFrom"}) );
             auto path_RangeTo   = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeTo"}) );
             auto path_RangeFull = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeFull"}) );
-            
+
             ::HIR::ExprNode_StructLiteral::t_values values;
             if( v.m_left )
                 values.push_back( ::std::make_pair( ::std::string("start"), LowerHIR_ExprNode_Inner( *v.m_left ) ) );
             if( v.m_right )
                 values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
-            
+
             if( v.m_left ) {
                 if( v.m_right ) {
                     m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_Range), true, nullptr, mv$(values)) );
@@ -137,7 +137,7 @@ struct LowerHIR_ExprNode_Visitor:
             // NOTE: Not language items
             auto path_RangeInclusive_NonEmpty = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeInclusive", "NonEmpty"}) );
             auto path_RangeToInclusive        = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeToInclusive"}) );
-            
+
             if( v.m_left )
             {
                 ::HIR::ExprNode_StructLiteral::t_values values;
@@ -155,7 +155,7 @@ struct LowerHIR_ExprNode_Visitor:
         case ::AST::ExprNode_BinOp::PLACE_IN:
             TODO(v.get_pos(), "Desugar placement syntax");
             break;
-        
+
         case ::AST::ExprNode_BinOp::CMPEQU :    op = ::HIR::ExprNode_BinOp::Op::CmpEqu ; if(0)
         case ::AST::ExprNode_BinOp::CMPNEQU:    op = ::HIR::ExprNode_BinOp::Op::CmpNEqu; if(0)
         case ::AST::ExprNode_BinOp::CMPLT : op = ::HIR::ExprNode_BinOp::Op::CmpLt ; if(0)
@@ -164,7 +164,7 @@ struct LowerHIR_ExprNode_Visitor:
         case ::AST::ExprNode_BinOp::CMPGTE: op = ::HIR::ExprNode_BinOp::Op::CmpGtE; if(0)
         case ::AST::ExprNode_BinOp::BOOLAND:    op = ::HIR::ExprNode_BinOp::Op::BoolAnd; if(0)
         case ::AST::ExprNode_BinOp::BOOLOR :    op = ::HIR::ExprNode_BinOp::Op::BoolOr ; if(0)
-        
+
         case ::AST::ExprNode_BinOp::BITAND: op = ::HIR::ExprNode_BinOp::Op::And; if(0)
         case ::AST::ExprNode_BinOp::BITOR : op = ::HIR::ExprNode_BinOp::Op::Or ; if(0)
         case ::AST::ExprNode_BinOp::BITXOR: op = ::HIR::ExprNode_BinOp::Op::Xor; if(0)
@@ -175,7 +175,7 @@ struct LowerHIR_ExprNode_Visitor:
         case ::AST::ExprNode_BinOp::SUB:    op = ::HIR::ExprNode_BinOp::Op::Sub; if(0)
         case ::AST::ExprNode_BinOp::SHR:    op = ::HIR::ExprNode_BinOp::Op::Shr; if(0)
         case ::AST::ExprNode_BinOp::SHL:    op = ::HIR::ExprNode_BinOp::Op::Shl;
-            
+
             m_rv.reset( new ::HIR::ExprNode_BinOp( v.span(),
                 op,
                 LowerHIR_ExprNode_Inner( *v.m_left ),
@@ -201,14 +201,14 @@ struct LowerHIR_ExprNode_Visitor:
         case ::AST::ExprNode_UniOp::QMARK:
             BUG(v.get_pos(), "Encounterd question mark operator (should have been expanded in AST)");
             break;
-        
+
         case ::AST::ExprNode_UniOp::REF:
             m_rv.reset(new ::HIR::ExprNode_Borrow(v.span(), ::HIR::BorrowType::Shared, LowerHIR_ExprNode_Inner( *v.m_value ) ));
             break;
         case ::AST::ExprNode_UniOp::REFMUT:
             m_rv.reset(new ::HIR::ExprNode_Borrow(v.span(), ::HIR::BorrowType::Unique, LowerHIR_ExprNode_Inner( *v.m_value ) ));
             break;
-        
+
         case ::AST::ExprNode_UniOp::INVERT: op = ::HIR::ExprNode_UniOp::Op::Invert; if(0)
         case ::AST::ExprNode_UniOp::NEGATE: op = ::HIR::ExprNode_UniOp::Op::Negate;
             m_rv.reset( new ::HIR::ExprNode_UniOp( v.span(),
@@ -231,12 +231,12 @@ struct LowerHIR_ExprNode_Visitor:
             LowerHIR_Type(v.m_type)
             ) );
     }
-    
+
     virtual void visit(::AST::ExprNode_CallPath& v) override {
         ::std::vector< ::HIR::ExprNodeP> args;
         for(const auto& arg : v.m_args)
             args.push_back( LowerHIR_ExprNode_Inner(*arg) );
-        
+
         TU_IFLET(::AST::Path::Class, v.m_path.m_class, Local, e,
             m_rv.reset( new ::HIR::ExprNode_CallValue( v.span(),
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Variable( v.span(), e.name, v.m_path.binding().as_Variable().slot )),
@@ -274,12 +274,12 @@ struct LowerHIR_ExprNode_Visitor:
         ::std::vector< ::HIR::ExprNodeP> args;
         for(const auto& arg : v.m_args)
             args.push_back( LowerHIR_ExprNode_Inner(*arg) );
-        
+
         // TODO: Should this be abstracted?
         ::HIR::PathParams   params;
         for(const auto& param : v.m_method.args().m_types)
             params.m_types.push_back( LowerHIR_Type(param) );
-        
+
         m_rv.reset( new ::HIR::ExprNode_CallMethod( v.span(),
             LowerHIR_ExprNode_Inner(*v.m_val),
             v.m_method.name(),
@@ -291,7 +291,7 @@ struct LowerHIR_ExprNode_Visitor:
         ::std::vector< ::HIR::ExprNodeP> args;
         for(const auto& arg : v.m_args)
             args.push_back( LowerHIR_ExprNode_Inner(*arg) );
-        
+
         m_rv.reset( new ::HIR::ExprNode_CallValue( v.span(),
             LowerHIR_ExprNode_Inner(*v.m_val),
             mv$(args)
@@ -315,7 +315,7 @@ struct LowerHIR_ExprNode_Visitor:
                 ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl(v.span(), v.m_label, false) )
                 )) );
             code.push_back( LowerHIR_ExprNode_Inner(*v.m_code) );
-            
+
             m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
                 v.m_label,
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Block( v.span(), false, mv$(code)))
@@ -323,7 +323,7 @@ struct LowerHIR_ExprNode_Visitor:
             break; }
         case ::AST::ExprNode_Loop::WHILELET: {
             ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-            
+
             // - Matches pattern - Run inner code
             arms.push_back(::HIR::ExprNode_Match::Arm {
                 ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
@@ -336,7 +336,7 @@ struct LowerHIR_ExprNode_Visitor:
                 ::HIR::ExprNodeP(),
                 ::HIR::ExprNodeP( new ::HIR::ExprNode_LoopControl( v.span(), v.m_label, false) )
                 });
-            
+
             m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
                 v.m_label,
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Match( v.span(),
@@ -350,7 +350,7 @@ struct LowerHIR_ExprNode_Visitor:
             BUG(v.get_pos(), "Encountered still-sugared for loop");
             break;
         }
-        
+
         // TODO: Iterate the constructed loop and determine if there are any `break` statements pointing to it
         {
             struct LoopVisitor:
@@ -359,13 +359,13 @@ struct LowerHIR_ExprNode_Visitor:
                 const ::std::string& top_label;
                 bool    top_is_broken;
                 ::std::vector< const ::std::string*>   name_stack;
-                
+
                 LoopVisitor(const ::std::string& top_label):
                     top_label(top_label),
                     top_is_broken(false),
                     name_stack()
                 {}
-                
+
                 void visit(::HIR::ExprNode_Loop& node) override {
                     if( node.m_label != "" ) {
                         this->name_stack.push_back( &node.m_label );
@@ -377,7 +377,7 @@ struct LowerHIR_ExprNode_Visitor:
                 }
                 void visit(::HIR::ExprNode_LoopControl& node) override {
                     ::HIR::ExprVisitorDef::visit(node);
-                    
+
                     if( node.m_continue ) {
                     }
                     else {
@@ -395,7 +395,7 @@ struct LowerHIR_ExprNode_Visitor:
                     }
                 }
             };
-            
+
             auto& loop_node = dynamic_cast< ::HIR::ExprNode_Loop&>(*m_rv);;
             LoopVisitor lv { loop_node.m_label };
             loop_node.m_code->visit(lv);
@@ -407,7 +407,7 @@ struct LowerHIR_ExprNode_Visitor:
     }
     virtual void visit(::AST::ExprNode_Match& v) override {
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-        
+
         for(const auto& arm : v.m_arms)
         {
             ::HIR::ExprNode_Match::Arm  new_arm {
@@ -415,13 +415,13 @@ struct LowerHIR_ExprNode_Visitor:
                 LowerHIR_ExprNode_Inner_Opt(arm.m_cond.get()),
                 LowerHIR_ExprNode_Inner(*arm.m_code)
                 };
-            
+
             for(const auto& pat : arm.m_patterns)
                 new_arm.m_patterns.push_back( LowerHIR_Pattern(pat) );
-        
+
             arms.push_back( mv$(new_arm) );
         }
-        
+
         m_rv.reset( new ::HIR::ExprNode_Match( v.span(),
             LowerHIR_ExprNode_Inner(*v.m_val),
             mv$(arms)
@@ -436,7 +436,7 @@ struct LowerHIR_ExprNode_Visitor:
     }
     virtual void visit(::AST::ExprNode_IfLet& v) override {
         ::std::vector< ::HIR::ExprNode_Match::Arm>  arms;
-        
+
         // - Matches pattern - Take true branch
         arms.push_back(::HIR::ExprNode_Match::Arm {
             ::make_vec1( LowerHIR_Pattern(v.m_pattern) ),
@@ -454,7 +454,7 @@ struct LowerHIR_ExprNode_Visitor:
             mv$(arms)
             ));
     }
-    
+
     virtual void visit(::AST::ExprNode_Integer& v) override {
         struct H {
             static ::HIR::CoreType get_type(Span sp, ::eCoreType ct) {
@@ -473,9 +473,9 @@ struct LowerHIR_ExprNode_Visitor:
 
                 case CORETYPE_INT:  return ::HIR::CoreType::Isize;
                 case CORETYPE_UINT: return ::HIR::CoreType::Usize;
-                
+
                 case CORETYPE_CHAR: return ::HIR::CoreType::Char;
-                
+
                 default:
                     BUG(sp, "Unknown type for integer literal - " << coretype_name(ct));
                 }
@@ -544,7 +544,7 @@ struct LowerHIR_ExprNode_Visitor:
                 ERROR(v.span(), E0000, "Union constructors can only specify a single field");
             if( v.m_base_value )
                 ERROR(v.span(), E0000, "Union constructors can't take a base value");
-            
+
             m_rv.reset( new ::HIR::ExprNode_UnionLiteral( v.span(),
                 LowerHIR_GenericPath(v.get_pos(), v.m_path),
                 v.m_values[0].first,
@@ -645,7 +645,7 @@ struct LowerHIR_ExprNode_Visitor:
                     const auto& enm = *e.enum_;
                     auto it = ::std::find_if(enm.variants().begin(), enm.variants().end(), [&](const auto& x){ return x.m_name == var_name; });
                     assert(it != enm.variants().end());
-                    
+
                     var_idx = static_cast<unsigned int>(it - enm.variants().begin());
                     if( it->m_data.is_Struct() ) {
                         ERROR(v.span(), E0000, "Named value referring to an enum that isn't tuple-like or unit-like - " << v.m_path);
@@ -657,7 +657,7 @@ struct LowerHIR_ExprNode_Visitor:
                     const auto& enm = *e.hir;
                     auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
                     assert(it != enm.m_variants.end());
-                    
+
                     var_idx = static_cast<unsigned int>(it - enm.m_variants.begin());
                     if( it->second.is_Struct() ) {
                         ERROR(v.span(), E0000, "Named value referring to an enum that isn't tuple-like or unit-like - " << v.m_path);
@@ -698,7 +698,7 @@ struct LowerHIR_ExprNode_Visitor:
             )
         }
     }
-    
+
     virtual void visit(::AST::ExprNode_Field& v) override {
         m_rv.reset( new ::HIR::ExprNode_Field( v.span(),
             LowerHIR_ExprNode_Inner(*v.m_obj),
@@ -721,9 +721,9 @@ struct LowerHIR_ExprNode_Visitor:
 ::std::unique_ptr< ::HIR::ExprNode> LowerHIR_ExprNode_Inner(const ::AST::ExprNode& e)
 {
     LowerHIR_ExprNode_Visitor v;
-    
+
     const_cast<::AST::ExprNode*>(&e)->visit( v );
-    
+
     if( ! v.m_rv ) {
         BUG(e.get_pos(), typeid(e).name() << " - Yielded a nullptr HIR node");
     }

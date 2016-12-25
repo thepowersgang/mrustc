@@ -20,7 +20,7 @@
 
 %token <::std::string*> IDENT LIFETIME STRING MACRO
 %token <int> INTEGER CHARLIT
-%token <double> FLOAT 
+%token <double> FLOAT
 %token <::std::string*> DOC_COMMENT SUPER_DOC_COMMENT
 %token HASHBANG
 %token DOUBLECOLON THINARROW FATARROW DOUBLEDOT TRIPLEDOT
@@ -49,7 +49,7 @@
 %type <MetaItem*>	meta_item
 %type <MetaItems*>	meta_items
 
-%type <Item*>	item macro_item vis_item unsafe_item unsafe_vis_item 
+%type <Item*>	item macro_item vis_item unsafe_item unsafe_vis_item
 %type <UseSet*>	use_def
 %type <TypeAlias*>	type_def
 %type <Module*>	module_def
@@ -370,8 +370,8 @@ trait_item
  | RWD_const IDENT ':' type opt_assign_value ';'
  | opt_unsafe RWD_fn fn_def_hdr_PROTO ';'
  | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO ';'
- | opt_unsafe RWD_fn fn_def_hdr_PROTO code 
- | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO code 
+ | opt_unsafe RWD_fn fn_def_hdr_PROTO code
+ | opt_unsafe fn_qualifiers RWD_fn fn_def_hdr_PROTO code
  ;
 opt_assign_value: | '=' expr;
 
@@ -434,7 +434,7 @@ dlt: DOUBLELT	{ context.pushback('<'); context.pushback('<'); }
 
 type_args
  : '<' type_exprs '>'
- | '<' type_exprs DOUBLEGT { bnf_trace(context, "Double-gt terminated type expr"); context.pushback('>'); } 
+ | '<' type_exprs DOUBLEGT { bnf_trace(context, "Double-gt terminated type expr"); context.pushback('>'); }
  | dlt type_args
  ;
 
@@ -474,7 +474,7 @@ ufcs_path_tail
  : type '>'
  | type RWD_as trait_path '>'
  | type RWD_as trait_path DOUBLEGT { context.pushback('>'); }
- ; 
+ ;
 type_path_segs
  : type_path_segs DOUBLECOLON type_path_seg
  | type_path_seg
@@ -619,7 +619,7 @@ flow_control
  | RWD_continue opt_lifetime {}
  ;
 block_lines
- : 
+ :
  | attrs expr_na
  | attrs MACRO tt_paren
  | super_attr     block_lines
@@ -674,7 +674,7 @@ expr_blocks
  : RWD_match expr_NOSTRLIT '{' match_arms '}'	{ }
  | RWD_if if_block
  | RWD_unsafe '{' block_contents '}' { }
- | flow_control 
+ | flow_control
  | loop_block
  ;
 loop_block
@@ -700,7 +700,7 @@ match_arms_list
  | match_arms_list attrs match_arm_brace
  ;
 match_arm_last
- : attrs match_arm 
+ : attrs match_arm
  | attrs match_arm ','
  ;
 match_pattern

@@ -37,7 +37,7 @@ $(BIN): $(OBJS)
 	g++ $(CXXFLAGS) $< -c -o $@ -MMD -MP -MF $@.dep
 %.o: .gen/%.cpp
 	g++ $(CXXFLAGS) $< -c -o $@ -MMD -MP -MF $@.dep
-	
+
 .gen/rust.tab.cpp: .gen/.rust.y
 	@mkdir -p $(dir $@)
 	@echo [BISON] $@

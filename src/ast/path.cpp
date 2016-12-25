@@ -27,7 +27,7 @@ namespace AST {
     (TypeAlias, os << "TypeAlias";),
     (StructMethod, os << "StructMethod"; ),
     (TraitMethod,  os << "TraitMethod";  ),
-    
+
     (TypeParameter, os << "TyParam(" << i.level << " # " << i.idx << ")"; ),
     (Variable, os << "Var(" << i.slot << ")"; )
     )
@@ -49,7 +49,7 @@ PathBinding PathBinding::clone() const
     (EnumVar , return PathBinding::make_EnumVar(e);  ),
     (StructMethod, return PathBinding::make_StructMethod(e); ),
     (TraitMethod, return PathBinding::make_TraitMethod(e); ),
-    
+
     (TypeParameter, return PathBinding::make_TypeParameter(e); ),
     (Variable, return PathBinding::make_Variable(e); )
     )
@@ -84,7 +84,7 @@ PathParams::PathParams(const PathParams& x):
     m_types.reserve( x.m_types.size() );
     for(const auto& t : x.m_types)
         m_types.push_back(t.clone());
-    
+
     m_assoc.reserve( x.m_assoc.size() );
     for(const auto& t : x.m_assoc)
         m_assoc.push_back( ::std::make_pair(t.first, t.second.clone()) );
@@ -180,7 +180,7 @@ AST::Path::Path(const Path& x):
             m_class = Class::make_UFCS({ box$(ent.type->clone()), nullptr, ent.nodes });
         )
     )
-    
+
     memcpy(&m_binding, &x.m_binding, sizeof(PathBinding));
 }
 
@@ -199,7 +199,7 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
     }
     if( idx == ent.variants().size() )
         throw ParseError::Generic("Enum variant not found");
-    
+
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
     m_binding = PathBinding::make_EnumVar({ &ent, idx });
 }
@@ -216,10 +216,10 @@ Path& Path::operator+=(const Path& other)
 Ordering Path::ord(const Path& x) const
 {
     Ordering rv;
-    
+
     rv = ::ord( (unsigned)m_class.tag(), (unsigned)x.m_class.tag() );
     if( rv != OrdEqual )    return rv;
-    
+
     TU_MATCH(Path::Class, (m_class, x.m_class), (ent, x_ent),
     (Invalid,
         return OrdEqual;
@@ -249,7 +249,7 @@ Ordering Path::ord(const Path& x) const
         return ::ord(ent.nodes, x_ent.nodes);
         )
     )
-    
+
     return OrdEqual;
 }
 

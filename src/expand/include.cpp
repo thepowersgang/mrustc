@@ -22,7 +22,7 @@ namespace {
             return base_path + path;
         }
         else {
-            
+
             auto slash = base_path.find_last_of('/');
             if( slash == ::std::string::npos )
             {
@@ -48,17 +48,17 @@ class CIncludeExpander:
     {
         if( ident != "" )
             ERROR(sp, E0000, "include! doesn't take an ident");
-        
+
         Token   tok;
         auto lex = TTStream(tt);
-        
+
         // TODO: Parse+expand
         GET_CHECK_TOK(tok, lex, TOK_STRING);
         auto path = mv$(tok.str());
         GET_CHECK_TOK(tok, lex, TOK_EOF);
-        
+
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
-        
+
         return box$( Lexer(file_path) );
     }
 };

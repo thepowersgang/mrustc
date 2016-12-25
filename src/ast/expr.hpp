@@ -24,11 +24,11 @@ class ExprNode
     Position    m_pos;
 public:
     virtual ~ExprNode() = 0;
-    
+
     virtual void visit(NodeVisitor& nv) = 0;
     virtual void print(::std::ostream& os) const = 0;
     virtual ::std::unique_ptr<ExprNode> clone() const = 0;
-    
+
     void set_pos(Position p) { m_pos = ::std::move(p); }
     const Position& get_pos() const { return m_pos; }
     Span span() const { return m_pos; }
@@ -37,7 +37,7 @@ public:
         m_attrs = mv$(mi);
     }
     MetaItems& attrs() { return m_attrs; }
-    
+
     static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
 typedef ::std::unique_ptr<ExprNode> ExprNodeP;
@@ -68,7 +68,7 @@ struct ExprNode_Block:
         m_nodes( move(nodes) )
     {
     }
-    
+
     NODE_METHODS();
 };
 
@@ -78,13 +78,13 @@ struct ExprNode_Macro:
     ::std::string   m_name;
     ::std::string   m_ident;
     ::TokenTree m_tokens;
-    
+
     ExprNode_Macro(::std::string name, ::std::string ident, ::TokenTree&& tokens):
         m_name(name),
         m_ident(ident),
         m_tokens( move(tokens) )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -106,7 +106,7 @@ struct ExprNode_Flow:
         m_value( move(value) )
     {
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_LetBinding:
@@ -122,7 +122,7 @@ struct ExprNode_LetBinding:
         m_value( move(value) )
     {
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_Assign:
@@ -145,7 +145,7 @@ struct ExprNode_Assign:
         m_value( move(value) )
     {
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_CallPath:
@@ -159,7 +159,7 @@ struct ExprNode_CallPath:
         m_args( move(args) )
     {
     }
-    
+
     NODE_METHODS();
 };
 struct ExprNode_CallMethod:
@@ -175,7 +175,7 @@ struct ExprNode_CallMethod:
         m_args( move(args) )
     {
     }
-    
+
     NODE_METHODS();
 };
 // Call an object (Fn/FnMut/FnOnce)
@@ -234,7 +234,7 @@ struct ExprNode_Match_Arm
     MetaItems   m_attrs;
     ::std::vector<Pattern>  m_patterns;
     unique_ptr<ExprNode>    m_cond;
-    
+
     unique_ptr<ExprNode>    m_code;
 
 
@@ -246,7 +246,7 @@ struct ExprNode_Match_Arm
         m_code( mv$(code) )
     {}
 };
-    
+
 struct ExprNode_Match:
     public ExprNode
 {
@@ -305,7 +305,7 @@ struct ExprNode_Integer:
         m_value(value)
     {
     }
-    
+
     NODE_METHODS();
 };
 // Literal float
@@ -320,7 +320,7 @@ struct ExprNode_Float:
         m_value(value)
     {
     }
-    
+
     NODE_METHODS();
 };
 // Literal boolean
@@ -333,7 +333,7 @@ struct ExprNode_Bool:
         m_value(value)
     {
     }
-    
+
     NODE_METHODS();
 };
 // Literal string
@@ -341,11 +341,11 @@ struct ExprNode_String:
     public ExprNode
 {
     ::std::string   m_value;
-    
+
     ExprNode_String(::std::string value):
         m_value( ::std::move(value) )
     {}
-    
+
     NODE_METHODS();
 };
 // Literal byte string
@@ -353,11 +353,11 @@ struct ExprNode_ByteString:
     public ExprNode
 {
     ::std::string   m_value;
-    
+
     ExprNode_ByteString(::std::string value):
         m_value( ::std::move(value) )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -366,19 +366,19 @@ struct ExprNode_Closure:
     public ExprNode
 {
     typedef ::std::vector< ::std::pair<AST::Pattern, TypeRef> > args_t;
-    
+
     args_t  m_args;
     TypeRef m_return;
     unique_ptr<ExprNode>    m_code;
     bool m_is_move;
-    
+
     ExprNode_Closure(args_t args, TypeRef rv, unique_ptr<ExprNode> code, bool is_move):
         m_args( ::std::move(args) ),
         m_return( ::std::move(rv) ),
         m_code( ::std::move(code) ),
         m_is_move( is_move )
     {}
-    
+
     NODE_METHODS();
 };
 // Literal structure
@@ -395,7 +395,7 @@ struct ExprNode_StructLiteral:
         m_base_value( move(base_value) ),
         m_values( move(values) )
     {}
-    
+
     NODE_METHODS();
 };
 // Array
@@ -404,7 +404,7 @@ struct ExprNode_Array:
 {
     unique_ptr<ExprNode>    m_size; // if non-NULL, it's a sized array
     ::std::vector< unique_ptr<ExprNode> >   m_values;
-    
+
     ExprNode_Array(::std::vector< unique_ptr<ExprNode> > vals):
         m_values( ::std::move(vals) )
     {}
@@ -413,7 +413,7 @@ struct ExprNode_Array:
     {
         m_values.push_back( ::std::move(val) );
     }
-    
+
     NODE_METHODS();
 };
 // Tuple
@@ -421,11 +421,11 @@ struct ExprNode_Tuple:
     public ExprNode
 {
     ::std::vector< unique_ptr<ExprNode> >   m_values;
-    
+
     ExprNode_Tuple(::std::vector< unique_ptr<ExprNode> > vals):
         m_values( ::std::move(vals) )
     {}
-    
+
     NODE_METHODS();
 };
 // Variable / Constant
@@ -459,12 +459,12 @@ struct ExprNode_Index:
 {
     ::std::unique_ptr<ExprNode> m_obj;
     ::std::unique_ptr<ExprNode> m_idx;
-    
+
     ExprNode_Index(::std::unique_ptr<ExprNode> obj, ::std::unique_ptr<ExprNode> idx):
         m_obj( ::std::move(obj) ),
         m_idx( ::std::move(idx) )
     {}
-    
+
     NODE_METHODS();
 };
 
@@ -473,12 +473,12 @@ struct ExprNode_Deref:
     public ExprNode
 {
     ::std::unique_ptr<ExprNode>    m_value;
-    
+
     ExprNode_Deref(::std::unique_ptr<ExprNode> value):
         m_value( ::std::move(value) )
     {
     }
-    
+
     NODE_METHODS();
 };
 
@@ -523,7 +523,7 @@ struct ExprNode_BinOp:
         CMPLTE,
         CMPGT,
         CMPGTE,
-        
+
         RANGE,
         RANGE_INC,
         BOOLAND,
@@ -535,13 +535,13 @@ struct ExprNode_BinOp:
 
         SHL,
         SHR,
-    
+
         MULTIPLY,
         DIVIDE,
         MODULO,
         ADD,
         SUB,
-        
+
         PLACE_IN,   // `in PLACE { expr }` or `PLACE <- expr`
     };
 
@@ -555,7 +555,7 @@ struct ExprNode_BinOp:
         m_right( ::std::move(right) )
     {
     }
-    
+
     NODE_METHODS();
 };
 
@@ -570,7 +570,7 @@ struct ExprNode_UniOp:
         NEGATE, // '-<expr>'
         QMARK, // '<expr>?'
     };
-    
+
     enum Type   m_type;
     ::std::unique_ptr<ExprNode> m_value;
 
@@ -579,7 +579,7 @@ struct ExprNode_UniOp:
         m_value( ::std::move(value) )
     {
     }
-    
+
     NODE_METHODS();
 };
 
@@ -593,7 +593,7 @@ public:
             cnode->visit(*this);
     }
     virtual bool is_const() const { return false; }
-  
+
     #define NT(nt) \
         virtual void visit(nt& node) = 0/*; \
         virtual void visit(const nt& node) = 0*/
@@ -609,7 +609,7 @@ public:
     NT(ExprNode_Match);
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
-    
+
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
@@ -620,7 +620,7 @@ public:
     NT(ExprNode_Array);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
-    
+
     NT(ExprNode_Field);
     NT(ExprNode_Index);
     NT(ExprNode_Deref);
@@ -653,7 +653,7 @@ public:
     NT(ExprNode_Match);
     NT(ExprNode_If);
     NT(ExprNode_IfLet);
-    
+
     NT(ExprNode_Integer);
     NT(ExprNode_Float);
     NT(ExprNode_Bool);
@@ -664,7 +664,7 @@ public:
     NT(ExprNode_Array);
     NT(ExprNode_Tuple);
     NT(ExprNode_NamedValue);
-    
+
     NT(ExprNode_Field);
     NT(ExprNode_Index);
     NT(ExprNode_Deref);

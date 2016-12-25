@@ -37,10 +37,10 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "mul" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "div" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "rem" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    
+
     else if( name == "neg" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "not" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    
+
     else if( name == "bitand" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "bitor"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "bitxor" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -57,7 +57,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "bitxor_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "shl_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "shr_assign" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    
+
     else if( name == "index" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "deref" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "index_mut" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -65,16 +65,16 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "fn"      ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "fn_mut"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "fn_once" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    
+
     else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    
+
     else if( name == "iterator" ) { /* mrustc just desugars? */ }
-    
+
     else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
-    
+
     // Structs
     else if( name == "non_zero" ) { }
     else if( name == "phantom_data" ) { }
@@ -83,12 +83,12 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "range_from" ) { }
     else if( name == "range_to" ) { }
     else if( name == "unsafe_cell" ) { }
-    
+
     // Functions
     else if( name == "panic" ) { }
     else if( name == "panic_bounds_check" ) { }
     else if( name == "panic_fmt" ) {
-        
+
     }
     else if( name == "str_eq" ) { }
     // - builtin `box` support
@@ -98,9 +98,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "owned_box" ) { }
     // - start
     else if( name == "start" ) { }
-    
+
     else if( name == "eh_personality" ) { }
-    
+
     else {
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
     }
@@ -145,10 +145,10 @@ public:
             )
         )
     }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
         const ::std::string& name = mi.string();
-        
+
              if( name == "i8" ) {}
         else if( name == "u8" ) {}
         else if( name == "i16" ) {}
@@ -172,7 +172,7 @@ public:
         else {
             ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }
-        
+
         // TODO: Somehow annotate these impls to allow them to provide inherents?
         // - mrustc is lazy and inefficient, so these don't matter :)
     }

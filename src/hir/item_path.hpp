@@ -17,7 +17,7 @@ public:
     const ::HIR::SimplePath* trait = nullptr;
     const ::HIR::PathParams* trait_params = nullptr;
     const char* name = nullptr;
-    
+
     ItemPath() {}
     ItemPath(const ItemPath& p, const char* n):
         parent(&p),
@@ -34,10 +34,10 @@ public:
     ItemPath(const ::HIR::SimplePath& path):
         trait(&path)
     {}
-    
+
     const ::HIR::SimplePath* trait_path() const { return trait; }
     const ::HIR::PathParams* trait_args() const { return trait_params; }
-    
+
     ::HIR::SimplePath get_simple_path() const {
         if( parent ) {
             assert(name);
@@ -51,7 +51,7 @@ public:
     ::HIR::Path get_full_path() const {
         assert(parent);
         assert(name);
-        
+
         if( parent->name ) {
             return get_simple_path();
         }
@@ -65,14 +65,14 @@ public:
     const char* get_name() const {
         return name ? name : "";
     }
-    
+
     ItemPath operator+(const ::std::string& name) const {
         return ItemPath(*this, name.c_str());
     }
-    
+
     bool operator==(const ::HIR::SimplePath& sp) const {
         if( sp.m_crate_name != "" )  return false;
-        
+
         unsigned int i = sp.m_components.size();
         const auto* n = this;
         while( n && i -- )
@@ -87,7 +87,7 @@ public:
             return false;
         return true;
     }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const ItemPath& x) {
         if( x.parent ) {
             os << *x.parent;
