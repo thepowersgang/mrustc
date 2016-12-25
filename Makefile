@@ -135,7 +135,10 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 
 fcn_extcrate = $(patsubst %,output/lib%.hir,$(1))
 
-fn_getdeps = $(shell cat $1 | sed -nr 's/.*extern crate ([a-zA-Z_0-9]+)( as .*)?;.*/\1/p' | tr '\n' ' ')
+fn_getdeps = \
+  $(shell cat $1 \
+  | sed -n 's/.*extern crate \([a-zA-Z_0-9][a-zA-Z_0-9]*\)\( as .*\)\{0,1\};/\1/p' \
+  | tr '\n' ' ')
 
 output/libarena.hir: output/libcore.hir
 output/liballoc.hir: output/libcore.hir
