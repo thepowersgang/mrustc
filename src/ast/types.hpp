@@ -22,9 +22,9 @@ public:
     PrettyPrintType(const TypeRef& ty):
         m_type(ty)
     {}
-    
+
     void print(::std::ostream& os) const;
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const PrettyPrintType& v);
 };
 
@@ -109,12 +109,12 @@ class TypeRef
     Span    m_span;
 public:
     TypeData    m_data;
-    
+
     ~TypeRef();
-    
+
     TypeRef(TypeRef&& other) = default;
     TypeRef& operator=(TypeRef&& other) = default;
-    
+
     #if 1
     TypeRef(const TypeRef& other) = delete;
     TypeRef& operator=(const TypeRef& other) = delete;
@@ -127,7 +127,7 @@ public:
         return *this;
     }
     #endif
-    
+
     TypeRef(Span sp):
         m_span( mv$(sp) ),
         m_data( TypeData::make_Any({}) )
@@ -136,7 +136,7 @@ public:
         m_span( mv$(sp) ),
         m_data( mv$(data) )
     {}
-    
+
     struct TagInvalid {};
     TypeRef(TagInvalid, Span sp):
         m_span(mv$(sp)),
@@ -175,7 +175,7 @@ public:
         m_span(mv$(sp)),
         m_data(TypeData::make_Function({ Type_Function( is_unsafe, abi, box$(ret), mv$(args), is_variadic ) }))
     {}
-    
+
     struct TagReference {};
     TypeRef(TagReference , Span sp, bool is_mut, TypeRef inner_type):
         m_span(mv$(sp)),
@@ -214,34 +214,34 @@ public:
     TypeRef(Span sp, AST::Path path):
         TypeRef(TagPath(), mv$(sp), mv$(path))
     {}
-   
+
     TypeRef( Span sp, ::std::vector<::std::string> hrls, ::std::vector<AST::Path> traits ):
         m_span(mv$(sp)),
         m_data(TypeData::make_TraitObject({ mv$(hrls), ::std::move(traits) }))
     {}
-    
+
 
     const Span& span() const { return m_span; }
- 
+
     bool is_valid() const { return ! m_data.is_None(); }
 
     bool is_unbounded() const { return m_data.is_Any(); }
     bool is_wildcard() const { return m_data.is_Any(); }
-    
+
     bool is_unit() const { return m_data.is_Unit(); }
     bool is_primitive() const { return m_data.is_Primitive(); }
-    
+
     bool is_path() const { return m_data.is_Path(); }
     const AST::Path& path() const { return m_data.as_Path().path; }
     AST::Path& path() { return m_data.as_Path().path; }
-    
+
     bool is_type_param() const { return m_data.is_Generic(); }
     const ::std::string& type_param() const { return m_data.as_Generic().name; }
-    
+
     bool is_reference() const { return m_data.is_Borrow(); }
     bool is_pointer() const { return m_data.is_Pointer(); }
     bool is_tuple() const { return m_data.is_Tuple(); }
-    
+
     TypeRef clone() const;
 
     const TypeRef& inner_type() const {
@@ -265,11 +265,11 @@ public:
     bool operator==(const TypeRef& x) const { return ord(x) == OrdEqual; }
     bool operator!=(const TypeRef& x) const { return ord(x) != OrdEqual; }
     bool operator<(const TypeRef& x) const { return ord(x) == OrdLess; };
-    
+
     PrettyPrintType print_pretty() const { return PrettyPrintType(*this); }
-    
+
     friend class PrettyPrintType;
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr);
 };
 

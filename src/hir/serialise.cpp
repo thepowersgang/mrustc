@@ -20,7 +20,7 @@ namespace {
         HirSerialiser(::HIR::serialise::Writer& out):
             m_out( out )
         {}
-        
+
         template<typename V>
         void serialise_strmap(const ::std::map< ::std::string,V>& map)
         {
@@ -77,7 +77,7 @@ namespace {
             m_out.write_count(e.first);
             serialise(e.second);
         }
-        
+
         void serialise_type(const ::HIR::TypeRef& ty)
         {
             m_out.write_tag( ty.m_data.tag() );
@@ -107,7 +107,7 @@ namespace {
             (ErasedType,
                 serialise_path(e.m_origin);
                 m_out.write_count(e.m_index);
-                
+
                 m_out.write_count(e.m_traits.size());
                 for(const auto& t : e.m_traits)
                     serialise_traitpath(t);
@@ -233,12 +233,12 @@ namespace {
                 )
             )
         }
-        
-        
+
+
         void serialise_crate(const ::HIR::Crate& crate)
         {
             serialise_module(crate.m_root_module);
-            
+
             m_out.write_count(crate.m_type_impls.size());
             for(const auto& impl : crate.m_type_impls) {
                 serialise_typeimpl(impl);
@@ -253,10 +253,10 @@ namespace {
                 serialise_simplepath(tr_impl.first);
                 serialise_markerimpl(tr_impl.second);
             }
-            
+
             serialise_strmap(crate.m_exported_macros);
             serialise_strmap(crate.m_lang_items);
-            
+
             m_out.write_count(crate.m_ext_crates.size());
             for(const auto& ext : crate.m_ext_crates)
                 m_out.write_string(ext.first);
@@ -264,9 +264,9 @@ namespace {
         void serialise_module(const ::HIR::Module& mod)
         {
             TRACE_FUNCTION;
-            
+
             // m_traits doesn't need to be serialised
-            
+
             serialise_strmap(mod.m_value_items);
             serialise_strmap(mod.m_mod_items);
         }
@@ -275,7 +275,7 @@ namespace {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             serialise_generics(impl.m_params);
             serialise_type(impl.m_type);
-            
+
             m_out.write_count(impl.m_methods.size());
             for(const auto& v : impl.m_methods) {
                 m_out.write_string(v.first);
@@ -298,7 +298,7 @@ namespace {
             serialise_generics(impl.m_params);
             serialise_pathparams(impl.m_trait_args);
             serialise_type(impl.m_type);
-            
+
             m_out.write_count(impl.m_methods.size());
             for(const auto& v : impl.m_methods) {
                 DEBUG("fn " << v.first);
@@ -336,7 +336,7 @@ namespace {
             m_out.write_bool(impl.is_positive);
             serialise_type(impl.m_type);
         }
-        
+
         void serialise(const ::HIR::TypeRef& ty) {
             serialise_type(ty);
         }
@@ -408,10 +408,10 @@ namespace {
                 Serialiser_TextTree ser(tmp);
                 tok.serialise( ser );
             }
-            
+
             m_out.write_string(tmp.str());
         }
-        
+
         void serialise(const ::HIR::Literal& lit)
         {
             m_out.write_tag(lit.tag());
@@ -440,7 +440,7 @@ namespace {
                 )
             )
         }
-        
+
         void serialise(const ::HIR::ExprPtr& exp)
         {
             m_out.write_bool( (bool)exp.m_mir );
@@ -659,7 +659,7 @@ namespace {
                 )
             )
         }
-        
+
         void serialise(const ::HIR::TypeItem& item)
         {
             TU_MATCHA( (item), (e),
@@ -726,27 +726,27 @@ namespace {
                 )
             )
         }
-        
+
         void serialise(unsigned int v) { m_out.write_count(v); };
-        
+
         void serialise(const ::HIR::Linkage& linkage)
         {
             //m_out.write_tag( static_cast<int>(linkage.type) );
             m_out.write_string( linkage.name );
         }
-        
+
         // - Value items
         void serialise(const ::HIR::Function& fcn)
         {
             TRACE_FUNCTION_F("_function:");
-            
+
             serialise(fcn.m_linkage);
-            
+
             m_out.write_tag( static_cast<int>(fcn.m_receiver) );
             m_out.write_string(fcn.m_abi);
             m_out.write_bool(fcn.m_unsafe);
             m_out.write_bool(fcn.m_const);
-            
+
             serialise_generics(fcn.m_params);
             m_out.write_count(fcn.m_args.size());
             for(const auto& a : fcn.m_args)
@@ -754,13 +754,13 @@ namespace {
             m_out.write_bool(fcn.m_variadic);
             serialise(fcn.m_return);
             DEBUG("m_args = " << fcn.m_args);
-            
+
             serialise(fcn.m_code);
         }
         void serialise(const ::HIR::Constant& item)
         {
             TRACE_FUNCTION_F("_constant:");
-            
+
             serialise_generics(item.m_params);
             serialise(item.m_type);
             serialise(item.m_value);
@@ -769,15 +769,15 @@ namespace {
         void serialise(const ::HIR::Static& item)
         {
             TRACE_FUNCTION_F("_static:");
-            
+
             serialise(item.m_linkage);
-            
+
             m_out.write_bool(item.m_is_mut);
             serialise(item.m_type);
-            
+
             serialise(item.m_value_res);
         }
-        
+
         // - Type items
         void serialise(const ::HIR::TypeAlias& ta)
         {
@@ -788,9 +788,9 @@ namespace {
         {
             serialise_generics(item.m_params);
             m_out.write_tag( static_cast<int>(item.m_repr) );
-            
+
             serialise_vec( item.m_variants );
-            
+
             serialise(item.m_markings);
         }
         void serialise(const ::HIR::Enum::Variant& v)
@@ -811,7 +811,7 @@ namespace {
                 )
             )
         }
-        
+
         void serialise(const ::HIR::TraitMarkings& m)
         {
             uint8_t bitflag_1 = 0;
@@ -822,7 +822,7 @@ namespace {
             BIT(3, m.has_drop_impl)
             #undef BIT
             m_out.write_u8(bitflag_1);
-            
+
             m_out.write_tag( static_cast<unsigned int>(m.dst_type) );
             m_out.write_count( m.coerce_unsized_index );
             m_out.write_count( m.unsized_field );
@@ -832,10 +832,10 @@ namespace {
         void serialise(const ::HIR::Struct& item)
         {
             TRACE_FUNCTION_F("Struct");
-            
+
             serialise_generics(item.m_params);
             m_out.write_tag( static_cast<int>(item.m_repr) );
-            
+
             m_out.write_tag( item.m_data.tag() );
             TU_MATCHA( (item.m_data), (e),
             (Unit,
@@ -847,18 +847,18 @@ namespace {
                 serialise_vec(e);
                 )
             )
-            
+
             serialise(item.m_markings);
         }
         void serialise(const ::HIR::Union& item)
         {
             TRACE_FUNCTION_F("Union");
-            
+
             serialise_generics(item.m_params);
             m_out.write_tag( static_cast<int>(item.m_repr) );
-            
+
             serialise_vec(item.m_variants);
-            
+
             serialise(item.m_markings);
         }
         void serialise(const ::HIR::Trait& item)

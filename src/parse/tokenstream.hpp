@@ -26,15 +26,15 @@ struct ParseState
     bool disallow_struct_literal = false;
     // A debugging hook that disables expansion of macros
     bool no_expand_macros = false;
-    
+
     ::AST::Module*  module = nullptr;
     ::AST::MetaItems*   parent_attrs = nullptr;
-    
+
     ::AST::Module& get_current_mod() {
         assert(this->module);
         return *this->module;
     }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const ParseState& ps) {
         os << "ParseState {";
         if(ps.disallow_struct_literal)  os << " disallow_struct_literal";
@@ -47,7 +47,7 @@ struct ParseState
 class TokenStream
 {
     friend class TTLexer;   // needs access to internals to know what was consumed
-    
+
     bool    m_cache_valid;
     Token   m_cache;
     Ident::Hygiene  m_hygiene;
@@ -59,17 +59,17 @@ public:
     Token   getToken();
     void    putback(Token tok);
     eTokenType  lookahead(unsigned int count);
-    
+
     virtual Position getPosition() const = 0;
     Ident::Hygiene getHygiene() const;
-    
+
     ParseState& parse_state() { return m_parse_state; }
-    
+
     ProtoSpan   start_span() const;
     Span    end_span(ProtoSpan ps) const;
-    
+
     Ident get_ident(Token tok) const;
-    
+
 protected:
     virtual Token   realGetToken() = 0;
     virtual Ident::Hygiene realGetHygiene() const = 0;

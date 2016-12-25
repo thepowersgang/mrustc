@@ -82,7 +82,7 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
     if( name == "" ) {
         return ::std::unique_ptr<TokenStream>();
     }
-    
+
     for( const auto& m : g_macros )
     {
         if( name == m.first )
@@ -91,8 +91,8 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
             return e;
         }
     }
-    
-    
+
+
     // Iterate up the module tree, using the first located macro
     for(const auto* ll = &modstack; ll; ll = ll->m_prev)
     {
@@ -104,7 +104,7 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
             {
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
-                
+
                 auto e = Macro_Invoke(name.c_str(), *mr.data, mv$(input_tt), mod);
                 return e;
             }
@@ -117,13 +117,13 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
             {
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
-                
+
                 auto e = Macro_Invoke(name.c_str(), *mri.data, mv$(input_tt), mod);
                 return e;
             }
         }
     }
-    
+
     // Error - Unknown macro name
     ERROR(mi_span, E0000, "Unknown macro '" << name << "'");
 }
@@ -139,7 +139,7 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         ),
     (Macro,
         const auto span = e.inv->span();
-        
+
         auto tt = Expand_Macro(crate, modstack, mod,  *e.inv);
         if( ! tt ) {
             ERROR(span, E0000, "Macro in pattern didn't expand to anything");
@@ -149,13 +149,13 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         if( LOOK_AHEAD(lex) != TOK_EOF ) {
             ERROR(span, E0000, "Trailing tokens in macro expansion");
         }
-        
+
         if( pat.binding().is_valid() ) {
-            if( newpat.binding().is_valid() ) 
+            if( newpat.binding().is_valid() )
                 ERROR(span, E0000, "Macro expansion provided a binding, but one already present");
             newpat.binding() = mv$(pat.binding());
         }
-        
+
         pat = mv$(newpat);
         ),
     (Any,
@@ -218,7 +218,7 @@ void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         if( tt->lookahead(0) != TOK_EOF )
             ERROR(e.inv.span(), E0000, "Extra tokens after parsed type");
         ty = mv$(new_ty);
-        
+
         Expand_Type(crate, modstack, mod,  ty);
         ),
     (Primitive,
@@ -263,19 +263,19 @@ struct CExpandExpr:
     ::AST::Crate&    crate;
     LList<const AST::Module*>   modstack;
     ::std::unique_ptr<::AST::ExprNode> replacement;
-    
+
     AST::ExprNode_Block*    current_block = nullptr;
-    
+
     CExpandExpr(::AST::Crate& crate, LList<const AST::Module*> ms):
         crate(crate),
         modstack(ms)
     {
     }
-    
+
     ::AST::Module& cur_mod() {
         return *const_cast< ::AST::Module*>(modstack.m_item);
     }
-    
+
     void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
         if(cnode.get())
             Expand_Attrs(cnode->attrs(), AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
@@ -292,7 +292,7 @@ struct CExpandExpr:
                 cnode = mv$(this->replacement);
             }
         }
-        
+
         if(cnode.get())
             Expand_Attrs(cnode->attrs(), AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
         assert( ! this->replacement );
@@ -320,14 +320,14 @@ struct CExpandExpr:
             }
         }
     }
-    
+
     void visit(::AST::ExprNode_Macro& node) override
     {
         TRACE_FUNCTION_F("ExprNode_Macro - name = " << node.m_name);
         if( node.m_name == "" ) {
             return ;
         }
-        
+
         auto& mod = this->cur_mod();
         auto ttl = Expand_Macro(
             crate, modstack, mod,
@@ -365,7 +365,7 @@ struct CExpandExpr:
             node.m_name = "";
         }
     }
-    
+
     void visit(::AST::ExprNode_Block& node) override {
         unsigned int mod_item_count = 0;
         // TODO: macro_rules! invocations within the expression list influence this.
@@ -374,7 +374,7 @@ struct CExpandExpr:
             Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod);
             mod_item_count = node.m_local_mod->items().size();
         }
-        
+
         auto saved = this->current_block;
         this->current_block = &node;
         this->visit_vector(node.m_nodes);
@@ -444,7 +444,7 @@ struct CExpandExpr:
                 nullptr,
                 ::AST::ExprNodeP(new ::AST::ExprNode_Flow(::AST::ExprNode_Flow::BREAK, node.m_label, nullptr))
                 ) );
-            
+
             replacement.reset(new ::AST::ExprNode_Match(
                 ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
                     ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_IntoIterator, { ::AST::PathNode("into_iter") } ),
@@ -563,7 +563,7 @@ struct CExpandExpr:
             auto path_Err = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
             auto path_From = ::AST::Path(core_crate, {::AST::PathNode("convert"), ::AST::PathNode("From")});
             path_From.nodes().back().args().m_types.push_back( ::TypeRef(node.span()) );
-            
+
             // Desugars into
             // ```
             // match `m_value` {
@@ -571,7 +571,7 @@ struct CExpandExpr:
             // Err(e) => return Err(From::from(e)),
             // }
             // ```
-            
+
             ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
             // `Ok(v) => v,`
             arms.push_back(::AST::ExprNode_Match_Arm(
@@ -637,23 +637,23 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         DEBUG("Deleted");
         return ;
     }
-    
+
     Expand_Type(crate, modstack, mod,  impl.def().type());
     //Expand_Type(crate, modstack, mod,  impl.def().trait());
-    
+
     DEBUG("> Items");
     for( unsigned int idx = 0; idx < impl.items().size(); idx ++ )
     {
         auto& i = impl.items()[idx];
         DEBUG("  - " << i.name << " :: " << i.data->attrs);
-        
+
         // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
         // - Does it? the namespace is essentially the same. There may be issues with wherever the path is used though
         //::AST::Path path = modpath + i.name;
-        
+
         auto attrs = mv$(i.data->attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, *i.data);
-        
+
         TU_MATCH_DEF(AST::Item, (*i.data), (e),
         (
             throw ::std::runtime_error("BUG: Unknown item type in impl block");
@@ -665,7 +665,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
                 TRACE_FUNCTION_F("Macro invoke " << e.name());
                 // Move out of the module to avoid invalidation if a new macro invocation is added
                 auto mi_owned = mv$(e);
-                
+
                 auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
 
                 if( ttl.get() )
@@ -697,7 +697,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             Expand_Type(crate, modstack, mod,  e.type());
             )
         )
-        
+
         // Run post-expansion decorators and restore attributes
         {
             auto& i = impl.items()[idx];
@@ -717,7 +717,7 @@ void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         DEBUG("Deleted");
         return ;
     }
-    
+
     Expand_Type(crate, modstack, mod,  impl_def.type());
     //Expand_Type(crate, modstack, mod,  impl_def.trait());
 
@@ -727,10 +727,10 @@ void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
 void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item)
 {
     TRACE_FUNCTION_F("modpath = " << modpath);
-    
+
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
-    
+
     // Insert prelude if: Enabled for this module, present for the crate, and this module is not an anon
     if( crate.m_prelude_path != AST::Path() )
     {
@@ -738,20 +738,20 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             mod.add_alias(false, ::AST::UseStmt(Span(), crate.m_prelude_path), "", {});
         }
     }
-    
+
     DEBUG("Items");
     for( unsigned int idx = first_item; idx < mod.items().size(); idx ++ )
     {
         auto& i = mod.items()[idx];
-        
+
         DEBUG("- " << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.data.attrs);
         ::AST::Path path = modpath + i.name;
-        
+
         auto attrs = mv$(i.data.attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, path, mod, i.data);
-        
+
         auto dat = mv$(i.data);
-        
+
         TU_MATCH(::AST::Item, (dat), (e),
         (None,
             // Skip, nothing
@@ -759,9 +759,9 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         (MacroInv,
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(e);
-            
+
             TRACE_FUNCTION_F("Macro invoke " << mi_owned.name());
-            
+
             auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
             assert( mi_owned.name() != "");
 
@@ -805,7 +805,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         (Crate,
             // Can't recurse into an `extern crate`
             ),
-        
+
         (Struct,
             TU_MATCH(AST::StructData, (e.m_data), (sd),
             (Struct,
@@ -883,7 +883,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             {
                 auto attrs = mv$(ti.data.attrs);
                 Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, ti.data);
-                
+
                 TU_MATCH_DEF(AST::Item, (ti.data), (e),
                 (
                     throw ::std::runtime_error("BUG: Unknown item type in impl block");
@@ -905,7 +905,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     Expand_Type(crate, modstack, mod,  e.type());
                     )
                 )
-                
+
                 Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, ti.data);
                 if( ti.data.attrs.m_items.size() == 0 )
                     ti.data.attrs = mv$(attrs);
@@ -914,7 +914,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         (Type,
             Expand_Type(crate, modstack, mod,  e.type());
             ),
-        
+
         (Function,
             for(auto& arg : e.args()) {
                 Expand_Pattern(crate, modstack, mod,  arg.first, false);
@@ -929,9 +929,9 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             )
         )
         Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, dat);
-        
+
         {
-            
+
             auto& i = mod.items()[idx];
             if( i.data.tag() == ::AST::Item::TAGDEAD ) {
                 i.data = mv$(dat);
@@ -941,26 +941,26 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 i.data.attrs = mv$(attrs);
         }
     }
-    
+
     // IGNORE m_anon_modules, handled as part of expressions
-    
+
     //for( const auto& mi: mod.macro_imports_res() )
     //    DEBUG("- Imports '" << mi.name << "'");
 }
 void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
 {
     TRACE_FUNCTION_F("mod=" << mod.path());
-    
+
     for(auto& i : mod.items())
     {
         DEBUG("- " << i.data.tag_str() << " '" << i.name << "'");
         TU_IFLET(::AST::Item, (i.data), Module, e,
             Expand_Mod_IndexAnon(crate, e);
-            
+
             // TODO: Also ensure that all #[macro_export] macros end up in parent
         )
     }
-    
+
     for( auto& mp : mod.anon_mods() )
     {
         if( mp.unique() ) {
@@ -975,10 +975,10 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
 void Expand(::AST::Crate& crate)
 {
     auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
-    
+
     // 1. Crate attributes
     Expand_Attrs(crate.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
-    
+
     // Insert magic for libstd/libcore
     // NOTE: The actual crates are loaded in "LoadCrates" using magic in AST::Crate::load_externs
     switch( crate.m_load_std )
@@ -1002,7 +1002,7 @@ void Expand(::AST::Crate& crate)
     case ::AST::Crate::LOAD_NONE:
         break;
     }
-    
+
     // 2. Module attributes
     for( auto& a : crate.m_attrs.m_items )
     {
@@ -1012,10 +1012,10 @@ void Expand(::AST::Crate& crate)
             }
         }
     }
-    
+
     // 3. Module tree
     Expand_Mod(crate, modstack, ::AST::Path("",{}), crate.m_root_module);
-    
+
     // Post-process
     Expand_Mod_IndexAnon(crate, crate.m_root_module);
     #if 0

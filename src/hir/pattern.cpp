@@ -90,14 +90,14 @@ namespace HIR {
                 os << ns.first << ": " << ns.second << ", ";
             os << "}";
             ),
-        
+
         (Value,
             os << e.val;
             ),
         (Range,
             os << e.start << " ... " << e.end;
             ),
-        
+
         (EnumValue,
             os << e.path;
             ),
@@ -154,7 +154,7 @@ namespace {
             rv.push_back( ::std::make_pair(field.first, field.second.clone()) );
         return rv;
     }
-    
+
     ::HIR::Pattern::Value clone_patval(const ::HIR::Pattern::Value& val) {
         TU_MATCH(::HIR::Pattern::Value, (val), (e),
         (Integer,
@@ -225,7 +225,7 @@ namespace {
             e.is_exhaustive
             }));
         ),
-    
+
     (Value,
         return Pattern(m_binding, Data::make_Value({
             clone_patval(e.val)
@@ -237,7 +237,7 @@ namespace {
             clone_patval(e.end)
             }));
         ),
-    
+
     (EnumValue,
         return Pattern(m_binding, Data::make_EnumValue({ e.path.clone(), e.binding_ptr, e.binding_idx }));
         ),
@@ -271,7 +271,7 @@ namespace {
             }));
         )
     )
-    
+
     throw "";
 }
 

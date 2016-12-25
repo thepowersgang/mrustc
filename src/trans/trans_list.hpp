@@ -23,18 +23,18 @@ struct Trans_Params
     ::HIR::PathParams   pp_method;
     ::HIR::PathParams   pp_impl;
     ::HIR::TypeRef  self_type;
-    
+
     Trans_Params() {}
     Trans_Params(const Span& sp):
         sp(sp)
     {}
-    
+
     t_cb_generic get_cb() const;
     ::HIR::TypeRef monomorph(const ::HIR::Crate& crate, const ::HIR::TypeRef& p) const;
     ::HIR::Path monomorph(const ::HIR::Crate& crate, const ::HIR::Path& p) const;
     ::HIR::GenericPath monomorph(const ::HIR::Crate& crate, const ::HIR::GenericPath& p) const;
     ::HIR::PathParams monomorph(const ::HIR::Crate& crate, const ::HIR::PathParams& p) const;
-    
+
     bool has_types() const {
         return pp_method.m_types.size() > 0 || pp_impl.m_types.size() > 0;
     }
@@ -57,7 +57,7 @@ public:
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Function> > m_functions;
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Static> > m_statics;
     ::std::map< ::HIR::Path, Trans_Params> m_vtables;
-    
+
     ::std::vector< ::HIR::TypeRef>  m_types;
 
     TransList_Function* add_function(::HIR::Path p);

@@ -19,7 +19,7 @@ class WriterInner
     ::std::ofstream m_backing;
     z_stream    m_zstream;
     ::std::vector<unsigned char> m_buffer;
-    
+
     unsigned int    m_byte_out_count = 0;
     unsigned int    m_byte_in_count = 0;
 public:
@@ -51,7 +51,7 @@ WriterInner::WriterInner(const ::std::string& filename):
     m_zstream.zalloc = Z_NULL;
     m_zstream.zfree = Z_NULL;
     m_zstream.opaque = Z_NULL;
-    
+
     const int COMPRESSION_LEVEL = Z_BEST_COMPRESSION;
     int ret = deflateInit(&m_zstream, COMPRESSION_LEVEL);
     if(ret != Z_OK)
@@ -63,7 +63,7 @@ WriterInner::WriterInner(const ::std::string& filename):
 WriterInner::~WriterInner()
 {
     assert( m_zstream.avail_in == 0 );
-    
+
     // Complete the compression
     int ret;
     do
@@ -78,7 +78,7 @@ WriterInner::~WriterInner()
             size_t rem = m_buffer.size() - m_zstream.avail_out;
             m_byte_out_count += rem;
             m_backing.write( reinterpret_cast<char*>(m_buffer.data()), rem );
-            
+
             m_zstream.avail_out = m_buffer.size();
             m_zstream.next_out = m_buffer.data();
         }
@@ -90,23 +90,23 @@ void WriterInner::write(const void* buf, size_t len)
 {
     m_zstream.avail_in = len;
     m_zstream.next_in = reinterpret_cast<unsigned char*>( const_cast<void*>(buf) );
-    
+
     size_t last_avail_in = m_zstream.avail_in;
 
     // While there's data to compress
     while( m_zstream.avail_in > 0 )
     {
         assert(m_zstream.avail_out != 0);
-        
+
         // Compress the data
         int ret = deflate(&m_zstream, Z_NO_FLUSH);
         if(ret == Z_STREAM_ERROR)
             throw ::std::runtime_error("zlib deflate stream error");
-        
+
         size_t used_this_time = last_avail_in - m_zstream.avail_in;
         last_avail_in = m_zstream.avail_in;
         m_byte_in_count += used_this_time;
-        
+
         // If the entire input wasn't consumed, then it was likely due to a lack of output space
         // - Flush the output buffer to the file
         if( m_zstream.avail_in > 0 )
@@ -114,7 +114,7 @@ void WriterInner::write(const void* buf, size_t len)
             size_t bytes = m_buffer.size() - m_zstream.avail_out;
             m_backing.write( reinterpret_cast<char*>(m_buffer.data()), bytes );
             m_byte_out_count += bytes;
-            
+
             m_zstream.avail_out = m_buffer.size();
             m_zstream.next_out = m_buffer.data();
         }
@@ -126,10 +126,10 @@ void WriterInner::write(const void* buf, size_t len)
         size_t bytes = m_buffer.size() - m_zstream.avail_out;
         m_backing.write( reinterpret_cast<char*>(m_buffer.data()), bytes );
         m_byte_out_count += bytes;
-        
+
         m_zstream.avail_out = m_buffer.size();
         m_zstream.next_out = m_buffer.data();
-        
+
         int ret = deflate(&m_zstream, Z_NO_FLUSH);
         if(ret == Z_STREAM_ERROR)
             throw ::std::runtime_error("zlib deflate stream error");
@@ -201,7 +201,7 @@ void Reader::read(void* buf, size_t len)
     }
     buf = reinterpret_cast<uint8_t*>(buf) + used;
     len -= used;
-    
+
     if( len >= m_buffer.capacity() )
     {
         m_inner->read(buf, len);
@@ -224,7 +224,7 @@ ReaderInner::ReaderInner(const ::std::string& filename):
     m_zstream.zalloc = Z_NULL;
     m_zstream.zfree = Z_NULL;
     m_zstream.opaque = Z_NULL;
-    
+
     int ret = inflateInit(&m_zstream);
     if(ret != Z_OK)
         throw ::std::runtime_error("zlib init failure");
@@ -251,10 +251,10 @@ size_t ReaderInner::read(void* buf, size_t len)
                 return len - m_zstream.avail_out;
             }
             m_zstream.next_in = const_cast<unsigned char*>(m_buffer.data());
-            
+
             m_byte_in_count += m_zstream.avail_in;
         }
-        
+
         int ret = inflate(&m_zstream, Z_NO_FLUSH);
         if(ret == Z_STREAM_ERROR)
             throw ::std::runtime_error("zlib inflate stream error");
@@ -268,10 +268,10 @@ size_t ReaderInner::read(void* buf, size_t len)
         default:
             break;
         }
-        
+
     } while( m_zstream.avail_out > 0 );
     m_byte_out_count += len;
-    
+
     return len;
 }
 

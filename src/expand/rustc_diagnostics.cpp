@@ -34,16 +34,16 @@ class CExpanderBuildDiagnosticArray:
         if( ident != "" )
             ERROR(sp, E0000, "__build_diagnostic_array! doesn't take an ident");
         auto lex = TTStream(tt);
-        
+
         Token   tok;
-        
+
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         //auto crate_name = mv$(tok.str());
         GET_CHECK_TOK(tok, lex, TOK_COMMA);
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto item_name = mv$(tok.str());
         GET_CHECK_TOK(tok, lex, TOK_EOF);
-        
+
         ::std::vector<TokenTree>    toks;
         toks.push_back( TOK_RWORD_STATIC );
         toks.push_back( Token(TOK_IDENT, item_name) );
@@ -63,7 +63,7 @@ class CExpanderBuildDiagnosticArray:
         toks.push_back( TOK_SQUARE_OPEN );
         toks.push_back( TOK_SQUARE_CLOSE );
         toks.push_back( TOK_SEMICOLON );
-        
+
         return box$( TTStreamO(TokenTree( lex.getHygiene(), mv$(toks) )) );
     }
 };

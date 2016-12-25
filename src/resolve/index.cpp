@@ -53,11 +53,11 @@ namespace {
 void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
     auto& list = get_mod_index(mod, location);
-    
+
     bool was_import = (ir != mod.path() + name);
     if( list.count(name) > 0 )
     {
-        if( error_on_collision ) 
+        if( error_on_collision )
         {
             ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ")");
         }
@@ -99,7 +99,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     {
         ::AST::Path p = mod.path() + i.name;
         //DEBUG("- p = " << p << " : " << ::AST::Item::tag_to_str(i.data.tag()));
-        
+
         TU_MATCH(AST::Item, (i.data), (e),
         (None,
             ),
@@ -112,7 +112,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             ),
         (NegImpl,
             ),
-        
+
         (Use,
             // Skip for now
             ),
@@ -162,7 +162,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             )
         )
     }
-    
+
     bool has_pub_wildcard = false;
     // Named imports
     for( const auto& i : mod.items() )
@@ -173,7 +173,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
         if( i.name != "" )
         {
             // TODO: Ensure that the path is canonical?
-            
+
             const auto& sp = i_data.sp;
             struct H {
                 static void handle_pb(const Span& sp, AST::Module& mod, const AST::Named<AST::Item>& i, const AST::PathBinding& pb, bool allow_collide)
@@ -194,14 +194,14 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                     (StructMethod,
                         BUG(sp, "Import was bound to struct method");
                         ),
-                    
+
                     (Crate ,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (Module,  _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (Enum,     _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (Union,    _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (Trait,    _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
                     (TypeAlias,_add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),
-                    
+
                     (Struct,
                         _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
                         // - If the struct is a tuple-like struct, it presents in the value namespace
@@ -258,9 +258,9 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             }
         }
     }
-    
+
     mod.m_index_populated = (has_pub_wildcard ? 1 : 2);
-    
+
     // Handle child modules
     for( auto& i : mod.items() )
     {
@@ -326,7 +326,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
             if( ve.ent.is_Import() ) {
                 const auto& spath = ve.ent.as_Import().path;
                 p = hir_to_ast( spath );
-                
+
                 ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
                 const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
                 for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
@@ -390,7 +390,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
         if( ! i.data.is_Use() )
             continue ;
         const auto& i_data = i.data.as_Use();
-        
+
         if( i.name == "" && i.is_pub == handle_pub )
         {
             const auto& sp = i_data.sp;
@@ -414,7 +414,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
             (StructMethod,
                 BUG(sp, "Import was bound to struct method");
                 ),
-            
+
             (Crate,
                 DEBUG("Glob crate " << i_data.path);
                 const auto& hmod = e.crate_->m_hir->m_root_module;
@@ -476,7 +476,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                         else {
                             _add_item_value( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
                         }
-                        
+
                         idx += 1;
                     }
                 }
@@ -495,7 +495,7 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
                         else {
                             _add_item_value( sp, mod, ev.first, i.is_pub, mv$(p), false );
                         }
-                        
+
                         idx += 1;
                     }
                 }
@@ -503,10 +503,10 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool han
             )
         }
     }
-    
+
     // handle_pub == true first, leading to full resoltion no matter what
     mod.m_index_populated = 2;
-    
+
     // Handle child modules
     for( auto& i : mod.items() )
     {
@@ -538,7 +538,7 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
     //    path.nodes().erase( path.nodes().begin() + i );
     //} while( --i > 0 );
 
-    
+
     for(unsigned int i = start; i < info.nodes.size() - 1; i ++)
     {
         auto it = hmod->m_mod_items.find( info.nodes[i].name() );
@@ -575,7 +575,7 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
         )
     }
     const auto& lastnode = info.nodes.back();
-    
+
     switch(loc)
     {
     case IndexName::Type:
@@ -606,7 +606,7 @@ void Resolve_Index_Module_Normalise_Path_ext(const ::AST::Crate& crate, const Sp
         }
         } break;
     }
-    
+
     ERROR(sp, E0000,  "Couldn't find final node of path " << path);
 }
 
@@ -619,17 +619,17 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
         Resolve_Index_Module_Normalise_Path_ext(crate, sp, path, loc,  crate.m_extern_crates.at(info.crate), 0);
         return false;
     }
-    
+
     const ::AST::Module* mod = &crate.m_root_module;
     for( unsigned int i = 0; i < info.nodes.size() - 1; i ++ )
     {
         const auto& node = info.nodes[i];
-        
+
         auto it = mod->m_namespace_items.find( node.name() );
         if( it == mod->m_namespace_items.end() )
             ERROR(sp, E0000,  "Couldn't find node " << i << " of path " << path);
         const auto& ie = it->second;
-        
+
         if( ie.is_import ) {
             // Need to replace all nodes up to and including the current with the import path
             auto new_path = ie.path;
@@ -658,10 +658,10 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
             )
         }
     }
-    
+
     const auto& node = info.nodes.back();
-    
-    
+
+
     // TODO: Use get_mod_index instead.
     const ::AST::Module::IndexEnt* ie_p = nullptr;
     switch(loc)
@@ -685,7 +685,7 @@ bool Resolve_Index_Module_Normalise_Path(const ::AST::Crate& crate, const Span& 
     if( !ie_p )
         ERROR(sp, E0000,  "Couldn't find final node of path " << path);
     const auto& ie = *ie_p;
-    
+
     if( ie.is_import ) {
         // TODO: Prevent infinite recursion if the user does something dumb
         path = ::AST::Path(ie.path);
@@ -706,7 +706,7 @@ void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_s
             Resolve_Index_Module_Normalise(crate, item.data.span, e);
         )
     }
-    
+
     DEBUG("Index for " << mod.path());
     for( auto& ent : mod.m_namespace_items ) {
         Resolve_Index_Module_Normalise_Path(crate, mod_span, ent.second.path, IndexName::Namespace);
@@ -730,7 +730,7 @@ void Resolve_Index(AST::Crate& crate)
     Resolve_Index_Module_Wildcard(crate, crate.m_root_module, true);
     // - Add all private glob imported items
     Resolve_Index_Module_Wildcard(crate, crate.m_root_module, false);
-    
+
     // - Normalise the index (ensuring all paths point directly to the item)
     Resolve_Index_Module_Normalise(crate, Span(), crate.m_root_module);
 }

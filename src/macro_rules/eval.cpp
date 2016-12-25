@@ -24,25 +24,25 @@ class ParameterMappings
         unsigned int    num_used;   // Number of times it has been used
         InterpolatedFragment    frag;
     };
-    
+
     /// A single layer of the capture set
     TAGGED_UNION(CaptureLayer, Vals,
         (Vals, ::std::vector<CapturedVal>),
         (Nested, ::std::vector<CaptureLayer>)
         );
-    
+
     /// Represents the fragments captured for a name
     struct CapturedVar
     {
         CaptureLayer    top_layer;
-        
+
         friend ::std::ostream& operator<<(::std::ostream& os, const CapturedVar& x) {
             os << "CapturedVar { top_layer: " << x.top_layer << " }";
             return os;
         }
-        
+
     };
-    
+
     ::std::vector<CapturedVar>  m_mappings;
     unsigned m_layer_count;
 public:
@@ -51,28 +51,28 @@ public:
     {
     }
     ParameterMappings(ParameterMappings&&) = default;
-    
+
     const ::std::vector<CapturedVar>& mappings() const { return m_mappings; }
-    
+
     void dump() const {
         DEBUG("m_mappings = {" << m_mappings << "}");
     }
-    
+
     size_t layer_count() const {
         return m_layer_count+1;
     }
-    
+
     void insert(unsigned int name_index, const ::std::vector<unsigned int>& iterations, InterpolatedFragment data);
-    
+
     InterpolatedFragment* get(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
     unsigned int count_in(const ::std::vector<unsigned int>& iterations, unsigned int name_idx) const;
-    
+
     /// Increment the number of times a particular fragment will be used
     void inc_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
     /// Decrement the number of times a particular fragment is used (returns true if there are still usages remaining)
     bool dec_count(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
-    
-    
+
+
     friend ::std::ostream& operator<<(::std::ostream& os, const CapturedVal& x) {
         os << x.frag;
         return os;
@@ -88,7 +88,7 @@ public:
         )
         return os;
     }
-    
+
 private:
     CapturedVal& get_cap(const ::std::vector<unsigned int>& iterations, unsigned int name_idx);
 };
@@ -122,10 +122,10 @@ class MacroPatternStream
     ::std::vector<unsigned int> m_pos;
     // Iteration index of each active loop level
     ::std::vector<unsigned int> m_loop_iterations;
-    
+
     ::std::vector<SimplePatEnt> m_stack;
     unsigned int    m_skip_count;
-    
+
     SimplePatEnt    m_peek_cache;
     bool m_peek_cache_valid = false;
 
@@ -137,10 +137,10 @@ public:
         m_pos({0})
     {
     }
-    
+
     /// Get the next pattern entry
     SimplePatEnt next();
-    
+
     const SimplePatEnt& peek() {
         if( !m_peek_cache_valid ) {
             m_peek_cache = next();
@@ -148,23 +148,23 @@ public:
         }
         return m_peek_cache;
     }
-    
+
     /// Inform the stream that the `if` rule that was just returned succeeded
     void if_succeeded();
     /// Get the current loop iteration count
     const ::std::vector<unsigned int>& get_loop_iters() const {
         return m_loop_iterations;
     }
-    
+
 private:
     SimplePatEnt emit_loop_start(const MacroPatEnt& pat);
-    
+
     SimplePatEnt emit_seq(SimplePatEnt v1, SimplePatEnt v2) {
         assert( m_stack.empty() );
         m_stack.push_back( mv$(v2) );
         return v1;
     }
-    
+
     void break_loop();
 };
 
@@ -188,7 +188,7 @@ void ParameterMappings::insert(unsigned int name_index, const ::std::vector<unsi
         for(unsigned int i = 0; i < iterations.size()-1; i ++ )
         {
             auto iter = iterations[i];
-            
+
             if( layer->is_Vals() ) {
                 assert( layer->as_Vals().size() == 0 );
                 *layer = CaptureLayer::make_Nested({});
@@ -198,7 +198,7 @@ void ParameterMappings::insert(unsigned int name_index, const ::std::vector<unsi
                 DEBUG("- Skipped iteration " << e.size());
                 e.push_back( CaptureLayer::make_Nested({}) );
             }
-            
+
             if(e.size() == iter) {
                 e.push_back( CaptureLayer::make_Vals({}) );
             }
@@ -223,7 +223,7 @@ ParameterMappings::CapturedVal& ParameterMappings::get_cap(const ::std::vector<u
     auto& e = m_mappings.at(name_idx);
     //DEBUG("- e = " << e);
     auto* layer = &e.top_layer;
-    
+
     // - If the top layer is a 1-sized set of values, unconditionally return it
     TU_IFLET(CaptureLayer, (*layer), Vals, e,
         if( e.size() == 1 ) {
@@ -233,7 +233,7 @@ ParameterMappings::CapturedVal& ParameterMappings::get_cap(const ::std::vector<u
             BUG(Span(), "Attempting to get binding for empty capture - #" << name_idx);
         }
     )
-    
+
     for(const auto iter : iterations)
     {
         TU_MATCH(CaptureLayer, (*layer), (e),
@@ -316,28 +316,28 @@ SimplePatEnt MacroPatternStream::next()
 {
     TRACE_FUNCTION_F("m_pos=[" << m_pos << "], m_stack.size()=" << m_stack.size());
     assert(m_pos.size() >= 1);
-    
+
     if( m_peek_cache_valid ) {
         m_peek_cache_valid = false;
         return mv$(m_peek_cache);
     }
-    
+
     // Pop off the generation stack
     if( ! m_stack.empty() ) {
         auto rv = mv$(m_stack.back());
         m_stack.pop_back();
         return rv;
     }
-    
+
     if( m_break_if_not && ! m_condition_fired ) {
         // Break out of the current loop then continue downwards.
         break_loop();
     }
-    
+
     m_skip_count = 0;
     m_break_if_not = false;
     m_condition_fired = false;
-    
+
     const MacroPatEnt*  parent_pat = nullptr;
     decltype(m_pattern) parent_ents = nullptr;
     const auto* ents = m_pattern;
@@ -351,18 +351,18 @@ SimplePatEnt MacroPatternStream::next()
         parent_ents = ents;
         ents = &parent_pat->subpats;
     }
-    
+
     DEBUG( (m_pos.size()-1) << " " << m_pos.back() << " / " << ents->size());
     if( m_pos.back() < ents->size() )
     {
         const auto& pat = ents->at( m_pos.back() );
-        
+
         if( pat.type == MacroPatEnt::PAT_LOOP ) {
             DEBUG("Enter " << pat);
             // Increase level, return entry control
             m_pos.push_back( 0 );
             m_loop_iterations.push_back( 0 );
-            
+
             if( pat.name == "*" )
             {
                 return emit_loop_start(pat);
@@ -391,7 +391,7 @@ SimplePatEnt MacroPatternStream::next()
             // - Reset the loop back to the start
             m_pos.back() = 0;
             m_loop_iterations.back() += 1;
-            
+
             // - Emit break conditions
             if( parent_pat->tok == TOK_NULL ) {
                 // Loop separator is TOK_NULL - get the first token of the loop and use it.
@@ -437,17 +437,17 @@ namespace {
     void get_loop_entry_pats(const MacroPatEnt& pat,  ::std::vector<const MacroPatEnt*>& entry_pats)
     {
         assert( pat.type == MacroPatEnt::PAT_LOOP );
-        
+
         // If this pattern is a loop, get the entry concrete patterns for it
-        // - Otherwise, just 
+        // - Otherwise, just
         unsigned int i = 0;
         while( i < pat.subpats.size() && pat.subpats[i].type == MacroPatEnt::PAT_LOOP )
         {
             const auto& cur_pat = pat.subpats[i];
             bool is_optional = (cur_pat.name == "*");
-            
+
             get_loop_entry_pats(cur_pat, entry_pats);
-            
+
             if( !is_optional )
             {
                 // Non-optional loop, MUST be entered, so return after recursing
@@ -456,7 +456,7 @@ namespace {
             // Optional, so continue the loop.
             i ++;
         }
-        
+
         // First non-loop pattern
         if( i < pat.subpats.size() )
         {
@@ -471,10 +471,10 @@ SimplePatEnt MacroPatternStream::emit_loop_start(const MacroPatEnt& pat)
 {
     // Find the next non-loop pattern to control if this loop should be entered
     ::std::vector<const MacroPatEnt*> m_entry_pats;
-    
+
     get_loop_entry_pats(pat, m_entry_pats);
     DEBUG("m_entry_pats = [" << FMT_CB(ss, for(const auto* p : m_entry_pats) { ss << *p << ","; }) << "]");
-    
+
     struct H {
         static SimplePatEnt get_if(bool flag, const MacroPatEnt& mpe) {
             if( mpe.type == MacroPatEnt::PAT_TOKEN )
@@ -483,7 +483,7 @@ SimplePatEnt MacroPatternStream::emit_loop_start(const MacroPatEnt& pat)
                 return SimplePatEnt::make_IfPat({ flag, mpe.type });
         }
     };
-    
+
     const auto* entry_pat = m_entry_pats.back();
     m_entry_pats.pop_back();
     if( m_entry_pats.size() > 0 )
@@ -521,13 +521,13 @@ void MacroPatternStream::break_loop()
     assert( m_pos.size() >= 1 );
     // - This should never be called when on the top level
     assert( m_pos.size() != 1 );
-    
+
     // HACK: Clear the stack if an if succeeded
     m_stack.clear();
-    
+
     m_pos.pop_back();
     m_pos.back() += 1 + m_skip_count;
-    
+
     m_loop_iterations.pop_back();
 }
 
@@ -546,10 +546,10 @@ class MacroExpandState
     /// Layer states : Index and Iteration
     ::std::vector< t_offset >   m_offsets;
     ::std::vector< unsigned int>    m_iterations;
-    
+
     /// Cached pointer to the current layer
     const ::std::vector<MacroExpansionEnt>*  m_cur_ents;  // For faster lookup.
-    
+
 public:
     MacroExpandState(const ::std::vector<MacroExpansionEnt>& contents, const ParameterMappings& mappings):
         m_root_contents(contents),
@@ -558,11 +558,11 @@ public:
         m_cur_ents(&m_root_contents)
     {
     }
-    
+
     // Returns a pointer to the next entry to expand, or nullptr if the end is reached
     // - NOTE: When a Loop entry is returned, the separator token should be emitted
     const MacroExpansionEnt* next_ent();
-    
+
     const ::std::vector<unsigned int>   iterations() const { return m_iterations; }
     unsigned int top_pos() const { return m_offsets[0].read_pos; }
 
@@ -577,17 +577,17 @@ class MacroExpander:
     const RcString  m_macro_filename;
 
     const ::std::string m_crate_name;
-    
+
     ParameterMappings m_mappings;
     MacroExpandState    m_state;
-    
+
     Token   m_next_token;   // used for inserting a single token into the stream
     ::std::unique_ptr<TTStreamO> m_ttstream;
     Ident::Hygiene  m_hygiene;
-    
+
 public:
     MacroExpander(const MacroExpander& x) = delete;
-    
+
     MacroExpander(const ::std::string& macro_name, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
@@ -683,7 +683,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         BUG(lex.getPosition(), "Encountered PAT_TOKEN when handling capture");
     case MacroPatEnt::PAT_LOOP:
         BUG(lex.getPosition(), "Encountered PAT_LOOP when handling capture");
-    
+
     case MacroPatEnt::PAT_TT:
         if( GET_TOK(tok, lex) == TOK_EOF )
             throw ParseError::Unexpected(lex, TOK_EOF);
@@ -725,24 +725,24 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 ::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input, AST::Module& mod)
 {
     TRACE_FUNCTION_F("'" << name << "', " << input);
-    
+
     ParameterMappings   bound_tts;
     unsigned int    rule_index = Macro_InvokeRules_MatchPattern(rules, mv$(input), mod,  bound_tts);
-    
+
     const auto& rule = rules.m_rules.at(rule_index);
-    
+
     DEBUG( rule.m_contents.size() << " rule contents with " << bound_tts.mappings().size() << " bound values - " << name );
     for( unsigned int i = 0; i < ::std::min( bound_tts.mappings().size(), rule.m_param_names.size() ); i ++ )
     {
         DEBUG("- #" << i << " " << rule.m_param_names.at(i) << " = [" << bound_tts.mappings()[i] << "]");
     }
     //bound_tts.dump();
-    
+
     // Run through the expansion counting the number of times each fragment is used
     Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
-    
+
     TokenStream* ret_ptr = new MacroExpander(name, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
-    
+
     return ::std::unique_ptr<TokenStream>( ret_ptr );
 }
 
@@ -750,7 +750,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
 {
     TRACE_FUNCTION;
     Span    sp;// = input.span();
-    
+
     struct Capture {
         unsigned int    binding_idx;
         ::std::vector<unsigned int> iterations;
@@ -768,10 +768,10 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
     {
         active_arms.push_back( ActiveArm { i, {}, MacroPatternStream(rules.m_rules[i].m_pattern) } );
     }
-    
+
     // - List of captured values
     ::std::vector<InterpolatedFragment> captures;
-    
+
     TTStreamO   lex( mv$(input) );
     SET_MODULE(lex, mod);
     while(true)
@@ -783,7 +783,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
         {
             auto idx = arm.index;
             SimplePatEnt pat;
-            // Consume all If* rules 
+            // Consume all If* rules
             do
             {
                 pat = arm.stream.next();
@@ -809,7 +809,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     break;
                 }
             } while( pat.is_IfPat() || pat.is_IfTok() );
-            
+
             TU_MATCH( SimplePatEnt, (pat), (e),
             (IfPat, BUG(sp, "IfTok unexpected here");),
             (IfTok, BUG(sp, "IfTok unexpected here");),
@@ -826,14 +826,14 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             arm_pats.push_back( mv$(pat) );
         }
         assert( arm_pats.size() == active_arms.size() );
-        
+
         // 2. Prune imposible arms
         for(unsigned int i = 0, j = 0; i < arm_pats.size(); )
         {
             auto idx = active_arms[i].index;
             const auto& pat = arm_pats[i];
             bool fail = false;
-            
+
             TU_MATCH( SimplePatEnt, (pat), (e),
             (IfPat, BUG(sp, "IfTok unexpected here");),
             (IfTok, BUG(sp, "IfTok unexpected here");),
@@ -862,12 +862,12 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
             }
             j ++;
         }
-        
+
         if( arm_pats.size() == 0 ) {
             auto tok = lex.getToken();
             ERROR(tok.get_pos(), E0000, "No rules expected " << tok);
         }
-        
+
         // 3. If there is a token pattern in the list, take that arm (and any other token arms)
         const SimplePatEnt* tok_pat = nullptr;
         unsigned int ident_pat_idx = arm_pats.size();
@@ -893,7 +893,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                 }
             )
         }
-        
+
         if( tok_pat )
         {
             auto tok = lex.getToken();
@@ -936,7 +936,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                         (End, TODO(sp, "Handle End following a conflicting :ident"); )
                         )
                     }
-                    
+
                     if( discard ) {
                         arm_pats.erase( arm_pats.begin() + i );
                         active_arms.erase( active_arms.begin() + i );
@@ -945,7 +945,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                         ++ i;
                     }
                 }
-                
+
                 // If there are any remaining ident rules, erase the non-ident rules.
                 if( ident_rule_kept ) {
                     // If no rules were discarded, remove the non-ident rules
@@ -963,7 +963,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                 assert(arm_pats.size() > 0);
                 assert(arm_pats.size() == active_arms.size());
             }
-            
+
             // 3. Check that all remaining arms are the same pattern.
             const auto& active_pat = arm_pats[0];
             for(unsigned int i = 1; i < arm_pats.size(); i ++)
@@ -990,7 +990,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                     )
                 )
             }
-            
+
             // 4. Apply patterns.
             TU_MATCH( SimplePatEnt, (arm_pats[0]), (e),
             (End,
@@ -1025,9 +1025,9 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                         }
                     }
                 };
-                
+
                 auto cap = Macro_HandlePatternCap(lex, e.type);
-                
+
                 unsigned int cap_idx = captures.size();
                 captures.push_back( mv$(cap) );
                 for(unsigned int i = 0; i < active_arms.size(); i ++)
@@ -1039,7 +1039,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
                 )
             )
         }
-        
+
         // Keep looping - breakout is handled in 'End' above
     }
 }
@@ -1048,7 +1048,7 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
 {
     TRACE_FUNCTION;
     MacroExpandState    state(contents, bound_tts);
-    
+
     while(const auto* ent_ptr = state.next_ent())
     {
         DEBUG(*ent_ptr);
@@ -1096,7 +1096,7 @@ Token MacroExpander::realGetToken()
             return rv;
         m_ttstream.reset();
     }
-    
+
     // Loop to handle case where $crate expands to nothing
     while( const auto* next_ent_ptr = m_state.next_ent() )
     {
@@ -1125,7 +1125,7 @@ Token MacroExpander::realGetToken()
             else {
                 auto* frag = m_mappings.get(m_state.iterations(), e);
                 ASSERT_BUG(this->getPosition(), frag, "Cannot find '" << e << "' for " << m_state.iterations());
-                
+
                 bool can_steal = ( m_mappings.dec_count(m_state.iterations(), e) == false );
                 DEBUG("Insert replacement #" << e << " = " << *frag);
                 if( frag->m_type == InterpolatedFragment::TT )
@@ -1162,7 +1162,7 @@ Token MacroExpander::realGetToken()
             throw "";
         }
     }
-    
+
     DEBUG("EOF");
     return Token(TOK_EOF);
 }
@@ -1176,10 +1176,10 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
     {
         unsigned int layer = m_offsets.size() - 1;
         const auto& ents = *m_cur_ents;
-        
+
         // Obtain current read position in layer, and increment
         size_t idx = m_offsets.back().read_pos++;
-        
+
         // Check if limit has been reached
         if( idx < ents.size() )
         {
@@ -1230,11 +1230,11 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
             if( cur_ofs.loop_index + 1 < cur_ofs.max_index )
             {
                 m_iterations.back() ++;
-                
+
                 DEBUG("Restart layer");
                 cur_ofs.read_pos = 0;
                 cur_ofs.loop_index ++;
-                
+
                 auto& loop_layer = getCurLayerEnt();
                 if( loop_layer.as_Loop().joiner.type() != TOK_NULL ) {
                     DEBUG("- Separator token = " << loop_layer.as_Loop().joiner);
@@ -1261,14 +1261,14 @@ const MacroExpansionEnt* MacroExpandState::next_ent()
             assert( m_offsets.size() == 0 );
         }
     } // while( m_offsets NONEMPTY )
-    
+
     return nullptr;
 }
 
 const MacroExpansionEnt& MacroExpandState::getCurLayerEnt() const
 {
     assert( m_offsets.size() > 1 );
-    
+
     const auto* ents = &m_root_contents;
     for( unsigned int i = 0; i < m_offsets.size()-2; i ++ )
     {
@@ -1277,7 +1277,7 @@ const MacroExpansionEnt& MacroExpandState::getCurLayerEnt() const
         ents = &(*ents)[ofs-1].as_Loop().entries;
     }
     return (*ents)[m_offsets[m_offsets.size()-2].read_pos-1];
-    
+
 }
 const ::std::vector<MacroExpansionEnt>* MacroExpandState::getCurLayer() const
 {

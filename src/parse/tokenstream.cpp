@@ -73,17 +73,17 @@ void TokenStream::putback(Token tok)
 eTokenType TokenStream::lookahead(unsigned int i)
 {
     const unsigned int MAX_LOOKAHEAD = 3;
-    
+
     if( m_cache_valid )
     {
         if( i == 0 )
             return m_cache.type();
         i --;
     }
-    
+
     if( i >= MAX_LOOKAHEAD )
         throw ParseError::BugCheck("Excessive lookahead");
-    
+
     while( i >= m_lookahead.size() )
     {
         DEBUG("lookahead - read #" << m_lookahead.size());
@@ -91,7 +91,7 @@ eTokenType TokenStream::lookahead(unsigned int i)
         auto hygiene = this->realGetHygiene();
         m_lookahead.push_back( ::std::make_pair(mv$(tok), mv$(hygiene)) );
     }
-    
+
     DEBUG("lookahead(" << i << ") = " << m_lookahead[i]);
     return m_lookahead[i].first.type();
 }

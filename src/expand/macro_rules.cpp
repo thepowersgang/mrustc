@@ -26,12 +26,12 @@ class CMacroRulesExpander:
     {
         if( ident == "" )
             ERROR(sp, E0000, "macro_rules! requires an identifier" );
-        
+
         DEBUG("Parsing macro_rules! " << ident);
         TTStream    lex(tt);
         auto mac = Parse_MacroRules(lex);
         mod.add_macro( false, ident, mv$(mac) );
-        
+
         return ::std::unique_ptr<TokenStream>( new TTStreamO(TokenTree()) );
     }
 };
@@ -40,11 +40,11 @@ class CMacroUseHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TRACE_FUNCTION_F("path=" << path);
-        
+
         TU_IFLET( ::AST::Item, i, None, e,
             // Just ignore
         )
@@ -107,14 +107,14 @@ class CMacroUseHandler:
             ERROR(sp, E0000, "Use of #[macro_use] on non-module/crate - " << i.tag_str());
         }
     }
-    
+
 };
 
 class CMacroExportHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         if( i.is_None() ) {
@@ -125,7 +125,7 @@ class CMacroExportHandler:
                 ERROR(sp, E0000, "#[macro_export] is only valid on macro_rules!");
             }
             const auto& name = mac.input_ident();
-            
+
             // Tag the macro in the module for crate export
             auto it = ::std::find_if( mod.macros().begin(), mod.macros().end(), [&](const auto& x){ return x.name == name; } );
             ASSERT_BUG(sp, it != mod.macros().end(), "Macro '" << name << "' not defined in this module");
@@ -150,7 +150,7 @@ class CMacroReexportHandler:
 
         const auto& crate_name = i.as_Crate().name;
         auto& ext_crate = *crate.m_extern_crates.at(crate_name).m_hir;
-        
+
         if( mi.has_sub_items() )
         {
             for( const auto& si : mi.items() )

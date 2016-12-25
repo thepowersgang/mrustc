@@ -18,7 +18,7 @@ void ConvertHIR_Bind(::HIR::Crate& crate);
 
 namespace {
 
-    
+
     enum class Target {
         TypeItem,
         Struct,
@@ -36,7 +36,7 @@ namespace {
         else {
             mod = &crate.m_root_module;
         }
-        
+
         for( unsigned int i = 0; i < path.m_components.size()-1; i ++ )
         {
             const auto& pc = path.m_components[i];
@@ -44,7 +44,7 @@ namespace {
             if( it == mod->m_mod_items.end() ) {
                 BUG(sp, "Couldn't find component " << i << " of " << path);
             }
-            
+
             // If second-last, and an enum variant is desired, return the pointer to the enum
             if( i+1 == path.m_components.size()-1 && t == Target::EnumVariant )
             {
@@ -72,12 +72,12 @@ namespace {
         if( it == mod->m_mod_items.end() ) {
             BUG(sp, "Couldn't find final component of " << path);
         }
-        
+
         switch(t)
         {
         case Target::TypeItem:  return &it->second->ent;
         case Target::EnumVariant:   throw "";
-        
+
         case Target::Struct:
             TU_IFLET(::HIR::TypeItem, it->second->ent, Struct, e2,
                 return &e2;
@@ -97,7 +97,7 @@ namespace {
         }
         throw "";
     }
-    
+
     void fix_type_params(const Span& sp, const ::HIR::GenericParams& params_def, ::HIR::PathParams& params)
     {
         #if 1
@@ -109,7 +109,7 @@ namespace {
         }
         #endif
     }
-    
+
     const ::HIR::Struct& get_struct_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
         const auto& str = *reinterpret_cast< const ::HIR::Struct*>( get_type_pointer(sp, crate, path.m_path, Target::Struct) );
         fix_type_params(sp, str.m_params,  path.m_params);
@@ -122,12 +122,12 @@ namespace {
         if( idx == enm.m_variants.size() ) {
             ERROR(sp, E0000, "Couldn't find enum variant " << path);
         }
-        
+
         fix_type_params(sp, enm.m_params,  path.m_params);
         return ::std::make_pair( &enm, idx );
     }
-    
-    
+
+
     class Visitor:
         public ::HIR::Visitor
     {
@@ -137,15 +137,15 @@ namespace {
         Visitor(const ::HIR::Crate& crate):
             m_crate(crate)
         {}
-        
+
         void visit_trait_path(::HIR::TraitPath& p) override
         {
             static Span sp;
             p.m_trait_ptr = &m_crate.get_trait_by_path(sp, p.m_path.m_path);
-            
+
             ::HIR::Visitor::visit_trait_path(p);
         }
-        
+
         void visit_literal(const Span& sp, ::HIR::Literal& lit)
         {
             TU_MATCH(::HIR::Literal, (lit), (e),
@@ -172,11 +172,11 @@ namespace {
                 )
             )
         }
-        
+
         void visit_pattern_Value(const Span& sp, ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
         {
             bool is_single_value = pat.m_data.is_Value();
-            
+
             TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
                 TU_IFLET( ::HIR::Path::Data, ve.path.m_data, Generic, pe,
                     const ::HIR::Enum* enm = nullptr;
@@ -196,7 +196,7 @@ namespace {
                         if( it == mod->m_mod_items.end() ) {
                             BUG(sp, "Couldn't find component " << i << " of " << path);
                         }
-                        
+
                         if( i == path.m_components.size() - 2 ) {
                             // Here it's allowed to be either a module, or an enum.
                             TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
@@ -223,7 +223,7 @@ namespace {
                         if( !is_single_value ) {
                             ERROR(sp, E0000, "Enum variant in range pattern - " << pat);
                         }
-                        
+
                         // Enum variant
                         auto it = ::std::find_if( enm->m_variants.begin(), enm->m_variants.end(), [&](const auto&v){ return v.first == pc; });
                         if( it == enm->m_variants.end() ) {
@@ -273,15 +273,15 @@ namespace {
                 }
             )
         }
-        
-        
+
+
         void visit_pattern(::HIR::Pattern& pat) override
         {
             static Span _sp = Span();
             const Span& sp = _sp;
 
             ::HIR::Visitor::visit_pattern(pat);
-            
+
             TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (e),
             (
                 ),
@@ -340,7 +340,7 @@ namespace {
                 // Nothing to do, all good
                 return ;
             }
-            
+
             if( params.m_types.size() == 0 ) {
                 for(const auto& typ : param_defs.m_types) {
                     (void)typ;
@@ -368,7 +368,7 @@ namespace {
             //TRACE_FUNCTION_F(ty);
             static Span _sp = Span();
             const Span& sp = _sp;
-            
+
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
                 TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
                 (Generic,
@@ -426,10 +426,10 @@ namespace {
                     )
                 )
             )
-            
+
             ::HIR::Visitor::visit_type(ty);
         }
-        
+
         void visit_static(::HIR::ItemPath p, ::HIR::Static& i) override
         {
             ::HIR::Visitor::visit_static(p, i);
@@ -440,23 +440,23 @@ namespace {
             ::HIR::Visitor::visit_constant(p, i);
             visit_literal(Span(), i.m_value_res);
         }
-        
+
         void visit_expr(::HIR::ExprPtr& expr) override
         {
             struct ExprVisitor:
                 public ::HIR::ExprVisitorDef
             {
                 Visitor& upper_visitor;
-                
+
                 ExprVisitor(Visitor& uv):
                     upper_visitor(uv)
                 {}
-                
+
                 void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p)
                 {
                     upper_visitor.visit_generic_path(p, pc);
                 }
-                
+
                 void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
                 {
                     upper_visitor.visit_type(node_ptr->m_res_type);
@@ -482,7 +482,7 @@ namespace {
                     upper_visitor.visit_type(node.m_res_type);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                
+
                 void visit(::HIR::ExprNode_PathValue& node) override
                 {
                     upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
@@ -497,13 +497,13 @@ namespace {
                     upper_visitor.visit_path_params(node.m_params);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                
+
                 void visit(::HIR::ExprNode_StructLiteral& node) override
                 {
                     upper_visitor.visit_generic_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                
+
                 void visit(::HIR::ExprNode_Closure& node) override
                 {
                     upper_visitor.visit_type(node.m_return);
@@ -514,7 +514,7 @@ namespace {
                     ::HIR::ExprVisitorDef::visit(node);
                 }
             };
-            
+
             if( expr.get() != nullptr )
             {
                 ExprVisitor v { *this };
@@ -675,7 +675,7 @@ void ConvertHIR_Bind(::HIR::Crate& crate)
 {
     Visitor exp { crate };
     exp.visit_crate( crate );
-    
+
     // Also visit extern crates to update their pointers
     for(auto& ec : crate.m_ext_crates)
     {

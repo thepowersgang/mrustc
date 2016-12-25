@@ -6,13 +6,13 @@ struct ParserContext
 {
 	::std::string	filename;
 	::std::string	base_path;
-	
+
 	::std::unique_ptr<Module>	output_module;
-	
+
 	// semi-evil hack used to break '>>' apart into '>' '>'
 	::std::vector<int>	next_token;
-	
-	
+
+
 	ParserContext(::std::string filename):
 		filename(filename),
 		output_module(),
@@ -30,7 +30,7 @@ struct ParserContext
 		else {
 			return 0;
 		}
-	}	
+	}
 	void pushback(int tok) {
 		assert(next_token.size() < 2);
 		next_token.push_back( tok );

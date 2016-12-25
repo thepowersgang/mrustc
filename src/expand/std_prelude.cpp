@@ -8,7 +8,7 @@ class Decorator_NoStd:
 {
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD ) {
             ERROR(sp, E0000, "Invalid use of #![no_std] with itself or #![no_core]");
@@ -21,7 +21,7 @@ class Decorator_NoCore:
 {
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
         if( crate.m_load_std != AST::Crate::LOAD_STD ) {
             ERROR(sp, E0000, "Invalid use of #![no_core] with itself or #![no_std]");
@@ -41,7 +41,7 @@ class Decorator_NoPrelude:
 {
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         if( i.is_Module() ) {
             i.as_Module().m_insert_prelude = false;
@@ -57,7 +57,7 @@ class Decorator_PreludeImport:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    
+
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         if( i.is_Use() ) {
             const auto& p = i.as_Use().path;

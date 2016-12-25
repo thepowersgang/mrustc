@@ -17,27 +17,27 @@ namespace {
         public ::HIR::Visitor
     {
         const ::HIR::Crate& m_crate;
-        
+
         typedef ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   t_trait_imports;
         t_trait_imports m_traits;
-        
+
         StaticTraitResolve  m_resolve;
         const ::HIR::TypeRef* m_current_type = nullptr;
         const ::HIR::Trait* m_current_trait;
         const ::HIR::ItemPath* m_current_trait_path;
         bool m_in_expr = false;
-        
+
     public:
         Visitor(const ::HIR::Crate& crate):
             m_crate(crate),
             m_resolve(crate),
             m_current_trait(nullptr)
         {}
-        
+
         struct ModTraitsGuard {
             Visitor* v;
             t_trait_imports old_imports;
-            
+
             ~ModTraitsGuard() {
                 this->v->m_traits = mv$(this->old_imports);
             }
@@ -89,17 +89,17 @@ namespace {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_params);
-            
+
             // TODO: Push a bound that `Self: ThisTrait`
             m_current_type = &impl.m_type;
             m_current_trait = &m_crate.get_trait_by_path(Span(), trait_path);
             m_current_trait_path = &p;
-            
+
             // The implemented trait is always in scope
             m_traits.push_back( ::std::make_pair( &trait_path, m_current_trait) );
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             m_traits.pop_back( );
-            
+
             m_current_trait = nullptr;
             m_current_type = nullptr;
         }
@@ -110,11 +110,11 @@ namespace {
                 public ::HIR::ExprVisitorDef
             {
                 Visitor& upper_visitor;
-                
+
                 ExprVisitor(Visitor& uv):
                     upper_visitor(uv)
                 {}
-                
+
                 void visit(::HIR::ExprNode_Let& node) override
                 {
                     upper_visitor.visit_pattern(node.m_pattern);
@@ -126,7 +126,7 @@ namespace {
                     upper_visitor.visit_type(node.m_res_type);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                
+
                 void visit(::HIR::ExprNode_CallPath& node) override
                 {
                     upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
@@ -137,13 +137,13 @@ namespace {
                     upper_visitor.visit_path_params(node.m_params);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                
+
                 void visit(::HIR::ExprNode_PathValue& node) override
                 {
                     upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                
+
                 void visit(::HIR::ExprNode_Match& node) override
                 {
                     for(auto& arm : node.m_arms)
@@ -153,7 +153,7 @@ namespace {
                     }
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                
+
                 void visit(::HIR::ExprNode_Closure& node) override
                 {
                     upper_visitor.visit_type(node.m_return);
@@ -163,7 +163,7 @@ namespace {
                     }
                     ::HIR::ExprVisitorDef::visit(node);
                 }
-                
+
                 void visit(::HIR::ExprNode_Block& node) override
                 {
                     if( node.m_traits.size() == 0 && node.m_local_mod.m_components.size() > 0 ) {
@@ -179,7 +179,7 @@ namespace {
                         upper_visitor.m_traits.pop_back();
                 }
             };
-            
+
             if( expr.get() != nullptr )
             {
                 m_in_expr = true;
@@ -203,7 +203,7 @@ namespace {
                         }
                     }
                 );
-                // - 
+                // -
             }
             return false;
         }
@@ -214,7 +214,7 @@ namespace {
         static bool locate_item_in_trait(::HIR::Visitor::PathContext pc, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
         {
             const auto& e = pd.as_UfcsUnknown();
-            
+
             switch(pc)
             {
             case ::HIR::Visitor::PathContext::VALUE:
@@ -305,13 +305,13 @@ namespace {
             }
             return false;
         }
-        
+
         bool locate_in_trait_impl_and_set(const Span& sp, ::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
             if( this->locate_item_in_trait(pc, trait,  pd) ) {
                 const auto& type = *e.type;
-                
+
                 // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
                 this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy){
                     auto pp = impl.get_trait_params();
@@ -356,8 +356,8 @@ namespace {
             else {
                 DEBUG("- Item " << e.item << " not in trait " << trait_path.m_path);
             }
-            
-            
+
+
             // Search supertraits (recursively)
             for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
             {
@@ -371,7 +371,7 @@ namespace {
             }
             return false;
         }
-        
+
         bool resolve_UfcsUnknown_inherent(const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
@@ -394,14 +394,14 @@ namespace {
                 case ::HIR::Visitor::PathContext::TYPE:
                     return false;
                 }
-                
+
                 auto new_data = ::HIR::Path::Data::make_UfcsInherent({ mv$(e.type), mv$(e.item), mv$(e.params)} );
                 pd = mv$(new_data);
                 DEBUG("- Resolved, replace with " << p);
                 return true;
                 });
         }
-        
+
         bool resolve_UfcsUnknown_trait(const ::HIR::Path& p, ::HIR::Visitor::PathContext pc, ::HIR::Path::Data& pd)
         {
             static Span sp;
@@ -409,7 +409,7 @@ namespace {
             for( const auto& trait_info : m_traits )
             {
                 const auto& trait = *trait_info.second;
-                
+
                 DEBUG( e.item << " in? " << *trait_info.first );
                 switch(pc)
                 {
@@ -424,14 +424,14 @@ namespace {
                     break;
                 }
                 DEBUG("- Trying trait " << *trait_info.first);
-                
+
                 auto trait_path = ::HIR::GenericPath( *trait_info.first );
                 for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++ ) {
                     trait_path.m_params.m_types.push_back( ::HIR::TypeRef() );
                 }
-                
+
                 // TODO: If there's only one trait with this name, assume it's the correct one.
-                
+
                 // TODO: Search supertraits
                 // TODO: Should impls be searched first, or item names?
                 // - Item names add complexity, but impls are slower
@@ -441,17 +441,17 @@ namespace {
             }
             return false;
         }
-        
+
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
             static Span sp;
-            
+
             TU_IFLET(::HIR::Path::Data, p.m_data, UfcsUnknown, e,
                 TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);
-                
+
                 this->visit_type( *e.type );
                 this->visit_path_params( e.params );
-                
+
                 // Search for matching impls in current generic blocks
                 if( m_resolve.m_item_generics != nullptr && locate_trait_item_in_bounds(pc, *e.type, *m_resolve.m_item_generics,  p.m_data) ) {
                     DEBUG("Found in item params, p = " << p);
@@ -468,7 +468,7 @@ namespace {
                     return ;
                 }
                 assert(p.m_data.is_UfcsUnknown());
-                
+
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
                 if( *e.type == ::HIR::TypeRef("Self", 0xFFFF) || (m_current_type && *e.type == *m_current_type) )
@@ -497,13 +497,13 @@ namespace {
                     }
                     DEBUG("- Item " << e.item << " not found in Self - ty=" << *e.type);
                 }
-                
+
                 // 2. Search all impls of in-scope traits for this method on this type
                 if( this->resolve_UfcsUnknown_trait(p, pc, p.m_data) ) {
                     return ;
                 }
                 assert(p.m_data.is_UfcsUnknown());
-                
+
                 // Couldn't find it
                 ERROR(sp, E0000, "Failed to find impl with '" << e.item << "' for " << *e.type << " (in " << p << ")");
             )
@@ -511,14 +511,14 @@ namespace {
                 ::HIR::Visitor::visit_path(p, pc);
             }
         }
-        
+
         void visit_pattern(::HIR::Pattern& pat) override
         {
             static Span _sp = Span();
             const Span& sp = _sp;
 
             ::HIR::Visitor::visit_pattern(pat);
-            
+
             TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (e),
             (
                 ),

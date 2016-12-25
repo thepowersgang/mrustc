@@ -40,7 +40,7 @@ public:
         m_subtrees( ::std::move(subtrees) )
     {
     }
-    
+
     TokenTree clone() const;
 
     bool is_token() const {
@@ -54,7 +54,7 @@ public:
     const Token& tok() const { return m_tok; }
           Token& tok()       { return m_tok; }
     const Ident::Hygiene& hygiene() const { return m_hygiene; }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt);
 };
 

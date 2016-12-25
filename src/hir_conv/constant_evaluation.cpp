@@ -16,13 +16,13 @@
 
 namespace {
     typedef ::std::vector< ::std::pair< ::std::string, ::HIR::Static> > t_new_values;
-    
+
     struct NewvalState {
         t_new_values&   newval_output;
         const ::HIR::ItemPath&  mod_path;
         ::std::string   name_prefix;
         unsigned int next_item_idx;
-        
+
         NewvalState(t_new_values& newval_output, const ::HIR::ItemPath& mod_path, ::std::string prefix):
             newval_output(newval_output),
             mod_path(mod_path),
@@ -30,7 +30,7 @@ namespace {
             next_item_idx(0)
         {
         }
-        
+
         ::HIR::SimplePath new_static(::HIR::TypeRef type, ::HIR::Literal value)
         {
             auto name = FMT(name_prefix << next_item_idx);
@@ -46,9 +46,9 @@ namespace {
             return rv;
         }
     };
-    
+
     ::HIR::Literal evaluate_constant(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args={});
-    
+
     ::HIR::Literal clone_literal(const ::HIR::Literal& v)
     {
         TU_MATCH(::HIR::Literal, (v), (e),
@@ -84,7 +84,7 @@ namespace {
         )
         throw "";
     }
-    
+
     TAGGED_UNION(EntPtr, NotFound,
         (NotFound, struct{}),
         (Function, const ::HIR::Function*),
@@ -106,7 +106,7 @@ namespace {
         else {
             mod = &crate.m_root_module;
         }
-        
+
         for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
         {
             const auto& pc = path.m_components[i];
@@ -123,7 +123,7 @@ namespace {
                 )
             )
         }
-        
+
         switch( ns )
         {
         case EntNS::Value: {
@@ -131,7 +131,7 @@ namespace {
             if( it == mod->m_value_items.end() ) {
                 return EntPtr {};
             }
-            
+
             TU_MATCH( ::HIR::ValueItem, (it->second->ent), (e),
             (Import,
                 ),
@@ -156,7 +156,7 @@ namespace {
             if( it == mod->m_mod_items.end() ) {
                 return EntPtr {};
             }
-            
+
             TU_MATCH( ::HIR::TypeItem, (it->second->ent), (e),
             (Import,
                 ),
@@ -268,7 +268,7 @@ namespace {
             TODO(sp, "Could not find function for " << path << " - " << rv.tag_str());
         }
     }
-    
+
     ::HIR::Literal evaluate_constant_hir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprNode& expr, ::HIR::TypeRef exp_type, ::std::vector< ::HIR::Literal> args)
     {
         struct Visitor:
@@ -276,26 +276,26 @@ namespace {
         {
             const ::HIR::Crate& m_crate;
             NewvalState m_newval_state;
-            
+
             ::std::vector< ::HIR::Literal>   m_values;
-            
+
             ::HIR::TypeRef  m_exp_type;
             ::HIR::TypeRef  m_rv_type;
             ::HIR::Literal  m_rv;
-            
+
             Visitor(const ::HIR::Crate& crate, NewvalState newval_state, ::HIR::TypeRef exp_ty):
                 m_crate(crate),
                 m_newval_state( mv$(newval_state) ),
                 m_exp_type( mv$(exp_ty) )
             {}
-            
+
             void badnode(const ::HIR::ExprNode& node) const {
                 ERROR(node.span(), E0000, "Node " << typeid(node).name() << " not allowed in constant expression");
             }
-            
+
             void visit(::HIR::ExprNode_Block& node) override {
                 TRACE_FUNCTION_F("_Block");
-                
+
                 for(const auto& e : node.m_nodes)
                 {
                     e->visit(*this);
@@ -319,7 +319,7 @@ namespace {
             void visit(::HIR::ExprNode_If& node) override {
                 badnode(node);
             }
-            
+
             void visit(::HIR::ExprNode_Assign& node) override {
                 badnode(node);
             }
@@ -329,11 +329,11 @@ namespace {
                 auto left = mv$(m_rv);
                 node.m_right->visit(*this);
                 auto right = mv$(m_rv);
-                
+
                 if( left.tag() != right.tag() ) {
                     ERROR(node.span(), E0000, "ExprNode_BinOp - Types mismatched - " << left.tag_str() << " != " << right.tag_str());
                 }
-                
+
                 // Keep m_rv_type
                 switch(node.m_op)
                 {
@@ -421,17 +421,17 @@ namespace {
                     )
                     break;
                 }
-                
+
                 m_rv_type = m_exp_type.clone();
             }
             void visit(::HIR::ExprNode_UniOp& node) override {
                 TRACE_FUNCTION_FR("_UniOp", m_rv);
-                
+
                 auto exp_type = m_exp_type.clone();
-                
+
                 node.m_value->visit(*this);
                 auto val = mv$(m_rv);
-                
+
                 // Keep m_rv_type
                 switch(node.m_op)
                 {
@@ -453,12 +453,12 @@ namespace {
                 m_rv_type = mv$(exp_type);
             }
             void visit(::HIR::ExprNode_Borrow& node) override {
-                
+
                 //m_rv_type = ::HIR::TypeRef();
                 //m_rv = ::HIR::Literal::make_BorrowOf( ::HIR::SimplePath() );
                 //return ;
                 //badnode(node);
-                
+
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_exp_type.m_data), (te),
                 (
                     ERROR(node.span(), E0000, "Invalid expected type for a &-ptr - " << m_exp_type);
@@ -470,30 +470,30 @@ namespace {
                     m_exp_type = mv$(inner);
                     )
                 )
-                
+
                 node.m_value->visit(*this);
                 auto val = mv$(m_rv);
-                
+
                 if( node.m_type != ::HIR::BorrowType::Shared ) {
                     ERROR(node.span(), E0000, "Only shared borrows are allowed in constants");
                 }
-                
+
                 if( visit_ty_with(m_rv_type, [&](const auto& x){ return x.m_data.is_Infer(); }) ) {
                     ERROR(node.span(), E0000, "Could not trivially infer type of referenced static - " << m_rv_type << ", lit = " << val);
                 }
-                
+
                 // Create new static containing borrowed data
                 //auto path = m_newval_state.new_static( m_rv_type.clone(), mv$(val) );
                 auto path = m_newval_state.new_static( ::HIR::TypeRef(), mv$(val) );
-                
+
                 m_rv_type = ::HIR::TypeRef::new_borrow( node.m_type, mv$(m_rv_type) );
                 m_rv = ::HIR::Literal::make_BorrowOf( mv$(path) );
             }
             void visit(::HIR::ExprNode_Cast& node) override {
                 TRACE_FUNCTION_F("_Cast");
-                
+
                 m_exp_type = ::HIR::TypeRef();  // Can't know.
-                
+
                 node.m_value->visit(*this);
                 auto val = mv$(m_rv);
                 //DEBUG("ExprNode_Cast - val = " << val << " as " << node.m_type);
@@ -548,7 +548,7 @@ namespace {
                 m_rv_type = node.m_res_type.clone();
             }
             void visit(::HIR::ExprNode_Index& node) override {
-                
+
                 auto exp_ty = mv$(m_exp_type);
                 // Index
                 m_exp_type = ::HIR::TypeRef(::HIR::CoreType::Usize);
@@ -556,19 +556,19 @@ namespace {
                 if( !m_rv.is_Integer() )
                     ERROR(node.span(), E0000, "Array index isn't an integer - got " << m_rv.tag_str());
                 auto idx = m_rv.as_Integer();
-                
+
                 // Value
                 m_exp_type = ::HIR::TypeRef::new_slice( mv$(exp_ty) );
                 node.m_value->visit(*this);
                 if( !m_rv.is_List() )
                     ERROR(node.span(), E0000, "Indexed value isn't a list - got " << m_rv.tag_str());
                 auto v = mv$( m_rv.as_List() );
-                
+
                 // -> Perform
                 if( idx >= v.size() )
                     ERROR(node.span(), E0000, "Constant array index " << idx << " out of range " << v.size());
                 m_rv = mv$(v[idx]);
-                
+
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_rv_type.m_data), (e),
                 (
                     ERROR(node.span(), E0000, "Indexing non-array - " << m_rv_type);
@@ -585,23 +585,23 @@ namespace {
             void visit(::HIR::ExprNode_Emplace& node) override {
                 badnode(node);
             }
-            
+
             void visit(::HIR::ExprNode_TupleVariant& node) override {
                 m_exp_type = ::HIR::TypeRef();
-                
+
                 ::std::vector< ::HIR::Literal>  vals;
                 for(const auto& vn : node.m_args ) {
                     vn->visit(*this);
                     assert( !m_rv.is_Invalid() );
                     vals.push_back( mv$(m_rv) );
                 }
-                
+
                 if( node.m_is_struct )
                 {
                     const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
                     ASSERT_BUG(node.span(), ent.is_Struct(), "_TupleVariant with m_is_struct set pointing to " << ent.tag_str());
                     const auto& str = ent.as_Struct();
-                    
+
                     m_rv = ::HIR::Literal::make_List(mv$(vals));
                     m_rv_type = ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding(&str) );
                 }
@@ -613,7 +613,7 @@ namespace {
                     const auto& ent = m_crate.get_typeitem_by_path(node.span(), tmp_path);
                     ASSERT_BUG(node.span(), ent.is_Enum(), "_TupleVariant with m_is_struct clear pointing to " << ent.tag_str());
                     const auto& enm = ent.as_Enum();
-                    
+
                     auto it = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == varname; } );
                     ASSERT_BUG(node.span(), it != enm.m_variants.end(), "_TupleVariant points to unknown variant - " << node.m_path);
                     unsigned int var_idx = it - enm.m_variants.begin();
@@ -624,20 +624,20 @@ namespace {
             }
             void visit(::HIR::ExprNode_CallPath& node) override
             {
-                
+
                 TRACE_FUNCTION_FR("_CallPath - " << node.m_path, m_rv);
                 auto& fcn = get_function(node.span(), m_crate, node.m_path);
-                
+
                 // TODO: Set m_const during parse
                 //if( ! fcn.m_const ) {
                 //    ERROR(node.span(), E0000, "Calling non-const function in const context - " << node.m_path);
                 //}
-                
+
                 if( fcn.m_args.size() != node.m_args.size() ) {
                     ERROR(node.span(), E0000, "Incorrect argument count for " << node.m_path << " - expected " << fcn.m_args.size() << ", got " << node.m_args.size());
                 }
                 auto exp_ret_type = mv$( m_exp_type );
-                
+
                 ::std::vector< ::HIR::Literal>  args;
                 args.reserve( fcn.m_args.size() );
                 for(unsigned int i = 0; i < fcn.m_args.size(); i ++ )
@@ -655,11 +655,11 @@ namespace {
                     else {
                         ERROR(node.span(), E0000, "Constant functions can't have destructuring pattern argments");
                     }
-                    
+
                     node.m_args[i]->visit(*this);
                     args.push_back( mv$(m_rv) );
                 }
-                
+
                 // Call by invoking evaluate_constant on the function
                 {
                     TRACE_FUNCTION_F("Call const fn " << node.m_path << " args={ " << args << " }");
@@ -676,16 +676,16 @@ namespace {
             void visit(::HIR::ExprNode_Field& node) override {
                 const auto& sp = node.span();
                 TRACE_FUNCTION_FR("_Field", m_rv);
-                
+
                 m_exp_type = ::HIR::TypeRef();
-                
+
                 node.m_value->visit(*this);
                 auto val = mv$( m_rv );
-                
+
                 if( !val.is_List() )
                     ERROR(sp, E0000, "Field access on invalid literal type - " << val.tag_str());
                 auto& vals = val.as_List();
-                
+
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_rv_type.m_data), (e),
                 (
                     ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
@@ -732,7 +732,7 @@ namespace {
                     unsigned int idx = ::std::atoi( node.m_field.c_str() );
                     ASSERT_BUG(sp, idx < e.size(), "Index out of range in tuple");
                     ASSERT_BUG(sp, idx < vals.size(), "Index out of range in literal");
-                    
+
                     m_rv = mv$( vals[idx] );
                     m_rv_type = mv$( e[idx] );
                     )
@@ -770,7 +770,7 @@ namespace {
                     const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
                     ASSERT_BUG(node.span(), ent.is_Struct(), "_UnitVariant with m_is_struct set pointing to " << ent.tag_str());
                     const auto& str = ent.as_Struct();
-                    
+
                     m_rv = ::HIR::Literal::make_List({});
                     m_rv_type = ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding(&str) );
                 }
@@ -782,7 +782,7 @@ namespace {
                     const auto& ent = m_crate.get_typeitem_by_path(node.span(), tmp_path);
                     ASSERT_BUG(node.span(), ent.is_Enum(), "_UnitVariant with m_is_struct clear pointing to " << ent.tag_str());
                     const auto& enm = ent.as_Enum();
-                    
+
                     auto it = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == varname; } );
                     ASSERT_BUG(node.span(), it != enm.m_variants.end(), "_UnitVariant points to unknown variant - " << node.m_path);
                     unsigned int var_idx = it - enm.m_variants.begin();
@@ -845,24 +845,24 @@ namespace {
                 )
                 m_rv_type = ::HIR::TypeRef();    // TODO:
             }
-            
+
             void visit(::HIR::ExprNode_StructLiteral& node) override {
                 TRACE_FUNCTION_FR("_StructLiteral - " << node.m_path, m_rv);
-                
+
                 if( node.m_is_struct )
                 {
                     const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
                     ASSERT_BUG(node.span(), ent.is_Struct(), "_StructLiteral with m_is_struct set pointing to a " << ent.tag_str());
                     const auto& str = ent.as_Struct();
                     const auto& fields = str.m_data.as_Named();
-                    
+
                     auto rv_type = ::HIR::TypeRef::new_path( node.m_path.clone(), ::HIR::TypeRef::TypePathBinding(&str) );
-                    
+
                     ::std::vector< ::HIR::Literal>  vals;
                     if( node.m_base_value )
                     {
                         m_exp_type = rv_type.clone();
-                        
+
                         node.m_base_value->visit(*this);
                         auto base_val = mv$(m_rv);
                         if( !base_val.is_List() || base_val.as_List().size() != fields.size() ) {
@@ -878,14 +878,14 @@ namespace {
                         if( idx == fields.size() ) {
                             ERROR(node.span(), E0000, "Field name " << val_set.first << " isn't a member of " << node.m_path);
                         }
-                        
+
                         if( monomorphise_type_needed(fields[idx].second.ent) ) {
                             m_exp_type = ::HIR::TypeRef();
                         }
                         else {
                             m_exp_type = fields[idx].second.ent.clone();
                         }
-                        
+
                         val_set.second->visit(*this);
                         vals[idx] = mv$(m_rv);
                     }
@@ -903,7 +903,7 @@ namespace {
                 {
                     const auto& ent = m_crate.get_typeitem_by_path(node.span(), node.m_path.m_path);
                     ASSERT_BUG(node.span(), ent.is_Enum(), "_StructLiteral with m_is_struct clear pointing to a " << ent.tag_str());
-                    
+
                     TODO(node.span(), "Handle Enum _UnitVariant - " << node.m_path);
                 }
             }
@@ -925,21 +925,21 @@ namespace {
                     ASSERT_BUG(node.span(), exp_tys.size() == node.m_vals.size(), "Tuple literal size mismatches with expected type");
                     )
                 )
-                
+
                 ::std::vector< ::HIR::Literal>  vals;
                 ::std::vector< ::HIR::TypeRef>  tys;
                 for(unsigned int i = 0; i < node.m_vals.size(); i ++)
                 {
                     if( exp_tys.size() > 0 )
                         m_exp_type = mv$(exp_tys[i]);
-                    
+
                     node.m_vals[i]->visit(*this);
                     assert( !m_rv.is_Invalid() );
-                    
+
                     vals.push_back( mv$(m_rv) );
                     tys.push_back( mv$(m_rv_type) );
                 }
-                
+
                 m_rv = ::HIR::Literal::make_List(mv$(vals));
                 m_rv_type = ::HIR::TypeRef( mv$(tys) );
             }
@@ -960,7 +960,7 @@ namespace {
                     exp_inner_ty = mv$(*te.inner);
                     )
                 )
-                
+
                 ::std::vector< ::HIR::Literal>  vals;
                 for(const auto& vn : node.m_vals )
                 {
@@ -969,7 +969,7 @@ namespace {
                     assert( !m_rv.is_Invalid() );
                     vals.push_back( mv$(m_rv) );
                 }
-                
+
                 m_rv_type = ::HIR::TypeRef::new_array( mv$(m_rv_type), vals.size() );
                 m_rv = ::HIR::Literal::make_List(mv$(vals));
             }
@@ -989,12 +989,12 @@ namespace {
                     exp_inner_ty = mv$(*te.inner);
                     )
                 )
-                
+
                 m_exp_type = ::HIR::CoreType::Usize;
                 node.m_size->visit(*this);
                 assert( m_rv.is_Integer() );
                 unsigned int count = static_cast<unsigned int>(m_rv.as_Integer());
-                
+
                 ::std::vector< ::HIR::Literal>  vals;
                 vals.reserve( count );
                 if( count > 0 )
@@ -1011,37 +1011,37 @@ namespace {
                 m_rv = ::HIR::Literal::make_List(mv$(vals));
                 m_rv_type = ::HIR::TypeRef::new_array( mv$(m_rv_type), count );
             }
-            
+
             void visit(::HIR::ExprNode_Closure& node) override {
                 badnode(node);
             }
         };
-        
+
         Visitor v { crate, newval_state, mv$(exp_type) };
         for(auto& arg : args)
             v.m_values.push_back( mv$(arg) );
         const_cast<::HIR::ExprNode&>(expr).visit(v);
-        
+
         if( v.m_rv.is_Invalid() ) {
             BUG(sp, "Expression did not yeild a literal");
         }
-        
+
         return mv$(v.m_rv);
     }
-    
+
     ::HIR::Literal evaluate_constant_mir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::MIR::Function& fcn, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
     {
         TRACE_FUNCTION;
-        
+
         StaticTraitResolve  resolve { crate };
         ::MIR::TypeResolve  state { sp, resolve, FMT_CB(), exp, {}, fcn };
-        
+
         ::HIR::Literal  retval;
         ::std::vector< ::HIR::Literal>  locals;
         ::std::vector< ::HIR::Literal>  temps;
         locals.resize( fcn.named_variables.size() );
         temps.resize( fcn.temporaries.size() );
-        
+
         auto get_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal& {
             TU_MATCHA( (lv), (e),
             (Variable,
@@ -1098,7 +1098,7 @@ namespace {
                 )
             )
             };
-        
+
         unsigned int cur_block = 0;
         for(;;)
         {
@@ -1107,12 +1107,12 @@ namespace {
             for(const auto& stmt : block.statements)
             {
                 state.set_cur_stmt(cur_block, next_stmt_idx++);
-                
+
                 if( ! stmt.is_Assign() ) {
                     //BUG(sp, "Non-assign statement - drop " << stmt.as_Drop().slot);
                     continue ;
                 }
-                
+
                 ::HIR::Literal  val;
                 const auto& sa = stmt.as_Assign();
                 TU_MATCHA( (sa.src), (e),
@@ -1165,14 +1165,14 @@ namespace {
                     if( e.type != ::HIR::BorrowType::Shared ) {
                         MIR_BUG(state, "Only shared borrows are allowed in constants");
                     }
-                    
+
                     auto inner_val = read_lval(e.val);
-                    
+
                     ::HIR::TypeRef  inner_ty;
                     const auto& inner_ty_r = state.get_lvalue_type(inner_ty, e.val);
                     if( &inner_ty_r != &inner_ty )
                         inner_ty = inner_ty_r.clone();
-                    
+
                     // Create new static containing borrowed data
                     auto item_path = newval_state.new_static( mv$(inner_ty), mv$(inner_val) );
                     val = ::HIR::Literal::make_BorrowOf( mv$(item_path) );
@@ -1206,7 +1206,7 @@ namespace {
                         case ::HIR::CoreType::Usize:
                         case ::HIR::CoreType::Isize:
                             mask = 0xFFFFFFFFFFFFFFFF;
-                        
+
                             TU_IFLET( ::HIR::Literal, inval, Integer, i,
                                 val = ::HIR::Literal(i & mask);
                             )
@@ -1268,7 +1268,7 @@ namespace {
                         case ::MIR::eBinOp::MUL_OV:
                         case ::MIR::eBinOp::DIV_OV:
                             TODO(sp, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
-                        
+
                         case ::MIR::eBinOp::BIT_OR :
                         case ::MIR::eBinOp::BIT_AND:
                         case ::MIR::eBinOp::BIT_XOR:
@@ -1297,7 +1297,7 @@ namespace {
                         case ::MIR::eBinOp::MUL_OV:
                         case ::MIR::eBinOp::DIV_OV:
                             TODO(sp, "RValue::BinOp - " << sa.src << ", val = " << inval_l << " , " << inval_r);
-                        
+
                         case ::MIR::eBinOp::BIT_OR : val = ::HIR::Literal( l | r );  break;
                         case ::MIR::eBinOp::BIT_AND: val = ::HIR::Literal( l & r );  break;
                         case ::MIR::eBinOp::BIT_XOR: val = ::HIR::Literal( l ^ r );  break;
@@ -1383,7 +1383,7 @@ namespace {
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     )
                 )
-                
+
                 auto& dst = get_lval(sa.dst);
                 dst = mv$(val);
             }
@@ -1405,25 +1405,25 @@ namespace {
 
                 auto& dst = get_lval(e.ret_val);
                 auto& fcn = get_function(sp, crate, fcnp);
-                
+
                 ::std::vector< ::HIR::Literal>  call_args;
                 call_args.reserve( e.args.size() );
                 for(const auto& a : e.args)
                     call_args.push_back( read_lval(a) );
                 // TODO: Set m_const during parse and check here
-                
+
                 // Call by invoking evaluate_constant on the function
                 {
                     TRACE_FUNCTION_F("Call const fn " << fcnp << " args={ " << call_args << " }");
                     dst = evaluate_constant(sp, crate, newval_state,  fcn.m_code, ::HIR::TypeRef(), mv$(call_args));
                 }
-                
+
                 cur_block = e.ret_block;
                 )
             )
         }
     }
-    
+
     ::HIR::Literal evaluate_constant(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
     {
         if( expr.m_mir ) {
@@ -1436,7 +1436,7 @@ namespace {
             BUG(sp, "Attempting to evaluate constant expression with no associated code");
         }
     }
-    
+
     void check_lit_type(const Span& sp, const ::HIR::TypeRef& type,  ::HIR::Literal& lit)
     {
         // TODO: Mask down limited size integers
@@ -1455,7 +1455,7 @@ namespace {
             ),
         (Closure,
             ),
-        
+
         (Path,
             // List
             ),
@@ -1465,7 +1465,7 @@ namespace {
         (Tuple,
             // List
             ),
-        
+
         (Borrow,
             // A whole host of things
             ),
@@ -1475,7 +1475,7 @@ namespace {
         (Function,
             // ItemAddr
             ),
-        
+
         (Primitive,
             switch(te)
             {
@@ -1492,7 +1492,7 @@ namespace {
                 case ::HIR::CoreType::U8:   lit.as_Integer() &= (1ull<<8)-1;  break;
                 case ::HIR::CoreType::U16:  lit.as_Integer() &= (1ull<<16)-1; break;
                 case ::HIR::CoreType::U32:  lit.as_Integer() &= (1ull<<32)-1; break;
-                
+
                 case ::HIR::CoreType::I8:   lit.as_Integer() &= (1ull<<8)-1;  break;
                 case ::HIR::CoreType::I16:  lit.as_Integer() &= (1ull<<16)-1; break;
                 case ::HIR::CoreType::I32:  lit.as_Integer() &= (1ull<<32)-1; break;
@@ -1516,15 +1516,15 @@ namespace {
         Expander(const ::HIR::Crate& crate):
             m_crate(crate)
         {}
-        
+
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
             auto saved_mp = m_mod_path;
             m_mod_path = &p;
             auto saved = mv$( m_new_values );
-            
+
             ::HIR::Visitor::visit_module(p, mod);
-            
+
             for( auto& item : m_new_values )
             {
                 mod.m_value_items.insert( ::std::make_pair(
@@ -1535,11 +1535,11 @@ namespace {
             m_new_values = mv$(saved);
             m_mod_path = saved_mp;
         }
-        
+
         void visit_type(::HIR::TypeRef& ty) override
         {
             ::HIR::Visitor::visit_type(ty);
-            
+
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
                 if( e.size_val == ~0u )
                 {
@@ -1558,7 +1558,7 @@ namespace {
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
             ::HIR::Visitor::visit_constant(p, item);
-            
+
             if( item.m_value )
             {
                 //if( item.m_type.m_data.is_Primitive() )
@@ -1567,12 +1567,12 @@ namespace {
                 //    ;
                 //else
                 //    return ;
-                
+
                 auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
                 item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, nvs, item.m_value, item.m_type.clone(), {});
-                
+
                 check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
-                
+
                 DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
             }
         }
@@ -1586,18 +1586,18 @@ namespace {
             }
             ::HIR::Visitor::visit_enum(p, item);
         }
-        
+
         void visit_expr(::HIR::ExprPtr& expr) override
         {
             struct Visitor:
                 public ::HIR::ExprVisitorDef
             {
                 Expander& m_exp;
-                
+
                 Visitor(Expander& exp):
                     m_exp(exp)
                 {}
-                
+
                 void visit(::HIR::ExprNode_Let& node) override {
                     ::HIR::ExprVisitorDef::visit(node);
                     m_exp.visit_type(node.m_type);
@@ -1627,7 +1627,7 @@ namespace {
                     node.m_size_val = val.as_Integer();
                     DEBUG("Array literal [?; " << node.m_size_val << "]");
                 }
-                
+
                 void visit(::HIR::ExprNode_CallPath& node) override {
                     ::HIR::ExprVisitorDef::visit(node);
                     m_exp.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
@@ -1637,7 +1637,7 @@ namespace {
                     m_exp.visit_path_params(node.m_params);
                 }
             };
-            
+
             if( expr.get() != nullptr )
             {
                 Visitor v { *this };

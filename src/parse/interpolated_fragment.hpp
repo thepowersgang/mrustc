@@ -25,18 +25,18 @@ public:
         PAT,
         PATH,
         TYPE,
-        
+
         EXPR,
         STMT,
         BLOCK,
-        
+
         META,
         ITEM,
     } m_type;
-    
+
     // Owned type-pruned pointer
     void*   m_ptr;
-    
+
     InterpolatedFragment(InterpolatedFragment&& );
     InterpolatedFragment& operator=(InterpolatedFragment&& );
     //InterpolatedFragment(const InterpolatedFragment& );
@@ -48,9 +48,9 @@ public:
     InterpolatedFragment(::AST::Named<AST::Item> );
     ~InterpolatedFragment();
     InterpolatedFragment(Type , ::AST::ExprNode*);
-    
+
     TokenTree& as_tt() { assert(m_type == TT); return *reinterpret_cast<TokenTree*>(m_ptr); }
     const TokenTree& as_tt() const { assert(m_type == TT); return *reinterpret_cast<TokenTree*>(m_ptr); }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const InterpolatedFragment& x);
 };

@@ -3,18 +3,18 @@ namespace typeck {
     struct ModuleState
     {
         ::HIR::Crate& m_crate;
-        
+
         ::HIR::GenericParams*   m_impl_generics;
         ::HIR::GenericParams*   m_item_generics;
-        
+
         ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   m_traits;
-        
+
         ModuleState(::HIR::Crate& crate):
             m_crate(crate),
             m_impl_generics(nullptr),
             m_item_generics(nullptr)
         {}
-    
+
         template<typename T>
         class NullOnDrop {
             T*& ptr;
@@ -36,7 +36,7 @@ namespace typeck {
             m_item_generics = &gps;
             return NullOnDrop< ::HIR::GenericParams>(m_item_generics);
         }
-        
+
         void push_traits(const ::HIR::Module& mod) {
             auto sp = Span();
             DEBUG("Module has " << mod.m_traits.size() << " in-scope traits");

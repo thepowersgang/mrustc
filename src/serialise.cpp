@@ -146,13 +146,13 @@ size_t Deserialiser_TextTree::start_array()
     char c = getc();
     if( c != '[' )
         throw DeserialiseFailure("start_array", "no [");
-    
+
     eat_ws();
     if( peekc() == ']' ) {
         DEBUG("len = 0");
         return 0;
     }
-    
+
     size_t len;
     m_is >> len;
     if( !m_is.good() )
@@ -218,13 +218,13 @@ void Deserialiser_TextTree::item(double& v)
 void Deserialiser_TextTree::item(::std::string& s)
 {
     eat_ws();
-    
+
     ::std::string   rv;
     char c = getc();
     DEBUG("c = '"<<c<<"'");
     if( c != '"' )
         throw DeserialiseFailure("item(::std::string)", "no open \"");
-    
+
     while(peekc() != '"')
     {
         char c = getc();
@@ -233,7 +233,7 @@ void Deserialiser_TextTree::item(::std::string& s)
         rv.push_back(c);
     }
     getc(); // eat "
-    
+
     DEBUG("rv = '"<<rv<<"'");
     s = rv;
 }

@@ -25,9 +25,9 @@ public:
         m_ptr = x.m_ptr; x.m_ptr = nullptr;
         return *this;
     }
-    
+
     ~MacroRulesPtr();
-    
+
     const MacroRules& operator*() const { assert(m_ptr); return *m_ptr; }
           MacroRules& operator*()       { assert(m_ptr); return *m_ptr; }
     const MacroRules* operator->() const { assert(m_ptr); return m_ptr; }

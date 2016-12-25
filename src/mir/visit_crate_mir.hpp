@@ -24,9 +24,9 @@ public:
         m_resolve(crate),
         m_cb(cb)
     {}
-    
+
     void visit_expr(::HIR::ExprPtr& exp) override;
-    
+
     void visit_type(::HIR::TypeRef& ty) override;
 
     // ------
@@ -36,7 +36,7 @@ public:
     void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override;
     void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override;
     void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override;
-    
+
     // Boilerplate
     void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override;
     void visit_type_impl(::HIR::TypeImpl& impl) override;

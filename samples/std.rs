@@ -53,7 +53,7 @@ pub mod io
     {
         EndOfFile,
     }
-    
+
     pub trait Reader
     {
         fn read_byte(&mut self) -> IoResult<u8>;

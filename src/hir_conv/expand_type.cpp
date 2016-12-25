@@ -10,7 +10,7 @@
 ::HIR::TypeRef ConvertHIR_ExpandAliases_GetExpansion_GP(const Span& sp, const ::HIR::Crate& crate, const ::HIR::GenericPath& path, bool is_expr)
 {
     ::HIR::TypeRef  empty_type;
-    
+
     const auto& ti = crate.get_typeitem_by_path(sp, path.m_path);
     TU_MATCH_DEF( ::HIR::TypeItem, (ti), (e2),
     (
@@ -79,11 +79,11 @@ public:
     Expander(const ::HIR::Crate& crate):
         m_crate(crate)
     {}
-    
+
     void visit_type(::HIR::TypeRef& ty) override
     {
         ::HIR::Visitor::visit_type(ty);
-        
+
         TU_IFLET(::HIR::TypeRef::Data, (ty.m_data), Path, (e),
             ::HIR::TypeRef  new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path, m_in_expr);
             // Keep trying to expand down the chain
@@ -110,15 +110,15 @@ public:
             }
         )
     }
-    
-    
+
+
     ::HIR::GenericPath expand_alias_gp(const Span& sp, const ::HIR::GenericPath& path)
     {
         const unsigned int MAX_RECURSIVE_TYPE_EXPANSIONS = 100;
-        
+
         ::HIR::GenericPath  rv;
         const auto* cur = &path;
-        
+
         unsigned int num_exp = 0;
         do {
             auto ty = ConvertHIR_ExpandAliases_GetExpansion_GP(sp, m_crate, *cur, m_in_expr);
@@ -130,20 +130,20 @@ public:
             if( !ty_p.m_data.is_Generic() )
                 ERROR(sp, E0000, "Type alias referenced in generic path doesn't point to a generic path");
             rv = mv$( ty_p.m_data.as_Generic() );
-            
+
             this->visit_generic_path(rv, ::HIR::Visitor::PathContext::TYPE);
-            
+
             cur = &rv;
         } while( ++num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS );
         ASSERT_BUG(sp, num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS, "Recursion limit expanding " << path << " (currently on " << *cur << ")");
         return rv;
     }
-    
+
     void visit_pattern(::HIR::Pattern& pat) override
     {
         static Span sp;
         ::HIR::Visitor::visit_pattern(pat);
-        
+
         TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (e),
         (
             ),
@@ -173,18 +173,18 @@ public:
             )
         )
     }
-    
+
     void visit_expr(::HIR::ExprPtr& expr) override
     {
         struct Visitor:
             public ::HIR::ExprVisitorDef
         {
             Expander& upper_visitor;
-            
+
             Visitor(Expander& uv):
                 upper_visitor(uv)
             {}
-            
+
             // TODO: Use the other visitors.
             void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& p)
             {
@@ -194,7 +194,7 @@ public:
             {
                 upper_visitor.visit_generic_path(p, pc);
             }
-            
+
             void visit(::HIR::ExprNode_Let& node) override
             {
                 upper_visitor.visit_type(node.m_type);
@@ -206,7 +206,7 @@ public:
                 upper_visitor.visit_type(node.m_res_type);
                 ::HIR::ExprVisitorDef::visit(node);
             }
-            
+
             void visit(::HIR::ExprNode_CallPath& node) override
             {
                 upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
@@ -217,7 +217,7 @@ public:
                 upper_visitor.visit_path_params(node.m_params);
                 ::HIR::ExprVisitorDef::visit(node);
             }
-            
+
             void visit(::HIR::ExprNode_Closure& node) override
             {
                 upper_visitor.visit_type(node.m_return);
@@ -227,7 +227,7 @@ public:
                 }
                 ::HIR::ExprVisitorDef::visit(node);
             }
-            
+
             void visit(::HIR::ExprNode_StructLiteral& node) override
             {
                 if( node.m_is_struct )
@@ -239,10 +239,10 @@ public:
                         node.m_path = mv$(new_path);
                     }
                 }
-                
+
                 ::HIR::ExprVisitorDef::visit(node);
             }
-            
+
             void visit(::HIR::ExprNode_Match& node) override
             {
                 for(auto& arm : node.m_arms) {
@@ -253,15 +253,15 @@ public:
                 ::HIR::ExprVisitorDef::visit(node);
             }
         };
-        
+
         if( expr.get() != nullptr )
         {
             auto old = m_in_expr;
             m_in_expr = true;
-            
+
             Visitor v { *this };
             (*expr).visit(v);
-            
+
             m_in_expr = old;
         }
     }

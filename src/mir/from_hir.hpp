@@ -16,10 +16,10 @@ class MirBuilder;
 class ScopeHandle
 {
     friend class MirBuilder;
-    
+
     const MirBuilder& m_builder;
     unsigned int    idx;
-    
+
     ScopeHandle(const MirBuilder& builder, unsigned int idx):
         m_builder(builder),
         idx(idx)
@@ -43,11 +43,11 @@ enum class VarState {
     Uninit, // No value assigned yet
     Moved,  // Definitely moved
     Dropped,    // Dropped (out of scope)
-    
+
     InnerMoved, // The inner has been moved, but the container needs to be dropped
     //MaybeMovedInner,  // Inner possibly has been moved
     MaybeMoved, // Possibly has been moved
-    
+
     Init,   // Initialised and valid at this point
 };
 extern ::std::ostream& operator<<(::std::ostream& os, VarState x);
@@ -57,7 +57,7 @@ struct SplitArm {
     bool    always_early_terminated = false;    // Populated on completion
     ::std::vector<bool> changed_var_states; // Indexed by binding bumber
     ::std::vector<VarState> var_states;
-    
+
     ::std::vector<bool> changed_tmp_states;
     ::std::vector<VarState> tmp_states;
 };
@@ -80,31 +80,31 @@ TAGGED_UNION(ScopeType, Variables,
 class MirBuilder
 {
     friend class ScopeHandle;
-    
+
     const Span& m_root_span;
     const StaticTraitResolve& m_resolve;
     const ::HIR::Function::args_t&  m_args;
     ::MIR::Function&    m_output;
-    
+
     const ::HIR::SimplePath*    m_lang_Box;
-    
+
     unsigned int    m_current_block;
     bool    m_block_active;
-    
+
     ::MIR::RValue   m_result;
     bool    m_result_valid;
-    
+
     // TODO: Extra information.
     //::std::vector<VarState>   m_arg_states;
     ::std::vector<VarState> m_variable_states;
     ::std::vector<VarState> m_temporary_states;
-    
+
     struct ScopeDef
     {
         const Span& span;
         bool complete = false;
         ScopeType   data;
-        
+
         ScopeDef(const Span& span):
             span(span)
         {
@@ -115,27 +115,27 @@ class MirBuilder
         {
         }
     };
-    
+
     ::std::vector<ScopeDef> m_scopes;
     ::std::vector<unsigned int> m_scope_stack;
     ScopeHandle m_fcn_scope;
 public:
     MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, ::MIR::Function& output);
     ~MirBuilder();
-    
+
     const ::HIR::SimplePath* lang_Box() const { return m_lang_Box; }
     const ::HIR::Crate& crate() const { return m_resolve.m_crate; }
     const StaticTraitResolve& resolve() const { return m_resolve; }
-    
+
     //::HIR::TypeRef* is_type_owned_box(::HIR::TypeRef& ty) const {
     //}
     /// Check if the passed type is Box<T> and returns a pointer to the T type if so, otherwise nullptr
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
-    
+
     // - Values
     ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty);
     ::MIR::LValue lvalue_or_temp(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::RValue val);
-    
+
     bool has_result() const {
         return m_result_valid;
     }
@@ -145,7 +145,7 @@ public:
     ::MIR::LValue get_result_unwrap_lvalue(const Span& sp);
     /// Obtains the result, copying into a temporary if required
     ::MIR::LValue get_result_in_lvalue(const Span& sp, const ::HIR::TypeRef& ty);
-    
+
     // - Statements
     // Push an assignment. NOTE: This also marks the rvalue as moved
     void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val);
@@ -153,26 +153,26 @@ public:
     void push_stmt_drop(const Span& sp, ::MIR::LValue val);
     // Push a shallow drop (for Box)
     void push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val);
-    
+
     // - Block management
     bool block_active() const {
         return m_block_active;
     }
-    
+
     // Mark a value as initialised (used for Call, because it has to be done after the panic block is populated)
     void mark_value_assigned(const Span& sp, const ::MIR::LValue& val);
-    
+
     // Moves control of temporaries up to the next scope
     void raise_variables(const Span& sp, const ::MIR::LValue& val);
     void raise_variables(const Span& sp, const ::MIR::RValue& rval);
-    
+
     void set_cur_block(unsigned int new_block);
     ::MIR::BasicBlockId pause_cur_block();
     void end_block(::MIR::Terminator term);
-    
+
     ::MIR::BasicBlockId new_bb_linked();
     ::MIR::BasicBlockId new_bb_unlinked();
-    
+
     // --- Scopes ---
     ScopeHandle new_scope_var(const Span& sp);
     ScopeHandle new_scope_temp(const Span& sp);
@@ -182,7 +182,7 @@ public:
     void terminate_scope_early(const Span& sp, const ScopeHandle& );
     void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable);
     void end_split_arm_early(const Span& sp);
-    
+
     const ScopeHandle& fcn_scope() const {
         return m_fcn_scope;
     }
@@ -196,10 +196,10 @@ private:
     void set_variable_state(const Span& sp, unsigned int idx, VarState state);
     VarState get_temp_state(const Span& sp, unsigned int idx) const;
     void set_temp_state(const Span& sp, unsigned int idx, VarState state);
-    
+
     void drop_scope_values(const ScopeDef& sd);
     void complete_scope(ScopeDef& sd);
-    
+
 public:
     void with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb) const;
     bool lvalue_is_copy(const Span& sp, const ::MIR::LValue& lv) const;

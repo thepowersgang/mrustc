@@ -32,7 +32,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     auto ps = lex.start_span();
 
     Token tok;
-    
+
     switch( GET_TOK(tok, lex) )
     {
     case TOK_INTERPOLATED_TYPE:
@@ -45,7 +45,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     // '_' = Wildcard (type inferrence variable)
     case TOK_UNDERSCORE:
         return TypeRef(Span(tok.get_pos()));
-    
+
     // 'unsafe' - An unsafe function type
     case TOK_RWORD_UNSAFE:
     // 'extern' - A function type with an ABI
@@ -54,10 +54,10 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_RWORD_FN:
         PUTBACK(tok, lex);
         return Parse_Type_Fn(lex);
-    
+
     case TOK_RWORD_IMPL:
         return Parse_Type_ErasedType(lex, allow_trait_list);
-    
+
     // '<' - An associated type cast
     case TOK_LT:
     case TOK_DOUBLE_LT: {
@@ -65,7 +65,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         auto path = Parse_Path(lex, PATH_GENERIC_TYPE);
         return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(path));
         }
-    // 
+    //
     case TOK_RWORD_FOR: {
         auto hrls = Parse_HRB(lex);
         switch(LOOK_AHEAD(lex))
@@ -156,14 +156,14 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
             throw ParseError::Unexpected(lex, tok/*, "; or ]"*/);
         }
         }
-    
+
     // '(' - Tuple (or lifetime bounded trait)
     case TOK_PAREN_OPEN: {
         DEBUG("Tuple");
         if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
             return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), {});
         PUTBACK(tok, lex);
-        
+
         TypeRef inner = Parse_Type(lex, true);
         if( LOOK_AHEAD(lex) == TOK_PAREN_CLOSE )
         {
@@ -198,12 +198,12 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     // TODO: HRLs
     TRACE_FUNCTION;
     Token   tok;
-    
+
     ::std::string   abi = "";
     bool    is_unsafe = false;
-    
+
     GET_TOK(tok, lex);
-    
+
     if( tok.type() == TOK_RWORD_UNSAFE )
     {
         is_unsafe = true;
@@ -231,7 +231,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
         if( LOOK_AHEAD(lex) == TOK_TRIPLE_DOT ) {
             GET_TOK(tok, lex);
             is_variadic = true;
-            break; 
+            break;
         }
         // Handle `ident: `
         if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_COLON ) {
@@ -245,7 +245,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
         }
     }
     GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
-    
+
     TypeRef ret_type = TypeRef(TypeRef::TagUnit(), Span(tok.get_pos()));
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
@@ -254,7 +254,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     else {
         PUTBACK(tok, lex);
     }
-    
+
     return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
 }
 
@@ -263,7 +263,7 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls, boo
     Token   tok;
 
     auto ps = lex.start_span();
-    
+
     if( ! allow_trait_list )
     {
         return TypeRef(TypeRef::TagPath(), lex.end_span(ps), Parse_Path(lex, PATH_GENERIC_TYPE));
@@ -307,7 +307,7 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
             traits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
     } while( GET_TOK(tok, lex) == TOK_PLUS );
     PUTBACK(tok, lex);
-    
+
     if( lifetimes.size() )
         DEBUG("TODO: Lifetime bounds on erased types");
     return TypeRef(lex.end_span(ps), TypeData::make_ErasedType({ {}, mv$(traits) }));

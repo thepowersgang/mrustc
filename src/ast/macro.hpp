@@ -11,7 +11,7 @@ namespace AST {
 class MacroInvocation
 {
     Span    m_span;
-    
+
     ::std::string   m_macro_name;
     ::std::string   m_ident;
     TokenTree   m_input;
@@ -20,11 +20,11 @@ public:
     MacroInvocation& operator=(MacroInvocation&&) = default;
     MacroInvocation(const MacroInvocation&) = delete;
     MacroInvocation& operator=(const MacroInvocation&) = delete;
-    
+
     MacroInvocation()
     {
     }
-    
+
     MacroInvocation(Span span, ::std::string macro, ::std::string ident, TokenTree input):
         m_span( mv$(span) ),
         m_macro_name( mv$(macro) ),
@@ -32,7 +32,7 @@ public:
         m_input( mv$(input) )
     {
     }
-    
+
     MacroInvocation clone() const;
 
     void clear() {

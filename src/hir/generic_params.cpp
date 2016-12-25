@@ -21,7 +21,7 @@ namespace HIR {
         )
         return os;
     }
-    
+
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::GenericParams::PrintArgs& x)
     {
         if( x.gp.m_lifetimes.size() > 0 || x.gp.m_types.size() > 0 )

@@ -23,7 +23,7 @@ public:
         RcString(s.data(), s.size())
     {
     }
-    
+
     RcString(const RcString& x):
         m_ptr(x.m_ptr),
         m_len(x.m_len)
@@ -37,9 +37,9 @@ public:
         x.m_ptr = nullptr;
         x.m_len = 0;
     }
-    
+
     ~RcString();
-    
+
     RcString& operator=(const RcString& x)
     {
         if( &x != this )
@@ -63,8 +63,8 @@ public:
         }
         return *this;
     }
-    
-    
+
+
     const char* c_str() const {
         if( m_len > 0 )
         {

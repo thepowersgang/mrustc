@@ -54,9 +54,9 @@ struct StructItem
     bool    m_is_public;
     ::std::string   m_name;
     TypeRef m_type;
-    
+
     //StructItem() {}
-    
+
     StructItem(::AST::MetaItems attrs, bool is_pub, ::std::string name, TypeRef ty):
         m_attrs( mv$(attrs) ),
         m_is_public(is_pub),
@@ -64,11 +64,11 @@ struct StructItem
         m_type( mv$(ty) )
     {
     }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const StructItem& x) {
         return os << (x.m_is_public ? "pub " : "") << x.m_name << ": " << x.m_type;
     }
-    
+
     StructItem clone() const;
 };
 
@@ -77,20 +77,20 @@ struct TupleItem
     ::AST::MetaItems    m_attrs;
     bool    m_is_public;
     TypeRef m_type;
-    
+
     //TupleItem() {}
-    
+
     TupleItem(::AST::MetaItems attrs, bool is_pub, TypeRef ty):
         m_attrs( mv$(attrs) ),
         m_is_public(is_pub),
         m_type( mv$(ty) )
     {
     }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const TupleItem& x) {
         return os << (x.m_is_public ? "pub " : "") << x.m_type;
     }
-    
+
     TupleItem clone() const;
 };
 
@@ -104,13 +104,13 @@ public:
         m_params( move(params) ),
         m_type( move(type) )
     {}
-    
+
     const GenericParams& params() const { return m_params; }
     const TypeRef& type() const { return m_type; }
-    
+
     GenericParams& params() { return m_params; }
     TypeRef& type() { return m_type; }
-    
+
     TypeAlias clone() const;
 };
 
@@ -136,14 +136,14 @@ public:
         m_type( move(type) ),
         m_value( move(value) )
     {}
-   
-    const Class& s_class() const { return m_class; } 
+
+    const Class& s_class() const { return m_class; }
     const TypeRef& type() const { return m_type; }
     const Expr& value() const { return m_value; }
-    
+
     TypeRef& type() { return m_type; }
     Expr& value() { return m_value; }
-    
+
     Static clone() const;
 };
 
@@ -159,7 +159,7 @@ private:
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
-    
+
     // TODO: ABI, const, and unsafe
     ::std::string   m_abi;
     bool    m_is_const;
@@ -170,17 +170,17 @@ public:
     Function& operator=(const Function&) = delete;
     Function(Function&&) = default;
     Function& operator=(Function&&) = default;
-    
+
     //Function() {}
     Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args);
-    
+
     void set_code(Expr code) { m_code = ::std::move(code); }
-    
+
     const ::std::string& abi() const { return m_abi; };
     bool is_const() const { return m_is_const; }
     bool is_unsafe() const { return m_is_unsafe; }
     bool is_variadic() const { return m_is_variadic; }
-    
+
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
     const Expr& code() const { return m_code; }
@@ -189,7 +189,7 @@ public:
           TypeRef& rettype()       { return m_rettype; }
     const Arglist& args() const { return m_args; }
           Arglist& args()       { return m_args; }
-    
+
     Function clone() const;
 };
 
@@ -197,7 +197,7 @@ class Trait
 {
     GenericParams  m_params;
     ::std::vector< Spanned<AST::Path> > m_supertraits;
-    
+
     bool m_is_marker;
     NamedList<Item> m_items;
 public:
@@ -210,24 +210,24 @@ public:
         m_is_marker(false)
     {
     }
-    
+
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
     const ::std::vector<Spanned<Path> >& supertraits() const { return m_supertraits; }
           ::std::vector<Spanned<Path> >& supertraits()       { return m_supertraits; }
-    
+
     const NamedList<Item>& items() const { return m_items; }
           NamedList<Item>& items()       { return m_items; }
-    
+
     void add_type(::std::string name, TypeRef type);
     void add_function(::std::string name, Function fcn);
     void add_static(::std::string name, Static v);
-    
+
     void set_is_marker();
     bool is_marker() const;
-    
+
     bool has_named_item(const ::std::string& name, bool& out_is_fcn) const;
-    
+
     Trait clone() const;
 };
 
@@ -254,32 +254,32 @@ struct EnumVariant
     MetaItems   m_attrs;
     ::std::string   m_name;
     EnumVariantData m_data;
-    
+
     EnumVariant()
     {
     }
-    
+
     EnumVariant(MetaItems attrs, ::std::string name, Expr&& value):
         m_attrs( mv$(attrs) ),
         m_name( mv$(name) ),
         m_data( EnumVariantData::make_Value({mv$(value)}) )
     {
     }
-    
+
     EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<TypeRef> sub_types):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
         m_data( EnumVariantData::make_Tuple( {mv$(sub_types)} ) )
     {
     }
-    
+
     EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<StructItem> fields):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
         m_data( EnumVariantData::make_Struct( {mv$(fields)} ) )
     {
     }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const EnumVariant& x)
     {
         os << "EnumVariant(" << x.m_name;
@@ -308,12 +308,12 @@ public:
         m_params( move(params) ),
         m_variants( move(variants) )
     {}
-    
+
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
     const ::std::vector<EnumVariant>& variants() const { return m_variants; }
           ::std::vector<EnumVariant>& variants()       { return m_variants; }
-    
+
     Enum clone() const;
 };
 
@@ -337,7 +337,7 @@ class Struct
     GenericParams    m_params;
 public:
     StructData  m_data;
-    
+
     Struct() {}
     Struct( GenericParams params, ::std::vector<StructItem> fields ):
         m_params( move(params) ),
@@ -347,10 +347,10 @@ public:
         m_params( move(params) ),
         m_data( StructData::make_Tuple({mv$(fields)}) )
     {}
-    
+
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
-    
+
     Struct clone() const;
 };
 
@@ -359,12 +359,12 @@ class Union
 public:
     GenericParams   m_params;
     ::std::vector<StructItem>   m_variants;
-    
+
     Union( GenericParams params, ::std::vector<StructItem> fields ):
         m_params( move(params) ),
         m_variants( mv$(fields) )
     {}
-    
+
     Union clone() const;
 };
 
@@ -386,12 +386,12 @@ public:
         m_type( mv$(impl_type) )
     {}
     ImplDef& operator=(ImplDef&&) = default;
-    
+
     // Accessors
     const Span& span() const { return m_span; }
     const MetaItems& attrs() const { return m_attrs; }
           MetaItems& attrs()       { return m_attrs; }
-    
+
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
     const Spanned<Path>& trait() const { return m_trait; }
@@ -399,7 +399,7 @@ public:
     const TypeRef& type() const { return m_type; }
           TypeRef& type()       { return m_type; }
 
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const ImplDef& impl);
 };
 
@@ -410,19 +410,19 @@ public:
         bool    is_pub; // Ignored for trait impls
         bool    is_specialisable;
         ::std::string   name;
-        
+
         ::std::unique_ptr<Item> data;
     };
 
 private:
     ImplDef m_def;
     Span    m_span;
-    
+
     ::std::vector< ImplItem >   m_items;
     //NamedList<TypeRef>   m_types;
     //NamedList<Function>  m_functions;
     //NamedList<Static>    m_statics;
-    
+
 public:
     //Impl() {}
     Impl(Impl&&) /*noexcept*/ = default;
@@ -435,16 +435,16 @@ public:
     void add_type(bool is_public, bool is_specialisable, ::std::string name, TypeRef type);
     void add_static(bool is_public, bool is_specialisable, ::std::string name, Static v);
     void add_macro_invocation( MacroInvocation inv );
-    
+
     const ImplDef& def() const { return m_def; }
           ImplDef& def()       { return m_def; }
     const ::std::vector<ImplItem>& items() const { return m_items; }
           ::std::vector<ImplItem>& items()       { return m_items; }
-    
+
     bool has_named_item(const ::std::string& name) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Impl& impl);
-    
+
 private:
 };
 
@@ -453,7 +453,7 @@ struct UseStmt
     Span    sp;
     ::AST::Path path;
     ::AST::PathBinding  alt_binding;
-    
+
     UseStmt()
     {}
     UseStmt(Span sp, Path p):
@@ -461,9 +461,9 @@ struct UseStmt
         path(p)
     {
     }
-    
+
     UseStmt clone() const;
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x);
 };
 
@@ -475,15 +475,15 @@ public:
     ExternBlock(::std::string abi):
         m_abi( mv$(abi) )
     {}
-    
+
     const ::std::string& abi() const { return m_abi; }
-    
+
     void add_item(Named<Item> named_item);
-    
+
     // NOTE: Only Function and Static are valid.
           ::std::vector<Named<Item>>& items()       { return m_items; }
     const ::std::vector<Named<Item>>& items() const { return m_items; }
-    
+
     ExternBlock clone() const;
 };
 
@@ -508,9 +508,9 @@ public:
         bool    controls_dir = false;
         ::std::string   path = "!";
     };
-    
+
     FileInfo    m_file_info;
-    
+
     bool    m_insert_prelude = true;    // Set to false by `#[no_prelude]` handler
     char    m_index_populated = 0;  // 0 = no, 1 = partial, 2 = complete
     struct IndexEnt {
@@ -518,7 +518,7 @@ public:
         bool is_import; // Set if this item has a path that isn't `mod->path() + name`
         ::AST::Path path;
     };
-    
+
     // TODO: Document difference between namespace and Type
     ::std::unordered_map< ::std::string, IndexEnt >    m_namespace_items;
     ::std::unordered_map< ::std::string, IndexEnt >    m_type_items;
@@ -530,33 +530,33 @@ public:
         m_my_path( mv$(path) )
     {
     }
-    
+
     bool is_anon() const {
         return m_my_path.nodes().size() > 0 && m_my_path.nodes().back().name()[0] == '#';
     }
-    
+
     /// Create an anon module (for use inside expressions)
     ::std::shared_ptr<AST::Module> add_anon();
-    
+
     void add_item(Named<Item> item);
     void add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs);
     void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs);
     void add_alias(bool is_public, UseStmt path, ::std::string name, MetaItems attrs);
     void add_macro_invocation(MacroInvocation item);
-    
+
     void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
     void add_macro_import(::std::string name, const MacroRules& mr);
-    
-    
+
+
 
     const ::AST::Path& path() const { return m_my_path; }
 
           ::std::vector<Named<Item>>& items()       { return m_items; }
     const ::std::vector<Named<Item>>& items() const { return m_items; }
-    
+
           ::std::vector< ::std::shared_ptr<Module> >&   anon_mods()       { return m_anon_modules; }
     const ::std::vector< ::std::shared_ptr<Module> >&   anon_mods() const { return m_anon_modules; }
-    
+
 
           NamedList<MacroRulesPtr>&    macros()        { return m_macros; }
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
@@ -571,33 +571,33 @@ TAGGED_UNION_EX(Item, (), None,
     (None, struct {} ),
     (MacroInv, MacroInvocation),
     (Use, UseStmt),
-    
+
     // Nameless items
     (ExternBlock, ExternBlock),
     (Impl, Impl),
     (NegImpl, ImplDef),
-    
+
     (Module, Module),
     (Crate, struct {
         ::std::string   name;
         }),
-    
+
     (Type, TypeAlias),
     (Struct, Struct),
     (Enum, Enum),
     (Union, Union),
     (Trait, Trait),
-    
+
     (Function, Function),
     (Static, Static)
     ),
-    
+
     (, attrs(mv$(x.attrs))), (attrs = mv$(x.attrs);),
     (
     public:
         MetaItems   attrs;
         Span    span;
-        
+
         Item clone() const;
     )
     );
@@ -607,12 +607,12 @@ struct ImplRef
 {
     const Impl& impl;
     ::std::vector<TypeRef>  params;
-    
+
     ImplRef(const Impl& impl, ::std::vector<TypeRef> params):
         impl(impl),
         params( mv$(params) )
     {}
-    
+
     ::rust::option<char> find_named_item(const ::std::string& name) const;
 };
 

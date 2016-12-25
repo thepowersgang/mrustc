@@ -72,7 +72,7 @@ struct SimplePath
     }
 
     SimplePath clone() const;
-    
+
     SimplePath operator+(const ::std::string& s) const;
     bool operator==(const SimplePath& x) const {
         return m_crate_name == x.m_crate_name && m_components == x.m_components;
@@ -98,7 +98,7 @@ struct SimplePath
 struct PathParams
 {
     ::std::vector<TypeRef>  m_types;
-    
+
     PathParams();
     PathParams(::HIR::TypeRef );
     PathParams clone() const;
@@ -106,10 +106,10 @@ struct PathParams
     PathParams& operator=(const PathParams&) = delete;
     PathParams(PathParams&&) = default;
     PathParams& operator=(PathParams&&) = default;
-    
+
     Compare compare_with_placeholders(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder) const;
     Compare match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
-    
+
     bool operator==(const PathParams& x) const;
     bool operator!=(const PathParams& x) const { return !(*this == x); }
     bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }
@@ -130,14 +130,14 @@ public:
     GenericPath();
     GenericPath(::HIR::SimplePath sp);
     GenericPath(::HIR::SimplePath sp, ::HIR::PathParams params);
-    
+
     GenericPath clone() const;
     Compare compare_with_placeholders(const Span& sp, const GenericPath& x, t_cb_resolve_type resolve_placeholder) const;
-    
+
     bool operator==(const GenericPath& x) const;
     bool operator!=(const GenericPath& x) const { return !(*this == x); }
     bool operator<(const GenericPath& x) const { return ord(x) == OrdLess; }
-    
+
     Ordering ord(const GenericPath& x) const {
         auto rv = ::ord(m_path, x.m_path);
         if(rv != OrdEqual)  return rv;
@@ -154,21 +154,21 @@ public:
     ::std::vector< ::std::string>   m_hrls;
     // TODO: Each bound should list its origin trait
     ::std::map< ::std::string, ::HIR::TypeRef>    m_type_bounds;
-    
+
     const ::HIR::Trait* m_trait_ptr;
-    
+
     TraitPath clone() const;
     Compare compare_with_placeholders(const Span& sp, const TraitPath& x, t_cb_resolve_type resolve_placeholder) const;
-    
+
     bool operator==(const TraitPath& x) const;
     bool operator!=(const TraitPath& x) const { return !(*this == x); }
-    
+
     Ordering ord(const TraitPath& x) const {
         ORD(m_path, x.m_path);
         ORD(m_hrls, x.m_hrls);
         return ::ord(m_type_bounds, x.m_type_bounds);
     }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const TraitPath& x);
 };
 
@@ -207,19 +207,19 @@ public:
     {}
     Path(GenericPath _);
     Path(SimplePath _);
-    
+
     Path(TypeRef ty, ::std::string item, PathParams item_params=PathParams());
     Path(TypeRef ty, GenericPath trait, ::std::string item, PathParams item_params=PathParams());
-    
+
     Path clone() const;
     Compare compare_with_placeholders(const Span& sp, const Path& x, t_cb_resolve_type resolve_placeholder) const;
-    
+
     Ordering ord(const Path& x) const;
-    
+
     bool operator==(const Path& x) const;
     bool operator!=(const Path& x) const { return !(*this == x); }
     bool operator<(const Path& x) const { return ord(x) == OrdLess; }
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);
 };
 

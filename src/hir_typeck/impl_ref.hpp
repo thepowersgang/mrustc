@@ -29,9 +29,9 @@ struct ImplRef
         ::std::map< ::std::string, ::HIR::TypeRef>    assoc;
         })
     );
-    
+
     Data    m_data;
-    
+
     ImplRef():
         m_data(Data::make_TraitImpl({ {}, {}, nullptr, nullptr }))
     {}
@@ -45,13 +45,13 @@ struct ImplRef
     ImplRef(::HIR::TypeRef type, ::HIR::PathParams args, ::std::map< ::std::string, ::HIR::TypeRef> assoc):
         m_data(Data::make_Bounded({ mv$(type), mv$(args), mv$(assoc) }))
     {}
-    
+
     bool is_valid() const {
         return !(m_data.is_TraitImpl() && m_data.as_TraitImpl().impl == nullptr);
     }
-    
+
     bool more_specific_than(const ImplRef& other) const;
-    
+
     bool has_magic_params() const {
         TU_IFLET(Data, m_data, TraitImpl, e,
             for(const auto& t : e.params_ph)
@@ -60,17 +60,17 @@ struct ImplRef
         )
         return false;
     }
-    
+
     /// HELPER: Returns callback to monomorphise a type using parameters from Data::TraitImpl
     ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> get_cb_monomorph_traitimpl(const Span& sp) const;
-    
+
     ::HIR::TypeRef get_impl_type() const;
     ::HIR::PathParams get_trait_params() const;
-    
+
     ::HIR::TypeRef get_trait_ty_param(unsigned int) const;
-    
+
     bool type_is_specialisable(const char* name) const;
     ::HIR::TypeRef get_type(const char* name) const;
-    
+
     friend ::std::ostream& operator<<(::std::ostream& os, const ImplRef& x);
 };

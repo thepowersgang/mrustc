@@ -23,7 +23,7 @@ namespace {
             Slice,
             TraitObject,
         };
-        
+
         const ::HIR::Crate& m_crate;
         ::StaticTraitResolve    m_resolve;
         ::std::ofstream m_of;
@@ -55,7 +55,7 @@ namespace {
                 << "\n"
                 ;
         }
-        
+
         ~CodeGenerator_C() {}
 
         void finalise() override
@@ -67,7 +67,7 @@ namespace {
                     << ");\n"
                 << "}\n";
         }
-        
+
         void emit_type(const ::HIR::TypeRef& ty) override
         {
             TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, te,
@@ -109,10 +109,10 @@ namespace {
             )
             else {
             }
-            
+
             m_of << "tTYPEID __typeid_" << Trans_Mangle(ty) << ";\n";
         }
-        
+
         void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
         {
             ::HIR::TypeRef  tmp;
@@ -179,25 +179,25 @@ namespace {
                 m_of << "\treturn rv;\n";
                 m_of << "}\n";
             )
-            
+
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
             m_mir_res = &mir_res;
             // - Drop Glue
-            
+
             if( item.m_markings.has_drop_impl ) {
                 m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
             }
-           
+
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
-            
+
             // If this type has an impl of Drop, call that impl
             if( item.m_markings.has_drop_impl ) {
                 m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
             }
-            
+
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
             TU_MATCHA( (item.m_data), (e),
@@ -208,7 +208,7 @@ namespace {
                 {
                     const auto& fld = e[i];
                     fld_lv.as_Field().field_index = i;
-                    
+
                     emit_destructor_call(fld_lv, monomorph(fld.ent), true);
                 }
                 ),
@@ -217,7 +217,7 @@ namespace {
                 {
                     const auto& fld = e[i].second;
                     fld_lv.as_Field().field_index = i;
-                    
+
                     emit_destructor_call(fld_lv, monomorph(fld.ent), true);
                 }
                 )
@@ -277,9 +277,9 @@ namespace {
             }
             m_of << "\t} DATA;\n";
             m_of << "};\n";
-            
+
             // TODO: Constructors for tuple variants
-            
+
             // ---
             // - Drop Glue
             // ---
@@ -288,24 +288,24 @@ namespace {
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
             m_mir_res = &mir_res;
-            
-            
+
+
             if( item.m_markings.has_drop_impl )
             {
                 m_of << "void " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
             }
-           
+
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
-            
+
             // If this type has an impl of Drop, call that impl
             if( item.m_markings.has_drop_impl )
             {
                 m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
             }
-            
+
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Downcast({ box$(self), 0 })), 0 });
-            
+
             m_of << "\tswitch(rv->TAG) {\n";
             for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
             {
@@ -323,7 +323,7 @@ namespace {
                     {
                         fld_lv.as_Field().field_index = i;
                         const auto& fld = e[i];
-                        
+
                         emit_destructor_call(fld_lv, monomorph(fld.ent), false);
                     }
                     m_of << "\tbreak;\n";
@@ -343,7 +343,7 @@ namespace {
             m_of << "\t}\n";
             m_of << "}\n";
         }
-        
+
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
             TRACE_FUNCTION_F(p);
@@ -357,7 +357,7 @@ namespace {
         void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
             TRACE_FUNCTION_F(p);
-            
+
             auto type = params.monomorph(m_crate, item.m_type);
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
             m_of << " = ";
@@ -481,13 +481,13 @@ namespace {
                 )
             )
         }
-        
+
         void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
         {
             static Span sp;
             const auto& trait_path = p.m_data.as_UfcsKnown().trait;
             const auto& type = *p.m_data.as_UfcsKnown().type;
-            
+
             {
                 auto vtable_sp = trait_path.m_path;
                 vtable_sp.m_components.back() += "#vtable";
@@ -499,13 +499,13 @@ namespace {
                 }
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
                 ::HIR::TypeRef  vtable_ty( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
-                
+
                 emit_ctype(vtable_ty);
                 m_of << " " << Trans_Mangle(p) << " = {\n";
             }
 
             auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
-            
+
             // TODO: Alignment and destructor
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
@@ -515,10 +515,10 @@ namespace {
                 {
                     if( m.second.first != i )
                         continue ;
-                    
+
                     //ASSERT_BUG(sp, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
                     DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
-                    
+
                     auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
                     // NOTE: `void*` cast avoids mismatched pointer type errors due to the receiver being &mut()/&() in the vtable
                     m_of << "\t(void*)" << Trans_Mangle( ::HIR::Path(type.clone(), mv$(gpath), m.first) );
@@ -527,7 +527,7 @@ namespace {
             m_of << "\n";
             m_of << "\t};\n";
         }
-        
+
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
             m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";
@@ -552,12 +552,12 @@ namespace {
         {
             static Span sp;
             TRACE_FUNCTION_F(p);
-            
+
             ::MIR::TypeResolve::args_t  arg_types;
             for(const auto& ent : item.m_args)
                 arg_types.push_back(::std::make_pair( ::HIR::Pattern{}, params.monomorph(m_crate, ent.second) ));
             ::HIR::TypeRef  ret_type = params.monomorph(m_crate, item.m_return);
-            
+
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << p;), ret_type, arg_types, *code };
             m_mir_res = &mir_res;
 
@@ -582,15 +582,15 @@ namespace {
             for(unsigned int i = 0; i < code->blocks.size(); i ++)
             {
                 TRACE_FUNCTION_F(p << " bb" << i);
-                
+
                 if( code->blocks[i].statements.size() == 0 && code->blocks[i].terminator.is_Diverge() ) {
                     DEBUG("- Diverge only, omitting");
                 m_of << "bb" << i << ": _Unwind_Resume(); // Diverge\n";
                     continue ;
                 }
-            
+
                 m_of << "bb" << i << ":\n";
-                
+
                 for(const auto& stmt : code->blocks[i].statements)
                 {
                     mir_res.set_cur_stmt(i, (&stmt - &code->blocks[i].statements.front()));
@@ -601,7 +601,7 @@ namespace {
                         // TODO: Emit destructor calls
                         ::HIR::TypeRef  tmp;
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
-                        
+
                         if( e.kind == ::MIR::eDropKind::SHALLOW ) {
                             // TODO: Shallow drops are only valid on owned_box
                         }
@@ -665,7 +665,7 @@ namespace {
                                         m_of << "\\" << (unsigned int)v;
                                 }
                                 m_of << "\"" << ::std::dec;
-                                
+
                                 m_of << ";\n\t";
                                 emit_lvalue(e.dst);
                                 m_of << ".META = " << c.size();
@@ -729,7 +729,7 @@ namespace {
                                 m_of << "/* PhandomData cast */\n";
                                 continue ;
                             }
-                            
+
                             emit_lvalue(e.dst);
                             m_of << " = ";
                             m_of << "("; emit_ctype(ve.type); m_of << ")";
@@ -771,7 +771,7 @@ namespace {
                             case ::MIR::eBinOp::MUL:   m_of << " * ";    break;
                             case ::MIR::eBinOp::DIV:   m_of << " / ";    break;
                             case ::MIR::eBinOp::MOD:   m_of << " % ";    break;
-                            
+
                             case ::MIR::eBinOp::BIT_OR:    m_of << " | ";    break;
                             case ::MIR::eBinOp::BIT_AND:   m_of << " & ";    break;
                             case ::MIR::eBinOp::BIT_XOR:   m_of << " ^ ";    break;
@@ -783,7 +783,7 @@ namespace {
                             case ::MIR::eBinOp::GE:    m_of << " >= ";   break;
                             case ::MIR::eBinOp::LT:    m_of << " < " ;   break;
                             case ::MIR::eBinOp::LE:    m_of << " <= ";   break;
-                            
+
                             case ::MIR::eBinOp::ADD_OV:
                             case ::MIR::eBinOp::SUB_OV:
                             case ::MIR::eBinOp::MUL_OV:
@@ -857,14 +857,14 @@ namespace {
                                 if(ve.vals.size() > 0)
                                     m_of << ";\n\t";
                             }
-                            
+
                             for(unsigned int j = 0; j < ve.vals.size(); j ++)
                             {
                                 // HACK: Don't emit assignment of PhantomData
                                 ::HIR::TypeRef  tmp;
                                 if( m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j])) )
                                     continue ;
-                                
+
                                 if( j != 0 )    m_of << ";\n\t";
                                 emit_lvalue(e.dst);
                                 if(ve.variant_idx != ~0u)
@@ -879,7 +879,7 @@ namespace {
                         m_of << "\n";
                     }
                 }
-                
+
                 mir_res.set_cur_stmt_term(i);
                 DEBUG("- " << code->blocks[i].terminator);
                 TU_MATCHA( (code->blocks[i].terminator), (e),
@@ -913,7 +913,7 @@ namespace {
                     {
                         const auto& name = e.fcn.as_Intrinsic().name;
                         const auto& params = e.fcn.as_Intrinsic().params;
-                        
+
                         struct H {
                             static const char* get_atomic_ordering(const ::MIR::TypeResolve& mir_res, const ::std::string& name, size_t prefix_len) {
                                 if( name.size() < prefix_len )
@@ -1120,7 +1120,7 @@ namespace {
                         m_of << "\tgoto bb" << e.ret_block << ";\n";
                         break ;
                     }
-                    
+
                     TU_MATCHA( (e.fcn), (e2),
                     (Value,
                         {
@@ -1199,7 +1199,7 @@ namespace {
                 }
                 ));
         }
-        
+
         void emit_destructor_call(const ::MIR::LValue& slot, const ::HIR::TypeRef& ty, bool unsized_valid)
         {
             TU_MATCHA( (ty.m_data), (te),
@@ -1209,7 +1209,7 @@ namespace {
             (ErasedType, ),
             (Closure, ),
             (Generic, ),
-            
+
             // Nothing
             (Primitive,
                 ),
@@ -1267,7 +1267,7 @@ namespace {
                 )
             )
         }
-        
+
         const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path)
         {
             TU_MATCHA( (path.m_data), (pe),
@@ -1288,7 +1288,7 @@ namespace {
             )
             throw "";
         }
-        
+
         void assign_from_literal(::std::function<void()> emit_dst, const ::HIR::TypeRef& ty, const ::HIR::Literal& lit)
         {
             //TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
@@ -1440,7 +1440,7 @@ namespace {
                 )
             )
         }
-        
+
         void emit_lvalue(const ::MIR::LValue& val) {
             TU_MATCHA( (val), (e),
             (Variable,
@@ -1543,10 +1543,10 @@ namespace {
                 case ::HIR::CoreType::I32: m_of << "int32_t"; break;
                 case ::HIR::CoreType::U64: m_of << "uint64_t"; break;
                 case ::HIR::CoreType::I64: m_of << "int64_t"; break;
-                
+
                 case ::HIR::CoreType::F32: m_of << "float"; break;
                 case ::HIR::CoreType::F64: m_of << "double"; break;
-                
+
                 case ::HIR::CoreType::Bool: m_of << "bool"; break;
                 case ::HIR::CoreType::Char: m_of << "CHAR";  break;
                 case ::HIR::CoreType::Str:
@@ -1619,7 +1619,7 @@ namespace {
                 )
             )
         }
-        
+
         MetadataType metadata_type(const ::HIR::TypeRef& ty)
         {
             if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
@@ -1658,7 +1658,7 @@ namespace {
                 return MetadataType::None;
             }
         }
-        
+
         void emit_ctype_ptr(const ::HIR::TypeRef& inner_ty, ::FmtLambda inner) {
             if( inner_ty.m_data.is_Array() ) {
                 emit_ctype(inner_ty, FMT_CB(ss, ss << "(*" << inner << ")";));
@@ -1679,7 +1679,7 @@ namespace {
                 }
             }
         }
-        
+
         int is_dst(const ::HIR::TypeRef& ty) const
         {
             if( ty == ::HIR::CoreType::Str )

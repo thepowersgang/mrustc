@@ -46,11 +46,11 @@ public:
         m_mutable(ismut),
         m_slot( ~0u )
     {}
-    
+
     PatternBinding(PatternBinding&& x) = default;
     PatternBinding(const PatternBinding& x) = default;
     PatternBinding& operator=(PatternBinding&& x) = default;
-    
+
     bool is_valid() const { return m_name.name != ""; }
 };
 
@@ -78,7 +78,7 @@ public:
         bool has_wildcard;
         ::std::vector<Pattern>  end;
     };
-    
+
     TAGGED_UNION(Data, Any,
         (MaybeBind, struct { Ident name; } ),
         (Macro,     struct { unique_ptr<::AST::MacroInvocation> inv; } ),
@@ -96,15 +96,15 @@ private:
     Span    m_span;
     PatternBinding  m_binding;
     Data m_data;
-    
+
 public:
     virtual ~Pattern();
-    
+
     Pattern()
     {}
     Pattern(Pattern&&) = default;
     Pattern& operator=(Pattern&&) = default;
-    
+
     Pattern(Data dat):
         m_binding(),
         m_data( mv$(dat) )
@@ -135,8 +135,8 @@ public:
     Pattern(TagValue, Value val, Value end = Value()):
         m_data( Data::make_Value({ ::std::move(val), ::std::move(end) }) )
     {}
-    
-    
+
+
     struct TagReference {};
     Pattern(TagReference, bool is_mutable, Pattern sub_pattern):
         m_data( Data::make_Ref( /*Data::Data_Ref */ {
@@ -163,20 +163,20 @@ public:
 
     struct TagStruct {};
     Pattern(TagStruct, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns, bool is_exhaustive):
-        m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns), is_exhaustive } ) ) 
+        m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns), is_exhaustive } ) )
     {}
-    
+
     // Mutators
     void set_bind(Ident name, PatternBinding::Type type, bool is_mut) {
         m_binding = PatternBinding(mv$(name), type, is_mut);
     }
-    
-    
+
+
     const Span& span() const { return m_span; }
     void set_span(Span sp) { m_span = mv$(sp); }
-    
+
     Pattern clone() const;
-    
+
     // Accessors
           PatternBinding& binding()       { return m_binding; }
     const PatternBinding& binding() const { return m_binding; }
