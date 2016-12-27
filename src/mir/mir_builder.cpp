@@ -337,7 +337,7 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
     )
 }
 
-void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
+void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope)
 {
     TRACE_FUNCTION_F(val);
     TU_MATCH_DEF(::MIR::LValue, (val), (e),
@@ -346,13 +346,13 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
     // TODO: This may not be correct, because it can change the drop points and ordering
     // HACK: Working around cases where values are dropped while the result is not yet used.
     (Deref,
-        raise_variables(sp, *e.val);
+        raise_variables(sp, *e.val, scope);
         ),
     (Field,
-        raise_variables(sp, *e.val);
+        raise_variables(sp, *e.val, scope);
         ),
     (Downcast,
-        raise_variables(sp, *e.val);
+        raise_variables(sp, *e.val, scope);
         ),
     // Actual value types
     (Variable,
@@ -367,10 +367,13 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
                 if( tmp_it != e.vars.end() )
                 {
                     e.vars.erase( tmp_it );
-                    DEBUG("Move variable " << idx << " from " << *scope_it);
+                    DEBUG("Raise variable " << idx << " from " << *scope_it);
                     break ;
                 }
             )
+            // If the variable was defined above the desired scope (i.e. this didn't find it), return
+            if( *scope_it == scope.idx )
+                return ;
             ++scope_it;
         }
         if( scope_it == m_scope_stack.rend() )
@@ -406,10 +409,14 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
                 if( tmp_it != e.temporaries.end() )
                 {
                     e.temporaries.erase( tmp_it );
-                    DEBUG("Move temporary " << idx << " from " << *scope_it);
+                    DEBUG("Raise temporary " << idx << " from " << *scope_it);
                     break ;
                 }
             )
+            
+            // If the temporary was defined above the desired scope (i.e. this didn't find it), return
+            if( *scope_it == scope.idx )
+                return ;
             ++scope_it;
         }
         if( scope_it == m_scope_stack.rend() )
@@ -435,55 +442,55 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val)
         )
     )
 }
-void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval)
+void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope)
 {
     TU_MATCHA( (rval), (e),
     (Use,
-        this->raise_variables(sp, e);
+        this->raise_variables(sp, e, scope);
         ),
     (Constant,
         ),
     (SizedArray,
-        this->raise_variables(sp, e.val);
+        this->raise_variables(sp, e.val, scope);
         ),
     (Borrow,
         // TODO: Wait, is this valid?
-        this->raise_variables(sp, e.val);
+        this->raise_variables(sp, e.val, scope);
         ),
     (Cast,
-        this->raise_variables(sp, e.val);
+        this->raise_variables(sp, e.val, scope);
         ),
     (BinOp,
-        this->raise_variables(sp, e.val_l);
-        this->raise_variables(sp, e.val_r);
+        this->raise_variables(sp, e.val_l, scope);
+        this->raise_variables(sp, e.val_r, scope);
         ),
     (UniOp,
-        this->raise_variables(sp, e.val);
+        this->raise_variables(sp, e.val, scope);
         ),
     (DstMeta,
-        this->raise_variables(sp, e.val);
+        this->raise_variables(sp, e.val, scope);
         ),
     (DstPtr,
-        this->raise_variables(sp, e.val);
+        this->raise_variables(sp, e.val, scope);
         ),
     (MakeDst,
-        this->raise_variables(sp, e.ptr_val);
-        this->raise_variables(sp, e.meta_val);
+        this->raise_variables(sp, e.ptr_val, scope);
+        this->raise_variables(sp, e.meta_val, scope);
         ),
     (Tuple,
         for(const auto& val : e.vals)
-            this->raise_variables(sp, val);
+            this->raise_variables(sp, val, scope);
         ),
     (Array,
         for(const auto& val : e.vals)
-            this->raise_variables(sp, val);
+            this->raise_variables(sp, val, scope);
         ),
     (Variant,
-        this->raise_variables(sp, e.val);
+        this->raise_variables(sp, e.val, scope);
         ),
     (Struct,
         for(const auto& val : e.vals)
-            this->raise_variables(sp, val);
+            this->raise_variables(sp, val, scope);
         )
     )
 }
@@ -720,166 +727,185 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         TRACE_FUNCTION_F("Split - " << (e.arms.size() - 1) << " arms");
         e.arms.pop_back();
 
-        // Merge all arms and apply upwards
-        size_t var_count = 0;
-        size_t tmp_count = 0;
-        for(const auto& arm : e.arms)
-        {
-            var_count = ::std::max(var_count, arm.var_states.size());
-            tmp_count = ::std::max(tmp_count, arm.tmp_states.size());
-        }
-
         struct StateMerger
         {
-            ::std::vector<bool> m_changed;
-            ::std::vector<VarState> m_new_states;
-
-            StateMerger(size_t var_count):
-                m_changed(var_count),
-                m_new_states(var_count)
+            static VarState merge_state(const Span& sp, VarState new_state, VarState old_state)
             {
-            }
-
-            void merge_arm_state(const Span& sp, unsigned int i, bool has_changed, VarState new_state)
-            {
-                assert(i < this->m_new_states.size());
-                assert(i < this->m_changed.size());
-                // If there is an existing chnge to the states.
-                if( this->m_changed[i] )
+                switch(old_state)
                 {
-                    DEBUG(i << " (" << this->m_new_states[i] << "," << new_state << ")");
-                    switch(m_new_states[i])
+                case VarState::Uninit:
+                    switch( new_state )
                     {
                     case VarState::Uninit:
-                        BUG(sp, "Override to Uninit");
+                        BUG(sp, "Variable state changed from Uninit to Uninit (wut?)");
                         break;
                     case VarState::Init:
-                        if( has_changed ) {
-                            switch( new_state )
-                            {
-                            case VarState::Uninit:
-                                BUG(sp, "Override to Uninit");
-                                break;
-                            case VarState::Init:
-                                // No change
-                                break;
-                            case VarState::MaybeMoved:
-                                m_new_states[i] = VarState::MaybeMoved;
-                                break;
-                            case VarState::Moved:
-                                m_new_states[i] = VarState::MaybeMoved;
-                                break;
-                            case VarState::InnerMoved:
-                                TODO(sp, "Handle InnerMoved in Split scope (Init:arm.var_states)");
-                                break;
-                            case VarState::Dropped:
-                                BUG(sp, "Dropped value in arm");
-                                break;
-                            }
-                        }
-                        else {
-                            m_new_states[i] = VarState::MaybeMoved;   // MaybeInit?
-                        }
-                        break;
-                    case VarState::InnerMoved:
-                        // Need to tag for conditional shallow drop? Or just do that at the end of the split?
-                        // - End of the split means that the only optional state is outer drop.
-                        TODO(sp, "Handle InnerMoved in Split scope (new_states) - " << i /*<< " " << m_output.named_variables[i]*/);
-                        break;
+                        // TODO: MaybeInit?
+                        return VarState::MaybeMoved;
                     case VarState::MaybeMoved:
-                        // Already optional, don't change
-                        break;
+                        return VarState::MaybeMoved;
                     case VarState::Moved:
-                        if( has_changed ) {
-                            switch( new_state )
-                            {
-                            case VarState::Uninit:
-                                // Wut?
-                                break;
-                            case VarState::Init:
-                                // Wut? Reinited?
-                                m_new_states[i] = VarState::MaybeMoved;   // This arm didn't touch it
-                                break;
-                            case VarState::MaybeMoved:
-                                m_new_states[i] = VarState::MaybeMoved;
-                                break;
-                            case VarState::Moved:
-                                // No change
-                                break;
-                            case VarState::InnerMoved:
-                                TODO(sp, "Handle InnerMoved in Split scope (Moved:arm.var_states)");
-                                break;
-                            case VarState::Dropped:
-                                BUG(sp, "Dropped value in arm");
-                                break;
-                            }
-                        }
-                        else {
-                            m_new_states[i] = VarState::MaybeMoved;   // This arm didn't touch it
-                            // TODO: If the original state was Uninit, this could be updated to Uninit?
-                        }
+                        return VarState::Uninit;
+                    case VarState::InnerMoved:
+                        TODO(sp, "Handle InnerMoved in Split scope (Init:arm.var_states)");
                         break;
                     case VarState::Dropped:
-                        TODO(sp, "How can an arm drop a value?");
+                        BUG(sp, "Dropped value in arm");
                         break;
                     }
+                    BUG(sp, "Override from Uninit to " << new_state);
+                    break;
+                case VarState::Init:
+                    switch( new_state )
+                    {
+                    case VarState::Uninit:
+                        // TODO: MaybeInit?
+                        return VarState::MaybeMoved;
+                    case VarState::Init:
+                        return VarState::Init;
+                    case VarState::MaybeMoved:
+                        return VarState::MaybeMoved;
+                    case VarState::Moved:
+                        return VarState::MaybeMoved;
+                    case VarState::InnerMoved:
+                        TODO(sp, "Handle InnerMoved in Split scope (Init:arm.var_states)");
+                        break;
+                    case VarState::Dropped:
+                        BUG(sp, "Dropped value in arm");
+                        break;
+                    }
+                    break;
+                case VarState::InnerMoved:
+                    // Need to tag for conditional shallow drop? Or just do that at the end of the split?
+                    // - End of the split means that the only optional state is outer drop.
+                    TODO(sp, "Handle InnerMoved in Split scope (new_states)");
+                    break;
+                case VarState::MaybeMoved:
+                    // Already optional, don't change
+                    return VarState::MaybeMoved;
+                case VarState::Moved:
+                    switch( new_state )
+                    {
+                    case VarState::Uninit:
+                        // Wut?
+                        break;
+                    case VarState::Init:
+                        // Wut? Reinited?
+                        return VarState::MaybeMoved;
+                    case VarState::MaybeMoved:
+                        return VarState::MaybeMoved;
+                    case VarState::Moved:
+                        return VarState::Moved;
+                    case VarState::InnerMoved:
+                        TODO(sp, "Handle InnerMoved in Split scope (Moved:arm.var_states)");
+                        break;
+                    case VarState::Dropped:
+                        BUG(sp, "Dropped value in arm");
+                        break;
+                    }
+                    break;
+                case VarState::Dropped:
+                    TODO(sp, "How can an arm drop a value?");
+                    break;
                 }
-                else if( has_changed )
-                {
-                    DEBUG(i << " (_,"<<new_state<<")");
-                    m_changed[i] = true;
-                    m_new_states[i] = new_state;
-                    // TODO: Store the original state for comparison?
-                }
-                else
-                {
-                    // No change in any seen arm
-                }
+                throw "";
             }
         };
 
-        StateMerger   sm_var { var_count };
-        StateMerger   sm_tmp { tmp_count };
+        // 1. Make a bitmap of changed states in all arms
+        size_t var_count = 0;
+        size_t tmp_count = 0;
+        ::std::set<unsigned int> changed_vars;
+        ::std::set<unsigned int> changed_tmps;
+        const SplitArm* first_arm = nullptr;
         for(const auto& arm : e.arms)
         {
-            DEBUG("><");
             if( arm.always_early_terminated )
                 continue ;
-            assert( arm.changed_var_states.size() == arm.var_states.size() );
-            for(unsigned int i = 0; i < arm.var_states.size(); i ++ )
-            {
-                sm_var.merge_arm_state(sd.span, i, arm.changed_var_states[i], arm.var_states[i]);
-            }
+            for(unsigned int i = 0; i < arm.changed_var_states.size(); i++)
+                if( arm.changed_var_states[i] )
+                    changed_vars.insert( i );
+            for(unsigned int i = 0; i < arm.changed_tmp_states.size(); i++)
+                if( arm.changed_tmp_states[i] )
+                    changed_tmps.insert( i );
+            if( !first_arm )
+                first_arm = &arm;
+            
+            var_count = ::std::max(var_count, arm.var_states.size());
+            tmp_count = ::std::max(tmp_count, arm.tmp_states.size());
+        }
+        
+        if( !first_arm )
+        {
+            DEBUG("No arms yeilded");
+            return ;
+        }
 
-            DEBUG(">TMP<");
-            assert( arm.changed_tmp_states.size() == arm.tmp_states.size() );
-            for(unsigned int i = 0; i < arm.tmp_states.size(); i ++ )
+        ::std::vector<VarState> new_var_states { var_count };
+        ::std::vector<VarState> new_tmp_states { tmp_count };
+        
+        // 2. Build up the final composite state of the first arm
+        for(unsigned int i : changed_vars)
+        {
+            if( i < first_arm->changed_var_states.size() && first_arm->changed_var_states[i] )
             {
-                sm_tmp.merge_arm_state(sd.span, i, arm.changed_tmp_states[i], arm.tmp_states[i]);
+                new_var_states[i] = first_arm->var_states[i];
+            }
+            else
+            {
+                new_var_states[i] = get_variable_state(sd.span, i);
+            }
+        }
+        for(unsigned int i : changed_tmps)
+        {
+            if( i < first_arm->changed_tmp_states.size() && first_arm->changed_tmp_states[i] )
+            {
+                new_tmp_states[i] = first_arm->tmp_states[i];
+            }
+            else
+            {
+                new_tmp_states[i] = get_temp_state(sd.span, i);
+            }
+        }
+        
+        // 3. Compare the rest of the arms
+        for(const auto& arm : e.arms)
+        {
+            if( arm.always_early_terminated )
+                continue ;
+            if( &arm == first_arm )
+                continue ;
+            DEBUG("><");
+            for(unsigned int i : changed_vars)
+            {
+                DEBUG("- VAR" << i);
+                auto new_state = ((i < arm.var_states.size() && arm.changed_var_states[i]) ? arm.var_states[i] : get_variable_state(sd.span, i));
+                new_var_states[i] = StateMerger::merge_state(sd.span, new_state, new_var_states[i]);
+            }
+            for(unsigned int i : changed_tmps)
+            {
+                DEBUG("- TMP" << i);
+                auto new_state = ((i < arm.tmp_states.size() && arm.changed_tmp_states[i]) ? arm.tmp_states[i] : get_temp_state(sd.span, i));
+                new_tmp_states[i] = StateMerger::merge_state(sd.span, new_state, new_tmp_states[i]);
             }
         }
 
-        for(unsigned int i = 0; i < var_count; i ++ )
+        // 4. Apply changes
+        for(unsigned int i : changed_vars)
         {
-            if( sm_var.m_changed[i] )
-            {
-                // - NOTE: This scope should be off the stack now, so this call will get the original state
-                auto old_state = get_variable_state(sd.span, i);
-                auto new_state = sm_var.m_new_states[i];
-                DEBUG("var" << i << " old_state = " << old_state << ", new_state = " << new_state);
-                set_variable_state(sd.span, i, new_state);
-            }
+            // - NOTE: This scope should be off the stack now, so this call will get the original state
+            auto old_state = get_variable_state(sd.span, i);
+            auto new_state = new_var_states[i];
+            DEBUG("var" << i << " old_state = " << old_state << ", new_state = " << new_state);
+            set_variable_state(sd.span, i, new_state);
         }
-        for(unsigned int i = 0; i < tmp_count; i ++ )
+        for(unsigned int i : changed_tmps)
         {
-            if( sm_tmp.m_changed[i] )
-            {
-                // - NOTE: This scope should be off the stack now, so this call will get the original state
-                auto old_state = get_temp_state(sd.span, i);
-                auto new_state = sm_tmp.m_new_states[i];
-                DEBUG("tmp" << i << " old_state = " << old_state << ", new_state = " << new_state);
-                set_temp_state(sd.span, i, new_state);
-            }
+            // - NOTE: This scope should be off the stack now, so this call will get the original state
+            auto old_state = get_temp_state(sd.span, i);
+            auto new_state = new_tmp_states[i];
+            DEBUG("tmp" << i << " old_state = " << old_state << ", new_state = " << new_state);
+            set_temp_state(sd.span, i, new_state);
         }
     }
 }
@@ -1101,16 +1127,17 @@ void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState s
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
         auto& scope_def = m_scopes.at(scope_idx);
-        TU_MATCH_DEF( ScopeType, (scope_def.data), (e),
-        (
-            ),
-        (Variables,
+        if( scope_def.data.is_Variables() )
+        {
+            const auto& e = scope_def.data.as_Variables();
             auto it = ::std::find(e.vars.begin(), e.vars.end(), idx);
             if( it != e.vars.end() ) {
                 break ;
             }
-            ),
-        (Split,
+        }
+        else if( scope_def.data.is_Split() )
+        {
+            auto& e = scope_def.data.as_Split();
             auto& cur_arm = e.arms.back();
             if( idx >= cur_arm.changed_var_states.size() ) {
                 cur_arm.changed_var_states.resize( idx + 1 );
@@ -1120,8 +1147,10 @@ void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState s
             cur_arm.changed_var_states[idx] = true;
             cur_arm.var_states[idx] = state;
             return ;
-            )
-        )
+        }
+        else
+        {
+        }
     }
 
     ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");

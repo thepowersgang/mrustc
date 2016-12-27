@@ -361,6 +361,7 @@ namespace {
                     auto& subnode = node.m_nodes.back();
                     const Span& sp = subnode->span();
 
+                    auto res_val = m_builder.new_temporary(node.m_res_type);
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
                     if( m_builder.has_result() || m_builder.block_active() )
@@ -369,12 +370,11 @@ namespace {
                         ASSERT_BUG(sp, m_builder.has_result(), "Active block but no result yeilded");
                         // PROBLEM: This can drop the result before we want to use it.
 
-                        auto res = m_builder.get_result(sp);
-                        m_builder.raise_variables(sp, res);
+                        m_builder.push_stmt_assign(sp, res_val.clone(), m_builder.get_result(sp));
 
                         m_builder.terminate_scope(sp, mv$(stmt_scope));
                         m_builder.terminate_scope( node.span(), mv$(scope) );
-                        m_builder.set_result( node.span(), mv$(res) );
+                        m_builder.set_result( node.span(), mv$(res_val) );
                     }
                     else
                     {
@@ -543,7 +543,7 @@ namespace {
 
                 if( m_builder.block_active() ) {
                     auto res = m_builder.get_result(arm.m_code->span());
-                    m_builder.raise_variables( arm.m_code->span(), res );
+                    m_builder.raise_variables( arm.m_code->span(), res, scope );
                     m_builder.set_result(arm.m_code->span(), mv$(res));
 
                     m_builder.terminate_scope( node.span(), mv$(tmp_scope) );

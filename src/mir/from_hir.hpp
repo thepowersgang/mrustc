@@ -163,8 +163,8 @@ public:
     void mark_value_assigned(const Span& sp, const ::MIR::LValue& val);
 
     // Moves control of temporaries up to the next scope
-    void raise_variables(const Span& sp, const ::MIR::LValue& val);
-    void raise_variables(const Span& sp, const ::MIR::RValue& rval);
+    void raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope);
+    void raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope);
 
     void set_cur_block(unsigned int new_block);
     ::MIR::BasicBlockId pause_cur_block();

@@ -295,10 +295,13 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             ac.cond_start = builder.new_bb_unlinked();
             builder.set_cur_block( ac.cond_start );
 
-            // TODO: Temp scope.
+            auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
             conv.visit_node_ptr( arm.m_cond );
             ac.cond_lval = builder.get_result_in_lvalue(arm.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool));
+            // NOTE: Terminating the scope slightly early is safe, because the resulting boolean temp isn't invalidated.
+            builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
             ac.cond_end = builder.pause_cur_block();
+            
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
 
             // TODO: What to do with contidionals in the fast model?
@@ -312,10 +315,12 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
         // Code
         DEBUG("-- Body Code");
+        
         ac.code = builder.new_bb_unlinked();
         auto tmp_scope = builder.new_scope_temp(arm.m_code->span());
         builder.set_cur_block( ac.code );
         conv.visit_node_ptr( arm.m_code );
+        
         if( !builder.block_active() && !builder.has_result() ) {
             DEBUG("Arm diverged");
             // Nothing need be done, as the block diverged.
@@ -328,7 +333,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             DEBUG("Arm result");
             // - Set result
             auto res = builder.get_result(arm.m_code->span());
-            //builder.raise_variables( arm.m_code->span(), res );
             builder.push_stmt_assign( arm.m_code->span(), result_val.clone(), mv$(res) );
             // - Drop all non-moved values from this scope
             builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
