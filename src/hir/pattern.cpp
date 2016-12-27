@@ -30,17 +30,21 @@ namespace HIR {
         )
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const PatternBinding& x) {
+        if( x.m_mutable )
+            os << "mut ";
+        switch(x.m_type)
+        {
+        case PatternBinding::Type::Move:    break;
+        case PatternBinding::Type::Ref:     os << "ref ";   break;
+        case PatternBinding::Type::MutRef:  os << "ref mut ";   break;
+        }
+        os << x.m_name << "/*"<<x.m_slot<<"*/" << " @ ";
+        return os;
+    }
     ::std::ostream& operator<<(::std::ostream& os, const Pattern& x) {
         if( x.m_binding.is_valid() ) {
-            if( x.m_binding.m_mutable )
-                os << "mut ";
-            switch(x.m_binding.m_type)
-            {
-            case PatternBinding::Type::Move:    break;
-            case PatternBinding::Type::Ref:     os << "ref ";   break;
-            case PatternBinding::Type::MutRef:  os << "ref mut ";   break;
-            }
-            os << x.m_binding.m_name << "/*"<<x.m_binding.m_slot<<"*/" << " @ ";
+            os << x.m_binding;
         }
         TU_MATCH(Pattern::Data, (x.m_data), (e),
         (Any,
@@ -126,7 +130,7 @@ namespace HIR {
             for(const auto& s : e.leading)
                 os << s << ", ";
             if( e.extra_bind.is_valid() ) {
-                os << e.extra_bind.m_name << " @ ";
+                os << e.extra_bind;
             }
             os << ".. ";
             for(const auto& s : e.trailing)

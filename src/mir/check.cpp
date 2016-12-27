@@ -235,6 +235,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             for(const auto& b : to_visit_blocks)
                 if( b.first == idx && b.second == vs)
                     return ;
+            if( block_start_states.at(idx) == vs )
+                return ;
             to_visit_blocks.push_back( ::std::make_pair(idx, mv$(vs)) );
             };
         to_visit_blocks.push_back( ::std::make_pair(0, ValStates{ args.size(), fcn.temporaries.size(), fcn.named_variables.size() }) );

@@ -280,12 +280,17 @@ namespace {
                 // These are only refutable if T is [T]
                 bool ty_is_array = false;
                 unsigned int array_size = 0;
-                m_builder.with_val_type(sp, lval, [&ty_is_array,&array_size](const auto& ty){
+                ::HIR::TypeRef  inner_type;
+                m_builder.with_val_type(sp, lval, [&ty_is_array,&array_size,&e,&inner_type](const auto& ty){
                     if( ty.m_data.is_Array() ) {
                         array_size = ty.m_data.as_Array().size_val;
+                        if( e.extra_bind.is_valid() )
+                            inner_type = ty.m_data.as_Array().inner->clone();
                         ty_is_array = true;
                     }
                     else {
+                        if( e.extra_bind.is_valid() )
+                            inner_type = ty.m_data.as_Slice().inner->clone();
                         ty_is_array = false;
                     }
                     });
@@ -297,6 +302,10 @@ namespace {
                         unsigned int idx = 0 + i;
                         destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$(lval.clone()), idx }), allow_refutable );
                     }
+                    if( e.extra_bind.is_valid() )
+                    {
+                        TODO(sp, "Destructure array obtaining remainder");
+                    }
                     for(unsigned int i = 0; i < e.trailing.size(); i ++)
                     {
                         unsigned int idx = array_size - e.trailing.size() + i;
@@ -306,11 +315,46 @@ namespace {
                 else
                 {
                     ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                    // TODO: Acquire the slice size variable.
+
+                    // Acquire the slice size variable.
+                    ::MIR::LValue   len_lval;
+                    if( e.extra_bind.is_valid() || e.trailing.size() > 0 )
+                    {
+                        len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ lval.clone() }));
+                    }
+
                     for(unsigned int i = 0; i < e.leading.size(); i ++)
                     {
                         unsigned int idx = i;
                         destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$(lval.clone()), idx }), allow_refutable );
+                    }
+                    if( e.extra_bind.is_valid() )
+                    {
+                        // 1. Obtain remaining length
+                        auto sub_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_Constant( e.leading.size() + e.trailing.size() ));
+                        ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
+
+                        // 2. Obtain pointer to element
+                        ::HIR::BorrowType   bt = ::HIR::BorrowType::Owned;
+                        switch(e.extra_bind.m_type)
+                        {
+                        case ::HIR::PatternBinding::Type::Move:
+                            BUG(sp, "By-value pattern binding of a slice");
+                            throw "";
+                        case ::HIR::PatternBinding::Type::Ref:
+                            bt = ::HIR::BorrowType::Shared;
+                            break;
+                        case ::HIR::PatternBinding::Type::MutRef:
+                            bt = ::HIR::BorrowType::Unique;
+                            break;
+                        }
+                        ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
+                            ::HIR::TypeRef::new_pointer( bt, inner_type.clone() ),
+                            ::MIR::RValue::make_Borrow({ 0, bt, ::MIR::LValue::make_Field({ box$(lval.clone()), static_cast<unsigned int>(e.leading.size()) }) })
+                            );
+
+                        // Construct fat pointer
+                        m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(e.extra_bind.m_slot), ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(len_val) }) );
                     }
                     if( e.trailing.size() > 0 )
                     {
