@@ -4070,22 +4070,42 @@ void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeRef& sel
 }
 
 namespace {
-    void add_coerce_borrow(Context& context, ::HIR::ExprNodeP& node_ptr, const ::HIR::TypeRef& des_borrow_inner, ::std::function<void(::HIR::ExprNodeP& n)> cb)
+    void add_coerce_borrow(Context& context, ::HIR::ExprNodeP& orig_node_ptr, const ::HIR::TypeRef& des_borrow_inner, ::std::function<void(::HIR::ExprNodeP& n)> cb)
     {
-        const auto& src_type = context.m_ivars.get_type(node_ptr->m_res_type);
+        const auto& src_type = context.m_ivars.get_type(orig_node_ptr->m_res_type);
+        auto borrow_type = src_type.m_data.as_Borrow().type;
 
         // Since this function operates on destructured &-ptrs, the dereferences have to be added behind a borrow
-        ::HIR::ExprNodeP*   node_ptr_ptr = nullptr;
+        ::HIR::ExprNodeP*   node_ptr_ptr = &orig_node_ptr;
+
+        #if 1
+        // If the coercion is of a block, apply the mutation to the inner node
+        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**node_ptr_ptr) )
+        {
+            DEBUG("- Moving into block");
+            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_nodes.back()->m_res_type),
+                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_nodes.back()->m_res_type));
+            // - Override the the result type to the desired result
+            p->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
+            node_ptr_ptr = &p->m_nodes.back();
+        }
+        #endif
+        auto& node_ptr = *node_ptr_ptr;
+
         // - If the pointed node is a borrow operation, add the dereferences within its value
-        if( auto* p = dynamic_cast< ::HIR::ExprNode_Borrow*>(&*node_ptr) ) {
+        if( auto* p = dynamic_cast< ::HIR::ExprNode_Borrow*>(&*node_ptr) )
+        {
+            // Set the result of the borrow operation to the output type
+            node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
+
             node_ptr_ptr = &p->m_value;
         }
-        // - Otherwise, create a new borrow operation behind which the dereferences ahppen
-        if( !node_ptr_ptr ) {
+        // - Otherwise, create a new borrow operation behind which the dereferences happen
+        else
+        {
             DEBUG("- Coercion node isn't a borrow, adding one");
             auto span = node_ptr->span();
             const auto& src_inner_ty = *src_type.m_data.as_Borrow().inner;
-            auto borrow_type = src_type.m_data.as_Borrow().type;
 
             auto inner_ty_ref = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
 
@@ -4096,11 +4116,6 @@ namespace {
 
             // - Set node pointer reference to point into the new borrow op
             node_ptr_ptr = &dynamic_cast< ::HIR::ExprNode_Borrow&>(*node_ptr).m_value;
-        }
-        else {
-            auto borrow_type = context.m_ivars.get_type(node_ptr->m_res_type).m_data.as_Borrow().type;
-            // Set the result of the borrow operation to the output type
-            node_ptr->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
         }
 
         cb(*node_ptr_ptr);
@@ -4628,16 +4643,35 @@ namespace {
         (Borrow,
             TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, r_e,
                 // If using `&mut T` where `&const T` is expected - insert a reborrow (&*)
-                // TODO: &move reboorrowing rules?
+                // TODO: &move reborrowing rules?
                 //if( l_e.type < r_e.type ) {
                 if( l_e.type == ::HIR::BorrowType::Shared && r_e.type == ::HIR::BorrowType::Unique ) {
 
-                    // Add cast down
-                    auto span = node_ptr->span();
-                    // > Goes from `ty_src` -> `*ty_src` -> `&`l_e.type` `&ty_src`
+                    // > Goes from `ty_src` -> `*ty_src` -> `&`l_e.type` `*ty_src`
                     const auto& inner_ty = *r_e.inner;
                     auto dst_bt = l_e.type;
                     auto new_type = ::HIR::TypeRef::new_borrow(dst_bt, inner_ty.clone());
+
+                    // If the coercion is of a block, do the reborrow on the last node of the block
+                    // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
+                    #if 1
+                    ::HIR::ExprNodeP* npp = &node_ptr;
+                    while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                    {
+                        DEBUG("- Propagate to the last node of a _Block");
+                        ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_nodes.back()->m_res_type),
+                            "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_nodes.back()->m_res_type));
+                        ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, ty_src),
+                            "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(ty_src)
+                            );
+                        p->m_res_type = new_type.clone();
+                        npp = &p->m_nodes.back();
+                    }
+                    ::HIR::ExprNodeP& node_ptr = *npp;
+                    #endif
+
+                    // Add cast down
+                    auto span = node_ptr->span();
                     // *<inner>
                     DEBUG("- Deref -> " << inner_ty);
                     node_ptr = NEWNODE( inner_ty.clone(), span, _Deref,  mv$(node_ptr) );
@@ -4654,7 +4688,6 @@ namespace {
                 else if( l_e.type != r_e.type ) {
                     ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Borrow classes differ");
                 }
-
                 // - Check for coercions
                 return check_coerce_borrow(context, l_e.type, *l_e.inner, *r_e.inner, node_ptr);
             )
