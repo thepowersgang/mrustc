@@ -1415,7 +1415,19 @@ namespace {
             for(auto& arg : node.m_args)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
+                
+                if( node.m_args.size() == 1 )
+                {
+                    values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
+                }
+                else
+                {
+                    // NOTE: Have to allocate a new temporary because ordering matters
+                    auto tmp = m_builder.new_temporary(arg->m_res_type);
+                    m_builder.push_stmt_assign( arg->span(), tmp.clone(), m_builder.get_result(arg->span()) );
+                    values.push_back( mv$(tmp) );
+                }
+                
                 m_builder.moved_lvalue( arg->span(), values.back() );
             }
 

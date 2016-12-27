@@ -120,8 +120,9 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     auto next_block = builder.new_bb_unlinked();
 
     // 1. Stop the current block so we can generate code
-    auto first_cmp_block = builder.new_bb_unlinked();
-    builder.end_block( ::MIR::Terminator::make_Goto(first_cmp_block) );
+    //auto first_cmp_block = builder.new_bb_unlinked();
+    //builder.end_block( ::MIR::Terminator::make_Goto(first_cmp_block) );
+    auto first_cmp_block = builder.pause_cur_block();
 
 
     struct H {
@@ -242,7 +243,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     t_arm_rules arm_rules;
     for(unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++)
     {
-        DEBUG("ARM " << arm_idx);
+        TRACE_FUNCTION_FR("ARM " << arm_idx, "ARM" << arm_idx);
         /*const*/ auto& arm = node.m_arms[arm_idx];
         ArmCode ac;
 
@@ -272,7 +273,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             ac.destructures.push_back( builder.new_bb_unlinked() );
             builder.set_cur_block( ac.destructures.back() );
             conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
-            builder.end_split_arm( arm.m_code->span(), pat_scope, true );
+            builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/false );    // HACK: Mark as not reachable, this scope isn't for codegen.
             builder.pause_cur_block();
             // NOTE: Paused block resumed upon successful match
         }

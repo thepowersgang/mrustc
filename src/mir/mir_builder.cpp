@@ -576,7 +576,7 @@ ScopeHandle MirBuilder::new_scope_loop(const Span& sp)
 }
 void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cleanup/*=true*/)
 {
-    DEBUG("DONE scope " << scope.idx << " - " << (emit_cleanup ? "CLEANUP" : "NO CLEANUP"));
+    TRACE_FUNCTION_F("DONE scope " << scope.idx << " - " << (emit_cleanup ? "CLEANUP" : "NO CLEANUP"));
     // 1. Check that this is the current scope (at the top of the stack)
     if( m_scope_stack.empty() || m_scope_stack.back() != scope.idx )
     {
@@ -603,7 +603,7 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
 }
 void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope)
 {
-    DEBUG("EARLY scope " << scope.idx);
+    TRACE_FUNCTION_F("EARLY scope " << scope.idx);
 
     // 1. Ensure that this block is in the stack
     auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), scope.idx );
@@ -649,10 +649,13 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     auto& sd_split = sd.data.as_Split();
     ASSERT_BUG(sp, !sd_split.arms.empty(), "");
 
+    TRACE_FUNCTION_F("end split scope " << handle.idx << " arm " << (sd_split.arms.size()-1));
+
     sd_split.arms.back().always_early_terminated = /*sd_split.arms.back().has_early_terminated &&*/ !reachable;
 
     // HACK: If this arm's end is reachable, convert InnerMoved (shallow drop) variable states to Moved
     // - I'm not 100% sure this is the correct place for calling drop.
+    #if 1
     if( reachable )
     {
         auto& vss = sd_split.arms.back().var_states;
@@ -660,23 +663,26 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
         {
             auto& vs = vss[i];
             if( vs == VarState::InnerMoved ) {
+                // TODO: Refactor InnerMoved to handle partial moves via Box
                 // Emit the shallow drop
-                push_stmt_drop_shallow( sp, ::MIR::LValue::make_Variable(i) );
+                //push_stmt_drop_shallow( sp, ::MIR::LValue::make_Variable(i) );
                 vs = VarState::Moved;
             }
         }
     }
+    #endif
 
     sd_split.arms.push_back( {} );
 }
 void MirBuilder::end_split_arm_early(const Span& sp)
 {
+    TRACE_FUNCTION_F("");
     // Terminate all scopes until a split is found.
     while( ! m_scope_stack.empty() && ! (m_scopes.at( m_scope_stack.back() ).data.is_Split() || m_scopes.at( m_scope_stack.back() ).data.is_Loop()) )
     {
         auto& scope_def = m_scopes[m_scope_stack.back()];
         // Fully drop the scope
-        DEBUG("Complete scope " << m_scope_stack.size()-1);
+        DEBUG("Complete scope " << m_scope_stack.back());
         drop_scope_values(scope_def);
         m_scope_stack.pop_back();
         complete_scope(scope_def);
@@ -684,6 +690,7 @@ void MirBuilder::end_split_arm_early(const Span& sp)
 
     if( !m_scope_stack.empty() && m_scopes.at( m_scope_stack.back() ).data.is_Split() )
     {
+        DEBUG("Early terminate split scope " << m_scope_stack.back());
         auto& sd = m_scopes[ m_scope_stack.back() ];
         auto& sd_split = sd.data.as_Split();
         sd_split.arms.back().has_early_terminated = true;
@@ -695,7 +702,7 @@ void MirBuilder::end_split_arm_early(const Span& sp)
             if( vs == VarState::InnerMoved ) {
                 // Emit the shallow drop
                 push_stmt_drop_shallow( sp, ::MIR::LValue::make_Variable(i) );
-                //vs = VarState::Dropped;
+                // - Don't update the state, because this drop isn't the end-of-scope drop
             }
         }
     }
@@ -737,8 +744,8 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     switch( new_state )
                     {
                     case VarState::Uninit:
-                        BUG(sp, "Variable state changed from Uninit to Uninit (wut?)");
-                        break;
+                        //BUG(sp, "Variable state changed from Uninit to Uninit (wut?)");
+                        return VarState::Uninit;
                     case VarState::Init:
                         // TODO: MaybeInit?
                         return VarState::MaybeMoved;
@@ -747,7 +754,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     case VarState::Moved:
                         return VarState::Uninit;
                     case VarState::InnerMoved:
-                        TODO(sp, "Handle InnerMoved in Split scope (Init:arm.var_states)");
+                        TODO(sp, "Handle InnerMoved in Split scope (Uninit:arm.var_states)");
                         break;
                     case VarState::Dropped:
                         BUG(sp, "Dropped value in arm");
@@ -768,7 +775,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     case VarState::Moved:
                         return VarState::MaybeMoved;
                     case VarState::InnerMoved:
-                        TODO(sp, "Handle InnerMoved in Split scope (Init:arm.var_states)");
+                        TODO(sp, "Handle InnerMoved in Split scope (was Init)");
                         break;
                     case VarState::Dropped:
                         BUG(sp, "Dropped value in arm");
@@ -778,7 +785,21 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 case VarState::InnerMoved:
                     // Need to tag for conditional shallow drop? Or just do that at the end of the split?
                     // - End of the split means that the only optional state is outer drop.
-                    TODO(sp, "Handle InnerMoved in Split scope (new_states)");
+                    switch( new_state )
+                    {
+                    case VarState::Uninit:
+                        TODO(sp, "Handle InnerMoved in Split scope (new_states) - Now Uninit");
+                    case VarState::Init:
+                        TODO(sp, "Handle InnerMoved in Split scope (new_states) - Now Init");
+                    case VarState::MaybeMoved:
+                        TODO(sp, "Handle InnerMoved in Split scope (new_states) - Now MaybeMoved");
+                    case VarState::Moved:
+                        TODO(sp, "Handle InnerMoved in Split scope (new_states) - Now Moved");
+                    case VarState::InnerMoved:
+                        return VarState::InnerMoved;
+                    case VarState::Dropped:
+                        BUG(sp, "Dropped value in arm");
+                    }
                     break;
                 case VarState::MaybeMoved:
                     // Already optional, don't change
@@ -787,8 +808,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     switch( new_state )
                     {
                     case VarState::Uninit:
-                        // Wut?
-                        break;
+                        return VarState::Moved;
                     case VarState::Init:
                         // Wut? Reinited?
                         return VarState::MaybeMoved;
@@ -797,7 +817,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     case VarState::Moved:
                         return VarState::Moved;
                     case VarState::InnerMoved:
-                        TODO(sp, "Handle InnerMoved in Split scope (Moved:arm.var_states)");
+                        TODO(sp, "Handle InnerMoved in Split scope (was Moved)");
                         break;
                     case VarState::Dropped:
                         BUG(sp, "Dropped value in arm");
@@ -808,7 +828,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     TODO(sp, "How can an arm drop a value?");
                     break;
                 }
-                throw "";
+                BUG(sp, "Unhandled combination");
             }
         };
 
@@ -830,11 +850,11 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     changed_tmps.insert( i );
             if( !first_arm )
                 first_arm = &arm;
-            
+
             var_count = ::std::max(var_count, arm.var_states.size());
             tmp_count = ::std::max(tmp_count, arm.tmp_states.size());
         }
-        
+
         if( !first_arm )
         {
             DEBUG("No arms yeilded");
@@ -843,7 +863,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
 
         ::std::vector<VarState> new_var_states { var_count };
         ::std::vector<VarState> new_tmp_states { tmp_count };
-        
+
         // 2. Build up the final composite state of the first arm
         for(unsigned int i : changed_vars)
         {
@@ -867,7 +887,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 new_tmp_states[i] = get_temp_state(sd.span, i);
             }
         }
-        
+
         // 3. Compare the rest of the arms
         for(const auto& arm : e.arms)
         {
@@ -1235,11 +1255,11 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
                 break;
             case VarState::Init:
                 push_stmt_drop( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );
-                set_temp_state(sd.span, tmp_idx, VarState::Dropped);
+                //set_temp_state(sd.span, tmp_idx, VarState::Dropped);
                 break;
             case VarState::InnerMoved:
                 push_stmt_drop_shallow( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );
-                set_temp_state(sd.span, tmp_idx, VarState::Dropped);
+                //set_temp_state(sd.span, tmp_idx, VarState::Dropped);
                 break;
             case VarState::MaybeMoved:
                 //BUG(sd.span, "Optionally moved temporary? - " << tmp_idx);
@@ -1261,11 +1281,11 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
                 break;
             case VarState::InnerMoved:
                 push_stmt_drop_shallow( sd.span, ::MIR::LValue::make_Variable(var_idx) );
-                set_variable_state(sd.span, var_idx, VarState::Dropped);
+                //set_variable_state(sd.span, var_idx, VarState::Dropped);
                 break;
             case VarState::MaybeMoved:
-                //TODO(sd.span, "Include drop flags");
                 // TODO: Drop flags
+                //push_stmt_drop_opt(sd.span, ::MIR::LValue::make_Variable(var_idx), drop_flag_idx);
                 break;
             }
         }
