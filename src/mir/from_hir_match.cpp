@@ -120,8 +120,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     auto next_block = builder.new_bb_unlinked();
 
     // 1. Stop the current block so we can generate code
-    //auto first_cmp_block = builder.new_bb_unlinked();
-    //builder.end_block( ::MIR::Terminator::make_Goto(first_cmp_block) );
     auto first_cmp_block = builder.pause_cur_block();
 
 
@@ -384,6 +382,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     {
         DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules);
     }
+    
+    // TODO: Don't generate inner code until decisions are generated (keeps MIR flow nice)
 
     // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
     // - A way would be to search for `_` rules with non _ rules following. Would false-positive in some cases, but shouldn't false negative

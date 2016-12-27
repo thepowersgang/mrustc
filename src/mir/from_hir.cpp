@@ -528,6 +528,8 @@ namespace {
                 assert( !m_builder.has_result() );
                 m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             }
+
+            // TODO: Store the variable state on a break for restoration at the end of the loop.
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
         {

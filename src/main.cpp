@@ -392,9 +392,9 @@ int main(int argc, char *argv[])
             });
 
         // Validate the MIR
-        CompilePhaseV("MIR Validate", [&]() {
-            MIR_CheckCrate(*hir_crate);
-            });
+        //CompilePhaseV("MIR Validate", [&]() {
+        //    MIR_CheckCrate(*hir_crate);
+        //    });
 
         // Second shot of constant evaluation (with full type information)
         CompilePhaseV("Constant Evaluate Full", [&]() {
