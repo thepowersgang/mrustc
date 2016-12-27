@@ -14,6 +14,7 @@
 
 void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, const ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
+    TRACE_FUNCTION_F(path);
     Span    sp;
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
     // Validation rules:
@@ -105,6 +106,14 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 temporaries(n_temps),
                 variables(n_vars)
             {
+            }
+
+            bool operator==(const ValStates& x) const {
+                if( ret_state != x.ret_state )  return false;
+                if( arguments != x.arguments )  return false;
+                if( temporaries != x.temporaries )  return false;
+                if( variables != x.variables )  return false;
+                return true;
             }
 
             bool empty() const {
@@ -221,6 +230,13 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         };
         ::std::vector< ValStates>   block_start_states( fcn.blocks.size() );
         ::std::vector< ::std::pair<unsigned int, ValStates> > to_visit_blocks;
+
+        auto add_to_visit = [&](auto idx, auto vs) {
+            for(const auto& b : to_visit_blocks)
+                if( b.first == idx && b.second == vs)
+                    return ;
+            to_visit_blocks.push_back( ::std::make_pair(idx, mv$(vs)) );
+            };
         to_visit_blocks.push_back( ::std::make_pair(0, ValStates{ args.size(), fcn.temporaries.size(), fcn.named_variables.size() }) );
         while( to_visit_blocks.size() > 0 )
         {
@@ -337,7 +353,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 ),
             (Goto,
                 // Push block with the new state
-                to_visit_blocks.push_back( ::std::make_pair(e, ::std::move(val_state)) );
+                add_to_visit( e, mv$(val_state) );
                 ),
             (Panic,
                 // What should be done here?
@@ -345,14 +361,14 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             (If,
                 // Push blocks
                 val_state.ensure_valid( state, e.cond );
-                to_visit_blocks.push_back( ::std::make_pair(e.bb0, val_state) );
-                to_visit_blocks.push_back( ::std::make_pair(e.bb1, ::std::move(val_state)) );
+                add_to_visit( e.bb0, val_state );
+                add_to_visit( e.bb1, mv$(val_state) );
                 ),
             (Switch,
                 val_state.ensure_valid( state, e.val );
                 for(const auto& tgt : e.targets)
                 {
-                    to_visit_blocks.push_back( ::std::make_pair(tgt, val_state) );
+                    add_to_visit( tgt, val_state );
                 }
                 ),
             (Call,
@@ -361,9 +377,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 for(const auto& arg : e.args)
                     val_state.ensure_valid( state, arg );
                 // Push blocks (with return valid only in one)
-                to_visit_blocks.push_back( ::std::make_pair(e.panic_block, val_state) );
+                add_to_visit(e.panic_block, val_state);
                 val_state.mark_validity( state, e.ret_val, true );
-                to_visit_blocks.push_back( ::std::make_pair(e.ret_block, ::std::move(val_state)) );
+                add_to_visit(e.ret_block, mv$(val_state));
                 )
             )
         }
