@@ -86,6 +86,18 @@ namespace {
             }
         }
 
+        void visit(::HIR::ExprNode_Asm& node) override
+        {
+            auto _ = this->push_usage( ::HIR::ValueUsage::Move );
+            for(auto& v : node.m_outputs)
+            {
+                this->visit_node_ptr(v.value);
+            }
+            for(auto& v : node.m_inputs)
+            {
+                this->visit_node_ptr(v.value);
+            }
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             auto _ = this->push_usage( ::HIR::ValueUsage::Move );

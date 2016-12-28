@@ -447,6 +447,12 @@ namespace {
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
             }
         }
+        void visit(::HIR::ExprNode_Asm& node) override
+        {
+            TRACE_FUNCTION_F("_Asm");
+
+            TODO(node.span(), "asm!");
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F("_Return");

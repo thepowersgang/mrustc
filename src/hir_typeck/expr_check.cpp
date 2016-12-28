@@ -64,6 +64,20 @@ namespace {
                 check_types_equal(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type);
             }
         }
+        void visit(::HIR::ExprNode_Asm& node) override
+        {
+            TRACE_FUNCTION_F(&node << " asm! ...");
+
+            // TODO: Check result types
+            for(auto& v : node.m_outputs)
+            {
+                v.value->visit(*this);
+            }
+            for(auto& v : node.m_inputs)
+            {
+                v.value->visit(*this);
+            }
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F(&node << " return ...");

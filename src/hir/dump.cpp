@@ -322,6 +322,11 @@ namespace {
             }
         }
 
+        void visit(::HIR::ExprNode_Asm& node) override
+        {
+            m_os << "asm!(";
+            m_os << ")";
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             m_os << "return";

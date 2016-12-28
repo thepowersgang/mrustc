@@ -301,6 +301,9 @@ namespace {
                     e->visit(*this);
                 }
             }
+            void visit(::HIR::ExprNode_Asm& node) override {
+                badnode(node);
+            }
             void visit(::HIR::ExprNode_Return& node) override {
                 TODO(node.span(), "ExprNode_Return");
             }

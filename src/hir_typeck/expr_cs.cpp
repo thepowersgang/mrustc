@@ -624,6 +624,24 @@ namespace {
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
         }
+        void visit(::HIR::ExprNode_Asm& node) override
+        {
+            TRACE_FUNCTION_F(&node << " asm! ...");
+
+            this->push_inner_coerce( false );
+            for(auto& v : node.m_outputs)
+            {
+                this->context.add_ivars( v.value->m_res_type );
+                v.value->visit(*this);
+            }
+            for(auto& v : node.m_inputs)
+            {
+                this->context.add_ivars( v.value->m_res_type );
+                v.value->visit(*this);
+            }
+            this->pop_inner_coerce();
+            // TODO: Revisit to check that the input are integers, and the outputs are integer lvalues
+        }
         void visit(::HIR::ExprNode_Return& node) override
         {
             TRACE_FUNCTION_F(&node << " return ...");
@@ -1966,6 +1984,10 @@ namespace {
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
             this->m_completed = true;
+        }
+        void visit(::HIR::ExprNode_Asm& node) override {
+            // TODO: Revisit for validation
+            no_revisit(node);
         }
         void visit(::HIR::ExprNode_Return& node) override {
             no_revisit(node);

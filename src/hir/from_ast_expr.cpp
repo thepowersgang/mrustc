@@ -47,7 +47,14 @@ struct LowerHIR_ExprNode_Visitor:
         BUG(v.get_pos(), "Hit ExprNode_Macro");
     }
     virtual void visit(::AST::ExprNode_Asm& v) override {
-        TODO(v.get_pos(), "Convert asm! to HIR");
+        ::std::vector< ::HIR::ExprNode_Asm::ValRef> outputs;
+        ::std::vector< ::HIR::ExprNode_Asm::ValRef> inputs;
+        for(auto& vr : v.m_output)
+            outputs.push_back( ::HIR::ExprNode_Asm::ValRef { vr.name, LowerHIR_ExprNode_Inner(*vr.value) } );
+        for(auto& vr : v.m_input)
+            inputs.push_back( ::HIR::ExprNode_Asm::ValRef { vr.name, LowerHIR_ExprNode_Inner(*vr.value) } );
+
+        m_rv.reset( new ::HIR::ExprNode_Asm( v.span(), v.m_text, mv$(outputs), mv$(inputs), v.m_clobbers, v.m_flags ) );
     }
     virtual void visit(::AST::ExprNode_Flow& v) override {
         switch( v.m_type )

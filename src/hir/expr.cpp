@@ -24,6 +24,12 @@ DEF_VISIT(ExprNode_Block, node,
         visit_node_ptr(subnode);
     }
 )
+DEF_VISIT(ExprNode_Asm, node,
+    for(auto& v : node.m_outputs)
+        visit_node_ptr(v.value);
+    for(auto& v : node.m_inputs)
+        visit_node_ptr(v.value);
+)
 DEF_VISIT(ExprNode_Return, node,
     visit_node_ptr(node.m_value);
 )

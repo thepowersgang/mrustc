@@ -87,6 +87,32 @@ struct ExprNode_Block:
 
     NODE_METHODS();
 };
+struct ExprNode_Asm:
+    public ExprNode
+{
+    struct ValRef
+    {
+        ::std::string   spec;
+        ::HIR::ExprNodeP    value;
+    };
+    ::std::string   m_template;
+    ::std::vector<ValRef>   m_outputs;
+    ::std::vector<ValRef>   m_inputs;
+    ::std::vector< ::std::string>   m_clobbers;
+    ::std::vector< ::std::string>   m_flags;
+
+    ExprNode_Asm(Span sp, ::std::string tpl_str, ::std::vector<ValRef> outputs, ::std::vector<ValRef> inputs, ::std::vector< ::std::string> clobbers, ::std::vector< ::std::string> flags):
+        ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
+        m_template( mv$(tpl_str) ),
+        m_outputs( mv$(outputs) ),
+        m_inputs( mv$(inputs) ),
+        m_clobbers( mv$(clobbers) ),
+        m_flags( mv$(flags) )
+    {
+    }
+
+    NODE_METHODS();
+};
 struct ExprNode_Return:
     public ExprNode
 {
@@ -792,6 +818,7 @@ public:
     #define NV(nt)  virtual void visit(nt& n) = 0;
 
     NV(ExprNode_Block)
+    NV(ExprNode_Asm)
     NV(ExprNode_Return)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
@@ -837,6 +864,7 @@ public:
     #define NV(nt)  virtual void visit(nt& n);
 
     NV(ExprNode_Block)
+    NV(ExprNode_Asm)
     NV(ExprNode_Return)
     NV(ExprNode_Let)
     NV(ExprNode_Loop)
