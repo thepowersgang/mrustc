@@ -46,15 +46,15 @@ enum class InvalidType {
     Descoped,
 };
 TAGGED_UNION(VarState, Uninit,
-// Currently invalid
-(Invalid, InvalidType),
-// Partially valid (Map of field states, Box is assumed to have one field)
-(Partial, ::std::vector<VarState>),
-// Optionally valid (integer indicates the drop flag index)
-(Optional, unsigned int),
-// Fully valid
-(Valid, struct {}),
-)
+    // Currently invalid
+    (Invalid, InvalidType),
+    // Partially valid (Map of field states, Box is assumed to have one field)
+    (Partial, ::std::vector<VarState>),
+    // Optionally valid (integer indicates the drop flag index)
+    (Optional, unsigned int),
+    // Fully valid
+    (Valid, struct {}),
+    )
 #endif
 
 // TODO: Replace the first three states with just one (and flags for init/moved)
@@ -91,6 +91,7 @@ TAGGED_UNION(ScopeType, Variables,
         ::std::vector<SplitArm> arms;
         }),
     (Loop, struct {
+        ::std::vector<SplitArm> exit_states;
         })
     );
 

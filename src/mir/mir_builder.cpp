@@ -413,7 +413,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
                     break ;
                 }
             )
-            
+
             // If the temporary was defined above the desired scope (i.e. this didn't find it), return
             if( *scope_it == scope.idx )
                 return ;

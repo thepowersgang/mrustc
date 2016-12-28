@@ -547,7 +547,9 @@ namespace {
                 target_block = &*it;
             }
 
-            // TODO: Insert drop of all active scopes within the loop
+            // TODO: Add the current variable state (of variables above the loop scope) to the loop scope
+            // - Allowing the state after the loop is complete to be known.
+
             m_builder.terminate_scope_early( node.span(), target_block->scope );
             if( node.m_continue ) {
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->cur) );
@@ -1461,7 +1463,7 @@ namespace {
             for(auto& arg : node.m_args)
             {
                 this->visit_node_ptr(arg);
-                
+
                 if( node.m_args.size() == 1 )
                 {
                     values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
@@ -1473,7 +1475,7 @@ namespace {
                     m_builder.push_stmt_assign( arg->span(), tmp.clone(), m_builder.get_result(arg->span()) );
                     values.push_back( mv$(tmp) );
                 }
-                
+
                 m_builder.moved_lvalue( arg->span(), values.back() );
             }
 
