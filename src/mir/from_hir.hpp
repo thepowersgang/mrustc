@@ -38,12 +38,33 @@ public:
     ~ScopeHandle();
 };
 
+// TODO: Replace VarState with a TU
+#if 0
+enum class InvalidType {
+    Uninit,
+    Moved,
+    Descoped,
+};
+TAGGED_UNION(VarState, Uninit,
+// Currently invalid
+(Invalid, InvalidType),
+// Partially valid (Map of field states, Box is assumed to have one field)
+(Partial, ::std::vector<VarState>),
+// Optionally valid (integer indicates the drop flag index)
+(Optional, unsigned int),
+// Fully valid
+(Valid, struct {}),
+)
+#endif
+
 // TODO: Replace the first three states with just one (and flags for init/moved)
 enum class VarState {
     Uninit, // No value assigned yet
     Moved,  // Definitely moved
     Dropped,    // Dropped (out of scope)
 
+    // TODO: Store a bitmap of inner states?
+    // - Needs to handle relatively arbitary patterns. Including moving out of a Box, but not out of Drop types
     InnerMoved, // The inner has been moved, but the container needs to be dropped
     //MaybeMovedInner,  // Inner possibly has been moved
     MaybeMoved, // Possibly has been moved
@@ -55,11 +76,8 @@ extern ::std::ostream& operator<<(::std::ostream& os, VarState x);
 struct SplitArm {
     bool    has_early_terminated = false;
     bool    always_early_terminated = false;    // Populated on completion
-    ::std::vector<bool> changed_var_states; // Indexed by binding bumber
-    ::std::vector<VarState> var_states;
-
-    ::std::vector<bool> changed_tmp_states;
-    ::std::vector<VarState> tmp_states;
+    ::std::map<unsigned int, VarState>  var_states;
+    ::std::map<unsigned int, VarState>  tmp_states;
 };
 
 TAGGED_UNION(ScopeType, Variables,

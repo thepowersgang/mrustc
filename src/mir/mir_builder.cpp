@@ -658,10 +658,10 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     #if 1
     if( reachable )
     {
-        auto& vss = sd_split.arms.back().var_states;
-        for(unsigned int i = 0; i < vss.size(); i ++ )
+        for(auto& vse : sd_split.arms.back().var_states)
         {
-            auto& vs = vss[i];
+            //auto i = vse.first;
+            auto& vs = vse.second;
             if( vs == VarState::InnerMoved ) {
                 // TODO: Refactor InnerMoved to handle partial moves via Box
                 // Emit the shallow drop
@@ -695,10 +695,10 @@ void MirBuilder::end_split_arm_early(const Span& sp)
         auto& sd_split = sd.data.as_Split();
         sd_split.arms.back().has_early_terminated = true;
 
-        const auto& vss = sd_split.arms.back().var_states;
-        for(unsigned int i = 0; i < vss.size(); i ++ )
+        for(const auto& vse : sd_split.arms.back().var_states)
         {
-            auto& vs = vss[i];
+            auto i = vse.first;
+            const auto& vs = vse.second;
             if( vs == VarState::InnerMoved ) {
                 // Emit the shallow drop
                 push_stmt_drop_shallow( sp, ::MIR::LValue::make_Variable(i) );
@@ -754,7 +754,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                     case VarState::Moved:
                         return VarState::Uninit;
                     case VarState::InnerMoved:
-                        TODO(sp, "Handle InnerMoved in Split scope (Uninit:arm.var_states)");
+                        TODO(sp, "Handle InnerMoved in Split scope (wa Uninit)");
                         break;
                     case VarState::Dropped:
                         BUG(sp, "Dropped value in arm");
@@ -833,8 +833,8 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         };
 
         // 1. Make a bitmap of changed states in all arms
-        size_t var_count = 0;
-        size_t tmp_count = 0;
+        unsigned int var_count = 0;
+        unsigned int tmp_count = 0;
         ::std::set<unsigned int> changed_vars;
         ::std::set<unsigned int> changed_tmps;
         const SplitArm* first_arm = nullptr;
@@ -842,17 +842,20 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         {
             if( arm.always_early_terminated )
                 continue ;
-            for(unsigned int i = 0; i < arm.changed_var_states.size(); i++)
-                if( arm.changed_var_states[i] )
-                    changed_vars.insert( i );
-            for(unsigned int i = 0; i < arm.changed_tmp_states.size(); i++)
-                if( arm.changed_tmp_states[i] )
-                    changed_tmps.insert( i );
+            for(const auto& vse : arm.var_states)
+            {
+                auto i = vse.first;
+                changed_vars.insert( i );
+                var_count = ::std::max(var_count, i+1);
+            }
+            for(const auto& vse : arm.tmp_states)
+            {
+                auto i = vse.first;
+                changed_tmps.insert( i );
+                tmp_count = ::std::max(tmp_count, i+1);
+            }
             if( !first_arm )
                 first_arm = &arm;
-
-            var_count = ::std::max(var_count, arm.var_states.size());
-            tmp_count = ::std::max(tmp_count, arm.tmp_states.size());
         }
 
         if( !first_arm )
@@ -867,25 +870,13 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         // 2. Build up the final composite state of the first arm
         for(unsigned int i : changed_vars)
         {
-            if( i < first_arm->changed_var_states.size() && first_arm->changed_var_states[i] )
-            {
-                new_var_states[i] = first_arm->var_states[i];
-            }
-            else
-            {
-                new_var_states[i] = get_variable_state(sd.span, i);
-            }
+            auto it = first_arm->var_states.find(i);
+            new_var_states[i] = (it != first_arm->var_states.end() ? it->second : get_variable_state(sd.span, i));
         }
         for(unsigned int i : changed_tmps)
         {
-            if( i < first_arm->changed_tmp_states.size() && first_arm->changed_tmp_states[i] )
-            {
-                new_tmp_states[i] = first_arm->tmp_states[i];
-            }
-            else
-            {
-                new_tmp_states[i] = get_temp_state(sd.span, i);
-            }
+            auto it = first_arm->tmp_states.find(i);
+            new_tmp_states[i] = (it != first_arm->tmp_states.end() ? it->second : get_temp_state(sd.span, i));
         }
 
         // 3. Compare the rest of the arms
@@ -899,13 +890,13 @@ void MirBuilder::complete_scope(ScopeDef& sd)
             for(unsigned int i : changed_vars)
             {
                 DEBUG("- VAR" << i);
-                auto new_state = ((i < arm.var_states.size() && arm.changed_var_states[i]) ? arm.var_states[i] : get_variable_state(sd.span, i));
+                auto new_state = (arm.var_states.count(i) != 0 ? arm.var_states.at(i) : get_variable_state(sd.span, i));
                 new_var_states[i] = StateMerger::merge_state(sd.span, new_state, new_var_states[i]);
             }
             for(unsigned int i : changed_tmps)
             {
                 DEBUG("- TMP" << i);
-                auto new_state = ((i < arm.tmp_states.size() && arm.changed_tmp_states[i]) ? arm.tmp_states[i] : get_temp_state(sd.span, i));
+                auto new_state = (arm.tmp_states.count(i) != 0 ? arm.tmp_states.at(i) : get_temp_state(sd.span, i));
                 new_tmp_states[i] = StateMerger::merge_state(sd.span, new_state, new_tmp_states[i]);
             }
         }
@@ -1130,10 +1121,10 @@ VarState MirBuilder::get_variable_state(const Span& sp, unsigned int idx) const
             ),
         (Split,
             const auto& cur_arm = e.arms.back();
-            if( idx < cur_arm.changed_var_states.size() && cur_arm.changed_var_states[idx] )
+            auto it = cur_arm.var_states.find(idx);
+            if( it != cur_arm.var_states.end() )
             {
-                assert( idx < cur_arm.var_states.size() );
-                return cur_arm.var_states[idx];
+                return it->second;
             }
             )
         )
@@ -1159,12 +1150,6 @@ void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState s
         {
             auto& e = scope_def.data.as_Split();
             auto& cur_arm = e.arms.back();
-            if( idx >= cur_arm.changed_var_states.size() ) {
-                cur_arm.changed_var_states.resize( idx + 1 );
-                cur_arm.var_states.resize( idx + 1 );
-            }
-            assert( idx < cur_arm.var_states.size() );
-            cur_arm.changed_var_states[idx] = true;
             cur_arm.var_states[idx] = state;
             return ;
         }
@@ -1193,10 +1178,10 @@ VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
         {
             const auto& e = scope_def.data.as_Split();
             const auto& cur_arm = e.arms.back();
-            if( idx < cur_arm.changed_tmp_states.size() && cur_arm.changed_tmp_states[idx] )
+            auto it = cur_arm.tmp_states.find(idx);
+            if( it != cur_arm.tmp_states.end() )
             {
-                assert( idx < cur_arm.tmp_states.size() );
-                return cur_arm.tmp_states[idx];
+                return it->second;
             }
         }
     }
@@ -1221,12 +1206,6 @@ void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state
         {
             auto& e = scope_def.data.as_Split();
             auto& cur_arm = e.arms.back();
-            if( idx >= cur_arm.changed_tmp_states.size() ) {
-                cur_arm.changed_tmp_states.resize( idx + 1 );
-                cur_arm.tmp_states.resize( idx + 1 );
-            }
-            assert( idx < cur_arm.tmp_states.size() );
-            cur_arm.changed_tmp_states[idx] = true;
             cur_arm.tmp_states[idx] = state;
             return ;
         }
