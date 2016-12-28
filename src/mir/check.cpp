@@ -380,6 +380,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     val_state.ensure_valid( state, arg );
                 // Push blocks (with return valid only in one)
                 add_to_visit(e.panic_block, val_state);
+
+                // TODO: If the function returns !, don't follow the ret_block
                 val_state.mark_validity( state, e.ret_val, true );
                 add_to_visit(e.ret_block, mv$(val_state));
                 )

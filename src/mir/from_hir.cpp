@@ -1503,6 +1503,12 @@ namespace {
                     unconditional_diverge = true;
                 }
             }
+            else
+            {
+                // TODO: Know if the call unconditionally diverges.
+                if( node.m_cache.m_arg_types.back().m_data.is_Diverge() )
+                    unconditional_diverge = true;
+            }
 
             // If the call wasn't to an intrinsic, emit it as a path
             if( m_builder.block_active() )
