@@ -101,6 +101,18 @@ NODE(ExprNode_Macro, {
     return NEWNODE(ExprNode_Macro, m_name, m_ident, m_tokens.clone());
 })
 
+NODE(ExprNode_Asm, {
+    os << "asm!()";
+},{
+    ::std::vector<ExprNode_Asm::ValRef> outputs;
+    for(const auto& v : m_output)
+        outputs.push_back( ExprNode_Asm::ValRef { v.name, v.value->clone() });
+    ::std::vector<ExprNode_Asm::ValRef> inputs;
+    for(const auto& v : m_input)
+        inputs.push_back( ExprNode_Asm::ValRef { v.name, v.value->clone() });
+    return NEWNODE(ExprNode_Asm, m_text, mv$(outputs), mv$(inputs), m_clobbers, m_flags);
+})
+
 NODE(ExprNode_Flow, {
     switch(m_type)
     {
@@ -417,6 +429,13 @@ NV(ExprNode_Block, {
 NV(ExprNode_Macro,
 {
     BUG(node.get_pos(), "Hit unexpanded macro in expression - " << node);
+})
+NV(ExprNode_Asm,
+{
+    for(auto& v : node.m_output)
+        visit(v.value);
+    for(auto& v : node.m_input)
+        visit(v.value);
 })
 NV(ExprNode_Flow,
 {

@@ -385,6 +385,12 @@ struct CExpandExpr:
             Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod, mod_item_count);
         }
     }
+    void visit(::AST::ExprNode_Asm& node) override {
+        for(auto& v : node.m_output)
+            this->visit_nodelete(node, v.value);
+        for(auto& v : node.m_input)
+            this->visit_nodelete(node, v.value);
+    }
     void visit(::AST::ExprNode_Flow& node) override {
         this->visit_nodelete(node, node.m_value);
     }

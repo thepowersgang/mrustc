@@ -512,8 +512,6 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
         return false;
     }
 
-    //assert(m_params.m_types.size() == other.m_params.m_types.size());
-
     if( other.m_params.m_bounds.size() == 0 ) {
         return m_params.m_bounds.size() > 0;
     }
@@ -527,13 +525,14 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     DEBUG("bounds_t = " << bounds_t);
     DEBUG("bounds_o = " << bounds_o);
 
+    // If there are less bounds in this impl, it can't be more specific.
     if( bounds_t.size() < bounds_o.size() )
         return false;
 
     auto it_t = bounds_t.begin();
     for(auto it_o = bounds_o.begin(); it_o != bounds_o.end(); ++it_o)
     {
-        // TODO: `T: Foo<T>` is more specific than `T: Foo<U>`
+        // TODO: `T: Foo<T>` is more specific than `T: Foo<U>`, this method doesn't pick that.
         while( ::ord(*it_t, *it_o) == OrdLess && it_t != bounds_t.end() )
             ++ it_t;
         if( it_t == bounds_t.end() || ::ord(*it_t, *it_o) > OrdEqual ) {

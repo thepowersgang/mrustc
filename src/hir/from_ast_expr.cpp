@@ -46,6 +46,9 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_Macro& v) override {
         BUG(v.get_pos(), "Hit ExprNode_Macro");
     }
+    virtual void visit(::AST::ExprNode_Asm& v) override {
+        TODO(v.get_pos(), "Convert asm! to HIR");
+    }
     virtual void visit(::AST::ExprNode_Flow& v) override {
         switch( v.m_type )
         {

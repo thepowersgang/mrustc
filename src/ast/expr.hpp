@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/expr.hpp
+ * - AST Expression Nodes
  */
 #ifndef AST_EXPR_INCLUDED
 #define AST_EXPR_INCLUDED
@@ -84,6 +89,34 @@ struct ExprNode_Macro:
         m_ident(ident),
         m_tokens( move(tokens) )
     {}
+
+    NODE_METHODS();
+};
+
+// asm! macro
+struct ExprNode_Asm:
+    public ExprNode
+{
+    struct ValRef
+    {
+        ::std::string   name;
+        unique_ptr<ExprNode>    value;
+    };
+
+    ::std::string   m_text;
+    ::std::vector<ValRef>   m_output;
+    ::std::vector<ValRef>   m_input;
+    ::std::vector<::std::string>    m_clobbers;
+    ::std::vector<::std::string>    m_flags;
+
+    ExprNode_Asm(::std::string text, ::std::vector<ValRef> output, ::std::vector<ValRef> input, ::std::vector<::std::string> clobbers, ::std::vector<::std::string> flags):
+        m_text( move(text) ),
+        m_output( move(output) ),
+        m_input( move(input) ),
+        m_clobbers( move(clobbers) ),
+        m_flags( move(flags) )
+    {
+    }
 
     NODE_METHODS();
 };
@@ -599,6 +632,7 @@ public:
         virtual void visit(const nt& node) = 0*/
     NT(ExprNode_Block);
     NT(ExprNode_Macro);
+    NT(ExprNode_Asm);
     NT(ExprNode_Flow);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);
@@ -643,6 +677,7 @@ public:
         virtual void visit(const nt& node) override*/
     NT(ExprNode_Block);
     NT(ExprNode_Macro);
+    NT(ExprNode_Asm);
     NT(ExprNode_Flow);
     NT(ExprNode_LetBinding);
     NT(ExprNode_Assign);

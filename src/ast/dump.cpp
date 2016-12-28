@@ -75,6 +75,10 @@ public:
         m_expr_root = false;
         m_os << n.m_name << "!( /* TODO: Macro TT */ )";
     }
+    virtual void visit(AST::ExprNode_Asm& n) override {
+        m_os << "asm!(";
+        m_os << ")";
+    }
     virtual void visit(AST::ExprNode_Flow& n) override {
         m_expr_root = false;
         switch(n.m_type)
