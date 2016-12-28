@@ -248,17 +248,10 @@ Token Lexer::realGetToken()
         switch(tok.type())
         {
         case TOK_NEWLINE:
-            m_line ++;
-            m_line_ofs = 0;
-            //DEBUG("m_line = " << m_line << " (NL)");
             continue;
         case TOK_WHITESPACE:
             continue;
         case TOK_COMMENT: {
-            ::std::string comment = tok.str();
-            unsigned int c = ::std::count(comment.begin(), comment.end(), '\n');
-            m_line += c;
-            //DEBUG("m_line = " << m_line << " (comment w/ "<<c<<")");
             continue; }
         default:
             return tok;
@@ -656,7 +649,6 @@ Token Lexer::getTokenInt()
                     }
                     else
                     {
-                        if( ch == '\n') m_line ++;
                         str += ch;
                     }
                 }
@@ -863,7 +855,6 @@ uint32_t Lexer::parseEscape(char enclosing)
         return '\t';
     case '\r':
     case '\n':
-        m_line ++;
         while( ch.isspace() )
             ch = this->getc();
         this->ungetc();
@@ -881,6 +872,13 @@ char Lexer::getc_byte()
     char rv = m_istream.get();
     if( m_istream.eof() )
         throw Lexer::EndOfFile();
+
+    if( rv == '\n' )
+    {
+        m_line ++;
+        m_line_ofs = 0;
+    }
+
     return rv;
 }
 Codepoint Lexer::getc()
