@@ -547,14 +547,12 @@ namespace {
                 target_block = &*it;
             }
 
-            // TODO: Add the current variable state (of variables above the loop scope) to the loop scope
-            // - Allowing the state after the loop is complete to be known.
-
-            m_builder.terminate_scope_early( node.span(), target_block->scope );
             if( node.m_continue ) {
+                m_builder.terminate_scope_early( node.span(), target_block->scope, /*loop_exit=*/false );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->cur) );
             }
             else {
+                m_builder.terminate_scope_early( node.span(), target_block->scope, /*loop_exit=*/true );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->next) );
             }
         }
