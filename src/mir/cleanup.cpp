@@ -1049,7 +1049,11 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         {
                             e.args.push_back( ::MIR::LValue::make_Field({ box$(args_lvalue.clone()), i }) );
                         }
-                        e.fcn = mv$(fcn_lvalue);
+                        // If the trait is Fn/FnMut, dereference the input value.
+                        if( pe.trait.m_path == resolve.m_lang_FnOnce )
+                            e.fcn = mv$(fcn_lvalue);
+                        else
+                            e.fcn = ::MIR::LValue::make_Deref({ box$(fcn_lvalue) });
                     }
                 }
             )

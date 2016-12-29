@@ -605,7 +605,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     const auto& ty = state.get_lvalue_type(tmp, e.fcn.as_Value());
                     if( ! ty.m_data.is_Function() )
                     {
-                        //MIR_BUG(state, "Call Fcn::Value with non-function type - " << ty);
+                        MIR_BUG(state, "Call Fcn::Value with non-function type - " << ty);
                     }
                 }
                 // Typecheck arguments and return value
