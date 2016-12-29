@@ -1188,6 +1188,7 @@ namespace {
                         {
                             ::HIR::TypeRef  tmp;
                             const auto& ty = mir_res.get_lvalue_type(tmp, e2);
+                            MIR_ASSERT(mir_res, ty.m_data.is_Function(), "Call::Value on non-function - " << ty);
                             if( !ty.m_data.as_Function().m_rettype->m_data.is_Diverge() )
                             {
                                 emit_lvalue(e.ret_val); m_of << " = ";
