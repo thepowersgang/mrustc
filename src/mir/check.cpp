@@ -599,6 +599,15 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 // Check that the condition is an enum
                 ),
             (Call,
+                if( e.fcn.is_Value() )
+                {
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = state.get_lvalue_type(tmp, e.fcn.as_Value());
+                    if( ! ty.m_data.is_Function() )
+                    {
+                        //MIR_BUG(state, "Call Fcn::Value with non-function type - " << ty);
+                    }
+                }
                 // Typecheck arguments and return value
                 )
             )

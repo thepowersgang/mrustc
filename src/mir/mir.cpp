@@ -84,6 +84,53 @@ namespace MIR {
         )
         return os;
     }
+    bool operator==(const LValue& a, const LValue& b)
+    {
+        if( a.tag() != b.tag() )
+            return false;
+        TU_MATCHA( (a, b), (ea, eb),
+        (Variable,
+            return ea == eb;
+            ),
+        (Temporary,
+            return ea.idx == eb.idx;
+            ),
+        (Argument,
+            return ea.idx == eb.idx;
+            ),
+        (Static,
+            return ea == eb;
+            ),
+        (Return,
+            return true;
+            ),
+        (Field,
+            if( *ea.val != *eb.val )
+                return false;
+            if( ea.field_index != eb.field_index )
+                return false;
+            return true;
+            ),
+        (Deref,
+            return *ea.val == *eb.val;
+            ),
+        (Index,
+            if( *ea.val != *eb.val )
+                return false;
+            if( *ea.idx != *eb.idx )
+                return false;
+            return true;
+            ),
+        (Downcast,
+            if( *ea.val != *eb.val )
+                return false;
+            if( ea.variant_index != eb.variant_index )
+                return false;
+            return true;
+            )
+        )
+        throw "";
+    }
 
     ::std::ostream& operator<<(::std::ostream& os, const RValue& x)
     {

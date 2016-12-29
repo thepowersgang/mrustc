@@ -24,7 +24,8 @@ void ::MIR::TypeResolve::print_msg(const char* tag, ::std::function<void(::std::
     os << ": ";
     cb(os);
     os << ::std::endl;
-    throw CheckFailure {};
+    abort();
+    //throw CheckFailure {};
 }
 
 const ::MIR::BasicBlock& ::MIR::TypeResolve::get_block(::MIR::BasicBlockId id) const
@@ -57,12 +58,15 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
 {
     TU_MATCH(::MIR::LValue, (val), (e),
     (Variable,
+        MIR_ASSERT(*this, e < m_fcn.named_variables.size(), val << " out of range (" << m_fcn.named_variables.size() << ")");
         return m_fcn.named_variables.at(e);
         ),
     (Temporary,
+        MIR_ASSERT(*this, e.idx < m_fcn.temporaries.size(), val << " out of range (" << m_fcn.temporaries.size() << ")");
         return m_fcn.temporaries.at(e.idx);
         ),
     (Argument,
+        MIR_ASSERT(*this, e.idx < m_args.size(), val << " out of range (" << m_args.size() << ")");
         return m_args.at(e.idx).second;
         ),
     (Static,
