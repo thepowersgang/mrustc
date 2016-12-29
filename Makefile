@@ -21,7 +21,7 @@ TAIL_COUNT ?= 45
 
 # - Final stage for tests run as part of the rust_tests target.
 #  VALID OPTIONS: parse, expand, mir, ALL
-RUST_TESTS_FINAL_STAGE ?= mir
+RUST_TESTS_FINAL_STAGE ?= ALL
 
 LINKFLAGS := -g
 LIBS := -lz
@@ -229,8 +229,8 @@ TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
 output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir
 	@mkdir -p $(dir $@)
 	@echo "--- TEST $(patsubst output/rust/%.o,%,$@)"
-	@$(BIN) $< -o $@ --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || tail -n 1 $@.txt
-	@touch $@
+	@$(BIN) $< -o $@.c --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
+	@$(CC) $@.c -pthread -g -o $@
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
 output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
