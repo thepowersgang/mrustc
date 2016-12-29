@@ -963,6 +963,14 @@ namespace {
                 m_in.read_bool() ? ::MIR::eDropKind::DEEP : ::MIR::eDropKind::SHALLOW,
                 deserialise_mir_lvalue()
                 });
+        case 2:
+            return ::MIR::Statement::make_Asm({
+                m_in.read_string(),
+                deserialise_vec< ::std::pair< ::std::string, ::MIR::LValue> >(),
+                deserialise_vec< ::std::pair< ::std::string, ::MIR::LValue> >(),
+                deserialise_vec< ::std::string>(),
+                deserialise_vec< ::std::string>()
+                });
         default:
             ::std::cerr << "Bad tag for a MIR Statement" << ::std::endl;
             throw "";

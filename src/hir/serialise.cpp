@@ -474,6 +474,14 @@ namespace {
                 assert(e.kind == ::MIR::eDropKind::DEEP || e.kind == ::MIR::eDropKind::SHALLOW);
                 m_out.write_bool(e.kind == ::MIR::eDropKind::DEEP);
                 serialise(e.slot);
+                ),
+            (Asm,
+                m_out.write_tag(2);
+                m_out.write_string(e.tpl);
+                serialise_vec(e.inputs);
+                serialise_vec(e.outputs);
+                serialise_vec(e.clobbers);
+                serialise_vec(e.flags);
                 )
             )
         }

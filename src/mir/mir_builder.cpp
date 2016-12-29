@@ -280,6 +280,17 @@ void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
     DEBUG("DROP shallow " << val);
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val) }) );
 }
+void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
+{
+    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
+
+    // 1. Mark outputs as valid
+    for(const auto& v : data.outputs)
+        mark_value_assigned(sp, v.second);
+
+    // 2. Push
+    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Asm( mv$(data) ) );
+}
 
 void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
 {

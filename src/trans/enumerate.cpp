@@ -749,6 +749,12 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
                     )
                 )
                 ),
+            (Asm,
+                for(const auto& v : se.inputs)
+                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, v.second, pp);
+                for(const auto& v : se.outputs)
+                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, v.second, pp);
+                ),
             (Drop,
                 Trans_Enumerate_FillFrom_MIR_LValue(out,crate, se.slot, pp);
                 // TODO: Ensure that the drop glue for this type is generated

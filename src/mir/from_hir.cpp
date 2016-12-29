@@ -451,7 +451,22 @@ namespace {
         {
             TRACE_FUNCTION_F("_Asm");
 
-            TODO(node.span(), "asm!");
+            ::std::vector< ::std::pair< ::std::string, ::MIR::LValue> > inputs;
+            for(auto& v : node.m_inputs) {
+                this->visit_node_ptr(v.value);
+                auto lv = m_builder.get_result_in_lvalue(v.value->span(), v.value->m_res_type);
+                inputs.push_back( ::std::make_pair(v.spec, mv$(lv)) );
+            }
+
+            ::std::vector< ::std::pair< ::std::string, ::MIR::LValue> > outputs;
+            for(auto& v : node.m_outputs) {
+                this->visit_node_ptr(v.value);
+                auto lv = m_builder.get_result_unwrap_lvalue(v.value->span());
+                outputs.push_back( ::std::make_pair(v.spec, mv$(lv)) );
+            }
+
+            m_builder.push_stmt_asm( node.span(), { node.m_template, mv$(outputs), mv$(inputs), node.m_clobbers, node.m_flags } );
+            m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
         }
         void visit(::HIR::ExprNode_Return& node) override
         {

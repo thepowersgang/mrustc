@@ -260,15 +260,22 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 const auto& stmt = bb.statements[stmt_idx];
                 state.set_cur_stmt(block, stmt_idx);
 
-                if( stmt.is_Drop() )
+                switch( stmt.tag() )
                 {
+                case ::MIR::Statement::TAGDEAD:
+                    throw "";
+                case ::MIR::Statement::TAG_Drop:
                     // Invalidate the slot
                     val_state.ensure_valid(state, stmt.as_Drop().slot);
                     val_state.mark_validity( state, stmt.as_Drop().slot, false );
-                }
-                else
-                {
-                    assert( stmt.is_Assign() );
+                    break;
+                case ::MIR::Statement::TAG_Asm:
+                    for(const auto& v : stmt.as_Asm().inputs)
+                        val_state.ensure_valid(state, v.second);
+                    for(const auto& v : stmt.as_Asm().outputs)
+                        val_state.mark_validity( state, v.second, true );
+                    break;
+                case ::MIR::Statement::TAG_Assign:
                     // Check source (and invalidate sources)
                     TU_MATCH( ::MIR::RValue, (stmt.as_Assign().src), (se),
                     (Use,
@@ -323,6 +330,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     )
                     // Mark destination as valid
                     val_state.mark_validity( state, stmt.as_Assign().dst, true );
+                    break;
                 }
             }
 
@@ -557,6 +565,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         )
                     )
                     } break;
+                case ::MIR::Statement::TAG_Asm:
+                    // TODO: Ensure that values are all thin pointers or integers?
+                    break;
                 case ::MIR::Statement::TAG_Drop:
                     // TODO: Anything need checking here?
                     break;

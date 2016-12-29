@@ -163,6 +163,22 @@ namespace {
                         DEBUG("- Assign " << e.dst << " = " << e.src);
                         m_os << FMT_M(e.dst) << " = " << FMT_M(e.src) << ";\n";
                         ),
+                    (Asm,
+                        DEBUG("- Asm");
+                        m_os << "(";
+                        for(const auto& v : e.outputs)
+                            m_os << FMT_M(v.second) << ",";
+                        m_os << ") = asm!";
+                        m_os << "(";
+                        for(const auto& v : e.inputs)
+                            m_os << FMT_M(v.second) << ",";
+                        m_os << " : ";
+                        for(const auto& v : e.clobbers)
+                            m_os << "\"" << v << "\",";
+                        m_os << ")";
+                        for(const auto& v : e.flags)
+                            m_os << " \"" << v << "\"";
+                        ),
                     (Drop,
                         DEBUG("- DROP " << e.slot);
                         m_os << "drop(" << FMT_M(e.slot);

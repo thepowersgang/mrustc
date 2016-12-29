@@ -200,11 +200,27 @@ enum class eDropKind {
     DEEP,
 };
 TAGGED_UNION(Statement, Assign,
+    // Value assigment
     (Assign, struct {
         LValue  dst;
         RValue  src;
         }),
+    // Inline assembly
+    (Asm, struct {
+        ::std::string   tpl;
+        ::std::vector< ::std::pair<::std::string,LValue> >  outputs;
+        ::std::vector< ::std::pair<::std::string,LValue> >  inputs;
+        ::std::vector< ::std::string>   clobbers;
+        ::std::vector< ::std::string>   flags;
+        }),
+    // Update the state of a drop flag
+    //(SetDropFlag, struct {
+    //    unsigned int idx;
+    //    bool new_val;
+    //    }),
+    // Drop a value
     (Drop, struct {
+        //unsigned int flag_idx;  // Valid if != ~0u
         eDropKind   kind;   // NOTE: For the `box` primitive
         LValue  slot;
         })

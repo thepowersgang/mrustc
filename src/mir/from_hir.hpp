@@ -174,6 +174,8 @@ public:
     void push_stmt_drop(const Span& sp, ::MIR::LValue val);
     // Push a shallow drop (for Box)
     void push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val);
+    // Push an inline assembly statement (NOTE: inputs aren't marked as moved)
+    void push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data);
 
     // - Block management
     bool block_active() const {
