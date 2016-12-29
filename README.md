@@ -20,22 +20,22 @@ Current Features
 - Closure and operator desugaring
 - MIR generation (with partial validation pass)
 - HIR/MIR (de)serialisation, allowing for `extern crate` handling
+- C-based code generation
 
 Short-Term Plans
 ===
 - Parse and Typecheck all run-pass tests
-- Code generation (including picking the output format)
 
 Medium-Term Goals
 ===
 - Compile rustc
-- MIR optimisations
+- Extensive MIR optimisations
 - Propagate lifetime annotations so that MIR can include a borrow checker
 
 
 Progress
 ===
-- Compiles the following standard library crates through to emitting serialised HIR+MIR
- - `libcore`, `liballoc`, `librustc_unicode`, `libcollections`, `liblibc`, AND `libstd`
-- `librustc_driver` compiles to serialised MIR
+- Compiles the standard library into loadable MIR
+- Compiles the "hello, world" test into compilable and running C code
+- Compiles `rustc` through to failing codegen
 
