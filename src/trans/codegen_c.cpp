@@ -690,19 +690,39 @@ namespace {
                                 m_of << (c ? "true" : "false");
                                 ),
                             (Bytes,
-                                emit_lvalue(e.dst);
-                                m_of << ".PTR = ";
-                                m_of << "\"" << ::std::oct;
-                                for(const auto& v : c) {
-                                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                                        m_of << v;
-                                    else
-                                        m_of << "\\" << (unsigned int)v;
+                                ::HIR::TypeRef  tmp;
+                                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+                                MIR_ASSERT(mir_res, ty.m_data.is_Borrow(), "Const::Bytes returning non-borrow - " << ty);
+                                if( ty.m_data.as_Borrow().inner->m_data.is_Array() ) {
+                                    // Array borrow : Cast the C string to the array
+                                    emit_lvalue(e.dst);
+                                    m_of << " = ";
+                                    // - Laziness
+                                    m_of << "(void*)\"" << ::std::oct;
+                                    for(const auto& v : c) {
+                                        if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                                            m_of << v;
+                                        else
+                                            m_of << "\\" << (unsigned int)v;
+                                    }
+                                    m_of << "\"" << ::std::dec;
                                 }
-                                m_of << "\"" << ::std::dec;
-                                m_of << ";\n\t";
-                                emit_lvalue(e.dst);
-                                m_of << ".META = " << c.size();
+                                else {
+                                    // Slice borrow (asumed), pointer and metadata
+                                    emit_lvalue(e.dst);
+                                    m_of << ".PTR = ";
+                                    m_of << "\"" << ::std::oct;
+                                    for(const auto& v : c) {
+                                        if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                                            m_of << v;
+                                        else
+                                            m_of << "\\" << (unsigned int)v;
+                                    }
+                                    m_of << "\"" << ::std::dec;
+                                    m_of << ";\n\t";
+                                    emit_lvalue(e.dst);
+                                    m_of << ".META = " << c.size();
+                                }
                                 ),
                             (StaticString,
                                 emit_lvalue(e.dst);
@@ -1255,8 +1275,7 @@ namespace {
                     {
                         if( i != 0 )    m_of << ",";
                         ss << "\n\t\t";
-                        this->emit_ctype( params.monomorph(m_crate, item.m_args[i].second) );
-                        ss << " arg" << i;
+                        this->emit_ctype( params.monomorph(m_crate, item.m_args[i].second), FMT_CB(os, os << "arg" << i;) );
                     }
                     ss << "\n\t\t)";
                 }
