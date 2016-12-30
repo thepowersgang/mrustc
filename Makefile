@@ -140,7 +140,7 @@ fn_getdeps = \
   | sed -n 's/.*extern crate \([a-zA-Z_0-9][a-zA-Z_0-9]*\)\( as .*\)\{0,1\};.*/\1/p' \
   | tr '\n' ' ')
 
-output/libarena.hir: output/libcore.hir
+output/libarena.hir: output/libstd.hir
 output/liballoc.hir: output/libcore.hir
 output/librustc_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
