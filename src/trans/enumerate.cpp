@@ -163,7 +163,7 @@ namespace {
             auto monomorph = [&](const auto& x)->const auto& {
                 if( monomorphise_type_needed(x) ) {
                     tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
-                    //m_resolve.expand_associated_types(sp, tmp);
+                    m_resolve.expand_associated_types(sp, tmp);
                     return tmp;
                 }
                 else {
@@ -219,8 +219,12 @@ namespace {
             // Recursion!
             (Path,
                 TU_MATCHA( (te.binding), (tpb),
-                (Unbound,   ),
-                (Opaque,   ),
+                (Unbound,
+                    BUG(Span(), "Unbound type hit in enumeration - " << ty);
+                    ),
+                (Opaque,
+                    BUG(Span(), "Opaque type hit in enumeration - " << ty);
+                    ),
                 (Struct,
                     visit_struct(te.path.m_data.as_Generic(), *tpb);
                     ),
