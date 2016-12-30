@@ -14,21 +14,48 @@
 #include <hir_typeck/common.hpp>    // monomorph
 #include <hir_typeck/static.hpp>    // StaticTraitResolve
 #include <hir/item_path.hpp>
+#include <deque>
+#include <algorithm>
 
+namespace {
+    struct EnumState
+    {
+        const ::HIR::Crate& crate;
+        TransList   rv;
 
-void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate);
-void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, const ::HIR::Path& path, const Trans_Params& pp);
-void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, TransList_Function& fcn_out, Trans_Params pp={});
-void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
-void Trans_Enumerate_FillFrom_VTable(TransList& out, const ::HIR::Crate& crate, ::HIR::Path vtable_path, const Trans_Params& pp);
-void Trans_Enumerate_FillFrom_Literal(TransList& out, const ::HIR::Crate& crate, const ::HIR::Literal& lit, const Trans_Params& pp);
+        // Queue of items to enumerate
+        ::std::deque<TransList_Function*>  fcn_queue;
+
+        EnumState(const ::HIR::Crate& crate):
+            crate(crate)
+        {}
+
+        void enum_fcn(::HIR::Path p, const ::HIR::Function& fcn, Trans_Params pp)
+        {
+            if(auto* e = rv.add_function(mv$(p)))
+            {
+                e->ptr = &fcn;
+                e->pp = mv$(pp);
+                fcn_queue.push_back(e);
+            }
+        }
+    };
+}
+
+TransList Trans_Enumerate_CommonPost(EnumState& state);
+void Trans_Enumerate_Types(EnumState& state);
+void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, const Trans_Params& pp);
+void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp);
+void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
+void Trans_Enumerate_FillFrom_VTable (EnumState& state, ::HIR::Path vtable_path, const Trans_Params& pp);
+void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& lit, const Trans_Params& pp);
 
 /// Enumerate trans items starting from `::main` (binary crate)
 TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 {
     static Span sp;
 
-    TransList   rv;
+    EnumState   state { crate };
 
     // "start" language item
     // - Takes main, and argc/argv as arguments
@@ -36,9 +63,10 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
         auto start_path = crate.get_lang_item_path(sp, "start");
         const auto& fcn = crate.get_function_by_path(sp, start_path);
 
-        auto* ptr = rv.add_function(start_path);
+        auto* ptr = state.rv.add_function(start_path);
         assert(ptr);
-        Trans_Enumerate_FillFrom(rv, crate,  fcn, *ptr);
+        ptr->ptr = &fcn;
+        Trans_Enumerate_FillFrom(state,  fcn, {});
     }
 
     // user entrypoint
@@ -46,21 +74,17 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
         auto main_path = ::HIR::SimplePath("", {"main"});
         const auto& fcn = crate.get_function_by_path(sp, main_path);
 
-        auto* ptr = rv.add_function(main_path);
+        auto* ptr = state.rv.add_function(main_path);
         assert(ptr);
-        Trans_Enumerate_FillFrom(rv, crate,  fcn, *ptr);
+        ptr->ptr = &fcn;
+        Trans_Enumerate_FillFrom(state,  fcn, {});
     }
 
-    // TODO: Search the trans list for external functions that refer to a named symbol, search for that defined elsewhere.
-    // - Not needed yet, there's a slow hack elsewhere
-
-    Trans_Enumerate_Types(rv, crate);
-
-    return rv;
+    return Trans_Enumerate_CommonPost(state);
 }
 
 namespace {
-    void Trans_Enumerate_Public_Mod(TransList& out, const ::HIR::Crate& crate, const ::HIR::Module& mod, ::HIR::SimplePath mod_path)
+    void Trans_Enumerate_Public_Mod(EnumState& state, const ::HIR::Module& mod, ::HIR::SimplePath mod_path)
     {
         for(const auto& vi : mod.m_value_items)
         {
@@ -75,16 +99,15 @@ namespace {
                 (Constant,
                     ),
                 (Static,
-                    auto* ptr = out.add_static(mod_path + vi.first);
+                    //state.enum_static(mod_path + vi.first, *e);
+                    auto* ptr = state.rv.add_static(mod_path + vi.first);
                     if(ptr)
-                        Trans_Enumerate_FillFrom(out,crate, e, *ptr);
+                        Trans_Enumerate_FillFrom(state, e, *ptr);
                     ),
                 (Function,
                     if( e.m_params.m_types.size() == 0 )
                     {
-                        auto* ptr = out.add_function(mod_path + vi.first);
-                        if(ptr)
-                            Trans_Enumerate_FillFrom(out,crate, e, *ptr);
+                        state.enum_fcn(mod_path + vi.first, e, {});
                     }
                     )
                 )
@@ -96,13 +119,31 @@ namespace {
 /// Enumerate trans items for all public non-generic items (library crate)
 TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
 {
-    TransList   rv;
+    EnumState   state { crate };
 
-    Trans_Enumerate_Public_Mod(rv, crate, crate.m_root_module,  ::HIR::SimplePath("",{}));
+    Trans_Enumerate_Public_Mod(state, crate.m_root_module,  ::HIR::SimplePath("",{}));
 
-    Trans_Enumerate_Types(rv, crate);
+    return Trans_Enumerate_CommonPost(state);
+}
 
-    return rv;
+
+/// Common post-processing
+TransList Trans_Enumerate_CommonPost(EnumState& state)
+{
+    // Run the enumerate queue (keeps the recursion depth down)
+    while( !state.fcn_queue.empty() )
+    {
+        auto& fcn_out = *state.fcn_queue.front();
+        state.fcn_queue.pop_front();
+
+        TRACE_FUNCTION_F("Function " << ::std::find_if(state.rv.m_functions.begin(), state.rv.m_functions.end(), [&](const auto&x){ return x.second.get() == &fcn_out; })->first);
+
+        Trans_Enumerate_FillFrom(state, *fcn_out.ptr, fcn_out.pp);
+    }
+
+    Trans_Enumerate_Types(state);
+
+    return mv$(state.rv);
 }
 
 namespace {
@@ -293,49 +334,49 @@ namespace {
 }
 
 // Enumerate types required for the enumerated items
-void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
+void Trans_Enumerate_Types(EnumState& state)
 {
     static Span sp;
-    TypeVisitor tv { crate, out.m_types };
+    TypeVisitor tv { state.crate, state.rv.m_types };
 
     unsigned int types_count = 0;
     bool constructors_added;
     do
     {
-        for(const auto& ent : out.m_functions)
+        for(const auto& ent : state.rv.m_functions)
         {
             TRACE_FUNCTION_F("Enumerate fn " << ent.first);
             assert(ent.second->ptr);
             const auto& fcn = *ent.second->ptr;
             const auto& pp = ent.second->pp;
 
-            tv.visit_type( pp.monomorph(crate, fcn.m_return) );
+            tv.visit_type( pp.monomorph(state.crate, fcn.m_return) );
             for(const auto& arg : fcn.m_args)
-                tv.visit_type( pp.monomorph(crate, arg.second) );
+                tv.visit_type( pp.monomorph(state.crate, arg.second) );
 
             if( fcn.m_code.m_mir )
             {
                 const auto& mir = *fcn.m_code.m_mir;
                 for(const auto& ty : mir.named_variables)
-                    tv.visit_type(pp.monomorph(crate, ty));
+                    tv.visit_type(pp.monomorph(state.crate, ty));
                 for(const auto& ty : mir.temporaries)
-                    tv.visit_type(pp.monomorph(crate, ty));
+                    tv.visit_type(pp.monomorph(state.crate, ty));
             }
         }
-        for(const auto& ent : out.m_statics)
+        for(const auto& ent : state.rv.m_statics)
         {
             TRACE_FUNCTION_F("Enumerate static " << ent.first);
             assert(ent.second->ptr);
             const auto& stat = *ent.second->ptr;
             const auto& pp = ent.second->pp;
 
-            tv.visit_type( pp.monomorph(crate, stat.m_type) );
+            tv.visit_type( pp.monomorph(state.crate, stat.m_type) );
         }
 
         constructors_added = false;
-        for(unsigned int i = types_count; i < out.m_types.size(); i ++ )
+        for(unsigned int i = types_count; i < state.rv.m_types.size(); i ++ )
         {
-            const auto& ty = out.m_types[i];
+            const auto& ty = state.rv.m_types[i];
             if( ty.m_data.is_Path() )
             {
                 const auto& te = ty.m_data.as_Path();
@@ -358,7 +399,7 @@ void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
                 if( markings_ptr->has_drop_impl )
                 {
                     // Add the Drop impl to the codegen list
-                    Trans_Enumerate_FillFrom_Path(out, crate,  ::HIR::Path( ty.clone(), crate.get_lang_item_path(sp, "drop"), "drop"), {});
+                    Trans_Enumerate_FillFrom_Path(state,  ::HIR::Path( ty.clone(), state.crate.get_lang_item_path(sp, "drop"), "drop"), {});
                     constructors_added = true;
                 }
             }
@@ -368,10 +409,10 @@ void Trans_Enumerate_Types(TransList& out, const ::HIR::Crate& crate)
                 // Reqire drop glue for inner type.
                 // - Should that already exist?
                 // Requires box_free lang item
-                Trans_Enumerate_FillFrom_Path(out, crate, ::HIR::GenericPath( crate.get_lang_item_path(sp, "box_free"), { ity->clone() } ), {});;
+                Trans_Enumerate_FillFrom_Path(state, ::HIR::GenericPath( state.crate.get_lang_item_path(sp, "box_free"), { ity->clone() } ), {});;
             }
         }
-        types_count = out.m_types.size();
+        types_count = state.rv.m_types.size();
     } while(constructors_added);
 }
 
@@ -581,11 +622,12 @@ namespace {
     }
 }
 
-void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, const ::HIR::Path& path, const Trans_Params& pp)
+void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, const Trans_Params& pp)
 {
     TRACE_FUNCTION_F(path);
     Span    sp;
-    auto path_mono = pp.monomorph(crate, path);
+    auto path_mono = pp.monomorph(state.crate, path);
+    DEBUG("- " << path_mono);
     Trans_Params  sub_pp(sp);
     TU_MATCHA( (path_mono.m_data), (pe),
     (Generic,
@@ -606,7 +648,7 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
     )
     // Get the item type
     // - Valid types are Function and Static
-    auto item_ref = get_ent_fullpath(sp, crate, path_mono, sub_pp.pp_impl);
+    auto item_ref = get_ent_fullpath(sp, state.crate, path_mono, sub_pp.pp_impl);
     TU_MATCHA( (item_ref), (e),
     (NotFound,
         BUG(sp, "Item not found for " << path_mono);
@@ -619,10 +661,10 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         }
         else if( path_mono.m_data.as_UfcsKnown().item == "#vtable" )
         {
-            if( out.add_vtable( path_mono.clone(), {} ) )
+            if( state.rv.add_vtable( path_mono.clone(), {} ) )
             {
                 // Fill from the vtable
-                Trans_Enumerate_FillFrom_VTable(out,crate, mv$(path_mono), sub_pp);
+                Trans_Enumerate_FillFrom_VTable(state, mv$(path_mono), sub_pp);
             }
         }
         else if( path_mono.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
@@ -640,23 +682,20 @@ void Trans_Enumerate_FillFrom_Path(TransList& out, const ::HIR::Crate& crate, co
         ),
     (Function,
         // Add this path (monomorphised) to the queue
-        if( auto* ptr = out.add_function(mv$(path_mono)) )
-        {
-            Trans_Enumerate_FillFrom(out,crate, *e, *ptr, mv$(sub_pp));
-        }
+        state.enum_fcn(mv$(path_mono), *e, mv$(sub_pp));
         ),
     (Static,
-        if( auto* ptr = out.add_static(mv$(path_mono)) )
+        if( auto* ptr = state.rv.add_static(mv$(path_mono)) )
         {
-            Trans_Enumerate_FillFrom(out,crate, *e, *ptr, mv$(sub_pp));
+            Trans_Enumerate_FillFrom(state, *e, *ptr, mv$(sub_pp));
         }
         ),
     (Constant,
-        Trans_Enumerate_FillFrom_Literal(out, crate, e->m_value_res, sub_pp);
+        Trans_Enumerate_FillFrom_Literal(state, e->m_value_res, sub_pp);
         )
     )
 }
-void Trans_Enumerate_FillFrom_MIR_LValue(TransList& out, const ::HIR::Crate& crate, const ::MIR::LValue& lv, const Trans_Params& pp)
+void Trans_Enumerate_FillFrom_MIR_LValue(EnumState& state, const ::MIR::LValue& lv, const Trans_Params& pp)
 {
     TU_MATCHA( (lv), (e),
     (Variable,
@@ -666,26 +705,26 @@ void Trans_Enumerate_FillFrom_MIR_LValue(TransList& out, const ::HIR::Crate& cra
     (Argument,
         ),
     (Static,
-        Trans_Enumerate_FillFrom_Path(out,crate, e, pp);
+        Trans_Enumerate_FillFrom_Path(state, e, pp);
         ),
     (Return,
         ),
     (Field,
-        Trans_Enumerate_FillFrom_MIR_LValue(out,crate, *e.val, pp);
+        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val, pp);
         ),
     (Deref,
-        Trans_Enumerate_FillFrom_MIR_LValue(out,crate, *e.val, pp);
+        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val, pp);
         ),
     (Index,
-        Trans_Enumerate_FillFrom_MIR_LValue(out,crate, *e.val, pp);
-        Trans_Enumerate_FillFrom_MIR_LValue(out,crate, *e.idx, pp);
+        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val, pp);
+        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.idx, pp);
         ),
     (Downcast,
-        Trans_Enumerate_FillFrom_MIR_LValue(out,crate, *e.val, pp);
+        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val, pp);
         )
     )
 }
-void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, const ::MIR::Function& code, const Trans_Params& pp)
+void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code, const Trans_Params& pp)
 {
     for(const auto& bb : code.blocks)
     {
@@ -693,10 +732,10 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
         {
             TU_MATCHA((stmt), (se),
             (Assign,
-                Trans_Enumerate_FillFrom_MIR_LValue(out,crate, se.dst, pp);
+                Trans_Enumerate_FillFrom_MIR_LValue(state, se.dst, pp);
                 TU_MATCHA( (se.src), (e),
                 (Use,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e, pp);
                     ),
                 (Constant,
                     TU_MATCHA( (e), (ce),
@@ -707,64 +746,64 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
                     (Bytes, ),
                     (StaticString, ),  // String
                     (Const,
-                        Trans_Enumerate_FillFrom_Path(out,crate, ce.p, pp);
+                        Trans_Enumerate_FillFrom_Path(state, ce.p, pp);
                         ),
                     (ItemAddr,
-                        Trans_Enumerate_FillFrom_Path(out,crate, ce, pp);
+                        Trans_Enumerate_FillFrom_Path(state, ce, pp);
                         )
                     )
                     ),
                 (SizedArray,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (Borrow,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (Cast,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (BinOp,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val_l, pp);
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val_r, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val_l, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val_r, pp);
                     ),
                 (UniOp,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (DstMeta,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (DstPtr,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (MakeDst,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.ptr_val, pp);
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.meta_val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.ptr_val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.meta_val, pp);
                     ),
                 (Tuple,
                     for(const auto& val : e.vals)
-                        Trans_Enumerate_FillFrom_MIR_LValue(out,crate, val, pp);
+                        Trans_Enumerate_FillFrom_MIR_LValue(state, val, pp);
                     ),
                 (Array,
                     for(const auto& val : e.vals)
-                        Trans_Enumerate_FillFrom_MIR_LValue(out,crate, val, pp);
+                        Trans_Enumerate_FillFrom_MIR_LValue(state, val, pp);
                     ),
                 (Variant,
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (Struct,
                     for(const auto& val : e.vals)
-                        Trans_Enumerate_FillFrom_MIR_LValue(out,crate, val, pp);
+                        Trans_Enumerate_FillFrom_MIR_LValue(state, val, pp);
                     )
                 )
                 ),
             (Asm,
                 for(const auto& v : se.inputs)
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, v.second, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, v.second, pp);
                 for(const auto& v : se.outputs)
-                    Trans_Enumerate_FillFrom_MIR_LValue(out,crate, v.second, pp);
+                    Trans_Enumerate_FillFrom_MIR_LValue(state, v.second, pp);
                 ),
             (Drop,
-                Trans_Enumerate_FillFrom_MIR_LValue(out,crate, se.slot, pp);
+                Trans_Enumerate_FillFrom_MIR_LValue(state, se.slot, pp);
                 // TODO: Ensure that the drop glue for this type is generated
                 )
             )
@@ -776,65 +815,65 @@ void Trans_Enumerate_FillFrom_MIR(TransList& out, const ::HIR::Crate& crate, con
         (Goto, ),
         (Panic, ),
         (If,
-            Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.cond, pp);
+            Trans_Enumerate_FillFrom_MIR_LValue(state, e.cond, pp);
             ),
         (Switch,
-            Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.val, pp);
+            Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
             ),
         (Call,
-            Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e.ret_val, pp);
+            Trans_Enumerate_FillFrom_MIR_LValue(state, e.ret_val, pp);
             TU_MATCHA( (e.fcn), (e2),
             (Value,
-                Trans_Enumerate_FillFrom_MIR_LValue(out,crate, e2, pp);
+                Trans_Enumerate_FillFrom_MIR_LValue(state, e2, pp);
                 ),
             (Path,
-                Trans_Enumerate_FillFrom_Path(out,crate, e2, pp);
+                Trans_Enumerate_FillFrom_Path(state, e2, pp);
                 ),
             (Intrinsic,
                 )
             )
             for(const auto& arg : e.args)
-                Trans_Enumerate_FillFrom_MIR_LValue(out,crate, arg, pp);
+                Trans_Enumerate_FillFrom_MIR_LValue(state, arg, pp);
             )
         )
     }
 }
 
-void Trans_Enumerate_FillFrom_VTable(TransList& out, const ::HIR::Crate& crate, ::HIR::Path vtable_path, const Trans_Params& pp)
+void Trans_Enumerate_FillFrom_VTable(EnumState& state, ::HIR::Path vtable_path, const Trans_Params& pp)
 {
     static Span sp;
     const auto& type = *vtable_path.m_data.as_UfcsKnown().type;
     const auto& trait_path = vtable_path.m_data.as_UfcsKnown().trait;
-    const auto& tr = crate.get_trait_by_path(Span(), trait_path.m_path);
+    const auto& tr = state.crate.get_trait_by_path(Span(), trait_path.m_path);
 
     auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
     for(const auto& m : tr.m_value_indexes)
     {
         DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
         auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
-        Trans_Enumerate_FillFrom_Path(out,crate, ::HIR::Path(type.clone(), mv$(gpath), m.first), {});
+        Trans_Enumerate_FillFrom_Path(state, ::HIR::Path(type.clone(), mv$(gpath), m.first), {});
     }
 }
 
-void Trans_Enumerate_FillFrom_Literal(TransList& out, const ::HIR::Crate& crate, const ::HIR::Literal& lit, const Trans_Params& pp)
+void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& lit, const Trans_Params& pp)
 {
     TU_MATCHA( (lit), (e),
     (Invalid,
         ),
     (List,
         for(const auto& v : e)
-            Trans_Enumerate_FillFrom_Literal(out, crate, v, pp);
+            Trans_Enumerate_FillFrom_Literal(state, v, pp);
         ),
     (Variant,
         for(const auto& v : e.vals)
-            Trans_Enumerate_FillFrom_Literal(out, crate, v, pp);
+            Trans_Enumerate_FillFrom_Literal(state, v, pp);
         ),
     (Integer,
         ),
     (Float,
         ),
     (BorrowOf,
-        Trans_Enumerate_FillFrom_Path(out, crate, e, pp);
+        Trans_Enumerate_FillFrom_Path(state, e, pp);
         ),
     (String,
         )
@@ -881,12 +920,12 @@ namespace {
     }
 }
 
-void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Function& function, TransList_Function& out_fcn, Trans_Params pp)
+void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function, const Trans_Params& pp)
 {
     TRACE_FUNCTION_F("Function pp=" << pp.pp_method<<"+"<<pp.pp_impl);
     if( function.m_code.m_mir )
     {
-        Trans_Enumerate_FillFrom_MIR(out, crate, *function.m_code.m_mir, pp);
+        Trans_Enumerate_FillFrom_MIR(state, *function.m_code.m_mir, pp);
     }
     else
     {
@@ -894,30 +933,24 @@ void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const :
         {
             // Search for a function with the same linkage name anywhere in the loaded crates
             ::HIR::SimplePath   path;
-            if(const auto* f = find_function_by_link_name(crate, function.m_linkage.name.c_str(), path))
+            if(const auto* f = find_function_by_link_name(state.crate, function.m_linkage.name.c_str(), path))
             {
-                auto path_mono = ::HIR::Path( mv$(path) );
-                if( auto* ptr = out.add_function(mv$(path_mono)) )
-                {
-                    Trans_Enumerate_FillFrom(out,crate, *f, *ptr, Trans_Params(pp.sp));
-                }
+                state.enum_fcn( ::HIR::Path(mv$(path)), *f, Trans_Params(pp.sp) );
             }
         }
         // External.
     }
-    out_fcn.ptr = &function;
-    out_fcn.pp = mv$(pp);
 }
-void Trans_Enumerate_FillFrom(TransList& out, const ::HIR::Crate& crate, const ::HIR::Static& item, TransList_Static& out_stat, Trans_Params pp)
+void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& item, TransList_Static& out_stat, Trans_Params pp)
 {
     TRACE_FUNCTION;
     if( item.m_value.m_mir )
     {
-        Trans_Enumerate_FillFrom_MIR(out, crate, *item.m_value.m_mir, pp);
+        Trans_Enumerate_FillFrom_MIR(state, *item.m_value.m_mir, pp);
     }
     else if( ! item.m_value_res.is_Invalid() )
     {
-        Trans_Enumerate_FillFrom_Literal(out, crate, item.m_value_res, pp);
+        Trans_Enumerate_FillFrom_Literal(state, item.m_value_res, pp);
     }
     out_stat.ptr = &item;
     out_stat.pp = mv$(pp);
