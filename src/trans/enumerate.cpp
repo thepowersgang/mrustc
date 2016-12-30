@@ -254,7 +254,7 @@ namespace {
                 BUG(Span(), "Generic type hit in enumeration - " << ty);
                 ),
             (ErasedType,
-                BUG(Span(), "ErasedType hit in enumeration - " << ty);
+                //BUG(Span(), "ErasedType hit in enumeration - " << ty);
                 ),
             (Closure,
                 BUG(Span(), "Closure type hit in enumeration - " << ty);
@@ -594,7 +594,9 @@ namespace {
             impl_pp.m_types = mv$(best_impl_params);
 
             TU_MATCHA( (trait_vi), (ve),
-            (Constant, TODO(sp, "Associated constant"); ),
+            (Constant,
+                TODO(sp, "Associated constant - " << path);
+                ),
             (Static,
                 auto it = impl.m_statics.find(e.item);
                 if( it != impl.m_statics.end() )

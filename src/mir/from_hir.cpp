@@ -1793,15 +1793,13 @@ namespace {
                 ASSERT_BUG(sp, it != tr.m_values.end(), "Cannot find trait item for " << node.m_path);
                 TU_MATCHA( (it->second), (e),
                 (Constant,
-                    m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.set_result( sp, ::MIR::Constant::make_Const({node.m_path.clone()}) );
                     ),
                 (Static,
                     TODO(sp, "Associated statics (non-rustc) - " << node.m_path);
                     ),
                 (Function,
-                    auto tmp = m_builder.new_temporary( node.m_res_type.clone() );
-                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
-                    m_builder.set_result( sp, mv$(tmp) );
+                    m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
                     )
                 )
                 ),

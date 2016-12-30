@@ -88,6 +88,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
 
         resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl_ref, auto is_fuzz) {
             DEBUG("Found " << impl_ref);
+            if( !impl_ref.m_data.is_TraitImpl() )
+                return true;
             const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
             const auto& impl = *impl_ref_e.impl;
             ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == pe.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe.trait.m_params);
