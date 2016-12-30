@@ -197,6 +197,7 @@ namespace {
 
             if( active_set.find(&ty) != active_set.end() ) {
                 // TODO: Handle recursion
+                DEBUG("- Type recursion with " << ty);
                 return ;
             }
             active_set.insert( &ty );
@@ -206,10 +207,13 @@ namespace {
             (Infer,
                 ),
             (Generic,
+                BUG(Span(), "Generic type hit in enumeration - " << ty);
                 ),
             (ErasedType,
+                BUG(Span(), "ErasedType hit in enumeration - " << ty);
                 ),
             (Closure,
+                BUG(Span(), "Closure type hit in enumeration - " << ty);
                 ),
             // Nothing to do
             (Diverge,

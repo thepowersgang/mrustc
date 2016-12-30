@@ -103,7 +103,7 @@ namespace {
                     }
                     m_of << " )";
                 }
-                m_of << ";\n";
+                m_of << "; // " << ty << "\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
                 m_of << "typedef struct { "; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "]; } "; emit_ctype(ty); m_of << ";\n";
@@ -137,7 +137,7 @@ namespace {
                 };
             m_of << "// struct " << p << "\n";
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
-            
+
             // HACK: For vtables, insert the alignment and size at the start
             {
                 const auto& lc = p.m_path.m_components.back();
@@ -145,7 +145,7 @@ namespace {
                     m_of << "\tVTABLE_HDR hdr;\n";
                 }
             }
-            
+
             TU_MATCHA( (item.m_data), (e),
             (Unit,
                 ),
@@ -207,7 +207,7 @@ namespace {
                 ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
                 m_of << "tUNIT " << Trans_Mangle(box_free) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "tmp0"; )); m_of << ");\n";
             }
-           
+
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
 
             // If this type has an impl of Drop, call that impl
@@ -226,7 +226,7 @@ namespace {
                 ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
                 m_of << "\t" << Trans_Mangle(box_free) << "(tmp0);\n";
             }
-            
+
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
             TU_MATCHA( (item.m_data), (e),
@@ -492,6 +492,7 @@ namespace {
                 m_of << e;
                 ),
             (BorrowOf,
+                // TODO: Get the pointed-to item type
                 if( ! ty.m_data.is_Function() )
                     m_of << "&";
                 m_of << Trans_Mangle( params.monomorph(m_crate, e));
@@ -536,12 +537,12 @@ namespace {
             auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
 
             // Size, Alignment, and destructor
-            m_of << "{ ";
+            m_of << "\t{ ";
             m_of << "sizeof("; emit_ctype(type); m_of << "),";
             m_of << "__alignof__("; emit_ctype(type); m_of << "),";
-            // TODO: Drop glue
+            // TODO: Drop glue pointer
             m_of << "}";    // No newline, added below
-            
+
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
                 m_of << ",\n";
@@ -632,7 +633,6 @@ namespace {
                     if( stmt.is_Drop() )
                     {
                         const auto& e = stmt.as_Drop();
-                        // TODO: Emit destructor calls
                         ::HIR::TypeRef  tmp;
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
 

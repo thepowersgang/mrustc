@@ -25,8 +25,8 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
     {
         TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Path, te,
             TU_MATCHA( (te.binding), (tpb),
-            (Unbound,   ),
-            (Opaque,   ),
+            (Unbound,  throw ""; ),
+            (Opaque,  throw ""; ),
             (Struct,
                 codegen->emit_struct(sp, te.path.m_data.as_Generic(), *tpb);
                 ),
