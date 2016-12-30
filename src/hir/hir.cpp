@@ -530,19 +530,63 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
         return false;
 
     auto it_t = bounds_t.begin();
-    for(auto it_o = bounds_o.begin(); it_o != bounds_o.end(); ++it_o)
+    auto it_o = bounds_o.begin();
+    while( it_t != bounds_t.end() && it_o != bounds_o.end() )
     {
-        // TODO: `T: Foo<T>` is more specific than `T: Foo<U>`, this method doesn't pick that.
-        while( ::ord(*it_t, *it_o) == OrdLess && it_t != bounds_t.end() )
+        auto cmp = ::ord(*it_t, *it_o);
+        if( cmp == OrdEqual )
+        {
+            ++it_t;
+            ++it_o;
+            continue ;
+        }
+
+        // If the two bounds are similar
+        if( it_t->tag() == it_o->tag() && it_t->is_TraitBound() )
+        {
+            const auto& b_t = it_t->as_TraitBound();
+            const auto& b_o = it_o->as_TraitBound();
+            // Check if the type is equal
+            if( b_t.type == b_o.type && b_t.trait.m_path.m_path == b_o.trait.m_path.m_path )
+            {
+                const auto& params_t = b_t.trait.m_path.m_params;
+                const auto& params_o = b_o.trait.m_path.m_params;
+                switch( typelist_ord_specific(sp, params_t.m_types, params_o.m_types) )
+                {
+                case ::OrdLess: return false;
+                case ::OrdGreater: return true;
+                case ::OrdEqual:    break;
+                }
+                // TODO: Find cases where there's `T: Foo<T>` and `T: Foo<U>`
+                for(unsigned int i = 0; i < params_t.m_types.size(); i ++ )
+                {
+                    if( params_t.m_types[i] != params_o.m_types[i] && params_t.m_types[i] == b_t.type )
+                    {
+                        return true;
+                    }
+                }
+                TODO(sp, *it_t << " ?= " << *it_o);
+            }
+        }
+
+        if( cmp == OrdLess )
+        {
             ++ it_t;
-        if( it_t == bounds_t.end() || ::ord(*it_t, *it_o) > OrdEqual ) {
-            TODO(Span(), "Error when an impl is missing a bound - " << *it_t << " != " << *it_o);
+        }
+        else
+        {
+            //++ it_o;
             return false;
         }
     }
-    if( bounds_t.size() <= bounds_o.size() )
+    if( it_t != bounds_t.end() )
+    {
+        return true;
+    }
+    else
+    {
         return false;
-    return true;
+    }
 }
 
 
