@@ -128,7 +128,7 @@ TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
 
 
 /// Common post-processing
-TransList Trans_Enumerate_CommonPost(EnumState& state)
+void Trans_Enumerate_CommonPost_Run(EnumState& state)
 {
     // Run the enumerate queue (keeps the recursion depth down)
     while( !state.fcn_queue.empty() )
@@ -140,7 +140,10 @@ TransList Trans_Enumerate_CommonPost(EnumState& state)
 
         Trans_Enumerate_FillFrom(state, *fcn_out.ptr, fcn_out.pp);
     }
-
+}
+TransList Trans_Enumerate_CommonPost(EnumState& state)
+{
+    Trans_Enumerate_CommonPost_Run(state);
     Trans_Enumerate_Types(state);
 
     return mv$(state.rv);
@@ -413,6 +416,9 @@ void Trans_Enumerate_Types(EnumState& state)
             }
         }
         types_count = state.rv.m_types.size();
+
+        // Run queue
+        Trans_Enumerate_CommonPost_Run(state);
     } while(constructors_added);
 }
 
@@ -732,6 +738,7 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
         {
             TU_MATCHA((stmt), (se),
             (Assign,
+                DEBUG("- " << se.dst << " = " << se.src);
                 Trans_Enumerate_FillFrom_MIR_LValue(state, se.dst, pp);
                 TU_MATCHA( (se.src), (e),
                 (Use,
@@ -746,7 +753,7 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                     (Bytes, ),
                     (StaticString, ),  // String
                     (Const,
-                        Trans_Enumerate_FillFrom_Path(state, ce.p, pp);
+                        //Trans_Enumerate_FillFrom_Path(state, ce.p, pp);
                         ),
                     (ItemAddr,
                         Trans_Enumerate_FillFrom_Path(state, ce, pp);
@@ -797,17 +804,20 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                 )
                 ),
             (Asm,
+                DEBUG("- asm! ...");
                 for(const auto& v : se.inputs)
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second, pp);
                 for(const auto& v : se.outputs)
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second, pp);
                 ),
             (Drop,
+                DEBUG("- DROP " << se.slot);
                 Trans_Enumerate_FillFrom_MIR_LValue(state, se.slot, pp);
                 // TODO: Ensure that the drop glue for this type is generated
                 )
             )
         }
+        DEBUG("> " << bb.terminator);
         TU_MATCHA( (bb.terminator), (e),
         (Incomplete, ),
         (Return, ),
