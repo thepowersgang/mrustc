@@ -983,222 +983,7 @@ namespace {
                     {
                         const auto& name = e.fcn.as_Intrinsic().name;
                         const auto& params = e.fcn.as_Intrinsic().params;
-
-                        struct H {
-                            static const char* get_atomic_ordering(const ::MIR::TypeResolve& mir_res, const ::std::string& name, size_t prefix_len) {
-                                if( name.size() < prefix_len )
-                                    return "memory_order_seq_cst";
-                                const char* suffix = name.c_str() + prefix_len;
-                                if( ::std::strcmp(suffix, "acq") == 0 ) {
-                                    return "memory_order_acquire";
-                                }
-                                else if( ::std::strcmp(suffix, "rel") == 0 ) {
-                                    return "memory_order_release";
-                                }
-                                else if( ::std::strcmp(suffix, "relaxed") == 0 ) {
-                                    return "memory_order_relaxed";
-                                }
-                                else if( ::std::strcmp(suffix, "acqrel") == 0 ) {
-                                    return "memory_order_acq_rel";
-                                }
-                                else {
-                                    MIR_BUG(mir_res, "Unknown atomic ordering suffix - '" << suffix << "'");
-                                }
-                            }
-                        };
-                        auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail) {
-                            emit_lvalue(e.ret_val); m_of << "._0 = "; emit_lvalue(e.args.at(1)); m_of << ";\n\t";
-                            emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_strong_explicit(";
-                                emit_lvalue(e.args.at(0));
-                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
-                                m_of << ", "; emit_lvalue(e.args.at(2));
-                                m_of << ", "<<o_succ<<", "<<o_fail<<")";
-                            };
-                        if( name == "size_of" ) {
-                            emit_lvalue(e.ret_val); m_of << " = sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
-                        }
-                        else if( name == "min_align_of" ) {
-                            //emit_lvalue(e.ret_val); m_of << " = alignof("; emit_ctype(params.m_types.at(0)); m_of << ")";
-                            emit_lvalue(e.ret_val); m_of << " = __alignof__("; emit_ctype(params.m_types.at(0)); m_of << ")";
-                        }
-                        else if( name == "size_of_val" ) {
-                            emit_lvalue(e.ret_val); m_of << " = ";
-                            const auto& ty = params.m_types.at(0);
-                            switch( metadata_type(ty) )
-                            {
-                            case MetadataType::None:
-                                m_of << "sizeof("; emit_ctype(ty); m_of << ")";
-                                break;
-                            case MetadataType::Slice: {
-                                // TODO: Have a function that fetches the inner type for types like `Path` or `str`
-                                const auto& ity = *ty.m_data.as_Slice().inner;
-                                emit_lvalue(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(ity); m_of << ")";
-                                break; }
-                            case MetadataType::TraitObject:
-                                m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->size";
-                                break;
-                            }
-                        }
-                        else if( name == "min_align_of_val" ) {
-                            const auto& ty = params.m_types.at(0);
-                            switch( metadata_type(ty) )
-                            {
-                            case MetadataType::None:
-                                m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
-                                break;
-                            case MetadataType::Slice: {
-                                // TODO: Have a function that fetches the inner type for types like `Path` or `str`
-                                const auto& ity = *ty.m_data.as_Slice().inner;
-                                m_of << "__alignof__("; emit_ctype(ity); m_of << ")";
-                                break; }
-                            case MetadataType::TraitObject:
-                                m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->align";
-                                break;
-                            }
-                        }
-                        else if( name == "type_id" ) {
-                            emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(params.m_types.at(0));
-                        }
-                        else if( name == "transmute" ) {
-                            m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
-                        }
-                        else if( name == "copy_nonoverlapping" || name == "copy" ) {
-                            if( name == "copy" ) {
-                                m_of << "memmove";
-                            }
-                            else {
-                                m_of << "memcpy";
-                            }
-                            // 0: Source, 1: Destination, 2: Count
-                            m_of << "( "; emit_lvalue(e.args.at(1));
-                                m_of << ", "; emit_lvalue(e.args.at(0));
-                                m_of << ", "; emit_lvalue(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
-                                m_of << ")";
-                        }
-                        else if( name == "forget" ) {
-                            // Nothing needs to be done, this just stops the destructor from running.
-                        }
-                        else if( name == "drop_in_place" ) {
-                            emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).clone()) }), params.m_types.at(0), true );
-                        }
-                        else if( name == "uninit" ) {
-                            // Do nothing, leaves the destination undefined
-                        }
-                        else if( name == "init" ) {
-                            m_of << "memset( &"; emit_lvalue(e.ret_val); m_of << ", 0, sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
-                        }
-                        else if( name == "move_val_init" ) {
-                            m_of << "*"; emit_lvalue(e.args.at(0)); m_of << " = "; emit_lvalue(e.args.at(1));
-                        }
-                        else if( name == "abort" ) {
-                            m_of << "abort()";
-                        }
-                        else if( name == "offset" ) {
-                            emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
-                        }
-                        else if( name == "arith_offset" ) {
-                            emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
-                        }
-                        // Hints
-                        else if( name == "unreachable" ) {
-                            m_of << "__builtin_unreachable()";
-                        }
-                        else if( name == "assume" ) {
-                            // I don't assume :)
-                        }
-                        else if( name == "likely" ) {
-                        }
-                        else if( name == "unlikely" ) {
-                        }
-                        // Overflowing Arithmatic
-                        // HACK: Uses GCC intrinsics
-                        else if( name == "add_with_overflow" ) {
-                            emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow("; emit_lvalue(e.args.at(0));
-                                m_of << ", "; emit_lvalue(e.args.at(1));
-                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        }
-                        else if( name == "sub_with_overflow" ) {
-                            emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow("; emit_lvalue(e.args.at(0));
-                                m_of << ", "; emit_lvalue(e.args.at(1));
-                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        }
-                        else if( name == "mul_with_overflow" ) {
-                            emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_lvalue(e.args.at(0));
-                                m_of << ", "; emit_lvalue(e.args.at(1));
-                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                        }
-                        else if( name == "overflowing_add" ) {
-                            m_of << "__builtin_add_overflow("; emit_lvalue(e.args.at(0));
-                                m_of << ", "; emit_lvalue(e.args.at(1));
-                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        }
-                        else if( name == "overflowing_sub" ) {
-                            m_of << "__builtin_sub_overflow("; emit_lvalue(e.args.at(0));
-                                m_of << ", "; emit_lvalue(e.args.at(1));
-                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        }
-                        else if( name == "overflowing_mul" ) {
-                            m_of << "__builtin_mul_overflow("; emit_lvalue(e.args.at(0));
-                                m_of << ", "; emit_lvalue(e.args.at(1));
-                                m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                        }
-                        // Bit Twiddling
-                        else if( name == "ctlz" ) {
-                            emit_lvalue(e.ret_val); m_of << " = __builtin_clz("; emit_lvalue(e.args.at(0)); m_of << ")";
-                        }
-                        // --- Atomics!
-                        // > Single-ordering atomics
-                        else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
-                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                            emit_lvalue(e.ret_val); m_of << " = atomic_fetch_add_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
-                        }
-                        else if( name == "atomic_xsub" || name.compare(0, 7+4+1, "atomic_xsub_") == 0 ) {
-                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                            emit_lvalue(e.ret_val); m_of << " = atomic_fetch_sub_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
-                        }
-                        else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
-                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                            emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit("; emit_lvalue(e.args.at(0)); m_of << ", " << ordering << ")";
-                        }
-                        else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
-                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+5+1);
-                            m_of << "atomic_store_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
-                        }
-                        // Comare+Exchange (has two orderings)
-                        else if( name == "atomic_cxchg_acq_failrelaxed" ) {
-                            emit_atomic_cxchg(e, "memory_order_acquire", "memory_order_relaxed");
-                        }
-                        else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
-                            emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_relaxed");
-                        }
-                        // _rel = Release, Relaxed (not Release,Release)
-                        else if( name == "atomic_cxchg_rel" ) {
-                            emit_atomic_cxchg(e, "memory_order_release", "memory_order_relaxed");
-                        }
-                        // _acqrel = Release, Acquire (not AcqRel,AcqRel)
-                        else if( name == "atomic_cxchg_acqrel" ) {
-                            emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_acquire");
-                        }
-                        else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
-                            auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+6+4);
-                            emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering);
-                        }
-                        else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
-                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
-                            emit_atomic_cxchg(e, ordering, ordering);
-                        }
-                        else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
-                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
-                            emit_lvalue(e.ret_val); m_of << " = atomic_exchange_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
-                        }
-                        else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
-                            auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
-                            m_of << "atomic_thread_fence(" << ordering << ")";
-                        }
-                        else {
-                            MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");
-                        }
-                        m_of << ";\n";
+                        emit_intrinsic_call(name, params, e);
                         m_of << "\tgoto bb" << e.ret_block << ";\n";
                         break ;
                     }
@@ -1280,6 +1065,226 @@ namespace {
                     ss << "\n\t\t)";
                 }
                 ));
+        }
+
+        void emit_intrinsic_call(const ::std::string& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
+        {
+            const auto& mir_res = *m_mir_res;
+            struct H {
+                static const char* get_atomic_ordering(const ::MIR::TypeResolve& mir_res, const ::std::string& name, size_t prefix_len) {
+                    if( name.size() < prefix_len )
+                        return "memory_order_seq_cst";
+                    const char* suffix = name.c_str() + prefix_len;
+                    if( ::std::strcmp(suffix, "acq") == 0 ) {
+                        return "memory_order_acquire";
+                    }
+                    else if( ::std::strcmp(suffix, "rel") == 0 ) {
+                        return "memory_order_release";
+                    }
+                    else if( ::std::strcmp(suffix, "relaxed") == 0 ) {
+                        return "memory_order_relaxed";
+                    }
+                    else if( ::std::strcmp(suffix, "acqrel") == 0 ) {
+                        return "memory_order_acq_rel";
+                    }
+                    else {
+                        MIR_BUG(mir_res, "Unknown atomic ordering suffix - '" << suffix << "'");
+                    }
+                }
+            };
+            auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail) {
+                emit_lvalue(e.ret_val); m_of << "._0 = "; emit_lvalue(e.args.at(1)); m_of << ";\n\t";
+                emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_strong_explicit(";
+                    emit_lvalue(e.args.at(0));
+                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
+                    m_of << ", "; emit_lvalue(e.args.at(2));
+                    m_of << ", "<<o_succ<<", "<<o_fail<<")";
+                };
+            if( name == "size_of" ) {
+                emit_lvalue(e.ret_val); m_of << " = sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+            }
+            else if( name == "min_align_of" ) {
+                //emit_lvalue(e.ret_val); m_of << " = alignof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = __alignof__("; emit_ctype(params.m_types.at(0)); m_of << ")";
+            }
+            else if( name == "size_of_val" ) {
+                emit_lvalue(e.ret_val); m_of << " = ";
+                const auto& ty = params.m_types.at(0);
+                switch( metadata_type(ty) )
+                {
+                case MetadataType::None:
+                    m_of << "sizeof("; emit_ctype(ty); m_of << ")";
+                    break;
+                case MetadataType::Slice: {
+                    // TODO: Have a function that fetches the inner type for types like `Path` or `str`
+                    const auto& ity = *ty.m_data.as_Slice().inner;
+                    emit_lvalue(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(ity); m_of << ")";
+                    break; }
+                case MetadataType::TraitObject:
+                    m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->size";
+                    break;
+                }
+            }
+            else if( name == "min_align_of_val" ) {
+                const auto& ty = params.m_types.at(0);
+                switch( metadata_type(ty) )
+                {
+                case MetadataType::None:
+                    m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
+                    break;
+                case MetadataType::Slice: {
+                    // TODO: Have a function that fetches the inner type for types like `Path` or `str`
+                    const auto& ity = *ty.m_data.as_Slice().inner;
+                    m_of << "__alignof__("; emit_ctype(ity); m_of << ")";
+                    break; }
+                case MetadataType::TraitObject:
+                    m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->align";
+                    break;
+                }
+            }
+            else if( name == "type_id" ) {
+                emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(params.m_types.at(0));
+            }
+            else if( name == "transmute" ) {
+                m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
+            }
+            else if( name == "copy_nonoverlapping" || name == "copy" ) {
+                if( name == "copy" ) {
+                    m_of << "memmove";
+                }
+                else {
+                    m_of << "memcpy";
+                }
+                // 0: Source, 1: Destination, 2: Count
+                m_of << "( "; emit_lvalue(e.args.at(1));
+                    m_of << ", "; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                    m_of << ")";
+            }
+            else if( name == "forget" ) {
+                // Nothing needs to be done, this just stops the destructor from running.
+            }
+            else if( name == "drop_in_place" ) {
+                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).clone()) }), params.m_types.at(0), true );
+            }
+            else if( name == "uninit" ) {
+                // Do nothing, leaves the destination undefined
+            }
+            else if( name == "init" ) {
+                m_of << "memset( &"; emit_lvalue(e.ret_val); m_of << ", 0, sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
+            }
+            else if( name == "move_val_init" ) {
+                m_of << "*"; emit_lvalue(e.args.at(0)); m_of << " = "; emit_lvalue(e.args.at(1));
+            }
+            else if( name == "abort" ) {
+                m_of << "abort()";
+            }
+            else if( name == "offset" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
+            }
+            else if( name == "arith_offset" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
+            }
+            // Hints
+            else if( name == "unreachable" ) {
+                m_of << "__builtin_unreachable()";
+            }
+            else if( name == "assume" ) {
+                // I don't assume :)
+            }
+            else if( name == "likely" ) {
+            }
+            else if( name == "unlikely" ) {
+            }
+            // Overflowing Arithmatic
+            // HACK: Uses GCC intrinsics
+            else if( name == "add_with_overflow" ) {
+                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow("; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+            }
+            else if( name == "sub_with_overflow" ) {
+                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow("; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+            }
+            else if( name == "mul_with_overflow" ) {
+                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+            }
+            else if( name == "overflowing_add" ) {
+                m_of << "__builtin_add_overflow("; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+            }
+            else if( name == "overflowing_sub" ) {
+                m_of << "__builtin_sub_overflow("; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+            }
+            else if( name == "overflowing_mul" ) {
+                m_of << "__builtin_mul_overflow("; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+            }
+            // Bit Twiddling
+            else if( name == "ctlz" ) {
+                emit_lvalue(e.ret_val); m_of << " = __builtin_clz("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            // --- Atomics!
+            // > Single-ordering atomics
+            else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
+                emit_lvalue(e.ret_val); m_of << " = atomic_fetch_add_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+            }
+            else if( name == "atomic_xsub" || name.compare(0, 7+4+1, "atomic_xsub_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
+                emit_lvalue(e.ret_val); m_of << " = atomic_fetch_sub_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+            }
+            else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
+                emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit("; emit_lvalue(e.args.at(0)); m_of << ", " << ordering << ")";
+            }
+            else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+5+1);
+                m_of << "atomic_store_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+            }
+            // Comare+Exchange (has two orderings)
+            else if( name == "atomic_cxchg_acq_failrelaxed" ) {
+                emit_atomic_cxchg(e, "memory_order_acquire", "memory_order_relaxed");
+            }
+            else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
+                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_relaxed");
+            }
+            // _rel = Release, Relaxed (not Release,Release)
+            else if( name == "atomic_cxchg_rel" ) {
+                emit_atomic_cxchg(e, "memory_order_release", "memory_order_relaxed");
+            }
+            // _acqrel = Release, Acquire (not AcqRel,AcqRel)
+            else if( name == "atomic_cxchg_acqrel" ) {
+                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_acquire");
+            }
+            else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
+                auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+6+4);
+                emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering);
+            }
+            else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
+                emit_atomic_cxchg(e, ordering, ordering);
+            }
+            else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
+                emit_lvalue(e.ret_val); m_of << " = atomic_exchange_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+            }
+            else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
+                m_of << "atomic_thread_fence(" << ordering << ")";
+            }
+            else {
+                MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");
+            }
+            m_of << ";\n";
         }
 
         void emit_destructor_call(const ::MIR::LValue& slot, const ::HIR::TypeRef& ty, bool unsized_valid)
