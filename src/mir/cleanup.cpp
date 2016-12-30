@@ -80,10 +80,51 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         return &constant.m_value_res;
         ),
     (UfcsUnknown,
+        BUG(sp, "UfcsUnknown in MIR - " << path);
         ),
     (UfcsKnown,
+        const ::HIR::TraitImpl* best_impl = nullptr;
+        ::std::vector<::HIR::TypeRef>    best_impl_params;
+
+        resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl_ref, auto is_fuzz) {
+            DEBUG("Found " << impl_ref);
+            const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
+            const auto& impl = *impl_ref_e.impl;
+            ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == pe.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe.trait.m_params);
+
+            if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
+                best_impl = &impl;
+                bool is_spec = false;
+                auto it = impl.m_constants.find(pe.item);
+                if( it == impl.m_constants.end() ) {
+                    DEBUG("Constant " << pe.item << " missing in trait impl " << pe.trait << " for " << *pe.type);
+                    return false;
+                }
+                is_spec = it->second.is_specialisable;
+                best_impl_params.clear();
+                for(unsigned int i = 0; i < impl_ref_e.params.size(); i ++)
+                {
+                    if( impl_ref_e.params[i] )
+                        best_impl_params.push_back( impl_ref_e.params[i]->clone() );
+                    else if( ! impl_ref_e.params_ph[i].m_data.is_Generic() )
+                        best_impl_params.push_back( impl_ref_e.params_ph[i].clone() );
+                    else
+                        BUG(sp, "Parameter " << i << " unset");
+                }
+                return !is_spec;
+            }
+            return false;
+            });
+
+        if( best_impl )
+        {
+            out_ty = best_impl->m_constants.find(pe.item)->second.data.m_type.clone();
+            // TODO: Obtain `out_ty` by monomorphising the type in the trait.
+            return &best_impl->m_constants.find(pe.item)->second.data.m_value_res;
+        }
         ),
     (UfcsInherent,
+        // TODO: Associated constants (inherent)
         )
     )
     return nullptr;
