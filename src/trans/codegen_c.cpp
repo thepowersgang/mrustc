@@ -1062,6 +1062,10 @@ namespace {
                         ss << "\n\t\t";
                         this->emit_ctype( params.monomorph(m_crate, item.m_args[i].second), FMT_CB(os, os << "arg" << i;) );
                     }
+
+                    if( item.m_variadic )
+                        m_of << ", ...";
+
                     ss << "\n\t\t)";
                 }
                 ));
@@ -1161,11 +1165,32 @@ namespace {
                     m_of << ", "; emit_lvalue(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                     m_of << ")";
             }
+            else if( name == "write_bytes" ) {
+                // 0: Destination, 1: Value, 2: Count
+                m_of << "memset( "; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of << ", "; emit_lvalue(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                    m_of << ")";
+            }
             else if( name == "forget" ) {
                 // Nothing needs to be done, this just stops the destructor from running.
             }
             else if( name == "drop_in_place" ) {
                 emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).clone()) }), params.m_types.at(0), true );
+            }
+            else if( name == "needs_drop" ) {
+                // Returns `true` if the actual type given as `T` requires drop glue;
+                // returns `false` if the actual type provided for `T` implements `Copy`. (Either otherwise)
+                const auto& ty = params.m_types.at(0);
+                emit_lvalue(e.ret_val);
+                m_of << " = ";
+                if( m_resolve.type_is_copy(Span(), ty) ) {
+                    m_of << "false";
+                }
+                // If T: !Copy, return true
+                else {
+                    m_of << "true";
+                }
             }
             else if( name == "uninit" ) {
                 // Do nothing, leaves the destination undefined
@@ -1184,6 +1209,27 @@ namespace {
             }
             else if( name == "arith_offset" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
+            }
+            else if( name == "bswap" ) {
+                const auto& ty = params.m_types.at(0);
+                MIR_ASSERT(mir_res, ty.m_data.is_Primitive(), "Invalid type passed to bwsap, must be a primitive, got " << ty);
+                switch( ty.m_data.as_Primitive() )
+                {
+                case ::HIR::CoreType::U8:
+                    MIR_BUG(mir_res, "bswap<u8>");
+                    break;
+                case ::HIR::CoreType::U16:
+                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap16("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    break;
+                case ::HIR::CoreType::U32:
+                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap32("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    break;
+                case ::HIR::CoreType::U64:
+                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap64("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    break;
+                default:
+                    MIR_TODO(mir_res, "bswap<" << ty << ">");
+                }
             }
             // Hints
             else if( name == "unreachable" ) {
