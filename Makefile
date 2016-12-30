@@ -156,6 +156,7 @@ output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCS
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
 output/libflate.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs))
+output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs))
 
 output/liballoc_system.hir: $(call fcn_extcrate, core libc)
 output/liballoc_jemalloc.hir: $(call fcn_extcrate, core libc)
@@ -174,6 +175,7 @@ output/librustc_metadata.hir: $(call fcn_extcrate, std log syntax syntax_pos fla
 output/librustc_borrowck.hir: $(call fcn_extcrate, std log syntax syntax_pos rustc_errors graphviz rustc rustc_data_structures rustc_mir core)
 output/librustc_mir.hir: $(call fcn_extcrate, std log graphviz rustc rustc_data_structures rustc_back rustc_bitflags syntax syntax_pos rustc_const_math rustc_const_eval)
 output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
+output/libgraphviz.hir: $(call fcn_extcrate, std)
 
 output/libsyntax_pos.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libsyntax_pos/lib.rs))
 
@@ -188,6 +190,9 @@ output/librustc_passes.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCS
 output/librustc_incremental.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_incremental/lib.rs))
 output/librustc_typeck.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_trans/lib.rs))
 output/librustc_driver.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_driver/lib.rs))
+output/librustc_bitflags.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/librustc_bitflags/lib.rs))
+output/librustc_privacy.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_privacy/lib.rs))
+output/librustc_platform_intrinsics.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_platform_intrinsics/lib.rs))
 
 output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
 	@echo "--- [MRUSTC] $@"
