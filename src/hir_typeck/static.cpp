@@ -656,7 +656,9 @@ bool StaticTraitResolve::find_impl__check_crate(
             // HELPER: Get a possibily monomorphised version of the input type (stored in `tmp` if needed)
             auto monomorph_get = [&](const auto& ty)->const auto& {
                 if( monomorphise_type_needed(ty) ) {
-                    return (tmp = monomorphise_type_with(sp, ty,  monomorph_cb));
+                    tmp = monomorphise_type_with(sp, ty,  monomorph_cb);
+                    this->expand_associated_types(sp, tmp);
+                    return tmp;
                 }
                 else {
                     return ty;
@@ -746,7 +748,7 @@ bool StaticTraitResolve::find_impl__check_crate(
             BUG(sp, "UfcsUnknown in typeck - " << type);
             ),
         (UfcsKnown,
-            TODO(sp, "Check trait bounds for bound on " << type);
+            TODO(sp, "Check trait bounds for bound on UfcsKnown " << type);
             ),
         (UfcsInherent,
             TODO(sp, "Auto trait lookup on UFCS Inherent type");
