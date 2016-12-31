@@ -2972,6 +2972,10 @@ namespace {
 
             ::HIR::ExprVisitorDef::visit(node);
         }
+        void visit(::HIR::ExprNode_UnionLiteral& node) override {
+            this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
+            ::HIR::ExprVisitorDef::visit(node);
+        }
         void visit(::HIR::ExprNode_TupleVariant& node) override {
             this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
             for(auto& ty : node.m_arg_types) {
