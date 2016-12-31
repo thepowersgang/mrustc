@@ -445,7 +445,6 @@ namespace {
         }
         void emit_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
             TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
-            Span    sp;
             ::HIR::TypeRef  tmp;
             auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
                 if( monomorphise_type_needed(ty) ) {
@@ -464,12 +463,12 @@ namespace {
                 else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
                     const auto& pp = te.path.m_data.as_Generic().m_params;
                     TU_MATCHA((te.binding), (pbe),
-                    (Unbound, BUG(sp, "Unbound type path " << ty); ),
-                    (Opaque, BUG(sp, "Opaque type path " << ty); ),
+                    (Unbound, MIR_BUG(*m_mir_res, "Unbound type path " << ty); ),
+                    (Opaque, MIR_BUG(*m_mir_res, "Opaque type path " << ty); ),
                     (Struct,
                         TU_MATCHA( (pbe->m_data), (se),
                         (Unit,
-                            BUG(sp, "Unit struct " << ty);
+                            MIR_BUG(*m_mir_res, "Unit struct " << ty);
                             ),
                         (Tuple,
                             return monomorph_with(pp, se.at(idx).ent);
@@ -480,16 +479,16 @@ namespace {
                         )
                         ),
                     (Union,
-                        TODO(Span(), "Union literals");
+                        MIR_TODO(*m_mir_res, "Union literals");
                         ),
                     (Enum,
                         const auto& evar = pbe->m_variants.at(var);
                         TU_MATCHA( (evar.second), (se),
                         (Unit,
-                            BUG(sp, "Unit enum var " << ty << " #" << var << " - fld " << idx);
+                            MIR_BUG(*m_mir_res, "Unit enum var " << ty << " #" << var << " - fld " << idx);
                             ),
                         (Value,
-                            BUG(sp, "Value enum var " << ty << " #" << var << " - fld " << idx);
+                            MIR_BUG(*m_mir_res, "Value enum var " << ty << " #" << var << " - fld " << idx);
                             ),
                         (Tuple,
                             return monomorph_with(pp, se.at(idx).ent);
@@ -506,7 +505,7 @@ namespace {
                     return te.at(idx);
                 )
                 else {
-                    TODO(Span(), "Unknown type in list literal - " << ty);
+                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
                 }
                 };
             TU_MATCHA( (lit), (e),
@@ -602,7 +601,7 @@ namespace {
                     if( m.second.first != i )
                         continue ;
 
-                    //ASSERT_BUG(sp, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
+                    //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
                     DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
 
                     auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
@@ -924,7 +923,7 @@ namespace {
                             case ::MIR::eBinOp::SUB_OV:
                             case ::MIR::eBinOp::MUL_OV:
                             case ::MIR::eBinOp::DIV_OV:
-                                TODO(sp, "Overflow");
+                                MIR_TODO(mir_res, "Overflow");
                                 break;
                             }
                             emit_lvalue(ve.val_r);
@@ -1093,7 +1092,7 @@ namespace {
                         m_of << Trans_Mangle(e2);
                         ),
                     (Intrinsic,
-                        BUG(sp, "Intrinsic not expected, should be handled above");
+                        MIR_BUG(mir_res, "Intrinsic not expected, should be handled above");
                         )
                     )
                     m_of << "(";
@@ -1566,12 +1565,12 @@ namespace {
                 else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, te,
                     const auto& pp = te.path.m_data.as_Generic().m_params;
                     TU_MATCHA((te.binding), (pbe),
-                    (Unbound, BUG(sp, "Unbound type path " << ty); ),
-                    (Opaque, BUG(sp, "Opaque type path " << ty); ),
+                    (Unbound, MIR_BUG(*m_mir_res, "Unbound type path " << ty); ),
+                    (Opaque, MIR_BUG(*m_mir_res, "Opaque type path " << ty); ),
                     (Struct,
                         TU_MATCHA( (pbe->m_data), (se),
                         (Unit,
-                            BUG(sp, "Unit struct " << ty);
+                            MIR_BUG(*m_mir_res, "Unit struct " << ty);
                             ),
                         (Tuple,
                             return monomorph_with(pp, se.at(idx).ent);
@@ -1582,16 +1581,16 @@ namespace {
                         )
                         ),
                     (Union,
-                        TODO(Span(), "Union literals");
+                        MIR_TODO(*m_mir_res, "Union literals");
                         ),
                     (Enum,
                         const auto& evar = pbe->m_variants.at(var);
                         TU_MATCHA( (evar.second), (se),
                         (Unit,
-                            BUG(sp, "Unit enum var " << ty << " #" << var << " - fld " << idx);
+                            MIR_BUG(*m_mir_res, "Unit enum var " << ty << " #" << var << " - fld " << idx);
                             ),
                         (Value,
-                            BUG(sp, "Value enum var " << ty << " #" << var << " - fld " << idx);
+                            MIR_BUG(*m_mir_res, "Value enum var " << ty << " #" << var << " - fld " << idx);
                             ),
                         (Tuple,
                             return monomorph_with(pp, se.at(idx).ent);
@@ -1608,7 +1607,7 @@ namespace {
                     return te.at(idx);
                 )
                 else {
-                    TODO(Span(), "Unknown type in list literal - " << ty);
+                    MIR_TODO(*m_mir_res, "Unknown type in list literal - " << ty);
                 }
                 };
             TU_MATCHA( (lit), (e),
@@ -1900,7 +1899,7 @@ namespace {
                     return MetadataType::None;
                 case ::HIR::TraitMarkings::DstType::Possible:
                     // TODO: How to figure out?
-                    //TODO(Span(), "Determine DST type when ::Possible - " << ty);
+                    //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
                     return MetadataType::None;
                 case ::HIR::TraitMarkings::DstType::Slice:
                     return MetadataType::Slice;
