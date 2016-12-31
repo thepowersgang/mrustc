@@ -71,6 +71,7 @@ namespace {
 
         void emit_type(const ::HIR::TypeRef& ty) override
         {
+            TRACE_FUNCTION_F(ty);
             TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, te,
                 if( te.size() > 0 )
                 {
@@ -116,6 +117,7 @@ namespace {
 
         void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
         {
+            TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  tmp;
             auto monomorph = [&](const auto& x)->const auto& {
                 if( monomorphise_type_needed(x) ) {
@@ -127,12 +129,23 @@ namespace {
                     return x;
                 }
                 };
-            auto emit_struct_fld_ty = [&](const ::HIR::TypeRef& ty, ::FmtLambda inner) {
+            bool has_unsized = false;
+            auto emit_struct_fld_ty = [&](const ::HIR::TypeRef& ty_raw, ::FmtLambda inner) {
+                const auto& ty = monomorph(ty_raw);
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
-                    emit_ctype( monomorph(*te.inner), FMT_CB(ss, ss << inner << "[0]";) );
+                    emit_ctype( *te.inner, FMT_CB(ss, ss << inner << "[0]";) );
+                    has_unsized = true;
                 )
+                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, te,
+                    m_of << "unsigned char " << inner << "[0]";
+                    has_unsized = true;
+                )
+                else if( ty == ::HIR::CoreType::Str ) {
+                    m_of << "uint8_t " << inner << "[0]";
+                    has_unsized = true;
+                }
                 else {
-                    emit_ctype( monomorph(ty), inner );
+                    emit_ctype( ty, inner );
                 }
                 };
             m_of << "// struct " << p << "\n";
@@ -170,34 +183,36 @@ namespace {
             )
             m_of << "};\n";
             // Crate constructor function
-            TU_IFLET(::HIR::Struct::Data, item.m_data, Tuple, e,
-                m_of << "struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
-                for(unsigned int i = 0; i < e.size(); i ++)
-                {
-                    if(i != 0)
-                        m_of << ", ";
-                    emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
-                }
-                m_of << ") {\n";
-                m_of << "\tstruct s_" << Trans_Mangle(p) << " rv = {";
-                for(unsigned int i = 0; i < e.size(); i ++)
-                {
-                    if(i != 0)
-                        m_of << ",";
-                    m_of << "\n\t\t_" << i;
-                }
-                m_of << "\n\t\t};\n";
-                m_of << "\treturn rv;\n";
-                m_of << "}\n";
-            )
+            if( !has_unsized )
+            {
+                TU_IFLET(::HIR::Struct::Data, item.m_data, Tuple, e,
+                    m_of << "struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        if(i != 0)
+                            m_of << ", ";
+                        emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+                    }
+                    m_of << ") {\n";
+                    m_of << "\tstruct s_" << Trans_Mangle(p) << " rv = {";
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        if(i != 0)
+                            m_of << ",";
+                        m_of << "\n\t\t_" << i;
+                    }
+                    m_of << "\n\t\t};\n";
+                    m_of << "\treturn rv;\n";
+                    m_of << "}\n";
+                )
+            }
 
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
-            m_mir_res = &mir_res;
             // - Drop Glue
 
+            ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
             if( item.m_markings.has_drop_impl ) {
                 m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
             }
@@ -205,9 +220,13 @@ namespace {
             {
                 ::HIR::TypeRef  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
                 ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
-                m_of << "tUNIT " << Trans_Mangle(box_free) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "tmp0"; )); m_of << ");\n";
+                m_of << "tUNIT " << Trans_Mangle(box_free) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
+
+                args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
             }
 
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, *(::MIR::Function*)nullptr };
+            m_mir_res = &mir_res;
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
 
             // If this type has an impl of Drop, call that impl
@@ -219,12 +238,12 @@ namespace {
                 // Obtain inner pointer
                 // TODO: This is very specific to the structure of the official liballoc's Box.
                 ::HIR::TypeRef  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
-                m_of << "\t"; emit_ctype(inner_ptr, FMT_CB(ss, ss << "tmp0"; ));    m_of << " = rv->_0._0._0;\n";
+                m_of << "\t"; emit_ctype(inner_ptr, FMT_CB(ss, ss << "arg0"; ));    m_of << " = rv->_0._0._0;\n";
                 // Call destructor of inner data
-                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Temporary({0})) }), *ity, true);
+                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) }), *ity, true);
                 // Emit a call to box_free for the type
                 ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
-                m_of << "\t" << Trans_Mangle(box_free) << "(tmp0);\n";
+                m_of << "\t" << Trans_Mangle(box_free) << "(arg0);\n";
             }
 
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
@@ -257,6 +276,7 @@ namespace {
         //virtual void emit_union(const ::HIR::GenericPath& p, const ::HIR::Union& item);
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override
         {
+            TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  tmp;
             auto monomorph = [&](const auto& x)->const auto& {
                 if( monomorphise_type_needed(x) ) {
