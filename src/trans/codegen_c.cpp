@@ -1453,17 +1453,17 @@ namespace {
             TU_MATCHA( (path.m_data), (pe),
             (Generic,
                 if( pe.m_params.m_types.size() > 0 )
-                    MIR_TODO(*m_mir_res, "Paths with generics " << path);
+                    MIR_TODO(*m_mir_res, "get_literal_for_const - Paths with generics " << path);
                 return m_crate.get_constant_by_path(Span(), pe.m_path).m_value_res;
                 ),
             (UfcsUnknown,
-                MIR_BUG(*m_mir_res, "UfcsUnknown " << path);
+                MIR_BUG(*m_mir_res, "get_literal_for_const - UfcsUnknown " << path);
                 ),
             (UfcsKnown,
-                MIR_TODO(*m_mir_res, "UfcsKnown " << path);
+                MIR_TODO(*m_mir_res, "get_literal_for_const - UfcsKnown " << path);
                 ),
             (UfcsInherent,
-                MIR_TODO(*m_mir_res, "UfcsInherent " << path);
+                MIR_TODO(*m_mir_res, "get_literal_for_const - UfcsInherent " << path);
                 )
             )
             throw "";

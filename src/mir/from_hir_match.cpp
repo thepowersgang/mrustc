@@ -3677,6 +3677,8 @@ void DecisionTreeGen::generate_branches_Slice(
         ERROR(sp, E0000, "Non-exhaustive match over " << ty);
     }
 
+    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ val.clone() }));
+
     // NOTE: Un-deref the slice
     ASSERT_BUG(sp, val.is_Deref(), "slice matches must be passed a deref");
     auto tmp = mv$( *val.as_Deref().val );
@@ -3688,8 +3690,6 @@ void DecisionTreeGen::generate_branches_Slice(
     // - Integer switch (unimplemented)
     // - Binary search
     // - Sequential comparisons
-
-    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ val.clone() }));
 
     // TODO: Binary search instead.
     for( const auto& branch : branches.fixed_arms )

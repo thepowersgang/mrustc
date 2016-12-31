@@ -1181,7 +1181,7 @@ namespace {
                     {
                         // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
                         // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
-                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ptr_lval.clone() }) );
+                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(ptr_lval.clone()) }) }) );
                         m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
                     }
                     else

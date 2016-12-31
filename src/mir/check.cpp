@@ -543,10 +543,12 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         ),
                     (DstMeta,
                         // TODO: Ensure that the input type is a: Generic, Array, or DST
+                        MIR_ASSERT(state, e.val.is_Deref(), "DstMeta requires a deref as input");
                         // TODO: Check return type
                         ),
                     (DstPtr,
                         // TODO: Ensure that the input type is a DST
+                        MIR_ASSERT(state, e.val.is_Deref(), "DstPtr requires a deref as input");
                         // TODO: Check return type
                         ),
                     (MakeDst,

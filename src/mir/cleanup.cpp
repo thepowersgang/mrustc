@@ -120,13 +120,33 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
 
         if( best_impl )
         {
-            out_ty = best_impl->m_constants.find(pe.item)->second.data.m_type.clone();
+            const auto& val = best_impl->m_constants.find(pe.item)->second.data;
+            out_ty = val.m_type.clone();
             // TODO: Obtain `out_ty` by monomorphising the type in the trait.
-            return &best_impl->m_constants.find(pe.item)->second.data.m_value_res;
+            return &val.m_value_res;
         }
         ),
     (UfcsInherent,
+        const ::HIR::TypeImpl* best_impl = nullptr;
         // TODO: Associated constants (inherent)
+        resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+            [&](const auto& impl) {
+                auto it = impl.m_constants.find(pe.item);
+                if( it == impl.m_constants.end() )
+                    return false;
+                // TODO: Bounds checks.
+                // TODO: Impl specialisation?
+                best_impl = &impl;
+                return it->second.is_specialisable;
+            });
+        if( best_impl )
+        {
+            const auto& val = best_impl->m_constants.find(pe.item)->second.data;
+            if( monomorphise_type_needed(val.m_type) )
+                TODO(sp, "Monomorphise constant type - " << val.m_type << " for " << path);
+            out_ty = val.m_type.clone();
+            return &val.m_value_res;
+        }
         )
     )
     return nullptr;
