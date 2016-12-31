@@ -65,10 +65,7 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
         auto start_path = crate.get_lang_item_path(sp, "start");
         const auto& fcn = crate.get_function_by_path(sp, start_path);
 
-        auto* ptr = state.rv.add_function(start_path);
-        assert(ptr);
-        ptr->ptr = &fcn;
-        Trans_Enumerate_FillFrom(state,  fcn, {});
+        state.enum_fcn( start_path, fcn, {} );
     }
 
     // user entrypoint
@@ -76,10 +73,7 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
         auto main_path = ::HIR::SimplePath("", {"main"});
         const auto& fcn = crate.get_function_by_path(sp, main_path);
 
-        auto* ptr = state.rv.add_function(main_path);
-        assert(ptr);
-        ptr->ptr = &fcn;
-        Trans_Enumerate_FillFrom(state,  fcn, {});
+        state.enum_fcn( main_path, fcn, {} );
     }
 
     return Trans_Enumerate_CommonPost(state);
