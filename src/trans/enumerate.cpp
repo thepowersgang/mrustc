@@ -864,6 +864,8 @@ void Trans_Enumerate_FillFrom_VTable(EnumState& state, ::HIR::Path vtable_path, 
     const auto& trait_path = vtable_path.m_data.as_UfcsKnown().trait;
     const auto& tr = state.crate.get_trait_by_path(Span(), trait_path.m_path);
 
+    ASSERT_BUG(sp, !type.m_data.is_Slice(), "Getting vtable for unsized type - " << vtable_path);
+
     auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
     for(const auto& m : tr.m_value_indexes)
     {

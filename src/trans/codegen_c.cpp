@@ -109,6 +109,10 @@ namespace {
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
                 m_of << "typedef struct { "; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "]; } "; emit_ctype(ty); m_of << ";\n";
             )
+            else if( ty.m_data.is_ErasedType() ) {
+                // TODO: Is this actually a bug?
+                return ;
+            }
             else {
             }
 
@@ -396,7 +400,7 @@ namespace {
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
             TRACE_FUNCTION_F(p);
-            auto type = params.monomorph(m_crate, item.m_type);
+            auto type = params.monomorph(m_resolve, item.m_type);
             m_of << "extern ";
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
             m_of << ";";
@@ -407,7 +411,7 @@ namespace {
         {
             TRACE_FUNCTION_F(p);
 
-            auto type = params.monomorph(m_crate, item.m_type);
+            auto type = params.monomorph(m_resolve, item.m_type);
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
             m_of << " = ";
             emit_literal(type, item.m_value_res, params);
@@ -515,7 +519,7 @@ namespace {
                 // TODO: Get the pointed-to item type
                 if( ! ty.m_data.is_Function() )
                     m_of << "&";
-                m_of << Trans_Mangle( params.monomorph(m_crate, e));
+                m_of << Trans_Mangle( params.monomorph(m_resolve, e));
                 ),
             (String,
                 m_of << "{ ";
@@ -534,6 +538,7 @@ namespace {
 
         void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
         {
+            TRACE_FUNCTION_F(p);
             static Span sp;
             const auto& trait_path = p.m_data.as_UfcsKnown().trait;
             const auto& type = *p.m_data.as_UfcsKnown().type;
@@ -585,6 +590,7 @@ namespace {
 
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
+            TRACE_FUNCTION_F(p);
             m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";
             m_of << "extern ";
             emit_function_header(p, item, params);
@@ -596,6 +602,7 @@ namespace {
         }
         void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
+            TRACE_FUNCTION_F(p);
             if( item.m_linkage.name != "" )
             {
                 m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
@@ -610,8 +617,8 @@ namespace {
 
             ::MIR::TypeResolve::args_t  arg_types;
             for(const auto& ent : item.m_args)
-                arg_types.push_back(::std::make_pair( ::HIR::Pattern{}, params.monomorph(m_crate, ent.second) ));
-            ::HIR::TypeRef  ret_type = params.monomorph(m_crate, item.m_return);
+                arg_types.push_back(::std::make_pair( ::HIR::Pattern{}, params.monomorph(m_resolve, ent.second) ));
+            ::HIR::TypeRef  ret_type = params.monomorph(m_resolve, item.m_return);
 
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << p;), ret_type, arg_types, *code };
             m_mir_res = &mir_res;
@@ -621,7 +628,7 @@ namespace {
             m_of << "\n";
             m_of << "{\n";
             // Variables
-            m_of << "\t"; emit_ctype(params.monomorph(m_crate, item.m_return), FMT_CB(ss, ss << "rv";)); m_of << ";\n";
+            m_of << "\t"; emit_ctype(params.monomorph(m_resolve, item.m_return), FMT_CB(ss, ss << "rv";)); m_of << ";\n";
             for(unsigned int i = 0; i < code->named_variables.size(); i ++) {
                 DEBUG("var" << i << " : " << code->named_variables[i]);
                 m_of << "\t"; emit_ctype(code->named_variables[i], FMT_CB(ss, ss << "var" << i;)); m_of << ";";
@@ -1068,7 +1075,27 @@ namespace {
     private:
         void emit_function_header(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params)
         {
-            emit_ctype( params.monomorph(m_crate, item.m_return), FMT_CB(ss,
+            ::HIR::TypeRef  tmp;
+            const auto& ret_ty = (
+                visit_ty_with(item.m_return, [&](const auto& x){ return x.m_data.is_ErasedType() || x.m_data.is_Generic(); })
+                ? tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out){
+                    TU_IFLET( ::HIR::TypeRef::Data, tpl.m_data, ErasedType, e,
+                        out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e.m_index));
+                        return true;
+                    )
+                    else if( tpl.m_data.is_Generic() ) {
+                        out = params.get_cb()(tpl).clone();
+                        return true;
+                    }
+                    else {
+                        return false;
+                    }
+                    })
+                : item.m_return
+                );
+            if( &ret_ty == &tmp )
+                m_resolve.expand_associated_types(Span(), tmp);
+            emit_ctype( ret_ty, FMT_CB(ss,
                 ss << " " << Trans_Mangle(p) << "(";
                 if( item.m_args.size() == 0 )
                 {
@@ -1080,7 +1107,7 @@ namespace {
                     {
                         if( i != 0 )    m_of << ",";
                         ss << "\n\t\t";
-                        this->emit_ctype( params.monomorph(m_crate, item.m_args[i].second), FMT_CB(os, os << "arg" << i;) );
+                        this->emit_ctype( params.monomorph(m_resolve, item.m_args[i].second), FMT_CB(os, os << "arg" << i;) );
                     }
 
                     if( item.m_variadic )
