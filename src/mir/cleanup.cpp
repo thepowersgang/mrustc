@@ -603,6 +603,8 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             }
             else
             {
+                MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
+
                 ::HIR::Path vtable { src_ty.clone(), trait_path.m_path.clone(), "#vtable" };
                 out_meta_val = ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) );
             }

@@ -311,12 +311,12 @@ public:
                     mv$(node), AST::PathNode("field",{}),
                     vec$(
                         NEWNODE(String, fld.m_name),
-                        NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
+                        NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
                             NEWNODE(Field,
                                 NEWNODE(NamedValue, AST::Path("self")),
                                 fld.m_name
                                 )
-                            )
+                            ))
                     )
                     );
             }
@@ -333,12 +333,12 @@ public:
                 node = NEWNODE(CallMethod,
                     mv$(node), AST::PathNode("field",{}),
                     vec$(
-                        NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
+                        NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(UniOp, AST::ExprNode_UniOp::REF,
                             NEWNODE(Field,
                                 NEWNODE(NamedValue, AST::Path("self")),
                                 FMT(idx)
                                 )
-                            )
+                            ))
                         )
                     );
             }
