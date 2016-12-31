@@ -24,6 +24,8 @@ namespace {
             TraitObject,
         };
 
+        static Span sp;
+
         const ::HIR::Crate& m_crate;
         ::StaticTraitResolve    m_resolve;
         ::std::ofstream m_of;
@@ -44,6 +46,7 @@ namespace {
                 << "#include <stdatomic.h>\n"   // atomic_*
                 << "#include <stdlib.h>\n"  // abort
                 << "#include <string.h>\n"  // mem*
+                << "#include <math.h>\n"  // round, ...
                 << "typedef uint32_t CHAR;\n"
                 << "typedef struct { } tUNIT;\n"
                 << "typedef struct { } tBANG;\n"
@@ -71,6 +74,9 @@ namespace {
 
         void emit_type(const ::HIR::TypeRef& ty) override
         {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "type " << ty;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
             TRACE_FUNCTION_F(ty);
             TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, te,
                 if( te.size() > 0 )
@@ -117,10 +123,14 @@ namespace {
             }
 
             m_of << "tTYPEID __typeid_" << Trans_Mangle(ty) << ";\n";
+            m_mir_res = nullptr;
         }
 
         void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
         {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  tmp;
             auto monomorph = [&](const auto& x)->const auto& {
@@ -280,6 +290,9 @@ namespace {
         //virtual void emit_union(const ::HIR::GenericPath& p, const ::HIR::Union& item);
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override
         {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  tmp;
             auto monomorph = [&](const auto& x)->const auto& {
@@ -395,10 +408,14 @@ namespace {
             }
             m_of << "\t}\n";
             m_of << "}\n";
+            m_mir_res = nullptr;
         }
 
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern static " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
             TRACE_FUNCTION_F(p);
             auto type = params.monomorph(m_resolve, item.m_type);
             m_of << "extern ";
@@ -406,9 +423,14 @@ namespace {
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
             m_of << "\n";
+
+            m_mir_res = nullptr;
         }
         void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
             TRACE_FUNCTION_F(p);
 
             auto type = params.monomorph(m_resolve, item.m_type);
@@ -418,6 +440,8 @@ namespace {
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
             m_of << "\n";
+
+            m_mir_res = nullptr;
         }
         void emit_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
             TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
@@ -538,8 +562,10 @@ namespace {
 
         void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
         {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "vtable " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
             TRACE_FUNCTION_F(p);
-            static Span sp;
             const auto& trait_path = p.m_data.as_UfcsKnown().trait;
             const auto& type = *p.m_data.as_UfcsKnown().type;
 
@@ -586,10 +612,15 @@ namespace {
             }
             m_of << "\n";
             m_of << "\t};\n";
+
+            m_mir_res = nullptr;
         }
 
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern fn " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
             TRACE_FUNCTION_F(p);
             m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";
             m_of << "extern ";
@@ -599,9 +630,14 @@ namespace {
                 m_of << " asm(\"" << item.m_linkage.name << "\")";
             }
             m_of << ";\n";
+
+            m_mir_res = nullptr;
         }
         void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "/*proto*/ fn " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
             TRACE_FUNCTION_F(p);
             if( item.m_linkage.name != "" )
             {
@@ -609,16 +645,19 @@ namespace {
             }
             emit_function_header(p, item, params);
             m_of << ";\n";
+
+            m_mir_res = nullptr;
         }
         void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, const ::MIR::FunctionPointer& code) override
         {
-            static Span sp;
             TRACE_FUNCTION_F(p);
 
             ::MIR::TypeResolve::args_t  arg_types;
             for(const auto& ent : item.m_args)
                 arg_types.push_back(::std::make_pair( ::HIR::Pattern{}, params.monomorph(m_resolve, ent.second) ));
-            ::HIR::TypeRef  ret_type = params.monomorph(m_resolve, item.m_return);
+
+            ::HIR::TypeRef  ret_type_tmp;
+            const auto& ret_type = monomorphise_fcn_return(ret_type_tmp, item, params);
 
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << p;), ret_type, arg_types, *code };
             m_mir_res = &mir_res;
@@ -628,7 +667,7 @@ namespace {
             m_of << "\n";
             m_of << "{\n";
             // Variables
-            m_of << "\t"; emit_ctype(params.monomorph(m_resolve, item.m_return), FMT_CB(ss, ss << "rv";)); m_of << ";\n";
+            m_of << "\t"; emit_ctype(ret_type, FMT_CB(ss, ss << "rv";)); m_of << ";\n";
             for(unsigned int i = 0; i < code->named_variables.size(); i ++) {
                 DEBUG("var" << i << " : " << code->named_variables[i]);
                 m_of << "\t"; emit_ctype(code->named_variables[i], FMT_CB(ss, ss << "var" << i;)); m_of << ";";
@@ -1073,12 +1112,11 @@ namespace {
             m_mir_res = nullptr;
         }
     private:
-        void emit_function_header(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params)
+        const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)
         {
-            ::HIR::TypeRef  tmp;
-            const auto& ret_ty = (
-                visit_ty_with(item.m_return, [&](const auto& x){ return x.m_data.is_ErasedType() || x.m_data.is_Generic(); })
-                ? tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out){
+            if( visit_ty_with(item.m_return, [&](const auto& x){ return x.m_data.is_ErasedType() || x.m_data.is_Generic(); }) )
+            {
+                tmp = clone_ty_with(Span(), item.m_return, [&](const auto& tpl, auto& out){
                     TU_IFLET( ::HIR::TypeRef::Data, tpl.m_data, ErasedType, e,
                         out = params.monomorph(m_resolve, item.m_code.m_erased_types.at(e.m_index));
                         return true;
@@ -1090,11 +1128,20 @@ namespace {
                     else {
                         return false;
                     }
-                    })
-                : item.m_return
-                );
-            if( &ret_ty == &tmp )
+                    });
                 m_resolve.expand_associated_types(Span(), tmp);
+                return tmp;
+            }
+            else
+            {
+                return item.m_return;
+            }
+        }
+
+        void emit_function_header(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params)
+        {
+            ::HIR::TypeRef  tmp;
+            const auto& ret_ty = monomorphise_fcn_return(tmp, item, params);
             emit_ctype( ret_ty, FMT_CB(ss,
                 ss << " " << Trans_Mangle(p) << "(";
                 if( item.m_args.size() == 0 )
@@ -1278,6 +1325,10 @@ namespace {
                     MIR_TODO(mir_res, "bswap<" << ty << ">");
                 }
             }
+            // > Obtain the discriminane of a &T as u64 (TODO: Return zero if the value doesn't have one)
+            else if( name == "discriminant_value" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << "->TAG";
+            }
             // Hints
             else if( name == "unreachable" ) {
                 m_of << "__builtin_unreachable()";
@@ -1322,8 +1373,32 @@ namespace {
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
             }
             // Bit Twiddling
+            // - CounT Leading Zeroes
             else if( name == "ctlz" ) {
                 emit_lvalue(e.ret_val); m_of << " = __builtin_clz("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            // - CounT Trailing Zeroes
+            else if( name == "cttz" ) {
+                emit_lvalue(e.ret_val); m_of << " = __builtin_ctz("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            // - CounT POPulated
+            else if( name == "ctpop" ) {
+                emit_lvalue(e.ret_val); m_of << " = __builtin_popcount("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            // --- Floating Point
+            // > Round to nearest integer, half-way rounds away from zero
+            else if( name == "roundf32" ) {
+                emit_lvalue(e.ret_val); m_of << " = roundf("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "roundf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = round("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            // > Returns the integer part of an `f32`.
+            else if( name == "truncf32" ) {
+                emit_lvalue(e.ret_val); m_of << " = truncf("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "truncf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = trunc("; emit_lvalue(e.args.at(0)); m_of << ")";
             }
             // --- Atomics!
             // > Single-ordering atomics
@@ -1730,7 +1805,7 @@ namespace {
                 case ::HIR::CoreType::Bool: m_of << "bool"; break;
                 case ::HIR::CoreType::Char: m_of << "CHAR";  break;
                 case ::HIR::CoreType::Str:
-                    BUG(Span(), "Raw str");
+                    MIR_BUG(*m_mir_res, "Raw str");
                 }
                 m_of << " " << inner;
                 ),
@@ -1750,22 +1825,22 @@ namespace {
                     m_of << "struct e_" << Trans_Mangle(te.path);
                     ),
                 (Unbound,
-                    BUG(Span(), "Unbound type path in trans - " << ty);
+                    MIR_BUG(*m_mir_res, "Unbound type path in trans - " << ty);
                     ),
                 (Opaque,
-                    BUG(Span(), "Opaque path in trans - " << ty);
+                    MIR_BUG(*m_mir_res, "Opaque path in trans - " << ty);
                     )
                 )
                 m_of << " " << inner;
                 ),
             (Generic,
-                BUG(Span(), "Generic in trans - " << ty);
+                MIR_BUG(*m_mir_res, "Generic in trans - " << ty);
                 ),
             (TraitObject,
-                BUG(Span(), "Raw trait object - " << ty);
+                MIR_BUG(*m_mir_res, "Raw trait object - " << ty);
                 ),
             (ErasedType,
-                BUG(Span(), "ErasedType in trans - " << ty);
+                MIR_BUG(*m_mir_res, "ErasedType in trans - " << ty);
                 ),
             (Array,
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
@@ -1773,7 +1848,7 @@ namespace {
                 //m_of << "[" << te.size_val << "]";
                 ),
             (Slice,
-                BUG(Span(), "Raw slice object - " << ty);
+                MIR_BUG(*m_mir_res, "Raw slice object - " << ty);
                 ),
             (Tuple,
                 if( te.size() == 0 )
@@ -1795,7 +1870,7 @@ namespace {
                 m_of << "t_" << Trans_Mangle(ty) << " " << inner;
                 ),
             (Closure,
-                BUG(Span(), "Closure during trans - " << ty);
+                MIR_BUG(*m_mir_res, "Closure during trans - " << ty);
                 )
             )
         }
@@ -1813,7 +1888,7 @@ namespace {
                 const ::HIR::TraitMarkings* markings;
                 TU_MATCH_DEF( ::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (tpb),
                 (
-                    BUG(Span(), "Unbound/opaque path in trans - " << ty);
+                    MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
                     ),
                 (Struct, markings = &tpb->m_markings; ),
                 (Union, markings = &tpb->m_markings; ),
@@ -1872,6 +1947,7 @@ namespace {
             return 0;
         }
     };
+    Span CodeGenerator_C::sp;
 }
 
 ::std::unique_ptr<CodeGenerator> Trans_Codegen_GetGeneratorC(const ::HIR::Crate& crate, const ::std::string& outfile)
