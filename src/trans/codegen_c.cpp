@@ -694,9 +694,10 @@ namespace {
                 for(const auto& stmt : code->blocks[i].statements)
                 {
                     mir_res.set_cur_stmt(i, (&stmt - &code->blocks[i].statements.front()));
-                    assert( stmt.is_Drop() || stmt.is_Assign() );
-                    if( stmt.is_Drop() )
+                    switch( stmt.tag() )
                     {
+                    case ::MIR::Statement::TAGDEAD: throw "";
+                    case ::MIR::Statement::TAG_Drop: {
                         const auto& e = stmt.as_Drop();
                         ::HIR::TypeRef  tmp;
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
@@ -721,8 +722,16 @@ namespace {
                             emit_destructor_call(e.slot, ty, false);
                             break;
                         }
-                    }
-                    else {
+                        break; }
+                    case ::MIR::Statement::TAG_Asm: {
+                        const auto& e = stmt.as_Asm();
+                        //DEBUG("- (" 
+                        MIR_TODO(mir_res, "asm! \"" << FmtEscaped(e.tpl) << "\"");
+                        m_of << "\t__asm__ ";
+                        m_of << "(\"" << e.tpl << "\"";
+                        m_of << ");\n";
+                        break; }
+                    case ::MIR::Statement::TAG_Assign: {
                         const auto& e = stmt.as_Assign();
                         DEBUG("- " << e.dst << " = " << e.src);
                         m_of << "\t";
@@ -1012,6 +1021,7 @@ namespace {
                         m_of << ";";
                         m_of << "\t// " << e.dst << " = " << e.src;
                         m_of << "\n";
+                        break; }
                     }
                 }
 

@@ -289,7 +289,27 @@ inline ::std::ostream& operator<<(::std::ostream& os, const ::std::multimap<T,U,
     return os;
 }
 
-}
+}   // namespace std
+
+struct FmtEscaped {
+    const char* s;
+    FmtEscaped(const ::std::string& s):
+        s(s.c_str())
+    {}
+    friend ::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x) {
+        for(auto s = x.s; *s != '\0'; s ++)
+        {
+            switch(*s)
+            {
+            case '\n':  os << "\\n";    break;
+            case '\\':  os << "\\\\";   break;
+            case '"':   os << "\\\"";   break;
+            default:    os << *s;   break;
+            }
+        }
+        return os;
+    }
+};
 
 // -------------------------------------------------------------------
 // --- Reversed iterable
