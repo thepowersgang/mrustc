@@ -75,60 +75,71 @@ namespace {
         return visit_mir_lvalue_mut( const_cast<::MIR::LValue&>(lv), is_write, [&](auto& v, bool im) { return cb(v,im); } );
     }
 
+    bool visit_mir_lvalues_mut(::MIR::RValue& rval, ::std::function<bool(::MIR::LValue& , bool)> cb)
+    {
+        bool rv = false;
+        TU_MATCHA( (rval), (se),
+        (Use,
+            rv |= visit_mir_lvalue_mut(se, false, cb);
+            ),
+        (Constant,
+            ),
+        (SizedArray,
+            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            ),
+        (Borrow,
+            rv |= visit_mir_lvalue_mut(se.val, (se.type != ::HIR::BorrowType::Shared), cb);
+            ),
+        (Cast,
+            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            ),
+        (BinOp,
+            rv |= visit_mir_lvalue_mut(se.val_l, false, cb);
+            rv |= visit_mir_lvalue_mut(se.val_r, false, cb);
+            ),
+        (UniOp,
+            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            ),
+        (DstMeta,
+            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            ),
+        (DstPtr,
+            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            ),
+        (MakeDst,
+            // TODO: Would prefer a flag to indicate "move"
+            rv |= visit_mir_lvalue_mut(se.ptr_val, false, cb);
+            rv |= visit_mir_lvalue_mut(se.meta_val, false, cb);
+            ),
+        (Tuple,
+            for(auto& v : se.vals)
+                rv |= visit_mir_lvalue_mut(v, false, cb);
+            ),
+        (Array,
+            for(auto& v : se.vals)
+                rv |= visit_mir_lvalue_mut(v, false, cb);
+            ),
+        (Variant,
+            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            ),
+        (Struct,
+            for(auto& v : se.vals)
+                rv |= visit_mir_lvalue_mut(v, false, cb);
+            )
+        )
+        return rv;
+    }
+    //bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , bool)> cb)
+    //{
+    //    return visit_mir_lvalues_mut(const_cast<::MIR::RValue&>(rval), [&](auto& lv, bool im){ return cb(lv, im); });
+    //}
+
     bool visit_mir_lvalues_mut(::MIR::Statement& stmt, ::std::function<bool(::MIR::LValue& , bool)> cb)
     {
         bool rv = false;
         TU_MATCHA( (stmt), (e),
         (Assign,
-            TU_MATCHA( (e.src), (se),
-            (Use,
-                rv |= visit_mir_lvalue_mut(se, false, cb);
-                ),
-            (Constant,
-                ),
-            (SizedArray,
-                rv |= visit_mir_lvalue_mut(se.val, false, cb);
-                ),
-            (Borrow,
-                rv |= visit_mir_lvalue_mut(se.val, (se.type != ::HIR::BorrowType::Shared), cb);
-                ),
-            (Cast,
-                rv |= visit_mir_lvalue_mut(se.val, false, cb);
-                ),
-            (BinOp,
-                rv |= visit_mir_lvalue_mut(se.val_l, false, cb);
-                rv |= visit_mir_lvalue_mut(se.val_r, false, cb);
-                ),
-            (UniOp,
-                rv |= visit_mir_lvalue_mut(se.val, false, cb);
-                ),
-            (DstMeta,
-                rv |= visit_mir_lvalue_mut(se.val, false, cb);
-                ),
-            (DstPtr,
-                rv |= visit_mir_lvalue_mut(se.val, false, cb);
-                ),
-            (MakeDst,
-                // TODO: Would prefer a flag to indicate "move"
-                rv |= visit_mir_lvalue_mut(se.ptr_val, false, cb);
-                rv |= visit_mir_lvalue_mut(se.meta_val, false, cb);
-                ),
-            (Tuple,
-                for(auto& v : se.vals)
-                    rv |= visit_mir_lvalue_mut(v, false, cb);
-                ),
-            (Array,
-                for(auto& v : se.vals)
-                    rv |= visit_mir_lvalue_mut(v, false, cb);
-                ),
-            (Variant,
-                rv |= visit_mir_lvalue_mut(se.val, false, cb);
-                ),
-            (Struct,
-                for(auto& v : se.vals)
-                    rv |= visit_mir_lvalue_mut(v, false, cb);
-                )
-            )
+            rv |= visit_mir_lvalues_mut(e.src, cb);
             rv |= visit_mir_lvalue_mut(e.dst, true, cb);
             ),
         (Asm,
@@ -358,7 +369,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     //  > This includes mutation, borrowing, or moving.
     {
         ::std::map< unsigned int, ::MIR::LValue>    replacements;
-        for(const auto& block : fcn.blocks)
+        for(auto& block : fcn.blocks)
         {
             if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
                 continue ;
@@ -371,6 +382,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     continue ;
                 const auto& e = stmt.as_Assign();
                 // > Of a temporary from with a RValue::Use
+                // TODO: Variables too.
+                // TODO: Allow any rvalue type (if the usage is a RValue::Use)
                 if( !( e.dst.is_Temporary() && e.src.is_Use() ) )
                     continue ;
                 auto idx = e.dst.as_Temporary().idx;
@@ -378,15 +391,19 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 // > Where the temporary is written once and read once
                 if( !( vu.read == 1 && vu.write == 1 ) )
                     continue ;
-                // Get the root value(s) of the source
-                const auto& src = e.src.as_Use();
 
+                // Get the root value(s) of the source
                 // TODO: Handle more complex values. (but don't bother for really complex values?)
+                const auto& src = e.src.as_Use();
                 if( !( src.is_Temporary() || src.is_Variable() ) )
                     continue ;
+                bool src_is_lvalue = true;
 
                 auto is_lvalue_usage = [&](const auto& lv, bool ){ return lv == e.dst; };
 
+                auto is_lvalue_in_val = [&](const auto& lv) {
+                    return visit_mir_lvalue(src, true, [&](const auto& slv, bool ) { return lv == slv; });
+                    };
                 // Eligable for replacement
                 // Find where this value is used
                 // - Stop on a conditional block terminator
@@ -395,9 +412,23 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 bool found = false;
                 for(unsigned int si2 = stmt_idx+1; si2 < block.statements.size(); si2 ++)
                 {
+                    const auto& stmt2 = block.statements[si2];
+
                     // Usage found.
-                    if( visit_mir_lvalues(block.statements[si2], is_lvalue_usage) )
+                    if( visit_mir_lvalues(stmt2, is_lvalue_usage) )
                     {
+                        // TODO: If the source isn't a Use, ensure that this is a Use
+                        if( !src_is_lvalue )
+                        {
+                            if( stmt2.is_Assign() && stmt2.as_Assign().src.is_Use() ) {
+                                // Good
+                            }
+                            else {
+                                // Bad, this has to stay a temporary
+                                stop = true;
+                                break;
+                            }
+                        }
                         found = true;
                         stop = true;
                         break;
@@ -405,7 +436,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
                     // Determine if source is mutated.
                     // > Assume that any mutating access of the root value counts (over-cautious)
-                    if( visit_mir_lvalues(block.statements[si2], [&](const auto& lv, bool is_write){ return lv == src && is_write; }) )
+                    if( visit_mir_lvalues(block.statements[si2], [&](const auto& lv, bool is_write){ return is_write && is_lvalue_in_val(lv); }) )
                     {
                         stop = true;
                         break;
@@ -426,21 +457,21 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     (Panic,
                         ),
                     (If,
-                        if( visit_mir_lvalue(e.cond, false, is_lvalue_usage) )
+                        if( src_is_lvalue && visit_mir_lvalue(e.cond, false, is_lvalue_usage) )
                             found = true;
                         stop = true;
                         ),
                     (Switch,
-                        if( visit_mir_lvalue(e.val, false, is_lvalue_usage) )
+                        if( src_is_lvalue && visit_mir_lvalue(e.val, false, is_lvalue_usage) )
                             found = true;
                         stop = true;
                         ),
                     (Call,
                         if( e.fcn.is_Value() )
-                            if( visit_mir_lvalue(e.fcn.as_Value(), false, is_lvalue_usage) )
+                            if( src_is_lvalue && visit_mir_lvalue(e.fcn.as_Value(), false, is_lvalue_usage) )
                                 found = true;
                         for(const auto& v : e.args)
-                            if( visit_mir_lvalue(v, false, is_lvalue_usage) )
+                            if( src_is_lvalue && visit_mir_lvalue(v, false, is_lvalue_usage) )
                                 found = true;
                         stop = true;
                         )
@@ -455,6 +486,52 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 else
                 {
                     DEBUG("- Single-write/read " << e.dst << " not replaced - couldn't find usage");
+                }
+            }   // for(stmt : block.statements)
+
+            // If the terminator is a call that writes to a 1:1 value, replace the destination value with the eventual destination (if that value isn't used in the meantime)
+            if( block.terminator.is_Call() )
+            {
+                auto& e = block.terminator.as_Call();
+                // TODO: Support variables too?
+                if( !e.ret_val.is_Temporary() )
+                    continue ;
+                const auto& vu = val_uses.tmp_uses[e.ret_val.as_Temporary().idx];
+                if( !( vu.read == 1 && vu.write == 1 ) )
+                    continue ;
+
+                // Iterate the target block, looking for where this value is used.
+                const ::MIR::LValue* new_dst = nullptr;
+                auto& blk2 = fcn.blocks.at(e.ret_block);
+                for(const auto& stmt : blk2.statements)
+                {
+                    if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val ) {
+                        new_dst = &stmt.as_Assign().dst;
+                        break;
+                    }
+                }
+
+                // Ensure that the new destination value isn't used before assignment
+                if( new_dst )
+                {
+                    auto lvalue_impacts_dst = [&](const ::MIR::LValue& lv) {
+                        return visit_mir_lvalue(*new_dst, true, [&](const auto& slv, bool ) { return lv == slv; });
+                        };
+                    for(auto it = blk2.statements.begin(); it != blk2.statements.end(); ++ it)
+                    {
+                        const auto& stmt = *it;
+                        if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val )
+                        {
+                            DEBUG("- Replace function return " << e.ret_val << " with " << *new_dst);
+                            e.ret_val = new_dst->clone();
+                            it = blk2.statements.erase(it);
+                            break;
+                        }
+                        if( visit_mir_lvalues(stmt, [&](const auto& lv, bool is_write){ return lv == *new_dst || (is_write && lvalue_impacts_dst(lv)); }) )
+                        {
+                            break;
+                        }
+                    }
                 }
             }
         }
