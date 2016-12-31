@@ -14,4 +14,4 @@ namespace HIR {
     class Crate;
 }
 
-extern ::MIR::FunctionPointer Trans_Monomorphise(const ::HIR::Crate& crate, const Trans_Params& params, const ::MIR::FunctionPointer& tpl);
+extern ::MIR::FunctionPointer Trans_Monomorphise(const ::StaticTraitResolve& crate, const Trans_Params& params, const ::MIR::FunctionPointer& tpl);

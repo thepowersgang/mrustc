@@ -25,6 +25,7 @@ namespace {
 
         // Queue of items to enumerate
         ::std::deque<TransList_Function*>  fcn_queue;
+        ::std::vector<TransList_Function*> fcns_to_type_visit;
 
         EnumState(const ::HIR::Crate& crate):
             crate(crate)
@@ -34,6 +35,7 @@ namespace {
         {
             if(auto* e = rv.add_function(mv$(p)))
             {
+                fcns_to_type_visit.push_back(e);
                 e->ptr = &fcn;
                 e->pp = mv$(pp);
                 fcn_queue.push_back(e);
@@ -346,26 +348,30 @@ void Trans_Enumerate_Types(EnumState& state)
     bool constructors_added;
     do
     {
-        for(const auto& ent : state.rv.m_functions)
+        // Visit all functions that haven't been type-visited yet
+        for(unsigned int i = 0; i < state.fcns_to_type_visit.size(); i++)
         {
-            TRACE_FUNCTION_F("Enumerate fn " << ent.first);
-            assert(ent.second->ptr);
-            const auto& fcn = *ent.second->ptr;
-            const auto& pp = ent.second->pp;
+            auto p = state.fcns_to_type_visit[i];
+            TRACE_FUNCTION_F("Function " << ::std::find_if(state.rv.m_functions.begin(), state.rv.m_functions.end(), [&](const auto&x){ return x.second.get() == p; })->first);
+            assert(p->ptr);
+            const auto& fcn = *p->ptr;
+            const auto& pp = p->pp;
 
-            tv.visit_type( pp.monomorph(state.crate, fcn.m_return) );
+            tv.visit_type( pp.monomorph(tv.m_resolve, fcn.m_return) );
             for(const auto& arg : fcn.m_args)
-                tv.visit_type( pp.monomorph(state.crate, arg.second) );
+                tv.visit_type( pp.monomorph(tv.m_resolve, arg.second) );
 
             if( fcn.m_code.m_mir )
             {
                 const auto& mir = *fcn.m_code.m_mir;
                 for(const auto& ty : mir.named_variables)
-                    tv.visit_type(pp.monomorph(state.crate, ty));
+                    tv.visit_type(pp.monomorph(tv.m_resolve, ty));
                 for(const auto& ty : mir.temporaries)
-                    tv.visit_type(pp.monomorph(state.crate, ty));
+                    tv.visit_type(pp.monomorph(tv.m_resolve, ty));
             }
         }
+        state.fcns_to_type_visit.clear();
+        // TODO: Similarly restrict revisiting of statics.
         for(const auto& ent : state.rv.m_statics)
         {
             TRACE_FUNCTION_F("Enumerate static " << ent.first);
@@ -373,7 +379,7 @@ void Trans_Enumerate_Types(EnumState& state)
             const auto& stat = *ent.second->ptr;
             const auto& pp = ent.second->pp;
 
-            tv.visit_type( pp.monomorph(state.crate, stat.m_type) );
+            tv.visit_type( pp.monomorph(tv.m_resolve, stat.m_type) );
         }
 
         constructors_added = false;
