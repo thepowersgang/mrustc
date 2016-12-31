@@ -198,9 +198,10 @@ output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+	$(DBG) $(BIN) $< -o $@.c $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
+	@test -e $@.c
+	$(CC) $@.c -pthread -g -o $@
 
 $(RUSTCSRC): rust-nightly-date
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
