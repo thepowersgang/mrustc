@@ -984,7 +984,7 @@ namespace {
                             }
                             ),
                         (Variant,
-                            TODO(sp, "Handle constructing variants");
+                            MIR_TODO(mir_res, "Handle constructing variants - " << e.src);
                             ),
                         (Struct,
                             if(ve.variant_idx != ~0u) {
