@@ -368,8 +368,62 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     // - Any lvalues in the source lvalue must not be mutated between the source assignment and the usage.
     //  > This includes mutation, borrowing, or moving.
     {
-        ::std::map< unsigned int, ::MIR::LValue>    replacements;
+        // 1. Function returns (reverse propagate)
         for(auto& block : fcn.blocks)
+        {
+            if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
+                continue ;
+
+            // If the terminator is a call that writes to a 1:1 value, replace the destination value with the eventual destination (if that value isn't used in the meantime)
+            if( block.terminator.is_Call() )
+            {
+                // TODO: What if the destination located here is a 1:1 and its usage is listed to be replaced by the return value.
+                auto& e = block.terminator.as_Call();
+                // TODO: Support variables too?
+                if( !e.ret_val.is_Temporary() )
+                    continue ;
+                const auto& vu = val_uses.tmp_uses[e.ret_val.as_Temporary().idx];
+                if( !( vu.read == 1 && vu.write == 1 ) )
+                    continue ;
+
+                // Iterate the target block, looking for where this value is used.
+                const ::MIR::LValue* new_dst = nullptr;
+                auto& blk2 = fcn.blocks.at(e.ret_block);
+                for(const auto& stmt : blk2.statements)
+                {
+                    if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val ) {
+                        new_dst = &stmt.as_Assign().dst;
+                        break;
+                    }
+                }
+
+                // Ensure that the new destination value isn't used before assignment
+                if( new_dst )
+                {
+                    auto lvalue_impacts_dst = [&](const ::MIR::LValue& lv) {
+                        return visit_mir_lvalue(*new_dst, true, [&](const auto& slv, bool ) { return lv == slv; });
+                        };
+                    for(auto it = blk2.statements.begin(); it != blk2.statements.end(); ++ it)
+                    {
+                        const auto& stmt = *it;
+                        if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val )
+                        {
+                            DEBUG("- Replace function return " << e.ret_val << " with " << *new_dst);
+                            e.ret_val = new_dst->clone();
+                            it = blk2.statements.erase(it);
+                            break;
+                        }
+                        if( visit_mir_lvalues(stmt, [&](const auto& lv, bool is_write){ return lv == *new_dst || (is_write && lvalue_impacts_dst(lv)); }) )
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        // 2. Assignments (forward propagate)
+        ::std::map< unsigned int, ::MIR::LValue>    replacements;
+        for(const auto& block : fcn.blocks)
         {
             if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
                 continue ;
@@ -488,52 +542,6 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     DEBUG("- Single-write/read " << e.dst << " not replaced - couldn't find usage");
                 }
             }   // for(stmt : block.statements)
-
-            // If the terminator is a call that writes to a 1:1 value, replace the destination value with the eventual destination (if that value isn't used in the meantime)
-            if( block.terminator.is_Call() )
-            {
-                auto& e = block.terminator.as_Call();
-                // TODO: Support variables too?
-                if( !e.ret_val.is_Temporary() )
-                    continue ;
-                const auto& vu = val_uses.tmp_uses[e.ret_val.as_Temporary().idx];
-                if( !( vu.read == 1 && vu.write == 1 ) )
-                    continue ;
-
-                // Iterate the target block, looking for where this value is used.
-                const ::MIR::LValue* new_dst = nullptr;
-                auto& blk2 = fcn.blocks.at(e.ret_block);
-                for(const auto& stmt : blk2.statements)
-                {
-                    if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val ) {
-                        new_dst = &stmt.as_Assign().dst;
-                        break;
-                    }
-                }
-
-                // Ensure that the new destination value isn't used before assignment
-                if( new_dst )
-                {
-                    auto lvalue_impacts_dst = [&](const ::MIR::LValue& lv) {
-                        return visit_mir_lvalue(*new_dst, true, [&](const auto& slv, bool ) { return lv == slv; });
-                        };
-                    for(auto it = blk2.statements.begin(); it != blk2.statements.end(); ++ it)
-                    {
-                        const auto& stmt = *it;
-                        if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val )
-                        {
-                            DEBUG("- Replace function return " << e.ret_val << " with " << *new_dst);
-                            e.ret_val = new_dst->clone();
-                            it = blk2.statements.erase(it);
-                            break;
-                        }
-                        if( visit_mir_lvalues(stmt, [&](const auto& lv, bool is_write){ return lv == *new_dst || (is_write && lvalue_impacts_dst(lv)); }) )
-                        {
-                            break;
-                        }
-                    }
-                }
-            }
         }
 
         for(;;)
