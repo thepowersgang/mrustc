@@ -102,7 +102,7 @@ TAGGED_UNION(Constant, Int,
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
 
-TAGGED_UNION(RValue, Use,
+TAGGED_UNION_EX(RValue, (), Use, (
     (Use, LValue),
     (Constant, Constant),
     (SizedArray, struct {
@@ -163,6 +163,9 @@ TAGGED_UNION(RValue, Use,
         unsigned int variant_idx;   // if ~0, it's a struct
         ::std::vector<LValue>   vals;
         })
+    ), (),(), (
+        RValue clone() const;
+    )
 );
 extern ::std::ostream& operator<<(::std::ostream& os, const RValue& x);
 

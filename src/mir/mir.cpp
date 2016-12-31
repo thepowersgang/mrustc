@@ -328,4 +328,77 @@ namespace MIR {
     throw "";
 }
 
+::MIR::RValue MIR::RValue::clone() const
+{
+    TU_MATCHA( (*this), (e),
+    (Use,
+        return ::MIR::RValue(e.clone());
+        ),
+    (Constant,
+        TU_MATCHA( (e), (e2),
+        (Int, return ::MIR::Constant(e2); ),
+        (Uint, return ::MIR::Constant(e2); ),
+        (Float, return ::MIR::Constant(e2); ),
+        (Bool, return ::MIR::Constant(e2); ),
+        (Bytes, return ::MIR::Constant(e2); ),
+        (StaticString, return ::MIR::Constant(e2); ),
+        (Const, return ::MIR::Constant::make_Const({e2.p.clone()}); ),
+        (ItemAddr, return ::MIR::Constant(e2.clone()); )
+        )
+        ),
+    (SizedArray,
+        return ::MIR::RValue::make_SizedArray({ e.val.clone(), e.count });
+        ),
+    (Borrow,
+        return ::MIR::RValue::make_Borrow({ e.region, e.type, e.val.clone() });
+        ),
+    (Cast,
+        return ::MIR::RValue::make_Cast({ e.val.clone(), e.type.clone() });
+        ),
+    (BinOp,
+        return ::MIR::RValue::make_BinOp({ e.val_l.clone(), e.op, e.val_r.clone() });
+        ),
+    (UniOp,
+        return ::MIR::RValue::make_UniOp({ e.val.clone(), e.op });
+        ),
+    (DstMeta,
+        return ::MIR::RValue::make_DstMeta({ e.val.clone() });
+        ),
+    (DstPtr,
+        return ::MIR::RValue::make_DstPtr({ e.val.clone() });
+        ),
+    // Construct a DST pointer from a thin pointer and metadata
+    (MakeDst,
+        return ::MIR::RValue::make_MakeDst({ e.ptr_val.clone(), e.meta_val.clone() });
+        ),
+    (Tuple,
+        ::std::vector<::MIR::LValue>   ret;
+        ret.reserve(e.vals.size());
+        for(const auto& v : e.vals)
+            ret.push_back( v.clone() );
+        return ::MIR::RValue::make_Tuple({ mv$(ret) });
+        ),
+    // Array literal
+    (Array,
+        ::std::vector<::MIR::LValue>   ret;
+        ret.reserve(e.vals.size());
+        for(const auto& v : e.vals)
+            ret.push_back( v.clone() );
+        return ::MIR::RValue::make_Array({ mv$(ret) });
+        ),
+    // Create a new instance of a union (and eventually enum)
+    (Variant,
+        return ::MIR::RValue::make_Variant({ e.path.clone(), e.index, e.val.clone() });
+        ),
+    // Create a new instance of a struct (or enum)
+    (Struct,
+        ::std::vector<::MIR::LValue>   ret;
+        ret.reserve(e.vals.size());
+        for(const auto& v : e.vals)
+            ret.push_back( v.clone() );
+        return ::MIR::RValue::make_Struct({ e.path.clone(), e.variant_idx, mv$(ret) });
+        )
+    )
+    throw "";
+}
 

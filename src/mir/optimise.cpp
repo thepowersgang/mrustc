@@ -159,6 +159,36 @@ namespace {
         return visit_mir_lvalues_mut(const_cast<::MIR::Statement&>(stmt), [&](auto& lv, bool im){ return cb(lv, im); });
     }
 
+    void visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , bool)> cb)
+    {
+        TU_MATCHA( (term), (e),
+        (Incomplete,
+            ),
+        (Return,
+            ),
+        (Diverge,
+            ),
+        (Goto,
+            ),
+        (Panic,
+            ),
+        (If,
+            visit_mir_lvalue_mut(e.cond, false, cb);
+            ),
+        (Switch,
+            visit_mir_lvalue_mut(e.val, false, cb);
+            ),
+        (Call,
+            if( e.fcn.is_Value() ) {
+                visit_mir_lvalue_mut(e.fcn.as_Value(), false, cb);
+            }
+            for(auto& v : e.args)
+                visit_mir_lvalue_mut(v, false, cb);
+            visit_mir_lvalue_mut(e.ret_val, true, cb);
+            )
+        )
+    }
+
     void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , bool)> cb)
     {
         for(unsigned int block_idx = 0; block_idx < fcn.blocks.size(); block_idx ++)
@@ -172,32 +202,7 @@ namespace {
                 visit_mir_lvalues_mut(stmt, cb);
             }
             state.set_cur_stmt_term(block_idx);
-            TU_MATCHA( (block.terminator), (e),
-            (Incomplete,
-                ),
-            (Return,
-                ),
-            (Diverge,
-                ),
-            (Goto,
-                ),
-            (Panic,
-                ),
-            (If,
-                visit_mir_lvalue_mut(e.cond, false, cb);
-                ),
-            (Switch,
-                visit_mir_lvalue_mut(e.val, false, cb);
-                ),
-            (Call,
-                if( e.fcn.is_Value() ) {
-                    visit_mir_lvalue_mut(e.fcn.as_Value(), false, cb);
-                }
-                for(auto& v : e.args)
-                    visit_mir_lvalue_mut(v, false, cb);
-                visit_mir_lvalue_mut(e.ret_val, true, cb);
-                )
-            )
+            visit_mir_lvalues_mut(block.terminator, cb);
         }
     }
     void visit_mir_lvalues(::MIR::TypeResolve& state, const ::MIR::Function& fcn, ::std::function<bool(const ::MIR::LValue& , bool)> cb)
@@ -369,7 +374,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     //  > This includes mutation, borrowing, or moving.
     {
         // 1. Assignments (forward propagate)
-        ::std::map< ::MIR::LValue, ::MIR::LValue>    replacements;
+        ::std::map< ::MIR::LValue, ::MIR::RValue>    replacements;
         for(const auto& block : fcn.blocks)
         {
             if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
@@ -489,7 +494,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 if( found )
                 {
                     DEBUG("> Replace " << e.dst << " with " << e.src.as_Use());
-                    replacements.insert( ::std::make_pair(e.dst.clone(), e.src.as_Use().clone()) );
+                    replacements.insert( ::std::make_pair(e.dst.clone(), e.src.clone()) );
                 }
                 else
                 {
@@ -503,13 +508,13 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             unsigned int inner_replaced_count = 0;
             for(auto& r : replacements)
             {
-                visit_mir_lvalue_mut(r.second, false, [&](auto& lv, bool is_write) {
+                visit_mir_lvalues_mut(r.second, [&](auto& lv, bool is_write) {
                     if( !is_write )
                     {
                         auto it = replacements.find(lv);
-                        if( it != replacements.end() )
+                        if( it != replacements.end() && it->second.is_Use() )
                         {
-                            lv = it->second.clone();
+                            lv = it->second.as_Use().clone();
                             inner_replaced_count ++;
                         }
                     }
@@ -525,19 +530,48 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         while( replaced < replacements.size() )
         {
             auto old_replaced = replaced;
-            visit_mir_lvalues_mut(state, fcn, [&](auto& lv, bool is_write){
+            auto cb = [&](auto& lv, bool is_write){
                 if( !is_write )
                 {
                     auto it = replacements.find(lv);
                     if( it != replacements.end() )
                     {
-                        MIR_ASSERT(state, it->second.tag() != ::MIR::LValue::TAGDEAD, "Replacement of  " << lv << " fired twice");
-                        lv = ::std::move(it->second);
+                        MIR_ASSERT(state, it->second.tag() != ::MIR::RValue::TAGDEAD, "Replacement of  " << lv << " fired twice");
+                        MIR_ASSERT(state, it->second.is_Use(), "Replacing a lvalue with a rvalue");
+                        auto rval = ::std::move(it->second);
+                        lv = ::std::move(rval.as_Use());
                         replaced += 1;
                     }
                 }
                 return false;
-                });
+                };
+            for(unsigned int block_idx = 0; block_idx < fcn.blocks.size(); block_idx ++)
+            {
+                auto& block = fcn.blocks[block_idx];
+                if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
+                    continue ;
+                for(auto& stmt : block.statements)
+                {
+                    state.set_cur_stmt(block_idx, (&stmt - &block.statements.front()));
+                    if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() )
+                    {
+                        auto& e = stmt.as_Assign();
+                        auto it = replacements.find(e.src.as_Use());
+                        if( it != replacements.end() )
+                        {
+                            MIR_ASSERT(state, it->second.tag() != ::MIR::RValue::TAGDEAD, "Replacement of  " << it->first << " fired twice");
+                            e.src = mv$(it->second);
+                            replaced += 1;
+                        }
+                    }
+                    else
+                    {
+                        visit_mir_lvalues_mut(stmt, cb);
+                    }
+                }
+                state.set_cur_stmt_term(block_idx);
+                visit_mir_lvalues_mut(block.terminator, cb);
+            }
             MIR_ASSERT(state, replaced > old_replaced, "Temporary eliminations didn't advance");
         }
         // Remove assignments of replaced values
