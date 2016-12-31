@@ -515,6 +515,9 @@ namespace {
                 }
             };
 
+            for(auto& ty : expr.m_erased_types)
+                visit_type(ty);
+
             if( expr.get() != nullptr )
             {
                 ExprVisitor v { *this };
