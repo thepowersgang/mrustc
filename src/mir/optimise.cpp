@@ -129,10 +129,10 @@ namespace {
         )
         return rv;
     }
-    //bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , bool)> cb)
-    //{
-    //    return visit_mir_lvalues_mut(const_cast<::MIR::RValue&>(rval), [&](auto& lv, bool im){ return cb(lv, im); });
-    //}
+    bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , bool)> cb)
+    {
+        return visit_mir_lvalues_mut(const_cast<::MIR::RValue&>(rval), [&](auto& lv, bool im){ return cb(lv, im); });
+    }
 
     bool visit_mir_lvalues_mut(::MIR::Statement& stmt, ::std::function<bool(::MIR::LValue& , bool)> cb)
     {
@@ -400,22 +400,27 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 {
                     continue ;
                 }
-                // TODO: Allow any rvalue type (if the usage is a RValue::Use)
-                // - Requires fiddling in `replacements
-                if( ! e.src.is_Use() )
+                if( e.src.is_Use() )
+                {
+                    // Keep the complexity down
+                    const auto& src = e.src.as_Use();
+                    if( !( src.is_Temporary() || src.is_Variable() || src.is_Argument() ) )
+                        continue ;
+                }
+                // TODO: Allow any rvalue, but that currently breaks due to chaining
+                //else if( e.src.is_Borrow() )
+                //{
+                //}
+                else
+                {
                     continue ;
-
-                // Get the root value(s) of the source
-                // TODO: Handle more complex values. (but don't bother for really complex values?)
-                const auto& src = e.src.as_Use();
-                if( !( src.is_Temporary() || src.is_Variable() || src.is_Argument() ) )
-                    continue ;
-                bool src_is_lvalue = true;
+                }
+                bool src_is_lvalue = e.src.is_Use();
 
                 auto is_lvalue_usage = [&](const auto& lv, bool ){ return lv == e.dst; };
 
                 auto is_lvalue_in_val = [&](const auto& lv) {
-                    return visit_mir_lvalue(src, true, [&](const auto& slv, bool ) { return lv == slv; });
+                    return visit_mir_lvalues(e.src, [&](const auto& slv, bool ) { return lv == slv; });
                     };
                 // Eligable for replacement
                 // Find where this value is used
@@ -537,7 +542,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     if( it != replacements.end() )
                     {
                         MIR_ASSERT(state, it->second.tag() != ::MIR::RValue::TAGDEAD, "Replacement of  " << lv << " fired twice");
-                        MIR_ASSERT(state, it->second.is_Use(), "Replacing a lvalue with a rvalue");
+                        MIR_ASSERT(state, it->second.is_Use(), "Replacing a lvalue with a rvalue - " << lv << " with " << it->second);
                         auto rval = ::std::move(it->second);
                         lv = ::std::move(rval.as_Use());
                         replaced += 1;
@@ -586,6 +591,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     ++it;
             }
         }
+
 
         // 2. Function returns (reverse propagate)
         for(auto& block : fcn.blocks)
