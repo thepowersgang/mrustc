@@ -84,6 +84,49 @@ namespace MIR {
         )
         return os;
     }
+    bool operator<(const LValue& a, const LValue& b)
+    {
+        if( a.tag() != b.tag() )
+            return a.tag() < b.tag();
+        TU_MATCHA( (a, b), (ea, eb),
+        (Variable,
+            return ea < eb;
+            ),
+        (Temporary,
+            return ea.idx < eb.idx;
+            ),
+        (Argument,
+            return ea.idx < eb.idx;
+            ),
+        (Static,
+            return ea < eb;
+            ),
+        (Return,
+            return false;
+            ),
+        (Field,
+            if( *ea.val != *eb.val )
+                return *ea.val < *eb.val;
+            if( ea.field_index != eb.field_index )
+                return ea.field_index < eb.field_index;
+            return true;
+            ),
+        (Deref,
+            return *ea.val < *eb.val;
+            ),
+        (Index,
+            if( *ea.val != *eb.val )
+                return *ea.val < *eb.val;
+            return *ea.idx < *eb.idx;
+            ),
+        (Downcast,
+            if( *ea.val != *eb.val )
+                return *ea.val < *eb.val;
+            return ea.variant_index < eb.variant_index;
+            )
+        )
+        throw "";
+    }
     bool operator==(const LValue& a, const LValue& b)
     {
         if( a.tag() != b.tag() )

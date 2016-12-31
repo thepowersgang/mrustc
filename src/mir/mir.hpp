@@ -58,6 +58,7 @@ TAGGED_UNION_EX(LValue, (), Variable, (
     )
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const LValue& x);
+extern bool operator<(const LValue& a, const LValue& b);
 extern bool operator==(const LValue& a, const LValue& b);
 static inline bool operator!=(const LValue& a, const LValue& b) {
     return !(a == b);

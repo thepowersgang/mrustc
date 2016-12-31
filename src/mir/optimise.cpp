@@ -422,7 +422,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             }
         }
         // 2. Assignments (forward propagate)
-        ::std::map< unsigned int, ::MIR::LValue>    replacements;
+        ::std::map< ::MIR::LValue, ::MIR::LValue>    replacements;
         for(const auto& block : fcn.blocks)
         {
             if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
@@ -436,20 +436,27 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     continue ;
                 const auto& e = stmt.as_Assign();
                 // > Of a temporary from with a RValue::Use
-                // TODO: Variables too.
-                // TODO: Allow any rvalue type (if the usage is a RValue::Use)
-                if( !( e.dst.is_Temporary() && e.src.is_Use() ) )
+                // TODO: Variables too (can eliminate arguments)
+                if( e.dst.is_Temporary() )
+                {
+                    const auto& vu = val_uses.tmp_uses[e.dst.as_Temporary().idx];
+                    // > Where the temporary is written once and read once
+                    if( !( vu.read == 1 && vu.write == 1 ) )
+                        continue ;
+                }
+                else
+                {
                     continue ;
-                auto idx = e.dst.as_Temporary().idx;
-                const auto& vu = val_uses.tmp_uses[idx];
-                // > Where the temporary is written once and read once
-                if( !( vu.read == 1 && vu.write == 1 ) )
+                }
+                // TODO: Allow any rvalue type (if the usage is a RValue::Use)
+                // - Requires fiddling in `replacements
+                if( ! e.src.is_Use() )
                     continue ;
 
                 // Get the root value(s) of the source
                 // TODO: Handle more complex values. (but don't bother for really complex values?)
                 const auto& src = e.src.as_Use();
-                if( !( src.is_Temporary() || src.is_Variable() ) )
+                if( !( src.is_Temporary() || src.is_Variable() || src.is_Argument() ) )
                     continue ;
                 bool src_is_lvalue = true;
 
@@ -535,7 +542,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 if( found )
                 {
                     DEBUG("> Replace " << e.dst << " with " << e.src.as_Use());
-                    replacements.insert( ::std::make_pair(idx, e.src.as_Use().clone()) );
+                    replacements.insert( ::std::make_pair(e.dst.clone(), e.src.as_Use().clone()) );
                 }
                 else
                 {
@@ -550,10 +557,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             for(auto& r : replacements)
             {
                 visit_mir_lvalue_mut(r.second, false, [&](auto& lv, bool is_write) {
-                    if( lv.is_Temporary() && !is_write )
+                    if( !is_write )
                     {
-                        auto idx = lv.as_Temporary().idx;
-                        auto it = replacements.find(idx);
+                        auto it = replacements.find(lv);
                         if( it != replacements.end() )
                         {
                             lv = it->second.clone();
@@ -573,10 +579,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         {
             auto old_replaced = replaced;
             visit_mir_lvalues_mut(state, fcn, [&](auto& lv, bool is_write){
-                if( lv.is_Temporary() && !is_write )
+                if( !is_write )
                 {
-                    auto idx = lv.as_Temporary().idx;
-                    auto it = replacements.find(idx);
+                    auto it = replacements.find(lv);
                     if( it != replacements.end() )
                     {
                         MIR_ASSERT(state, it->second.tag() != ::MIR::LValue::TAGDEAD, "Replacement of  " << lv << " fired twice");
@@ -594,7 +599,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             for(auto it = block.statements.begin(); it != block.statements.end(); )
             {
                 // If the statement was an assign of a replaced temporary, remove it.
-                if( it->is_Assign() && it->as_Assign().dst.is_Temporary() && replacements.count( it->as_Assign().dst.as_Temporary().idx ) > 0 )
+                if( it->is_Assign() && replacements.count( it->as_Assign().dst ) > 0 )
                     it = block.statements.erase(it);
                 else
                     ++it;
