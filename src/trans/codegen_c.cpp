@@ -8,6 +8,7 @@
 #include "codegen.hpp"
 #include "mangling.hpp"
 #include <fstream>
+#include <algorithm>
 #include <hir/hir.hpp>
 #include <mir/mir.hpp>
 #include <hir_typeck/static.hpp>
@@ -287,7 +288,51 @@ namespace {
             m_of << "}\n";
             m_mir_res = nullptr;
         }
-        //virtual void emit_union(const ::HIR::GenericPath& p, const ::HIR::Union& item);
+        void emit_union(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Union& item) override
+        {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "union " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
+            TRACE_FUNCTION_F(p);
+
+            ::HIR::TypeRef  tmp;
+            auto monomorph = [&](const auto& x)->const auto& {
+                if( monomorphise_type_needed(x) ) {
+                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return x;
+                }
+                };
+            m_of << "union u_" << Trans_Mangle(p) << " {\n";
+            for(unsigned int i = 0; i < item.m_variants.size(); i ++)
+            {
+                m_of << "\t"; emit_ctype( monomorph(item.m_variants[i].second.ent), FMT_CB(ss, ss << "var_" << i;) ); m_of << ";\n";
+            }
+            m_of << "};\n";
+
+            // Drop glue (calls destructor if there is one)
+            auto item_ty = ::HIR::TypeRef(p.clone(), &item);
+            auto drop_glue_path = ::HIR::Path(item_ty.clone(), "#drop_glue");
+            auto item_ptr_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, item_ty.clone());
+            auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(item_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), item_ptr_ty, {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &mir_res;
+
+            if( item.m_markings.has_drop_impl )
+            {
+                m_of << "tUNIT " << Trans_Mangle(drop_impl_path) << "(union u_" << Trans_Mangle(p) << "*rv);\n";
+            }
+
+            m_of << "void " << Trans_Mangle(drop_glue_path) << "(union u_" << Trans_Mangle(p) << "* rv) {\n";
+            if( item.m_markings.has_drop_impl )
+            {
+                m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
+            }
+            m_of << "}\n";
+        }
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
@@ -352,13 +397,13 @@ namespace {
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
+            auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
             m_mir_res = &mir_res;
 
-
             if( item.m_markings.has_drop_impl )
             {
-                m_of << "void " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
+                m_of << "tUNIT " << Trans_Mangle(drop_impl_path) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
             }
 
             m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
@@ -366,7 +411,7 @@ namespace {
             // If this type has an impl of Drop, call that impl
             if( item.m_markings.has_drop_impl )
             {
-                m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
+                m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
             }
 
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
@@ -725,10 +770,53 @@ namespace {
                         break; }
                     case ::MIR::Statement::TAG_Asm: {
                         const auto& e = stmt.as_Asm();
-                        //DEBUG("- (" 
-                        MIR_TODO(mir_res, "asm! \"" << FmtEscaped(e.tpl) << "\"");
+
+                        struct H {
+                            static bool has_flag(const ::std::vector<::std::string>& flags, const char* des) {
+                                return ::std::find_if(flags.begin(), flags.end(), [des](const auto&x){return x==des;}) != flags.end();
+                            }
+                            static const char* convert_reg(const char* r) {
+                                if( ::std::strcmp(r, "{eax}") == 0 || ::std::strcmp(r, "{rax}") == 0 ) {
+                                    return "a";
+                                }
+                                else {
+                                    return r;
+                                }
+                            }
+                        };
+                        bool is_volatile = H::has_flag(e.flags, "volatile");
+                        bool is_intel = H::has_flag(e.flags, "intel");
+
                         m_of << "\t__asm__ ";
-                        m_of << "(\"" << e.tpl << "\"";
+                        if(is_volatile) m_of << "__volatile__";
+                        m_of << "(\"" << (is_intel ? ".syntax intel; " : "") << FmtEscaped(e.tpl) << (is_intel ? ".syntax att; " : "") << "\"";
+                        m_of << ": ";
+                        for(unsigned int i = 0; i < e.outputs.size(); i ++ )
+                        {
+                            const auto& v = e.outputs[i];
+                            if( i != 0 )    m_of << ", ";
+                            m_of << "\"";
+                            switch(v.first[0])
+                            {
+                            case '=':   m_of << "=";    break;
+                            default:    MIR_TODO(mir_res, "");
+                            }
+                            m_of << H::convert_reg(v.first.c_str()+1);
+                            m_of << "\"("; emit_lvalue(v.second); m_of << ")";
+                        }
+                        m_of << ": ";
+                        for(unsigned int i = 0; i < e.inputs.size(); i ++ )
+                        {
+                            const auto& v = e.inputs[i];
+                            if( i != 0 )    m_of << ", ";
+                            m_of << "\"" << v.first << "\"("; emit_lvalue(v.second); m_of << ")";
+                        }
+                        m_of << ": ";
+                        for(unsigned int i = 0; i < e.clobbers.size(); i ++ )
+                        {
+                            if( i != 0 )    m_of << ", ";
+                            m_of << "\"" << e.clobbers[i] << "\"";
+                        }
                         m_of << ");\n";
                         break; }
                     case ::MIR::Statement::TAG_Assign: {
@@ -992,7 +1080,17 @@ namespace {
                             }
                             ),
                         (Variant,
-                            MIR_TODO(mir_res, "Handle constructing variants - " << e.src);
+                            if( m_crate.get_typeitem_by_path(sp, ve.path.m_path).is_Union() )
+                            {
+                                emit_lvalue(e.dst);
+                            }
+                            else
+                            {
+                                MIR_TODO(mir_res, "Construct enum with RValue::Variant");
+                                emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
+                                emit_lvalue(e.dst); m_of << ".DATA";
+                            }
+                            m_of << ".var_" << ve.index << " = "; emit_lvalue(ve.val);
                             ),
                         (Struct,
                             if(ve.variant_idx != ~0u) {
@@ -1202,10 +1300,16 @@ namespace {
             auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail) {
                 emit_lvalue(e.ret_val); m_of << "._0 = "; emit_lvalue(e.args.at(1)); m_of << ";\n\t";
                 emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_strong_explicit(";
-                    emit_lvalue(e.args.at(0));
+                    m_of << "(_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
                     m_of << ", "; emit_lvalue(e.args.at(2));
                     m_of << ", "<<o_succ<<", "<<o_fail<<")";
+                };
+            auto emit_atomic_arith = [&](const char* name, const char* ordering) {
+                emit_lvalue(e.ret_val); m_of << " = atomic_" << name << "_explicit";
+                    m_of <<"((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0));
+                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of << ", " << ordering << ")";
                 };
             if( name == "size_of" ) {
                 emit_lvalue(e.ret_val); m_of << " = sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
@@ -1233,6 +1337,7 @@ namespace {
                 }
             }
             else if( name == "min_align_of_val" ) {
+                emit_lvalue(e.ret_val); m_of << " = ";
                 const auto& ty = params.m_types.at(0);
                 switch( metadata_type(ty) )
                 {
@@ -1413,19 +1518,19 @@ namespace {
             // > Single-ordering atomics
             else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                emit_lvalue(e.ret_val); m_of << " = atomic_fetch_add_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                emit_atomic_arith("fetch_add", ordering);
             }
             else if( name == "atomic_xsub" || name.compare(0, 7+4+1, "atomic_xsub_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                emit_lvalue(e.ret_val); m_of << " = atomic_fetch_sub_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                emit_atomic_arith("fetch_sub", ordering);
             }
             else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit("; emit_lvalue(e.args.at(0)); m_of << ", " << ordering << ")";
+                emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << ", " << ordering << ")";
             }
             else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+5+1);
-                m_of << "atomic_store_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                m_of << "atomic_store_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
             }
             // Comare+Exchange (has two orderings)
             else if( name == "atomic_cxchg_acq_failrelaxed" ) {
@@ -1452,7 +1557,7 @@ namespace {
             }
             else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
-                emit_lvalue(e.ret_val); m_of << " = atomic_exchange_explicit("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                emit_lvalue(e.ret_val); m_of << " = atomic_exchange_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
             }
             else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
