@@ -15,6 +15,8 @@ EXESUF ?=
 CXX ?= g++
 V ?= @
 
+TARGET_CC ?= clang
+
 TAIL_COUNT ?= 45
 
 .SUFFIXES:
@@ -201,7 +203,7 @@ output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_
 	$(DBG) $(BIN) $< -o $@.c $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@.c
-	$(CC) $@.c -pthread -g -o $@
+	$(TARGET_CC) $@.c -pthread -g -o $@
 
 $(RUSTCSRC): rust-nightly-date
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
@@ -221,14 +223,14 @@ rust_tests: rust_tests-run-pass rust_tests-run-fail
 # rust_tests-compile-fail
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.o,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
-rust_tests-run-pass: $(call DEF_RUST_TESTS,run-pass)
+rust_tests-run-pass: $(filter-out output/rust/run-pass/abi-sysv64-arg-passing.o, $(call DEF_RUST_TESTS,run-pass))
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN) output/liballoc_system.hir output/libpanic_abort.hir
 	@mkdir -p $(dir $@)
 	$(DBG) $(BIN) $< -o $@.c $(PIPECMD)
-	$(CC) $@.c -pthread -g -o $@
+	$(TARGET_CC) $@.c -pthread -g -o $@
 
 TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
 
@@ -236,7 +238,7 @@ output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir outp
 	@mkdir -p $(dir $@)
 	@echo "--- TEST $(patsubst output/rust/%.o,%,$@)"
 	@$(BIN) $< -o $@.c --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
-	@$(CC) $@.c -pthread -g -o $@
+	@$(TARGET_CC) $@.c -pthread -g -o $@
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
 output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
@@ -245,10 +247,13 @@ output/test_deps/libsvh_b.hir: output/test_deps/libsvh_a_base.hir
 
 output/test_deps/libanonexternmod.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon-extern-mod-cross-crate-1.rs
 	$(BIN) $< --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
+output/test_deps/libunion.hir: $(RUST_TESTS_DIR)run-pass/union/auxiliary/union.rs
+	mkdir -p $(dir $@)
+	$(BIN) $< --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
 
 test_deps_run-pass.mk: Makefile $(wildcard $(RUST_TESTS_DIR)run_pass/*.rs)
 	@echo "--- Generating test dependencies: $@"
-	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{a=gensub(/.+run-pass\/(.*)\.rs$$/, "\\1", "g", $$1); b=gensub(/(.*)\.rs/,"\\1","g",$$3); gsub(/-/,"_",b); print "output/rust/run-pass/" a ".o: " "output/test_deps/lib" b ".hir" }' > $@.tmp
+	@grep 'aux-build:' rustc-nightly/src/test/run-pass/{*.rs,union/*.rs} | awk -F : '{a=gensub(/.+run-pass\/(.*)\.rs$$/, "\\1", "g", $$1); b=gensub(/(.*)\.rs/,"\\1","g",$$3); gsub(/-/,"_",b); print "output/rust/run-pass/" a ".o: " "output/test_deps/lib" b ".hir" }' > $@.tmp
 	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{ print $$3 }' | sort | uniq | awk '{ b=gensub(/(.*)\.rs/,"\\1","g",$$1); gsub(/-/,"_",b); print "output/test_deps/lib" b ".hir: $$(RUST_TESTS_DIR)run-pass/auxiliary/" $$1 " output/libstd.hir" ; print "\t@mkdir -p $$(dir $$@)" ; print "\t@echo \"--- [MRUSTC] $$@\"" ; print "\t@$$(DBG) $$(BIN) $$< --crate-type rlib --out-dir output/test_deps > $$@.txt 2>&1" ; print "\t@touch $$@" }' >> $@.tmp
 	@mv $@.tmp $@
 
