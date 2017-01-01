@@ -56,7 +56,7 @@ namespace {
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
                 << "typedef struct { size_t size; size_t align; } VTABLE_HDR;\n"
                 << "\n"
-                << "extern void _Unwind_Resume(void);\n"
+                << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                 << "\n"
                 ;
         }
@@ -1148,6 +1148,7 @@ namespace {
                     m_of << "\tswitch("; emit_lvalue(e.val); m_of << ".TAG) {\n";
                     for(unsigned int j = 0; j < e.targets.size(); j ++)
                         m_of << "\t\tcase " << j << ": goto bb" << e.targets[j] << ";\n";
+                    m_of << "\t\tdefault: abort();\n";
                     m_of << "\t}\n";
                     ),
                 (Call,
