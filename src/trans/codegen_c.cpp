@@ -1847,7 +1847,7 @@ namespace {
                 }
                 else if( ty.m_data.is_Array() ) {
                     emit_lvalue(*e.val);
-                    m_of << "[" << e.field_index << "]";
+                    m_of << ".DATA[" << e.field_index << "]";
                 }
                 else if( e.val->is_Deref() ) {
                     auto dst_type = metadata_type(ty);
