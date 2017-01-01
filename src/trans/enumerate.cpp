@@ -195,7 +195,22 @@ namespace {
             )
         }
         void visit_union(const ::HIR::GenericPath& path, const ::HIR::Union& item) {
-            // TODO: .
+            static Span sp;
+            ::HIR::TypeRef  tmp;
+            auto monomorph = [&](const auto& x)->const auto& {
+                if( monomorphise_type_needed(x) ) {
+                    tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return x;
+                }
+                };
+            for(const auto& variant : item.m_variants)
+            {
+                visit_type( monomorph(variant.second.ent) );
+            }
         }
         void visit_enum(const ::HIR::GenericPath& path, const ::HIR::Enum& item) {
             static Span sp;
