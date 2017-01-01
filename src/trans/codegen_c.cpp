@@ -1358,6 +1358,9 @@ namespace {
             else if( name == "type_id" ) {
                 emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(params.m_types.at(0));
             }
+            else if( name == "type_name" ) {
+                emit_lvalue(e.ret_val); m_of << " = \"" << params.m_types.at(0) << "\"";
+            }
             else if( name == "transmute" ) {
                 m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
             }
@@ -1514,6 +1517,12 @@ namespace {
             }
             else if( name == "truncf64" ) {
                 emit_lvalue(e.ret_val); m_of << " = trunc("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "powif32" ) {
+                emit_lvalue(e.ret_val); m_of << " = powif("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "powif64" ) {
+                emit_lvalue(e.ret_val); m_of << " = powi("; emit_lvalue(e.args.at(0)); m_of << ")";
             }
             // --- Atomics!
             // > Single-ordering atomics
