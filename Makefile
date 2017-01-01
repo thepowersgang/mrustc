@@ -222,8 +222,9 @@ RUST_TESTS_DIR := $(RUSTCSRC)src/test/
 rust_tests: rust_tests-run-pass rust_tests-run-fail
 # rust_tests-compile-fail
 
-DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%.o,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
-rust_tests-run-pass: $(filter-out output/rust/run-pass/abi-sysv64-arg-passing.o, $(call DEF_RUST_TESTS,run-pass))
+DISABLED_TESTS = run-pass/abi-sysv64-arg-passing run-pass/abi-sysv64-register-usage
+DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
+rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
@@ -234,11 +235,15 @@ output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libst
 
 TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
 
-output/rust/%.o: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir
+output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir
 	@mkdir -p $(dir $@)
-	@echo "--- TEST $(patsubst output/rust/%.o,%,$@)"
+	@echo "=== TEST $(patsubst output/rust/%.o,%,$@)"
+	@echo "--- [MRUSTC] -o $@.c"
 	@$(BIN) $< -o $@.c --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
-	@$(TARGET_CC) $@.c -pthread -g -o $@
+	@echo "--- [CC] -o $@"
+	$(TARGET_CC) $@.c -pthread -g -o $@
+	@echo "000 [$@]"
+	@./$@
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
 output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
