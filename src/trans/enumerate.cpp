@@ -156,12 +156,12 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
         ::StaticTraitResolve    m_resolve;
-        ::std::vector< ::HIR::TypeRef>& out_list;
+        ::std::vector< ::std::pair< ::HIR::TypeRef, bool> >& out_list;
 
-        ::std::set< ::HIR::TypeRef> visited;
+        ::std::map< ::HIR::TypeRef, bool > visited;
         ::std::set< const ::HIR::TypeRef*, PtrComp> active_set;
 
-        TypeVisitor(const ::HIR::Crate& crate, ::std::vector< ::HIR::TypeRef>& out_list):
+        TypeVisitor(const ::HIR::Crate& crate, ::std::vector< ::std::pair< ::HIR::TypeRef, bool > >& out_list):
             m_crate(crate),
             m_resolve(crate),
             out_list(out_list)
@@ -244,105 +244,137 @@ namespace {
             }
         }
 
-        void visit_type(const ::HIR::TypeRef& ty)
+        enum class Mode {
+            Shallow,
+            Normal,
+            Deep,
+        };
+
+        void visit_type(const ::HIR::TypeRef& ty, Mode mode = Mode::Normal)
         {
-            // Already done
-            if( visited.find(ty) != visited.end() )
-                return ;
-
-            if( active_set.find(&ty) != active_set.end() ) {
-                // TODO: Handle recursion
-                DEBUG("- Type recursion with " << ty);
-                return ;
+            // If the type has already been visited, AND either this is a shallow visit, or the previous wasn't
+            {
+                auto it = visited.find(ty);
+                if( it != visited.end() )
+                {
+                    if( it->second == false || mode == Mode::Shallow )
+                    {
+                        // Return early
+                        return ;
+                    }
+                    DEBUG("-- " << ty << " already visited as shallow");
+                    it->second = false;
+                }
             }
-            active_set.insert( &ty );
+            TRACE_FUNCTION_F(ty << " - " << (mode == Mode::Shallow ? "Shallow" : (mode == Mode::Normal ? "Normal" : "Deep")));
 
-            TU_MATCHA( (ty.m_data), (te),
-            // Impossible
-            (Infer,
-                ),
-            (Generic,
-                BUG(Span(), "Generic type hit in enumeration - " << ty);
-                ),
-            (ErasedType,
-                //BUG(Span(), "ErasedType hit in enumeration - " << ty);
-                ),
-            (Closure,
-                BUG(Span(), "Closure type hit in enumeration - " << ty);
-                ),
-            // Nothing to do
-            (Diverge,
-                ),
-            (Primitive,
-                ),
-            // Recursion!
-            (Path,
-                TU_MATCHA( (te.binding), (tpb),
-                (Unbound,
-                    BUG(Span(), "Unbound type hit in enumeration - " << ty);
+            if( mode != Mode::Shallow )
+            {
+                if( active_set.find(&ty) != active_set.end() ) {
+                    // TODO: Handle recursion
+                    DEBUG("- Type recursion with " << ty);
+                    return ;
+                }
+                active_set.insert( &ty );
+
+                TU_MATCHA( (ty.m_data), (te),
+                // Impossible
+                (Infer,
                     ),
-                (Opaque,
-                    BUG(Span(), "Opaque type hit in enumeration - " << ty);
+                (Generic,
+                    BUG(Span(), "Generic type hit in enumeration - " << ty);
                     ),
-                (Struct,
-                    visit_struct(te.path.m_data.as_Generic(), *tpb);
+                (ErasedType,
+                    //BUG(Span(), "ErasedType hit in enumeration - " << ty);
                     ),
-                (Union,
-                    visit_union(te.path.m_data.as_Generic(), *tpb);
+                (Closure,
+                    BUG(Span(), "Closure type hit in enumeration - " << ty);
                     ),
-                (Enum,
-                    visit_enum(te.path.m_data.as_Generic(), *tpb);
+                // Nothing to do
+                (Diverge,
+                    ),
+                (Primitive,
+                    ),
+                // Recursion!
+                (Path,
+                    if( const auto* p = m_resolve.is_type_owned_box(ty) )
+                    {
+                        visit_type(*p);
+                    }
+                    TU_MATCHA( (te.binding), (tpb),
+                    (Unbound,
+                        BUG(Span(), "Unbound type hit in enumeration - " << ty);
+                        ),
+                    (Opaque,
+                        BUG(Span(), "Opaque type hit in enumeration - " << ty);
+                        ),
+                    (Struct,
+                        visit_struct(te.path.m_data.as_Generic(), *tpb);
+                        ),
+                    (Union,
+                        visit_union(te.path.m_data.as_Generic(), *tpb);
+                        ),
+                    (Enum,
+                        visit_enum(te.path.m_data.as_Generic(), *tpb);
+                        )
+                    )
+                    ),
+                (TraitObject,
+                    static Span sp;
+                    // Ensure that the data trait's vtable is present
+                    const auto& trait = *te.m_trait.m_trait_ptr;
+
+                    auto vtable_ty_spath = te.m_trait.m_path.m_path;
+                    vtable_ty_spath.m_components.back() += "#vtable";
+                    const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
+                    // Copy the param set from the trait in the trait object
+                    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+                    // - Include associated types on bound
+                    for(const auto& ty_b : te.m_trait.m_type_bounds) {
+                        auto idx = trait.m_type_indexes.at(ty_b.first);
+                        if(vtable_params.m_types.size() <= idx)
+                            vtable_params.m_types.resize(idx+1);
+                        vtable_params.m_types[idx] = ty_b.second.clone();
+                    }
+
+                    visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
+                    ),
+                (Array,
+                    visit_type(*te.inner, mode);
+                    ),
+                (Slice,
+                    visit_type(*te.inner, mode);
+                    ),
+                (Borrow,
+                    visit_type(*te.inner, mode != Mode::Deep ? Mode::Shallow : Mode::Deep);
+                    ),
+                (Pointer,
+                    visit_type(*te.inner, mode != Mode::Deep ? Mode::Shallow : Mode::Deep);
+                    ),
+                (Tuple,
+                    for(const auto& sty : te)
+                        visit_type(sty, mode);
+                    ),
+                (Function,
+                    // TODO: Should shallow=true for these too?
+                    visit_type(*te.m_rettype, mode);
+                    for(const auto& sty : te.m_arg_types)
+                        visit_type(sty, mode);
                     )
                 )
-                ),
-            (TraitObject,
-                static Span sp;
-                // Ensure that the data trait's vtable is present
-                const auto& trait = *te.m_trait.m_trait_ptr;
+                active_set.erase( active_set.find(&ty) );
+            }
 
-                auto vtable_ty_spath = te.m_trait.m_path.m_path;
-                vtable_ty_spath.m_components.back() += "#vtable";
-                const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
-                // Copy the param set from the trait in the trait object
-                ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-                // - Include associated types on bound
-                for(const auto& ty_b : te.m_trait.m_type_bounds) {
-                    auto idx = trait.m_type_indexes.at(ty_b.first);
-                    if(vtable_params.m_types.size() <= idx)
-                        vtable_params.m_types.resize(idx+1);
-                    vtable_params.m_types[idx] = ty_b.second.clone();
+            bool shallow = (mode == Mode::Shallow);
+            {
+                auto rv = visited.insert( ::std::make_pair(ty.clone(), shallow) );
+                if( !rv.second && ! shallow )
+                {
+                    rv.first->second = false;
                 }
-
-
-                visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
-                ),
-            (Array,
-                visit_type(*te.inner);
-                ),
-            (Slice,
-                visit_type(*te.inner);
-                ),
-            (Borrow,
-                visit_type(*te.inner);
-                ),
-            (Pointer,
-                visit_type(*te.inner);
-                ),
-            (Tuple,
-                for(const auto& sty : te)
-                    visit_type(sty);
-                ),
-            (Function,
-                visit_type(*te.m_rettype);
-                for(const auto& sty : te.m_arg_types)
-                    visit_type(sty);
-                )
-            )
-            active_set.erase( active_set.find(&ty) );
-
-            visited.insert( ty.clone() );
-            out_list.push_back( ty.clone() );
-            DEBUG("Add type " << ty);
+            }
+            out_list.push_back( ::std::make_pair(ty.clone(), shallow) );
+            DEBUG("Add type " << ty << (shallow ? " (Shallow)": ""));
         }
     };
 }
@@ -374,9 +406,9 @@ void Trans_Enumerate_Types(EnumState& state)
             {
                 const auto& mir = *fcn.m_code.m_mir;
                 for(const auto& ty : mir.named_variables)
-                    tv.visit_type(pp.monomorph(tv.m_resolve, ty));
+                    tv.visit_type(pp.monomorph(tv.m_resolve, ty), TypeVisitor::Mode::Deep);
                 for(const auto& ty : mir.temporaries)
-                    tv.visit_type(pp.monomorph(tv.m_resolve, ty));
+                    tv.visit_type(pp.monomorph(tv.m_resolve, ty), TypeVisitor::Mode::Deep);
             }
         }
         state.fcns_to_type_visit.clear();
@@ -394,7 +426,11 @@ void Trans_Enumerate_Types(EnumState& state)
         constructors_added = false;
         for(unsigned int i = types_count; i < state.rv.m_types.size(); i ++ )
         {
-            const auto& ty = state.rv.m_types[i];
+            const auto& ent = state.rv.m_types[i];
+            // Shallow? Skip.
+            if( ent.second )
+                continue ;
+            const auto& ty = ent.first;
             if( ty.m_data.is_Path() )
             {
                 const auto& te = ty.m_data.as_Path();

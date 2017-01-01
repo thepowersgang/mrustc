@@ -73,6 +73,40 @@ namespace {
                 << "}\n";
         }
 
+        void emit_type_proto(const ::HIR::TypeRef& ty) override
+        {
+            TRACE_FUNCTION_F(ty);
+            TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, te,
+                // TODO: Pre-define tuple name
+            )
+            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
+                // TODO: Pre-define function type name
+            )
+            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
+                // TODO: Pre-define array type name
+            )
+            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Path, te,
+                TU_MATCHA( (te.binding), (tpb),
+                (Unbound,  throw ""; ),
+                (Opaque,  throw ""; ),
+                (Struct,
+                    m_of << "struct s_" << Trans_Mangle(te.path) << ";\n";
+                    ),
+                (Union,
+                    m_of << "union u_" << Trans_Mangle(te.path) << ";\n";
+                    ),
+                (Enum,
+                    m_of << "struct e_" << Trans_Mangle(te.path) << ";\n";
+                    )
+                )
+            )
+            else if( ty.m_data.is_ErasedType() ) {
+                // TODO: Is this actually a bug?
+                return ;
+            }
+            else {
+            }
+        }
         void emit_type(const ::HIR::TypeRef& ty) override
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "type " << ty;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };

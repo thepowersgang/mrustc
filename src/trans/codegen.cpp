@@ -23,22 +23,29 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
     // - Emit in the order they're needed.
     for(const auto& ty : list.m_types)
     {
-        TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Path, te,
-            TU_MATCHA( (te.binding), (tpb),
-            (Unbound,  throw ""; ),
-            (Opaque,  throw ""; ),
-            (Struct,
-                codegen->emit_struct(sp, te.path.m_data.as_Generic(), *tpb);
-                ),
-            (Union,
-                codegen->emit_union(sp, te.path.m_data.as_Generic(), *tpb);
-                ),
-            (Enum,
-                codegen->emit_enum(sp, te.path.m_data.as_Generic(), *tpb);
+        if( ty.second )
+        {
+            codegen->emit_type_proto(ty.first);
+        }
+        else
+        {
+            TU_IFLET( ::HIR::TypeRef::Data, ty.first.m_data, Path, te,
+                TU_MATCHA( (te.binding), (tpb),
+                (Unbound,  throw ""; ),
+                (Opaque,  throw ""; ),
+                (Struct,
+                    codegen->emit_struct(sp, te.path.m_data.as_Generic(), *tpb);
+                    ),
+                (Union,
+                    codegen->emit_union(sp, te.path.m_data.as_Generic(), *tpb);
+                    ),
+                (Enum,
+                    codegen->emit_enum(sp, te.path.m_data.as_Generic(), *tpb);
+                    )
                 )
             )
-        )
-        codegen->emit_type(ty);
+            codegen->emit_type(ty.first);
+        }
     }
 
     // 2. Emit function prototypes
