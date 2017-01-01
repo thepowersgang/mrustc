@@ -953,22 +953,38 @@ namespace {
                             }
                             ),
                         (Borrow,
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
+                            ::HIR::TypeRef  tmp;
+                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
                             bool special = false;
                             // If the inner value has type [T] or str, create DST based on inner pointer and existing metadata
-                            TU_IFLET(::MIR::LValue, ve.val, Deref, e,
-                                ::HIR::TypeRef  tmp;
-                                const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);  // NOTE: Checks the result of the deref
+                            TU_IFLET(::MIR::LValue, ve.val, Deref, le,
                                 if( metadata_type(ty) != MetadataType::None ) {
-                                    emit_lvalue(*e.val);
+                                    emit_lvalue(e.dst);
+                                    m_of << " = ";
+                                    emit_lvalue(*le.val);
                                     special = true;
                                 }
                             )
-                            // TODO: Magic for taking a &-ptr to unsized field of a struct.
+                            // Magic for taking a &-ptr to unsized field of a struct.
                             // - Needs to get metadata from bottom-level pointer.
+                            else TU_IFLET(::MIR::LValue, ve.val, Field, le,
+                                if( metadata_type(ty) != MetadataType::None ) {
+                                    const ::MIR::LValue* base_val = &*le.val;
+                                    while(base_val->is_Field())
+                                        base_val = &*base_val->as_Field().val;
+                                    MIR_ASSERT(mir_res, base_val->is_Deref(), "DST access must be via a deref");
+                                    const ::MIR::LValue& base_ptr = *base_val->as_Deref().val;
+
+                                    // Construct the new DST
+                                    emit_lvalue(e.dst); m_of << ".META = "; emit_lvalue(base_ptr); m_of << ".META;\n\t";
+                                    emit_lvalue(e.dst); m_of << ".PTR = &"; emit_lvalue(ve.val);
+                                    special = true;
+                                }
+                            )
                             if( !special )
                             {
+                                emit_lvalue(e.dst);
+                                m_of << " = ";
                                 m_of << "& "; emit_lvalue(ve.val);
                             }
                             ),
