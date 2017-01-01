@@ -268,11 +268,24 @@ namespace {
             }
             TRACE_FUNCTION_F(ty << " - " << (mode == Mode::Shallow ? "Shallow" : (mode == Mode::Normal ? "Normal" : "Deep")));
 
-            if( mode != Mode::Shallow )
+            if( mode == Mode::Shallow )
+            {
+                TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (te),
+                (
+                    ),
+                (Pointer,
+                    visit_type(*te.inner, Mode::Shallow);
+                    ),
+                (Borrow,
+                    visit_type(*te.inner, Mode::Shallow);
+                    )
+                )
+            }
+            else
             {
                 if( active_set.find(&ty) != active_set.end() ) {
                     // TODO: Handle recursion
-                    DEBUG("- Type recursion with " << ty);
+                    BUG(Span(), "- Type recursion with " << ty);
                     return ;
                 }
                 active_set.insert( &ty );
