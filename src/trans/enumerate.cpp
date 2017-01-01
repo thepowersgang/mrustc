@@ -631,6 +631,8 @@ namespace {
                     return EntPtr { &fit->second.data };
                 }
                 impl_pp = e.trait.m_params.clone();
+                // HACK! By adding a new parameter here, the MIR will always be monomorphised
+                impl_pp.m_types.push_back( ::HIR::TypeRef() );
                 return EntPtr { &ve };
                 )
             )

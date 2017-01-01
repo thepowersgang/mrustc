@@ -85,27 +85,30 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
     {
         if( ent.second->ptr && ent.second->ptr->m_code.m_mir )
         {
-            TRACE_FUNCTION_F(ent.first);
-            DEBUG("FUNCTION CODE " << ent.first);
+            const auto& path = ent.first;
             const auto& fcn = *ent.second->ptr;
+            const auto& pp = ent.second->pp;
+            TRACE_FUNCTION_F(path);
+            DEBUG("FUNCTION CODE " << path);
             // TODO: If this is a provided trait method, it needs to be monomorphised too.
             bool is_method = ( fcn.m_args.size() > 0 && visit_ty_with(fcn.m_args[0].second, [&](const auto& x){return x == ::HIR::TypeRef("Self",0xFFFF);}) );
-            if( ent.second->pp.has_types() || is_method )
+            if( pp.has_types() || is_method )
             {
                 ::StaticTraitResolve    resolve { crate };
-                auto ret_type = ent.second->pp.monomorph(crate, fcn.m_return);
+                auto ret_type = pp.monomorph(resolve, fcn.m_return);
                 ::HIR::Function::args_t args;
                 for(const auto& a : fcn.m_args)
-                    args.push_back(::std::make_pair( ::HIR::Pattern{}, ent.second->pp.monomorph(crate, a.second) ));
-                auto mir = Trans_Monomorphise(crate, ent.second->pp, fcn.m_code.m_mir);
+                    args.push_back(::std::make_pair( ::HIR::Pattern{}, pp.monomorph(resolve, a.second) ));
+                auto mir = Trans_Monomorphise(resolve, pp, fcn.m_code.m_mir);
                 MIR_Validate(resolve, ::HIR::ItemPath(), *mir, args, ret_type);
                 MIR_Cleanup(resolve, ::HIR::ItemPath(), *mir, args, ret_type);
                 // TODO: MIR Optimisation
+                //MIR_Optimise(resolve, ::HIR::ItemPath(), *mir, args, ret_type);
                 MIR_Validate(resolve, ::HIR::ItemPath(), *mir, args, ret_type);
-                codegen->emit_function_code(ent.first, fcn, ent.second->pp,  mir);
+                codegen->emit_function_code(path, fcn, ent.second->pp,  mir);
             }
             else {
-                codegen->emit_function_code(ent.first, fcn, ent.second->pp,  fcn.m_code.m_mir);
+                codegen->emit_function_code(path, fcn, pp,  fcn.m_code.m_mir);
             }
         }
     }
