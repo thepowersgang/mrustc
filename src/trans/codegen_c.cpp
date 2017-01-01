@@ -584,9 +584,25 @@ namespace {
                 m_of << e;
                 ),
             (BorrowOf,
-                // TODO: Get the pointed-to item type
-                if( ! ty.m_data.is_Function() )
+                TU_MATCHA( (e.m_data), (pe),
+                (Generic,
+                    if( ! m_crate.get_valitem_by_path(sp, pe.m_path).is_Function() )
+                        m_of << "&";
+                    else if( !ty.m_data.is_Function() ) // TODO: Ensure that the type is `*const ()` or similar.
+                        m_of << "(void*)";
+                    else
+                        ;
+                    ),
+                (UfcsUnknown,
+                    MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << e);
+                    ),
+                (UfcsInherent,
                     m_of << "&";
+                    ),
+                (UfcsKnown,
+                    m_of << "&";
+                    )
+                )
                 m_of << Trans_Mangle( params.monomorph(m_resolve, e));
                 ),
             (String,
