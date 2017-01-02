@@ -31,6 +31,8 @@ namespace {
         ::StaticTraitResolve    m_resolve;
         ::std::ofstream m_of;
         const ::MIR::TypeResolve* m_mir_res;
+
+        ::std::vector< ::std::pair< ::HIR::GenericPath, const ::HIR::Struct*> >   m_box_glue_todo;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
             m_crate(crate),
@@ -65,12 +67,48 @@ namespace {
 
         void finalise() override
         {
+            // Emit box drop glue after everything else to avoid definition ordering issues
+            for(auto& e : m_box_glue_todo)
+            {
+                emit_box_drop_glue( mv$(e.first), *e.second );
+            }
+
             m_of
                 << "int main(int argc, const char* argv[]) {\n"
                 << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
                     << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath("", {"main"})) ) << ", argc, (uint8_t**)argv"
                     << ");\n"
                 << "}\n";
+        }
+
+        void emit_box_drop_glue(::HIR::GenericPath p, const ::HIR::Struct& item)
+        {
+            auto struct_ty = ::HIR::TypeRef( p.clone(), &item );
+            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
+            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
+            // - Drop Glue
+            const auto* ity = m_resolve.is_type_owned_box(struct_ty);
+
+            auto inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
+            auto box_free = ::HIR::GenericPath { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
+
+            ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
+            args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
+
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, *(::MIR::Function*)nullptr };
+            m_mir_res = &mir_res;
+            m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
+
+            // Obtain inner pointer
+            // TODO: This is very specific to the structure of the official liballoc's Box.
+            m_of << "\t"; emit_ctype(args[0].second, FMT_CB(ss, ss << "arg0"; ));    m_of << " = rv->_0._0._0;\n";
+            // Call destructor of inner data
+            emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) }), *ity, true);
+            // Emit a call to box_free for the type
+            m_of << "\t" << Trans_Mangle(box_free) << "(arg0);\n";
+
+            m_of << "}\n";
+            m_mir_res = nullptr;
         }
 
         void emit_type_proto(const ::HIR::TypeRef& ty) override
@@ -265,64 +303,11 @@ namespace {
             if( item.m_markings.has_drop_impl ) {
                 m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
             }
-            else if( const auto* ity = m_resolve.is_type_owned_box(struct_ty) )
+            else if( m_resolve.is_type_owned_box(struct_ty) )
             {
-                auto  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
-                auto box_free = ::HIR::GenericPath { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
-                m_of << "tUNIT " << Trans_Mangle(box_free) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
-
-                // Forward declare drop glue
-                struct H {
-                    static void emit_drop_glue_proto(CodeGenerator_C& self, const ::HIR::TypeRef& ty)
-                    {
-                        TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (te),
-                        // Impossible
-                        (Diverge, ),
-                        (Infer, ),
-                        (ErasedType, ),
-                        (Closure, ),
-                        (Generic, ),
-
-                        // Nothing
-                        (Primitive,
-                            ),
-                        (Pointer,
-                            ),
-                        (Function,
-                            ),
-                        // Has drop glue/destructors
-                        (Borrow,
-                            if( te.type == ::HIR::BorrowType::Owned ) {
-                                // Call drop glue on inner.
-                                emit_drop_glue_proto(self, *te.inner);
-                            }
-                            ),
-                        (Path,
-                            // Call drop glue
-                            auto p = ::HIR::Path(ty.clone(), "#drop_glue");
-                            self.m_of << "void " << Trans_Mangle(p) << "("; self.emit_ctype(ty); self.m_of << "* ptr);\n";
-                            ),
-                        (Array,
-                            // Emit destructors for all entries
-                            if( te.size_val > 0 ) {
-                                emit_drop_glue_proto(self, *te.inner);
-                            }
-                            ),
-                        (Tuple,
-                            // Emit destructors for all entries
-                            for(const auto& sty : te)
-                                emit_drop_glue_proto(self, sty);
-                            ),
-                        (TraitObject,
-                            ),
-                        (Slice,
-                            )
-                        )
-                    }
-                };
-                H::emit_drop_glue_proto(*this, *ity);
-
-                args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
+                m_box_glue_todo.push_back( ::std::make_pair( mv$(struct_ty.m_data.as_Path().path.m_data.as_Generic()), &item ) );
+                m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv);\n";
+                return ;
             }
 
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, *(::MIR::Function*)nullptr };
@@ -333,18 +318,10 @@ namespace {
             if( item.m_markings.has_drop_impl ) {
                 m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
             }
-            else if( const auto* ity = m_resolve.is_type_owned_box(struct_ty) )
-            {
-                // Obtain inner pointer
-                // TODO: This is very specific to the structure of the official liballoc's Box.
-                ::HIR::TypeRef  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
-                m_of << "\t"; emit_ctype(inner_ptr, FMT_CB(ss, ss << "arg0"; ));    m_of << " = rv->_0._0._0;\n";
-                // Call destructor of inner data
-                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) }), *ity, true);
-                // Emit a call to box_free for the type
-                ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
-                m_of << "\t" << Trans_Mangle(box_free) << "(arg0);\n";
-            }
+            //else if( const auto* ity = m_resolve.is_type_owned_box(struct_ty) )
+            //{
+            //    throw "";
+            //}
 
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
