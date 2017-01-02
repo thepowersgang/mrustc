@@ -271,9 +271,56 @@ namespace {
                 auto box_free = ::HIR::GenericPath { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
                 m_of << "tUNIT " << Trans_Mangle(box_free) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
 
-                // TODO: Forward declare drop glue?
-                //auto inner_drop_glue_path = ::HIR::Path(ity->clone(), "#drop_glue");
-                //m_of << "void " << Trans_Mangle(inner_drop_glue_path) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
+                // Forward declare drop glue
+                struct H {
+                    static void emit_drop_glue_proto(CodeGenerator_C& self, const ::HIR::TypeRef& ty)
+                    {
+                        TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (te),
+                        // Impossible
+                        (Diverge, ),
+                        (Infer, ),
+                        (ErasedType, ),
+                        (Closure, ),
+                        (Generic, ),
+
+                        // Nothing
+                        (Primitive,
+                            ),
+                        (Pointer,
+                            ),
+                        (Function,
+                            ),
+                        // Has drop glue/destructors
+                        (Borrow,
+                            if( te.type == ::HIR::BorrowType::Owned ) {
+                                // Call drop glue on inner.
+                                emit_drop_glue_proto(self, *te.inner);
+                            }
+                            ),
+                        (Path,
+                            // Call drop glue
+                            auto p = ::HIR::Path(ty.clone(), "#drop_glue");
+                            self.m_of << "void " << Trans_Mangle(p) << "("; self.emit_ctype(ty); self.m_of << "* ptr);\n";
+                            ),
+                        (Array,
+                            // Emit destructors for all entries
+                            if( te.size_val > 0 ) {
+                                emit_drop_glue_proto(self, *te.inner);
+                            }
+                            ),
+                        (Tuple,
+                            // Emit destructors for all entries
+                            for(const auto& sty : te)
+                                emit_drop_glue_proto(self, sty);
+                            ),
+                        (TraitObject,
+                            ),
+                        (Slice,
+                            )
+                        )
+                    }
+                };
+                H::emit_drop_glue_proto(*this, *ity);
 
                 args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
             }
