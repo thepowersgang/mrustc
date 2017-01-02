@@ -1419,6 +1419,20 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
     )
 }
 
+const ::MIR::LValue& MirBuilder::get_ptr_to_dst(const Span& sp, const ::MIR::LValue& lv) const
+{
+    // Undo field accesses
+    const auto* lvp = &lv;
+    while(lvp->is_Field())
+        lvp = &*lvp->as_Field().val;
+
+    // TODO: Enum variants?
+
+    ASSERT_BUG(sp, lvp->is_Deref(), "Access of an unsized field without a dereference - " << lv);
+
+    return *lvp->as_Deref().val;
+}
+
 // --------------------------------------------------------------------
 
 ScopeHandle::~ScopeHandle()

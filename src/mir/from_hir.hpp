@@ -226,6 +226,9 @@ private:
 public:
     void with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb) const;
     bool lvalue_is_copy(const Span& sp, const ::MIR::LValue& lv) const;
+
+    // Obtain the base fat poiner for a dst reference. Errors if it wasn't via a fat pointer
+    const ::MIR::LValue& get_ptr_to_dst(const Span& sp, const ::MIR::LValue& lv) const;
 };
 
 class MirConverter:

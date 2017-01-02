@@ -320,7 +320,7 @@ namespace {
                     ::MIR::LValue   len_lval;
                     if( e.extra_bind.is_valid() || e.trailing.size() > 0 )
                     {
-                        len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ lval.clone() }));
+                        len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval).clone() }));
                     }
 
                     for(unsigned int i = 0; i < e.leading.size(); i ++)
@@ -1181,7 +1181,7 @@ namespace {
                     {
                         // HACK: FixedSizeArray uses `A: Unsize<[T]>` which will lead to the above code not working (as the size isn't known).
                         // - Maybe _Meta on the `&A` would work as a stopgap (since A: Sized, it won't collide with &[T] or similar)
-                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(ptr_lval.clone()) }) }) );
+                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::RValue::make_DstMeta({ ptr_lval.clone() }) );
                         m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
                     }
                     else
@@ -1227,9 +1227,7 @@ namespace {
                 limit_val = ::MIR::Constant( e.size_val );
                 ),
             (Slice,
-                // TODO: What if this is of an unsized field? Later checks require that the inner be a LValue::Deref
-                //ASSERT_BUG(node.span(), value.is_Deref(), "Slice index not via a deref");
-                limit_val = ::MIR::RValue::make_DstMeta({ value.clone() });
+                limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value).clone() });
                 )
             )
 

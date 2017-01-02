@@ -1775,7 +1775,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
 
                 // Compare length
                 auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint(re.len) ));
-                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ val.clone() }));
+                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val).clone() }));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::EQ, mv$(test_lval) }));
 
                 auto len_succ_bb = builder.new_bb_unlinked();
@@ -1794,7 +1794,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
 
                 // Compare length
                 auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint(re.min_len) ));
-                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ val.clone() }));
+                auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val).clone() }));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::LT, mv$(test_lval) }));
 
                 auto len_succ_bb = builder.new_bb_unlinked();
@@ -3677,7 +3677,7 @@ void DecisionTreeGen::generate_branches_Slice(
         ERROR(sp, E0000, "Non-exhaustive match over " << ty);
     }
 
-    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ val.clone() }));
+    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val).clone() }));
 
     // NOTE: Un-deref the slice
     ASSERT_BUG(sp, val.is_Deref(), "slice matches must be passed a deref");

@@ -418,7 +418,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     // Allocate a temporary for the vtable pointer itself
     auto vtable_lv = mutator.new_temporary( mv$(vtable_ty) );
     // - Load the vtable and store it
-    auto vtable_rval = ::MIR::RValue::make_DstMeta({ ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) }) });
+    auto vtable_rval = ::MIR::RValue::make_DstMeta({ receiver_lvp.clone() });
     mutator.push_statement( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
 
     auto fcn_lval = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
@@ -478,7 +478,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                 {
                     return mutator.in_temporary(
                         ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()),
-                        ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(lv) }) })
+                        ::MIR::RValue::make_DstPtr({ mv$(lv) })
                         );
                 }
                 else
@@ -492,7 +492,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     }
     else
     {
-        auto ptr_rval = ::MIR::RValue::make_DstPtr({ ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) }) });
+        auto ptr_rval = ::MIR::RValue::make_DstPtr({ receiver_lvp.clone() });
 
         auto ptr_lv = mutator.new_temporary( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit()) );
         mutator.push_statement( ::MIR::Statement::make_Assign({ ptr_lv.clone(), mv$(ptr_rval) }) );
@@ -618,8 +618,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             if( src_ty.m_data.is_TraitObject() )
             {
                 out_src_is_dst = true;
-                auto deref_ptr_val = ::MIR::LValue::make_Deref({ box$(ptr_value.clone()) });
-                out_meta_val = ::MIR::RValue::make_DstMeta({ mv$(deref_ptr_val) });
+                out_meta_val = ::MIR::RValue::make_DstMeta({ ptr_value.clone() });
             }
             else
             {
@@ -648,8 +647,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         if( source_is_dst )
         {
             auto ty_unit_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit());
-            auto deref_ptr_val = ::MIR::LValue::make_Deref({ box$(ptr_value) });
-            auto thin_ptr_lval = mutator.in_temporary( mv$(ty_unit_ptr), ::MIR::RValue::make_DstPtr({ mv$(deref_ptr_val) }) );
+            auto thin_ptr_lval = mutator.in_temporary( mv$(ty_unit_ptr), ::MIR::RValue::make_DstPtr({ mv$(ptr_value) }) );
 
             return ::MIR::RValue::make_MakeDst({ mv$(thin_ptr_lval), mv$(meta_lval) });
         }
@@ -913,10 +911,16 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     MIR_Cleanup_LValue(state, mutator,  re.val);
                     ),
                 (DstMeta,
-                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    // HACK: Ensure that the box Deref conversion fires here.
+                    auto v = ::MIR::LValue::make_Deref({ box$(re.val) });
+                    MIR_Cleanup_LValue(state, mutator,  v);
+                    re.val = mv$( *v.as_Deref().val );
                     ),
                 (DstPtr,
-                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    // HACK: Ensure that the box Deref conversion fires here.
+                    auto v = ::MIR::LValue::make_Deref({ box$(re.val) });
+                    MIR_Cleanup_LValue(state, mutator,  v);
+                    re.val = mv$( *v.as_Deref().val );
                     ),
                 (MakeDst,
                     MIR_Cleanup_LValue(state, mutator,  re.ptr_val);

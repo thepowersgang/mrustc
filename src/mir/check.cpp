@@ -542,13 +542,65 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check return type
                         ),
                     (DstMeta,
-                        // TODO: Ensure that the input type is a: Generic, Array, or DST
-                        MIR_ASSERT(state, e.val.is_Deref(), "DstMeta requires a deref as input");
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty = state.get_lvalue_type(tmp, e.val);
+                        const ::HIR::TypeRef*   ity_p = nullptr;
+                        if( (ity_p = state.is_type_owned_box(ty)) )
+                            ;
+                        else if( ty.m_data.is_Borrow() )
+                            ity_p = &*ty.m_data.as_Borrow().inner;
+                        else if( ty.m_data.is_Pointer() )
+                            ity_p = &*ty.m_data.as_Pointer().inner;
+                        else
+                            MIR_BUG(state, "DstMeta requires a &-ptr as input, got " << ty);
+                        const auto& ity = *ity_p;
+                        if( ity.m_data.is_Generic() )
+                            ;
+                        else if( ity.m_data.is_Path() && ity.m_data.as_Path().binding.is_Opaque() )
+                            ;
+                        else if( ity.m_data.is_Array() )
+                            ;
+                        else if( ity.m_data.is_Slice() )
+                            ;
+                        else if( ity.m_data.is_TraitObject() )
+                            ;
+                        else if( ity.m_data.is_Path() )
+                        {
+                            // TODO: Check DST type of this path
+                        }
+                        else
+                        {
+                            MIR_BUG(state, "DstMeta on invalid type - " << ty);
+                        }
                         // TODO: Check return type
                         ),
                     (DstPtr,
-                        // TODO: Ensure that the input type is a DST
-                        MIR_ASSERT(state, e.val.is_Deref(), "DstPtr requires a deref as input");
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty = state.get_lvalue_type(tmp, e.val);
+                        const ::HIR::TypeRef*   ity_p = nullptr;
+                        if( (ity_p = state.is_type_owned_box(ty)) )
+                            ;
+                        else if( ty.m_data.is_Borrow() )
+                            ity_p = &*ty.m_data.as_Borrow().inner;
+                        else if( ty.m_data.is_Pointer() )
+                            ity_p = &*ty.m_data.as_Pointer().inner;
+                        else
+                            MIR_BUG(state, "DstPtr requires a &-ptr as input, got " << ty);
+                        const auto& ity = *ity_p;
+                        if( ity.m_data.is_Slice() )
+                            ;
+                        else if( ity.m_data.is_TraitObject() )
+                            ;
+                        else if( ity.m_data.is_Path() && ity.m_data.as_Path().binding.is_Opaque() )
+                            ;
+                        else if( ity.m_data.is_Path() )
+                        {
+                            // TODO: Check DST type of this path
+                        }
+                        else
+                        {
+                            MIR_BUG(state, "DstPtr on invalid type - " << ty);
+                        }
                         // TODO: Check return type
                         ),
                     (MakeDst,
