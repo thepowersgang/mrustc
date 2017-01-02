@@ -306,22 +306,18 @@ namespace {
             else if( m_resolve.is_type_owned_box(struct_ty) )
             {
                 m_box_glue_todo.push_back( ::std::make_pair( mv$(struct_ty.m_data.as_Path().path.m_data.as_Generic()), &item ) );
-                m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv);\n";
+                m_of << "void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
                 return ;
             }
 
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, *(::MIR::Function*)nullptr };
             m_mir_res = &mir_res;
-            m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
+            m_of << "void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ") {\n";
 
             // If this type has an impl of Drop, call that impl
             if( item.m_markings.has_drop_impl ) {
                 m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
             }
-            //else if( const auto* ity = m_resolve.is_type_owned_box(struct_ty) )
-            //{
-            //    throw "";
-            //}
 
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
@@ -640,7 +636,60 @@ namespace {
                 m_of << " }}}";
                 ),
             (Integer,
-                m_of << ::std::hex << "0x" << e << ::std::dec;
+                if( ty.m_data.is_Primitive() )
+                {
+                    switch(ty.m_data.as_Primitive())
+                    {
+                    case ::HIR::CoreType::Bool:
+                        m_of << (e ? "true" : "false");
+                        break;
+                    case ::HIR::CoreType::U8:
+                        m_of << ::std::hex << "0x" << (e & 0xFF) << ::std::dec;
+                        break;
+                    case ::HIR::CoreType::U16:
+                        m_of << ::std::hex << "0x" << (e & 0xFFFF) << ::std::dec;
+                        break;
+                    case ::HIR::CoreType::U32:
+                        m_of << ::std::hex << "0x" << (e & 0xFFFFFFFF) << ::std::dec;
+                        break;
+                    case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::Usize:
+                        m_of << ::std::hex << "0x" << e << ::std::dec;
+                        break;
+                    case ::HIR::CoreType::I8:
+                        m_of << static_cast<int8_t>(e);
+                        break;
+                    case ::HIR::CoreType::I16:
+                        m_of << static_cast<int16_t>(e);
+                        break;
+                    case ::HIR::CoreType::I32:
+                        m_of << static_cast<int32_t>(e);
+                        break;
+                    case ::HIR::CoreType::I64:
+                    case ::HIR::CoreType::Isize:
+                        m_of << static_cast<int64_t>(e);
+                        break;
+                    case ::HIR::CoreType::Char:
+                        assert(0 <= e && e <= 0x10FFFF);
+                        if( e < 256 ) {
+                            m_of << e;
+                        }
+                        else {
+                            m_of << ::std::hex << "0x" << e << ::std::dec;
+                        }
+                        break;
+                    default:
+                        MIR_TODO(*m_mir_res, "Handle intger literal of type " << ty);
+                    }
+                }
+                else if( ty.m_data.is_Pointer() )
+                {
+                    m_of << ::std::hex << "(void*)0x" << e << ::std::dec;
+                }
+                else
+                {
+                    MIR_BUG(*m_mir_res, "Integer literal for invalid type - " << ty);
+                }
                 ),
             (Float,
                 m_of << e;
