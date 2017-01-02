@@ -3018,6 +3018,29 @@ namespace {
             auto tmp = ::HIR::TypeRef(path.clone());
             //auto tmp = ::HIR::TypeRef();
             check_type_resolved_path(sp, path, tmp);
+            TU_MATCH(::HIR::Path::Data, (path.m_data), (pe),
+            (Generic,
+                for(auto& ty : pe.m_params.m_types)
+                    ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+                ),
+            (UfcsInherent,
+                *pe.type = this->context.m_resolve.expand_associated_types(sp, mv$(*pe.type));
+                for(auto& ty : pe.params.m_types)
+                    ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+                for(auto& ty : pe.impl_params.m_types)
+                    ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+                ),
+            (UfcsKnown,
+                *pe.type = this->context.m_resolve.expand_associated_types(sp, mv$(*pe.type));
+                for(auto& ty : pe.params.m_types)
+                    ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+                for(auto& ty : pe.trait.m_params.m_types)
+                    ty = this->context.m_resolve.expand_associated_types(sp, mv$(ty));
+                ),
+            (UfcsUnknown,
+                throw "";
+                )
+            )
         }
         void check_type_resolved_path(const Span& sp, ::HIR::Path& path, const ::HIR::TypeRef& top_type) const {
             TU_MATCH(::HIR::Path::Data, (path.m_data), (pe),
