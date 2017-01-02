@@ -83,7 +83,7 @@ namespace {
                 // TODO: Pre-define function type name
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
-                // TODO: Pre-define array type name
+                m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Path, te,
                 TU_MATCHA( (te.binding), (tpb),
@@ -148,7 +148,7 @@ namespace {
                 m_of << "; // " << ty << "\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
-                m_of << "typedef struct { "; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "]; } "; emit_ctype(ty); m_of << ";\n";
+                m_of << "typedef struct "; emit_ctype(ty); m_of << " { "; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "]; } "; emit_ctype(ty); m_of << ";\n";
             )
             else if( ty.m_data.is_ErasedType() ) {
                 // TODO: Is this actually a bug?
@@ -268,10 +268,12 @@ namespace {
             else if( const auto* ity = m_resolve.is_type_owned_box(struct_ty) )
             {
                 auto  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
-                auto inner_drop_glue_path = ::HIR::Path(ity->clone(), "#drop_glue");
                 auto box_free = ::HIR::GenericPath { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
                 m_of << "tUNIT " << Trans_Mangle(box_free) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
-                m_of << "void " << Trans_Mangle(inner_drop_glue_path) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
+
+                // TODO: Forward declare drop glue?
+                //auto inner_drop_glue_path = ::HIR::Path(ity->clone(), "#drop_glue");
+                //m_of << "void " << Trans_Mangle(inner_drop_glue_path) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
 
                 args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
             }
@@ -2107,10 +2109,10 @@ namespace {
         }
 
         void emit_ctype_ptr(const ::HIR::TypeRef& inner_ty, ::FmtLambda inner) {
-            if( inner_ty.m_data.is_Array() ) {
-                emit_ctype(inner_ty, FMT_CB(ss, ss << "(*" << inner << ")";));
-            }
-            else
+            //if( inner_ty.m_data.is_Array() ) {
+            //    emit_ctype(inner_ty, FMT_CB(ss, ss << "(*" << inner << ")";));
+            //}
+            //else
             {
                 switch( metadata_type(inner_ty) )
                 {
