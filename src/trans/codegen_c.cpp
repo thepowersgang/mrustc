@@ -671,7 +671,7 @@ namespace {
                         m_of << ::std::hex << "0x" << e << ::std::dec;
                         break;
                     case ::HIR::CoreType::I8:
-                        m_of << static_cast<int8_t>(e);
+                        m_of << static_cast<uint16_t>( static_cast<int8_t>(e) );
                         break;
                     case ::HIR::CoreType::I16:
                         m_of << static_cast<int16_t>(e);
@@ -711,12 +711,29 @@ namespace {
             (BorrowOf,
                 TU_MATCHA( (e.m_data), (pe),
                 (Generic,
-                    if( ! m_crate.get_valitem_by_path(sp, pe.m_path).is_Function() )
-                        m_of << "&";
-                    else if( !ty.m_data.is_Function() ) // TODO: Ensure that the type is `*const ()` or similar.
-                        m_of << "(void*)";
+                    const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
+                    if( vi.is_Function() )
+                    {
+                        if( !ty.m_data.is_Function() ) // TODO: Ensure that the type is `*const ()` or similar.
+                            m_of << "(void*)";
+                        else
+                            ;
+                    }
                     else
-                        ;
+                    {
+                        if( ty.m_data.is_Borrow() && ty.m_data.as_Borrow().inner->m_data.is_Slice() )
+                        {
+                            // Since this is a borrow, it must be of an array.
+                            MIR_ASSERT(*m_mir_res, vi.is_Static(), "");
+                            const auto& stat = vi.as_Static();
+                            MIR_ASSERT(*m_mir_res, stat.m_type.m_data.is_Array(), "");
+                            unsigned int size = stat.m_type.m_data.as_Array().size_val;
+                            m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", " << size << "}";
+                            return ;
+                        }
+                        else
+                            m_of << "&";
+                    }
                     ),
                 (UfcsUnknown,
                     MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << e);
@@ -732,12 +749,27 @@ namespace {
                 ),
             (String,
                 m_of << "{ ";
-                m_of << "\"" << ::std::oct;
+                m_of << "\"" << ::std::hex;
                 for(const auto& v : e) {
-                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                        m_of << v;
-                    else
-                        m_of << "\\" << (unsigned int)v;
+                    switch(v)
+                    {
+                    case '"':
+                        m_of << "\\\"";
+                        break;
+                    case '\\':
+                        m_of << "\\\\";
+                        break;
+                    case '\n':
+                        m_of << "\\n";
+                        break;
+                    default:
+                        if( ' ' <= v )
+                            m_of << v;
+                        else if( v < 16 )
+                            m_of << "\\x0" << (unsigned int)static_cast<uint8_t>(v) << "\"\"";
+                        else
+                            m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v) << "\"\"";
+                    }
                 }
                 m_of << "\"" << ::std::dec;
                 m_of << ", " << e.size() << "}";
