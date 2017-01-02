@@ -1016,9 +1016,37 @@ namespace {
                                 m_of << c;
                                 ),
                             (Uint,
+                                ::HIR::TypeRef  tmp;
+                                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
                                 emit_lvalue(e.dst);
                                 m_of << " = ";
-                                m_of << ::std::hex << "0x" << c << ::std::dec;
+                                switch(ty.m_data.as_Primitive())
+                                {
+                                case ::HIR::CoreType::U8:
+                                    m_of << ::std::hex << "0x" << (c & 0xFF) << ::std::dec;
+                                    break;
+                                case ::HIR::CoreType::U16:
+                                    m_of << ::std::hex << "0x" << (c & 0xFFFF) << ::std::dec;
+                                    break;
+                                case ::HIR::CoreType::U32:
+                                    m_of << ::std::hex << "0x" << (c & 0xFFFFFFFF) << ::std::dec;
+                                    break;
+                                case ::HIR::CoreType::U64:
+                                case ::HIR::CoreType::Usize:
+                                    m_of << ::std::hex << "0x" << c << ::std::dec;
+                                    break;
+                                case ::HIR::CoreType::Char:
+                                    assert(0 <= c && c <= 0x10FFFF);
+                                    if( c < 256 ) {
+                                        m_of << c;
+                                    }
+                                    else {
+                                        m_of << ::std::hex << "0x" << c << ::std::dec;
+                                    }
+                                    break;
+                                default:
+                                    MIR_BUG(*m_mir_res, "Invalid type for UInt literal - " << ty);
+                                }
                                 ),
                             (Float,
                                 emit_lvalue(e.dst);
@@ -1958,7 +1986,8 @@ namespace {
                 }
                 ),
             (Integer,
-                emit_dst(); m_of << " = " << ::std::hex << "0x" << e << ::std::dec;
+                emit_dst(); m_of << " = ";
+                emit_literal(ty, lit, {});
                 ),
             (Float,
                 emit_dst(); m_of << " = " << e;
