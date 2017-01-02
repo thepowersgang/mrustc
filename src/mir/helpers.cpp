@@ -95,33 +95,27 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
         (Path,
             MIR_ASSERT(*this, te.binding.is_Struct(), "Field on non-Struct - " << ty);
             const auto& str = *te.binding.as_Struct();
+            auto monomorph = [&](const auto& ty)->const auto& {
+                if( monomorphise_type_needed(ty) ) {
+                    tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, ty);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return ty;
+                }
+                };
             TU_MATCHA( (str.m_data), (se),
             (Unit,
                 MIR_BUG(*this, "Field on unit-like struct - " << ty);
                 ),
             (Tuple,
                 MIR_ASSERT(*this, e.field_index < se.size(), "Field index out of range in tuple-struct " << te.path);
-                const auto& fld = se[e.field_index];
-                if( monomorphise_type_needed(fld.ent) ) {
-                    tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return fld.ent;
-                }
+                return monomorph(se[e.field_index].ent);
                 ),
             (Named,
                 MIR_ASSERT(*this, e.field_index < se.size(), "Field index out of range in struct " << te.path);
-                const auto& fld = se[e.field_index].second;
-                if( monomorphise_type_needed(fld.ent) ) {
-                    tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return fld.ent;
-                }
+                return monomorph(se[e.field_index].second.ent);
                 )
             )
             )

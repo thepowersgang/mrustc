@@ -267,9 +267,11 @@ namespace {
             }
             else if( const auto* ity = m_resolve.is_type_owned_box(struct_ty) )
             {
-                ::HIR::TypeRef  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
-                ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
+                auto  inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
+                auto inner_drop_glue_path = ::HIR::Path(ity->clone(), "#drop_glue");
+                auto box_free = ::HIR::GenericPath { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
                 m_of << "tUNIT " << Trans_Mangle(box_free) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
+                m_of << "void " << Trans_Mangle(inner_drop_glue_path) << "("; emit_ctype(inner_ptr, FMT_CB(ss, ss << "ptr"; )); m_of << ");\n";
 
                 args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
             }

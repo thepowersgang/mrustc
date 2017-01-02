@@ -285,8 +285,7 @@ namespace {
             {
                 if( active_set.find(&ty) != active_set.end() ) {
                     // TODO: Handle recursion
-                    BUG(Span(), "- Type recursion with " << ty);
-                    return ;
+                    BUG(Span(), "- Type recursion on " << ty);
                 }
                 active_set.insert( &ty );
 
@@ -310,10 +309,6 @@ namespace {
                     ),
                 // Recursion!
                 (Path,
-                    if( const auto* p = m_resolve.is_type_owned_box(ty) )
-                    {
-                        visit_type(*p);
-                    }
                     TU_MATCHA( (te.binding), (tpb),
                     (Unbound,
                         BUG(Span(), "Unbound type hit in enumeration - " << ty);
@@ -411,17 +406,331 @@ void Trans_Enumerate_Types(EnumState& state)
             const auto& fcn = *p->ptr;
             const auto& pp = p->pp;
 
-            tv.visit_type( pp.monomorph(tv.m_resolve, fcn.m_return) );
+            ::HIR::TypeRef   tmp;
+            auto monomorph = [&](const auto& ty)->const auto& {
+                return monomorphise_type_needed(ty) ? tmp = pp.monomorph(tv.m_resolve, ty) : ty;
+                };
+            // TODO: Handle erased types in the return type.
+            tv.visit_type( monomorph(fcn.m_return) );
             for(const auto& arg : fcn.m_args)
-                tv.visit_type( pp.monomorph(tv.m_resolve, arg.second) );
+                tv.visit_type( monomorph(arg.second) );
 
             if( fcn.m_code.m_mir )
             {
                 const auto& mir = *fcn.m_code.m_mir;
                 for(const auto& ty : mir.named_variables)
-                    tv.visit_type(pp.monomorph(tv.m_resolve, ty), TypeVisitor::Mode::Deep);
+                    tv.visit_type(monomorph(ty));
                 for(const auto& ty : mir.temporaries)
-                    tv.visit_type(pp.monomorph(tv.m_resolve, ty), TypeVisitor::Mode::Deep);
+                    tv.visit_type(monomorph(ty));
+
+                // TODO: Find all LValue::Deref instances and get the result type
+                for(const auto& block : mir.blocks)
+                {
+                    struct H {
+                        static const ::HIR::TypeRef& visit_lvalue(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::LValue& lv, ::HIR::TypeRef* tmp_ty_ptr = nullptr) {
+                            static ::HIR::TypeRef   blank;
+                            TRACE_FUNCTION_F(lv << (tmp_ty_ptr ? " [type]" : ""));
+                            auto monomorph_outer = [&](const auto& tpl)->const auto& {
+                                assert(tmp_ty_ptr);
+                                if( monomorphise_type_needed(tpl) ) {
+                                    return *tmp_ty_ptr = pp.monomorph(tv.m_resolve, tpl);
+                                }
+                                else {
+                                    return tpl;
+                                }
+                                };
+                            // Recurse, if Deref get the type and add it to the visitor
+                            TU_MATCHA( (lv), (e),
+                            (Variable,
+                                if( tmp_ty_ptr ) {
+                                    return monomorph_outer(fcn.m_code.m_mir->named_variables[e]);
+                                }
+                                ),
+                            (Temporary,
+                                if( tmp_ty_ptr ) {
+                                    return monomorph_outer(fcn.m_code.m_mir->temporaries[e.idx]);
+                                }
+                                ),
+                            (Argument,
+                                if( tmp_ty_ptr ) {
+                                    return monomorph_outer(fcn.m_args[e.idx].second);
+                                }
+                                ),
+                            (Static,
+                                if( tmp_ty_ptr ) {
+                                    const auto& path = e;
+                                    TU_MATCHA( (path.m_data), (pe),
+                                    (Generic,
+                                        ASSERT_BUG(Span(), pe.m_params.m_types.empty(), "Path params on static - " << path);
+                                        const auto& s = tv.m_resolve.m_crate.get_static_by_path(Span(), pe.m_path);
+                                        return s.m_type;
+                                        ),
+                                    (UfcsKnown,
+                                        TODO(Span(), "LValue::Static - UfcsKnown - " << path);
+                                        ),
+                                    (UfcsUnknown,
+                                        BUG(Span(), "Encountered UfcsUnknown in LValue::Static - " << path);
+                                        ),
+                                    (UfcsInherent,
+                                        TODO(Span(), "LValue::Static - UfcsInherent - " << path);
+                                        )
+                                    )
+                                }
+                                ),
+                            (Return,
+                                if( tmp_ty_ptr ) {
+                                    TODO(Span(), "Get return type for MIR type enumeration");
+                                }
+                                ),
+                            (Field,
+                                const auto& ity = visit_lvalue(tv,pp,fcn,  *e.val, tmp_ty_ptr);
+                                if( tmp_ty_ptr )
+                                {
+                                    TU_MATCH_DEF(::HIR::TypeRef::Data, (ity.m_data), (te),
+                                    (
+                                        BUG(Span(), "Field access of unexpected type - " << ity);
+                                        ),
+                                    (Tuple,
+                                        return te[e.field_index];
+                                        ),
+                                    (Array,
+                                        return *te.inner;
+                                        ),
+                                    (Slice,
+                                        return *te.inner;
+                                        ),
+                                    (Path,
+                                        ASSERT_BUG(Span(), te.binding.is_Struct(), "Field on non-Struct - " << ity);
+                                        const auto& str = *te.binding.as_Struct();
+                                        auto monomorph = [&](const auto& ty)->const auto& {
+                                            if( monomorphise_type_needed(ty) ) {
+                                                *tmp_ty_ptr = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, ty);
+                                                tv.m_resolve.expand_associated_types(sp, *tmp_ty_ptr);
+                                                return *tmp_ty_ptr;
+                                            }
+                                            else {
+                                                return ty;
+                                            }
+                                            };
+                                        TU_MATCHA( (str.m_data), (se),
+                                        (Unit,
+                                            BUG(Span(), "Field on unit-like struct - " << ity);
+                                            ),
+                                        (Tuple,
+                                            ASSERT_BUG(Span(), e.field_index < se.size(), "Field index out of range in struct " << te.path);
+                                            return monomorph(se.at(e.field_index).ent);
+                                            ),
+                                        (Named,
+                                            ASSERT_BUG(Span(), e.field_index < se.size(), "Field index out of range in struct " << te.path);
+                                            return monomorph(se.at(e.field_index).second.ent);
+                                            )
+                                        )
+                                        )
+                                    )
+                                }
+                                ),
+                            (Deref,
+                                ::HIR::TypeRef  tmp;
+                                if( !tmp_ty_ptr )   tmp_ty_ptr = &tmp;
+
+                                const auto& ity = visit_lvalue(tv,pp,fcn,  *e.val, tmp_ty_ptr);
+                                TU_MATCH_DEF(::HIR::TypeRef::Data, (ity.m_data), (te),
+                                (
+                                    BUG(Span(), "Deref of unexpected type - " << ity);
+                                    ),
+                                (Path,
+                                    if( const auto* inner_ptr = tv.m_resolve.is_type_owned_box(ity) )
+                                    {
+                                        DEBUG("- Add type " << ity);
+                                        tv.visit_type(*inner_ptr);
+                                        return *inner_ptr;
+                                    }
+                                    else {
+                                        BUG(Span(), "Deref on unexpected type - " << ity);
+                                    }
+                                    ),
+                                (Borrow,
+                                    DEBUG("- Add type " << ity);
+                                    tv.visit_type(*te.inner);
+                                    return *te.inner;
+                                    ),
+                                (Pointer,
+                                    DEBUG("- Add type " << ity);
+                                    tv.visit_type(*te.inner);
+                                    return *te.inner;
+                                    )
+                                )
+                                ),
+                            (Index,
+                                visit_lvalue(tv,pp,fcn,  *e.idx, tmp_ty_ptr);
+                                const auto& ity = visit_lvalue(tv,pp,fcn,  *e.val, tmp_ty_ptr);
+                                if( tmp_ty_ptr )
+                                {
+                                    TU_MATCH_DEF(::HIR::TypeRef::Data, (ity.m_data), (te),
+                                    (
+                                        BUG(Span(), "Index of unexpected type - " << ity);
+                                        ),
+                                    (Array,
+                                        return *te.inner;
+                                        ),
+                                    (Slice,
+                                        return *te.inner;
+                                        )
+                                    )
+                                }
+                                ),
+                            (Downcast,
+                                const auto& ity = visit_lvalue(tv,pp,fcn,  *e.val, tmp_ty_ptr);
+                                if( tmp_ty_ptr )
+                                {
+                                    TU_MATCH_DEF( ::HIR::TypeRef::Data, (ity.m_data), (te),
+                                    (
+                                        BUG(Span(), "Downcast on unexpected type - " << ity);
+                                        ),
+                                    (Path,
+                                        if( te.binding.is_Enum() )
+                                        {
+                                            const auto& enm = *te.binding.as_Enum();
+                                            auto monomorph = [&](const auto& ty)->auto {
+                                                ::HIR::TypeRef rv = monomorphise_type(pp.sp, enm.m_params, te.path.m_data.as_Generic().m_params, ty);
+                                                tv.m_resolve.expand_associated_types(sp, rv);
+                                                return rv;
+                                                };
+                                            const auto& variants = enm.m_variants;
+                                            ASSERT_BUG(Span(), e.variant_index < variants.size(), "Variant index out of range");
+                                            const auto& variant = variants[e.variant_index];
+                                            // TODO: Make data variants refer to associated types (unify enum and struct handling)
+                                            TU_MATCHA( (variant.second), (ve),
+                                            (Value,
+                                                ),
+                                            (Unit,
+                                                ),
+                                            (Tuple,
+                                                // HACK! Create tuple.
+                                                ::std::vector< ::HIR::TypeRef>  tys;
+                                                for(const auto& fld : ve)
+                                                    tys.push_back( monomorph(fld.ent) );
+                                                return *tmp_ty_ptr = ::HIR::TypeRef( mv$(tys) );
+                                                ),
+                                            (Struct,
+                                                // HACK! Create tuple.
+                                                ::std::vector< ::HIR::TypeRef>  tys;
+                                                for(const auto& fld : ve)
+                                                    tys.push_back( monomorph(fld.second.ent) );
+                                                return *tmp_ty_ptr = ::HIR::TypeRef( mv$(tys) );
+                                                )
+                                            )
+                                        }
+                                        else
+                                        {
+                                            const auto& unm = *te.binding.as_Union();
+                                            ASSERT_BUG(Span(), e.variant_index < unm.m_variants.size(), "Variant index out of range");
+                                            const auto& variant = unm.m_variants[e.variant_index];
+                                            const auto& var_ty = variant.second.ent;
+
+                                            if( monomorphise_type_needed(var_ty) ) {
+                                                *tmp_ty_ptr = monomorphise_type(pp.sp, unm.m_params, te.path.m_data.as_Generic().m_params, variant.second.ent);
+                                                tv.m_resolve.expand_associated_types(pp.sp, *tmp_ty_ptr);
+                                                return *tmp_ty_ptr;
+                                            }
+                                            else {
+                                                return var_ty;
+                                            }
+                                        }
+                                        )
+                                    )
+                                }
+                                )
+                            )
+                            return blank;
+                        }
+                    };
+                    for(const auto& stmt : block.statements)
+                    {
+                        TU_MATCHA( (stmt), (se),
+                        (Drop,
+                            H::visit_lvalue(tv,pp,fcn, se.slot);
+                            ),
+                        (Asm,
+                            for(const auto& v : se.outputs)
+                                H::visit_lvalue(tv,pp,fcn, v.second);
+                            for(const auto& v : se.inputs)
+                                H::visit_lvalue(tv,pp,fcn, v.second);
+                            ),
+                        (Assign,
+                            H::visit_lvalue(tv,pp,fcn, se.dst);
+                            TU_MATCHA( (se.src), (re),
+                            (Use,
+                                H::visit_lvalue(tv,pp,fcn, re);
+                                ),
+                            (Constant,
+                                ),
+                            (SizedArray,
+                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                ),
+                            (Borrow,
+                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                ),
+                            (Cast,
+                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                ),
+                            (BinOp,
+                                H::visit_lvalue(tv,pp,fcn, re.val_l);
+                                H::visit_lvalue(tv,pp,fcn, re.val_l);
+                                ),
+                            (UniOp,
+                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                ),
+                            (DstMeta,
+                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                ),
+                            (DstPtr,
+                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                ),
+                            (MakeDst,
+                                H::visit_lvalue(tv,pp,fcn, re.ptr_val);
+                                H::visit_lvalue(tv,pp,fcn, re.meta_val);
+                                ),
+                            (Tuple,
+                                for(const auto& v : re.vals)
+                                    H::visit_lvalue(tv,pp,fcn, v);
+                                ),
+                            (Array,
+                                for(const auto& v : re.vals)
+                                    H::visit_lvalue(tv,pp,fcn, v);
+                                ),
+                            (Variant,
+                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                ),
+                            (Struct,
+                                for(const auto& v : re.vals)
+                                    H::visit_lvalue(tv,pp,fcn, v);
+                                )
+                            )
+                            )
+                        )
+                    }
+                    TU_MATCHA( (block.terminator), (te),
+                    (Incomplete, ),
+                    (Return, ),
+                    (Diverge, ),
+                    (Goto, ),
+                    (Panic, ),
+                    (If,
+                        H::visit_lvalue(tv,pp,fcn, te.cond);
+                        ),
+                    (Switch,
+                        H::visit_lvalue(tv,pp,fcn, te.val);
+                        ),
+                    (Call,
+                        if( te.fcn.is_Value() )
+                            H::visit_lvalue(tv,pp,fcn, te.fcn.as_Value());
+                        H::visit_lvalue(tv,pp,fcn, te.ret_val);
+                        for(const auto& arg : te.args)
+                            H::visit_lvalue(tv,pp,fcn, arg);
+                        )
+                    )
+                }
             }
         }
         state.fcns_to_type_visit.clear();
