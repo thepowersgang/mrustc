@@ -118,7 +118,7 @@ namespace {
                 m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
-                // TODO: Pre-define function type name
+                emit_type_fn(ty); m_of << "\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
                 m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
@@ -145,6 +145,29 @@ namespace {
             else {
             }
         }
+        void emit_type_fn(const ::HIR::TypeRef& ty)
+        {
+            const auto& te = ty.m_data.as_Function();
+            m_of << "typedef ";
+            // TODO: ABI marker, need an ABI enum?
+            // TODO: Better emit_ctype call for return type.
+            emit_ctype(*te.m_rettype); m_of << " (*"; emit_ctype(ty); m_of << ")(";
+            if( te.m_arg_types.size() == 0 )
+            {
+                m_of << "void)";
+            }
+            else
+            {
+                for(unsigned int i = 0; i < te.m_arg_types.size(); i ++)
+                {
+                    if(i != 0)  m_of << ",";
+                    m_of << " ";
+                    emit_ctype(te.m_arg_types[i]);
+                }
+                m_of << " )";
+            }
+            m_of << ";";
+        }
         void emit_type(const ::HIR::TypeRef& ty) override
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "type " << ty;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
@@ -165,25 +188,8 @@ namespace {
                 }
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
-                m_of << "typedef ";
-                // TODO: ABI marker, need an ABI enum?
-                // TODO: Better emit_ctype call for return type.
-                emit_ctype(*te.m_rettype); m_of << " (*"; emit_ctype(ty); m_of << ")(";
-                if( te.m_arg_types.size() == 0 )
-                {
-                    m_of << "void)";
-                }
-                else
-                {
-                    for(unsigned int i = 0; i < te.m_arg_types.size(); i ++)
-                    {
-                        if(i != 0)  m_of << ",";
-                        m_of << " ";
-                        emit_ctype(te.m_arg_types[i]);
-                    }
-                    m_of << " )";
-                }
-                m_of << "; // " << ty << "\n";
+                emit_type_fn(ty);
+                m_of << " // " << ty << "\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
                 m_of << "typedef struct "; emit_ctype(ty); m_of << " { "; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "]; } "; emit_ctype(ty); m_of << ";\n";
