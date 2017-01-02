@@ -529,6 +529,20 @@ namespace {
 
             m_mir_res = nullptr;
         }
+        void emit_static_proto(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
+        {
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            m_mir_res = &top_mir_res;
+
+            TRACE_FUNCTION_F(p);
+            auto type = params.monomorph(m_resolve, item.m_type);
+            emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
+            m_of << ";";
+            m_of << "\t// static " << p << " : " << type;
+            m_of << "\n";
+
+            m_mir_res = nullptr;
+        }
         void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };

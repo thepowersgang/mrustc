@@ -63,15 +63,26 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
     // 3. Emit statics
     for(const auto& ent : list.m_statics)
     {
+        DEBUG("STATIC proto " << ent.first);
+        assert(ent.second->ptr);
+        const auto& stat = *ent.second->ptr;
+
+        if( ! stat.m_value_res.is_Invalid() )
+        {
+            codegen->emit_static_proto(ent.first, stat, ent.second->pp);
+        }
+        else
+        {
+            codegen->emit_static_ext(ent.first, stat, ent.second->pp);
+        }
+    }
+    for(const auto& ent : list.m_statics)
+    {
         DEBUG("STATIC " << ent.first);
         assert(ent.second->ptr);
         const auto& stat = *ent.second->ptr;
 
-        if( stat.m_value_res.is_Invalid() )
-        {
-            codegen->emit_static_ext(ent.first, stat, ent.second->pp);
-        }
-        else
+        if( ! stat.m_value_res.is_Invalid() )
         {
             codegen->emit_static_local(ent.first, stat, ent.second->pp);
         }
