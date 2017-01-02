@@ -1190,36 +1190,7 @@ namespace {
                     }
                     ),
                 (TraitObject,
-                    #if 0
-                    // TODO: Obtain the vtable if the destination is a trait object
-                    // vtable exists as an unnamable associated type
-                    const auto& trait = *e.m_trait.m_trait_ptr;
-
-                    auto vtable_ty_spath = e.m_trait.m_path.m_path;
-                    vtable_ty_spath.m_components.back() += "#vtable";
-                    const auto& vtable_ref = m_builder.crate().get_struct_by_path(node.span(), vtable_ty_spath);
-                    // Copy the param set from the trait in the trait object
-                    ::HIR::PathParams   vtable_params = e.m_trait.m_path.m_params.clone();
-                    // - Include associated types on bound
-                    for(const auto& ty_b : e.m_trait.m_type_bounds) {
-                        auto idx = trait.m_type_indexes.at(ty_b.first);
-                        if(vtable_params.m_types.size() <= idx)
-                            vtable_params.m_types.resize(idx+1);
-                        vtable_params.m_types[idx] = ty_b.second.clone();
-                    }
-                    auto vtable_type = ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
-
-                    ::HIR::Path vtable { ty_in.clone(), e.m_trait.m_path.clone(), "#vtable" };
-                    auto vtable_lval = m_builder.lvalue_or_temp(
-                        node.span(),
-                        ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, mv$(vtable_type)),
-                        ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) )
-                        );
-
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(vtable_lval) }) );
-                    #else
                     m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
-                    #endif
                     )
                 )
             }
@@ -1256,6 +1227,8 @@ namespace {
                 limit_val = ::MIR::Constant( e.size_val );
                 ),
             (Slice,
+                // TODO: What if this is of an unsized field? Later checks require that the inner be a LValue::Deref
+                //ASSERT_BUG(node.span(), value.is_Deref(), "Slice index not via a deref");
                 limit_val = ::MIR::RValue::make_DstMeta({ value.clone() });
                 )
             )
