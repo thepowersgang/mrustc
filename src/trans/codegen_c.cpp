@@ -60,6 +60,14 @@ namespace {
                 << "\n"
                 << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                 << "\n"
+                << "int slice_cmp(SLICE_PTR l, SLICE_PTR r) {\n"
+                << "\tint rv = memcmp(l.PTR, r.PTR, l.META < r.META ? l.META : r.META);\n"
+                << "\tif(rv != 0) return rv;\n"
+                << "\tif(l.META < r.META) return -1;\n"
+                << "\tif(l.META > r.META) return 1;\n"
+                << "\treturn 0;\n"
+                << "}\n"
+                << "\n"
                 ;
         }
 
@@ -1270,6 +1278,25 @@ namespace {
                         (BinOp,
                             emit_lvalue(e.dst);
                             m_of << " = ";
+                            ::HIR::TypeRef  tmp;
+                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val_l);
+                            if( ty.m_data.is_Borrow() ) {
+                                m_of << "(slice_cmp("; emit_lvalue(ve.val_l); m_of << ", "; emit_lvalue(ve.val_l); m_of << ")";
+                                switch(ve.op)
+                                {
+                                case ::MIR::eBinOp::EQ: m_of << " == 0";    break;
+                                case ::MIR::eBinOp::NE: m_of << " != 0";    break;
+                                case ::MIR::eBinOp::GT: m_of << " >  0";    break;
+                                case ::MIR::eBinOp::GE: m_of << " >= 0";    break;
+                                case ::MIR::eBinOp::LT: m_of << " <  0";    break;
+                                case ::MIR::eBinOp::LE: m_of << " <= 0";    break;
+                                default:
+                                    MIR_BUG(mir_res, "Unknown comparison of a &-ptr - " << e.src << " with " << ty);
+                                }
+                                m_of << ")";
+                                break;
+                            }
+
                             emit_lvalue(ve.val_l);
                             switch(ve.op)
                             {
