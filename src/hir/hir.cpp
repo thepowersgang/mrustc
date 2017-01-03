@@ -609,9 +609,10 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path_opt(const char* name) 
     return it->second;
 }
 
-const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name) const
+const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
 {
     ASSERT_BUG(sp, path.m_components.size() > 0, "get_typeitem_by_path received invalid path - " << path);
+    ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1 : 0), "get_typeitem_by_path received invlaid path - " << path);
 
     const ::HIR::Module* mod;
     if( !ignore_crate_name && path.m_crate_name != "" ) {
@@ -621,7 +622,7 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
     else {
         mod =  &this->m_root_module;
     }
-    for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
+    for( unsigned int i = 0; i < path.m_components.size() - (ignore_last_node ? 2 : 1); i ++ )
     {
         const auto& pc = path.m_components[i];
         auto it = mod->m_mod_items.find( pc );
@@ -635,7 +636,7 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
             BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
         }
     }
-    auto it = mod->m_mod_items.find( path.m_components.back() );
+    auto it = mod->m_mod_items.find( ignore_last_node ? path.m_components[path.m_components.size()-2] : path.m_components.back() );
     if( it == mod->m_mod_items.end() ) {
         BUG(sp, "Could not find type name in " << path);
     }

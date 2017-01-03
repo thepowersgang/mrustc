@@ -427,7 +427,7 @@ public:
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
     const ::HIR::SimplePath& get_lang_item_path_opt(const char* name) const;
 
-    const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false) const;
+    const ::HIR::TypeItem& get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name=false, bool ignore_last_node=false) const;
     const ::HIR::Trait& get_trait_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Struct& get_struct_by_path(const Span& sp, const ::HIR::SimplePath& path) const;
     const ::HIR::Union& get_union_by_path(const Span& sp, const ::HIR::SimplePath& path) const;

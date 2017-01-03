@@ -454,6 +454,30 @@ namespace {
             m_of << "};\n";
 
             // TODO: Constructors for tuple variants
+            for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
+            {
+                const auto& var = item.m_variants[var_idx];
+                TU_IFLET(::HIR::Enum::Variant, var.second, Tuple, e,
+                    m_of << "struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(::HIR::GenericPath(p.m_path + var.first, p.m_params.clone())) << "(";
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        if(i != 0)
+                            m_of << ", ";
+                        emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+                    }
+                    m_of << ") {\n";
+                    m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx << ", .DATA = {.var_" << var_idx << " = {";
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        if(i != 0)
+                            m_of << ",";
+                        m_of << "\n\t\t_" << i;
+                    }
+                    m_of << "\n\t\t}}};\n";
+                    m_of << "\treturn rv;\n";
+                    m_of << "}\n";
+                )
+            }
 
             // ---
             // - Drop Glue
@@ -1119,7 +1143,35 @@ namespace {
                             (ItemAddr,
                                 emit_lvalue(e.dst);
                                 m_of << " = ";
-                                m_of << "&" << Trans_Mangle(c);
+                                TU_MATCHA( (c.m_data), (pe),
+                                (Generic,
+                                    if( pe.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, pe.m_path, false, true).is_Enum() )
+                                        ;
+                                    else
+                                    {
+                                        const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
+                                        if( vi.is_Function() || vi.is_StructConstructor() )
+                                        {
+                                        }
+                                        else
+                                        {
+                                            m_of << "&";
+                                        }
+                                    }
+                                    ),
+                                (UfcsUnknown,
+                                    MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << c);
+                                    ),
+                                (UfcsInherent,
+                                    // TODO: If the target is a function, don't emit the &
+                                    m_of << "&";
+                                    ),
+                                (UfcsKnown,
+                                    // TODO: If the target is a function, don't emit the &
+                                    m_of << "&";
+                                    )
+                                )
+                                m_of << Trans_Mangle(c);
                                 )
                             )
                             ),

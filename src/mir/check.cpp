@@ -604,6 +604,23 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check return type
                         ),
                     (MakeDst,
+                        #if 0
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty = state.get_lvalue_type(tmp, a.dst);
+                        const ::HIR::TypeRef*   ity_p = nullptr;
+                        if( ty.m_data.is_Borrow() )
+                            ity_p = &*ty.m_data.as_Borrow().inner;
+                        else if( ty.m_data.is_Pointer() )
+                            ity_p = &*ty.m_data.as_Pointer().inner;
+                        else
+                            MIR_BUG(state, "DstMeta requires a pointer as output, got " << ty);
+                        auto meta = get_metadata_type(state.m_resolve, *ity_p);
+                        if( meta == ::HIR::TypeRef() )
+                        {
+                            MIR_BUG(state, "DstMeta requires a pointer to an unsized type as output, got " << ty);
+                        }
+                        #endif
+                        // TODO: Check metadata type?
                         ),
                     (Tuple,
                         // TODO: Check return type
