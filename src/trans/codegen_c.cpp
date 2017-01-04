@@ -2221,9 +2221,17 @@ namespace {
                 ::HIR::TypeRef  tmp;
                 const auto& ty = m_mir_res->get_lvalue_type(tmp, *e.val);
                 if( ty.m_data.is_Slice() ) {
-                    m_of << "(("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
-                    emit_lvalue(*e.val);
-                    m_of << ".DATA)[" << e.field_index << "]";
+                    if( e.val->is_Deref() )
+                    {
+                        m_of << "(("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
+                        emit_lvalue(*e.val->as_Deref().val);
+                        m_of << ".DATA)";
+                    }
+                    else
+                    {
+                        emit_lvalue(*e.val);
+                    }
+                    m_of << "[" << e.field_index << "]";
                 }
                 else if( ty.m_data.is_Array() ) {
                     emit_lvalue(*e.val);
@@ -2247,9 +2255,22 @@ namespace {
                 }
                 ),
             (Deref,
-                m_of << "(*";
-                emit_lvalue(*e.val);
-                m_of << ")";
+                // TODO: If the type is unsized, then this pointer is a fat pointer, so we need to cast the data pointer.
+                ::HIR::TypeRef  tmp;
+                const auto& ty = m_mir_res->get_lvalue_type(tmp, val);
+                auto dst_type = metadata_type(ty);
+                if( dst_type != MetadataType:: None )
+                {
+                    m_of << "(*("; emit_ctype(ty); m_of << "*)";
+                    emit_lvalue(*e.val);
+                    m_of << ")";
+                }
+                else
+                {
+                    m_of << "(*";
+                    emit_lvalue(*e.val);
+                    m_of << ")";
+                }
                 ),
             (Index,
                 ::HIR::TypeRef  tmp;
