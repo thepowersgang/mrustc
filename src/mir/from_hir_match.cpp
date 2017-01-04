@@ -1631,7 +1631,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 auto succ_bb = builder.new_bb_unlinked();
 
                 auto test_lval = builder.lvalue_or_temp(sp, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone()), ::MIR::RValue(::MIR::Constant( v.as_StaticString() )));
-                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, ::MIR::LValue::make_Deref({box$(test_lval)}) }));
+                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(*val.as_Deref().val), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                 builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                 builder.set_cur_block(succ_bb);
                 } break;
