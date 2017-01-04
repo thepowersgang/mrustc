@@ -12,6 +12,38 @@
 #include <mir/helpers.hpp>
 #include <mir/visit_crate_mir.hpp>
 
+namespace {
+    ::HIR::TypeRef get_metadata_type(const StaticTraitResolve& resolve, const ::HIR::TypeRef& unsized_ty)
+    {
+        TU_MATCH_DEF(::HIR::TypeRef::Data, (unsized_ty.m_data), (te),
+        (
+            return ::HIR::TypeRef();
+            ),
+        (TraitObject,
+            const auto& trait_path = te.m_trait;
+            const auto& trait = *te.m_trait.m_trait_ptr;
+
+            auto vtable_ty_spath = trait_path.m_path.m_path;
+            vtable_ty_spath.m_components.back() += "#vtable";
+            const auto& vtable_ref = resolve.m_crate.get_struct_by_path(Span(), vtable_ty_spath);
+            // Copy the param set from the trait in the trait object
+            ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
+            // - Include associated types
+            for(const auto& ty_b : trait_path.m_type_bounds) {
+                auto idx = trait.m_type_indexes.at(ty_b.first);
+                if(vtable_params.m_types.size() <= idx)
+                    vtable_params.m_types.resize(idx+1);
+                vtable_params.m_types[idx] = ty_b.second.clone();
+            }
+            return ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+            ),
+        (Slice,
+            return ::HIR::CoreType::Usize;
+            )
+        )
+    }
+}
+
 void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, const ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
     TRACE_FUNCTION_F(path);
@@ -604,7 +636,6 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check return type
                         ),
                     (MakeDst,
-                        #if 0
                         ::HIR::TypeRef  tmp;
                         const auto& ty = state.get_lvalue_type(tmp, a.dst);
                         const ::HIR::TypeRef*   ity_p = nullptr;
@@ -619,7 +650,6 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         {
                             MIR_BUG(state, "DstMeta requires a pointer to an unsized type as output, got " << ty);
                         }
-                        #endif
                         // TODO: Check metadata type?
                         ),
                     (Tuple,

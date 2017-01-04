@@ -133,13 +133,12 @@
 // Internals of TU_CONS
 #define TU_CONS_I(__name, __tag, __type) \
     __name(__type v): m_tag(TAG_##__tag) { new (&m_data.__tag) __type( ::std::move(v) ); } \
-    static self_t make_##__tag(__type v) \
-    {\
-        return __name( ::std::move(v) );\
-    }\
+    static self_t make_##__tag(__type v) { return __name( ::std::move(v) ); }\
     bool is_##__tag() const { return m_tag == TAG_##__tag; } \
+    const __type* opt_##__tag() const { if(m_tag == TAG_##__tag) return &m_data.__tag; return nullptr; } \
+          __type* opt_##__tag()       { if(m_tag == TAG_##__tag) return &m_data.__tag; return nullptr; } \
     const __type& as_##__tag() const { assert(m_tag == TAG_##__tag); return m_data.__tag; } \
-    __type& as_##__tag() { assert(m_tag == TAG_##__tag); return m_data.__tag; } \
+          __type& as_##__tag()       { assert(m_tag == TAG_##__tag); return m_data.__tag; } \
     __type unwrap_##__tag() { return ::std::move(this->as_##__tag()); } \
 // Define a tagged union constructor
 #define TU_CONS(__name, name, ...) TU_CONS_I(__name, name, TU_DATANAME(name))

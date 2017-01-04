@@ -68,6 +68,8 @@ namespace {
                 << "\treturn 0;\n"
                 << "}\n"
                 << "\n"
+                << "size_t max(size_t a, size_t b) { return a < b ? b : a; }\n"
+                << "\n"
                 ;
         }
 
@@ -1488,6 +1490,18 @@ namespace {
                                 ),
                             (UfcsInherent,
                                 // TODO: Check if the return type is !
+                                is_diverge |= m_resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+                                    [&](const auto& impl) {
+                                        // Associated functions
+                                        {
+                                            auto it = impl.m_methods.find(pe.item);
+                                            if( it != impl.m_methods.end() ) {
+                                                return it->second.data.m_return.m_data.is_Diverge();
+                                            }
+                                        }
+                                        // Associated static (undef)
+                                        return false;
+                                    });
                                 ),
                             (UfcsKnown,
                                 // TODO: Check if the return type is !
@@ -1622,6 +1636,34 @@ namespace {
             else if( name == "size_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
                 const auto& ty = params.m_types.at(0);
+                //TODO: Get the unsized type and use that in place of MetadataType
+                #if 1
+                auto inner_ty = get_inner_unsized_type(ty);
+                if( inner_ty == ::HIR::TypeRef() ) {
+                    m_of << "sizeof("; emit_ctype(ty); m_of << ")";
+                }
+                else if( const auto* te = inner_ty.m_data.opt_Slice() ) {
+                    if( ! ty.m_data.is_Slice() ) {
+                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                    }
+                    emit_lvalue(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(*te->inner); m_of << ")";
+                }
+                else if( inner_ty == ::HIR::CoreType::Str ) {
+                    if( ! ty.m_data.is_Slice() ) {
+                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                    }
+                    emit_lvalue(e.args.at(0)); m_of << ".META";
+                }
+                else if( inner_ty.m_data.is_TraitObject() ) {
+                    if( ! ty.m_data.is_TraitObject() ) {
+                        m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
+                    }
+                    m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->size";
+                }
+                else {
+                    MIR_BUG(mir_res, "Unknown inner unsized type " << inner_ty << " for " << ty);
+                }
+                #else
                 switch( metadata_type(ty) )
                 {
                 case MetadataType::None:
@@ -1636,10 +1678,46 @@ namespace {
                     m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->size";
                     break;
                 }
+                #endif
             }
             else if( name == "min_align_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
                 const auto& ty = params.m_types.at(0);
+                #if 1
+                auto inner_ty = get_inner_unsized_type(ty);
+                if( inner_ty == ::HIR::TypeRef() ) {
+                    m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
+                }
+                else if( const auto* te = inner_ty.m_data.opt_Slice() ) {
+                    if( ! ty.m_data.is_Slice() ) {
+                        m_of << "max( __alignof__("; emit_ctype(ty); m_of << "), ";
+                    }
+                    m_of << "__alignof__("; emit_ctype(*te->inner); m_of << ")";
+                    if( ! ty.m_data.is_Slice() ) {
+                        m_of << " )";
+                    }
+                }
+                else if( inner_ty == ::HIR::CoreType::Str ) {
+                    if( ! ty.m_data.is_Primitive() ) {
+                        m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
+                    }
+                    else {
+                        m_of << "1";
+                    }
+                }
+                else if( inner_ty.m_data.is_TraitObject() ) {
+                    if( ! ty.m_data.is_TraitObject() ) {
+                        m_of << "max( __alignof__("; emit_ctype(ty); m_of << "), ";
+                    }
+                    m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->align";
+                    if( ! ty.m_data.is_TraitObject() ) {
+                        m_of << " )";
+                    }
+                }
+                else {
+                    MIR_BUG(mir_res, "Unknown inner unsized type " << inner_ty << " for " << ty);
+                }
+                #else
                 switch( metadata_type(ty) )
                 {
                 case MetadataType::None:
@@ -1654,6 +1732,7 @@ namespace {
                     m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->align";
                     break;
                 }
+                #endif
             }
             else if( name == "type_id" ) {
                 emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(params.m_types.at(0));
@@ -2300,6 +2379,56 @@ namespace {
             )
         }
 
+        ::HIR::TypeRef get_inner_unsized_type(const ::HIR::TypeRef& ty)
+        {
+            if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
+                return ty.clone();
+            }
+            else if( ty.m_data.is_TraitObject() ) {
+                return ty.clone();
+            }
+            else if( ty.m_data.is_Path() )
+            {
+                const ::HIR::TraitMarkings* markings;
+                TU_MATCH_DEF( ::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (tpb),
+                (
+                    MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
+                    ),
+                (Struct, markings = &tpb->m_markings; ),
+                (Union, markings = &tpb->m_markings; ),
+                (Enum, markings = &tpb->m_markings; )
+                )
+                switch( markings->dst_type )
+                {
+                case ::HIR::TraitMarkings::DstType::None:
+                    return ::HIR::TypeRef();
+                case ::HIR::TraitMarkings::DstType::Slice:
+                case ::HIR::TraitMarkings::DstType::TraitObject:
+                case ::HIR::TraitMarkings::DstType::Possible: {
+                    // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
+                    const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
+                    const auto& str = *ty.m_data.as_Path().binding.as_Struct();
+                    auto monomorph = [&](const auto& tpl) {
+                        // TODO: expand_associated_types
+                        auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
+                        m_resolve.expand_associated_types(sp, rv);
+                        return rv;
+                        };
+                    TU_MATCHA( (str.m_data), (se),
+                    (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
+                    (Tuple, return get_inner_unsized_type( monomorph(se.back().ent) ); ),
+                    (Named, return get_inner_unsized_type( monomorph(se.back().second.ent) ); )
+                    )
+                    throw "";
+                    }
+                }
+                throw "";
+            }
+            else
+            {
+                return ::HIR::TypeRef();
+            }
+        }
         MetadataType metadata_type(const ::HIR::TypeRef& ty)
         {
             if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
@@ -2323,10 +2452,21 @@ namespace {
                 {
                 case ::HIR::TraitMarkings::DstType::None:
                     return MetadataType::None;
-                case ::HIR::TraitMarkings::DstType::Possible:
-                    // TODO: How to figure out?
+                case ::HIR::TraitMarkings::DstType::Possible: {
+                    // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
+                    const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
+                    const auto& str = *ty.m_data.as_Path().binding.as_Struct();
+                    auto monomorph = [&](const auto& tpl) {
+                        return monomorphise_type(sp, str.m_params, path.m_params, tpl);
+                        };
+                    TU_MATCHA( (str.m_data), (se),
+                    (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
+                    (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
+                    (Named, return metadata_type( monomorph(se.back().second.ent) ); )
+                    )
                     //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
                     return MetadataType::None;
+                    }
                 case ::HIR::TraitMarkings::DstType::Slice:
                     return MetadataType::Slice;
                 case ::HIR::TraitMarkings::DstType::TraitObject:
