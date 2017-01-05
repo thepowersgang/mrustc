@@ -1849,7 +1849,7 @@ class Deriver_RustcDecodable:
             ABI_RUST, false, false, false,
             TypeRef(sp, result_path),
             vec$(
-                ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
+                //::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), sp, false, TypeRef(sp, "Self", 0xFFFF)) ),
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "d"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef(sp, "D", 0x100|0)) )
                 )
             );
