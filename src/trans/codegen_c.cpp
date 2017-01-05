@@ -2230,7 +2230,7 @@ namespace {
                     {
                         m_of << "(("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
                         emit_lvalue(*e.val->as_Deref().val);
-                        m_of << ".DATA)";
+                        m_of << ".PTR)";
                     }
                     else
                     {
