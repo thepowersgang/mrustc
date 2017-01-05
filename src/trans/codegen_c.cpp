@@ -1827,9 +1827,16 @@ namespace {
                     MIR_TODO(mir_res, "bswap<" << ty << ">");
                 }
             }
-            // > Obtain the discriminane of a &T as u64 (TODO: Return zero if the value doesn't have one)
+            // > Obtain the discriminane of a &T as u64
             else if( name == "discriminant_value" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << "->TAG";
+                const auto& ty = params.m_types.at(0);
+                emit_lvalue(e.ret_val); m_of << " = ";
+                if( ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum() ) {
+                    emit_lvalue(e.args.at(0)); m_of << "->TAG";
+                }
+                else {
+                    m_of << "0";
+                }
             }
             // Hints
             else if( name == "unreachable" ) {
@@ -2299,8 +2306,13 @@ namespace {
                 m_of << "]";
                 ),
             (Downcast,
+                ::HIR::TypeRef  tmp;
+                const auto& ty = m_mir_res->get_lvalue_type(tmp, *e.val);
                 emit_lvalue(*e.val);
-                m_of << ".DATA.var_" << e.variant_index;
+                MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
+                if( ty.m_data.as_Path().binding.is_Enum() )
+                    m_of << ".DATA";
+                m_of << ".var_" << e.variant_index;
                 )
             )
         }
