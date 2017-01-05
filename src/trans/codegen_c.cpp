@@ -1047,7 +1047,10 @@ namespace {
                             (Int,
                                 emit_lvalue(e.dst);
                                 m_of << " = ";
-                                m_of << c;
+                                if( c == INT64_MIN )
+                                    m_of << "INT64_MIN";
+                                else
+                                    m_of << c;
                                 ),
                             (Uint,
                                 ::HIR::TypeRef  tmp;
@@ -1738,7 +1741,9 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(params.m_types.at(0));
             }
             else if( name == "type_name" ) {
-                emit_lvalue(e.ret_val); m_of << " = \"" << params.m_types.at(0) << "\"";
+                auto s = FMT(params.m_types.at(0));
+                emit_lvalue(e.ret_val); m_of << ".DATA = \"" << s << "\";\n\t";
+                emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
             }
             else if( name == "transmute" ) {
                 m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
