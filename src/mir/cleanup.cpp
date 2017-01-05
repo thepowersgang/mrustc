@@ -919,8 +919,17 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     // If the type is an array (due to a monomorpised generic?) then replace.
                     ::HIR::TypeRef  tmp;
                     const auto& ty = state.get_lvalue_type(tmp, re.val);
-                    const auto& ity = *ty.m_data.as_Borrow().inner;
-                    if( const auto* te = ity.m_data.opt_Array() ) {
+                    const ::HIR::TypeRef* ity_p;
+                    if( const auto* te = ty.m_data.opt_Borrow() ) {
+                        ity_p = &*te->inner;
+                    }
+                    else if( const auto* te = ty.m_data.opt_Pointer() ) {
+                        ity_p = &*te->inner;
+                    }
+                    else {
+                        BUG(Span(), "Unexpected input type for DstMeta - " << ty);
+                    }
+                    if( const auto* te = ity_p->m_data.opt_Array() ) {
                         se.src = ::MIR::Constant::make_Uint( te->size_val );
                     }
                     ),
