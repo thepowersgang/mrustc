@@ -915,6 +915,14 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     auto v = ::MIR::LValue::make_Deref({ box$(re.val) });
                     MIR_Cleanup_LValue(state, mutator,  v);
                     re.val = mv$( *v.as_Deref().val );
+
+                    // If the type is an array (due to a monomorpised generic?) then replace.
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = state.get_lvalue_type(tmp, re.val);
+                    const auto& ity = *ty.m_data.as_Borrow().inner;
+                    if( const auto* te = ity.m_data.opt_Array() ) {
+                        se.src = ::MIR::Constant::make_Uint( te->size_val );
+                    }
                     ),
                 (DstPtr,
                     // HACK: Ensure that the box Deref conversion fires here.
