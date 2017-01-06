@@ -47,7 +47,7 @@ namespace {
         }
     };
 
-    ::HIR::Literal evaluate_constant(const Span& sp, const ::StaticTraitResolve& resolve, NewvalState newval_state, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args);
+    ::HIR::Literal evaluate_constant(const Span& sp, const ::StaticTraitResolve& resolve, NewvalState newval_state, FmtLambda name, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args);
 
     ::HIR::Literal clone_literal(const ::HIR::Literal& v)
     {
@@ -306,11 +306,11 @@ namespace {
         }
     }
 
-    ::HIR::Literal evaluate_constant_mir(const Span& sp, const StaticTraitResolve& resolve, NewvalState newval_state, const ::MIR::Function& fcn, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
+    ::HIR::Literal evaluate_constant_mir(const Span& sp, const StaticTraitResolve& resolve, NewvalState newval_state, FmtLambda name, const ::MIR::Function& fcn, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
     {
         TRACE_FUNCTION;
 
-        ::MIR::TypeResolve  state { sp, resolve, FMT_CB(), ::HIR::TypeRef(), {}, fcn };
+        ::MIR::TypeResolve  state { sp, resolve, name, ::HIR::TypeRef(), {}, fcn };
 
         ::HIR::Literal  retval;
         ::std::vector< ::HIR::Literal>  locals;
@@ -367,7 +367,14 @@ namespace {
                     MIR_TODO(state, "LValue::Deref - " << lv);
                     ),
                 (Index,
-                    MIR_TODO(state, "LValue::Index - " << lv);
+                    auto& val = get_lval(*e.val);
+                    MIR_ASSERT(state, val.is_List(), "LValue::Index on non-list literal - " << val.tag_str() << " - " << lv);
+                    auto& idx = get_lval(*e.idx);
+                    MIR_ASSERT(state, idx.is_Integer(), "LValue::Index with non-integer index literal - " << idx.tag_str() << " - " << lv);
+                    auto& vals = val.as_List();
+                    auto idx_v = idx.as_Integer();
+                    MIR_ASSERT(state, idx_v < vals.size(), "LValue::Index index out of range");
+                    return vals[ idx_v ];
                     ),
                 (Downcast,
                     MIR_TODO(state, "LValue::Downcast - " << lv);
@@ -448,7 +455,7 @@ namespace {
                         ASSERT_BUG(sp, ent.is_Constant(), "MIR Constant::Const("<<e2.p<<") didn't point to a Constant - " << ent.tag_str());
                         val = clone_literal( ent.as_Constant()->m_value_res );
                         if( val.is_Invalid() ) {
-                            val = evaluate_constant(sp, resolve, newval_state, ent.as_Constant()->m_value, {}, {});
+                            val = evaluate_constant(sp, resolve, newval_state, FMT_CB(ss, ss << e2.p;), ent.as_Constant()->m_value, {}, {});
                         }
                         // Monomorphise the value according to `const_ms`
                         monomorph_literal_inplace(sp, val, const_ms);
@@ -738,7 +745,7 @@ namespace {
                 // Call by invoking evaluate_constant on the function
                 {
                     TRACE_FUNCTION_F("Call const fn " << fcnp << " args={ " << call_args << " }");
-                    dst = evaluate_constant(sp, resolve, newval_state,  fcn.m_code, fcn_ms, mv$(call_args));
+                    dst = evaluate_constant(sp, resolve, newval_state, FMT_CB(ss, ss << fcnp;),  fcn.m_code, fcn_ms, mv$(call_args));
                 }
 
                 DEBUG("= " << dst);
@@ -748,10 +755,10 @@ namespace {
         }
     }
 
-    ::HIR::Literal evaluate_constant(const Span& sp, const StaticTraitResolve& resolve, NewvalState newval_state, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
+    ::HIR::Literal evaluate_constant(const Span& sp, const StaticTraitResolve& resolve, NewvalState newval_state, FmtLambda name, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
     {
         if( expr.m_mir ) {
-            return evaluate_constant_mir(sp, resolve, mv$(newval_state), *expr.m_mir, ms, mv$(args));
+            return evaluate_constant_mir(sp, resolve, mv$(newval_state), name, *expr.m_mir, ms, mv$(args));
         }
         else {
             BUG(sp, "Attempting to evaluate constant expression with no associated code");
@@ -880,7 +887,7 @@ namespace {
             if( item.m_value )
             {
                 auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
-                item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, nvs, item.m_value, {}, {});
+                item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, nvs, FMT_CB(ss, ss << p;), item.m_value, {}, {});
 
                 check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
                 DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
@@ -893,7 +900,7 @@ namespace {
             if( item.m_value )
             {
                 auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
-                item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, mv$(nvs), item.m_value, {}, {});
+                item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, mv$(nvs), FMT_CB(ss, ss << p;), item.m_value, {}, {});
                 DEBUG("static: " << item.m_type <<  " = " << item.m_value_res);
                 visit_expr(item.m_value);
             }
@@ -903,7 +910,7 @@ namespace {
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
                     auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.first << "$") };
-                    e.val = evaluate_constant(e.expr->span(), m_resolve, mv$(nvs), e.expr, {}, {});
+                    e.val = evaluate_constant(e.expr->span(), m_resolve, mv$(nvs), FMT_CB(ss, ss << p;), e.expr, {}, {});
                     DEBUG("enum variant: " << p << "::" << var.first << " = " << e.val);
                 )
             }
