@@ -86,22 +86,25 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         const ::HIR::TraitImpl* best_impl = nullptr;
         ::std::vector<::HIR::TypeRef>    best_impl_params;
 
-        resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl_ref, auto is_fuzz) {
+        const auto& trait = resolve.m_crate.get_trait_by_path(sp, pe.trait.m_path);
+        const auto& trait_cdef = trait.m_values.at(pe.item).as_Constant();
+
+        bool rv = resolve.find_impl(sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl_ref, auto is_fuzz) {
             DEBUG("Found " << impl_ref);
             if( !impl_ref.m_data.is_TraitImpl() )
                 return true;
             const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
             const auto& impl = *impl_ref_e.impl;
             ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == pe.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe.trait.m_params);
+            auto it = impl.m_constants.find(pe.item);
+            if( it == impl.m_constants.end() ) {
+                DEBUG("Constant " << pe.item << " missing in trait impl " << pe.trait << " for " << *pe.type);
+                return false;
+            }
 
-            if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
+            if( (best_impl == nullptr || impl.more_specific_than(*best_impl)) ) {
                 best_impl = &impl;
                 bool is_spec = false;
-                auto it = impl.m_constants.find(pe.item);
-                if( it == impl.m_constants.end() ) {
-                    DEBUG("Constant " << pe.item << " missing in trait impl " << pe.trait << " for " << *pe.type);
-                    return false;
-                }
                 is_spec = it->second.is_specialisable;
                 best_impl_params.clear();
                 for(unsigned int i = 0; i < impl_ref_e.params.size(); i ++)
@@ -118,12 +121,25 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
             return false;
             });
 
-        if( best_impl )
+        if( rv && !best_impl )
         {
-            const auto& val = best_impl->m_constants.find(pe.item)->second.data;
-            out_ty = val.m_type.clone();
+            // Non-trait impl found, return none
+        }
+        else
+        {
             // TODO: Obtain `out_ty` by monomorphising the type in the trait.
-            return &val.m_value_res;
+            out_ty = trait_cdef.m_type.clone();
+            if( best_impl )
+            {
+                ASSERT_BUG(sp, best_impl->m_constants.find(pe.item) != best_impl->m_constants.end(), "Item '" << pe.item << "' missing in impl for " << path);
+                const auto& val = best_impl->m_constants.find(pe.item)->second.data;
+                return &val.m_value_res;
+            }
+            else
+            {
+                // No impl found at all, use the default in the trait
+                return &trait_cdef.m_value_res;
+            }
         }
         ),
     (UfcsInherent,
