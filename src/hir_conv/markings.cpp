@@ -38,10 +38,79 @@ public:
     {
         ::HIR::Visitor::visit_struct(ip, str);
 
+        str.m_markings.dst_type = get_struct_dst_type(str, str.m_params, {});
+        if( str.m_markings.dst_type != ::HIR::TraitMarkings::DstType::None )
+        {
+            str.m_markings.unsized_field = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().size()-1 : str.m_data.as_Named().size()-1);
+        }
+    }
+
+    ::HIR::TraitMarkings::DstType get_field_dst_type(const ::HIR::TypeRef& ty, const ::HIR::GenericParams& inner_def, const ::HIR::GenericParams& params_def, const ::HIR::PathParams* params)
+    {
+        // If the type is generic, and the pointed-to parameters is ?Sized, record as needing unsize
+        if( const auto* te = ty.m_data.opt_Generic() )
+        {
+            if( inner_def.m_types.at(te->binding).m_is_sized == true )
+            {
+                return ::HIR::TraitMarkings::DstType::None;
+            }
+            else if( params )
+            {
+                // Look at the param. Check for generic (use params_def), slice/traitobject, or path (no mono)
+                return get_field_dst_type(params->m_types.at(te->binding), params_def, params_def, nullptr);
+            }
+            else
+            {
+                return ::HIR::TraitMarkings::DstType::Possible;
+            }
+        }
+        else if( ty.m_data.is_Slice() )
+        {
+            return ::HIR::TraitMarkings::DstType::Slice;
+        }
+        else if( ty.m_data.is_TraitObject() )
+        {
+            return ::HIR::TraitMarkings::DstType::TraitObject;
+        }
+        else if( const auto* te = ty.m_data.opt_Path() )
+        {
+            // If the type is a struct, check it (recursively)
+            if( ! te->path.m_data.is_Generic() ) {
+                // Associated type, TODO: Check this better.
+                return ::HIR::TraitMarkings::DstType::Possible;
+            }
+            else if( te->binding.is_Struct() ) {
+                const auto& params_tpl = te->path.m_data.as_Generic().m_params;
+                if( params && monomorphise_pathparams_needed(params_tpl) ) {
+                    static Span sp;
+                    auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, params, nullptr);
+                    auto params_mono = monomorphise_path_params_with(sp, params_tpl, monomorph_cb, false);
+                    return get_struct_dst_type(*te->binding.as_Struct(), params_def, &params_mono);
+                }
+                else {
+                    return get_struct_dst_type(*te->binding.as_Struct(), inner_def, &params_tpl);
+                }
+            }
+            else {
+                return ::HIR::TraitMarkings::DstType::None;
+            }
+        }
+        else
+        {
+            return ::HIR::TraitMarkings::DstType::None;
+        }
+    }
+    ::HIR::TraitMarkings::DstType get_struct_dst_type(const ::HIR::Struct& str, const ::HIR::GenericParams& def, const ::HIR::PathParams* params)
+    {
         TU_MATCHA( (str.m_data), (se),
         (Unit,
             ),
         (Tuple,
+            // TODO: Ensure that only the last field is ?Sized
+            if( se.size() > 0 )
+            {
+                return get_field_dst_type(se.back().ent, str.m_params, def, params);
+            }
             ),
         (Named,
             // Check the last field in the struct.
@@ -52,35 +121,11 @@ public:
             // TODO: Ensure that only the last field is ?Sized
             if( se.size() > 0 )
             {
-                const auto& last_field = se.back().second.ent;
-                // TODO: Recurse into path types
-
-                // If the type is generic, and the pointed-to parameters is ?Sized, record as needing unsize
-                if( last_field.m_data.is_Generic() )
-                {
-                    const auto& te = last_field.m_data.as_Generic();
-
-                    if( str.m_params.m_types.at(te.binding).m_is_sized == false )
-                    {
-                        str.m_markings.unsized_field = se.size() - 1;
-                        str.m_markings.dst_type = ::HIR::TraitMarkings::DstType::Possible;
-                    }
-                }
-                else if( last_field.m_data.is_Slice() )
-                {
-                    str.m_markings.dst_type = ::HIR::TraitMarkings::DstType::Slice;
-                }
-                else if( last_field.m_data.is_TraitObject() )
-                {
-                    str.m_markings.dst_type = ::HIR::TraitMarkings::DstType::TraitObject;
-                }
-                else
-                {
-                    str.m_markings.dst_type = ::HIR::TraitMarkings::DstType::None;
-                }
+                return get_field_dst_type(se.back().second.ent, str.m_params, def, params);
             }
             )
         )
+        return ::HIR::TraitMarkings::DstType::None;
     }
 
     void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
