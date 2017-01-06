@@ -764,9 +764,9 @@ namespace {
                         if( ty.m_data.is_Borrow() && ty.m_data.as_Borrow().inner->m_data.is_Slice() )
                         {
                             // Since this is a borrow, it must be of an array.
-                            MIR_ASSERT(*m_mir_res, vi.is_Static(), "");
+                            MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &[T] not of a static - " << pe.m_path << " is " << vi.tag_str());
                             const auto& stat = vi.as_Static();
-                            MIR_ASSERT(*m_mir_res, stat.m_type.m_data.is_Array(), "");
+                            MIR_ASSERT(*m_mir_res, stat.m_type.m_data.is_Array(), "BorrowOf : &[T] of non-array static, " << pe.m_path << " - " << stat.m_type);
                             unsigned int size = stat.m_type.m_data.as_Array().size_val;
                             m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", " << size << "}";
                             return ;
@@ -1002,6 +1002,7 @@ namespace {
 
                         m_of << "\t__asm__ ";
                         if(is_volatile) m_of << "__volatile__";
+                        // TODO: Convert format string?
                         m_of << "(\"" << (is_intel ? ".syntax intel; " : "") << FmtEscaped(e.tpl) << (is_intel ? ".syntax att; " : "") << "\"";
                         m_of << ": ";
                         for(unsigned int i = 0; i < e.outputs.size(); i ++ )
@@ -1012,7 +1013,8 @@ namespace {
                             switch(v.first[0])
                             {
                             case '=':   m_of << "=";    break;
-                            default:    MIR_TODO(mir_res, "");
+                            case '+':   m_of << "+";    break;
+                            default:    MIR_TODO(mir_res, "Handle asm! output leader '" << v.first[0] << "'");
                             }
                             m_of << H::convert_reg(v.first.c_str()+1);
                             m_of << "\"("; emit_lvalue(v.second); m_of << ")";
