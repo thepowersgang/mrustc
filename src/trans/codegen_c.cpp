@@ -2495,7 +2495,9 @@ namespace {
                     const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
                     const auto& str = *ty.m_data.as_Path().binding.as_Struct();
                     auto monomorph = [&](const auto& tpl) {
-                        return monomorphise_type(sp, str.m_params, path.m_params, tpl);
+                        auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
+                        m_resolve.expand_associated_types(sp, rv);
+                        return rv;
                         };
                     TU_MATCHA( (str.m_data), (se),
                     (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
