@@ -190,7 +190,7 @@ Ordering TypeRef::ord(const TypeRef& x) const
         return ::ord(ent.traits, x_ent.traits);
         )
     )
-    throw ::std::runtime_error(FMT("BUGCHECK - Unhandled TypeRef class '" << m_data.tag() << "'"));
+    throw ::std::runtime_error(format("BUGCHECK - Unhandled TypeRef class '", m_data.tag(), "'"));
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const eCoreType ct) {

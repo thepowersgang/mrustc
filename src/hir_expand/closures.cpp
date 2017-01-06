@@ -146,7 +146,7 @@ namespace {
                 {
                     m_replacement = NEWNODE(node.m_res_type.clone(), Field, node.span(),
                         get_self(node.span()),
-                        FMT(binding_it - m_captures.begin())
+                        format(binding_it - m_captures.begin())
                         );
                     if( binding_it->second != ::HIR::ValueUsage::Move ) {
                         auto bt = (binding_it->second == ::HIR::ValueUsage::Mutate ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
@@ -1010,7 +1010,7 @@ namespace {
             ::HIR::SimplePath   root_mod_path("",{});
             m_cur_mod_path = &root_mod_path;
             m_new_type = [&](auto s)->auto {
-                auto name = FMT("closure_I_" << closure_count);
+                auto name = format("closure_I_", closure_count);
                 closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) } ));
                 crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
@@ -1040,7 +1040,7 @@ namespace {
             unsigned int closure_count = 0;
             auto saved_nt = mv$(m_new_type);
             m_new_type = [&](auto s)->auto {
-                auto name = FMT("closure_" << closure_count);
+                auto name = format("closure_", closure_count);
                 closure_count += 1;
                 auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) }) );
                 mod.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );

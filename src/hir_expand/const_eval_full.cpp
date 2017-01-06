@@ -33,7 +33,7 @@ namespace {
 
         ::HIR::SimplePath new_static(::HIR::TypeRef type, ::HIR::Literal value)
         {
-            auto name = FMT(name_prefix << next_item_idx);
+            auto name = format(name_prefix, next_item_idx);
             next_item_idx ++;
             auto rv = (mod_path + name.c_str()).get_simple_path();
             newval_output.push_back( ::std::make_pair( mv$(name), ::HIR::Static {
@@ -879,7 +879,7 @@ namespace {
             visit_type(item.m_type);
             if( item.m_value )
             {
-                auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
+                auto nvs = NewvalState { m_new_values, *m_mod_path, format(p.get_name(), "$") };
                 item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, nvs, item.m_value, {}, {});
 
                 check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
@@ -892,7 +892,7 @@ namespace {
             visit_type(item.m_type);
             if( item.m_value )
             {
-                auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
+                auto nvs = NewvalState { m_new_values, *m_mod_path, format(p.get_name(), "$") };
                 item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, mv$(nvs), item.m_value, {}, {});
                 DEBUG("static: " << item.m_type <<  " = " << item.m_value_res);
                 visit_expr(item.m_value);
@@ -902,7 +902,7 @@ namespace {
             for(auto& var : item.m_variants)
             {
                 TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.first << "$") };
+                    auto nvs = NewvalState { m_new_values, *m_mod_path, format(p.get_name(), "$", var.first, "$") };
                     e.val = evaluate_constant(e.expr->span(), m_resolve, mv$(nvs), e.expr, {}, {});
                     DEBUG("enum variant: " << p << "::" << var.first << " = " << e.val);
                 )

@@ -346,7 +346,7 @@ namespace {
                 } )
             #undef _
             default:
-                throw ::std::runtime_error(FMT("Invalid MIR LValue tag - " << tag));
+                throw ::std::runtime_error(format("Invalid MIR LValue tag - ", tag));
             }
         }
         ::MIR::RValue deserialise_mir_rvalue()
@@ -701,7 +701,7 @@ namespace {
             })
         #undef _
         default:
-            throw ::std::runtime_error(FMT("Bad TypeRef tag - " << tag));
+            throw ::std::runtime_error(format("Bad TypeRef tag - ", tag));
         }
     }
 

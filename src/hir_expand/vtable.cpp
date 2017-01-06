@@ -209,7 +209,7 @@ namespace {
                 }
             }
             // TODO: Would like to have access to the publicity marker
-            auto item_path = m_new_type(true, FMT(p.get_name() << "#vtable"), ::HIR::Struct {
+            auto item_path = m_new_type(true, format(p.get_name(), "#vtable"), ::HIR::Struct {
                 mv$(args),
                 ::HIR::Struct::Repr::Rust,
                 ::HIR::Struct::Data(mv$(fields)),

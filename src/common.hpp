@@ -11,7 +11,6 @@
 #include <sstream>
 #include <memory>
 
-#define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
 // XXX: Evil hack - Define 'mv$' to be ::std::move
 #define mv$(x)    ::std::move(x)
 #define box$(x...) ::make_unique_ptr(::std::move(x))
@@ -51,6 +50,23 @@ template<typename T>
     rv.push_back( mv$(v2) );
     rv.push_back( mv$(v3) );
     return rv;
+}
+
+inline void _format_impl(::std::stringstream&) {}
+template<typename T, typename... Ts>
+void _format_impl(
+    ::std::stringstream& stream,
+    T const& first,
+    Ts const&... rest
+) {
+    stream << first;
+    _format_impl(stream, rest...);
+}
+template <typename... Ts>
+::std::string format(Ts const&... ts) {
+    auto&& stream = ::std::stringstream{};
+    _format_impl(stream, ts...);
+    return stream.str();
 }
 
 enum Ordering

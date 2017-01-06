@@ -1224,7 +1224,7 @@ namespace {
                 BUG(node.span(), "Indexing unsupported type " << ty_val);
                 ),
             (Array,
-                limit_val = ::MIR::Constant( e.size_val );
+                limit_val = ::MIR::Constant(uint64_t(e.size_val));
                 ),
             (Slice,
                 limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value).clone() });

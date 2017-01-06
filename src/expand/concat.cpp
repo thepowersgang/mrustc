@@ -45,12 +45,12 @@ class CConcatExpander:
                     rv += Codepoint { static_cast<uint32_t>(vp->m_value) };
                 }
                 else {
-                    rv += FMT(vp->m_value);
+                    rv += format(vp->m_value);
                 }
             }
             else if( auto* vp = dynamic_cast<AST::ExprNode_Float*>(v.get()) )
             {
-                rv += FMT(vp->m_value);
+                rv += format(vp->m_value);
             }
             else if( auto* vp = dynamic_cast<AST::ExprNode_Bool*>(v.get()) )
             {

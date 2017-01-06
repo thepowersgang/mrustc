@@ -277,7 +277,7 @@ ExternBlock ExternBlock::clone() const
 }
 
 ::std::shared_ptr<AST::Module> Module::add_anon() {
-    auto rv = ::std::shared_ptr<AST::Module>( new Module(m_my_path + FMT("#" << m_anon_modules.size())) );
+    auto rv = ::std::shared_ptr<AST::Module>( new Module(m_my_path + format("#", m_anon_modules.size())) );
     DEBUG("New anon " << rv->m_my_path);
     rv->m_file_info = m_file_info;
 
