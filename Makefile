@@ -223,6 +223,7 @@ rust_tests: rust_tests-run-pass rust_tests-run-fail
 # rust_tests-compile-fail
 
 DISABLED_TESTS = run-pass/abi-sysv64-arg-passing run-pass/abi-sysv64-register-usage run-pass/anon-extern-mod run-pass/anon-extern-mod-cross-crate-2
+DISABLED_TESTS += run-pass/asm-in-out-operand run-pass/asm-indirect-memory run-pass/asm-out-assign
 DISABLED_TESTS += run-pass/allocator-default run-pass/allocator-override
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
