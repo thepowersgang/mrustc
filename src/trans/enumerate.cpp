@@ -744,6 +744,31 @@ void Trans_Enumerate_Types(EnumState& state)
 
             tv.visit_type( pp.monomorph(tv.m_resolve, stat.m_type) );
         }
+        for(const auto& ent : state.rv.m_vtables)
+        {
+            const auto& gpath = ent.first.m_data.as_UfcsKnown().trait;
+            const auto& trait = state.crate.get_trait_by_path(sp, gpath.m_path);
+
+            auto vtable_ty_spath = gpath.m_path;
+            vtable_ty_spath.m_components.back() += "#vtable";
+            const auto& vtable_ref = state.crate.get_struct_by_path(sp, vtable_ty_spath);
+            // Copy the param set from the trait in the trait object
+            ::HIR::PathParams   vtable_params = gpath.m_params.clone();
+            // - Include associated types on bound
+            #if 1
+            for(const auto& ty_idx : trait.m_type_indexes)
+            {
+                auto idx = ty_idx.second;
+                if(vtable_params.m_types.size() <= idx)
+                    vtable_params.m_types.resize(idx+1);
+                auto p = ent.first.clone();
+                p.m_data.as_UfcsKnown().item = ty_idx.first;
+                vtable_params.m_types[idx] = ::HIR::TypeRef::new_path( mv$(p), {} );
+            }
+            #endif
+
+            tv.visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
+        }
 
         constructors_added = false;
         for(unsigned int i = types_count; i < state.rv.m_types.size(); i ++ )
@@ -1046,6 +1071,7 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         {
             if( state.rv.add_vtable( path_mono.clone(), {} ) )
             {
+                // TODO: Add the vtable type to enumerte list?
                 // Fill from the vtable
                 Trans_Enumerate_FillFrom_VTable(state, mv$(path_mono), sub_pp);
             }
