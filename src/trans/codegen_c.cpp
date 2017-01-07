@@ -1259,6 +1259,7 @@ namespace {
                             bool special = false;
                             ::HIR::TypeRef  tmp;
                             const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
+                            // If the destination is a thin pointer
                             if( ve.type.m_data.is_Pointer() && !is_dst( *ve.type.m_data.as_Pointer().inner ) )
                             {
                                 // NOTE: Checks the result of the deref
@@ -2506,7 +2507,7 @@ namespace {
                 return ::HIR::TypeRef();
             }
         }
-        MetadataType metadata_type(const ::HIR::TypeRef& ty)
+        MetadataType metadata_type(const ::HIR::TypeRef& ty) const
         {
             if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
                 return MetadataType::Slice;
@@ -2579,16 +2580,9 @@ namespace {
             }
         }
 
-        int is_dst(const ::HIR::TypeRef& ty) const
+        bool is_dst(const ::HIR::TypeRef& ty) const
         {
-            if( ty == ::HIR::CoreType::Str )
-                return 1;
-            if( ty.m_data.is_Slice() )
-                return 1;
-            if( ty.m_data.is_TraitObject() )
-                return 2;
-            // TODO: Unsized named types.
-            return 0;
+            return metadata_type(ty) != MetadataType::None;
         }
     };
     Span CodeGenerator_C::sp;
