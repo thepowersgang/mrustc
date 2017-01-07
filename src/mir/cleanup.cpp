@@ -124,11 +124,13 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         if( rv && !best_impl )
         {
             // Non-trait impl found, return none
+            DEBUG(path << " contains a generic");
         }
         else
         {
-            // TODO: Obtain `out_ty` by monomorphising the type in the trait.
-            out_ty = trait_cdef.m_type.clone();
+            // Obtain `out_ty` by monomorphising the type in the trait.
+            auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr);
+            out_ty = monomorphise_type_with(sp, trait_cdef.m_type, monomorph_cb);
             if( best_impl )
             {
                 ASSERT_BUG(sp, best_impl->m_constants.find(pe.item) != best_impl->m_constants.end(), "Item '" << pe.item << "' missing in impl for " << path);
@@ -174,6 +176,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     (
         if( path == ::HIR::GenericPath() )
             MIR_TODO(state, "Literal of type " << ty << " - " << path << " - " << lit);
+        DEBUG("Unknown type " << ty << " - Return BorrowOf");
         return ::MIR::Constant( mv$(path) );
         ),
     (Tuple,
@@ -991,7 +994,12 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         const auto* lit_ptr = MIR_Cleanup_GetConstant(sp, resolve, ce.p, ty);
                         if( lit_ptr )
                         {
+                            DEBUG("Replace constant " << ce.p << " with " << *lit_ptr);
                             se.src = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_ptr, mv$(ty), mv$(ce.p));
+                        }
+                        else
+                        {
+                            DEBUG("No replacement for constant " << ce.p);
                         }
                     )
                 )
