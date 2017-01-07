@@ -241,9 +241,9 @@ output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output
 	@mkdir -p $(dir $@)
 	@echo "=== TEST $(patsubst output/rust/%.o,%,$@)"
 	@echo "--- [MRUSTC] -o $@.c"
-	@$(BIN) $< -o $@.c --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
+	$V$(BIN) $< -o $@.c --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
 	@echo "--- [CC] -o $@"
-	$(TARGET_CC) $@.c -pthread -g -o $@
+	$V$(TARGET_CC) $@.c -pthread -g -o $@
 #	@echo "--- [$@]"
 #	@./$@
 
