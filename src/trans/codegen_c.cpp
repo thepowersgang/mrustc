@@ -67,6 +67,8 @@ namespace {
                 << "\tif(l.META > r.META) return 1;\n"
                 << "\treturn 0;\n"
                 << "}\n"
+                << "SLICE_PTR make_sliceptr(void* ptr, size_t s) { SLICE_PTR rv = { ptr, s }; return rv; }\n"
+                << "TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
                 << "size_t max(size_t a, size_t b) { return a < b ? b : a; }\n"
                 << "\n"
@@ -2047,7 +2049,24 @@ namespace {
                 // Call drop glue
                 // - TODO: If the destructor is known to do nothing, don't call it.
                 auto p = ::HIR::Path(ty.clone(), "#drop_glue");
-                m_of << "\t" << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
+                const char* make_fcn = nullptr;
+                switch( metadata_type(ty) )
+                {
+                case MetadataType::None:
+                    m_of << "\t" << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
+                    break;
+                case MetadataType::Slice:
+                    make_fcn = "make_sliceptr"; if(0)
+                case MetadataType::TraitObject:
+                    make_fcn = "make_traitobjptr";
+                    m_of << "\t" << Trans_Mangle(p) << "( " << make_fcn << "(&"; emit_lvalue(slot); m_of << ", ";
+                    const auto* lvp = &slot;
+                    while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
+                    MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
+                    emit_lvalue(*lvp->as_Deref().val); m_of << ".META";
+                    m_of << ") );\n";
+                    break;
+                }
                 ),
             (Array,
                 // Emit destructors for all entries
