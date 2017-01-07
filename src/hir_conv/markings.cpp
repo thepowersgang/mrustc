@@ -139,7 +139,7 @@ public:
             const auto& te = impl.m_type.m_data.as_Path();
             const ::HIR::TraitMarkings* markings_ptr = nullptr;
             TU_MATCHA( (te.binding), (tpb),
-            (Unbound, BUG(sp, "Unbound type path in trait impl - " << impl.m_type); ),
+            (Unbound, ),
             (Opaque, ),
             (Struct, markings_ptr = &tpb->m_markings; ),
             (Union , markings_ptr = &tpb->m_markings; ),
