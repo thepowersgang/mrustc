@@ -951,7 +951,14 @@ namespace {
                     best_impl = &impl;
                     bool is_spec = false;
                     TU_MATCHA( (trait_vi), (ve),
-                    (Constant, ),
+                    (Constant,
+                        auto it = impl.m_constants.find(e.item);
+                        if( it == impl.m_constants.end() ) {
+                            DEBUG("Constant " << e.item << " missing in trait " << e.trait << " for " << *e.type);
+                            return false;
+                        }
+                        is_spec = it->second.is_specialisable;
+                        ),
                     (Static,
                         auto it = impl.m_statics.find(e.item);
                         if( it == impl.m_statics.end() ) {
@@ -993,6 +1000,12 @@ namespace {
 
             TU_MATCHA( (trait_vi), (ve),
             (Constant,
+                auto it = impl.m_constants.find(e.item);
+                if( it != impl.m_constants.end() )
+                {
+                    DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                    return EntPtr { &it->second.data };
+                }
                 TODO(sp, "Associated constant - " << path);
                 ),
             (Static,
