@@ -828,6 +828,39 @@ namespace {
             const auto& trait_path = p.m_data.as_UfcsKnown().trait;
             const auto& type = *p.m_data.as_UfcsKnown().type;
 
+            // TODO: Hack in fn pointer VTable handling
+            if( const auto* te = type.m_data.opt_Function() )
+            {
+                const char* call_fcn_name = nullptr;
+                if( trait_path.m_path == m_resolve.m_lang_Fn )
+                    call_fcn_name = "call";
+                else if( trait_path.m_path == m_resolve.m_lang_FnMut )
+                    call_fcn_name = "call_mut";
+                else if( trait_path.m_path == m_resolve.m_lang_FnOnce )
+                    call_fcn_name = "call_once";
+                else
+                    ;
+
+                if( call_fcn_name )
+                {
+                    auto fcn_p = p.clone();
+                    fcn_p.m_data.as_UfcsKnown().item = call_fcn_name;
+                    emit_ctype(*te->m_rettype);
+                    auto  arg_ty = ::HIR::TypeRef::new_unit();
+                    for(const auto& ty : te->m_arg_types)
+                        arg_ty.m_data.as_Tuple().push_back( ty.clone() );
+                    m_of << " " << Trans_Mangle(fcn_p) << "("; emit_ctype(type, FMT_CB(ss, ss << "ptr";)); m_of << ", "; emit_ctype(arg_ty, FMT_CB(ss, ss << "args";)); m_of << ") {\n";
+                    m_of << "\treturn ptr(";
+                        for(unsigned int i = 0; i < te->m_arg_types.size(); i++)
+                        {
+                            if(i != 0)  m_of << ", ";
+                            m_of << "args._" << i;
+                        }
+                        m_of << ");\n";
+                    m_of << "}\n";
+                }
+            }
+
             {
                 auto vtable_sp = trait_path.m_path;
                 vtable_sp.m_components.back() += "#vtable";
