@@ -196,14 +196,17 @@ output/librustc_bitflags.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUS
 output/librustc_privacy.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_privacy/lib.rs))
 output/librustc_platform_intrinsics.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_platform_intrinsics/lib.rs))
 
-output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
+output/rustc: output/rustc.o
+	$(TARGET_CC) $< -pthread -lm -g -o $@
+output/rustc.o: output/rustc.c
+	$(TARGET_CC) -c $< -g -O1 -o $@
+output/rustc.c: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
 	$(DBG) $(BIN) $< -o $@.c $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@.c
-	$(TARGET_CC) $@.c -pthread -g -o $@
 
 $(RUSTCSRC): rust-nightly-date
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
@@ -243,7 +246,7 @@ output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output
 	@echo "--- [MRUSTC] -o $@.c"
 	$V$(BIN) $< -o $@.c --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
 	@echo "--- [CC] -o $@"
-	$V$(TARGET_CC) $@.c -pthread -g -o $@
+	$V$(TARGET_CC) $@.c -pthread -lm -ldl -g -O -o $@
 #	@echo "--- [$@]"
 #	@./$@
 
