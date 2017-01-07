@@ -1090,7 +1090,15 @@ namespace {
                             (Float,
                                 emit_lvalue(e.dst);
                                 m_of << " = ";
-                                m_of << c;
+                                if( ::std::isnan(c) ) {
+                                    m_of << "NAN";
+                                }
+                                else if( ::std::isinf(c) ) {
+                                    m_of << "INFINITY";
+                                }
+                                else {
+                                    m_of << c;
+                                }
                                 ),
                             (Bool,
                                 emit_lvalue(e.dst);
@@ -1950,10 +1958,10 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << " = trunc("; emit_lvalue(e.args.at(0)); m_of << ")";
             }
             else if( name == "powif32" ) {
-                emit_lvalue(e.ret_val); m_of << " = powif("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = powf("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
             }
             else if( name == "powif64" ) {
-                emit_lvalue(e.ret_val); m_of << " = powi("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = pow(";  emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
             }
             // --- Atomics!
             // > Single-ordering atomics
