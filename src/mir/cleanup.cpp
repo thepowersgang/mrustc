@@ -67,6 +67,8 @@ struct MirMutator
     }
 };
 
+void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::LValue& lval);
+
 const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Path& path,  ::HIR::TypeRef& out_ty)
 {
     TU_MATCHA( (path.m_data), (pe),
@@ -437,7 +439,9 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     // Allocate a temporary for the vtable pointer itself
     auto vtable_lv = mutator.new_temporary( mv$(vtable_ty) );
     // - Load the vtable and store it
-    auto vtable_rval = ::MIR::RValue::make_DstMeta({ receiver_lvp.clone() });
+    auto ptr_lv = ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) });
+    MIR_Cleanup_LValue(state, mutator,  ptr_lv);
+    auto vtable_rval = ::MIR::RValue::make_DstMeta({ mv$(*ptr_lv.as_Deref().val) });
     mutator.push_statement( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
 
     auto fcn_lval = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
