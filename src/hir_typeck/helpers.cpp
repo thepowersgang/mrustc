@@ -1097,8 +1097,18 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                             return false;
                         total_cmp &= cmp;
                         tmp_e.m_trait.m_path.m_params = impl.get_trait_params();
-                        for(const auto& aty : e.m_trait.m_type_bounds)
-                            tmp_e.m_trait.m_type_bounds[aty.first] = impl.get_type(aty.first.c_str());
+                        for(const auto& aty : e.m_trait.m_type_bounds) {
+                            auto atyv = impl.get_type(aty.first.c_str());
+                            if( atyv == ::HIR::TypeRef() )
+                            {
+                                // Get the trait from which this associated type comes.
+                                // Insert a UfcsKnown path for that
+                                auto p = ::HIR::Path( ty.clone(), e.m_trait.m_path.clone(), aty.first );
+                                // Run EAT
+                                atyv = this->expand_associated_types( sp, ::HIR::TypeRef::new_path( mv$(p), {} ) );
+                            }
+                            tmp_e.m_trait.m_type_bounds[aty.first] = mv$(atyv);
+                        }
                         return true;
                     });
             }
@@ -1116,7 +1126,6 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 good &= find_trait_impls(sp, marker.m_path, marker.m_params, ty, cb);
             }
             if( good ) {
-                // TODO: params.clone() isn't quite right.
                 ::HIR::PathParams   real_params { ::HIR::TypeRef( ::HIR::TypeRef::Data(mv$(tmp_e)) ) };
                 return callback( ImplRef(type.clone(), mv$(real_params), {}), total_cmp );
             }
