@@ -1744,7 +1744,7 @@ namespace {
             }
             else if( name == "type_name" ) {
                 auto s = FMT(params.m_types.at(0));
-                emit_lvalue(e.ret_val); m_of << ".DATA = \"" << s << "\";\n\t";
+                emit_lvalue(e.ret_val); m_of << ".PTR = \"" << FmtEscaped(s) << "\";\n\t";
                 emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
             }
             else if( name == "transmute" ) {
