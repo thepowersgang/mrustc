@@ -1303,6 +1303,43 @@ namespace {
                                 m_of << ")";
                                 break;
                             }
+                            else if( const auto* te = ty.m_data.opt_Pointer() ) {
+                                if( metadata_type(*te->inner) != MetadataType::None )
+                                {
+                                    switch(ve.op)
+                                    {
+                                    case ::MIR::eBinOp::EQ:
+                                        emit_lvalue(ve.val_l); m_of << ".PTR == "; emit_lvalue(ve.val_r); m_of << ".PTR && ";
+                                        emit_lvalue(ve.val_l); m_of << ".META == "; emit_lvalue(ve.val_r); m_of << ".META";
+                                        break;
+                                    case ::MIR::eBinOp::NE:
+                                        emit_lvalue(ve.val_l); m_of << ".PTR != "; emit_lvalue(ve.val_r); m_of << ".PTR || ";
+                                        emit_lvalue(ve.val_l); m_of << ".META != "; emit_lvalue(ve.val_r); m_of << ".META";
+                                        break;
+                                    default:
+                                        MIR_BUG(mir_res, "Unknown comparison of a *-ptr - " << e.src << " with " << ty);
+                                    }
+                                }
+                                else
+                                {
+                                    emit_lvalue(ve.val_l);
+                                    switch(ve.op)
+                                    {
+                                    case ::MIR::eBinOp::EQ: m_of << " == "; break;
+                                    case ::MIR::eBinOp::NE: m_of << " != "; break;
+                                    case ::MIR::eBinOp::GT: m_of << " > " ; break;
+                                    case ::MIR::eBinOp::GE: m_of << " >= "; break;
+                                    case ::MIR::eBinOp::LT: m_of << " < " ; break;
+                                    case ::MIR::eBinOp::LE: m_of << " <= "; break;
+                                    default:
+                                        MIR_BUG(mir_res, "Unknown comparison of a *-ptr - " << e.src << " with " << ty);
+                                    }
+                                    emit_lvalue(ve.val_r);
+                                }
+                                break;
+                            }
+                            else {
+                            }
 
                             emit_lvalue(ve.val_l);
                             switch(ve.op)
