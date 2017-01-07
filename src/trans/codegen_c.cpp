@@ -1349,6 +1349,14 @@ namespace {
                                 }
                                 break;
                             }
+                            else if( ve.op == ::MIR::eBinOp::MOD && (ty == ::HIR::CoreType::F32 || ty == ::HIR::CoreType::F64) ) {
+                                if( ty == ::HIR::CoreType::F32 )
+                                    m_of << "remainderf";
+                                else
+                                    m_of << "remainder";
+                                m_of << "("; emit_lvalue(ve.val_l); m_of << ", "; emit_lvalue(ve.val_r); m_of << ")";
+                                break;
+                            }
                             else {
                             }
 
