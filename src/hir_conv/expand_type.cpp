@@ -91,8 +91,8 @@ public:
             const unsigned int MAX_RECURSIVE_TYPE_EXPANSIONS = 100;
             while(num_exp < MAX_RECURSIVE_TYPE_EXPANSIONS)
             {
+                ::HIR::Visitor::visit_type(new_type);
                 TU_IFLET(::HIR::TypeRef::Data, (new_type.m_data), Path, (e),
-                    ::HIR::Visitor::visit_type(new_type);
                     auto nt = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path, m_in_expr);
                     if( nt == ::HIR::TypeRef() )
                         break;
