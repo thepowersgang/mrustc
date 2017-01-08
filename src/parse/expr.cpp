@@ -110,6 +110,15 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
     }
 
+    // `union Ident` - contextual keyword
+    if( tok.type() == TOK_IDENT && tok.str() == "union" && lex.lookahead(0) == TOK_IDENT ) {
+        PUTBACK(tok, lex);
+        if( !local_mod ) {
+            local_mod = lex.parse_state().get_current_mod().add_anon();
+        }
+        Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
+        return ExprNodeP();
+    }
     switch(tok.type())
     {
     // Items:

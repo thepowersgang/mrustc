@@ -664,6 +664,9 @@
         case CORETYPE_I64:  return ::HIR::TypeRef( ::HIR::CoreType::I64 );
         case CORETYPE_U64:  return ::HIR::TypeRef( ::HIR::CoreType::U64 );
 
+        case CORETYPE_I128: return ::HIR::TypeRef( ::HIR::CoreType::I128 );
+        case CORETYPE_U128: return ::HIR::TypeRef( ::HIR::CoreType::U128 );
+
         case CORETYPE_INT:  return ::HIR::TypeRef( ::HIR::CoreType::Isize );
         case CORETYPE_UINT: return ::HIR::TypeRef( ::HIR::CoreType::Usize );
         case CORETYPE_ANY:

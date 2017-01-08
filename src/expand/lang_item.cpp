@@ -157,6 +157,8 @@ public:
         else if( name == "u32" ) {}
         else if( name == "i64" ) {}
         else if( name == "u64" ) {}
+        else if( name == "i128" ) {}
+        else if( name == "u128" ) {}
         else if( name == "isize" ) {}
         else if( name == "usize" ) {}
         else if( name == "const_ptr" ) {}

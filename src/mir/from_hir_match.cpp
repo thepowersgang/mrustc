@@ -535,6 +535,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         case ::HIR::CoreType::U16:
         case ::HIR::CoreType::U32:
         case ::HIR::CoreType::U64:
+        case ::HIR::CoreType::U128:
         case ::HIR::CoreType::Usize: {
             ASSERT_BUG(sp, lit.is_Integer(), "Matching integer type with non-integer literal - " << lit);
             uint64_t val = lit.as_Integer();
@@ -544,6 +545,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         case ::HIR::CoreType::I16:
         case ::HIR::CoreType::I32:
         case ::HIR::CoreType::I64:
+        case ::HIR::CoreType::I128:
         case ::HIR::CoreType::Isize: {
             ASSERT_BUG(sp, lit.is_Integer(), "Matching integer type with non-integer literal - " << lit);
             int64_t val = static_cast<int64_t>( lit.as_Integer() );
@@ -825,6 +827,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::U16:
             case ::HIR::CoreType::U32:
             case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::U128:
             case ::HIR::CoreType::Usize: {
                 uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
                 uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
@@ -834,6 +837,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::I16:
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize: {
                 int64_t start = H::get_pattern_value_int(sp, pat, pe.start);
                 int64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
@@ -865,6 +869,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::U16:
             case ::HIR::CoreType::U32:
             case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::U128:
             case ::HIR::CoreType::Usize: {
                 uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
                 this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
@@ -873,6 +878,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::I16:
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize: {
                 int64_t val = H::get_pattern_value_int(sp, pat, pe.val);
                 this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
@@ -1547,6 +1553,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             case ::HIR::CoreType::U16:
             case ::HIR::CoreType::U32:
             case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::U128:
             case ::HIR::CoreType::Usize:
                 TU_MATCH_DEF( PatternRule, (rule), (re),
                 (
@@ -1569,6 +1576,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             case ::HIR::CoreType::I16:
             case ::HIR::CoreType::I32:
             case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize:
                 TU_MATCH_DEF( PatternRule, (rule), (re),
                 (
@@ -3160,6 +3168,7 @@ void DecisionTreeGen::generate_tree_code(
         case ::HIR::CoreType::U16:
         case ::HIR::CoreType::U32:
         case ::HIR::CoreType::U64:
+        case ::HIR::CoreType::U128:
         case ::HIR::CoreType::Usize:
             ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for unsigned isn't a _Unsigned - node="<<node);
             this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, mv$(val), mv$(and_then));
@@ -3168,6 +3177,7 @@ void DecisionTreeGen::generate_tree_code(
         case ::HIR::CoreType::I16:
         case ::HIR::CoreType::I32:
         case ::HIR::CoreType::I64:
+        case ::HIR::CoreType::I128:
         case ::HIR::CoreType::Isize:
             ASSERT_BUG(sp, node.m_branches.is_Signed(), "Tree for unsigned isn't a _Signed - node="<<node);
             this->generate_branches_Signed(sp, node.m_default, node.m_branches.as_Signed(), ty, mv$(val), mv$(and_then));

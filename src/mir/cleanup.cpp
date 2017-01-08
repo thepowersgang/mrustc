@@ -315,12 +315,14 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         {
         case ::HIR::CoreType::Char:
         case ::HIR::CoreType::Usize:
+        case ::HIR::CoreType::U128:
         case ::HIR::CoreType::U64:
         case ::HIR::CoreType::U32:
         case ::HIR::CoreType::U16:
         case ::HIR::CoreType::U8:
             return ::MIR::Constant::make_Uint( lit.as_Integer() );
         case ::HIR::CoreType::Isize:
+        case ::HIR::CoreType::I128:
         case ::HIR::CoreType::I64:
         case ::HIR::CoreType::I32:
         case ::HIR::CoreType::I16:

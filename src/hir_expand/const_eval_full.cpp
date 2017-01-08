@@ -537,6 +537,8 @@ namespace {
 
                         case ::HIR::CoreType::I64:  val = cast_to_int(true , 64);   break;
                         case ::HIR::CoreType::U64:  val = cast_to_int(false, 64);   break;
+                        case ::HIR::CoreType::I128: val = cast_to_int(true , 64);   break;
+                        case ::HIR::CoreType::U128: val = cast_to_int(false, 64);   break;
                         case ::HIR::CoreType::Isize: val = cast_to_int(true , 64);   break;
                         case ::HIR::CoreType::Usize: val = cast_to_int(false, 64);   break;
 

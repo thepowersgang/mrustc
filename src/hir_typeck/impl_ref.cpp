@@ -40,6 +40,22 @@ bool ImplRef::more_specific_than(const ImplRef& other) const
     )
     throw "";
 }
+bool ImplRef::overlaps_with(const ImplRef& other) const
+{
+    if( this->m_data.tag() != other.m_data.tag() )
+        return false;
+    TU_MATCH(Data, (this->m_data, other.m_data), (te, oe),
+    (TraitImpl,
+        if( te.impl != nullptr && oe.impl != nullptr )
+            return te.impl->overlaps_with( *oe.impl );
+        ),
+    (BoundedPtr,
+        ),
+    (Bounded,
+        )
+    )
+    return false;
+}
 bool ImplRef::type_is_specialisable(const char* name) const
 {
     TU_MATCH(Data, (this->m_data), (e),

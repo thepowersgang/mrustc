@@ -353,6 +353,7 @@ public:
         case CORETYPE_U16:
         case CORETYPE_U32:
         case CORETYPE_U64:
+        case CORETYPE_U128:
         case CORETYPE_UINT:
         case CORETYPE_ANY:
             m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
@@ -361,9 +362,9 @@ public:
         case CORETYPE_I16:
         case CORETYPE_I32:
         case CORETYPE_I64:
+        case CORETYPE_I128:
         case CORETYPE_INT:
             m_os << (int64_t)n.m_value;
-            //m_os << "0x" << ::std::hex << n.m_value << ::std::dec;
             break;
         }
     }

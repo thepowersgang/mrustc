@@ -31,6 +31,8 @@ namespace HIR {
         case CoreType::I32: return os << "i32";
         case CoreType::U64: return os << "u64";
         case CoreType::I64: return os << "i64";
+        case CoreType::U128: return os << "u128";
+        case CoreType::I128: return os << "i128";
 
         case CoreType::F32: return os << "f32";
         case CoreType::F64: return os << "f64";
@@ -508,6 +510,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
                 case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
                 case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::I128:  case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
                     return Compare::Fuzzy;
                     //return true;
@@ -553,6 +556,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
                 case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
                 case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::I128:  case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
                     return Compare::Fuzzy;
                 default:
@@ -880,6 +884,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
                 case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
                 case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::I128:  case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
                     return Compare::Fuzzy;
                 default:
@@ -950,6 +955,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
                 case ::HIR::CoreType::I16:   case ::HIR::CoreType::U16:
                 case ::HIR::CoreType::I32:   case ::HIR::CoreType::U32:
                 case ::HIR::CoreType::I64:   case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::I128:  case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
                     return Compare::Fuzzy;
                 default:

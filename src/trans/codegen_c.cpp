@@ -709,6 +709,7 @@ namespace {
                         m_of << ::std::hex << "0x" << (e & 0xFFFFFFFF) << ::std::dec;
                         break;
                     case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::U128:
                     case ::HIR::CoreType::Usize:
                         m_of << ::std::hex << "0x" << e << ::std::dec;
                         break;
@@ -722,6 +723,7 @@ namespace {
                         m_of << static_cast<int32_t>(e);
                         break;
                     case ::HIR::CoreType::I64:
+                    case ::HIR::CoreType::I128:
                     case ::HIR::CoreType::Isize:
                         m_of << static_cast<int64_t>(e);
                         break;
@@ -1106,6 +1108,7 @@ namespace {
                                     m_of << ::std::hex << "0x" << (c & 0xFFFFFFFF) << ::std::dec;
                                     break;
                                 case ::HIR::CoreType::U64:
+                                case ::HIR::CoreType::U128:
                                 case ::HIR::CoreType::Usize:
                                     m_of << ::std::hex << "0x" << c << ::std::dec;
                                     break;
@@ -2448,6 +2451,8 @@ namespace {
                 case ::HIR::CoreType::I32: m_of << "int32_t"; break;
                 case ::HIR::CoreType::U64: m_of << "uint64_t"; break;
                 case ::HIR::CoreType::I64: m_of << "int64_t"; break;
+                case ::HIR::CoreType::U128: m_of << "uint128_t"; break;
+                case ::HIR::CoreType::I128: m_of << "int128_t"; break;
 
                 case ::HIR::CoreType::F32: m_of << "float"; break;
                 case ::HIR::CoreType::F64: m_of << "double"; break;

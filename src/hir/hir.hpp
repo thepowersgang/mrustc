@@ -383,6 +383,7 @@ public:
     }
 
     bool more_specific_than(const TraitImpl& x) const;
+    bool overlaps_with(const TraitImpl& other) const;
 };
 
 class MarkerImpl

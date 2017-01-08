@@ -23,6 +23,7 @@ static const struct {
     {"char", CORETYPE_CHAR},
     {"f32", CORETYPE_F32},
     {"f64", CORETYPE_F64},
+    {"i128", CORETYPE_I128},
     {"i16", CORETYPE_I16},
     {"i32", CORETYPE_I32},
     {"i64", CORETYPE_I64},
@@ -30,6 +31,7 @@ static const struct {
     {"int", CORETYPE_INT},
     {"isize", CORETYPE_INT},
     {"str", CORETYPE_STR},
+    {"u128", CORETYPE_U128},
     {"u16", CORETYPE_U16},
     {"u32", CORETYPE_U32},
     {"u64", CORETYPE_U64},
@@ -68,6 +70,8 @@ const char* coretype_name(const eCoreType ct ) {
     case CORETYPE_I32:  return "i32";
     case CORETYPE_U64:  return "u64";
     case CORETYPE_I64:  return "i64";
+    case CORETYPE_U128: return "u128";
+    case CORETYPE_I128: return "i128";
     case CORETYPE_F32:  return "f32";
     case CORETYPE_F64:  return "f64";
     }

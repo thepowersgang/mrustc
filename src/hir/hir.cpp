@@ -471,6 +471,7 @@ namespace {
         }
 
         // TODO: Add traits from `Self: Foo` bounds?
+        // TODO: Move associated types to the source trait.
     }
     ::std::vector< ::HIR::GenericBound> flatten_bounds(const ::std::vector<::HIR::GenericBound>& bounds)
     {
@@ -493,6 +494,7 @@ namespace {
                 )
             )
         }
+        ::std::sort(rv.begin(), rv.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
         return rv;
     }
 }
@@ -519,8 +521,6 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     // TODO: Cache these lists (calculate after outer typecheck?)
     auto bounds_t = flatten_bounds(m_params.m_bounds);
     auto bounds_o = flatten_bounds(other.m_params.m_bounds);
-    ::std::sort(bounds_t.begin(), bounds_t.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
-    ::std::sort(bounds_o.begin(), bounds_o.end(), [](const auto& a, const auto& b){ return ::ord(a,b) == OrdLess; });
 
     DEBUG("bounds_t = " << bounds_t);
     DEBUG("bounds_o = " << bounds_o);
@@ -589,6 +589,124 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
     }
 }
 
+// Returns `true` if the two impls overlap in the types they will accept
+bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
+{
+    struct H {
+        static bool types_overlap(const ::HIR::PathParams& a, const ::HIR::PathParams& b)
+        {
+            for(unsigned int i = 0; i < ::std::min(a.m_types.size(), b.m_types.size()); i ++)
+            {
+                if( ! H::types_overlap(a.m_types[i], b.m_types[i]) )
+                    return false;
+            }
+            return true;
+        }
+        static bool types_overlap(const ::HIR::TypeRef& a, const ::HIR::TypeRef& b)
+        {
+            static Span sp;
+            if( a.m_data.is_Generic() || b.m_data.is_Generic() )
+                return true;
+            // TODO: Unbound/Opaque paths?
+            if( a.m_data.tag() != b.m_data.tag() )
+                return false;
+            TU_MATCHA( (a.m_data, b.m_data), (ae, be),
+            (Generic,
+                ),
+            (Infer,
+                ),
+            (Diverge,
+                ),
+            (Closure,
+                BUG(sp, "Hit closure");
+                ),
+            (Primitive,
+                if( ae != be )
+                    return false;
+                ),
+            (Path,
+                if( ae.path.m_data.tag() != be.path.m_data.tag() )
+                    return false;
+                TU_MATCHA( (ae.path.m_data, be.path.m_data), (ape, bpe),
+                (Generic,
+                    if( ape.m_path != bpe.m_path )
+                        return false;
+                    return H::types_overlap(ape.m_params, bpe.m_params);
+                    ),
+                (UfcsUnknown,
+                    ),
+                (UfcsKnown,
+                    ),
+                (UfcsInherent,
+                    )
+                )
+                TODO(sp, "Path - " << ae.path << " and " << be.path);
+                ),
+            (TraitObject,
+                if( ae.m_trait.m_path != be.m_trait.m_path )
+                    return false;
+                TODO(sp, "TraitObject - " << a << " and " << b);
+                ),
+            (ErasedType,
+                TODO(sp, "ErasedType - " << a);
+                ),
+            (Function,
+                if( ae.is_unsafe != be.is_unsafe )
+                    return false;
+                if( ae.m_abi != be.m_abi )
+                    return false;
+                if( ae.m_arg_types.size() != be.m_arg_types.size() )
+                    return false;
+                for(unsigned int i = 0; i < ae.m_arg_types.size(); i ++)
+                {
+                    if( ! H::types_overlap(ae.m_arg_types[i], be.m_arg_types[i]) )
+                        return false;
+                }
+                ),
+            (Tuple,
+                if( ae.size() != be.size() )
+                    return false;
+                for(unsigned int i = 0; i < ae.size(); i ++)
+                {
+                    if( ! H::types_overlap(ae[i], be[i]) )
+                        return false;
+                }
+                ),
+            (Slice,
+                return H::types_overlap( *ae.inner, *be.inner );
+                ),
+            (Array,
+                if( ae.size_val != be.size_val )
+                    return false;
+                return H::types_overlap( *ae.inner, *be.inner );
+                ),
+            (Pointer,
+                if( ae.type != be.type )
+                    return false;
+                return H::types_overlap( *ae.inner, *be.inner );
+                ),
+            (Borrow,
+                if( ae.type != be.type )
+                    return false;
+                return H::types_overlap( *ae.inner, *be.inner );
+                )
+            )
+            return true;
+        }
+    };
+
+    // 1. Are the impl types of the same form (or is one generic)
+    if( ! H::types_overlap(this->m_type, other.m_type) )
+        return false;
+    if( ! H::types_overlap(this->m_trait_args, other.m_trait_args) )
+        return false;
+
+    return this->m_type == other.m_type && this->m_trait_args == other.m_trait_args;
+
+    // TODO: Detect `impl<T> Foo<T> for Bar<T>` vs `impl<T> Foo<&T> for Bar<T>`
+    // > Create values for impl params from the type, then check if the trait params are compatible
+    return true;
+}
 
 
 const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path(const Span& sp, const char* name) const

@@ -5024,7 +5024,7 @@ namespace {
                     if( out_ty_o == ::HIR::TypeRef() )
                     {
                         //BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait << " (" << ty << ")");
-                        out_ty_o = ::HIR::TypeRef( ::HIR::Path(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() )) );
+                        out_ty_o = ::HIR::TypeRef(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() ));
                     }
                     out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(out_ty_o));
 
@@ -5042,7 +5042,6 @@ namespace {
                     // if solid or fuzzy, leave as-is
                     output_type = mv$( out_ty_o );
                 }
-                count += 1;
                 if( cmp == ::HIR::Compare::Equal ) {
                     // NOTE: Sometimes equal can be returned when it's not 100% equal (TODO)
                     // - Equate the types
@@ -5055,6 +5054,7 @@ namespace {
                     return true;
                 }
                 else {
+                    count += 1;
                     DEBUG("- (possible) " << impl);
 
                     if( possible_impl_ty == ::HIR::TypeRef() ) {
@@ -5062,6 +5062,35 @@ namespace {
                         possible_params = impl.get_trait_params();
                         best_impl = mv$(impl);
                     }
+                    // TODO: If there is an existing impl, determine if this is part of the same specialisation tree
+                    // - If more specific, replace. If less, ignore.
+                    #if 1
+                    // NOTE: `overlaps_with` (should be) reflective
+                    else if( impl.overlaps_with(best_impl) )
+                    {
+                        DEBUG("- overlaps with " << best_impl);
+                        if( ! impl.more_specific_than(best_impl) )
+                        {
+                            possible_impl_ty = impl.get_impl_type();
+                            possible_params = impl.get_trait_params();
+                            best_impl = mv$(impl);
+                            count -= 1;
+                        }
+                        else if( ! best_impl.more_specific_than(impl) )
+                        {
+                            // Ignore
+                            count -= 1;
+                        }
+                        else
+                        {
+                            DEBUG("> Neither is more specific. Error?");
+                        }
+                    }
+                    else
+                    {
+                        // Disjoint impls.
+                    }
+                    #endif
 
                     return false;
                 }
@@ -5120,6 +5149,16 @@ namespace {
 
             // Only one possible impl
             if( v.name != "" ) {
+                // If the output type is just < v.impl_ty as v.trait >::v.name, return false
+                if( output_type.m_data.is_Path() && output_type.m_data.as_Path().path.m_data.is_UfcsKnown() )
+                {
+                    const auto& pe = output_type.m_data.as_Path().path.m_data.as_UfcsKnown();
+                    if( *pe.type == v.impl_ty && pe.trait.m_path == v.trait && pe.trait.m_params == v.params && pe.item == v.name )
+                    {
+                        DEBUG("- Attempted recursion, stopping it");
+                        return false;
+                    }
+                }
                 context.equate_types(sp, v.left_ty, output_type);
             }
             assert( possible_impl_ty != ::HIR::TypeRef() );
@@ -5818,16 +5857,12 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             rule.impl_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.impl_ty));
 
             if( check_associated(context, rule) ) {
-                DEBUG("- Consumed associated type rule - " << rule);
-                #if 1
+                DEBUG("- Consumed associated type rule " << i << "/" << context.link_assoc.size() << " - " << rule);
                 if( i != context.link_assoc.size()-1 )
                 {
                     context.link_assoc[i] = mv$( context.link_assoc.back() );
                 }
                 context.link_assoc.pop_back();
-                #else
-                context.link_assoc.erase( context.link_assoc.begin() + i );
-                #endif
             }
             else {
                 context.link_assoc[i] = mv$(rule);

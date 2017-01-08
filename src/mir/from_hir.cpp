@@ -983,6 +983,7 @@ namespace {
                     case ::HIR::CoreType::U16:
                     case ::HIR::CoreType::U32:
                     case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::U128:
                     case ::HIR::CoreType::Usize:
                         BUG(node.span(), "`-` operator on unsigned integer - " << ty_val);
                         break;
@@ -1611,6 +1612,7 @@ namespace {
                 case ::HIR::CoreType::U16:
                 case ::HIR::CoreType::U32:
                 case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Usize:
                     m_builder.set_result(node.span(), ::MIR::RValue( ::MIR::Constant(e.m_value) ));
                     break;
@@ -1618,6 +1620,7 @@ namespace {
                 case ::HIR::CoreType::I16:
                 case ::HIR::CoreType::I32:
                 case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::I128:
                 case ::HIR::CoreType::Isize:
                     m_builder.set_result(node.span(), ::MIR::RValue( ::MIR::Constant( static_cast<int64_t>(e.m_value) ) ));
                     break;

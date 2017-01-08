@@ -477,6 +477,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 case ::HIR::CoreType::I16:
                                 case ::HIR::CoreType::I32:
                                 case ::HIR::CoreType::I64:
+                                case ::HIR::CoreType::I128:
                                 case ::HIR::CoreType::Isize:
                                     good = true;
                                     break;
@@ -496,6 +497,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                                 case ::HIR::CoreType::U16:
                                 case ::HIR::CoreType::U32:
                                 case ::HIR::CoreType::U64:
+                                case ::HIR::CoreType::U128:
                                 case ::HIR::CoreType::Usize:
                                 case ::HIR::CoreType::Char:
                                     good = true;

@@ -38,6 +38,7 @@ enum class CoreType
     U16, I16,
     U32, I32,
     U64, I64,
+    U128, I128,
 
     F32, F64,
 
@@ -53,6 +54,7 @@ static inline bool is_integer(const CoreType& v) {
     case CoreType::U16: case CoreType::I16:
     case CoreType::U32: case CoreType::I32:
     case CoreType::U64: case CoreType::I64:
+    case CoreType::U128: case CoreType::I128:
         return true;
     default:
         return false;
