@@ -1996,24 +1996,21 @@ namespace {
             }
             // --- Floating Point
             // > Round to nearest integer, half-way rounds away from zero
-            else if( name == "roundf32" ) {
-                emit_lvalue(e.ret_val); m_of << " = roundf("; emit_lvalue(e.args.at(0)); m_of << ")";
+            else if( name == "roundf32" && name == "roundf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
             }
-            else if( name == "roundf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = round("; emit_lvalue(e.args.at(0)); m_of << ")";
+            else if( name == "fabsf32" || name == "fabsf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = fabs" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "copysignf32" || name == "copysignf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = copysign" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
             }
             // > Returns the integer part of an `f32`.
-            else if( name == "truncf32" ) {
-                emit_lvalue(e.ret_val); m_of << " = truncf("; emit_lvalue(e.args.at(0)); m_of << ")";
+            else if( name == "truncf32" || name == "truncf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = trunc" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
             }
-            else if( name == "truncf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = trunc("; emit_lvalue(e.args.at(0)); m_of << ")";
-            }
-            else if( name == "powif32" ) {
-                emit_lvalue(e.ret_val); m_of << " = powf("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
-            }
-            else if( name == "powif64" ) {
-                emit_lvalue(e.ret_val); m_of << " = pow(";  emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
+            else if( name == "powif32" || name == "powif64" ) {
+                emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
             }
             // --- Atomics!
             // > Single-ordering atomics
