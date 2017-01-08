@@ -43,6 +43,63 @@ Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs);
 
+//::AST::Path Parse_Publicity(TokenStream& lex)
+bool Parse_Publicity(TokenStream& lex)
+{
+    Token   tok;
+    if( LOOK_AHEAD(lex) == TOK_RWORD_PUB )
+    {
+        GET_TOK(tok, lex);
+        if( LOOK_AHEAD(lex) == TOK_PAREN_OPEN )
+        {
+            auto    path = AST::Path("", {});
+            // Restricted publicity.
+            GET_TOK(tok, lex);  // '('
+
+            switch(GET_TOK(tok, lex))
+            {
+            case TOK_RWORD_CRATE:
+                // Crate visibility
+                break;
+            case TOK_RWORD_SELF:
+                // Private!
+                path = AST::Path( lex.parse_state().get_current_mod().path() );
+                break;
+            case TOK_RWORD_SUPER:
+                path = AST::Path( lex.parse_state().get_current_mod().path() );
+                path.nodes().pop_back();
+                while( lex.lookahead(0) == TOK_DOUBLE_COLON && lex.lookahead(1) == TOK_RWORD_SUPER )
+                {
+                    GET_TOK(tok, lex);
+                    GET_TOK(tok, lex);
+                    path.nodes().pop_back();
+                }
+                if( lex.lookahead(0) != TOK_DOUBLE_COLON )
+                    break;
+                GET_TOK(tok, lex);
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            case TOK_IDENT:
+                path.nodes().push_back( AST::PathNode(tok.str()) );
+                while( LOOK_AHEAD(lex) == TOK_DOUBLE_COLON )
+                {
+                    GET_TOK(tok, lex);
+                    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                    path.nodes().push_back( AST::PathNode(tok.str()) );
+                }
+                break;
+            default:
+                throw ParseError::Unexpected(lex, tok);
+            }
+            GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+        }
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
 ::std::vector< ::std::string> Parse_HRB(TokenStream& lex)
 {
     TRACE_FUNCTION;
@@ -483,11 +540,8 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             }
             SET_ATTRS(lex, item_attrs);
 
-            bool    is_pub = false;
-            if(tok.type() == TOK_RWORD_PUB)
-                is_pub = true;
-            else
-                PUTBACK(tok, lex);
+            PUTBACK(tok, lex);
+            bool    is_pub = Parse_Publicity(lex);
 
             refs.push_back( AST::TupleItem( mv$(item_attrs), is_pub, Parse_Type(lex) ) );
             if( GET_TOK(tok, lex) != TOK_COMMA )
@@ -524,13 +578,10 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             }
             SET_ATTRS(lex, item_attrs);
 
-            bool    is_pub = false;
-            if(tok.type() == TOK_RWORD_PUB) {
-                is_pub = true;
-                GET_TOK(tok, lex);
-            }
+            PUTBACK(tok, lex);
+            bool is_pub = Parse_Publicity(lex);
 
-            CHECK_TOK(tok, TOK_IDENT);
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
             auto name = mv$(tok.str());
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             TypeRef type = Parse_Type(lex);
@@ -883,11 +934,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
         }
         SET_ATTRS(lex, item_attrs);
 
-        bool is_pub = false;
-        if( LOOK_AHEAD(lex) == TOK_RWORD_PUB ) {
-            is_pub = true;
-            GET_TOK(tok, lex);
-        }
+        bool is_pub = Parse_Publicity(lex);
 
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto name = mv$(tok.str());
@@ -1066,11 +1113,9 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
 
     auto ps = lex.start_span();
 
-    bool is_public = false;
-    if(tok.type() == TOK_RWORD_PUB) {
-        is_public = true;
-        GET_TOK(tok, lex);
-    }
+    PUTBACK(tok, lex);
+    bool is_public = Parse_Publicity(lex);
+    GET_TOK(tok, lex);
 
     bool is_specialisable = false;
     if( tok.type() == TOK_IDENT && tok.str() == "default" ) {
@@ -1178,12 +1223,9 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::M
 
         auto ps = lex.start_span();
 
-        bool is_public = false;
-        if( tok.type() == TOK_RWORD_PUB ) {
-            is_public = true;
-            GET_TOK(tok, lex);
-        }
-        switch(tok.type())
+        PUTBACK(tok, lex);
+        bool is_public = Parse_Publicity(lex);
+        switch( GET_TOK(tok, lex) )
         {
         case TOK_RWORD_FN: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -1413,13 +1455,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         return ::AST::Named< ::AST::Item> { "", mv$(item_data), false };
     }
 
-    bool    is_public = false;
-    if( GET_TOK(tok, lex) == TOK_RWORD_PUB ) {
-        is_public = true;
-    }
-    else {
-        PUTBACK(tok, lex);
-    }
+    bool    is_public = Parse_Publicity(lex);
 
     switch( GET_TOK(tok, lex) )
     {
@@ -1788,13 +1824,11 @@ void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_item
     Token   tok;
 
     // `use ...`
+    // TODO: This doesn't spot `pub(path) use`.
     if( LOOK_AHEAD(lex) == TOK_RWORD_USE || (lex.lookahead(0) == TOK_RWORD_PUB && lex.lookahead(1) == TOK_RWORD_USE) )
     {
-        bool    is_public = false;
-        if( GET_TOK(tok, lex) == TOK_RWORD_PUB ) {
-            is_public = true;
-            GET_TOK(tok, lex);
-        }
+        bool    is_public = Parse_Publicity(lex);
+        GET_CHECK_TOK(tok, lex, TOK_RWORD_USE);
 
         Parse_Use(lex, [&mod,is_public,&meta_items](AST::UseStmt p, std::string s) {
                 DEBUG(mod.path() << " - use " << p << " as '" << s << "'");
