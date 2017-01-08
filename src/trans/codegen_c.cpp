@@ -1752,7 +1752,7 @@ namespace {
                     emit_lvalue(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(*te->inner); m_of << ")";
                 }
                 else if( inner_ty == ::HIR::CoreType::Str ) {
-                    if( ! ty.m_data.is_Slice() ) {
+                    if( ! ty.m_data.is_Primitive() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
                     emit_lvalue(e.args.at(0)); m_of << ".META";
