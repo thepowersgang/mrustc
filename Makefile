@@ -163,7 +163,7 @@ output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/li
 output/liballoc_system.hir: $(call fcn_extcrate, core libc)
 output/liballoc_jemalloc.hir: $(call fcn_extcrate, core libc)
 
-output/libserialize.hir: $(call fcn_extcrate, std log)
+output/libserialize.hir: $(call fcn_extcrate, std log rustc_i128)
 output/librustc_llvm.hir: $(call fcn_extcrate, std rustc_bitflags)
 output/librustc_errors.hir: $(call fcn_extcrate, std syntax_pos term)
 output/libsyntax.hir: $(call fcn_extcrate, std core serialize term libc log rustc_bitflags rustc_unicode rustc_errors syntax_pos rustc_data_structures)
