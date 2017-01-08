@@ -593,6 +593,10 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             DEBUG("- Fuzzy match due to unbound - " << v << " = " << x);
             return Compare::Fuzzy;
         }
+        if( v.m_data.is_Path() && v.m_data.as_Path().binding.is_Unbound() ) {
+            DEBUG("- Fuzzy match due to unbound - " << v << " = " << x);
+            return Compare::Fuzzy;
+        }
         // HACK: If the RHS is a placeholder generic, allow it.
         if( x.m_data.is_Generic() && (x.m_data.as_Generic().binding >> 8) == 2 ) {
             DEBUG("- Fuzzy match due to placeholder - " << v << " = " << x);

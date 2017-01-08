@@ -26,7 +26,7 @@ class CodeGenerator
 {
 public:
     virtual ~CodeGenerator() {}
-    virtual void finalise() {}
+    virtual void finalise(bool is_executable) {}
 
     // Called on all types directly mentioned (e.g. variables, arguments, and fields)
     // - Inner-most types are visited first.

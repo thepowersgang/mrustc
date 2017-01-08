@@ -16,4 +16,4 @@ class Crate;
 extern TransList Trans_Enumerate_Main(const ::HIR::Crate& crate);
 extern TransList Trans_Enumerate_Public(const ::HIR::Crate& crate);
 
-extern void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, const TransList& list);
+extern void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, const TransList& list, bool is_executable);

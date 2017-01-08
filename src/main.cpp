@@ -434,19 +434,19 @@ int main(int argc, char *argv[])
         case ::AST::Crate::Type::Unknown:
             // ERROR?
             break;
-        case ::AST::Crate::Type::RustLib:
+        case ::AST::Crate::Type::RustLib: {
+            TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".c", *hir_crate, items, false); });
+            // Generate a .o
+            //HIR_Codegen_Lib(params.outfile + ".o", *hir_crate);
+            // Link metatdata and object into a .rlib
+
             // Save a loadable HIR dump
             CompilePhaseV("HIR Serialise", [&]() {
                 //HIR_Serialise(params.outfile + ".meta", *hir_crate);
                 HIR_Serialise(params.outfile, *hir_crate);
                 });
-            //TransList   items;
-            //CompilePhaseV("Trans Enumerate", [&]() { Trans_Enumerate_Public(*hir_crate); });
-            //CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", *hir_crate, items); });
-            // Generate a .o
-            //HIR_Codegen_Lib(params.outfile + ".o", *hir_crate);
-            // Link metatdata and object into a .rlib
-            break;
+            break; }
         case ::AST::Crate::Type::RustDylib:
             // Save a loadable HIR dump
             CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
@@ -465,7 +465,7 @@ int main(int argc, char *argv[])
             // - Enumerate items for translation
             TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
             // - Perform codegen
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, *hir_crate, items); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, *hir_crate, items, true); });
             // - Invoke linker?
             break;
         }

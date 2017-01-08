@@ -78,7 +78,7 @@ namespace {
 
         ~CodeGenerator_C() {}
 
-        void finalise() override
+        void finalise(bool is_executable) override
         {
             // Emit box drop glue after everything else to avoid definition ordering issues
             for(auto& e : m_box_glue_todo)
@@ -86,12 +86,17 @@ namespace {
                 emit_box_drop_glue( mv$(e.first), *e.second );
             }
 
-            m_of
-                << "int main(int argc, const char* argv[]) {\n"
-                << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
-                    << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath("", {"main"})) ) << ", argc, (uint8_t**)argv"
-                    << ");\n"
-                << "}\n";
+            if( is_executable )
+            {
+                m_of
+                    << "int main(int argc, const char* argv[]) {\n"
+                    << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
+                        << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath("", {"main"})) ) << ", argc, (uint8_t**)argv"
+                        << ");\n"
+                    << "}\n";
+            }
+
+            // Execute $CC with the required libraries
         }
 
         void emit_box_drop_glue(::HIR::GenericPath p, const ::HIR::Struct& item)

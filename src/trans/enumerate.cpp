@@ -105,8 +105,17 @@ namespace {
                     {
                         state.enum_fcn(mod_path + vi.first, e, {});
                     }
+                    // TODO: If generic, enumerate concrete functions used
                     )
                 )
+            }
+        }
+
+        for(const auto& ti : mod.m_mod_items)
+        {
+            if( ti.second->is_public && ti.second->ent.is_Module() )
+            {
+                Trans_Enumerate_Public_Mod(state, ti.second->ent.as_Module(), mod_path + ti.first);
             }
         }
     }
@@ -115,11 +124,99 @@ namespace {
 /// Enumerate trans items for all public non-generic items (library crate)
 TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
 {
+    static Span sp;
     EnumState   state { crate };
 
     Trans_Enumerate_Public_Mod(state, crate.m_root_module,  ::HIR::SimplePath("",{}));
 
-    return Trans_Enumerate_CommonPost(state);
+    // Impl blocks
+    for(const auto& impl : crate.m_trait_impls)
+    {
+        if( impl.second.m_params.m_types.size() > 0 )
+            continue ;
+
+        // Emit each method/static (in the trait itself)
+        const auto& trait = crate.get_trait_by_path(sp, impl.first);
+        for(const auto& vi : trait.m_values)
+        {
+            if( vi.second.is_Constant() )
+                ;
+            else if( vi.second.is_Function() && vi.second.as_Function().m_params.m_types.size() > 0 )
+                ;
+            else if( vi.first == "#vtable" )
+                ;
+            else
+            {
+                auto p = ::HIR::Path(impl.second.m_type.clone(), ::HIR::GenericPath(impl.first, impl.second.m_trait_args.clone()), vi.first);
+                Trans_Enumerate_FillFrom_Path(state, p, {});
+            }
+        }
+    }
+
+    auto rv = Trans_Enumerate_CommonPost(state);
+
+    struct H
+    {
+        static bool is_generic(const ::HIR::TypeRef& ty)
+        {
+            return visit_ty_with(ty, [&](const auto& ty) {
+                return ty.m_data.is_Generic();
+                });
+        }
+        static bool is_generic(const ::HIR::PathParams& pp)
+        {
+            for(const auto& ty : pp.m_types)
+                if( is_generic(ty) )
+                    return true;
+            return false;
+        }
+        static bool is_generic(const ::HIR::Path& p)
+        {
+            TU_MATCHA( (p.m_data), (pe),
+            (Generic,
+                return is_generic(pe.m_params);
+                ),
+            (UfcsKnown,
+                if( is_generic(*pe.type) )
+                    return true;
+                if( is_generic(pe.trait.m_params) )
+                    return true;
+                if( is_generic(pe.params) )
+                    return true;
+                ),
+            (UfcsInherent,
+                if( is_generic(*pe.type) )
+                    return true;
+                if( is_generic(pe.params) )
+                    return true;
+                ),
+            (UfcsUnknown,
+                )
+            )
+            return false;
+        }
+    };
+
+    // Strip out any functions/types/statics that are still generic?
+    for(auto it = rv.m_functions.begin(); it != rv.m_functions.end(); )
+    {
+        if( H::is_generic(it->first) ) {
+            rv.m_functions.erase(it++);
+        }
+        else {
+            ++ it;
+        }
+    }
+    for(auto it = rv.m_statics.begin(); it != rv.m_statics.end(); )
+    {
+        if( H::is_generic(it->first) ) {
+            rv.m_statics.erase(it++);
+        }
+        else {
+            ++ it;
+        }
+    }
+    return rv;
 }
 
 

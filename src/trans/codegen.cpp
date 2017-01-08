@@ -14,7 +14,7 @@
 #include "codegen.hpp"
 #include "monomorphise.hpp"
 
-void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, const TransList& list)
+void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, const TransList& list, bool is_executable)
 {
     static Span sp;
     auto codegen = Trans_Codegen_GetGeneratorC(crate, outfile);
@@ -131,6 +131,6 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
         }
     }
 
-    codegen->finalise();
+    codegen->finalise(is_executable);
 }
 
