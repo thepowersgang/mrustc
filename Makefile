@@ -144,8 +144,8 @@ fn_getdeps = \
 
 output/libarena.hir: output/libstd.hir
 output/liballoc.hir: output/libcore.hir
-output/librustc_unicode.hir: output/libcore.hir
-output/libcollections.hir: output/libcore.hir output/liballoc.hir output/librustc_unicode.hir
+output/libstd_unicode.hir: output/libcore.hir
+output/libcollections.hir: output/libcore.hir output/liballoc.hir output/libstd_unicode.hir
 output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
 output/libcompiler_builtins.hir: output/libcore.hir
@@ -216,7 +216,7 @@ $(RUSTCSRC): rust-nightly-date
 		rm -f rustc-nightly-src.tar.gz; \
 		rm -rf rustc-nightly; \
 		curl -s https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz; \
-		tar -xf rustc-nightly-src.tar.gz; \
+		tar -xf rustc-nightly-src.tar.gz --transform 's~^rustc-nightly-src~rustc-nightly~'; \
 		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
 	fi
 
