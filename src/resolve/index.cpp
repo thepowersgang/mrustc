@@ -12,6 +12,9 @@ enum class IndexName
     Type,
     Value,
 };
+
+void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst_mod, const AST::UseStmt& i_data, bool is_pub);
+
 ::std::ostream& operator<<(::std::ostream& os, const IndexName& loc)
 {
     switch(loc)
@@ -376,152 +379,147 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
     }
 }
 
-void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod, bool handle_pub)
+void Resolve_Index_Module_Wildcard__submod(AST::Crate& crate, AST::Module& dst_mod, const AST::Module& src_mod, bool import_as_pub)
 {
-    TRACE_FUNCTION_F("mod = " << mod.path() << ", handle_pub=" << handle_pub);
-    //if( mod.m_index_populated == 2 ) {
-    //    DEBUG("- Index pre-populated")
-    //    return ;
-    //}
+    static Span sp;
+    TRACE_FUNCTION_F(src_mod.path());
+    static ::std::set<const AST::Module*>   stack;
+    if( ! stack.insert( &src_mod ).second )
+    {
+        DEBUG("- Avoided recursion");
+        return ;
+    }
 
-    // Glob/wildcard imports
+    // TODO: Publicity of the source item shouldn't matter.
+    // - Publicity should be a path, not a boolean.
+    for(const auto& vi : src_mod.m_namespace_items) {
+        _add_item( sp, dst_mod, IndexName::Namespace, vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+    }
+    for(const auto& vi : src_mod.m_type_items) {
+        _add_item( sp, dst_mod, IndexName::Type     , vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+    }
+    for(const auto& vi : src_mod.m_value_items) {
+        _add_item( sp, dst_mod, IndexName::Value    , vi.first, vi.second.is_pub && import_as_pub, vi.second.path, false );
+    }
+
+    if( src_mod.m_index_populated != 2 )
+    {
+        for( const auto& i : src_mod.items() )
+        {
+            if( ! i.data.is_Use() )
+                continue ;
+            if( i.name != "" )
+                continue ;
+            Resolve_Index_Module_Wildcard__use_stmt(crate, dst_mod, i.data.as_Use(), import_as_pub);
+        }
+    }
+
+    stack.erase(&src_mod);
+}
+
+void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst_mod, const AST::UseStmt& i_data, bool is_pub)
+{
+    const auto& sp = i_data.sp;
+    const auto& b = i_data.path.binding();
+
+    TU_IFLET(::AST::PathBinding, b, Crate, e,
+        DEBUG("Glob crate " << i_data.path);
+        const auto& hmod = e.crate_->m_hir->m_root_module;
+        Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub);
+    )
+    else TU_IFLET(::AST::PathBinding, b, Module, e,
+        DEBUG("Glob mod " << i_data.path);
+        if( !e.module_ )
+        {
+            ASSERT_BUG(sp, e.hir, "Glob import where HIR module pointer not set - " << i_data.path);
+            const auto& hmod = *e.hir;
+            Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub);
+        }
+        else
+        {
+            Resolve_Index_Module_Wildcard__submod(crate, dst_mod, *e.module_, is_pub);
+        }
+    )
+    else TU_IFLET(::AST::PathBinding, b, Enum, e,
+        ASSERT_BUG(sp, e.enum_ || e.hir, "Glob import but enum pointer not set - " << i_data.path);
+        if( e.enum_ )
+        {
+            DEBUG("Glob enum " << i_data.path << " (AST)");
+            unsigned int idx = 0;
+            for( const auto& ev : e.enum_->variants() ) {
+                ::AST::Path p = i_data.path + ev.m_name;
+                p.bind( ::AST::PathBinding::make_EnumVar({e.enum_, idx}) );
+                if( ev.m_data.is_Struct() ) {
+                    _add_item_type ( sp, dst_mod, ev.m_name, is_pub, mv$(p), false );
+                }
+                else {
+                    _add_item_value( sp, dst_mod, ev.m_name, is_pub, mv$(p), false );
+                }
+
+                idx += 1;
+            }
+        }
+        else
+        {
+            DEBUG("Glob enum " << i_data.path << " (HIR)");
+            unsigned int idx = 0;
+            for( const auto& ev : e.hir->m_variants )
+            {
+                ::AST::Path p = i_data.path + ev.first;
+                p.bind( ::AST::PathBinding::make_EnumVar({nullptr, idx, e.hir}) );
+
+                if( ev.second.is_Struct() ) {
+                    _add_item_type ( sp, dst_mod, ev.first, is_pub, mv$(p), false );
+                }
+                else {
+                    _add_item_value( sp, dst_mod, ev.first, is_pub, mv$(p), false );
+                }
+
+                idx += 1;
+            }
+        }
+    )
+    else
+    {
+        BUG(sp, "Invalid path binding for glob import: " << b.tag_str() << " - "<<i_data.path);
+    }
+}
+
+// Wildcard (aka glob) import resolution
+//
+// Strategy:
+// - HIR just imports the items
+// - Enums import all variants
+// - AST modules: (See Resolve_Index_Module_Wildcard__submod)
+//  - Clone index in (marked as publicity and weak)
+//  - Recurse into globs
+void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod)
+{
+    TRACE_FUNCTION_F("mod = " << mod.path());
     for( const auto& i : mod.items() )
     {
         if( ! i.data.is_Use() )
             continue ;
-        const auto& i_data = i.data.as_Use();
-
-        if( i.name == "" && i.is_pub == handle_pub )
-        {
-            const auto& sp = i_data.sp;
-            const auto& b = i_data.path.binding();
-            TU_MATCH_DEF(::AST::PathBinding, (b), (e),
-            (
-                BUG(sp, "Glob import of invalid type encountered");
-                ),
-            (Unbound,
-                BUG(sp, "Import left unbound ("<<i_data.path<<")");
-                ),
-            (Variable,
-                BUG(sp, "Import was bound to variable");
-                ),
-            (TypeParameter,
-                BUG(sp, "Import was bound to type parameter");
-                ),
-            (TraitMethod,
-                BUG(sp, "Import was bound to trait method");
-                ),
-            (StructMethod,
-                BUG(sp, "Import was bound to struct method");
-                ),
-
-            (Crate,
-                DEBUG("Glob crate " << i_data.path);
-                const auto& hmod = e.crate_->m_hir->m_root_module;
-                Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, mod, hmod, i_data.path, i.is_pub);
-                ),
-            (Module,
-                DEBUG("Glob mod " << i_data.path);
-                if( !e.module_ )
-                {
-                    ASSERT_BUG(sp, e.hir, "Glob import where HIR module pointer not set - " << i_data.path);
-                    const auto& hmod = *e.hir;
-                    Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, mod, hmod, i_data.path, i.is_pub);
-                }
-                else if( e.module_ == &mod ) {
-                    // NOTE: Happens in libcore's prelude due to `#[prelude_import] use prelude::v1::*;
-                    //ERROR(sp, E0000, "Glob import of self");
-                }
-                else
-                {
-                    // 1. Begin indexing of this module if it is not already indexed
-                    assert( e.module_->m_index_populated != 0 );
-                    if( e.module_->m_index_populated == 1 )
-                    {
-                        // TODO: Handle wildcard import of a module with a public wildcard import
-                        // TODO XXX: Huge chance of infinite recursion here (if the code recursively references)
-                        Resolve_Index_Module_Wildcard(crate, *const_cast<AST::Module*>(e.module_), true);
-                        assert(e.module_->m_index_populated == 2);
-                        DEBUG("- Globbing in " << i_data.path);
-                    }
-                    for(const auto& vi : e.module_->m_namespace_items) {
-                        if( vi.second.is_pub ) {
-                            _add_item( sp, mod, IndexName::Namespace, vi.first, i.is_pub, vi.second.path, false );
-                        }
-                    }
-                    for(const auto& vi : e.module_->m_type_items) {
-                        if( vi.second.is_pub ) {
-                            _add_item( sp, mod, IndexName::Type, vi.first, i.is_pub, vi.second.path, false );
-                        }
-                    }
-                    for(const auto& vi : e.module_->m_value_items) {
-                        if( vi.second.is_pub ) {
-                            _add_item( sp, mod, IndexName::Value, vi.first, i.is_pub, vi.second.path, false );
-                        }
-                    }
-                }
-                ),
-            (Enum,
-                ASSERT_BUG(sp, e.enum_ || e.hir, "Glob import but enum pointer not set - " << i_data.path);
-                if( e.enum_ )
-                {
-                    DEBUG("Glob enum " << i_data.path << " (AST)");
-                    unsigned int idx = 0;
-                    for( const auto& ev : e.enum_->variants() ) {
-                        ::AST::Path p = i_data.path + ev.m_name;
-                        p.bind( ::AST::PathBinding::make_EnumVar({e.enum_, idx}) );
-                        if( ev.m_data.is_Struct() ) {
-                            _add_item_type ( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
-                        }
-                        else {
-                            _add_item_value( sp, mod, ev.m_name, i.is_pub, mv$(p), false );
-                        }
-
-                        idx += 1;
-                    }
-                }
-                else
-                {
-                    DEBUG("Glob enum " << i_data.path << " (HIR)");
-                    unsigned int idx = 0;
-                    for( const auto& ev : e.hir->m_variants )
-                    {
-                        ::AST::Path p = i_data.path + ev.first;
-                        p.bind( ::AST::PathBinding::make_EnumVar({nullptr, idx, e.hir}) );
-
-                        if( ev.second.is_Struct() ) {
-                            _add_item_type ( sp, mod, ev.first, i.is_pub, mv$(p), false );
-                        }
-                        else {
-                            _add_item_value( sp, mod, ev.first, i.is_pub, mv$(p), false );
-                        }
-
-                        idx += 1;
-                    }
-                }
-                )
-            )
-        }
+        if( i.name != "" )
+            continue ;
+        Resolve_Index_Module_Wildcard__use_stmt(crate, mod, i.data.as_Use(), i.is_pub);
     }
 
-    // handle_pub == true first, leading to full resoltion no matter what
+    // Mark this as having all the items it ever will.
     mod.m_index_populated = 2;
 
     // Handle child modules
     for( auto& i : mod.items() )
     {
-        TU_MATCH_DEF(AST::Item, (i.data), (e),
-        (
-            ),
-        (Module,
-            Resolve_Index_Module_Wildcard(crate, e, handle_pub);
-            )
-        )
+        if( auto* e = i.data.opt_Module() )
+        {
+            Resolve_Index_Module_Wildcard(crate, *e);
+        }
     }
     for(auto& mp : mod.anon_mods())
     {
         if( mp ) {
-            Resolve_Index_Module_Wildcard(crate, *mp, handle_pub);
+            Resolve_Index_Module_Wildcard(crate, *mp);
         }
     }
 }
@@ -726,10 +724,8 @@ void Resolve_Index(AST::Crate& crate)
 {
     // - Index all explicitly named items
     Resolve_Index_Module_Base(crate, crate.m_root_module);
-    // - Add all public glob imported items - `pub use module::*`
-    Resolve_Index_Module_Wildcard(crate, crate.m_root_module, true);
-    // - Add all private glob imported items
-    Resolve_Index_Module_Wildcard(crate, crate.m_root_module, false);
+    // - Index wildcard imports
+    Resolve_Index_Module_Wildcard(crate, crate.m_root_module);
 
     // - Normalise the index (ensuring all paths point directly to the item)
     Resolve_Index_Module_Normalise(crate, Span(), crate.m_root_module);
