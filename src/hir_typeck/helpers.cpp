@@ -2289,7 +2289,9 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
     // TODO: A bound can imply something via its associated types. How deep can this go?
     // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
     return this->iterate_bounds([&](const auto& b) {
-        TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
+        if( b.is_TraitBound() )
+        {
+            const auto& e = b.as_TraitBound();
             const auto& b_params = e.trait.m_path.m_params;
 
             auto cmp = e.type .compare_with_placeholders(sp, type, m_ivars.callback_resolve_infer());
@@ -2348,11 +2350,12 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 // Check the trait params
                 auto ord = this->compare_pp(sp, b_params, assoc_info->trait.m_params);
                 if( ord == ::HIR::Compare::Fuzzy ) {
-                    TODO(sp, "Handle fuzzy matches searching for associated type bounds");
+                    //TODO(sp, "Handle fuzzy matches searching for associated type bounds");
                 }
-                if( ord == ::HIR::Compare::Unequal ) {
+                else if( ord == ::HIR::Compare::Unequal ) {
                     return false;
                 }
+                auto outer_ord = ord;
 
                 const auto& trait_ref = *e.trait.m_trait_ptr;
                 const auto& at = trait_ref.m_types.at(assoc_info->item);
@@ -2372,14 +2375,14 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                             };
 
                         DEBUG("- Found an associated type bound for this trait via another bound");
-                        ::HIR::Compare  ord;
+                        ::HIR::Compare  ord = outer_ord;
                         if( monomorphise_pathparams_needed(bound.m_path.m_params) ) {
                             // TODO: Use a compare+callback method instead
                             auto b_params_mono = monomorphise_path_params_with(sp, bound.m_path.m_params, monomorph_cb, false);
-                            ord = this->compare_pp(sp, b_params_mono, params);
+                            ord &= this->compare_pp(sp, b_params_mono, params);
                         }
                         else {
-                            ord = this->compare_pp(sp, bound.m_path.m_params, params);
+                            ord &= this->compare_pp(sp, bound.m_path.m_params, params);
                         }
                         if( ord == ::HIR::Compare::Unequal )
                             return false;
@@ -2402,7 +2405,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
             }
 
             return false;
-        )
+        }
         return false;
     });
 }
