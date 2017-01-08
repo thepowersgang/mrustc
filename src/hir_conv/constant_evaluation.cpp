@@ -328,8 +328,11 @@ namespace {
             }
             void visit(::HIR::ExprNode_BinOp& node) override {
                 TRACE_FUNCTION_F("_BinOp");
+
                 node.m_left->visit(*this);
                 auto left = mv$(m_rv);
+                auto ret_type = mv$(m_rv_type);
+
                 node.m_right->visit(*this);
                 auto right = mv$(m_rv);
 
@@ -425,7 +428,7 @@ namespace {
                     break;
                 }
 
-                m_rv_type = m_exp_type.clone();
+                m_rv_type = mv$(ret_type);
             }
             void visit(::HIR::ExprNode_UniOp& node) override {
                 TRACE_FUNCTION_FR("_UniOp", m_rv);

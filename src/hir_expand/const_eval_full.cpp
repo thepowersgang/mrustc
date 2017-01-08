@@ -569,6 +569,14 @@ namespace {
                         else {
                             BUG(sp, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                         }
+                        ),
+                    (Borrow,
+                        TU_IFLET( ::HIR::Literal, inval, BorrowOf, i,
+                            val = mv$(inval);
+                        )
+                        else {
+                            BUG(sp, "Invalid cast of " << inval.tag_str() << " to " << e.type);
+                        }
                         )
                     )
                     ),
