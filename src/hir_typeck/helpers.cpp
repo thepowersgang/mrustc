@@ -2807,10 +2807,25 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     auto cb_infer = [&](const auto& ty)->const auto& {
         if( ty.m_data.is_Infer() )
             return this->m_ivars.get_type(ty);
+        #if 0
         else if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) { // Generic group 2 = Placeholders
             unsigned int i = ty.m_data.as_Generic().binding % 256;
-            TODO(sp, "Obtain placeholder " << i);
+            ASSERT_BUG(sp, i < impl_params.size(), "Placeholder param out of range - " << i << " >= " << placeholders.size());
+            if( impl_params[i] )
+            {
+                DEBUG("[ftic_check_params:cb_infer] " << ty << " = " << *impl_params[i]);
+                return *impl_params[i];
+            }
+            else
+            {
+                ASSERT_BUG(sp, i < placeholders.size(), "Placeholder param out of range - " << i << " >= " << placeholders.size());
+                const auto& ph = placeholders[i];
+                if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == i )
+                    TODO(sp, "[ftic_check_params:cb_infer] Placeholder " << i << " not yet bound");
+                return ph;
+            }
         }
+        #endif
         else
             return ty;
         };
