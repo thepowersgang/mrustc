@@ -523,6 +523,7 @@ namespace {
                     case ::HIR::CoreType::I16:  case ::HIR::CoreType::U16:
                     case ::HIR::CoreType::I32:  case ::HIR::CoreType::U32:
                     case ::HIR::CoreType::I64:  case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::I128: case ::HIR::CoreType::U128:
                     case ::HIR::CoreType::Isize:  case ::HIR::CoreType::Usize:
                         TU_MATCH_DEF( ::HIR::Literal, (val), (ve),
                         ( BUG(node.span(), "Cast to float, bad literal " << val.tag_str()); ),
@@ -662,6 +663,8 @@ namespace {
                     node.m_args[i]->visit(*this);
                     args.push_back( mv$(m_rv) );
                 }
+
+                exp_ret_type = fcn.m_return.clone();
 
                 // Call by invoking evaluate_constant on the function
                 {
@@ -1034,7 +1037,7 @@ namespace {
 
     ::HIR::Literal evaluate_constant_mir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::MIR::Function& fcn, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
     {
-        TRACE_FUNCTION;
+        TRACE_FUNCTION_F("exp=" << exp << ", args=" << args);
 
         StaticTraitResolve  resolve { crate };
         ::MIR::TypeResolve  state { sp, resolve, FMT_CB(), exp, {}, fcn };
@@ -1206,6 +1209,8 @@ namespace {
                             if(0)
                         case ::HIR::CoreType::I64:
                         case ::HIR::CoreType::U64:
+                        case ::HIR::CoreType::I128: // TODO: Proper support for 128 bit integers in consteval
+                        case ::HIR::CoreType::U128:
                         case ::HIR::CoreType::Usize:
                         case ::HIR::CoreType::Isize:
                             mask = 0xFFFFFFFFFFFFFFFF;
@@ -1399,6 +1404,46 @@ namespace {
                 cur_block = e;
                 ),
             (Return,
+                if( exp.m_data.is_Primitive() )
+                {
+                    switch( exp.m_data.as_Primitive() )
+                    {
+                    case ::HIR::CoreType::I8:
+                    case ::HIR::CoreType::I16:
+                    case ::HIR::CoreType::I32:
+                        MIR_ASSERT(state, retval.is_Integer(), "Int ret without a integer value - " << retval);
+                        break;
+                    case ::HIR::CoreType::I64:  case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::I128: case ::HIR::CoreType::U128:
+                    case ::HIR::CoreType::Isize: case ::HIR::CoreType::Usize:
+                        MIR_ASSERT(state, retval.is_Integer(), "Int ret without a integer value - " << retval);
+                        break;
+                    case ::HIR::CoreType::U32:
+                        MIR_ASSERT(state, retval.is_Integer(), "Int ret without a integer value - " << retval);
+                        retval.as_Integer() &= 0xFFFFFFFF;
+                        break;
+                    case ::HIR::CoreType::U16:
+                        MIR_ASSERT(state, retval.is_Integer(), "Int ret without a integer value - " << retval);
+                        retval.as_Integer() &= 0xFFFF;
+                        break;
+                    case ::HIR::CoreType::U8:
+                        MIR_ASSERT(state, retval.is_Integer(), "Int ret without a integer value - " << retval);
+                        retval.as_Integer() &= 0xFF;
+                        break;
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
+                        MIR_ASSERT(state, retval.is_Float(), "Float ret without a float value");
+                        break;
+                    case ::HIR::CoreType::Char:
+                        MIR_ASSERT(state, retval.is_Integer(), "`char` ret without an int value");
+                        MIR_ASSERT(state, retval.as_Integer() <= 0x10FFFF, "`char` ret out of range - " << retval);
+                        break;
+                    case ::HIR::CoreType::Bool:
+                        break;
+                    case ::HIR::CoreType::Str:
+                        BUG(sp, "Bare str return type");
+                    }
+                }
                 return retval;
                 ),
             (Call,
@@ -1418,7 +1463,7 @@ namespace {
                 // Call by invoking evaluate_constant on the function
                 {
                     TRACE_FUNCTION_F("Call const fn " << fcnp << " args={ " << call_args << " }");
-                    dst = evaluate_constant(sp, crate, newval_state,  fcn.m_code, ::HIR::TypeRef(), mv$(call_args));
+                    dst = evaluate_constant(sp, crate, newval_state,  fcn.m_code, fcn.m_return.clone(), mv$(call_args));
                 }
 
                 cur_block = e.ret_block;
