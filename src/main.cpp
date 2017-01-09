@@ -435,17 +435,19 @@ int main(int argc, char *argv[])
             // ERROR?
             break;
         case ::AST::Crate::Type::RustLib: {
+            // Generate a .o
+            #if 0
             TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".c", *hir_crate, items, false); });
-            // Generate a .o
-            //HIR_Codegen_Lib(params.outfile + ".o", *hir_crate);
-            // Link metatdata and object into a .rlib
+            #endif
 
             // Save a loadable HIR dump
             CompilePhaseV("HIR Serialise", [&]() {
                 //HIR_Serialise(params.outfile + ".meta", *hir_crate);
                 HIR_Serialise(params.outfile, *hir_crate);
                 });
+
+            // Link metatdata and object into a .rlib
             break; }
         case ::AST::Crate::Type::RustDylib:
             // Save a loadable HIR dump
