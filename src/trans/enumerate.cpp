@@ -82,9 +82,10 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 namespace {
     void Trans_Enumerate_Public_Mod(EnumState& state, const ::HIR::Module& mod, ::HIR::SimplePath mod_path)
     {
+        const bool EMIT_ALL = true;
         for(const auto& vi : mod.m_value_items)
         {
-            if( vi.second->is_public ) {
+            if( EMIT_ALL || vi.second->is_public ) {
                 TU_MATCHA( (vi.second->ent), (e),
                 (Import,
                     ),
@@ -113,7 +114,7 @@ namespace {
 
         for(const auto& ti : mod.m_mod_items)
         {
-            if( ti.second->is_public && ti.second->ent.is_Module() )
+            if( (EMIT_ALL || ti.second->is_public) && ti.second->ent.is_Module() )
             {
                 Trans_Enumerate_Public_Mod(state, ti.second->ent.as_Module(), mod_path + ti.first);
             }
@@ -150,7 +151,7 @@ TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
                 ;
             else
             {
-                // TODO: Check Self bounds before queueing for codegen
+                // Check bounds before queueing for codegen
                 if( vi.second.is_Function() )
                 {
                     bool rv = true;
@@ -180,6 +181,19 @@ TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
                 auto p = ::HIR::Path(impl_ty.clone(), ::HIR::GenericPath(impl.first, impl.second.m_trait_args.clone()), vi.first);
                 Trans_Enumerate_FillFrom_Path(state, p, {});
             }
+        }
+    }
+    for(const auto& impl : crate.m_type_impls)
+    {
+        if( impl.m_params.m_types.size() > 0 )
+            continue ;
+
+        for(const auto& fcn : impl.m_methods)
+        {
+            if( fcn.second.data.m_params.m_types.size() > 0 )
+                continue ;
+            auto p = ::HIR::Path(impl.m_type.clone(), fcn.first);
+            Trans_Enumerate_FillFrom_Path(state, p, {});
         }
     }
 
