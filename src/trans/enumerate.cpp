@@ -130,10 +130,13 @@ TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
     Trans_Enumerate_Public_Mod(state, crate.m_root_module,  ::HIR::SimplePath("",{}));
 
     // Impl blocks
+    StaticTraitResolve resolve { crate };
     for(const auto& impl : crate.m_trait_impls)
     {
         if( impl.second.m_params.m_types.size() > 0 )
             continue ;
+        const auto& impl_ty = impl.second.m_type;
+        auto cb_monomorph = monomorphise_type_get_cb(sp, &impl_ty, &impl.second.m_trait_args, nullptr);
 
         // Emit each method/static (in the trait itself)
         const auto& trait = crate.get_trait_by_path(sp, impl.first);
@@ -147,7 +150,34 @@ TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
                 ;
             else
             {
-                auto p = ::HIR::Path(impl.second.m_type.clone(), ::HIR::GenericPath(impl.first, impl.second.m_trait_args.clone()), vi.first);
+                // TODO: Check Self bounds before queueing for codegen
+                if( vi.second.is_Function() )
+                {
+                    bool rv = true;
+                    for(const auto& b : vi.second.as_Function().m_params.m_bounds)
+                    {
+                        if( !b.is_TraitBound() )    continue;
+                        const auto& be = b.as_TraitBound();
+
+                        auto b_ty_mono = monomorphise_type_with(sp, be.type, cb_monomorph); resolve.expand_associated_types(sp, b_ty_mono);
+                        auto b_tp_mono = monomorphise_traitpath_with(sp, be.trait, cb_monomorph, false);
+                        for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
+                            resolve.expand_associated_types(sp, ty);
+                        }
+                        for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                            resolve.expand_associated_types(sp, assoc_bound.second);
+                        }
+
+                        rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
+                            return true;
+                            });
+                        if( !rv )
+                            break;
+                    }
+                    if( !rv )
+                        continue ;
+                }
+                auto p = ::HIR::Path(impl_ty.clone(), ::HIR::GenericPath(impl.first, impl.second.m_trait_args.clone()), vi.first);
                 Trans_Enumerate_FillFrom_Path(state, p, {});
             }
         }
