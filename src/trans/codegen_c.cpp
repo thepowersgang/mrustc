@@ -2028,6 +2028,45 @@ namespace {
             else if( name == "powif32" || name == "powif64" ) {
                 emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
             }
+            else if( name == "powf32" || name == "powf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
+            }
+            else if( name == "expf32" || name == "expf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = exp" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "exp2f32" || name == "exp2f64" ) {
+                emit_lvalue(e.ret_val); m_of << " = exp2" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "logf32" || name == "logf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = log" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "log10f32" || name == "log10f64" ) {
+                emit_lvalue(e.ret_val); m_of << " = log10" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "log2f32" || name == "log2f64" ) {
+                emit_lvalue(e.ret_val); m_of << " = log2" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "sqrtf32" || name == "sqrtf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = sqrt" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "ceilf32" || name == "ceilf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = ceil" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "floorf32" || name == "floorf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = floor" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "roundf32" || name == "roundf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "cosf32" || name == "cosf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = cos" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "sinf32" || name == "sinf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = sin" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+            }
+            else if( name == "fmaf32" || name == "fmaf64" ) {
+                emit_lvalue(e.ret_val); m_of << " = fma" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
+            }
             // --- Atomics!
             // > Single-ordering atomics
             else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
@@ -2445,10 +2484,15 @@ namespace {
                 const auto& ty = m_mir_res->get_lvalue_type(tmp, *e.val);
                 m_of << "(";
                 if( ty.m_data.is_Slice() ) {
-                    assert(e.val->is_Deref());
-                    m_of << "("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
-                    emit_lvalue(*e.val->as_Deref().val);
-                    m_of << ".PTR";
+                    if( e.val->is_Deref() )
+                    {
+                        m_of << "("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
+                        emit_lvalue(*e.val->as_Deref().val);
+                        m_of << ".PTR";
+                    }
+                    else {
+                        emit_lvalue(*e.val);
+                    }
                 }
                 else if( ty.m_data.is_Array() ) {
                     emit_lvalue(*e.val);
