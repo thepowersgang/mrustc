@@ -1083,6 +1083,12 @@ namespace {
                         m_of << "\t";
                         TU_MATCHA( (e.src), (ve),
                         (Use,
+                            ::HIR::TypeRef  tmp;
+                            const auto& ty = mir_res.get_lvalue_type(tmp, ve);
+                            if( ty == ::HIR::TypeRef::new_diverge() ) {
+                                m_of << "abort()";
+                                break;
+                            }
                             emit_lvalue(e.dst);
                             m_of << " = ";
                             emit_lvalue(ve);
@@ -1715,9 +1721,9 @@ namespace {
                     }
                 }
             };
-            auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail) {
+            auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail, bool is_weak) {
                 emit_lvalue(e.ret_val); m_of << "._0 = "; emit_lvalue(e.args.at(1)); m_of << ";\n\t";
-                emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_strong_explicit(";
+                emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_" << (is_weak ? "weak" : "strong") << "_explicit(";
                     m_of << "(_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
                     m_of << ", "; emit_lvalue(e.args.at(2));
@@ -1912,7 +1918,7 @@ namespace {
                 switch( ty.m_data.as_Primitive() )
                 {
                 case ::HIR::CoreType::U8:
-                    MIR_BUG(mir_res, "bswap<u8>");
+                    emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0));
                     break;
                 case ::HIR::CoreType::U16:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap16("; emit_lvalue(e.args.at(0)); m_of << ")";
@@ -1922,6 +1928,9 @@ namespace {
                     break;
                 case ::HIR::CoreType::U64:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap64("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    break;
+                case ::HIR::CoreType::U128:
+                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap128("; emit_lvalue(e.args.at(0)); m_of << ")";
                     break;
                 default:
                     MIR_TODO(mir_res, "bswap<" << ty << ">");
@@ -1981,6 +1990,13 @@ namespace {
                     m_of << ", "; emit_lvalue(e.args.at(1));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
             }
+            // Unchecked Arithmatic
+            else if( name == "unchecked_div" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " / "; emit_lvalue(e.args.at(1));
+            }
+            else if( name == "unchecked_rem" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " % "; emit_lvalue(e.args.at(1));
+            }
             // Bit Twiddling
             // - CounT Leading Zeroes
             else if( name == "ctlz" ) {
@@ -2003,7 +2019,7 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << " = fabs" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
             }
             else if( name == "copysignf32" || name == "copysignf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = copysign" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = copysign" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
             }
             // > Returns the integer part of an `f32`.
             else if( name == "truncf32" || name == "truncf64" ) {
@@ -2022,6 +2038,18 @@ namespace {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
                 emit_atomic_arith("fetch_sub", ordering);
             }
+            else if( name == "atomic_and" || name.compare(0, 7+3+1, "atomic_and_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+3+1);
+                emit_atomic_arith("fetch_and", ordering);
+            }
+            else if( name == "atomic_or" || name.compare(0, 7+2+1, "atomic_or_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+2+1);
+                emit_atomic_arith("fetch_or", ordering);
+            }
+            else if( name == "atomic_xor" || name.compare(0, 7+3+1, "atomic_xor_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+3+1);
+                emit_atomic_arith("fetch_xor", ordering);
+            }
             else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
                 emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << ", " << ordering << ")";
@@ -2032,26 +2060,40 @@ namespace {
             }
             // Comare+Exchange (has two orderings)
             else if( name == "atomic_cxchg_acq_failrelaxed" ) {
-                emit_atomic_cxchg(e, "memory_order_acquire", "memory_order_relaxed");
+                emit_atomic_cxchg(e, "memory_order_acquire", "memory_order_relaxed", false);
             }
             else if( name == "atomic_cxchg_acqrel_failrelaxed" ) {
-                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_relaxed");
+                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_relaxed", false);
             }
             // _rel = Release, Relaxed (not Release,Release)
             else if( name == "atomic_cxchg_rel" ) {
-                emit_atomic_cxchg(e, "memory_order_release", "memory_order_relaxed");
+                emit_atomic_cxchg(e, "memory_order_release", "memory_order_relaxed", false);
             }
             // _acqrel = Release, Acquire (not AcqRel,AcqRel)
             else if( name == "atomic_cxchg_acqrel" ) {
-                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_acquire");
+                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_acquire", false);
             }
             else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
                 auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+6+4);
-                emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering);
+                emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering, false);
             }
             else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
-                emit_atomic_cxchg(e, ordering, ordering);
+                emit_atomic_cxchg(e, ordering, ordering, false);
+            }
+            else if( name == "atomic_cxchgweak_acq_failrelaxed" ) {
+                emit_atomic_cxchg(e, "memory_order_acquire", "memory_order_relaxed", true);
+            }
+            else if( name == "atomic_cxchgweak_acqrel_failrelaxed" ) {
+                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_relaxed", true);
+            }
+            else if( name.compare(0, 7+10+4, "atomic_cxchgweak_fail") == 0 ) {
+                auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+10+4);
+                emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering, true);
+            }
+            else if( name == "atomic_cxchgweak" || name.compare(0, 7+9+1, "atomic_cxchgweak_") == 0 ) {
+                auto ordering = H::get_atomic_ordering(mir_res, name, 7+9+1);
+                emit_atomic_cxchg(e, ordering, ordering, true);
             }
             else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
@@ -2454,8 +2496,8 @@ namespace {
                 case ::HIR::CoreType::I32: m_of << "int32_t"; break;
                 case ::HIR::CoreType::U64: m_of << "uint64_t"; break;
                 case ::HIR::CoreType::I64: m_of << "int64_t"; break;
-                case ::HIR::CoreType::U128: m_of << "uint128_t"; break;
-                case ::HIR::CoreType::I128: m_of << "int128_t"; break;
+                case ::HIR::CoreType::U128: m_of << "unsigned __int128"; break;
+                case ::HIR::CoreType::I128: m_of << "__int128"; break;
 
                 case ::HIR::CoreType::F32: m_of << "float"; break;
                 case ::HIR::CoreType::F64: m_of << "double"; break;
