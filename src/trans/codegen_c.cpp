@@ -112,8 +112,9 @@ namespace {
             // Execute $CC with the required libraries
             ::std::vector<::std::string>    tmp;
             ::std::vector<const char*>  args;
-            args.push_back("gcc");
+            args.push_back( getenv("CC") ? getenv("CC") : "gcc" );
             args.push_back("-pthread");
+            args.push_back("-O2");
             args.push_back("-o");
             args.push_back(m_outfile_path.c_str());
             args.push_back(m_outfile_path_c.c_str());
