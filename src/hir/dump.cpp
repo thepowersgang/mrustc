@@ -238,6 +238,8 @@ namespace {
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
         {
+            if( item.m_linkage.name != "" )
+                m_os << indent() << "#[link_name=\"" << item.m_linkage.name << "\"]\n";
             if( item.m_value )
             {
                 m_os << indent() << "static " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res << ";\n";

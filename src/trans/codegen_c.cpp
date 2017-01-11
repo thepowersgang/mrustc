@@ -618,6 +618,10 @@ namespace {
             auto type = params.monomorph(m_resolve, item.m_type);
             m_of << "extern ";
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
+            if( item.m_linkage.name != "" )
+            {
+                m_of << " asm(\"" << item.m_linkage.name << "\")";
+            }
             m_of << ";";
             m_of << "\t// static " << p << " : " << type;
             m_of << "\n";

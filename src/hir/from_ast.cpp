@@ -1224,6 +1224,13 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
                     }));
             else {
                 ::HIR::Linkage  linkage;
+
+                // If there's no code, demangle the name (TODO: By ABI) and set linkage.
+                if( linkage.name == "" && ! e.value().is_valid() )
+                {
+                    linkage.name = item.name;
+                }
+
                 _add_mod_val_item(mod, item.name, item.is_pub,  ::HIR::ValueItem::make_Static(::HIR::Static {
                     mv$(linkage),
                     (e.s_class() == ::AST::Static::MUT),
