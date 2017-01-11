@@ -17,8 +17,9 @@ public:
     const ::HIR::SimplePath* trait = nullptr;
     const ::HIR::PathParams* trait_params = nullptr;
     const char* name = nullptr;
+    const char* crate_name = nullptr;
 
-    ItemPath() {}
+    ItemPath(const ::std::string& crate): crate_name(crate.c_str()) {}
     ItemPath(const ItemPath& p, const char* n):
         parent(&p),
         name(n)
@@ -45,7 +46,8 @@ public:
         }
         else {
             assert(!name);
-            return ::HIR::SimplePath();
+            assert(crate_name);
+            return ::HIR::SimplePath(crate_name);
         }
     }
     ::HIR::Path get_full_path() const {

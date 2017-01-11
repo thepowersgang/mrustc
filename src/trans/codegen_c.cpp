@@ -30,6 +30,10 @@ namespace {
 
         const ::HIR::Crate& m_crate;
         ::StaticTraitResolve    m_resolve;
+
+        ::std::string   m_outfile_path;
+        ::std::string   m_outfile_path_c;
+
         ::std::ofstream m_of;
         const ::MIR::TypeResolve* m_mir_res;
 
@@ -38,7 +42,9 @@ namespace {
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
             m_crate(crate),
             m_resolve(crate),
-            m_of(outfile)
+            m_outfile_path(outfile),
+            m_outfile_path_c(outfile + ".c"),
+            m_of(m_outfile_path_c)
         {
             m_of
                 << "/*\n"
@@ -61,17 +67,22 @@ namespace {
                 << "\n"
                 << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                 << "\n"
-                << "int slice_cmp(SLICE_PTR l, SLICE_PTR r) {\n"
+                << "static inline int slice_cmp(SLICE_PTR l, SLICE_PTR r) {\n"
                 << "\tint rv = memcmp(l.PTR, r.PTR, l.META < r.META ? l.META : r.META);\n"
                 << "\tif(rv != 0) return rv;\n"
                 << "\tif(l.META < r.META) return -1;\n"
                 << "\tif(l.META > r.META) return 1;\n"
                 << "\treturn 0;\n"
                 << "}\n"
-                << "SLICE_PTR make_sliceptr(void* ptr, size_t s) { SLICE_PTR rv = { ptr, s }; return rv; }\n"
-                << "TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
+                << "static inline SLICE_PTR make_sliceptr(void* ptr, size_t s) { SLICE_PTR rv = { ptr, s }; return rv; }\n"
+                << "static inline TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
-                << "size_t max(size_t a, size_t b) { return a < b ? b : a; }\n"
+                << "static inline size_t max(size_t a, size_t b) { return a < b ? b : a; }\n"
+                << "static inline unsigned __int128 __builtin_bswap128(unsigned __int128 v) {\n"
+                << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
+                << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
+                << "\treturn ((unsigned __int128)lo << 64) | (unsigned __int128)hi;\n"
+                << "}\n"
                 << "\n"
                 ;
         }
@@ -91,12 +102,48 @@ namespace {
                 m_of
                     << "int main(int argc, const char* argv[]) {\n"
                     << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
-                        << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath("", {"main"})) ) << ", argc, (uint8_t**)argv"
+                        << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath(m_crate.m_crate_name, {"main"})) ) << ", argc, (uint8_t**)argv"
                         << ");\n"
                     << "}\n";
             }
 
+            m_of.flush();
+            
             // Execute $CC with the required libraries
+            ::std::vector<::std::string>    tmp;
+            ::std::vector<const char*>  args;
+            args.push_back("gcc");
+            args.push_back("-pthread");
+            args.push_back("-o");
+            args.push_back(m_outfile_path.c_str());
+            args.push_back(m_outfile_path_c.c_str());
+            if( is_executable )
+            {
+                for( const auto& crate : m_crate.m_ext_crates )
+                {
+                    // TODO: Get the path from the CratePtr
+                    //tmp.push_back(crate.second.m_filename + ".o");
+                    tmp.push_back("output/lib" + crate.first + ".hir.o");
+                    args.push_back(tmp.back().c_str());
+                }
+                args.push_back("-lm");
+                args.push_back("-ldl");
+                args.push_back("-z"); args.push_back("muldefs");
+            }
+            else
+            {
+                args.push_back("-c");
+            }
+
+            ::std::stringstream cmd_ss;
+            for(const auto& arg : args)
+            {
+                cmd_ss << "\"" << FmtEscaped(arg) << "\" ";
+            }
+            if( system(cmd_ss.str().c_str()) )
+            {
+                abort();
+            }
         }
 
         void emit_box_drop_glue(::HIR::GenericPath p, const ::HIR::Struct& item)

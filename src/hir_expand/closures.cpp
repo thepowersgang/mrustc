@@ -294,7 +294,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
-                        ::HIR::Linkage {},
+                        false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::Value,
                         ABI_RUST, false, false,
                         {},
@@ -332,7 +332,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
-                        ::HIR::Linkage {},
+                        false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::BorrowUnique,
                         ABI_RUST, false, false,
                         {},
@@ -368,7 +368,7 @@ namespace {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
                     ::std::string("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
-                        ::HIR::Linkage {},
+                        false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::BorrowShared,
                         ABI_RUST, false, false,
                         {},
@@ -1007,14 +1007,14 @@ namespace {
             Span    sp;
 
             unsigned int closure_count = 0;
-            ::HIR::SimplePath   root_mod_path("",{});
+            ::HIR::SimplePath   root_mod_path(crate.m_crate_name,{});
             m_cur_mod_path = &root_mod_path;
             m_new_type = [&](auto s)->auto {
                 auto name = FMT("closure_I_" << closure_count);
                 closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) } ));
                 crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
-                return ::HIR::SimplePath() + name;
+                return ::HIR::SimplePath(crate.m_crate_name, {}) + name;
                 };
 
             ::HIR::Visitor::visit_crate(crate);

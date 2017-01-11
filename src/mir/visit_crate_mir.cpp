@@ -20,7 +20,7 @@ void MIR::OuterVisitor::visit_type(::HIR::TypeRef& ty)
         this->visit_type( *e.inner );
         DEBUG("Array size " << ty);
         if( e.size ) {
-            m_cb(m_resolve, ::HIR::ItemPath(), *e.size, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
+            m_cb(m_resolve, ::HIR::ItemPath(""), *e.size, {}, ::HIR::TypeRef(::HIR::CoreType::Usize));
         }
     )
     else {

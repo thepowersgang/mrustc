@@ -494,6 +494,7 @@ namespace {
             TRACE_FUNCTION;
 
             ::HIR::Function rv {
+                false,
                 deserialise_linkage(),
                 static_cast< ::HIR::Function::Receiver>( m_in.read_tag() ),
                 m_in.read_string(),
@@ -1072,7 +1073,7 @@ namespace {
             for(size_t i = 0; i < n; i ++)
             {
                 auto ext_crate_name = m_in.read_string();
-                rv.m_ext_crates.insert( ::std::make_pair(ext_crate_name, ::HIR::CratePtr{}) );
+                rv.m_ext_crates.insert( ::std::make_pair(ext_crate_name, ::HIR::ExternCrate{}) );
             }
         }
 

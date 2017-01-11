@@ -733,9 +733,9 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
     ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1 : 0), "get_typeitem_by_path received invlaid path - " << path);
 
     const ::HIR::Module* mod;
-    if( !ignore_crate_name && path.m_crate_name != "" ) {
-        ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-        mod = &m_ext_crates.at(path.m_crate_name)->m_root_module;
+    if( !ignore_crate_name && path.m_crate_name != m_crate_name ) {
+        ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded for " << path);
+        mod = &m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
     }
     else {
         mod =  &this->m_root_module;
@@ -766,10 +766,10 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
 {
     if( path.m_components.size() == 0 )
     {
-        if( path.m_crate_name != "" )
+        if( path.m_crate_name != m_crate_name )
         {
             ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-            return m_ext_crates.at(path.m_crate_name)->m_root_module;
+            return m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
         }
         else
         {
@@ -834,9 +834,9 @@ const ::HIR::ValueItem& ::HIR::Crate::get_valitem_by_path(const Span& sp, const 
         BUG(sp, "get_valitem_by_path received invalid path");
     }
     const ::HIR::Module* mod;
-    if( !ignore_crate_name && path.m_crate_name != "" ) {
+    if( !ignore_crate_name && path.m_crate_name != m_crate_name ) {
         ASSERT_BUG(sp, m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-        mod = &m_ext_crates.at(path.m_crate_name)->m_root_module;
+        mod = &m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
     }
     else {
         mod =  &this->m_root_module;
@@ -887,7 +887,7 @@ bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR:
     }
     for( const auto& ec : this->m_ext_crates )
     {
-        if( ec.second->find_trait_impls(trait, type, ty_res, callback) ) {
+        if( ec.second.m_data->find_trait_impls(trait, type, ty_res, callback) ) {
             return true;
         }
     }
@@ -907,7 +907,7 @@ bool ::HIR::Crate::find_auto_trait_impls(const ::HIR::SimplePath& trait, const :
     }
     for( const auto& ec : this->m_ext_crates )
     {
-        if( ec.second->find_auto_trait_impls(trait, type, ty_res, callback) ) {
+        if( ec.second.m_data->find_auto_trait_impls(trait, type, ty_res, callback) ) {
             return true;
         }
     }
@@ -927,7 +927,7 @@ bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type
     for( const auto& ec : this->m_ext_crates )
     {
         //DEBUG("- " << ec.first);
-        if( ec.second->find_type_impls(type, ty_res, callback) ) {
+        if( ec.second.m_data->find_type_impls(type, ty_res, callback) ) {
             return true;
         }
     }

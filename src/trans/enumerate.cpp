@@ -70,7 +70,7 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 
     // user entrypoint
     {
-        auto main_path = ::HIR::SimplePath("", {"main"});
+        auto main_path = ::HIR::SimplePath(crate.m_crate_name, {"main"});
         const auto& fcn = crate.get_function_by_path(sp, main_path);
 
         state.enum_fcn( main_path, fcn, {} );
@@ -80,120 +80,152 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 }
 
 namespace {
-    void Trans_Enumerate_Public_Mod(EnumState& state, const ::HIR::Module& mod, ::HIR::SimplePath mod_path)
+    void Trans_Enumerate_Public_Mod(EnumState& state, ::HIR::Module& mod, ::HIR::SimplePath mod_path, bool is_visible)
     {
         const bool EMIT_ALL = true;
-        for(const auto& vi : mod.m_value_items)
+        for(auto& vi : mod.m_value_items)
         {
-            if( EMIT_ALL || vi.second->is_public ) {
-                TU_MATCHA( (vi.second->ent), (e),
-                (Import,
-                    ),
-                (StructConstant,
-                    ),
-                (StructConstructor,
-                    ),
-                (Constant,
-                    ),
-                (Static,
+            TU_MATCHA( (vi.second->ent), (e),
+            (Import,
+                ),
+            (StructConstant,
+                ),
+            (StructConstructor,
+                ),
+            (Constant,
+                ),
+            (Static,
+                if( EMIT_ALL || (is_visible && vi.second->is_public) )
+                {
                     //state.enum_static(mod_path + vi.first, *e);
                     auto* ptr = state.rv.add_static(mod_path + vi.first);
                     if(ptr)
                         Trans_Enumerate_FillFrom(state, e, *ptr);
-                    ),
-                (Function,
-                    if( e.m_params.m_types.size() == 0 )
-                    {
+                }
+                ),
+            (Function,
+                if( e.m_params.m_types.size() == 0 )
+                {
+                    if( EMIT_ALL || (is_visible && vi.second->is_public) ) {
                         state.enum_fcn(mod_path + vi.first, e, {});
                     }
+                }
+                else
+                {
+                    const_cast<::HIR::Function&>(e).m_save_code = true;
                     // TODO: If generic, enumerate concrete functions used
-                    )
+                }
                 )
-            }
+            )
         }
 
-        for(const auto& ti : mod.m_mod_items)
+        for(auto& ti : mod.m_mod_items)
         {
-            if( (EMIT_ALL || ti.second->is_public) && ti.second->ent.is_Module() )
+            if(auto* e = ti.second->ent.opt_Module() )
             {
-                Trans_Enumerate_Public_Mod(state, ti.second->ent.as_Module(), mod_path + ti.first);
+                Trans_Enumerate_Public_Mod(state, *e, mod_path + ti.first, ti.second->is_public);
             }
         }
     }
 }
 
 /// Enumerate trans items for all public non-generic items (library crate)
-TransList Trans_Enumerate_Public(const ::HIR::Crate& crate)
+TransList Trans_Enumerate_Public(::HIR::Crate& crate)
 {
     static Span sp;
     EnumState   state { crate };
 
-    Trans_Enumerate_Public_Mod(state, crate.m_root_module,  ::HIR::SimplePath("",{}));
+    Trans_Enumerate_Public_Mod(state, crate.m_root_module,  ::HIR::SimplePath(crate.m_crate_name,{}), true);
 
     // Impl blocks
     StaticTraitResolve resolve { crate };
-    for(const auto& impl : crate.m_trait_impls)
+    for(auto& impl : crate.m_trait_impls)
     {
-        if( impl.second.m_params.m_types.size() > 0 )
-            continue ;
         const auto& impl_ty = impl.second.m_type;
-        auto cb_monomorph = monomorphise_type_get_cb(sp, &impl_ty, &impl.second.m_trait_args, nullptr);
-
-        // Emit each method/static (in the trait itself)
-        const auto& trait = crate.get_trait_by_path(sp, impl.first);
-        for(const auto& vi : trait.m_values)
+        if( impl.second.m_params.m_types.size() == 0 )
         {
-            if( vi.second.is_Constant() )
-                ;
-            else if( vi.second.is_Function() && vi.second.as_Function().m_params.m_types.size() > 0 )
-                ;
-            else if( vi.first == "#vtable" )
-                ;
-            else
+            auto cb_monomorph = monomorphise_type_get_cb(sp, &impl_ty, &impl.second.m_trait_args, nullptr);
+
+            // Emit each method/static (in the trait itself)
+            const auto& trait = crate.get_trait_by_path(sp, impl.first);
+            for(const auto& vi : trait.m_values)
             {
-                // Check bounds before queueing for codegen
-                if( vi.second.is_Function() )
+                if( vi.second.is_Constant() )
+                    ;
+                else if( vi.second.is_Function() && vi.second.as_Function().m_params.m_types.size() > 0 )
+                    ;
+                else if( vi.first == "#vtable" )
+                    ;
+                else
                 {
-                    bool rv = true;
-                    for(const auto& b : vi.second.as_Function().m_params.m_bounds)
+                    // Check bounds before queueing for codegen
+                    if( vi.second.is_Function() )
                     {
-                        if( !b.is_TraitBound() )    continue;
-                        const auto& be = b.as_TraitBound();
+                        bool rv = true;
+                        for(const auto& b : vi.second.as_Function().m_params.m_bounds)
+                        {
+                            if( !b.is_TraitBound() )    continue;
+                            const auto& be = b.as_TraitBound();
 
-                        auto b_ty_mono = monomorphise_type_with(sp, be.type, cb_monomorph); resolve.expand_associated_types(sp, b_ty_mono);
-                        auto b_tp_mono = monomorphise_traitpath_with(sp, be.trait, cb_monomorph, false);
-                        for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
-                            resolve.expand_associated_types(sp, ty);
-                        }
-                        for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
-                            resolve.expand_associated_types(sp, assoc_bound.second);
-                        }
+                            auto b_ty_mono = monomorphise_type_with(sp, be.type, cb_monomorph); resolve.expand_associated_types(sp, b_ty_mono);
+                            auto b_tp_mono = monomorphise_traitpath_with(sp, be.trait, cb_monomorph, false);
+                            for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
+                                resolve.expand_associated_types(sp, ty);
+                            }
+                            for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                                resolve.expand_associated_types(sp, assoc_bound.second);
+                            }
 
-                        rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
-                            return true;
-                            });
+                            rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
+                                return true;
+                                });
+                            if( !rv )
+                                break;
+                        }
                         if( !rv )
-                            break;
+                            continue ;
                     }
-                    if( !rv )
-                        continue ;
+                    auto p = ::HIR::Path(impl_ty.clone(), ::HIR::GenericPath(impl.first, impl.second.m_trait_args.clone()), vi.first);
+                    Trans_Enumerate_FillFrom_Path(state, p, {});
                 }
-                auto p = ::HIR::Path(impl_ty.clone(), ::HIR::GenericPath(impl.first, impl.second.m_trait_args.clone()), vi.first);
-                Trans_Enumerate_FillFrom_Path(state, p, {});
+            }
+            for(auto& m : impl.second.m_methods)
+            {
+                if( m.second.data.m_params.m_types.size() > 0 )
+                    m.second.data.m_save_code = true;
+            }
+        }
+        else
+        {
+            for(auto& m : impl.second.m_methods)
+            {
+                m.second.data.m_save_code = true;
             }
         }
     }
-    for(const auto& impl : crate.m_type_impls)
+    for(auto& impl : crate.m_type_impls)
     {
-        if( impl.m_params.m_types.size() > 0 )
-            continue ;
-
-        for(const auto& fcn : impl.m_methods)
+        if( impl.m_params.m_types.size() == 0 )
         {
-            if( fcn.second.data.m_params.m_types.size() > 0 )
-                continue ;
-            auto p = ::HIR::Path(impl.m_type.clone(), fcn.first);
-            Trans_Enumerate_FillFrom_Path(state, p, {});
+            for(auto& fcn : impl.m_methods)
+            {
+                if( fcn.second.data.m_params.m_types.size() == 0 )
+                {
+                    auto p = ::HIR::Path(impl.m_type.clone(), fcn.first);
+                    Trans_Enumerate_FillFrom_Path(state, p, {});
+                }
+                else
+                {
+                    fcn.second.data.m_save_code = true;
+                }
+            }
+        }
+        else
+        {
+            for(auto& m : impl.m_methods)
+            {
+                m.second.data.m_save_code = true;
+            }
         }
     }
 
@@ -977,43 +1009,36 @@ namespace {
         );
     EntPtr get_ent_simplepath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path)
     {
-        const ::HIR::Module* mod;
-        if( path.m_crate_name != "" ) {
-            ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-            mod = &crate.m_ext_crates.at(path.m_crate_name)->m_root_module;
-        }
-        else {
-            mod = &crate.m_root_module;
-        }
 
-        for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
+        const ::HIR::ValueItem* vip;
+        if( path.m_components.size() > 1 )
         {
-            const auto& pc = path.m_components[i];
-            auto it = mod->m_mod_items.find( pc );
-            if( it == mod->m_mod_items.end() ) {
-                BUG(sp, "Couldn't find component " << i << " of " << path);
-            }
-            TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e2),
+            const auto& mi = crate.get_typeitem_by_path(sp, path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
+
+            TU_MATCH_DEF( ::HIR::TypeItem, (mi), (e),
             (
-                BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
+                BUG(sp, "Node " << path.m_components.size()-1 << " of path " << path << " wasn't a module");
                 ),
             (Enum,
-                ASSERT_BUG(sp, i == path.m_components.size() - 2, "Enum found somewhere other than penultimate posiiton in " << path);
                 // TODO: Check that this is a tuple variant
                 return EntPtr::make_AutoGenerate({});
                 ),
             (Module,
-                mod = &e2;
+                auto it = e.m_value_items.find( path.m_components.back() );
+                if( it == e.m_value_items.end() ) {
+                    return EntPtr {};
+                }
+                vip = &it->second->ent;
                 )
             )
         }
-
-        auto it = mod->m_value_items.find( path.m_components.back() );
-        if( it == mod->m_value_items.end() ) {
-            return EntPtr {};
+        else
+        {
+            vip = &crate.get_valitem_by_path(sp, path);
         }
 
-        TU_MATCH( ::HIR::ValueItem, (it->second->ent), (e),
+
+        TU_MATCH( ::HIR::ValueItem, (*vip), (e),
         (Import,
             ),
         (StructConstant,
@@ -1032,7 +1057,7 @@ namespace {
             return EntPtr { &e };
             )
         )
-        BUG(sp, "Path " << path << " pointed to a invalid item - " << it->second->ent.tag_str());
+        BUG(sp, "Path " << path << " pointed to a invalid item - " << vip->tag_str());
     }
     EntPtr get_ent_fullpath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::Path& path, ::HIR::PathParams& impl_pp)
     {
@@ -1481,13 +1506,13 @@ namespace {
     }
     ::HIR::Function* find_function_by_link_name(const ::HIR::Crate& crate, const char* name,  ::HIR::SimplePath& out_path)
     {
-        if(auto rv = find_function_by_link_name(crate.m_root_module, {}, name, out_path))
+        if(auto rv = find_function_by_link_name(crate.m_root_module, {crate.m_crate_name}, name, out_path))
             return rv;
         for(const auto& e_crate : crate.m_ext_crates)
         {
-            if(auto rv = find_function_by_link_name(e_crate.second->m_root_module, {}, name,  out_path))
+            if(auto rv = find_function_by_link_name(e_crate.second.m_data->m_root_module, {e_crate.first}, name,  out_path))
             {
-                out_path.m_crate_name = e_crate.first;
+                assert( out_path.m_crate_name == e_crate.first );
                 return rv;
             }
         }

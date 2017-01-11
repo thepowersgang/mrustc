@@ -118,11 +118,11 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
                 for(const auto& a : fcn.m_args)
                     args.push_back(::std::make_pair( ::HIR::Pattern{}, pp.monomorph(resolve, a.second) ));
                 auto mir = Trans_Monomorphise(resolve, pp, fcn.m_code.m_mir);
-                MIR_Validate(resolve, ::HIR::ItemPath(), *mir, args, ret_type);
-                MIR_Cleanup(resolve, ::HIR::ItemPath(), *mir, args, ret_type);
+                MIR_Validate(resolve, ::HIR::ItemPath(""), *mir, args, ret_type);
+                MIR_Cleanup(resolve, ::HIR::ItemPath(""), *mir, args, ret_type);
                 // TODO: MIR Optimisation
-                //MIR_Optimise(resolve, ::HIR::ItemPath(), *mir, args, ret_type);
-                MIR_Validate(resolve, ::HIR::ItemPath(), *mir, args, ret_type);
+                //MIR_Optimise(resolve, ::HIR::ItemPath(""), *mir, args, ret_type);
+                MIR_Validate(resolve, ::HIR::ItemPath(""), *mir, args, ret_type);
                 codegen->emit_function_code(path, fcn, ent.second->pp,  mir);
             }
             else {

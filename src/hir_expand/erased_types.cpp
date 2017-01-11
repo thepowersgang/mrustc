@@ -125,7 +125,7 @@ namespace {
         public ::HIR::Visitor
     {
         StaticTraitResolve  m_resolve;
-        ::HIR::ItemPath m_fcn_path;
+        const ::HIR::ItemPath* m_fcn_path;
     public:
         OuterVisitor(const ::HIR::Crate& crate):
             m_resolve(crate)
@@ -142,9 +142,9 @@ namespace {
 
         void visit_function(::HIR::ItemPath p, ::HIR::Function& fcn) override
         {
-            m_fcn_path = p;
+            m_fcn_path = &p;
             ::HIR::Visitor::visit_function(p, fcn);
-            m_fcn_path = ::HIR::ItemPath();
+            m_fcn_path = nullptr;
         }
 
         void visit_type(::HIR::TypeRef& ty) override
@@ -152,13 +152,13 @@ namespace {
             static const Span   sp;
             if( ty.m_data.is_ErasedType() )
             {
-                ASSERT_BUG(sp, m_fcn_path.get_name(), "");
+                ASSERT_BUG(sp, m_fcn_path, "Erased type outside of a function");
 
                 const auto& e = ty.m_data.as_ErasedType();
 
                 TU_MATCHA( (e.m_origin.m_data), (pe),
                 (Generic,
-                    if( m_fcn_path == pe.m_path ) {
+                    if( *m_fcn_path == pe.m_path ) {
                         ::HIR::Visitor::visit_type(ty);
                         return ;
                     }
@@ -170,7 +170,7 @@ namespace {
                     BUG(sp, "UfcsKnown not supported");
                     ),
                 (UfcsInherent,
-                    if( m_fcn_path.parent && m_fcn_path.parent->ty && !m_fcn_path.parent->trait && *m_fcn_path.parent->ty == *pe.type && m_fcn_path.name == pe.item ) {
+                    if( m_fcn_path->parent && m_fcn_path->parent->ty && !m_fcn_path->parent->trait && *m_fcn_path->parent->ty == *pe.type && m_fcn_path->name == pe.item ) {
                         ::HIR::Visitor::visit_type(ty);
                         return ;
                     }

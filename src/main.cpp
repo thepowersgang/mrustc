@@ -435,10 +435,10 @@ int main(int argc, char *argv[])
             // ERROR?
             break;
         case ::AST::Crate::Type::RustLib: {
+            #if 1
             // Generate a .o
-            #if 0
             TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".c", *hir_crate, items, false); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", *hir_crate, items, false); });
             #endif
 
             // Save a loadable HIR dump

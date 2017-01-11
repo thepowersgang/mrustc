@@ -14,7 +14,7 @@
 
 void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
 {
-    this->visit_module(::HIR::ItemPath(), crate.m_root_module );
+    this->visit_module(::HIR::ItemPath(crate.m_crate_name), crate.m_root_module );
 
     for( auto& ty_impl : crate.m_type_impls )
     {

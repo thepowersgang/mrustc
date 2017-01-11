@@ -54,6 +54,7 @@ class ExternCrate
 {
 public:
     ::std::string   m_name;
+    ::std::string   m_filename;
     ::HIR::CratePtr m_hir;
 
     ExternCrate(const ::std::string& name, const ::std::string& path);

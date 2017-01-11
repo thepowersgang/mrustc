@@ -441,10 +441,10 @@ namespace {
             )
         }
 
-        void serialise(const ::HIR::ExprPtr& exp)
+        void serialise(const ::HIR::ExprPtr& exp, bool save_mir=true)
         {
-            m_out.write_bool( (bool)exp.m_mir );
-            if( exp.m_mir ) {
+            m_out.write_bool( (bool)exp.m_mir && save_mir );
+            if( exp.m_mir && save_mir ) {
                 serialise(*exp.m_mir);
             }
             serialise_vec( exp.m_erased_types );
@@ -763,7 +763,7 @@ namespace {
             serialise(fcn.m_return);
             DEBUG("m_args = " << fcn.m_args);
 
-            serialise(fcn.m_code);
+            serialise(fcn.m_code, fcn.m_save_code);
         }
         void serialise(const ::HIR::Constant& item)
         {

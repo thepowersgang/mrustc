@@ -99,9 +99,9 @@ namespace {
     EntPtr get_ent_simplepath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, EntNS ns)
     {
         const ::HIR::Module* mod;
-        if( path.m_crate_name != "" ) {
+        if( path.m_crate_name != crate.m_crate_name ) {
             ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-            mod = &crate.m_ext_crates.at(path.m_crate_name)->m_root_module;
+            mod = &crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
         }
         else {
             mod = &crate.m_root_module;

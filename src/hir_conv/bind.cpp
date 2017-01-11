@@ -29,9 +29,9 @@ namespace {
     {
         // NOTE: Can't share with HIR::Crate::get_typeitem_by_path because it has to handle enum variants
         const ::HIR::Module*    mod;
-        if( path.m_crate_name != "" ) {
+        if( path.m_crate_name != crate.m_crate_name ) {
             ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-            mod = &crate.m_ext_crates.at(path.m_crate_name)->m_root_module;
+            mod = &crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
         }
         else {
             mod = &crate.m_root_module;
@@ -182,9 +182,9 @@ namespace {
                     const ::HIR::Enum* enm = nullptr;
                     const auto& path = pe.m_path;
                     const ::HIR::Module*  mod;
-                    if( path.m_crate_name != "" ) {
+                    if( path.m_crate_name != m_crate.m_crate_name ) {
                         ASSERT_BUG(sp, m_crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-                        mod = &m_crate.m_ext_crates.at(path.m_crate_name)->m_root_module;
+                        mod = &m_crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
                     }
                     else {
                         mod = &m_crate.m_root_module;
@@ -682,6 +682,6 @@ void ConvertHIR_Bind(::HIR::Crate& crate)
     // Also visit extern crates to update their pointers
     for(auto& ec : crate.m_ext_crates)
     {
-        exp.visit_crate( *ec.second );
+        exp.visit_crate( *ec.second.m_data );
     }
 }

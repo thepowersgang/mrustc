@@ -122,6 +122,7 @@ public:
 
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
 
+    bool    m_save_code;    // Filled by enumerate, defaults to false
     Linkage m_linkage;
 
     Receiver    m_receiver;
@@ -402,9 +403,17 @@ public:
     }
 };
 
+class ExternCrate
+{
+public:
+    ::HIR::CratePtr m_data;
+    ::std::string   m_filename;
+};
 class Crate
 {
 public:
+    ::std::string   m_crate_name;
+
     Module  m_root_module;
 
     /// Impl blocks on just a type
@@ -419,7 +428,7 @@ public:
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
 
-    ::std::unordered_map< ::std::string, ::HIR::CratePtr>  m_ext_crates;
+    ::std::unordered_map< ::std::string, ExternCrate>  m_ext_crates;
 
     /// Method called to populate runtime state after deserialisation
     /// See hir/crate_post_load.cpp

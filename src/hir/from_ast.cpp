@@ -23,6 +23,7 @@
 
 ::HIR::SimplePath path_Sized;
 ::std::string   g_core_crate;
+::std::string   g_crate_name;
 ::HIR::Crate*   g_crate_ptr = nullptr;
 
 // --------------------------------------------------------------------
@@ -498,6 +499,8 @@
 {
     TU_IFLET(::AST::Path::Class, path.m_class, Absolute, e,
         ::HIR::SimplePath   rv( e.crate );
+        if( rv.m_crate_name == "" )
+            rv.m_crate_name = g_crate_name;
         for( const auto& node : e.nodes )
         {
             if( ! node.args().is_empty() )
@@ -914,6 +917,8 @@ namespace {
 ::HIR::Trait LowerHIR_Trait(::HIR::SimplePath trait_path, const ::AST::Trait& f)
 {
     TRACE_FUNCTION_F(trait_path);
+    trait_path.m_crate_name = g_crate_name;
+
     bool trait_reqires_sized = false;
     auto params = LowerHIR_GenericParams(f.params(), &trait_reqires_sized);
 
@@ -985,7 +990,9 @@ namespace {
             ),
         (Function,
             ::HIR::TypeRef  self_type {"Self", 0xFFFF};
-            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( LowerHIR_Function(item_path, item.data.attrs, i, self_type) )) );
+            auto fcn = LowerHIR_Function(item_path, item.data.attrs, i, self_type);
+            fcn.m_save_code = true;
+            rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( mv$(fcn) )) );
             ),
         (Static,
             if( i.s_class() == ::AST::Static::CONST )
@@ -1061,6 +1068,13 @@ namespace {
         }
     }
 
+    bool force_emit = false;
+    if( const auto* a = attrs.get("inline") )
+    {
+        (void)a;
+        force_emit = true;
+    }
+
     ::HIR::Linkage  linkage;
 
     // Convert #[link_name/no_mangle] attributes into the name
@@ -1094,6 +1108,7 @@ namespace {
     }
 
     return ::HIR::Function {
+        force_emit,
         mv$(linkage),
         receiver,
         f.abi(), f.is_unsafe(), f.is_const(),
@@ -1478,8 +1493,11 @@ public:
 ::HIR::CratePtr LowerHIR_FromAST(::AST::Crate crate)
 {
     ::HIR::Crate    rv;
+    rv.m_crate_name = crate.m_crate_name;
+
     g_crate_ptr = &rv;
-    g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+    g_crate_name = crate.m_crate_name;
+    g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? crate.m_crate_name : "core");
     auto& macros = rv.m_exported_macros;
 
     // - Extract exported macros
@@ -1544,11 +1562,11 @@ public:
                 ERROR(sp, E0000, "Conflicting definitions of lang item '" << name << "'. " << path << " and " << irv.first->second);
             }
         }
-        rv.m_ext_crates.insert( ::std::make_pair( ext_crate.first, mv$(ext_crate.second.m_hir) ) );
+        rv.m_ext_crates.insert( ::std::make_pair( ext_crate.first, ::HIR::ExternCrate { mv$(ext_crate.second.m_hir), ext_crate.second.m_filename } ) );
     }
     path_Sized = rv.get_lang_item_path(sp, "sized");
 
-    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath() );
+    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath(crate.m_crate_name) );
 
     LowerHIR_Module_Impls(crate.m_root_module,  rv);
 
