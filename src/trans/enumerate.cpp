@@ -866,6 +866,12 @@ void Trans_Enumerate_Types(EnumState& state)
                     (Call,
                         if( te.fcn.is_Value() )
                             H::visit_lvalue(tv,pp,fcn, te.fcn.as_Value());
+                        else if( te.fcn.is_Intrinsic() )
+                        {
+                            if( te.fcn.as_Intrinsic().name == "type_id" ) {
+                                tv.visit_type(monomorph(te.fcn.as_Intrinsic().params.m_types.at(0)));
+                            }
+                        }
                         H::visit_lvalue(tv,pp,fcn, te.ret_val);
                         for(const auto& arg : te.args)
                             H::visit_lvalue(tv,pp,fcn, arg);

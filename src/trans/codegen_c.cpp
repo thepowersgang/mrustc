@@ -1844,7 +1844,8 @@ namespace {
                 #endif
             }
             else if( name == "type_id" ) {
-                emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(params.m_types.at(0));
+                const auto& ty = params.m_types.at(0);
+                emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(ty);
             }
             else if( name == "type_name" ) {
                 auto s = FMT(params.m_types.at(0));
