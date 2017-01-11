@@ -181,7 +181,10 @@ namespace {
         {
             TRACE_FUNCTION_F(ty);
             TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, te,
-                m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
+                if( te.size() > 0 )
+                {
+                    m_of << "typedef struct "; emit_ctype(ty); m_of << " "; emit_ctype(ty); m_of << ";\n";
+                }
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
                 emit_type_fn(ty); m_of << "\n";
