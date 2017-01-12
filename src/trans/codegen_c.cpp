@@ -1962,6 +1962,9 @@ namespace {
             else if( name == "abort" ) {
                 m_of << "abort()";
             }
+            else if( name == "try" ) {
+                emit_lvalue(e.args.at(0)); m_of << "("; emit_lvalue(e.args.at(1)); m_of << ")";
+            }
             else if( name == "offset" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
             }
