@@ -763,7 +763,7 @@ namespace {
             serialise(fcn.m_return);
             DEBUG("m_args = " << fcn.m_args);
 
-            serialise(fcn.m_code, fcn.m_save_code);
+            serialise(fcn.m_code, fcn.m_save_code || fcn.m_const);
         }
         void serialise(const ::HIR::Constant& item)
         {
