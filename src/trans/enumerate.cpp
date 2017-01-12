@@ -925,6 +925,7 @@ void Trans_Enumerate_Types(EnumState& state)
         }
         for(const auto& ent : state.rv.m_vtables)
         {
+            TRACE_FUNCTION_F("vtable " << ent.first);
             const auto& gpath = ent.first.m_data.as_UfcsKnown().trait;
             const auto& trait = state.crate.get_trait_by_path(sp, gpath.m_path);
 
@@ -934,7 +935,6 @@ void Trans_Enumerate_Types(EnumState& state)
             // Copy the param set from the trait in the trait object
             ::HIR::PathParams   vtable_params = gpath.m_params.clone();
             // - Include associated types on bound
-            #if 1
             for(const auto& ty_idx : trait.m_type_indexes)
             {
                 auto idx = ty_idx.second;
@@ -943,8 +943,8 @@ void Trans_Enumerate_Types(EnumState& state)
                 auto p = ent.first.clone();
                 p.m_data.as_UfcsKnown().item = ty_idx.first;
                 vtable_params.m_types[idx] = ::HIR::TypeRef::new_path( mv$(p), {} );
+                tv.m_resolve.expand_associated_types( sp, vtable_params.m_types[idx] );
             }
-            #endif
 
             tv.visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
         }
