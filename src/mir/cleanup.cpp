@@ -69,6 +69,27 @@ struct MirMutator
 
 void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::LValue& lval);
 
+namespace {
+    ::HIR::TypeRef get_vtable_type(const Span& sp, const ::StaticTraitResolve& resolve, const ::HIR::TypeRef::Data::Data_TraitObject& te)
+    {
+        const auto& trait = *te.m_trait.m_trait_ptr;
+
+        auto vtable_ty_spath = te.m_trait.m_path.m_path;
+        vtable_ty_spath.m_components.back() += "#vtable";
+        const auto& vtable_ref = resolve.m_crate.get_struct_by_path(sp, vtable_ty_spath);
+        // Copy the param set from the trait in the trait object
+        ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
+        // - Include associated types on bound
+        for(const auto& ty_b : te.m_trait.m_type_bounds) {
+            auto idx = trait.m_type_indexes.at(ty_b.first);
+            if(vtable_params.m_types.size() <= idx)
+                vtable_params.m_types.resize(idx+1);
+            vtable_params.m_types[idx] = ty_b.second.clone();
+        }
+        return ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+    }
+}
+
 const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Path& path,  ::HIR::TypeRef& out_ty)
 {
     TU_MATCHA( (path.m_data), (pe),
@@ -352,6 +373,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         if( lit.is_BorrowOf() )
         {
             const auto& path = lit.as_BorrowOf();
+            // TODO: Get the metadata type (for !Sized wrapper types)
             if( te.inner->m_data.is_Slice() )
             {
                 ::HIR::TypeRef tmp;
@@ -359,13 +381,25 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                 MIR_ASSERT(state, ty.m_data.is_Array(), "BorrowOf returning slice not of an array, instead " << ty);
                 unsigned int size = ty.m_data.as_Array().size_val;
 
-                auto ptr_type = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared,
-                    (&ty == &tmp ? mv$(tmp) : ty.clone())
-                    );
+                auto ptr_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, (&ty == &tmp ? mv$(tmp) : ty.clone()) );
 
                 auto ptr_lval = mutator.in_temporary( mv$(ptr_type), ::MIR::Constant::make_ItemAddr(path.clone()) );
                 auto size_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint(size) );
                 return ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) });
+            }
+            else if( const auto* tep = te.inner->m_data.opt_TraitObject() )
+            {
+                ::HIR::TypeRef tmp;
+                const auto& ty = state.get_static_type(tmp, path);
+                auto vtable_type = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Shared, get_vtable_type(state.sp, state.m_resolve, *tep) );
+                auto ptr_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ty.clone() );
+
+                auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : ty.clone(), tep->m_trait.m_path.clone(), "#vtable");
+
+                auto ptr_lval = mutator.in_temporary( mv$(ptr_type), ::MIR::Constant::make_ItemAddr(path.clone()) );
+                auto vtable_lval = mutator.in_temporary( mv$(vtable_type), ::MIR::Constant::make_ItemAddr(mv$(vtable_path)) );
+
+                return ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(vtable_lval) });
             }
             else
             {
@@ -421,22 +455,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
     unsigned int vtable_idx = it->second.first;
 
     // 2. Load from the vtable
-    auto vtable_ty_spath = te.m_trait.m_path.m_path;
-    vtable_ty_spath.m_components.back() += "#vtable";
-    const auto& vtable_ref = state.m_resolve.m_crate.get_struct_by_path(sp, vtable_ty_spath);
-    // Copy the param set from the trait in the trait object
-    ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
-    // - Include associated types on bound
-    for(const auto& ty_b : te.m_trait.m_type_bounds) {
-        auto idx = trait.m_type_indexes.at(ty_b.first);
-        if(vtable_params.m_types.size() <= idx)
-            vtable_params.m_types.resize(idx+1);
-        vtable_params.m_types[idx] = ty_b.second.clone();
-    }
-    auto vtable_ty = ::HIR::TypeRef::new_pointer(
-        ::HIR::BorrowType::Shared,
-        ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref )
-        );
+    auto vtable_ty = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Shared, get_vtable_type(sp, state.m_resolve, te) );
 
     // Allocate a temporary for the vtable pointer itself
     auto vtable_lv = mutator.new_temporary( mv$(vtable_ty) );
