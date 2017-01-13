@@ -181,6 +181,7 @@ output/libgraphviz.hir: $(call fcn_extcrate, std)
 
 output/libsyntax_pos.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libsyntax_pos/lib.rs))
 
+output/librustc_i128.hir: output/libcore.hir
 output/librustc_plugin.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_plugin/lib.rs))
 output/librustc_save_analysis.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_save_analysis/lib.rs))
 output/librustc_resolve.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_resolve/lib.rs))
