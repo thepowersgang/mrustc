@@ -1500,11 +1500,15 @@ public:
 ::HIR::CratePtr LowerHIR_FromAST(::AST::Crate crate)
 {
     ::HIR::Crate    rv;
-    rv.m_crate_name = crate.m_crate_name;
+
+    if(crate.m_crate_type != ::AST::Crate::Type::Executable)
+    {
+        rv.m_crate_name = crate.m_crate_name;
+    }
 
     g_crate_ptr = &rv;
-    g_crate_name = crate.m_crate_name;
-    g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? crate.m_crate_name : "core");
+    g_crate_name = rv.m_crate_name;
+    g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? rv.m_crate_name : "core");
     auto& macros = rv.m_exported_macros;
 
     // - Extract exported macros
