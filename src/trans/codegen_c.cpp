@@ -122,9 +122,7 @@ namespace {
             {
                 for( const auto& crate : m_crate.m_ext_crates )
                 {
-                    // TODO: Get the path from the CratePtr
-                    //tmp.push_back(crate.second.m_filename + ".o");
-                    tmp.push_back("output/lib" + crate.first + ".hir.o");
+                    tmp.push_back(crate.second.m_filename + ".o");
                     args.push_back(tmp.back().c_str());
                 }
                 args.push_back("-lm");
@@ -2415,7 +2413,6 @@ namespace {
                 emit_dst(); m_of << " = " << e;
                 ),
             (BorrowOf,
-                // TODO: If the type is Borrow of a DST, do a fat assign.
                 if( ty.m_data.is_Function() )
                 {
                     emit_dst(); m_of << " = " << Trans_Mangle(e);

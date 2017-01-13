@@ -128,7 +128,8 @@ void Crate::load_extern_crate(Span sp, const ::std::string& name)
 }
 
 ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
-    m_name(name)
+    m_name(name),
+    m_filename(path)
 {
     TRACE_FUNCTION_F("name=" << name << ", path='" << path << "'");
     m_hir = HIR_Deserialise(path, name);
