@@ -449,16 +449,18 @@ int main(int argc, char *argv[])
 
             // Link metatdata and object into a .rlib
             break; }
-        case ::AST::Crate::Type::RustDylib:
+        case ::AST::Crate::Type::RustDylib: {
+            #if 1
+            // Generate a .o
+            TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", *hir_crate, items, false); });
+            #endif
             // Save a loadable HIR dump
             CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
-            // - Enumerate codegen for visible and non-generic items
-            //TransList   items;
-            //CompilePhaseV("Trans Enumerate", [&]() { Trans_Enumerate_Public(*hir_crate); });
-            //CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, *hir_crate, items); });
+
             // Generate a .so/.dll
             // TODO: Codegen and include the metadata in a non-loadable segment
-            break;
+            break; }
         case ::AST::Crate::Type::CDylib:
             // Generate a .so/.dll
             break;
