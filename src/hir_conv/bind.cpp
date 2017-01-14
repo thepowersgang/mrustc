@@ -27,75 +27,37 @@ namespace {
     };
     const void* get_type_pointer(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, Target t)
     {
-        // NOTE: Can't share with HIR::Crate::get_typeitem_by_path because it has to handle enum variants
-        const ::HIR::Module*    mod;
-        if( path.m_crate_name != crate.m_crate_name ) {
-            ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-            mod = &crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
-        }
-        else {
-            mod = &crate.m_root_module;
-        }
-
-        for( unsigned int i = 0; i < path.m_components.size()-1; i ++ )
+        if( t == Target::EnumVariant )
         {
-            const auto& pc = path.m_components[i];
-            auto it = mod->m_mod_items.find( pc );
-            if( it == mod->m_mod_items.end() ) {
-                BUG(sp, "Couldn't find component " << i << " of " << path);
-            }
-
-            // If second-last, and an enum variant is desired, return the pointer to the enum
-            if( i+1 == path.m_components.size()-1 && t == Target::EnumVariant )
+            return &crate.get_typeitem_by_path(sp, path, false, true).as_Enum();
+        }
+        else
+        {
+            const auto& ti = crate.get_typeitem_by_path(sp, path);
+            switch(t)
             {
-                TU_IFLET(::HIR::TypeItem, it->second->ent, Enum, e2,
+            case Target::TypeItem:  return &ti;
+            case Target::EnumVariant:   throw "";
+
+            case Target::Struct:
+                TU_IFLET(::HIR::TypeItem, ti, Struct, e2,
                     return &e2;
                 )
                 else {
-                    ERROR(sp, E0000, "Expected an enum at the penultimate node of " << path << ", got a " << it->second->ent.tag_str());
+                    ERROR(sp, E0000, "Expected a struct at " << path << ", got a " << ti.tag_str());
                 }
-            }
-            else {
-                TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e2),
-                (
-                    BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
-                    ),
-                (Module,
-                    mod = &e2;
-                    )
+                break;
+            case Target::Enum:
+                TU_IFLET(::HIR::TypeItem, ti, Enum, e2,
+                    return &e2;
                 )
+                else {
+                    ERROR(sp, E0000, "Expected a enum at " << path << ", got a " << ti.tag_str());
+                }
+                break;
             }
+            throw "";
         }
-
-        const auto& pc = path.m_components.back();
-        auto it = mod->m_mod_items.find( pc );
-        if( it == mod->m_mod_items.end() ) {
-            BUG(sp, "Couldn't find final component of " << path);
-        }
-
-        switch(t)
-        {
-        case Target::TypeItem:  return &it->second->ent;
-        case Target::EnumVariant:   throw "";
-
-        case Target::Struct:
-            TU_IFLET(::HIR::TypeItem, it->second->ent, Struct, e2,
-                return &e2;
-            )
-            else {
-                ERROR(sp, E0000, "Expected a struct at " << path << ", got a " << it->second->ent.tag_str());
-            }
-            break;
-        case Target::Enum:
-            TU_IFLET(::HIR::TypeItem, it->second->ent, Enum, e2,
-                return &e2;
-            )
-            else {
-                ERROR(sp, E0000, "Expected a enum at " << path << ", got a " << it->second->ent.tag_str());
-            }
-            break;
-        }
-        throw "";
     }
 
     void fix_type_params(const Span& sp, const ::HIR::GenericParams& params_def, ::HIR::PathParams& params)

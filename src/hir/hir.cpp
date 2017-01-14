@@ -730,7 +730,7 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path_opt(const char* name) 
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
 {
     ASSERT_BUG(sp, path.m_components.size() > 0, "get_typeitem_by_path received invalid path - " << path);
-    ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1 : 0), "get_typeitem_by_path received invlaid path - " << path);
+    ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1 : 0), "get_typeitem_by_path received invalid path - " << path);
 
     const ::HIR::Module* mod;
     if( !ignore_crate_name && path.m_crate_name != m_crate_name ) {
@@ -762,9 +762,13 @@ const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const 
     return it->second->ent;
 }
 
-const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path) const
+const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_last_node/*=false*/) const
 {
-    if( path.m_components.size() == 0 )
+    if( ignore_last_node )
+    {
+        ASSERT_BUG(sp, path.m_components.size() > 0, "get_mod_by_path received invalid path with ignore_last_node=true - " << path);
+    }
+    if( path.m_components.size() == (ignore_last_node ? 1 : 0) )
     {
         if( path.m_crate_name != m_crate_name )
         {
@@ -778,7 +782,7 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
     }
     else
     {
-        const auto& ti = this->get_typeitem_by_path(sp, path);
+        const auto& ti = this->get_typeitem_by_path(sp, path, false, ignore_last_node);
         TU_IFLET(::HIR::TypeItem, ti, Module, e,
             return e;
         )

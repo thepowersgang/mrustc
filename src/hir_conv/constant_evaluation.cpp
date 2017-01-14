@@ -98,37 +98,13 @@ namespace {
     };
     EntPtr get_ent_simplepath(const Span& sp, const ::HIR::Crate& crate, const ::HIR::SimplePath& path, EntNS ns)
     {
-        const ::HIR::Module* mod;
-        if( path.m_crate_name != crate.m_crate_name ) {
-            ASSERT_BUG(sp, crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-            mod = &crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
-        }
-        else {
-            mod = &crate.m_root_module;
-        }
-
-        for( unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
-        {
-            const auto& pc = path.m_components[i];
-            auto it = mod->m_mod_items.find( pc );
-            if( it == mod->m_mod_items.end() ) {
-                BUG(sp, "Couldn't find component " << i << " of " << path);
-            }
-            TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e2),
-            (
-                BUG(sp, "Node " << i << " of path " << path << " wasn't a module");
-                ),
-            (Module,
-                mod = &e2;
-                )
-            )
-        }
+        const ::HIR::Module& mod = crate.get_mod_by_path(sp, path, /*ignore_last_node=*/true);
 
         switch( ns )
         {
         case EntNS::Value: {
-            auto it = mod->m_value_items.find( path.m_components.back() );
-            if( it == mod->m_value_items.end() ) {
+            auto it = mod.m_value_items.find( path.m_components.back() );
+            if( it == mod.m_value_items.end() ) {
                 return EntPtr {};
             }
 
@@ -152,8 +128,8 @@ namespace {
             BUG(sp, "Path " << path << " pointed to a invalid item - " << it->second->ent.tag_str());
             } break;
         case EntNS::Type: {
-            auto it = mod->m_mod_items.find( path.m_components.back() );
-            if( it == mod->m_mod_items.end() ) {
+            auto it = mod.m_mod_items.find( path.m_components.back() );
+            if( it == mod.m_mod_items.end() ) {
                 return EntPtr {};
             }
 

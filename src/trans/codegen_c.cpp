@@ -2725,6 +2725,7 @@ namespace {
                 return ::HIR::TypeRef();
             }
         }
+        // TODO: Move this to a more common location
         MetadataType metadata_type(const ::HIR::TypeRef& ty) const
         {
             if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
