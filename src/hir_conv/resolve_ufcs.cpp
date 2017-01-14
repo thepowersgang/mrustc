@@ -252,122 +252,143 @@ namespace {
                 pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), trait_path.clone() /*make_generic_path(trait_path.m_path, trait)*/, trait);
                 return true;
             }
-            // Search supertraits (recursively)
-            for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
-            {
-                const auto& par_trait_path_tpl = trait.m_parent_traits[i].m_path;
-                const auto* par_trait_path_ptr = &par_trait_path_tpl;
-                ::HIR::GenericPath  par_trait_path_tmp;
-                // HACK: Compares the param sets to avoid needing to monomorphise in some cases (e.g. Fn*
-                if( monomorphise_genericpath_needed(par_trait_path_tpl) && par_trait_path_tpl.m_params != trait_path.m_params ) {
-                    auto monomorph_cb = [&](const auto& ty)->const auto& {
-                        const auto& ge = ty.m_data.as_Generic();
-                        if( ge.binding == 0xFFFF ) {
+
+            auto monomorph_cb = [&](const auto& ty)->const auto& {
+                const auto& ge = ty.m_data.as_Generic();
+                if( ge.binding == 0xFFFF ) {
+                    // TODO: This has to be the _exact_ same type, including future ivars.
+                    return *pd.as_UfcsUnknown().type;
+                }
+                else if( (ge.binding >> 8) == 0 ) {
+                    auto idx = ge.binding & 0xFF;
+                    ASSERT_BUG(sp, idx < trait.m_params.m_types.size(), "");
+                    if( idx < trait_path.m_params.m_types.size() )
+                        return trait_path.m_params.m_types[idx];
+                    // If the param is omitted, but has a default, use the default.
+                    else if( trait.m_params.m_types[idx].m_default != ::HIR::TypeRef() ) {
+                        const auto& def = trait.m_params.m_types[idx].m_default;
+                        if( ! monomorphise_type_needed(def) )
+                            return def;
+                        if( def == ::HIR::TypeRef("Self", 0xFFFF) )
                             // TODO: This has to be the _exact_ same type, including future ivars.
                             return *pd.as_UfcsUnknown().type;
-                        }
-                        else if( (ge.binding >> 8) == 0 ) {
-                            auto idx = ge.binding & 0xFF;
-                            ASSERT_BUG(sp, idx < trait.m_params.m_types.size(), "");
-                            if( idx < trait_path.m_params.m_types.size() )
-                                return trait_path.m_params.m_types[idx];
-                            // If the param is omitted, but has a default, use the default.
-                            else if( trait.m_params.m_types[idx].m_default != ::HIR::TypeRef() ) {
-                                const auto& def = trait.m_params.m_types[idx].m_default;
-                                if( ! monomorphise_type_needed(def) )
-                                    return def;
-                                if( def == ::HIR::TypeRef("Self", 0xFFFF) )
-                                    // TODO: This has to be the _exact_ same type, including future ivars.
-                                    return *pd.as_UfcsUnknown().type;
-                                TODO(sp, "Monomorphise default arg " << def << " for trait path " << trait_path);
-                            }
-                            else
-                                BUG(sp, "Binding out of range in " << ty << " for trait path " << trait_path);
-                        }
-                        else {
-                            ERROR(sp, E0000, "Unexpected generic binding " << ty);
-                        }
-                        };
-                    DEBUG("- Monomorph " << par_trait_path_tpl);
-                    par_trait_path_tmp = ::HIR::GenericPath(
-                        par_trait_path_tpl.m_path,
-                        monomorphise_path_params_with(sp, par_trait_path_tpl.m_params, monomorph_cb, false /*no infer*/)
-                        );
-                    par_trait_path_ptr = &par_trait_path_tmp;
+                        TODO(sp, "Monomorphise default arg " << def << " for trait path " << trait_path);
+                    }
+                    else
+                        BUG(sp, "Binding out of range in " << ty << " for trait path " << trait_path);
                 }
-                DEBUG("- Check " << *par_trait_path_ptr);
-                const auto& par_trait_path = *par_trait_path_ptr;
-                //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
-                const auto& par_trait_ent = m_crate.get_trait_by_path(sp, par_trait_path.m_path);
-                if( locate_in_trait_and_set(pc, par_trait_path, par_trait_ent,  pd) ) {
+                else {
+                    ERROR(sp, E0000, "Unexpected generic binding " << ty);
+                }
+                };
+            ::HIR::GenericPath  par_trait_path_tmp;
+            auto monomorph_gp_if_needed = [&](const auto& tpl)->const auto& {
+                // NOTE: This doesn't monomorph if the parameter set is the same
+                if( monomorphise_genericpath_needed(tpl) && tpl.m_params != trait_path.m_params ) {
+                    DEBUG("- Monomorph " << tpl);
+                    return par_trait_path_tmp = monomorphise_genericpath_with(sp, tpl, monomorph_cb, false /*no infer*/);
+                }
+                else {
+                    return tpl;
+                }
+                };
+
+            // Search supertraits (recursively)
+            for(const auto& pt : trait.m_parent_traits)
+            {
+                const auto& par_trait_path = monomorph_gp_if_needed(pt.m_path);
+                DEBUG("- Check " << par_trait_path);
+                if( locate_in_trait_and_set(pc, par_trait_path, *pt.m_trait_ptr,  pd) ) {
+                    return true;
+                }
+            }
+            for(const auto& pt : trait.m_all_parent_traits)
+            {
+                const auto& par_trait_path = monomorph_gp_if_needed(pt.m_path);
+                DEBUG("- Check (all) " << par_trait_path);
+                if( locate_item_in_trait(pc, *pt.m_trait_ptr,  pd) ) {
+                    // TODO: Don't clone if this is from the temp.
+                    pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), par_trait_path.clone(), *pt.m_trait_ptr);
                     return true;
                 }
             }
             return false;
         }
 
-        bool locate_in_trait_impl_and_set(const Span& sp, ::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
+        bool set_from_trait_impl(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait, ::HIR::Path::Data& pd)
         {
             auto& e = pd.as_UfcsUnknown();
-            if( this->locate_item_in_trait(pc, trait,  pd) ) {
-                const auto& type = *e.type;
+            const auto& type = *e.type;
 
-                // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
-                this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy){
-                    auto pp = impl.get_trait_params();
-                    // Replace all placeholder parameters (group 2) with ivars (empty types)
-                    pp = monomorphise_path_params_with(sp, pp, [&](const auto& gt)->const auto& {
-                        const auto& ge = gt.m_data.as_Generic();
-                        if( (ge.binding >> 8) == 2 ) {
-                            static ::HIR::TypeRef   empty_type;
-                            return empty_type;
-                        }
-                        return gt;
-                        }, true);
-                    DEBUG("FOUND impl from " << impl);
-                    // If this has already found an option...
-                    TU_IFLET( ::HIR::Path::Data, pd, UfcsKnown, e,
-                        // Compare all path params, and set different params to _
-                        assert( pp.m_types.size() == e.trait.m_params.m_types.size() );
-                        for(unsigned int i = 0; i < pp.m_types.size(); i ++ )
-                        {
-                            auto& e_ty = e.trait.m_params.m_types[i];
-                            const auto& this_ty = pp.m_types[i];
-                            if( e_ty == ::HIR::TypeRef() ) {
-                                // Already _, leave as is
-                            }
-                            else if( e_ty != this_ty ) {
-                                e_ty = ::HIR::TypeRef();
-                            }
-                            else {
-                                // Equal, good
-                            }
-                        }
-                    )
-                    else {
-                        DEBUG("pp = " << pp);
-                        // Otherwise, set to the current result.
-                        pd = get_ufcs_known(mv$(e), ::HIR::GenericPath(trait_path.m_path, mv$(pp)), trait);
+            // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
+            this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy){
+                auto pp = impl.get_trait_params();
+                // Replace all placeholder parameters (group 2) with ivars (empty types)
+                pp = monomorphise_path_params_with(sp, pp, [&](const auto& gt)->const auto& {
+                    const auto& ge = gt.m_data.as_Generic();
+                    if( (ge.binding >> 8) == 2 ) {
+                        static ::HIR::TypeRef   empty_type;
+                        return empty_type;
                     }
-                    return false;
-                    });
-                return pd.is_UfcsKnown();
+                    return gt;
+                    }, true);
+                DEBUG("FOUND impl from " << impl);
+                // If this has already found an option...
+                TU_IFLET( ::HIR::Path::Data, pd, UfcsKnown, e,
+                    // Compare all path params, and set different params to _
+                    assert( pp.m_types.size() == e.trait.m_params.m_types.size() );
+                    for(unsigned int i = 0; i < pp.m_types.size(); i ++ )
+                    {
+                        auto& e_ty = e.trait.m_params.m_types[i];
+                        const auto& this_ty = pp.m_types[i];
+                        if( e_ty == ::HIR::TypeRef() ) {
+                            // Already _, leave as is
+                        }
+                        else if( e_ty != this_ty ) {
+                            e_ty = ::HIR::TypeRef();
+                        }
+                        else {
+                            // Equal, good
+                        }
+                    }
+                )
+                else {
+                    DEBUG("pp = " << pp);
+                    // Otherwise, set to the current result.
+                    pd = get_ufcs_known(mv$(e), ::HIR::GenericPath(trait_path.m_path, mv$(pp)), trait);
+                }
+                return false;
+                });
+            return pd.is_UfcsKnown();
+        }
+
+        bool locate_in_trait_impl_and_set(const Span& sp, ::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
+        {
+            if( this->locate_item_in_trait(pc, trait,  pd) ) {
+                return set_from_trait_impl(sp, trait_path, trait, pd);
             }
             else {
-                DEBUG("- Item " << e.item << " not in trait " << trait_path.m_path);
+                DEBUG("- Item " << pd.as_UfcsUnknown().item << " not in trait " << trait_path.m_path);
             }
 
 
             // Search supertraits (recursively)
-            // NOTE: This runs before "Resolve HIR Markings", so m_all_parent_traits can't be used.
-            for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
+            // NOTE: This runs before "Resolve HIR Markings", so m_all_parent_traits can't be used exclusively
+            for(const auto& pt : trait.m_parent_traits)
             {
-                const auto& par_trait_path = trait.m_parent_traits[i].m_path;
-                //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
-                const auto& par_trait_ent = m_crate.get_trait_by_path(sp, par_trait_path.m_path);
                 // TODO: Modify path parameters based on the current trait's params
-                if( locate_in_trait_impl_and_set(sp, pc, par_trait_path, par_trait_ent,  pd) ) {
+                if( locate_in_trait_impl_and_set(sp, pc, pt.m_path, *pt.m_trait_ptr,  pd) ) {
                     return true;
+                }
+            }
+            for(const auto& pt : trait.m_all_parent_traits)
+            {
+                if( this->locate_item_in_trait(pc, *pt.m_trait_ptr,  pd) ) {
+                    // TODO: Modify path parameters based on the current trait's params
+                    return set_from_trait_impl(sp, pt.m_path, *pt.m_trait_ptr, pd);
+                }
+                else {
+                    DEBUG("- Item " << pd.as_UfcsUnknown().item << " not in trait " << trait_path.m_path);
                 }
             }
             return false;
