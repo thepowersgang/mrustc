@@ -73,37 +73,47 @@ public:
 
                 ::HIR::TypeRef  ty_self { "Self", 0xFFFF };
                 auto monomorph_cb = monomorphise_type_get_cb(sp, &ty_self, &path.m_params, nullptr);
-                // Recurse into parent traits
-                for(const auto& pt : tr.m_parent_traits)
+                if( tr.m_all_parent_traits.size() > 0 )
                 {
-                    auto get_aty_this = [&](const char* name) {
-                        auto it = pt.m_type_bounds.find(name);
-                        if( it != pt.m_type_bounds.end() )
-                            return monomorphise_type_with(sp, it->second, monomorph_cb);
-                        return get_aty(name);
-                        };
-                    enum_supertraits_in(*pt.m_trait_ptr, monomorphise_genericpath_with(sp, pt.m_path, monomorph_cb, false), get_aty_this);
+                    for(const auto& pt : tr.m_all_parent_traits)
+                    {
+                        supertraits.push_back( monomorphise_traitpath_with(sp, pt, monomorph_cb, false) );
+                    }
                 }
-                // - Bound parent traits
-                for(const auto& b : tr.m_params.m_bounds)
+                else
                 {
-                    if( !b.is_TraitBound() )
-                        continue;
-                    const auto& be = b.as_TraitBound();
-                    if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
-                        continue;
-                    const auto& pt = be.trait;
-                    if( pt.m_path.m_path == path.m_path )
-                        continue ;
+                    // Recurse into parent traits
+                    for(const auto& pt : tr.m_parent_traits)
+                    {
+                        auto get_aty_this = [&](const char* name) {
+                            auto it = pt.m_type_bounds.find(name);
+                            if( it != pt.m_type_bounds.end() )
+                                return monomorphise_type_with(sp, it->second, monomorph_cb);
+                            return get_aty(name);
+                            };
+                        enum_supertraits_in(*pt.m_trait_ptr, monomorphise_genericpath_with(sp, pt.m_path, monomorph_cb, false), get_aty_this);
+                    }
+                    // - Bound parent traits
+                    for(const auto& b : tr.m_params.m_bounds)
+                    {
+                        if( !b.is_TraitBound() )
+                            continue;
+                        const auto& be = b.as_TraitBound();
+                        if( be.type != ::HIR::TypeRef("Self", 0xFFFF) )
+                            continue;
+                        const auto& pt = be.trait;
+                        if( pt.m_path.m_path == path.m_path )
+                            continue ;
 
-                    auto get_aty_this = [&](const char* name) {
-                        auto it = pt.m_type_bounds.find(name);
-                        if( it != pt.m_type_bounds.end() )
-                            return monomorphise_type_with(sp, it->second, monomorph_cb);
-                        return get_aty(name);
-                        };
+                        auto get_aty_this = [&](const char* name) {
+                            auto it = pt.m_type_bounds.find(name);
+                            if( it != pt.m_type_bounds.end() )
+                                return monomorphise_type_with(sp, it->second, monomorph_cb);
+                            return get_aty(name);
+                            };
 
-                    enum_supertraits_in(*pt.m_trait_ptr, monomorphise_genericpath_with(sp, pt.m_path, monomorph_cb, false), get_aty_this);
+                        enum_supertraits_in(*pt.m_trait_ptr, monomorphise_genericpath_with(sp, pt.m_path, monomorph_cb, false), get_aty_this);
+                    }
                 }
 
 
