@@ -75,10 +75,6 @@ namespace {
                         }
                         i ++;
                     }
-                    for(const auto& st : tr.m_parent_traits) {
-                        add_types_from_trait(*st.m_trait_ptr);
-                    }
-                    // TODO: Iterate supertraits from bounds too
                 }
             };
             Foo visitor { &tr, {}, static_cast<unsigned int>(tr.m_params.m_types.size()) };
@@ -86,6 +82,8 @@ namespace {
                 visitor.params.m_types.push_back( ::HIR::TypeParamDef { tp.m_name, {}, tp.m_is_sized } );
             }
             visitor.add_types_from_trait(tr);
+            for(const auto& st : tr.m_all_parent_traits)
+                visitor.add_types_from_trait(*st.m_trait_ptr);
             auto args = mv$(visitor.params);
 
             struct VtableConstruct {
@@ -149,9 +147,10 @@ namespace {
                             ::HIR::TypeRef  fcn_type( mv$(ft) );
 
                             // Detect use of `Self` and don't create the vtable if there is.
+                            // NOTE: Associated types where replaced by clone_ty_with
                             if( visit_ty_with(fcn_type, [&](const auto& t){ return (t == ::HIR::TypeRef("Self", 0xFFFF)); }) )
                             {
-                                DEBUG("- '" << vi.first << "' NOT object safe (Self), not creating vtable - " << fcn_type);
+                                DEBUG("- '" << vi.first << "' NOT object safe (uses Self), not creating vtable - " << fcn_type);
                                 return false;
                             }
 
@@ -176,13 +175,12 @@ namespace {
                             )
                         )
                     }
-                    for(const auto& st : tr.m_parent_traits) {
+                    for(const auto& st : tr.m_all_parent_traits) {
                         ::HIR::TypeRef  self("Self", 0xFFFF);
                         auto st_gp = monomorphise_genericpath_with(sp, st.m_path, monomorphise_type_get_cb(sp, &self, &trait_path.m_params, nullptr), false);
                         // NOTE: Doesn't trigger non-object-safe
                         add_ents_from_trait(*st.m_trait_ptr, st_gp);
                     }
-                    // TODO: Iterate supertraits from bounds too
                     return true;
                 }
             };

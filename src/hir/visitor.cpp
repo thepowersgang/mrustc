@@ -164,6 +164,9 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
     for(auto& par : item.m_parent_traits) {
         this->visit_trait_path(par);
     }
+    for(auto& par : item.m_all_parent_traits) {
+        this->visit_trait_path(par);
+    }
     for(auto& i : item.m_types) {
         DEBUG("type " << i.first);
         for(auto& bound : i.second.m_trait_bounds)

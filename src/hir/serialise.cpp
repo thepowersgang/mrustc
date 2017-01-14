@@ -874,12 +874,12 @@ namespace {
             TRACE_FUNCTION_F("_trait:");
             serialise_generics(item.m_params);
             //m_out.write_string(item.m_lifetime);    // TODO: Better type for lifetime
-            serialise_vec( item.m_parent_traits );
             m_out.write_bool( item.m_is_marker );
             serialise_strmap( item.m_types );
             serialise_strmap( item.m_values );
             serialise_strmap( item.m_value_indexes );
             serialise_strmap( item.m_type_indexes );
+            serialise_vec( item.m_all_parent_traits );
         }
         void serialise(const ::HIR::TraitValueItem& tvi)
         {

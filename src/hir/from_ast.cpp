@@ -945,6 +945,7 @@ namespace {
             this_trait.m_params.m_types.push_back( ::HIR::TypeRef(arg.m_name, i) );
             i ++;
         }
+        // HACK: Add a bound of Self: ThisTrait for parts of typeck (TODO: Remove this, it's evil)
         rv.m_params.m_bounds.push_back( ::HIR::GenericBound::make_TraitBound({ ::HIR::TypeRef("Self",0xFFFF), { mv$(this_trait) } }) );
     }
 

@@ -460,13 +460,11 @@ namespace {
         const auto& tr = *cur_trait.m_trait_ptr;
         auto monomorph_cb = monomorphise_type_get_cb(sp, &type, &cur_trait.m_path.m_params, nullptr);
 
-        for(const auto& trait_path_raw : tr.m_parent_traits)
+        for(const auto& trait_path_raw : tr.m_all_parent_traits)
         {
             // 1. Monomorph
             auto trait_path_mono = monomorphise_traitpath_with(sp, trait_path_raw, monomorph_cb, false);
-            // 2. Recurse
-            add_bound_from_trait(rv, type, trait_path_mono);
-            // 3. Add
+            // 2. Add
             rv.push_back( ::HIR::GenericBound::make_TraitBound({ type.clone(), mv$(trait_path_mono) }) );
         }
 

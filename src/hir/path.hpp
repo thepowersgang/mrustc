@@ -162,6 +162,7 @@ public:
 
     bool operator==(const TraitPath& x) const;
     bool operator!=(const TraitPath& x) const { return !(*this == x); }
+    bool operator<(const TraitPath& x) const { return ord(x) == OrdLess; }
 
     Ordering ord(const TraitPath& x) const {
         ORD(m_path, x.m_path);

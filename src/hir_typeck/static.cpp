@@ -455,7 +455,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     ) const
 {
     auto cb_ident = [](const auto&ty)->const auto&{return ty;};
-    DEBUG("impl" << impl_params_def.fmt_args() << " " << des_trait_path << impl_trait_params << " for " << impl_type << impl_params_def.fmt_bounds());
+    TRACE_FUNCTION_F("impl" << impl_params_def.fmt_args() << " " << des_trait_path << impl_trait_params << " for " << impl_type << impl_params_def.fmt_bounds());
 
     ::std::vector< const ::HIR::TypeRef*> impl_params;
     impl_params.resize( impl_params_def.m_types.size() );
@@ -1154,45 +1154,15 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
         }
         };
 
-    for( const auto& pt : trait_ptr.m_parent_traits )
+    for( const auto& pt : trait_ptr.m_all_parent_traits )
     {
         auto pt_mono = monomorphise_traitpath_with(sp, pt, monomorph_cb, false);
 
         DEBUG(pt << " => " << pt_mono);
-        if( pt.m_path.m_path == des && pt_mono.m_path.m_params == des_params ) {
+        if( pt.m_path.m_path == des && pt_mono.m_path.m_params == des_params )
+        {
             callback( pt_mono.m_path.m_params, mv$(pt_mono.m_type_bounds) );
             return true;
-        }
-
-        const auto& tr = m_crate.get_trait_by_path(sp, pt.m_path.m_path);
-        if( find_named_trait_in_trait(sp, des, des_params,  tr, pt.m_path.m_path, pt_mono.m_path.m_params,  target_type, callback) ) {
-            return true;
-        }
-    }
-
-    // Also check bounds for `Self: T` bounds
-    for(const auto& b : trait_ptr.m_params.m_bounds)
-    {
-        if( !b.is_TraitBound() )    continue;
-        const auto& be = b.as_TraitBound();
-
-        if( be.type == ::HIR::TypeRef("Self", 0xFFFF) )
-        {
-            // Something earlier adds a "Self: SelfTrait" bound, prevent that from causing infinite recursion
-            if( be.trait.m_path.m_path == trait_path )
-                continue ;
-            auto pt_mono = monomorphise_traitpath_with(sp, be.trait, monomorph_cb, false);
-            DEBUG(be.trait << " (Bound) => " << pt_mono);
-
-            if( pt_mono.m_path.m_path == des ) {
-                callback( pt_mono.m_path.m_params, mv$(pt_mono.m_type_bounds) );
-                return true;
-            }
-
-            const auto& tr = m_crate.get_trait_by_path(sp, pt_mono.m_path.m_path);
-            if( find_named_trait_in_trait(sp, des, des_params,  tr, pt_mono.m_path.m_path, pt_mono.m_path.m_params,  target_type, callback) ) {
-                return true;
-            }
         }
     }
 
@@ -1200,6 +1170,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
 }
 bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
 {
+    TRACE_FUNCTION_FR("name="<<name << ", trait=" << trait_path, out_path);
     auto it = trait_ptr.m_types.find(name);
     if( it != trait_ptr.m_types.end() ) {
         out_path = trait_path.clone();
@@ -1212,12 +1183,12 @@ bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::Generi
             assert(ge.binding < trait_path.m_params.m_types.size());
             return trait_path.m_params.m_types[ge.binding];
             };
-    // TODO: Prevent infinite recursion
-    for(const auto& st : trait_ptr.m_parent_traits)
+    for(const auto& st : trait_ptr.m_all_parent_traits)
     {
-        auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path.m_path);
-        if( trait_contains_type(sp, st.m_path, st_ptr, name, out_path) ) {
-            out_path.m_params = monomorphise_path_params_with(sp, mv$(out_path.m_params), monomorph, false);
+        if( st.m_trait_ptr->m_types.count(name) )
+        {
+            out_path.m_path = st.m_path.m_path;
+            out_path.m_params = monomorphise_path_params_with(sp, st.m_path.m_params, monomorph, false);
             return true;
         }
     }

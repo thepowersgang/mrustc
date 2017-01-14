@@ -356,36 +356,36 @@ namespace {
                 pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), make_generic_path(trait_path.m_path, trait), trait);
                 return true;
             }
-            // Search supertraits (recursively)
-            for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
+            // Search all supertraits
+            for( const auto& pt : trait.m_all_parent_traits )
             {
-                const auto& par_trait_path = trait.m_parent_traits[i].m_path;
-                //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
-                const auto& par_trait_ent = this->crate.get_trait_by_path(sp, par_trait_path.m_path);
-                if( locate_in_trait_and_set(sp, pc, par_trait_path, par_trait_ent,  pd) ) {
+                if( locate_item_in_trait(pc, *pt.m_trait_ptr, pd) )
+                {
+                    pd = get_ufcs_known(mv$(pd.as_UfcsUnknown()), make_generic_path(trait_path.m_path, trait), trait);
                     return true;
                 }
             }
             return false;
         }
-        bool locate_in_trait_impl_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
-            static Span sp;
-
+        bool set_from_impl(const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd)
+        {
             auto& e = pd.as_UfcsUnknown();
-            //if( this->m_resolve.trait_contains_type(sp, trait_path, trait, e.item,  out_path) )
+            const auto& type = *e.type;
+            return this->crate.find_trait_impls(trait_path.m_path, type, [](const auto& x)->const auto&{return x;}, [&](const auto& impl) {
+                DEBUG("FOUND impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
+                // TODO: Check bounds
+                for(const auto& bound : impl.m_params.m_bounds) {
+                    DEBUG("- TODO: Bound " << bound);
+                    return false;
+                }
+                pd = get_ufcs_known(mv$(e), make_generic_path(trait_path.m_path, trait), trait);
+                return true;
+                });
+        }
+        bool locate_in_trait_impl_and_set(::HIR::Visitor::PathContext pc, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait,  ::HIR::Path::Data& pd) {
+            auto& e = pd.as_UfcsUnknown();
             if( this->locate_item_in_trait(pc, trait,  pd) ) {
-                const auto& type = *e.type;
-
-                return this->crate.find_trait_impls(trait_path.m_path, type, [](const auto& x)->const auto&{return x;}, [&](const auto& impl) {
-                    DEBUG("FOUND impl" << impl.m_params.fmt_args() << " " << trait_path.m_path << impl.m_trait_args << " for " << impl.m_type);
-                    // TODO: Check bounds
-                    for(const auto& bound : impl.m_params.m_bounds) {
-                        DEBUG("- TODO: Bound " << bound);
-                        return false;
-                    }
-                    pd = get_ufcs_known(mv$(e), make_generic_path(trait_path.m_path, trait), trait);
-                    return true;
-                    });
+                return this->set_from_impl(trait_path, trait, pd);
             }
             else {
                 DEBUG("- Item " << e.item << " not in trait " << trait_path.m_path);
@@ -393,14 +393,15 @@ namespace {
 
 
             // Search supertraits (recursively)
-            for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
+            for( const auto& pt : trait.m_all_parent_traits )
             {
-                const auto& par_trait_path = trait.m_parent_traits[i].m_path;
-                //const auto& par_trait_ent = *trait.m_parent_trait_ptrs[i];
-                const auto& par_trait_ent = this->crate.get_trait_by_path(sp, par_trait_path.m_path);
-                // TODO: Modify path parameters based on the current trait's params
-                if( locate_in_trait_impl_and_set(pc, par_trait_path, par_trait_ent,  pd) ) {
-                    return true;
+                if( this->locate_item_in_trait(pc, *pt.m_trait_ptr, pd) )
+                {
+                    // TODO: Monomorphise params?
+                    return set_from_impl(pt.m_path, *pt.m_trait_ptr, pd);
+                }
+                else
+                {
                 }
             }
             return false;

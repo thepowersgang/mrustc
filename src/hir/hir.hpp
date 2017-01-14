@@ -285,6 +285,9 @@ struct Trait
     // Indexes in the vtable parameter list for each associated type
     ::std::unordered_map< ::std::string, unsigned int > m_type_indexes;
 
+    // Flattend set of parent traits (monomorphised and associated types fixed)
+    ::std::vector< ::HIR::TraitPath >  m_all_parent_traits;
+
     Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::TraitPath> parents):
         m_params( mv$(gps) ),
         m_lifetime( mv$(lifetime) ),

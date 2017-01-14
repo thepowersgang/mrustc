@@ -2219,7 +2219,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
         }
         };
 
-    for( const auto& pt : trait_ptr.m_parent_traits )
+    for( const auto& pt : trait_ptr.m_all_parent_traits )
     {
         auto pt_mono = monomorphise_traitpath_with(sp, pt, monomorph_cb, false);
 
@@ -2232,42 +2232,6 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
                 callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
             //}
             return true;
-        }
-
-        const auto& tr = m_crate.get_trait_by_path(sp, pt.m_path.m_path);
-        if( find_named_trait_in_trait(sp, des, des_params,  tr, pt.m_path.m_path, pt_mono.m_path.m_params,  target_type, callback) ) {
-            return true;
-        }
-    }
-
-    // Also check bounds for `Self: T` bounds
-    for(const auto& b : trait_ptr.m_params.m_bounds)
-    {
-        if( !b.is_TraitBound() )    continue;
-        const auto& be = b.as_TraitBound();
-
-        if( be.type == ::HIR::TypeRef("Self", 0xFFFF) )
-        {
-            // Something earlier adds a "Self: SelfTrait" bound, prevent that from causing infinite recursion
-            if( be.trait.m_path.m_path == trait_path )
-                continue ;
-            auto pt_mono = monomorphise_traitpath_with(sp, be.trait, monomorph_cb, false);
-            DEBUG(be.trait << " (Bound) => " << pt_mono);
-
-            if( pt_mono.m_path.m_path == des ) {
-                // NOTE: Doesn't quite work...
-                //auto cmp = this->compare_pp(sp, pt_mono.m_path.m_params, des_params);
-                //if( cmp != ::HIR::Compare::Unequal )
-                //{
-                    callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
-                //}
-                return true;
-            }
-
-            const auto& tr = m_crate.get_trait_by_path(sp, pt_mono.m_path.m_path);
-            if( find_named_trait_in_trait(sp, des, des_params,  tr, pt_mono.m_path.m_path, pt_mono.m_path.m_params,  target_type, callback) ) {
-                return true;
-            }
         }
     }
 
@@ -2962,49 +2926,64 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     return match;
 }
 
-bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, AllowedReceivers ar,  ::HIR::GenericPath& out_path) const
-{
-    auto it = trait_ptr.m_values.find(name);
-    if( it != trait_ptr.m_values.end() ) {
-        if( it->second.is_Function() ) {
-            const auto& v = it->second.as_Function();
-            switch(v.m_receiver)
-            {
-            case ::HIR::Function::Receiver::Free:
-                break;
-            case ::HIR::Function::Receiver::Value:
-                if( ar != AllowedReceivers::All && ar != AllowedReceivers::Value )
+namespace {
+    bool trait_contains_method_(const ::HIR::Trait& trait_ptr, const ::std::string& name, TraitResolution::AllowedReceivers ar)
+    {
+        auto it = trait_ptr.m_values.find(name);
+        if( it != trait_ptr.m_values.end() )
+        {
+            if( it->second.is_Function() ) {
+                const auto& v = it->second.as_Function();
+                switch(v.m_receiver)
+                {
+                case ::HIR::Function::Receiver::Free:
                     break;
-                if(0)
-            case ::HIR::Function::Receiver::Box:
-                if( ar != AllowedReceivers::Box )
-                    break;
-            default:
-                out_path = trait_path.clone();
-                return true;
+                case ::HIR::Function::Receiver::Value:
+                    if( ar != TraitResolution::AllowedReceivers::All && ar != TraitResolution::AllowedReceivers::Value )
+                        break;
+                    if(0)
+                case ::HIR::Function::Receiver::Box:
+                    if( ar != TraitResolution::AllowedReceivers::Box )
+                        break;
+                default:
+                    return true;
+                }
             }
         }
+        return false;
+    }
+}
+
+bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, AllowedReceivers ar,  ::HIR::GenericPath& out_path) const
+{
+    TRACE_FUNCTION_FR(trait_path << " has " << name, out_path);
+
+    if( trait_contains_method_(trait_ptr, name, ar) )
+    {
+        out_path = trait_path.clone();
+        return true;
     }
 
-    // TODO: Prevent infinite recursion
-    for(const auto& st : trait_ptr.m_parent_traits)
-    {
-        auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path.m_path);
-        if( trait_contains_method(sp, st.m_path, st_ptr, self, name, ar,  out_path) ) {
-            out_path.m_params = monomorphise_path_params_with(sp, mv$(out_path.m_params), [&](const auto& gt)->const auto& {
-                const auto& ge = gt.m_data.as_Generic();
-                if( ge.binding == 0xFFFF ) {
-                    return self;
-                }
-                else if( (ge.binding >> 8) == 0 ) {
-                    auto idx = ge.binding & 0xFF;
-                    assert(idx < trait_path.m_params.m_types.size());
-                }
-                else {
-                    BUG(sp, "Unexpected type parameter " << gt);
-                }
+    auto monomorph_cb = [&](const auto& gt)->const auto& {
+            const auto& ge = gt.m_data.as_Generic();
+            if( ge.binding == 0xFFFF ) {
+                return self;
+            }
+            else if( (ge.binding >> 8) == 0 ) {
+                auto idx = ge.binding & 0xFF;
+                assert(idx < trait_path.m_params.m_types.size());
                 return trait_path.m_params.m_types[ge.binding];
-                }, false);
+            }
+            else {
+                BUG(sp, "Unexpected type parameter " << gt);
+            }
+            };
+    for(const auto& st : trait_ptr.m_all_parent_traits)
+    {
+        if( trait_contains_method_(*st.m_trait_ptr, name, ar) )
+        {
+            out_path.m_path = st.m_path.m_path;
+            out_path.m_params = monomorphise_path_params_with(sp, st.m_path.m_params, monomorph_cb, false);
             return true;
         }
     }
@@ -3012,24 +2991,28 @@ bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::Generic
 }
 bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
 {
+    TRACE_FUNCTION_FR(trait_path << " has " << name, out_path);
+
     auto it = trait_ptr.m_types.find(name);
     if( it != trait_ptr.m_types.end() ) {
+        DEBUG("- Found in cur");
         out_path = trait_path.clone();
         return true;
     }
 
-    auto monomorph = [&](const auto& gt)->const auto& {
+    auto monomorph_cb = [&](const auto& gt)->const auto& {
             const auto& ge = gt.m_data.as_Generic();
             assert(ge.binding < 256);
             assert(ge.binding < trait_path.m_params.m_types.size());
             return trait_path.m_params.m_types[ge.binding];
             };
-    // TODO: Prevent infinite recursion
-    for(const auto& st : trait_ptr.m_parent_traits)
+    for(const auto& st : trait_ptr.m_all_parent_traits)
     {
-        auto& st_ptr = this->m_crate.get_trait_by_path(sp, st.m_path.m_path);
-        if( trait_contains_type(sp, st.m_path, st_ptr, name, out_path) ) {
-            out_path.m_params = monomorphise_path_params_with(sp, mv$(out_path.m_params), monomorph, false);
+        if( st.m_trait_ptr->m_types.count(name) )
+        {
+            DEBUG("- Found in " << st);
+            out_path.m_path = st.m_path.m_path;
+            out_path.m_params = monomorphise_path_params_with(sp, st.m_path.m_params, monomorph_cb, false);
             return true;
         }
     }

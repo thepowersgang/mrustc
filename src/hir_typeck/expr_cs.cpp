@@ -245,7 +245,8 @@ namespace {
                     ::HIR::GenericPath  type_trait_path;
                     ASSERT_BUG(sp, be.trait.m_trait_ptr, "Trait pointer not set in " << be.trait.m_path);
                     // TODO: Store the source trait for this bound in the the bound list?
-                    context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path);
+                    if( !context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path) )
+                        BUG(sp, "Couldn't find associated type " << assoc.first << " in trait " << real_trait);
 
                     auto other_ty = monomorphise_type_with(sp, assoc.second, monomorph_cb, true);
 

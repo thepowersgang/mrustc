@@ -767,7 +767,8 @@ namespace {
                     // TODO: Either - Don't include the above impl bound, or change the below trait to the one that has that type
                     for( const auto& assoc : be.trait.m_type_bounds ) {
                         ::HIR::GenericPath  type_trait_path;
-                        m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path);
+                        bool has_ty = m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path);
+                        ASSERT_BUG(sp, has_ty, "Type " << assoc.first << " not found in chain of " << real_trait);
 
                         auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
 

@@ -894,13 +894,14 @@ namespace {
         ::HIR::Trait rv {
             deserialise_genericparams(),
             "",  // TODO: Better type for lifetime
-            deserialise_vec< ::HIR::TraitPath>()
+            {}
             };
         rv.m_is_marker = m_in.read_bool();
         rv.m_types = deserialise_strumap< ::HIR::AssociatedType>();
         rv.m_values = deserialise_strumap< ::HIR::TraitValueItem>();
         rv.m_value_indexes = deserialise_strummap< ::std::pair<unsigned int, ::HIR::GenericPath> >();
         rv.m_type_indexes = deserialise_strumap< unsigned int>();
+        rv.m_all_parent_traits = deserialise_vec< ::HIR::TraitPath>();
         return rv;
     }
 

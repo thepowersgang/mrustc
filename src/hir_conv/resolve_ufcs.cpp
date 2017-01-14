@@ -359,6 +359,7 @@ namespace {
 
 
             // Search supertraits (recursively)
+            // NOTE: This runs before "Resolve HIR Markings", so m_all_parent_traits can't be used.
             for( unsigned int i = 0; i < trait.m_parent_traits.size(); i ++ )
             {
                 const auto& par_trait_path = trait.m_parent_traits[i].m_path;
