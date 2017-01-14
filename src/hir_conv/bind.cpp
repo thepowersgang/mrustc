@@ -141,67 +141,49 @@ namespace {
 
             TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
                 TU_IFLET( ::HIR::Path::Data, ve.path.m_data, Generic, pe,
-                    const ::HIR::Enum* enm = nullptr;
                     const auto& path = pe.m_path;
-                    const ::HIR::Module*  mod;
-                    if( path.m_crate_name != m_crate.m_crate_name ) {
-                        ASSERT_BUG(sp, m_crate.m_ext_crates.count(path.m_crate_name) > 0, "Crate '" << path.m_crate_name << "' not loaded");
-                        mod = &m_crate.m_ext_crates.at(path.m_crate_name).m_data->m_root_module;
-                    }
-                    else {
-                        mod = &m_crate.m_root_module;
-                    }
-                    for(unsigned int i = 0; i < path.m_components.size() - 1; i ++ )
-                    {
-                        const auto& pc = path.m_components[i];
-                        auto it = mod->m_mod_items.find( pc );
-                        if( it == mod->m_mod_items.end() ) {
-                            BUG(sp, "Couldn't find component " << i << " of " << path);
-                        }
-
-                        if( i == path.m_components.size() - 2 ) {
-                            // Here it's allowed to be either a module, or an enum.
-                            TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
-                                mod = &e2;
-                            )
-                            else TU_IFLET( ::HIR::TypeItem, it->second->ent, Enum, e2,
-                                enm = &e2;
-                            )
-                            else {
-                                BUG(sp, "Node " << i << " of path " << ve.path << " wasn't a module or enum");
-                            }
-                        }
-                        else {
-                            TU_IFLET( ::HIR::TypeItem, it->second->ent, Module, e2,
-                                mod = &e2;
-                            )
-                            else {
-                                BUG(sp, "Node " << i << " of path " << ve.path << " wasn't a module");
-                            }
-                        }
-                    }
                     const auto& pc = path.m_components.back();
-                    if( enm ) {
-                        if( !is_single_value ) {
-                            ERROR(sp, E0000, "Enum variant in range pattern - " << pat);
-                        }
-
-                        // Enum variant
-                        auto it = ::std::find_if( enm->m_variants.begin(), enm->m_variants.end(), [&](const auto&v){ return v.first == pc; });
-                        if( it == enm->m_variants.end() ) {
-                            BUG(sp, "'" << pc << "' isn't a variant in path " << path);
-                        }
-                        unsigned int index = it - enm->m_variants.begin();
-                        auto path = mv$(pe);
-                        fix_type_params(sp, enm->m_params,  path.m_params);
-                        pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
-                            mv$(path),
-                            enm,
-                            index
-                            });
+                    const ::HIR::Module*  mod = nullptr;
+                    if( path.m_components.size() == 1 )
+                    {
+                        mod = &m_crate.get_mod_by_path(sp, path, true);
                     }
-                    else {
-                        auto it = mod->m_value_items.find( pc );
+                    else
+                    {
+                        const auto& ti = m_crate.get_typeitem_by_path(sp, path, false, true);
+                        if( const auto& enm = ti.opt_Enum() )
+                        {
+                            if( !is_single_value ) {
+                                ERROR(sp, E0000, "Enum variant in range pattern - " << pat);
+                            }
+
+                            // Enum variant
+                            auto it = ::std::find_if( enm->m_variants.begin(), enm->m_variants.end(), [&](const auto&v){ return v.first == pc; });
+                            if( it == enm->m_variants.end() ) {
+                                BUG(sp, "'" << pc << "' isn't a variant in path " << path);
+                            }
+                            unsigned int index = it - enm->m_variants.begin();
+                            auto path = mv$(pe);
+                            fix_type_params(sp, enm->m_params,  path.m_params);
+                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                                mv$(path),
+                                enm,
+                                index
+                                });
+                        }
+                        else if( (mod = ti.opt_Module()) )
+                        {
+                            mod = &ti.as_Module();
+                        }
+                        else
+                        {
+                            BUG(sp, "Node " << path.m_components.size()-2 << " of path " << ve.path << " wasn't a module");
+                        }
+                    }
+
+                    if( mod )
+                    {
+                        auto it = mod->m_value_items.find( path.m_components.back() );
                         if( it == mod->m_value_items.end() ) {
                             BUG(sp, "Couldn't find final component of " << path);
                         }
