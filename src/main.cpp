@@ -128,6 +128,7 @@ struct ProgramParams
     const char *crate_path = ".";
 
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
+    ::std::string   crate_name;
 
     ::std::set< ::std::string> features;
 
@@ -215,7 +216,12 @@ int main(int argc, char *argv[])
             crate_type = ::AST::Crate::Type::Executable;
         }
         crate.m_crate_type = crate_type;
-        auto crate_name = crate.m_crate_name;
+
+        auto crate_name = params.crate_name;
+        if( crate_name == "" )
+        {
+            crate_name = crate.m_crate_name;
+        }
         if( crate_name == "" ) {
             auto s = params.infile.find_last_of('/');
             if( s == ::std::string::npos )
@@ -243,8 +249,8 @@ int main(int argc, char *argv[])
                     break;
                 }
             }
-            crate.m_crate_name = crate_name;
         }
+        crate.m_crate_name = crate_name;
 
         if( params.outfile == "" ) {
             switch( crate.m_crate_type )
@@ -548,6 +554,14 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     ;
                 if( this->output_dir.back() != '/' )
                     this->output_dir += '/';
+            }
+            else if( strcmp(arg, "--crate-name") == 0 ) {
+                if( i == argc - 1 ) {
+                    ::std::cerr << "Flag --crate-name requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                const char* name_str = argv[++i];
+                this->crate_name = name_str;
             }
             else if( strcmp(arg, "--crate-type") == 0 ) {
                 if( i == argc - 1 ) {
