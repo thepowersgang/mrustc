@@ -148,6 +148,7 @@ RUSTC_TARGET := x86_64-unknown-linux-gnu
 LLVM_LINKAGE_FILE := $(abspath rustc-nightly/$(RUSTC_TARGET)/rt/llvmdeps.rs)
 output/librustc_llvm.hir: $(LLVM_LINKAGE_FILE)
 
+ifeq ($(USE_BUILD_SCRIPT),yes)
 output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs output/libstd.hir output/libgcc.hir output/libbuild_helper.hir
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ $(PIPECMD)
@@ -166,6 +167,10 @@ crates.io/gcc-0.3.28.tar.gz:
 
 $(LLVM_LINKAGE_FILE): output/librustc_llvm_build
 	TARGET=$(RUSTC_TARGET) HOST=$(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}') output/librustc_llvm_build
+else
+$(LLVM_LINKAGE_FILE):
+	echo > $@
+endif
 
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
