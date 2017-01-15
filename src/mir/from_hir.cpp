@@ -626,34 +626,77 @@ namespace {
             }
         } // ExprNode_Match
 
-        void visit(::HIR::ExprNode_If& node) override
+        void emit_if(/*const*/ ::HIR::ExprNodeP& cond, ::MIR::BasicBlockId true_branch, ::MIR::BasicBlockId false_branch)
         {
-            TRACE_FUNCTION_FR("_If", "_If");
+            TRACE_FUNCTION_F("true=bb" << true_branch <<", false=bb" << false_branch);
+            auto* cond_p = &cond;
 
-            bool reverse = false;
+            // - Convert ! into a reverse of the branches
             {
-                auto* cond_p = &node.m_cond;
+                bool reverse = false;
                 while( auto* cond_uni = dynamic_cast<::HIR::ExprNode_UniOp*>(cond_p->get()) )
                 {
-                    ASSERT_BUG(cond_uni->span(), cond_uni->m_op == ::HIR::ExprNode_UniOp::Op::Invert, "");
+                    ASSERT_BUG(cond_uni->span(), cond_uni->m_op == ::HIR::ExprNode_UniOp::Op::Invert, "Unexpected UniOp on boolean in `if` condition");
                     cond_p = &cond_uni->m_value;
                     reverse = !reverse;
                 }
 
-                this->visit_node_ptr(*cond_p);
+                if( reverse )
+                {
+                    ::std::swap(true_branch, false_branch);
+                }
             }
-            auto decision_val = m_builder.get_result_in_lvalue(node.m_cond->span(), node.m_cond->m_res_type);
+
+            // Short-circuit && and ||
+            if( auto* cond_bin = dynamic_cast<::HIR::ExprNode_BinOp*>(cond_p->get()) )
+            {
+                switch( cond_bin->m_op )
+                {
+                case ::HIR::ExprNode_BinOp::Op::BoolAnd: {
+                    DEBUG("- Short-circuit BoolAnd");
+                    // IF left false: go to false immediately
+                    auto inner_true_branch = m_builder.new_bb_unlinked();
+                    emit_if(cond_bin->m_left, inner_true_branch, false_branch);
+                    // ELSE use right
+                    m_builder.set_cur_block(inner_true_branch);
+                    emit_if(cond_bin->m_right, true_branch, false_branch);
+                    } return;
+                case ::HIR::ExprNode_BinOp::Op::BoolOr: {
+                    DEBUG("- Short-circuit BoolOr");
+                    // IF left true: got to true
+                    auto inner_false_branch = m_builder.new_bb_unlinked();
+                    emit_if(cond_bin->m_left, true_branch, inner_false_branch);
+                    // ELSE use right
+                    m_builder.set_cur_block(inner_false_branch);
+                    emit_if(cond_bin->m_right, true_branch, false_branch);
+                    } return;
+                default:
+                    break;
+                }
+            }
+
+            // If short-circuiting didn't apply, emit condition
+            ::MIR::LValue   decision_val;
+            {
+                auto scope = m_builder.new_scope_temp( cond->span() );
+                this->visit_node_ptr(*cond_p);
+                ASSERT_BUG(cond->span(), cond->m_res_type == ::HIR::CoreType::Bool, "If condition wasn't a bool");
+                decision_val = m_builder.get_result_in_lvalue(cond->span(), ::HIR::CoreType::Bool);
+                m_builder.terminate_scope(cond->span(), mv$(scope));
+            }
+
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(decision_val), true_branch, false_branch }) );
+        }
+
+        void visit(::HIR::ExprNode_If& node) override
+        {
+            TRACE_FUNCTION_FR("_If", "_If");
 
             auto true_branch = m_builder.new_bb_unlinked();
             auto false_branch = m_builder.new_bb_unlinked();
-            auto next_block = m_builder.new_bb_unlinked();
-            if( reverse ) {
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(decision_val), false_branch, true_branch }) );
-            }
-            else {
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(decision_val), true_branch, false_branch }) );
-            }
+            emit_if(node.m_cond, true_branch, false_branch);
 
+            auto next_block = m_builder.new_bb_unlinked();
             auto result_val = m_builder.new_temporary(node.m_res_type);
 
             // Scope handles cases where one arm moves a value but the other doesn't
