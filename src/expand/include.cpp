@@ -6,6 +6,7 @@
  * - include!/include_str!/include_bytes! support
  */
 #include <synext_macro.hpp>
+#include <synext.hpp>   // for Expand_BareExpr
 #include <parse/common.hpp>
 #include <parse/parseerror.hpp> // for GET_CHECK_TOK
 #include <parse/ttstream.hpp>
@@ -13,6 +14,20 @@
 #include <ast/expr.hpp>
 
 namespace {
+
+    ::std::string get_string(const Span& sp, TokenStream& lex, const ::AST::Crate& crate, AST::Module& mod)
+    {
+        auto n = Parse_ExprVal(lex);
+        ASSERT_BUG(sp, n, "No expression returned");
+        Expand_BareExpr(crate, mod, n);
+
+        auto* string_np = dynamic_cast<AST::ExprNode_String*>(&*n);
+        if( !string_np ) {
+            ERROR(sp, E0000, "include! requires a string literal - got " << *n);
+        }
+        return mv$( string_np->m_value );
+    }
+
     ::std::string get_path_relative_to(const ::std::string& base_path, ::std::string path)
     {
         if( base_path.size() == 0 ) {
@@ -52,9 +67,7 @@ class CIncludeExpander:
         Token   tok;
         auto lex = TTStream(tt);
 
-        // TODO: Parse+expand
-        GET_CHECK_TOK(tok, lex, TOK_STRING);
-        auto path = mv$(tok.str());
+        auto path = get_string(sp, lex, crate, mod);
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
