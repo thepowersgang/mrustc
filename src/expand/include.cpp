@@ -30,7 +30,10 @@ namespace {
 
     ::std::string get_path_relative_to(const ::std::string& base_path, ::std::string path)
     {
-        if( base_path.size() == 0 ) {
+        if( path[0] == '/' ) {
+            return path;
+        }
+        else if( base_path.size() == 0 ) {
             return path;
         }
         else if( base_path[base_path.size()-1] == '/' ) {

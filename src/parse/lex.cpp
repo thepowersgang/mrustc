@@ -25,7 +25,7 @@ Lexer::Lexer(const ::std::string& filename):
 {
     if( !m_istream.is_open() )
     {
-        throw ::std::runtime_error("Unable to open file");
+        throw ::std::runtime_error("Unable to open file '" + filename + "'");
     }
     // Consume the BOM
     if( this->getc_byte() == '\xef' )
