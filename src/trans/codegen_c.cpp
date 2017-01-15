@@ -115,6 +115,7 @@ namespace {
             args.push_back( getenv("CC") ? getenv("CC") : "gcc" );
             args.push_back("-pthread");
             args.push_back("-O2");
+            args.push_back("-g");
             args.push_back("-o");
             args.push_back(m_outfile_path.c_str());
             args.push_back(m_outfile_path_c.c_str());
