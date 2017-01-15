@@ -37,6 +37,8 @@ namespace {
         ::std::ofstream m_of;
         const ::MIR::TypeResolve* m_mir_res;
 
+        ::std::map<::HIR::GenericPath, ::std::vector<unsigned>> m_enum_repr_cache;
+
         ::std::vector< ::std::pair< ::HIR::GenericPath, const ::HIR::Struct*> >   m_box_glue_todo;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
@@ -475,6 +477,40 @@ namespace {
             }
             m_of << "}\n";
         }
+
+        // TODO: Move this to codegen.cpp?
+        bool get_nonzero_path(const Span& sp, const ::HIR::TypeRef& ty, ::std::vector<unsigned int>& out) const
+        {
+            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
+            (
+                return false;
+                ),
+            (Borrow,
+                if( metadata_type(*te.inner) != MetadataType::None )
+                {
+                    // HACK: If the inner is a DST, emit ~0 as a marker
+                    out.push_back(~0u);
+                }
+                return true;
+                ),
+            (Function,
+                return true;
+                )
+            )
+        }
+        void emit_nonzero_path(const ::std::vector<unsigned int>& nonzero_path) {
+            for(const auto v : nonzero_path)
+            {
+                if(v == ~0u) {
+                    // NOTE: Should only ever be the last
+                    m_of << ".PTR";
+                }
+                else {
+                    m_of << "._" << v;
+                }
+            }
+        }
+
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
@@ -492,69 +528,117 @@ namespace {
                     return x;
                 }
                 };
-            m_of << "struct e_" << Trans_Mangle(p) << " {\n";
-            m_of << "\tunsigned int TAG;\n";
-            m_of << "\tunion {\n";
-            for(unsigned int i = 0; i < item.m_variants.size(); i ++)
-            {
-                TU_MATCHA( (item.m_variants[i].second), (e),
-                (Unit,
-                    m_of << "\t\tstruct {} var_" << i << ";\n";
-                    ),
-                (Value,
-                    m_of << "\t\tstruct {} var_" << i << ";\n";
-                    ),
-                (Tuple,
-                    m_of << "\t\tstruct {\n";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        const auto& fld = e[i];
-                        m_of << "\t\t\t";
-                        emit_ctype( monomorph(fld.ent) );
-                        m_of << " _" << i << ";\n";
-                    }
-                    m_of << "\t\t} var_" << i << ";\n";
-                    ),
-                (Struct,
-                    m_of << "\t\tstruct {\n";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        const auto& fld = e[i];
-                        m_of << "\t\t\t";
-                        emit_ctype( monomorph(fld.second.ent) );
-                        m_of << " _" << i << ";\n";
-                    }
-                    m_of << "\t\t} var_" << i << ";\n";
-                    )
-                )
-            }
-            m_of << "\t} DATA;\n";
-            m_of << "};\n";
 
-            // TODO: Constructors for tuple variants
-            for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
+            // TODO: Cache repr info elsewhere (and have core codegen be responsible instead)
+            // TODO: Do more complex nonzero relations.
+            ::std::vector<unsigned> nonzero_path;
             {
-                const auto& var = item.m_variants[var_idx];
-                TU_IFLET(::HIR::Enum::Variant, var.second, Tuple, e,
-                    m_of << "struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(::HIR::GenericPath(p.m_path + var.first, p.m_params.clone())) << "(";
-                    for(unsigned int i = 0; i < e.size(); i ++)
+                // Detect Option (and similar enums)
+                if( item.m_variants.size() == 2 && item.m_variants[0].second.is_Unit() && item.m_variants[1].second.is_Tuple() )
+                {
+                    const auto& data_ents = item.m_variants[1].second.as_Tuple();
+                    if( data_ents.size() == 1 )
                     {
-                        if(i != 0)
-                            m_of << ", ";
-                        emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+                        const auto& data_type = monomorph(data_ents[0].ent);
+                        if( get_nonzero_path(sp, data_type, nonzero_path) )
+                        {
+                            nonzero_path.push_back(0);
+                            ::std::reverse( nonzero_path.begin(), nonzero_path.end() );
+                        }
+                        else
+                        {
+                            assert(nonzero_path.size() == 0);
+                        }
                     }
-                    m_of << ") {\n";
-                    m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx << ", .DATA = {.var_" << var_idx << " = {";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        if(i != 0)
-                            m_of << ",";
-                        m_of << "\n\t\t_" << i;
-                    }
-                    m_of << "\n\t\t}}};\n";
-                    m_of << "\treturn rv;\n";
-                    m_of << "}\n";
-                )
+                }
+            }
+
+            if( nonzero_path.size() > 0 )
+            {
+                MIR_ASSERT(*m_mir_res, nonzero_path[0] == 0, "");
+                MIR_ASSERT(*m_mir_res, item.m_variants.size() == 2, "");
+                MIR_ASSERT(*m_mir_res, item.m_variants[0].second.is_Unit(), "");
+                const auto& data_var = item.m_variants[1];
+                MIR_ASSERT(*m_mir_res, data_var.second.is_Tuple(), "");
+                MIR_ASSERT(*m_mir_res, data_var.second.as_Tuple().size() == 1, "");
+                const auto& data_type = monomorph(data_var.second.as_Tuple()[0].ent);
+                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
+                m_of << "\t"; emit_ctype(data_type, FMT_CB(s, s << "_0";)); m_of << ";\n";
+                m_of << "};\n";
+
+                m_of << "struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(::HIR::GenericPath(p.m_path + data_var.first, p.m_params.clone())) << "(";
+                emit_ctype( data_type, FMT_CB(ss, ss << "_0";) );
+                m_of << ") {\n";
+                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { ._0 = _0 };\n";
+                m_of << "\treturn rv;\n";
+                m_of << "}\n";
+            }
+            else
+            {
+                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
+                m_of << "\tunsigned int TAG;\n";
+                m_of << "\tunion {\n";
+                for(unsigned int i = 0; i < item.m_variants.size(); i ++)
+                {
+                    TU_MATCHA( (item.m_variants[i].second), (e),
+                    (Unit,
+                        m_of << "\t\tstruct {} var_" << i << ";\n";
+                        ),
+                    (Value,
+                        m_of << "\t\tstruct {} var_" << i << ";\n";
+                        ),
+                    (Tuple,
+                        m_of << "\t\tstruct {\n";
+                        for(unsigned int i = 0; i < e.size(); i ++)
+                        {
+                            const auto& fld = e[i];
+                            m_of << "\t\t\t";
+                            emit_ctype( monomorph(fld.ent) );
+                            m_of << " _" << i << ";\n";
+                        }
+                        m_of << "\t\t} var_" << i << ";\n";
+                        ),
+                    (Struct,
+                        m_of << "\t\tstruct {\n";
+                        for(unsigned int i = 0; i < e.size(); i ++)
+                        {
+                            const auto& fld = e[i];
+                            m_of << "\t\t\t";
+                            emit_ctype( monomorph(fld.second.ent) );
+                            m_of << " _" << i << ";\n";
+                        }
+                        m_of << "\t\t} var_" << i << ";\n";
+                        )
+                    )
+                }
+                m_of << "\t} DATA;\n";
+                m_of << "};\n";
+
+                // Constructors for tuple variants
+                for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
+                {
+                    const auto& var = item.m_variants[var_idx];
+                    TU_IFLET(::HIR::Enum::Variant, var.second, Tuple, e,
+                        m_of << "struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(::HIR::GenericPath(p.m_path + var.first, p.m_params.clone())) << "(";
+                        for(unsigned int i = 0; i < e.size(); i ++)
+                        {
+                            if(i != 0)
+                                m_of << ", ";
+                            emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+                        }
+                        m_of << ") {\n";
+                        m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx << ", .DATA = {.var_" << var_idx << " = {";
+                        for(unsigned int i = 0; i < e.size(); i ++)
+                        {
+                            if(i != 0)
+                                m_of << ",";
+                            m_of << "\n\t\t_" << i;
+                        }
+                        m_of << "\n\t\t}}};\n";
+                        m_of << "\treturn rv;\n";
+                        m_of << "}\n";
+                    )
+                }
             }
 
             // ---
@@ -579,47 +663,67 @@ namespace {
             {
                 m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
             }
-
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-            auto fld_lv = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Downcast({ box$(self), 0 })), 0 });
 
-            m_of << "\tswitch(rv->TAG) {\n";
-            for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
+            if( nonzero_path.size() > 0 )
             {
-                fld_lv.as_Field().val->as_Downcast().variant_index = var_idx;
-                TU_MATCHA( (item.m_variants[var_idx].second), (e),
-                (Unit,
-                    m_of << "\tcase " << var_idx << ": break;\n";
-                    ),
-                (Value,
-                    m_of << "\tcase " << var_idx << ": break;\n";
-                    ),
-                (Tuple,
-                    m_of << "\tcase " << var_idx << ":\n";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        fld_lv.as_Field().field_index = i;
-                        const auto& fld = e[i];
-
-                        emit_destructor_call(fld_lv, monomorph(fld.ent), false);
-                    }
-                    m_of << "\tbreak;\n";
-                    ),
-                (Struct,
-                    m_of << "\tcase " << var_idx << ":\n";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        fld_lv.as_Field().field_index = i;
-                        const auto& fld = e[i];
-                        emit_destructor_call(fld_lv, monomorph(fld.second.ent), false);
-                    }
-                    m_of << "\tbreak;\n";
-                    )
-                )
+                auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                // TODO: Fat pointers?
+                m_of << "\tif( ! (*rv)"; emit_nonzero_path(nonzero_path); m_of << " ) {\n";
+                for(const auto& fld : item.m_variants[1].second.as_Tuple())
+                {
+                    emit_destructor_call(fld_lv, monomorph(fld.ent), false);
+                    fld_lv.as_Field().field_index ++;
+                }
+                m_of << "\t}\n";
             }
-            m_of << "\t}\n";
+            else
+            {
+                auto fld_lv = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Downcast({ box$(self), 0 })), 0 });
+
+                m_of << "\tswitch(rv->TAG) {\n";
+                for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
+                {
+                    fld_lv.as_Field().val->as_Downcast().variant_index = var_idx;
+                    TU_MATCHA( (item.m_variants[var_idx].second), (e),
+                    (Unit,
+                        m_of << "\tcase " << var_idx << ": break;\n";
+                        ),
+                    (Value,
+                        m_of << "\tcase " << var_idx << ": break;\n";
+                        ),
+                    (Tuple,
+                        m_of << "\tcase " << var_idx << ":\n";
+                        for(unsigned int i = 0; i < e.size(); i ++)
+                        {
+                            fld_lv.as_Field().field_index = i;
+                            const auto& fld = e[i];
+
+                            emit_destructor_call(fld_lv, monomorph(fld.ent), false);
+                        }
+                        m_of << "\tbreak;\n";
+                        ),
+                    (Struct,
+                        m_of << "\tcase " << var_idx << ":\n";
+                        for(unsigned int i = 0; i < e.size(); i ++)
+                        {
+                            fld_lv.as_Field().field_index = i;
+                            const auto& fld = e[i];
+                            emit_destructor_call(fld_lv, monomorph(fld.second.ent), false);
+                        }
+                        m_of << "\tbreak;\n";
+                        )
+                    )
+                }
+                m_of << "\t}\n";
+            }
             m_of << "}\n";
             m_mir_res = nullptr;
+
+            if( nonzero_path.size() )
+            {
+                m_enum_repr_cache.insert( ::std::make_pair( p.clone(), mv$(nonzero_path) ) );
+            }
         }
 
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
@@ -753,13 +857,30 @@ namespace {
                     m_of << "}";
                 ),
             (Variant,
-                m_of << "{" << e.idx << ", { .var_" << e.idx << " = {";
-                for(unsigned int i = 0; i < e.vals.size(); i ++) {
-                    if(i != 0)  m_of << ",";
-                    m_of << " ";
-                    emit_literal(get_inner_type(e.idx, i), e.vals[i], params);
+                MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
+                MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
+                if( it != m_enum_repr_cache.end() )
+                {
+                    if( e.idx == 0 ) {
+                        m_of << "{0}";
+                    }
+                    else {
+                        m_of << "{";
+                        emit_literal(get_inner_type(e.idx, 0), e.vals[0], params);
+                        m_of << "}";
+                    }
                 }
-                m_of << " }}}";
+                else
+                {
+                    m_of << "{" << e.idx << ", { .var_" << e.idx << " = {";
+                    for(unsigned int i = 0; i < e.vals.size(); i ++) {
+                        if(i != 0)  m_of << ",";
+                        m_of << " ";
+                        emit_literal(get_inner_type(e.idx, i), e.vals[i], params);
+                    }
+                    m_of << " }}}";
+                }
                 ),
             (Integer,
                 if( ty.m_data.is_Primitive() )
@@ -1569,6 +1690,27 @@ namespace {
                             ),
                         (Struct,
                             if(ve.variant_idx != ~0u) {
+                                ::HIR::TypeRef  tmp;
+                                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+                                if( ty.m_data.as_Path().binding.is_Enum() ) {
+                                    auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
+                                    if( it != m_enum_repr_cache.end() )
+                                    {
+                                        if( ve.variant_idx == 0 ) {
+                                            // TODO: Use nonzero_path
+                                            m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
+                                        }
+                                        else if( ve.variant_idx == 1 ) {
+                                            emit_lvalue(e.dst);
+                                            m_of << "._0 = ";
+                                            emit_lvalue(ve.vals[0]);
+                                        }
+                                        else {
+                                        }
+                                        break;
+                                    }
+                                }
+
                                 emit_lvalue(e.dst);
                                 m_of << ".TAG = " << ve.variant_idx;
                                 if(ve.vals.size() > 0)
@@ -1620,11 +1762,27 @@ namespace {
                     m_of << "\tif("; emit_lvalue(e.cond); m_of << ") goto bb" << e.bb0 << "; else goto bb" << e.bb1 << ";\n";
                     ),
                 (Switch,
-                    m_of << "\tswitch("; emit_lvalue(e.val); m_of << ".TAG) {\n";
-                    for(unsigned int j = 0; j < e.targets.size(); j ++)
-                        m_of << "\t\tcase " << j << ": goto bb" << e.targets[j] << ";\n";
-                    m_of << "\t\tdefault: abort();\n";
-                    m_of << "\t}\n";
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, e.val);
+                    MIR_ASSERT(mir_res, ty.m_data.is_Path(), "");
+                    MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                    auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
+                    if( it != m_enum_repr_cache.end() )
+                    {
+                        MIR_ASSERT(mir_res, e.targets.size() == 2, "");
+                        m_of << "\tif("; emit_lvalue(e.val); emit_nonzero_path(it->second); m_of << ")\n";
+                        m_of << "\t\tgoto bb" << e.targets[1] << ";\n";
+                        m_of << "\telse\n";
+                        m_of << "\t\tgoto bb" << e.targets[0] << ";\n";
+                    }
+                    else
+                    {
+                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ".TAG) {\n";
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                            m_of << "\t\tcase " << j << ": goto bb" << e.targets[j] << ";\n";
+                        m_of << "\t\tdefault: abort();\n";
+                        m_of << "\t}\n";
+                    }
                     ),
                 (Call,
                     m_of << "\t";
@@ -2009,7 +2167,15 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = ";
                 if( ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum() ) {
-                    emit_lvalue(e.args.at(0)); m_of << "->TAG";
+                    auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
+                    if( it != m_enum_repr_cache.end() )
+                    {
+                        emit_lvalue(e.args.at(0)); emit_nonzero_path(it->second); m_of << " != 0";
+                    }
+                    else
+                    {
+                        emit_lvalue(e.args.at(0)); m_of << "->TAG";
+                    }
                 }
                 else {
                     m_of << "0";
@@ -2410,10 +2576,26 @@ namespace {
                 }
                 ),
             (Variant,
-                emit_dst(); m_of << ".TAG = " << e.idx;
-                for(unsigned int i = 0; i < e.vals.size(); i ++) {
-                    m_of << ";\n\t";
-                    assign_from_literal([&](){ emit_dst(); m_of << ".DATA.var_" << e.idx << "._" << i; }, get_inner_type(e.idx, i), e.vals[i]);
+                MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
+                MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
+                if( it != m_enum_repr_cache.end() )
+                {
+                    if( e.idx == 0 ) {
+                        emit_nonzero_path(it->second);
+                        m_of << " = 0";
+                    }
+                    else {
+                        assign_from_literal([&](){ emit_dst(); m_of << "._0"; }, get_inner_type(e.idx, 0), e.vals[0]);
+                    }
+                }
+                else
+                {
+                    emit_dst(); m_of << ".TAG = " << e.idx;
+                    for(unsigned int i = 0; i < e.vals.size(); i ++) {
+                        m_of << ";\n\t";
+                        assign_from_literal([&](){ emit_dst(); m_of << ".DATA.var_" << e.idx << "._" << i; }, get_inner_type(e.idx, i), e.vals[i]);
+                    }
                 }
                 ),
             (Integer,
@@ -2578,7 +2760,20 @@ namespace {
                 emit_lvalue(*e.val);
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
                 if( ty.m_data.as_Path().binding.is_Enum() )
-                    m_of << ".DATA";
+                {
+                    auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
+                    if( it != m_enum_repr_cache.end() )
+                    {
+                        MIR_ASSERT(*m_mir_res, e.variant_index == 1, "");
+                        // NOTE: Downcast returns a magic tuple
+                        //m_of << "._0";
+                        break ;
+                    }
+                    else
+                    {
+                        m_of << ".DATA";
+                    }
+                }
                 m_of << ".var_" << e.variant_index;
                 )
             )
