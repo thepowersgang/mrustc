@@ -124,7 +124,7 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(BIN) $< -o $@ --cfg cargobuild $(PIPECMD)
+	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
@@ -230,8 +230,10 @@ DISABLED_TESTS += run-pass/asm-in-out-operand run-pass/asm-indirect-memory run-p
 DISABLED_TESTS += run-pass/allocator-default run-pass/allocator-override
 # - Bug in inferrence order.
 DISABLED_TESTS += run-pass/associated-types-conditional-dispatch
-DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
-rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
+# - Lazy.
+DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause
+DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
+rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
@@ -246,8 +248,9 @@ output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output
 	@echo "=== TEST $(patsubst output/rust/%,%,$@)"
 	@echo "--- [MRUSTC] -o $@"
 	$V$(BIN) $< -o $@ --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
-#	@echo "--- [$@]"
-#	@./$@
+output/rust/%_out.txt: output/rust/%
+	@echo "--- [$<]"
+	@./$< | tee $@ | tail -n 1
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
 output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
