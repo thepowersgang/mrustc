@@ -616,6 +616,15 @@ void RustPrinter::handle_module(const AST::Module& mod)
 
     for( const auto& item : mod.items() )
     {
+        if( !item.data.is_ExternBlock() )    continue ;
+        const auto& e = item.data.as_ExternBlock();
+
+        print_attrs(item.data.attrs);
+        m_os << indent() << "extern \"" << e.abi() << "\" {}\n";
+    }
+
+    for( const auto& item : mod.items() )
+    {
         if( !item.data.is_Module() )    continue ;
         const auto& e = item.data.as_Module();
 

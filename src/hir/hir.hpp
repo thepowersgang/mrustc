@@ -412,6 +412,11 @@ public:
     ::HIR::CratePtr m_data;
     ::std::string   m_filename;
 };
+class ExternLibrary
+{
+public:
+    ::std::string   name;
+};
 class Crate
 {
 public:
@@ -432,6 +437,7 @@ public:
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
 
     ::std::unordered_map< ::std::string, ExternCrate>  m_ext_crates;
+    ::std::vector<ExternLibrary>    m_ext_libs;
 
     /// Method called to populate runtime state after deserialisation
     /// See hir/crate_post_load.cpp

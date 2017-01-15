@@ -260,6 +260,11 @@ namespace {
             m_out.write_count(crate.m_ext_crates.size());
             for(const auto& ext : crate.m_ext_crates)
                 m_out.write_string(ext.first);
+            serialise_vec(crate.m_ext_libs);
+        }
+        void serialise(const ::HIR::ExternLibrary& lib)
+        {
+            m_out.write_string(lib.name);
         }
         void serialise_module(const ::HIR::Module& mod)
         {

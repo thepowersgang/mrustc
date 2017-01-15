@@ -108,7 +108,7 @@ namespace {
             }
 
             m_of.flush();
-            
+
             // Execute $CC with the required libraries
             ::std::vector<::std::string>    tmp;
             ::std::vector<const char*>  args;
@@ -125,8 +125,17 @@ namespace {
                     tmp.push_back(crate.second.m_filename + ".o");
                     args.push_back(tmp.back().c_str());
                 }
-                args.push_back("-lm");
-                args.push_back("-ldl");
+                for(const auto& lib : m_crate.m_ext_libs) {
+                    ASSERT_BUG(Span(), lib.name != "", "");
+                    args.push_back("-l"); args.push_back(lib.name.c_str());
+                }
+                for( const auto& crate : m_crate.m_ext_crates )
+                {
+                    for(const auto& lib : crate.second.m_data->m_ext_libs) {
+                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
+                        args.push_back("-l"); args.push_back(lib.name.c_str());
+                    }
+                }
                 args.push_back("-z"); args.push_back("muldefs");
             }
             else
@@ -139,6 +148,7 @@ namespace {
             {
                 cmd_ss << "\"" << FmtEscaped(arg) << "\" ";
             }
+            DEBUG("- " << cmd_ss.str());
             if( system(cmd_ss.str().c_str()) )
             {
                 abort();

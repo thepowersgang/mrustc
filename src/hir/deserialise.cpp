@@ -119,6 +119,7 @@ namespace {
         ::HIR::GenericBound deserialise_genericbound();
 
         ::HIR::Crate deserialise_crate();
+        ::HIR::ExternLibrary deserialise_extlib();
         ::HIR::Module deserialise_module();
 
         ::HIR::TypeImpl deserialise_typeimpl()
@@ -645,6 +646,8 @@ namespace {
     template<> DEF_D( ::MacroRulesPtr, return d.deserialise_macrorulesptr(); )
     template<> DEF_D( unsigned int, return static_cast<unsigned int>(d.deserialise_count()); )
 
+    template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
+
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
         TRACE_FUNCTION;
@@ -1041,6 +1044,12 @@ namespace {
 
         return rv;
     }
+    ::HIR::ExternLibrary HirDeserialiser::deserialise_extlib()
+    {
+        return ::HIR::ExternLibrary {
+            m_in.read_string()
+            };
+    }
     ::HIR::Crate HirDeserialiser::deserialise_crate()
     {
         ::HIR::Crate    rv;
@@ -1077,6 +1086,8 @@ namespace {
                 rv.m_ext_crates.insert( ::std::make_pair(ext_crate_name, ::HIR::ExternCrate{}) );
             }
         }
+
+        rv.m_ext_libs = deserialise_vec< ::HIR::ExternLibrary>();
 
         return rv;
     }

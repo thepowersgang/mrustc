@@ -1172,7 +1172,28 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             {
                 TODO(sp, "Expand ExternBlock");
             }
-            // TODO: Insert a record of the `link` attribute
+            // Insert a record of the `link` attribute
+            for(const auto& a : item.data.attrs.m_items)
+            {
+                if( a.name() != "link" )    continue ;
+
+                ::std::string   name;
+                for(const auto& i : a.items())
+                {
+                    if( i.name() == "name" ) {
+                        name = i.string();
+                    }
+                    else {
+                    }
+                }
+                if( name != "" )
+                {
+                    g_crate_ptr->m_ext_libs.push_back( ::HIR::ExternLibrary { name } );
+                }
+                else {
+                    ERROR(sp, E0000, "#[link] needs `name`");
+                }
+            }
             ),
         (Impl,
             //TODO(sp, "Expand Item::Impl");
