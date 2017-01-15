@@ -14,7 +14,7 @@ namespace AST {
 // --- AST::PathBinding
 ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x) {
     TU_MATCH(PathBinding, (x), (i),
-    (Unbound, os << "UNBOUND";   ),
+    (Unbound, os << "_";   ),
     (Crate ,  os << "Crate";    ),
     (Module,  os << "Module";    ),
     (Trait,     os << "Trait";   ),

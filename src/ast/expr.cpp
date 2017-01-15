@@ -231,7 +231,16 @@ NODE(ExprNode_IfLet, {
 })
 
 NODE(ExprNode_Integer, {
-    os << m_value << "_" << m_datatype;
+    if( m_datatype == CORETYPE_CHAR )
+        os << "'\\u{" << ::std::hex << m_value << ::std::dec << "}'";
+    else
+    {
+        os << m_value;
+        if( m_datatype == CORETYPE_ANY )
+            ;
+        else
+            os << "_" << coretype_name(m_datatype);
+    }
 },{
     return NEWNODE(ExprNode_Integer, m_value, m_datatype);
 })

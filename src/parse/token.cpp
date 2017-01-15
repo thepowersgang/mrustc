@@ -293,7 +293,11 @@ struct EscapedString {
     case TOK_INTERPOLATED_TYPE: return "/*:ty*/";
     case TOK_INTERPOLATED_PATH: return "/*:path*/";
     case TOK_INTERPOLATED_PATTERN: return "/*:pat*/";
-    case TOK_INTERPOLATED_EXPR: return "/*:expr*/";
+    case TOK_INTERPOLATED_EXPR: {
+        ::std::stringstream ss;
+        reinterpret_cast<const ::AST::ExprNode*>(m_data.as_Fragment())->print(ss);
+        return ss.str();
+        }
     case TOK_INTERPOLATED_STMT: return "/*:stmt*/";
     case TOK_INTERPOLATED_BLOCK: return "/*:block*/";
     case TOK_INTERPOLATED_META: return "/*:meta*/";

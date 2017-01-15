@@ -75,11 +75,23 @@ namespace AST {
     }
     return os;
 }
+::std::ostream& operator<<(::std::ostream& os, const PatternBinding& pb)
+{
+    if( pb.m_mutable )
+        os << "mut ";
+    switch(pb.m_type)
+    {
+    case PatternBinding::Type::MOVE:    break;
+    case PatternBinding::Type::REF:     os << "ref ";   break;
+    case PatternBinding::Type::MUTREF:  os << "ref mut ";   break;
+    }
+    os << pb.m_name;
+    return os;
+}
 ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat)
 {
-    os << "Pattern(";
     if( pat.m_binding.is_valid() ) {
-        os << pat.m_binding.m_name << " @ ";
+        os << pat.m_binding << " @ ";
     }
     TU_MATCH(Pattern::Data, (pat.m_data), (ent),
     (MaybeBind,
@@ -128,7 +140,7 @@ namespace AST {
             os << ", ";
         }
         if( ent.extra_bind.is_valid() )
-            os << ent.extra_bind.m_name;
+            os << ent.extra_bind;
         os << "..";
         needs_comma = true;
 
@@ -141,7 +153,6 @@ namespace AST {
         os << "]";
         )
     )
-    os << ")";
     return os;
 }
 void operator%(Serialiser& s, Pattern::Value::Tag c) {
