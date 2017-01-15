@@ -2292,15 +2292,40 @@ namespace
 
     // Common code for numerics (Int, Uint, and Float)
     template<typename T>
+    static void from_rule_value(
+        const Span& sp,
+        ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve,
+        const char* name, const field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
+        )
+    {
+        auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
+        if( it == be.end() || it->first.start > ve ) {
+            it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve,ve }, new_branch_subtree(field_path) ) );
+        }
+        else if( it->first.start == ve && it->first.end == ve ) {
+            // Equal, continue and add sub-pat
+        }
+        else {
+            // Collide or overlap!
+            TODO(sp, "Value patterns - " << name << " - Overlapping - " << it->first.start << " <= " << ve << " <= " << it->first.end);
+        }
+        and_then( it->second );
+    }
+
+    template<typename T>
     static void from_rule_valuerange(
         const Span& sp,
         ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve_start, T ve_end,
         const char* name, const field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
         )
     {
+        TRACE_FUNCTION_F("be=[" << FMT_CB(os, for(const auto& i:be) os << i.first <<" , ";) << "], new=" << ve_start << "..." << ve_end);
         ASSERT_BUG(sp, ve_start <= ve_end, "Range pattern with a start after the end - " << ve_start << "..." << ve_end);
 
-        TRACE_FUNCTION_F("[" << FMT_CB(os, for(const auto& i:be) os << i.first <<" , ";) << "]");
+        if( ve_start == ve_end ) {
+            from_rule_value(sp, be, ve_start, name, field_path, and_then);
+            return ;
+        }
         // - Find the first entry that ends after the new one starts.
         auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve_start; });
         while(ve_start < ve_end)
@@ -2354,27 +2379,6 @@ namespace
                 ++ it;
             }
         }
-    }
-
-    template<typename T>
-    static void from_rule_value(
-        const Span& sp,
-        ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve,
-        const char* name, const field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
-        )
-    {
-        auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
-        if( it == be.end() || it->first.start > ve ) {
-            it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve,ve }, new_branch_subtree(field_path) ) );
-        }
-        else if( it->first.start == ve && it->first.end == ve ) {
-            // Equal, continue and add sub-pat
-        }
-        else {
-            // Collide or overlap!
-            TODO(sp, "Value patterns - " << name << " - Overlapping - " << it->first.start << " <= " << ve << " <= " << it->first.end);
-        }
-        and_then( it->second );
     }
 }
 void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule* first_rule, unsigned int rule_count, ::std::function<void(Branch&)> and_then)
