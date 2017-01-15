@@ -124,7 +124,7 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
@@ -141,6 +141,34 @@ fn_getdeps = \
   $(shell cat $1 \
   | sed -n 's/.*extern crate \([a-zA-Z_0-9][a-zA-Z_0-9]*\)\( as .*\)\{0,1\};.*/\1/p' \
   | tr '\n' ' ')
+
+
+# --- rustc: librustc_llvm ---
+RUSTC_TARGET := x86_64-unknown-linux-gnu
+LLVM_LINKAGE_FILE := $(abspath rustc-nightly/$(RUSTC_TARGET)/rt/llvmdeps.rs)
+output/librustc_llvm.hir: $(LLVM_LINKAGE_FILE)
+
+output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs output/libstd.hir output/libgcc.hir output/libbuild_helper.hir
+	@echo "--- [MRUSTC] $@"
+	$(BIN) $< -o $@ $(PIPECMD)
+output/libgcc.hir: crates.io/gcc-0.3.28/src/lib.rs $(BIN) output/libstd.hir
+	@echo "--- [MRUSTC] $@"
+	$(BIN) $< -o $@ --crate-type rlib --crate-name gcc $(PIPECMD)
+output/libbuild_helper.hir: rustc-nightly/src/build_helper/lib.rs $(BIN) output/libstd.hir
+	@echo "--- [MRUSTC] $@"
+	$(BIN) $< -o $@ --crate-type rlib --crate-name build_helper $(PIPECMD)
+
+crates.io/%/src/lib.rs: crates.io/%.tar.gz
+	tar -xf $< -C crates.io/
+crates.io/gcc-0.3.28.tar.gz:
+	@mkdir -p $(dir $@)
+	curl -s https://crates.io/api/v1/crates/gcc/0.3.28/download -o $@
+
+$(LLVM_LINKAGE_FILE): output/librustc_llvm_build
+	TARGET=$(RUSTC_TARGET) HOST=$(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}') output/librustc_llvm_build
+
+ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86
+ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
 
 output/libarena.hir: output/libstd.hir
 output/liballoc.hir: output/libcore.hir
@@ -217,6 +245,10 @@ $(RUSTCSRC): rust-nightly-date
 		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
 	fi
 
+
+# 
+# RUSTC TESTS
+# 
 .PHONY: rust_tests
 RUST_TESTS_DIR := $(RUSTCSRC)src/test/
 rust_tests: rust_tests-run-pass rust_tests-run-fail
@@ -250,7 +282,7 @@ output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output
 	$V$(BIN) $< -o $@ --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
 output/rust/%_out.txt: output/rust/%
 	@echo "--- [$<]"
-	@./$< | tee $@ | tail -n 1
+	@./$< > $@ || (tail -n 1 $@; false)
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
 output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
