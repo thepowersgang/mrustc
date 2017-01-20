@@ -76,6 +76,7 @@ namespace {
         DEBUG("- tmp" << output.temporaries.size());
         output.temporaries.push_back( params.monomorph(resolve, ty) );
     }
+    output.drop_flags = tpl->drop_flags;
 
     // 2. Monomorphise all paths
     output.blocks.reserve( tpl->blocks.size() );
@@ -87,18 +88,22 @@ namespace {
         statements.reserve( block.statements.size() );
         for(const auto& stmt : block.statements)
         {
-            assert( stmt.is_Drop() || stmt.is_Assign() );
-            if( stmt.is_Drop() )
+            switch( stmt.tag() )
             {
+            case ::MIR::Statement::TAGDEAD: throw "";
+            case ::MIR::Statement::TAG_SetDropFlag:
+                statements.push_back( ::MIR::Statement( stmt.as_SetDropFlag() ) );
+                break;
+            case ::MIR::Statement::TAG_Drop: {
                 const auto& e = stmt.as_Drop();
                 DEBUG("- DROP " << e.slot);
                 statements.push_back( ::MIR::Statement::make_Drop({
                     e.kind,
-                    monomorph_LValue(resolve, params, e.slot)
+                    monomorph_LValue(resolve, params, e.slot),
+                    e.flag_idx
                     }) );
-            }
-            else
-            {
+                } break;
+            case ::MIR::Statement::TAG_Assign: {
                 const auto& e = stmt.as_Assign();
                 DEBUG("- " << e.dst << " = " << e.src);
 
@@ -218,6 +223,10 @@ namespace {
                     monomorph_LValue(resolve, params, e.dst),
                     mv$(rval)
                     }) );
+                } break;
+            case ::MIR::Statement::TAG_Asm:
+                TODO(params.sp, "Monormorphise asm!");
+                break;
             }
         }
 

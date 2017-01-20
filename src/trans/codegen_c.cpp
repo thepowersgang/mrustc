@@ -1165,6 +1165,9 @@ namespace {
                 m_of << "\t// " << code->temporaries[i];
                 m_of << "\n";
             }
+            for(unsigned int i = 0; i < code->drop_flags.size(); i ++) {
+                m_of << "\tbool df" << i << " = " << code->drop_flags[i] << ";\n";
+            }
             for(unsigned int i = 0; i < code->blocks.size(); i ++)
             {
                 TRACE_FUNCTION_F(p << " bb" << i);
@@ -1184,12 +1187,16 @@ namespace {
                     {
                     case ::MIR::Statement::TAGDEAD: throw "";
                     case ::MIR::Statement::TAG_SetDropFlag: {
-                        MIR_TODO(mir_res, "SetDropFlag");
+                        const auto& e = stmt.as_SetDropFlag();
+                        m_of << "\tdf" << e.idx << " = " << e.new_val << ";\n";
                         break; }
                     case ::MIR::Statement::TAG_Drop: {
                         const auto& e = stmt.as_Drop();
                         ::HIR::TypeRef  tmp;
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
+
+                        if( e.flag_idx != ~0u )
+                            m_of << "if( df" << e.flag_idx << " ) {\n";
 
                         switch( e.kind )
                         {
@@ -1211,6 +1218,8 @@ namespace {
                             emit_destructor_call(e.slot, ty, false);
                             break;
                         }
+                        if( e.flag_idx != ~0u )
+                            m_of << "}\n";
                         break; }
                     case ::MIR::Statement::TAG_Asm: {
                         const auto& e = stmt.as_Asm();
