@@ -479,6 +479,7 @@ namespace {
                 assert(e.kind == ::MIR::eDropKind::DEEP || e.kind == ::MIR::eDropKind::SHALLOW);
                 m_out.write_bool(e.kind == ::MIR::eDropKind::DEEP);
                 serialise(e.slot);
+                m_out.write_count(e.flag_idx);
                 ),
             (Asm,
                 m_out.write_tag(2);
@@ -487,6 +488,11 @@ namespace {
                 serialise_vec(e.outputs);
                 serialise_vec(e.clobbers);
                 serialise_vec(e.flags);
+                ),
+            (SetDropFlag,
+                m_out.write_tag(3);
+                m_out.write_count(e.idx);
+                m_out.write_bool(e.new_val);
                 )
             )
         }

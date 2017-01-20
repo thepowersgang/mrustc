@@ -38,14 +38,14 @@ public:
     ~ScopeHandle();
 };
 
-// TODO: Replace VarState with a TU
-#if 0
+// - Needs to handle future DerefMove (which can't use the Box hack)
 enum class InvalidType {
     Uninit,
     Moved,
     Descoped,
 };
-TAGGED_UNION(VarState, Uninit,
+// NOTE: If there's a optional move and a partial merging, it becomes a partial?
+TAGGED_UNION_EX(VarState, (), Invalid, (
     // Currently invalid
     (Invalid, InvalidType),
     // Partially valid (Map of field states, Box is assumed to have one field)
@@ -53,29 +53,24 @@ TAGGED_UNION(VarState, Uninit,
     // Optionally valid (integer indicates the drop flag index)
     (Optional, unsigned int),
     // Fully valid
-    (Valid, struct {}),
-    )
-#endif
-
-// TODO: Replace the first three states with just one (and flags for init/moved)
-enum class VarState {
-    Uninit, // No value assigned yet
-    Moved,  // Definitely moved
-    Dropped,    // Dropped (out of scope)
-
-    // TODO: Store a bitmap of inner states?
-    // - Needs to handle relatively arbitary patterns. Including moving out of a Box, but not out of Drop types
-    InnerMoved, // The inner has been moved, but the container needs to be dropped
-    //MaybeMovedInner,  // Inner possibly has been moved
-    MaybeMoved, // Possibly has been moved
-
-    Init,   // Initialised and valid at this point
-};
-extern ::std::ostream& operator<<(::std::ostream& os, VarState x);
+    (Valid, struct {})
+    ),
+    (), (),
+    (
+        VarState clone() const;
+        bool operator==(VarState& x) const;
+        bool operator!=(VarState& x) const { return !(*this == x); }
+        )
+    );
+extern ::std::ostream& operator<<(::std::ostream& os, const VarState& x);
 
 struct SplitArm {
     bool    has_early_terminated = false;
     bool    always_early_terminated = false;    // Populated on completion
+    ::std::map<unsigned int, VarState>  var_states;
+    ::std::map<unsigned int, VarState>  tmp_states;
+};
+struct SplitEnd {
     ::std::map<unsigned int, VarState>  var_states;
     ::std::map<unsigned int, VarState>  tmp_states;
 };
@@ -88,6 +83,8 @@ TAGGED_UNION(ScopeType, Variables,
         ::std::vector<unsigned int> temporaries;    // Controlled temporaries
         }),
     (Split, struct {
+        bool end_state_valid = false;
+        SplitEnd    end_state;
         ::std::vector<SplitArm> arms;
         }),
     (Loop, struct {
@@ -171,11 +168,13 @@ public:
     // Push an assignment. NOTE: This also marks the rvalue as moved
     void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val);
     // Push a drop (likely only used by scope cleanup)
-    void push_stmt_drop(const Span& sp, ::MIR::LValue val);
+    void push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int drop_flag=~0u);
     // Push a shallow drop (for Box)
     void push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val);
     // Push an inline assembly statement (NOTE: inputs aren't marked as moved)
     void push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data);
+    // Pus
+    void push_stmt_set_dropflag(const Span& sp, unsigned int index, bool value);
 
     // - Block management
     bool block_active() const {
@@ -196,6 +195,10 @@ public:
     ::MIR::BasicBlockId new_bb_linked();
     ::MIR::BasicBlockId new_bb_unlinked();
 
+    unsigned int new_drop_flag(bool default_state);
+    unsigned int new_drop_flag_and_set(const Span& sp, bool set_state);
+    bool get_drop_flag_default(const Span& sp, unsigned int index);
+
     // --- Scopes ---
     ScopeHandle new_scope_var(const Span& sp);
     ScopeHandle new_scope_temp(const Span& sp);
@@ -215,10 +218,10 @@ public:
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
     void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
-    VarState get_variable_state(const Span& sp, unsigned int idx) const;
-    void set_variable_state(const Span& sp, unsigned int idx, VarState state);
-    VarState get_temp_state(const Span& sp, unsigned int idx) const;
-    void set_temp_state(const Span& sp, unsigned int idx, VarState state);
+    const VarState& get_variable_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
+    VarState& get_variable_state_mut(const Span& sp, unsigned int idx);
+    const VarState& get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
+    VarState& get_temp_state_mut(const Span& sp, unsigned int idx);
 
     void drop_scope_values(const ScopeDef& sd);
     void complete_scope(ScopeDef& sd);

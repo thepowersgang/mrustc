@@ -729,8 +729,8 @@ namespace {
                 {
                     m_builder.push_stmt_assign( node.span(), result_val.clone(), m_builder.get_result(node.m_false->span()) );
                     m_builder.terminate_scope(node.span(), mv$(stmt_scope));
-                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                     m_builder.end_split_arm(node.span(), scope, true);
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                 }
                 else {
                     { auto _ = mv$(stmt_scope); }
@@ -741,8 +741,8 @@ namespace {
             {
                 // Assign `()` to the result
                 m_builder.push_stmt_assign(node.span(),  result_val.clone(), ::MIR::RValue::make_Tuple({}) );
-                m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                 m_builder.end_split_arm(node.span(), scope, true);
+                m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
             }
             m_builder.set_cur_block(next_block);
             m_builder.terminate_scope( node.span(), mv$(scope) );

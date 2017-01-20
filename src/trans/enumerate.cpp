@@ -824,6 +824,8 @@ void Trans_Enumerate_Types(EnumState& state)
                         (Drop,
                             H::visit_lvalue(tv,pp,fcn, se.slot);
                             ),
+                        (SetDropFlag,
+                            ),
                         (Asm,
                             for(const auto& v : se.outputs)
                                 H::visit_lvalue(tv,pp,fcn, v.second);
@@ -1396,6 +1398,8 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second, pp);
                 for(const auto& v : se.outputs)
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second, pp);
+                ),
+            (SetDropFlag,
                 ),
             (Drop,
                 DEBUG("- DROP " << se.slot);

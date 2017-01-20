@@ -1183,6 +1183,9 @@ namespace {
                     switch( stmt.tag() )
                     {
                     case ::MIR::Statement::TAGDEAD: throw "";
+                    case ::MIR::Statement::TAG_SetDropFlag: {
+                        MIR_TODO(mir_res, "SetDropFlag");
+                        break; }
                     case ::MIR::Statement::TAG_Drop: {
                         const auto& e = stmt.as_Drop();
                         ::HIR::TypeRef  tmp;

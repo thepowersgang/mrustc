@@ -966,7 +966,8 @@ namespace {
         case 1:
             return ::MIR::Statement::make_Drop({
                 m_in.read_bool() ? ::MIR::eDropKind::DEEP : ::MIR::eDropKind::SHALLOW,
-                deserialise_mir_lvalue()
+                deserialise_mir_lvalue(),
+                static_cast<unsigned int>(m_in.read_count())
                 });
         case 2:
             return ::MIR::Statement::make_Asm({

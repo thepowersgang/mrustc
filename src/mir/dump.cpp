@@ -145,6 +145,10 @@ namespace {
             {
                 m_os << indent() << "let tmp$" << i << ": " << fcn.temporaries[i] << ";\n";
             }
+            for(unsigned int i = 0; i < fcn.drop_flags.size(); i ++)
+            {
+                m_os << indent() << "let df$" << i << " = " << fcn.drop_flags[i] << ";\n";
+            }
 
             #define FMT_M(x)   FMT_CB(os, this->fmt_val(os,x);)
             for(unsigned int i = 0; i < fcn.blocks.size(); i ++)
@@ -179,6 +183,10 @@ namespace {
                         m_os << ")";
                         for(const auto& v : e.flags)
                             m_os << " \"" << v << "\"";
+                        m_os << ";\n";
+                        ),
+                    (SetDropFlag,
+                        m_os << "df$" << e.idx << " = " << e.new_val << ";\n";
                         ),
                     (Drop,
                         DEBUG("- DROP " << e.slot);
@@ -190,6 +198,10 @@ namespace {
                             break;
                         case ::MIR::eDropKind::DEEP:
                             break;
+                        }
+                        if( e.flag_idx != ~0u )
+                        {
+                            m_os << " IF df$" << e.flag_idx;
                         }
                         m_os << ");\n";
                         )

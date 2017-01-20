@@ -221,19 +221,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         }
     };
 
-    bool has_move_pattern = false;
-    for(const auto& arm : node.m_arms)
-    {
-        for(const auto& pat : arm.m_patterns)
-        {
-            has_move_pattern |= H::is_pattern_move(node.span(), builder, pat);
-            if( has_move_pattern )
-                break ;
-        }
-        if( has_move_pattern )
-            break ;
-    }
-
     auto match_scope = builder.new_scope_split(node.span());
 
     // Map of arm index to ruleset
@@ -276,13 +263,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             // NOTE: Paused block resumed upon successful match
         }
         builder.terminate_scope( arm.m_code->span(), mv$(pat_scope) );
-
-        // TODO: If this pattern ignores fields with Drop impls, this will lead to leaks.
-        // - Ideally, this would trigger a drop of whatever wasn't already taken by the pattern.
-        if( has_move_pattern )
-        {
-            builder.moved_lvalue(node.span(), match_val);
-        }
 
         // Condition
         // NOTE: Lack of drop due to early exit from this arm isn't an issue. All captures must be Copy

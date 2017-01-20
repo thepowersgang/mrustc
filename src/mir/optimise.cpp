@@ -148,6 +148,8 @@ namespace {
             for(auto& v : e.outputs)
                 rv |= visit_mir_lvalue_mut(v.second, true, cb);
             ),
+        (SetDropFlag,
+            ),
         (Drop,
             rv |= visit_mir_lvalue_mut(e.slot, false, cb);
             )

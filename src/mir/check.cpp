@@ -261,21 +261,28 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             }
         };
         ::std::vector< ValStates>   block_start_states( fcn.blocks.size() );
-        ::std::vector< ::std::pair<unsigned int, ValStates> > to_visit_blocks;
+        struct ToVisit {
+            unsigned int bb;
+            ::std::vector<unsigned int> path;
+            ValStates   state;
+        };
+        ::std::vector<ToVisit> to_visit_blocks;
 
-        auto add_to_visit = [&](auto idx, auto vs) {
+        auto add_to_visit = [&](unsigned int idx, ::std::vector<unsigned int> src_path, auto vs) {
             for(const auto& b : to_visit_blocks)
-                if( b.first == idx && b.second == vs)
+                if( b.bb == idx && b.state == vs)
                     return ;
             if( block_start_states.at(idx) == vs )
                 return ;
-            to_visit_blocks.push_back( ::std::make_pair(idx, mv$(vs)) );
+            src_path.push_back(idx);
+            to_visit_blocks.push_back( ToVisit { idx, mv$(src_path), mv$(vs) } );
             };
-        to_visit_blocks.push_back( ::std::make_pair(0, ValStates{ args.size(), fcn.temporaries.size(), fcn.named_variables.size() }) );
+        add_to_visit( 0, {}, ValStates { args.size(), fcn.temporaries.size(), fcn.named_variables.size() } );
         while( to_visit_blocks.size() > 0 )
         {
-            auto block = to_visit_blocks.back().first;
-            auto val_state = mv$( to_visit_blocks.back().second );
+            auto block = to_visit_blocks.back().bb;
+            auto path = mv$(to_visit_blocks.back().path);
+            auto val_state = mv$( to_visit_blocks.back().state );
             to_visit_blocks.pop_back();
             assert(block < fcn.blocks.size());
 
@@ -284,6 +291,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             if( ! block_start_states.at(block).merge( val_state ) ) {
                 continue ;
             }
+            DEBUG("BB" << block << " via [" << path << "]");
 
             // 2. Using the newly merged state, iterate statements checking the usage and updating state.
             const auto& bb = fcn.blocks[block];
@@ -296,9 +304,14 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 {
                 case ::MIR::Statement::TAGDEAD:
                     throw "";
+                case ::MIR::Statement::TAG_SetDropFlag:
+                    break;
                 case ::MIR::Statement::TAG_Drop:
                     // Invalidate the slot
-                    val_state.ensure_valid(state, stmt.as_Drop().slot);
+                    if( stmt.as_Drop().flag_idx == ~0u )
+                    {
+                        val_state.ensure_valid(state, stmt.as_Drop().slot);
+                    }
                     val_state.mark_validity( state, stmt.as_Drop().slot, false );
                     break;
                 case ::MIR::Statement::TAG_Asm:
@@ -395,7 +408,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 ),
             (Goto,
                 // Push block with the new state
-                add_to_visit( e, mv$(val_state) );
+                add_to_visit( e, mv$(path), mv$(val_state) );
                 ),
             (Panic,
                 // What should be done here?
@@ -403,14 +416,14 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             (If,
                 // Push blocks
                 val_state.ensure_valid( state, e.cond );
-                add_to_visit( e.bb0, val_state );
-                add_to_visit( e.bb1, mv$(val_state) );
+                add_to_visit( e.bb0, path, val_state );
+                add_to_visit( e.bb1, mv$(path), mv$(val_state) );
                 ),
             (Switch,
                 val_state.ensure_valid( state, e.val );
                 for(const auto& tgt : e.targets)
                 {
-                    add_to_visit( tgt, val_state );
+                    add_to_visit( tgt, path, val_state );
                 }
                 ),
             (Call,
@@ -419,11 +432,11 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 for(const auto& arg : e.args)
                     val_state.ensure_valid( state, arg );
                 // Push blocks (with return valid only in one)
-                add_to_visit(e.panic_block, val_state);
+                add_to_visit(e.panic_block, path, val_state);
 
                 // TODO: If the function returns !, don't follow the ret_block
                 val_state.mark_validity( state, e.ret_val, true );
-                add_to_visit(e.ret_block, mv$(val_state));
+                add_to_visit(e.ret_block, mv$(path), mv$(val_state));
                 )
             )
         }
@@ -445,6 +458,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 {
                 case ::MIR::Statement::TAGDEAD:
                     throw "";
+                case ::MIR::Statement::TAG_SetDropFlag:
+                    break;
                 case ::MIR::Statement::TAG_Assign: {
                     const auto& a = stmt.as_Assign();
 

@@ -32,7 +32,9 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
     m_scopes.push_back( ScopeDef { sp, ScopeType::make_Temporaries({}) } );
     m_scope_stack.push_back( 1 );
 
-    m_variable_states.resize( output.named_variables.size(), VarState::Uninit );
+    m_variable_states.reserve( output.named_variables.size() );
+    for(unsigned int i = 0; i < output.named_variables.size(); i ++ )
+        m_variable_states.push_back( VarState::make_Invalid(InvalidType::Uninit) );
 }
 MirBuilder::~MirBuilder()
 {
@@ -103,7 +105,7 @@ void MirBuilder::define_variable(unsigned int idx)
     DEBUG("DEFINE tmp" << rv << ": " << ty);
 
     m_output.temporaries.push_back( ty.clone() );
-    m_temporary_states.push_back( VarState::Uninit );
+    m_temporary_states.push_back( VarState::make_Invalid(InvalidType::Uninit) );
     assert(m_output.temporaries.size() == m_temporary_states.size());
 
     ScopeDef* top_scope = nullptr;
@@ -253,7 +255,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     mark_value_assigned(sp, dst);
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
 }
-void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val)
+void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int flag/*=~0u*/)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
     ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
@@ -264,7 +266,10 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val)
     }
 
     DEBUG("DROP " << val);
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val) }) );
+
+    auto stmt = ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val), flag });
+
+    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
 }
 void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
 {
@@ -278,7 +283,7 @@ void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val)
     //}
 
     DEBUG("DROP shallow " << val);
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val) }) );
+    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val), ~0u }) );
 }
 void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
 {
@@ -291,61 +296,60 @@ void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
     // 2. Push
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Asm( mv$(data) ) );
 }
+void MirBuilder::push_stmt_set_dropflag(const Span& sp, unsigned int idx, bool value)
+{
+    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
+    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_SetDropFlag({ idx, value }) );
+}
 
 void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
 {
+    VarState*   state_p = nullptr;
     TU_MATCH_DEF(::MIR::LValue, (dst), (e),
     (
         ),
     (Temporary,
-        switch(get_temp_state(sp, e.idx))
+        state_p = &get_temp_state_mut(sp, e.idx);
+        if( const auto* se = state_p->opt_Invalid() )
         {
-        case VarState::Uninit:
-            break;
-        case VarState::Dropped:
-            // ERROR?
-            break;
-        case VarState::Moved:
-        case VarState::MaybeMoved:
-            // ERROR? Temporaries shouldn't be resassigned after becoming valid
-            break;
-        case VarState::InnerMoved:
-            BUG(sp, "Reassigning inner-moved temporary - " << dst);
-            break;
-        case VarState::Init:
-            // ERROR. Temporaries are single-assignment
-            break;
+            if( *se != InvalidType::Uninit ) {
+                BUG(sp, "Reassigning temporary " << e.idx << " - " << *state_p);
+            }
         }
-        set_temp_state(sp, e.idx, VarState::Init);
+        else {
+            // TODO: This should be a bug, but some of the match code ends up reassigning so..
+            //BUG(sp, "Reassigning temporary " << e.idx << " - " << *state_p);
+        }
         ),
     (Return,
         // Don't drop.
-        //m_return_valid = true;
+        // No state tracking for the return value
         ),
     (Variable,
         // TODO: Ensure that slot is mutable (information is lost, assume true)
-        switch( get_variable_state(sp, e) )
-        {
-        case VarState::Uninit:
-        case VarState::Moved:
-            break;
-        case VarState::Dropped:
-            // TODO: Is this an error? The variable has descoped.
-            break;
-        case VarState::Init:
-            // Drop (if not Copy) - Copy check is done within push_stmt_drop
-            push_stmt_drop( sp, dst.clone() );
-            break;
-        case VarState::InnerMoved:
-            push_stmt_drop_shallow( sp, dst.clone() );
-            break;
-        case VarState::MaybeMoved:
-            // TODO: Conditional drop
-            break;
-        }
-        set_variable_state(sp, e, VarState::Init);
+        state_p = &get_variable_state_mut(sp, e);
         )
     )
+
+    if( state_p )
+    {
+        TU_MATCHA( (*state_p), (se),
+        (Invalid,
+            ASSERT_BUG(sp, se != InvalidType::Descoped, "Assining of descoped variable - " << dst);
+            ),
+        (Valid,
+            push_stmt_drop( sp, dst.clone() );
+            ),
+        (Optional,
+            push_stmt_drop( sp, dst.clone(), se );
+            ),
+        (Partial,
+            // TODO: Check type, if Box emit _shallow, otherwise destructure drop
+            push_stmt_drop_shallow( sp, dst.clone() );
+            )
+        )
+        *state_p = VarState::make_Valid({});
+    }
 }
 
 void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope)
@@ -552,6 +556,25 @@ void MirBuilder::end_block(::MIR::Terminator term)
     return rv;
 }
 
+
+unsigned int MirBuilder::new_drop_flag(bool default_state)
+{
+    auto rv = m_output.drop_flags.size();
+    m_output.drop_flags.push_back(default_state);
+    DEBUG("(" << default_state << ") = " << rv);
+    return rv;
+}
+unsigned int MirBuilder::new_drop_flag_and_set(const Span& sp, bool set_state)
+{
+    auto rv = new_drop_flag(!set_state);
+    push_stmt_set_dropflag(sp, rv, set_state);
+    return rv;
+}
+bool MirBuilder::get_drop_flag_default(const Span& sp, unsigned int idx)
+{
+    return m_output.drop_flags.at(idx);
+}
+
 ScopeHandle MirBuilder::new_scope_var(const Span& sp)
 {
     unsigned int idx = m_scopes.size();
@@ -638,11 +661,11 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope,
                 SplitArm    sa;
                 for(const auto& i : e.changed_vars)
                 {
-                    sa.var_states.insert( ::std::make_pair(i, get_variable_state(sp, i)) );
+                    sa.var_states.insert( ::std::make_pair(i, get_variable_state(sp, i).clone()) );
                 }
                 for(const auto& i : e.changed_tmps)
                 {
-                    sa.tmp_states.insert( ::std::make_pair(i, get_temp_state(sp, i)) );
+                    sa.tmp_states.insert( ::std::make_pair(i, get_temp_state(sp, i).clone()) );
                 }
                 e.exit_states.push_back( mv$(sa) );
             }
@@ -671,6 +694,98 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope,
         }
     }
 }
+
+namespace
+{
+    static void merge_state(const Span& sp, MirBuilder& builder, const ::MIR::LValue& lv, VarState& old_state, const VarState& new_state)
+    {
+        DEBUG(lv << " : " << old_state << " <= " << new_state);
+        switch(old_state.tag())
+        {
+        case VarState::TAGDEAD: throw "";
+        case VarState::TAG_Invalid:
+            switch( new_state.tag() )
+            {
+            case VarState::TAGDEAD: throw "";
+            case VarState::TAG_Invalid:
+                // Invalid->Invalid :: Choose the highest of the invalid types (TODO)
+                return ;
+            case VarState::TAG_Valid:
+                // Allocate a drop flag
+                old_state = VarState::make_Optional( builder.new_drop_flag_and_set(sp, true) );
+                return ;
+            case VarState::TAG_Optional:
+                // Was invalid, now optional.
+                if( builder.get_drop_flag_default( sp, new_state.as_Optional() ) != false ) {
+                    TODO(sp, "Drop flag default not false when going Invalid->Optional");
+                }
+                old_state = VarState::make_Optional( new_state.as_Optional() );
+                return ;
+            case VarState::TAG_Partial:
+                TODO(sp, "Handle Invalid->Partial in split scope");
+            }
+            break;
+        case VarState::TAG_Valid:
+            switch( new_state.tag() )
+            {
+            case VarState::TAGDEAD: throw "";
+            case VarState::TAG_Invalid:
+                old_state = VarState::make_Optional( builder.new_drop_flag_and_set(sp, false) );
+                return ;
+            case VarState::TAG_Valid:
+                return ;
+            case VarState::TAG_Optional:
+                // Was valid, now optional.
+                if( builder.get_drop_flag_default( sp, new_state.as_Optional() ) != true ) {
+                    TODO(sp, "Drop flag default not true when going Valid->Optional");
+                }
+                old_state = VarState::make_Optional( new_state.as_Optional() );
+                return ;
+            case VarState::TAG_Partial:
+                TODO(sp, "Handle Valid->Partial in split scope");
+            }
+            break;
+        case VarState::TAG_Optional:
+            switch( new_state.tag() )
+            {
+            case VarState::TAGDEAD: throw "";
+            case VarState::TAG_Invalid:
+                builder.push_stmt_set_dropflag(sp, old_state.as_Optional(), false);
+                return ;
+            case VarState::TAG_Valid:
+                builder.push_stmt_set_dropflag(sp, old_state.as_Optional(), true);
+                return ;
+            case VarState::TAG_Optional:
+                if( old_state.as_Optional() != new_state.as_Optional() ) {
+                    TODO(sp, "Handle Optional->Optional with mismatched flags");
+                }
+                return ;
+            case VarState::TAG_Partial:
+                TODO(sp, "Handle Optional->Partial in split scope");
+            }
+            break;
+        case VarState::TAG_Partial:
+            // Need to tag for conditional shallow drop? Or just do that at the end of the split?
+            // - End of the split means that the only optional state is outer drop.
+            switch( new_state.tag() )
+            {
+            case VarState::TAGDEAD: throw "";
+            case VarState::TAG_Invalid:
+                TODO(sp, "Handle Partial->Invalid in split scope");
+            case VarState::TAG_Valid:
+                TODO(sp, "Handle Partial->Valid in split scope");
+            case VarState::TAG_Optional:
+                TODO(sp, "Handle Partial->Optional in split scope");
+            case VarState::TAG_Partial:
+                ASSERT_BUG(sp, old_state.as_Partial().size() == new_state.as_Partial().size(), "Partial->Partial with mismatchd sizes");
+                TODO(sp, "Handle Partial->Partial in split scope");
+            }
+            break;
+        }
+        BUG(sp, "Unhandled combination - " << old_state.tag_str() << " and " << new_state.tag_str());
+    }
+}
+
 void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool reachable)
 {
     ASSERT_BUG(sp, handle.idx < m_scopes.size(), "");
@@ -680,27 +795,66 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     ASSERT_BUG(sp, !sd_split.arms.empty(), "");
 
     TRACE_FUNCTION_F("end split scope " << handle.idx << " arm " << (sd_split.arms.size()-1));
-
-    sd_split.arms.back().always_early_terminated = /*sd_split.arms.back().has_early_terminated &&*/ !reachable;
-
-    // HACK: If this arm's end is reachable, convert InnerMoved (shallow drop) variable states to Moved
-    // - I'm not 100% sure this is the correct place for calling drop.
-    #if 1
     if( reachable )
+        ASSERT_BUG(sp, m_block_active, "Block must be active when ending a reachable split arm");
+
+    auto& this_arm_state = sd_split.arms.back();
+    this_arm_state.always_early_terminated = /*sd_split.arms.back().has_early_terminated &&*/ !reachable;
+
+    if( sd_split.end_state_valid )
     {
-        for(auto& vse : sd_split.arms.back().var_states)
+        if( reachable )
         {
-            //auto i = vse.first;
-            auto& vs = vse.second;
-            if( vs == VarState::InnerMoved ) {
-                // TODO: Refactor InnerMoved to handle partial moves via Box
-                // Emit the shallow drop
-                //push_stmt_drop_shallow( sp, ::MIR::LValue::make_Variable(i) );
-                vs = VarState::Moved;
+            // Insert copies of the parent state 
+            for(const auto& ent : this_arm_state.var_states) {
+                if( sd_split.end_state.var_states.count(ent.first) == 0 ) {
+                    sd_split.end_state.var_states.insert(::std::make_pair( ent.first, get_variable_state(sp, ent.first, 1).clone() ));
+                }
+            }
+            for(const auto& ent : this_arm_state.tmp_states) {
+                if( sd_split.end_state.tmp_states.count(ent.first) == 0 ) {
+                    sd_split.end_state.tmp_states.insert(::std::make_pair( ent.first, get_temp_state(sp, ent.first, 1).clone() ));
+                }
+            }
+
+            // Merge state
+            for(auto& ent : sd_split.end_state.var_states)
+            {
+                auto idx = ent.first;
+                auto& out_state = ent.second;
+
+                // Merge the states
+                auto it = this_arm_state.var_states.find(idx);
+                const auto& src_state = (it != this_arm_state.var_states.end() ? it->second : get_variable_state(sp, idx, 1));
+
+                merge_state(sp, *this, ::MIR::LValue::make_Variable(idx), out_state, src_state);
+            }
+            for(auto& ent : sd_split.end_state.tmp_states)
+            {
+                auto idx = ent.first;
+                auto& out_state = ent.second;
+
+                // Merge the states
+                auto it = this_arm_state.tmp_states.find(idx);
+                const auto& src_state = (it != this_arm_state.tmp_states.end() ? it->second : get_temp_state(sp, idx, 1));
+
+                merge_state(sp, *this, ::MIR::LValue::make_Temporary({idx}), out_state, src_state);
             }
         }
     }
-    #endif
+    else
+    {
+        // Clone this arm's state
+        for(auto& ent : this_arm_state.var_states)
+        {
+            sd_split.end_state.var_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+        }
+        for(auto& ent : this_arm_state.tmp_states)
+        {
+            sd_split.end_state.tmp_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+        }
+        sd_split.end_state_valid = true;
+    }
 
     sd_split.arms.push_back( {} );
 }
@@ -725,112 +879,7 @@ void MirBuilder::end_split_arm_early(const Span& sp)
         auto& sd_split = sd.data.as_Split();
         sd_split.arms.back().has_early_terminated = true;
 
-        for(const auto& vse : sd_split.arms.back().var_states)
-        {
-            auto i = vse.first;
-            const auto& vs = vse.second;
-            if( vs == VarState::InnerMoved ) {
-                // Emit the shallow drop
-                push_stmt_drop_shallow( sp, ::MIR::LValue::make_Variable(i) );
-                // - Don't update the state, because this drop isn't the end-of-scope drop
-            }
-        }
-    }
-}
-namespace {
-    static VarState merge_state(const Span& sp, VarState new_state, VarState old_state)
-    {
-        switch(old_state)
-        {
-        case VarState::Uninit:
-            switch( new_state )
-            {
-            case VarState::Uninit:
-                //BUG(sp, "Variable state changed from Uninit to Uninit (wut?)");
-                return VarState::Uninit;
-            case VarState::Init:
-                // TODO: MaybeInit?
-                return VarState::MaybeMoved;
-            case VarState::MaybeMoved:
-                return VarState::MaybeMoved;
-            case VarState::Moved:
-                return VarState::Uninit;
-            case VarState::InnerMoved:
-                TODO(sp, "Handle InnerMoved in Split scope (wa Uninit)");
-                break;
-            case VarState::Dropped:
-                BUG(sp, "Dropped value in arm");
-                break;
-            }
-            BUG(sp, "Override from Uninit to " << new_state);
-            break;
-        case VarState::Init:
-            switch( new_state )
-            {
-            case VarState::Uninit:
-                // TODO: MaybeInit?
-                return VarState::MaybeMoved;
-            case VarState::Init:
-                return VarState::Init;
-            case VarState::MaybeMoved:
-                return VarState::MaybeMoved;
-            case VarState::Moved:
-                return VarState::MaybeMoved;
-            case VarState::InnerMoved:
-                TODO(sp, "Handle InnerMoved in Split scope (was Init)");
-                break;
-            case VarState::Dropped:
-                BUG(sp, "Dropped value in arm");
-                break;
-            }
-            break;
-        case VarState::InnerMoved:
-            // Need to tag for conditional shallow drop? Or just do that at the end of the split?
-            // - End of the split means that the only optional state is outer drop.
-            switch( new_state )
-            {
-            case VarState::Uninit:
-                TODO(sp, "Handle InnerMoved in Split scope (new_states) - Now Uninit");
-            case VarState::Init:
-                TODO(sp, "Handle InnerMoved in Split scope (new_states) - Now Init");
-            case VarState::MaybeMoved:
-                TODO(sp, "Handle InnerMoved in Split scope (new_states) - Now MaybeMoved");
-            case VarState::Moved:
-                TODO(sp, "Handle InnerMoved in Split scope (new_states) - Now Moved");
-            case VarState::InnerMoved:
-                return VarState::InnerMoved;
-            case VarState::Dropped:
-                BUG(sp, "Dropped value in arm");
-            }
-            break;
-        case VarState::MaybeMoved:
-            // Already optional, don't change
-            return VarState::MaybeMoved;
-        case VarState::Moved:
-            switch( new_state )
-            {
-            case VarState::Uninit:
-                return VarState::Moved;
-            case VarState::Init:
-                // Wut? Reinited?
-                return VarState::MaybeMoved;
-            case VarState::MaybeMoved:
-                return VarState::MaybeMoved;
-            case VarState::Moved:
-                return VarState::Moved;
-            case VarState::InnerMoved:
-                TODO(sp, "Handle InnerMoved in Split scope (was Moved)");
-                break;
-            case VarState::Dropped:
-                BUG(sp, "Dropped value in arm");
-                break;
-            }
-            break;
-        case VarState::Dropped:
-            TODO(sp, "How can an arm drop a value?");
-            break;
-        }
-        BUG(sp, "Unhandled combination");
+        // TODO: Create drop flags if required?
     }
 }
 void MirBuilder::complete_scope(ScopeDef& sd)
@@ -850,100 +899,31 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     (Split,
         )
     )
-    
-    struct H
-    {
-        static void apply_split_arms(MirBuilder& self, const Span& sp, ::std::vector<SplitArm>& arms)
-        {
-            // 1. Make a bitmap of changed states in all arms
-            // 2. Build up the final composite state of the first arm
-            ::std::map<unsigned int, VarState> new_var_states;
-            ::std::map<unsigned int, VarState> new_tmp_states;
-            const SplitArm* first_arm = nullptr;
-            for(const auto& arm : arms)
-            {
-                if( arm.always_early_terminated )
-                    continue ;
-                for(const auto& vse : arm.var_states)
-                {
-                    auto i = vse.first;
-                    if( new_var_states.count(i) == 0 )
-                        new_var_states.insert( ::std::make_pair(i, vse.second) );
-                }
-                for(const auto& vse : arm.tmp_states)
-                {
-                    auto i = vse.first;
-                    if( new_tmp_states.count(i) == 0 )
-                        new_tmp_states.insert( ::std::make_pair(i, vse.second) );
-                }
-                if( !first_arm )
-                    first_arm = &arm;
-            }
-
-            if( !first_arm )
-            {
-                DEBUG("No arms yeilded");
-                return ;
-            }
-
-            // 3. Compare the rest of the arms
-            for(const auto& arm : arms)
-            {
-                if( arm.always_early_terminated )
-                    continue ;
-                DEBUG("><");
-                for(auto& se : new_var_states)
-                {
-                    auto i = se.first;
-                    DEBUG("- VAR" << i);
-                    auto new_state = (arm.var_states.count(i) != 0 ? arm.var_states.at(i) : self.get_variable_state(sp, i));
-                    se.second = merge_state(sp, new_state, se.second);
-                }
-                for(auto& se : new_tmp_states)
-                {
-                    auto i = se.first;
-                    DEBUG("- TMP" << i);
-                    auto new_state = (arm.tmp_states.count(i) != 0 ? arm.tmp_states.at(i) : self.get_temp_state(sp, i));
-                    se.second = merge_state(sp, new_state, se.second);
-                }
-            }
-
-            // 4. Apply changes
-            for(const auto& se : new_var_states)
-            {
-                auto i = se.first;
-                auto new_state = se.second;
-                DEBUG("var" << i << " old_state = " << self.get_variable_state(sp, i) << ", new_state = " << new_state);
-                self.set_variable_state(sp, i, new_state);
-            }
-            for(const auto& se : new_tmp_states)
-            {
-                auto i = se.first;
-                auto new_state = se.second;
-                DEBUG("tmp" << i << " old_state = " << self.get_temp_state(sp, i) << ", new_state = " << new_state);
-                self.set_temp_state(sp, i, new_state);
-            }
-        }
-    };
-
     // No macro for better debug output.
     if( sd.data.is_Loop() )
     {
+        #if 0
         auto& e = sd.data.as_Loop();
         TRACE_FUNCTION_F("Loop - " << e.exit_states.size() << " breaks");
 
         // Merge all exit states and apply to output
         H::apply_split_arms(*this, sd.span, e.exit_states);
+        #endif
     }
     else if( sd.data.is_Split() )
     {
         auto& e = sd.data.as_Split();
-
-        assert( e.arms.size() > 1 );
         TRACE_FUNCTION_F("Split - " << (e.arms.size() - 1) << " arms");
-        e.arms.pop_back();
 
-        H::apply_split_arms(*this, sd.span, e.arms);
+        ASSERT_BUG(sd.span, e.end_state_valid, "");
+        for(auto& ent : e.end_state.var_states)
+        {
+            auto& vs = get_variable_state_mut(sd.span, ent.first);
+            if( vs != ent.second )
+            {
+                vs = ::std::move(ent.second);
+            }
+        }
     }
 }
 
@@ -1130,7 +1110,7 @@ bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val) const
     return rv == 2;
 }
 
-VarState MirBuilder::get_variable_state(const Span& sp, unsigned int idx) const
+const VarState& MirBuilder::get_variable_state(const Span& sp, unsigned int idx, unsigned int skip_count) const
 {
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
@@ -1150,7 +1130,10 @@ VarState MirBuilder::get_variable_state(const Span& sp, unsigned int idx) const
             auto it = cur_arm.var_states.find(idx);
             if( it != cur_arm.var_states.end() )
             {
-                return it->second;
+                if( ! skip_count -- )
+                {
+                    return it->second;
+                }
             }
             )
         )
@@ -1159,7 +1142,7 @@ VarState MirBuilder::get_variable_state(const Span& sp, unsigned int idx) const
     ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
     return m_variable_states[idx];
 }
-void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState state)
+VarState& MirBuilder::get_variable_state_mut(const Span& sp, unsigned int idx)
 {
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
@@ -1176,8 +1159,10 @@ void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState s
         {
             auto& e = scope_def.data.as_Split();
             auto& cur_arm = e.arms.back();
-            cur_arm.var_states[idx] = state;
-            return ;
+            auto it = cur_arm.var_states.find(idx);
+            if( it == cur_arm.var_states.end() )
+                return cur_arm.var_states[idx] = get_variable_state(sp, idx).clone();
+            return it->second;
         }
         else if( scope_def.data.is_Loop() )
         {
@@ -1190,9 +1175,9 @@ void MirBuilder::set_variable_state(const Span& sp, unsigned int idx, VarState s
     }
 
     ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
-    m_variable_states[idx] = state;
+    return m_variable_states[idx];
 }
-VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
+const VarState& MirBuilder::get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count) const
 {
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
@@ -1212,7 +1197,10 @@ VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
             auto it = cur_arm.tmp_states.find(idx);
             if( it != cur_arm.tmp_states.end() )
             {
-                return it->second;
+                if( ! skip_count -- )
+                {
+                    return it->second;
+                }
             }
         }
     }
@@ -1220,7 +1208,7 @@ VarState MirBuilder::get_temp_state(const Span& sp, unsigned int idx) const
     ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
     return m_temporary_states[idx];
 }
-void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state)
+VarState& MirBuilder::get_temp_state_mut(const Span& sp, unsigned int idx)
 {
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
@@ -1237,8 +1225,10 @@ void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state
         {
             auto& e = scope_def.data.as_Split();
             auto& cur_arm = e.arms.back();
-            cur_arm.tmp_states[idx] = state;
-            return ;
+            auto it = cur_arm.tmp_states.find(idx);
+            if(it == cur_arm.tmp_states.end())
+                return cur_arm.tmp_states[idx] = get_temp_state(sp, idx).clone();
+            return it->second;
         }
         else if( scope_def.data.is_Loop() )
         {
@@ -1251,7 +1241,7 @@ void MirBuilder::set_temp_state(const Span& sp, unsigned int idx, VarState state
     }
 
     ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
-    m_temporary_states[idx] = state;
+    return m_temporary_states[idx];
 }
 
 void MirBuilder::drop_scope_values(const ScopeDef& sd)
@@ -1260,52 +1250,41 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
     (Temporaries,
         for(auto tmp_idx : ::reverse(e.temporaries))
         {
-            switch( get_temp_state(sd.span, tmp_idx) )
-            {
-            case VarState::Uninit:
-                DEBUG("Temporary " << tmp_idx << " Uninit");
-                break;
-            case VarState::Dropped:
-                DEBUG("Temporary " << tmp_idx << " Dropped");
-                break;
-            case VarState::Moved:
-                DEBUG("Temporary " << tmp_idx << " Moved");
-                break;
-            case VarState::Init:
+            const auto& vs = get_temp_state(sd.span, tmp_idx);
+            TU_MATCHA( (vs), (vse),
+            (Invalid,
+                ),
+            (Valid,
                 push_stmt_drop( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );
-                //set_temp_state(sd.span, tmp_idx, VarState::Dropped);
-                break;
-            case VarState::InnerMoved:
+                ),
+            (Partial,
+                // TODO: Actual destructuring
                 push_stmt_drop_shallow( sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }) );
-                //set_temp_state(sd.span, tmp_idx, VarState::Dropped);
-                break;
-            case VarState::MaybeMoved:
-                //BUG(sd.span, "Optionally moved temporary? - " << tmp_idx);
-                break;
-            }
+                ),
+            (Optional,
+                push_stmt_drop(sd.span, ::MIR::LValue::make_Temporary({ tmp_idx }), vse);
+                )
+            )
         }
         ),
     (Variables,
         for(auto var_idx : ::reverse(e.vars))
         {
-            switch( get_variable_state(sd.span, var_idx) )
-            {
-            case VarState::Uninit:
-            case VarState::Dropped:
-            case VarState::Moved:
-                break;
-            case VarState::Init:
+            const auto& vs = get_variable_state(sd.span, var_idx);
+            TU_MATCHA( (vs), (vse),
+            (Invalid,
+                ),
+            (Valid,
                 push_stmt_drop( sd.span, ::MIR::LValue::make_Variable(var_idx) );
-                break;
-            case VarState::InnerMoved:
+                ),
+            (Partial,
+                // TODO: Actual destructuring
                 push_stmt_drop_shallow( sd.span, ::MIR::LValue::make_Variable(var_idx) );
-                //set_variable_state(sd.span, var_idx, VarState::Dropped);
-                break;
-            case VarState::MaybeMoved:
-                // TODO: Drop flags
-                //push_stmt_drop_opt(sd.span, ::MIR::LValue::make_Variable(var_idx), drop_flag_idx);
-                break;
-            }
+                ),
+            (Optional,
+                push_stmt_drop(sd.span, ::MIR::LValue::make_Variable(var_idx), vse);
+                )
+            )
         }
         ),
     (Split,
@@ -1323,12 +1302,12 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
     TU_MATCHA( (lv), (e),
     (Variable,
         if( !lvalue_is_copy(sp, lv) ) {
-            set_variable_state(sp, e, VarState::Moved);
+            get_variable_state_mut(sp, e) = VarState::make_Invalid(InvalidType::Moved);
         }
         ),
     (Temporary,
         if( !lvalue_is_copy(sp, lv) ) {
-            set_temp_state(sp, e.idx, VarState::Moved);
+            get_temp_state_mut(sp, e.idx) = VarState::make_Invalid(InvalidType::Moved);
         }
         ),
     (Argument,
@@ -1381,15 +1360,17 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
                         )
                     )
                     // 2. Mark the slot as requiring only a shallow drop
+                    ::std::vector<VarState> ivs;
+                    ivs.push_back(VarState::make_Invalid(InvalidType::Moved));
                     TU_MATCH_DEF( ::MIR::LValue, (inner_lv), (ei),
                     (
                         BUG(sp, "Box move out of invalid LValue " << inner_lv << " - should have been moved");
                         ),
                     (Variable,
-                        set_variable_state(sp, ei, VarState::InnerMoved);
+                        get_variable_state_mut(sp, ei) = VarState::make_Partial(mv$(ivs));
                         ),
                     (Temporary,
-                        set_temp_state(sp, ei.idx, VarState::InnerMoved);
+                        get_temp_state_mut(sp, ei.idx) = VarState::make_Partial(mv$(ivs));
                         ),
                     (Argument,
                         TODO(sp, "Mark arg " << ei.idx << " for shallow drop");
@@ -1449,18 +1430,75 @@ ScopeHandle::~ScopeHandle()
     }
 }
 
-::std::ostream& operator<<(::std::ostream& os, VarState x)
+VarState VarState::clone() const
 {
-    switch(x)
-    {
-    #define _(V)    case VarState::V:   os << #V;   break;
-    _(Uninit)
-    _(Init)
-    _(MaybeMoved)
-    _(Moved)
-    _(InnerMoved)
-    _(Dropped)
-    #undef _
-    }
+    TU_MATCHA( (*this), (e),
+    (Invalid,
+        return VarState(e);
+        ),
+    (Valid,
+        return VarState(e);
+        ),
+    (Optional,
+        return VarState(e);
+        ),
+    (Partial,
+        ::std::vector<VarState> n;
+        n.reserve(e.size());
+        for(const auto& a : e)
+            n.push_back( a.clone() );
+        return VarState(mv$(n));
+        )
+    )
+    throw "";
+}
+bool VarState::operator==(VarState& x) const
+{
+    if( this->tag() != x.tag() )
+        return false;
+    TU_MATCHA( (*this, x), (te, xe),
+    (Invalid,
+        return te == xe;
+        ),
+    (Valid,
+        return true;
+        ),
+    (Optional,
+        return te == xe;
+        ),
+    (Partial,
+        if( te.size() != xe.size() )
+            return false;
+        for(unsigned int i = 0; i < te.size(); i ++)
+        {
+            if( te[i] != xe[i] )
+                return false;
+        }
+        return true;
+        )
+    )
+    throw "";
+}
+::std::ostream& operator<<(::std::ostream& os, const VarState& x)
+{
+    TU_MATCHA( (x), (e),
+    (Invalid,
+        switch(e)
+        {
+        case InvalidType::Uninit:   os << "Uninit"; break;
+        case InvalidType::Moved:    os << "Moved";  break;
+        case InvalidType::Descoped: os << "Descoped";   break;
+        }
+        ),
+    (Valid,
+        os << "Valid";
+        ),
+    (Optional,
+        os << "Optional(" << e << ")";
+        ),
+    (Partial,
+        os << "Partial(" << e << ")";
+        )
+    )
     return os;
 }

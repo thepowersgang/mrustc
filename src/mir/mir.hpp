@@ -222,15 +222,15 @@ TAGGED_UNION(Statement, Assign,
         ::std::vector< ::std::string>   flags;
         }),
     // Update the state of a drop flag
-    //(SetDropFlag, struct {
-    //    unsigned int idx;
-    //    bool new_val;
-    //    }),
+    (SetDropFlag, struct {
+        unsigned int idx;
+        bool new_val;
+        }),
     // Drop a value
     (Drop, struct {
-        //unsigned int flag_idx;  // Valid if != ~0u
         eDropKind   kind;   // NOTE: For the `box` primitive
         LValue  slot;
+        unsigned int flag_idx;  // Valid if != ~0u
         })
     );
 
@@ -246,6 +246,7 @@ class Function
 public:
     ::std::vector< ::HIR::TypeRef>  named_variables;
     ::std::vector< ::HIR::TypeRef>  temporaries;
+    ::std::vector<bool> drop_flags;
 
     ::std::vector<BasicBlock>   blocks;
 };
