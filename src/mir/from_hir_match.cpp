@@ -230,6 +230,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     {
         TRACE_FUNCTION_FR("ARM " << arm_idx, "ARM" << arm_idx);
         /*const*/ auto& arm = node.m_arms[arm_idx];
+        const Span& sp = arm.m_code->span();
         ArmCode ac;
 
         // Register introduced bindings to be dropped on return/diverge within this scope
@@ -253,22 +254,27 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
                 DEBUG("ARM PAT (" << arm_idx << "," << pat_idx << ") " << pat << " ==> [" << pat_builder.m_rules << "]");
                 arm_rules.push_back( PatternRuleset { arm_idx, pat_idx, mv$(pat_builder.m_rules) } );
             }
+            ac.destructures.push_back( builder.new_bb_unlinked() );
 
             // - Emit code to destructure the matched pattern
-            ac.destructures.push_back( builder.new_bb_unlinked() );
             builder.set_cur_block( ac.destructures.back() );
             conv.destructure_from( arm.m_code->span(), pat, match_val.clone(), true );
             builder.end_split_arm( arm.m_code->span(), pat_scope, /*reachable=*/false );    // HACK: Mark as not reachable, this scope isn't for codegen.
             builder.pause_cur_block();
             // NOTE: Paused block resumed upon successful match
         }
-        builder.terminate_scope( arm.m_code->span(), mv$(pat_scope) );
+        builder.terminate_scope( sp, mv$(pat_scope) );
 
         // Condition
         // NOTE: Lack of drop due to early exit from this arm isn't an issue. All captures must be Copy
         // - The above is rustc E0008 "cannot bind by-move into a pattern guard"
         if(arm.m_cond)
         {
+            if( H::is_pattern_move(sp, builder, arm.m_patterns[0]) )
+                ERROR(sp, E0000, "cannot bind by-move into a pattern guard");
+            ac.has_condition = true;
+            ac.cond_start = builder.new_bb_unlinked();
+
             DEBUG("-- Condition Code");
             ac.has_condition = true;
             ac.cond_start = builder.new_bb_unlinked();

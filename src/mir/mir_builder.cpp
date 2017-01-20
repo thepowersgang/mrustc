@@ -921,6 +921,16 @@ void MirBuilder::complete_scope(ScopeDef& sd)
             auto& vs = get_variable_state_mut(sd.span, ent.first);
             if( vs != ent.second )
             {
+                DEBUG(::MIR::LValue::make_Variable(ent.first) << " " << vs << " => " << ent.second);
+                vs = ::std::move(ent.second);
+            }
+        }
+        for(auto& ent : e.end_state.tmp_states)
+        {
+            auto& vs = get_temp_state_mut(sd.span, ent.first);
+            if( vs != ent.second )
+            {
+                DEBUG(::MIR::LValue::make_Temporary({ent.first}) << " " << vs << " => " << ent.second);
                 vs = ::std::move(ent.second);
             }
         }
