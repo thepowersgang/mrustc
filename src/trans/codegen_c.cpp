@@ -1188,7 +1188,12 @@ namespace {
                     case ::MIR::Statement::TAGDEAD: throw "";
                     case ::MIR::Statement::TAG_SetDropFlag: {
                         const auto& e = stmt.as_SetDropFlag();
-                        m_of << "\tdf" << e.idx << " = " << e.new_val << ";\n";
+                        m_of << "\tdf" << e.idx << " = ";
+                        if( e.other == ~0u )
+                            m_of << e.new_val;
+                        else
+                            m_of << (e.new_val ? "!" : "") << "df" << e.other;
+                        m_of << ";\n";
                         break; }
                     case ::MIR::Statement::TAG_Drop: {
                         const auto& e = stmt.as_Drop();

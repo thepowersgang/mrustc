@@ -173,8 +173,9 @@ public:
     void push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val);
     // Push an inline assembly statement (NOTE: inputs aren't marked as moved)
     void push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data);
-    // Pus
-    void push_stmt_set_dropflag(const Span& sp, unsigned int index, bool value);
+    // Push a setting/clearing of a drop flag
+    void push_stmt_set_dropflag_val(const Span& sp, unsigned int index, bool value);
+    void push_stmt_set_dropflag_other(const Span& sp, unsigned int index, unsigned int other);
 
     // - Block management
     bool block_active() const {

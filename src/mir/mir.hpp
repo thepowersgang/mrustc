@@ -224,7 +224,8 @@ TAGGED_UNION(Statement, Assign,
     // Update the state of a drop flag
     (SetDropFlag, struct {
         unsigned int idx;
-        bool new_val;
+        bool new_val;   // If `other` is populated, this indicates that the other value should be negated
+        unsigned int other = ~0u;
         }),
     // Drop a value
     (Drop, struct {

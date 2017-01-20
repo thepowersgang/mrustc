@@ -494,6 +494,7 @@ namespace {
                 m_out.write_tag(3);
                 m_out.write_count(e.idx);
                 m_out.write_bool(e.new_val);
+                m_out.write_count(e.other);
                 )
             )
         }

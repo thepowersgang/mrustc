@@ -983,7 +983,8 @@ namespace {
         case 3:
             return ::MIR::Statement::make_SetDropFlag({
                 static_cast<unsigned int>(m_in.read_count()),
-                m_in.read_bool()
+                m_in.read_bool(),
+                static_cast<unsigned int>(m_in.read_count())
                 });
         default:
             ::std::cerr << "Bad tag for a MIR Statement" << ::std::endl;

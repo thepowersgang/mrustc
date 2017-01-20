@@ -296,10 +296,15 @@ void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
     // 2. Push
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Asm( mv$(data) ) );
 }
-void MirBuilder::push_stmt_set_dropflag(const Span& sp, unsigned int idx, bool value)
+void MirBuilder::push_stmt_set_dropflag_val(const Span& sp, unsigned int idx, bool value)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_SetDropFlag({ idx, value }) );
+}
+void MirBuilder::push_stmt_set_dropflag_other(const Span& sp, unsigned int idx, unsigned int other)
+{
+    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
+    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_SetDropFlag({ idx, false, other }) );
 }
 
 void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
@@ -567,7 +572,7 @@ unsigned int MirBuilder::new_drop_flag(bool default_state)
 unsigned int MirBuilder::new_drop_flag_and_set(const Span& sp, bool set_state)
 {
     auto rv = new_drop_flag(!set_state);
-    push_stmt_set_dropflag(sp, rv, set_state);
+    push_stmt_set_dropflag_val(sp, rv, set_state);
     return rv;
 }
 bool MirBuilder::get_drop_flag_default(const Span& sp, unsigned int idx)
@@ -734,13 +739,32 @@ namespace
                 return ;
             case VarState::TAG_Valid:
                 return ;
-            case VarState::TAG_Optional:
+            case VarState::TAG_Optional: {
+                auto flag_idx = new_state.as_Optional();
                 // Was valid, now optional.
-                if( builder.get_drop_flag_default( sp, new_state.as_Optional() ) != true ) {
-                    TODO(sp, "Drop flag default not true when going Valid->Optional");
+                if( builder.get_drop_flag_default(sp, flag_idx) != true ) {
+                    // Allocate a new drop flag with a default state of `true` and set it to this flag?
+                    #if 1
+                    auto new_flag = builder.new_drop_flag(true);
+                    builder.push_stmt_set_dropflag_other(sp, new_flag, flag_idx);
+                    old_state = VarState::make_Optional( new_flag );
+                    #else
+                    // OR: Push an assign of this flag to every other completed arm
+                    // - Cleaner generated code, but can't be used for Optional->Optional
+                    for(unsigned int i = 0; i < sd_split.arms.size()-1; i ++)
+                    {
+                        if( sd_split.arms[i].end_block != 0 ) {
+                            m_output.blocks.at( sd_split.arms[i].end_block )
+                                .statements.push_back(::MIR::Statement::make_SetDropFlag({ flag_idx, true }));
+                        }
+                    }
+                    #endif
                 }
-                old_state = VarState::make_Optional( new_state.as_Optional() );
+                else {
+                    old_state = VarState::make_Optional( new_state.as_Optional() );
+                }
                 return ;
+                }
             case VarState::TAG_Partial:
                 TODO(sp, "Handle Valid->Partial in split scope");
             }
@@ -750,14 +774,18 @@ namespace
             {
             case VarState::TAGDEAD: throw "";
             case VarState::TAG_Invalid:
-                builder.push_stmt_set_dropflag(sp, old_state.as_Optional(), false);
+                builder.push_stmt_set_dropflag_val(sp, old_state.as_Optional(), false);
                 return ;
             case VarState::TAG_Valid:
-                builder.push_stmt_set_dropflag(sp, old_state.as_Optional(), true);
+                builder.push_stmt_set_dropflag_val(sp, old_state.as_Optional(), true);
                 return ;
             case VarState::TAG_Optional:
                 if( old_state.as_Optional() != new_state.as_Optional() ) {
-                    TODO(sp, "Handle Optional->Optional with mismatched flags");
+                    #if 1
+                    builder.push_stmt_set_dropflag_other(sp, old_state.as_Optional(), new_state.as_Optional());
+                    #else
+                    // TODO: Rewrite history replacing one flag with another (if they have the same default)
+                    #endif
                 }
                 return ;
             case VarState::TAG_Partial:
