@@ -31,6 +31,7 @@ namespace {
         {}
 
         ::std::string read_string() { return m_in.read_string(); }
+        bool read_bool() { return m_in.read_bool(); }
         size_t deserialise_count() { return m_in.read_count(); }
 
         template<typename V>
@@ -606,6 +607,9 @@ namespace {
     template<>
     DEF_D( ::std::string,
         return d.read_string(); );
+    template<>
+    DEF_D( bool,
+        return d.read_bool(); );
 
     template<typename T>
     DEF_D( ::std::unique_ptr<T>,
@@ -936,9 +940,8 @@ namespace {
         ::MIR::Function rv;
 
         rv.named_variables = deserialise_vec< ::HIR::TypeRef>( );
-        DEBUG("named_variables = " << rv.named_variables);
         rv.temporaries = deserialise_vec< ::HIR::TypeRef>( );
-        DEBUG("temporaries = " << rv.temporaries);
+        rv.drop_flags = deserialise_vec<bool>();
         rv.blocks = deserialise_vec< ::MIR::BasicBlock>( );
 
         return ::MIR::FunctionPointer( new ::MIR::Function(mv$(rv)) );
@@ -976,6 +979,11 @@ namespace {
                 deserialise_vec< ::std::pair< ::std::string, ::MIR::LValue> >(),
                 deserialise_vec< ::std::string>(),
                 deserialise_vec< ::std::string>()
+                });
+        case 3:
+            return ::MIR::Statement::make_SetDropFlag({
+                static_cast<unsigned int>(m_in.read_count()),
+                m_in.read_bool()
                 });
         default:
             ::std::cerr << "Bad tag for a MIR Statement" << ::std::endl;

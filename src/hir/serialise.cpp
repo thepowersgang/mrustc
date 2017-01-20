@@ -459,6 +459,7 @@ namespace {
             // Write out MIR.
             serialise_vec( mir.named_variables );
             serialise_vec( mir.temporaries );
+            serialise_vec( mir.drop_flags );
             serialise_vec( mir.blocks );
         }
         void serialise(const ::MIR::BasicBlock& block)
