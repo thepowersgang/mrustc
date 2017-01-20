@@ -719,13 +719,21 @@ namespace
                 // Allocate a drop flag
                 old_state = VarState::make_Optional( builder.new_drop_flag_and_set(sp, true) );
                 return ;
-            case VarState::TAG_Optional:
+            case VarState::TAG_Optional: {
                 // Was invalid, now optional.
-                if( builder.get_drop_flag_default( sp, new_state.as_Optional() ) != false ) {
+                auto flag_idx = new_state.as_Optional();
+                if( builder.get_drop_flag_default(sp, flag_idx) != false ) {
+                    #if 1
+                    auto new_flag = builder.new_drop_flag(false);
+                    builder.push_stmt_set_dropflag_other(sp, new_flag, flag_idx);
+                    old_state = VarState::make_Optional( new_flag );
+                    #else
                     TODO(sp, "Drop flag default not false when going Invalid->Optional");
+                    #endif
                 }
-                old_state = VarState::make_Optional( new_state.as_Optional() );
+                old_state = VarState::make_Optional( flag_idx );
                 return ;
+                }
             case VarState::TAG_Partial:
                 TODO(sp, "Handle Invalid->Partial in split scope");
             }
