@@ -49,7 +49,10 @@ TAGGED_UNION_EX(VarState, (), Invalid, (
     // Currently invalid
     (Invalid, InvalidType),
     // Partially valid (Map of field states, Box is assumed to have one field)
-    (Partial, ::std::vector<VarState>),
+    (Partial, struct {
+        ::std::vector<VarState> inner_states;
+        unsigned int outer_flag = ~0u;   // If ~0u there's no condition on the outer
+        }),
     // Optionally valid (integer indicates the drop flag index)
     (Optional, unsigned int),
     // Fully valid
@@ -145,8 +148,6 @@ public:
     const ::HIR::Crate& crate() const { return m_resolve.m_crate; }
     const StaticTraitResolve& resolve() const { return m_resolve; }
 
-    //::HIR::TypeRef* is_type_owned_box(::HIR::TypeRef& ty) const {
-    //}
     /// Check if the passed type is Box<T> and returns a pointer to the T type if so, otherwise nullptr
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 
@@ -170,7 +171,7 @@ public:
     // Push a drop (likely only used by scope cleanup)
     void push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int drop_flag=~0u);
     // Push a shallow drop (for Box)
-    void push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val);
+    void push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val, unsigned int drop_flag=~0u);
     // Push an inline assembly statement (NOTE: inputs aren't marked as moved)
     void push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data);
     // Push a setting/clearing of a drop flag
@@ -224,6 +225,7 @@ private:
     const VarState& get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
     VarState& get_temp_state_mut(const Span& sp, unsigned int idx);
 
+    void drop_value_from_state(const Span& sp, const VarState& vs, ::MIR::LValue lv);
     void drop_scope_values(const ScopeDef& sd);
     void complete_scope(ScopeDef& sd);
 
