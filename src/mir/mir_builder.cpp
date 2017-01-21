@@ -625,6 +625,7 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
 
     complete_scope(scope_def);
 }
+
 void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope, bool loop_exit/*=false*/)
 {
     TRACE_FUNCTION_F("EARLY scope " << scope.idx);
@@ -647,17 +648,7 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope,
             // If this is exiting a loop, save the state so the variable state after the loop is known.
             if( loop_exit && scope_def.data.is_Loop() )
             {
-                auto& e = scope_def.data.as_Loop();
-                SplitArm    sa;
-                for(const auto& i : e.changed_vars)
-                {
-                    sa.var_states.insert( ::std::make_pair(i, get_variable_state(sp, i).clone()) );
-                }
-                for(const auto& i : e.changed_tmps)
-                {
-                    sa.tmp_states.insert( ::std::make_pair(i, get_temp_state(sp, i).clone()) );
-                }
-                e.exit_states.push_back( mv$(sa) );
+                terminate_loop_early(sp, scope_def.data.as_Loop());
             }
         }
 
@@ -900,6 +891,48 @@ namespace
     }
 }
 
+void MirBuilder::terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_loop)
+{
+    if( sd_loop.exit_state_valid )
+    {
+        // Insert copies of parent state for newly changed values
+        // and Merge all changed values
+        for(const auto& ent : sd_loop.changed_vars)
+        {
+            auto idx = ent.first;
+            if( sd_loop.exit_state.var_states.count(idx) == 0 ) {
+                sd_loop.exit_state.var_states.insert(::std::make_pair( idx, ent.second.clone() ));
+            }
+            auto& old_state = sd_loop.exit_state.var_states.at(idx);
+            merge_state(sp, *this, ::MIR::LValue::make_Variable(idx), old_state,  get_variable_state(sp, idx));
+        }
+        for(const auto& ent : sd_loop.changed_tmps)
+        {
+            auto idx = ent.first;
+            if( sd_loop.exit_state.tmp_states.count(idx) == 0 ) {
+                sd_loop.exit_state.tmp_states.insert(::std::make_pair( idx, ent.second.clone() ));
+            }
+            auto& old_state = sd_loop.exit_state.tmp_states.at(idx);
+            merge_state(sp, *this, ::MIR::LValue::make_Temporary({idx}), old_state,  get_temp_state(sp, idx));
+        }
+    }
+    else
+    {
+        // Obtain states of changed variables/temporaries
+        for(const auto& ent : sd_loop.changed_vars)
+        {
+            auto idx = ent.first;
+            sd_loop.exit_state.var_states.insert(::std::make_pair( idx, get_variable_state(sp, idx).clone() ));
+        }
+        for(const auto& ent : sd_loop.changed_tmps)
+        {
+            auto idx = ent.first;
+            sd_loop.exit_state.tmp_states.insert(::std::make_pair( idx, get_temp_state(sp, idx).clone() ));
+        }
+        sd_loop.exit_state_valid = true;
+    }
+}
+
 void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool reachable)
 {
     ASSERT_BUG(sp, handle.idx < m_scopes.size(), "");
@@ -955,6 +988,10 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
                 merge_state(sp, *this, ::MIR::LValue::make_Temporary({idx}), out_state, src_state);
             }
         }
+        else
+        {
+            DEBUG("Unreachable, not merging");
+        }
     }
     else
     {
@@ -986,14 +1023,17 @@ void MirBuilder::end_split_arm_early(const Span& sp)
         complete_scope(scope_def);
     }
 
-    if( !m_scope_stack.empty() && m_scopes.at( m_scope_stack.back() ).data.is_Split() )
+    if( !m_scope_stack.empty() )
     {
-        DEBUG("Early terminate split scope " << m_scope_stack.back());
-        auto& sd = m_scopes[ m_scope_stack.back() ];
-        auto& sd_split = sd.data.as_Split();
-        sd_split.arms.back().has_early_terminated = true;
+        if( m_scopes.at( m_scope_stack.back() ).data.is_Split() )
+        {
+            DEBUG("Early terminate split scope " << m_scope_stack.back());
+            auto& sd = m_scopes[ m_scope_stack.back() ];
+            auto& sd_split = sd.data.as_Split();
+            sd_split.arms.back().has_early_terminated = true;
 
-        // TODO: Create drop flags if required?
+            // TODO: Create drop flags if required?
+        }
     }
 }
 void MirBuilder::complete_scope(ScopeDef& sd)
@@ -1013,16 +1053,40 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     (Split,
         )
     )
+
+    struct H {
+        static void apply_end_state(const Span& sp, MirBuilder& builder, SplitEnd& end_state)
+        {
+            for(auto& ent : end_state.var_states)
+            {
+                auto& vs = builder.get_variable_state_mut(sp, ent.first);
+                if( vs != ent.second )
+                {
+                    DEBUG(::MIR::LValue::make_Variable(ent.first) << " " << vs << " => " << ent.second);
+                    vs = ::std::move(ent.second);
+                }
+            }
+            for(auto& ent : end_state.tmp_states)
+            {
+                auto& vs = builder.get_temp_state_mut(sp, ent.first);
+                if( vs != ent.second )
+                {
+                    DEBUG(::MIR::LValue::make_Temporary({ent.first}) << " " << vs << " => " << ent.second);
+                    vs = ::std::move(ent.second);
+                }
+            }
+        }
+    };
+
     // No macro for better debug output.
     if( sd.data.is_Loop() )
     {
-        #if 0
         auto& e = sd.data.as_Loop();
-        TRACE_FUNCTION_F("Loop - " << e.exit_states.size() << " breaks");
-
-        // Merge all exit states and apply to output
-        H::apply_split_arms(*this, sd.span, e.exit_states);
-        #endif
+        TRACE_FUNCTION_F("Loop");
+        if( e.exit_state_valid )
+        {
+            H::apply_end_state(sd.span, *this, e.exit_state);
+        }
     }
     else if( sd.data.is_Split() )
     {
@@ -1030,24 +1094,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         TRACE_FUNCTION_F("Split - " << (e.arms.size() - 1) << " arms");
 
         ASSERT_BUG(sd.span, e.end_state_valid, "");
-        for(auto& ent : e.end_state.var_states)
-        {
-            auto& vs = get_variable_state_mut(sd.span, ent.first);
-            if( vs != ent.second )
-            {
-                DEBUG(::MIR::LValue::make_Variable(ent.first) << " " << vs << " => " << ent.second);
-                vs = ::std::move(ent.second);
-            }
-        }
-        for(auto& ent : e.end_state.tmp_states)
-        {
-            auto& vs = get_temp_state_mut(sd.span, ent.first);
-            if( vs != ent.second )
-            {
-                DEBUG(::MIR::LValue::make_Temporary({ent.first}) << " " << vs << " => " << ent.second);
-                vs = ::std::move(ent.second);
-            }
-        }
+        H::apply_end_state(sd.span, *this, e.end_state);
     }
 }
 
@@ -1291,7 +1338,11 @@ VarState& MirBuilder::get_variable_state_mut(const Span& sp, unsigned int idx)
         else if( scope_def.data.is_Loop() )
         {
             auto& e = scope_def.data.as_Loop();
-            e.changed_vars.insert( idx );
+            if( e.changed_vars.count(idx) == 0 )
+            {
+                auto state = e.exit_state_valid ? get_variable_state(sp, idx).clone() : VarState::make_Valid({});
+                e.changed_vars.insert(::std::make_pair( idx, mv$(state) ));
+            }
         }
         else
         {
@@ -1357,7 +1408,11 @@ VarState& MirBuilder::get_temp_state_mut(const Span& sp, unsigned int idx)
         else if( scope_def.data.is_Loop() )
         {
             auto& e = scope_def.data.as_Loop();
-            e.changed_tmps.insert( idx );
+            if( e.changed_tmps.count(idx) == 0 )
+            {
+                auto state = e.exit_state_valid ? get_temp_state(sp, idx).clone() : VarState::make_Valid({});
+                e.changed_tmps.insert(::std::make_pair( idx, mv$(state) ));
+            }
         }
         else
         {

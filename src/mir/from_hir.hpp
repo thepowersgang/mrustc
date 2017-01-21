@@ -91,9 +91,11 @@ TAGGED_UNION(ScopeType, Variables,
         ::std::vector<SplitArm> arms;
         }),
     (Loop, struct {
-        ::std::set<unsigned int>    changed_vars;
-        ::std::set<unsigned int>    changed_tmps;
-        ::std::vector<SplitArm> exit_states;
+        // NOTE: This contains the original state for variables changed after `exit_state_valid` is true
+        ::std::map<unsigned int,VarState>    changed_vars;
+        ::std::map<unsigned int,VarState>    changed_tmps;
+        bool exit_state_valid;
+        SplitEnd    exit_state;
         })
     );
 
@@ -224,6 +226,8 @@ private:
     VarState& get_variable_state_mut(const Span& sp, unsigned int idx);
     const VarState& get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
     VarState& get_temp_state_mut(const Span& sp, unsigned int idx);
+
+    void terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_loop);
 
     void drop_value_from_state(const Span& sp, const VarState& vs, ::MIR::LValue lv);
     void drop_scope_values(const ScopeDef& sd);
