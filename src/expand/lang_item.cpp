@@ -180,6 +180,29 @@ public:
     }
 };
 
+class Decorator_Main:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    {
+        TU_IFLET(::AST::Item, i, Function, e,
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path(path) ));
+            if( !rv.second )
+            {
+                const auto& other_path = rv.first->second;
+                ERROR(sp, E0000, "Duplicate definition of #[main] - " << other_path << " and " << path);
+            }
+        )
+        else {
+            ERROR(sp, E0000, "#[main] on non-function " << path);
+        }
+    }
+};
+
+
 STATIC_DECORATOR("lang", Decorator_LangItem)
+STATIC_DECORATOR("main", Decorator_Main);
 
 

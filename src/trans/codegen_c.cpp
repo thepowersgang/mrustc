@@ -104,7 +104,7 @@ namespace {
                 m_of
                     << "int main(int argc, const char* argv[]) {\n"
                     << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
-                        << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(::HIR::SimplePath(m_crate.m_crate_name, {"main"})) ) << ", argc, (uint8_t**)argv"
+                        << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
                         << ");\n"
                     << "}\n";
             }

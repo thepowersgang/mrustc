@@ -70,7 +70,7 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 
     // user entrypoint
     {
-        auto main_path = ::HIR::SimplePath(crate.m_crate_name, {"main"});
+        auto main_path = crate.get_lang_item_path(Span(), "mrustc-main");
         const auto& fcn = crate.get_function_by_path(sp, main_path);
 
         state.enum_fcn( main_path, fcn, {} );

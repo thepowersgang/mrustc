@@ -1024,24 +1024,6 @@ void Expand(::AST::Crate& crate)
 
     // Post-process
     Expand_Mod_IndexAnon(crate, crate.m_root_module);
-    #if 0
-    for( auto& a : crate.m_attrs.m_items )
-    {
-        for( auto& d : g_decorators ) {
-            if( d.first == a.name() && d.second->expand_before_macros() == false ) {
-                //d.second->handle(a, crate, ::AST::Path(), crate.m_root_module, crate.m_root_module);
-            }
-        }
-    }
-    for( auto& a : crate.m_attrs.m_items )
-    {
-        for( auto& d : g_decorators ) {
-            if( d.first == a.name() && d.second->expand_before_macros() == false ) {
-                d.second->handle(a, crate);
-            }
-        }
-    }
-    #endif
 }
 
 

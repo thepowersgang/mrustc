@@ -283,6 +283,9 @@ int main(int argc, char *argv[])
             // TODO: Detect if an allocator crate is already present.
             crate.load_extern_crate(Span(), "alloc_system");
             crate.load_extern_crate(Span(), "panic_abort");
+
+            // - `mrustc-main` lang item default
+            crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
         }
 
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
