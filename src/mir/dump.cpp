@@ -133,6 +133,30 @@ namespace {
                 m_os << indent() << "  ;\n";
             }
         }
+        void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
+        {
+            m_os << indent();
+            m_os << "static ";
+            if( m_short_item_name )
+                m_os << p.get_name();
+            else
+                m_os << p;
+            m_os << ": " << item.m_type;
+            if( item.m_value )
+            {
+                inc_indent();
+                m_os << "= {\n";
+                inc_indent();
+                this->dump_mir(*item.m_value.m_mir);
+                dec_indent();
+                m_os << indent() << "} /* = " << item.m_value_res << "*/;\n";
+                dec_indent();
+            }
+            else
+            {
+                m_os << ";\n";
+            }
+        }
 
 
         void dump_mir(const ::MIR::Function& fcn)
