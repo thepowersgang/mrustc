@@ -1205,7 +1205,6 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
             auto it = m_copy_cache.find(ty);
             if( it != m_copy_cache.end() )
             {
-                DEBUG("Cached " << it->first << " = " << it->second);
                 return it->second;
             }
         }
