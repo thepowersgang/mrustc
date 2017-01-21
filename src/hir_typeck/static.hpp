@@ -32,6 +32,9 @@ public:
     ::HIR::SimplePath   m_lang_Box;
     ::HIR::SimplePath   m_lang_PhantomData;
 
+private:
+    mutable ::std::map< ::HIR::TypeRef, bool >  m_copy_cache;
+
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
         m_crate(crate),

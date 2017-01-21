@@ -14,6 +14,8 @@ void StaticTraitResolve::prep_indexes()
 
     TRACE_FUNCTION_F("");
 
+    m_copy_cache.clear();
+
     auto add_equality = [&](::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty){
         DEBUG("[prep_indexes] ADD " << long_ty << " => " << short_ty);
         // TODO: Sort the two types by "complexity" (most of the time long >= short)
@@ -1199,14 +1201,31 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
 {
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
     (Generic,
-        return this->iterate_bounds([&](const auto& b) {
+        {
+            auto it = m_copy_cache.find(ty);
+            if( it != m_copy_cache.end() )
+            {
+                DEBUG("Cached " << it->first << " = " << it->second);
+                return it->second;
+            }
+        }
+        bool rv = this->iterate_bounds([&](const auto& b) {
             auto pp = ::HIR::PathParams();
             return this->find_impl__check_bound(sp, m_lang_Copy, &pp, ty, [&](auto , bool ){ return true; },  b);
             });
+        m_copy_cache.insert(::std::make_pair( ty.clone(), rv ));
+        return rv;
         ),
     (Path,
+        {
+            auto it = m_copy_cache.find(ty);
+            if( it != m_copy_cache.end() )
+                return it->second;
+        }
         auto pp = ::HIR::PathParams();
-        return this->find_impl(sp, m_lang_Copy, &pp, ty, [&](auto , bool){ return true; }, true);
+        bool rv = this->find_impl(sp, m_lang_Copy, &pp, ty, [&](auto , bool){ return true; }, true);
+        m_copy_cache.insert(::std::make_pair( ty.clone(), rv ));
+        return rv;
         ),
     (Diverge,
         // The ! type is kinda Copy ...
