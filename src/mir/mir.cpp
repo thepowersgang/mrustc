@@ -50,6 +50,38 @@ namespace MIR {
         )
         return os;
     }
+    bool operator==(const Constant& a, const Constant& b)
+    {
+        if( a.tag() != b.tag() )
+            return false;
+        TU_MATCHA( (a,b), (ae,be),
+        (Int,
+            return ae == be;
+            ),
+        (Uint,
+            return ae == be;
+            ),
+        (Float,
+            return ae == be;
+            ),
+        (Bool,
+            return ae == be;
+            ),
+        (Bytes,
+            return ae == be;
+            ),
+        (StaticString,
+            return ae == be;
+            ),
+        (Const,
+            return ae.p == be.p;
+            ),
+        (ItemAddr,
+            return ae == be;
+            )
+        )
+        throw "";
+    }
 
     ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
     {
@@ -248,6 +280,92 @@ namespace MIR {
             )
         )
         return os;
+    }
+    bool operator==(const RValue& a, const RValue& b)
+    {
+        if( a.tag() != b.tag() )
+            return false;
+        TU_MATCHA( (a, b), (are, bre),
+        (Use,
+            return are == bre;
+            ),
+        (Constant,
+            return are == bre;
+            ),
+        (SizedArray,
+            if( are.val != bre.val )
+                return false;
+            if( are.count != bre.count )
+                return false;
+            return true;
+            ),
+        (Borrow,
+            if( are.region != bre.region )
+                return false;
+            if( are.type != bre.type )
+                return false;
+            if( are.val != bre.val )
+                return false;
+            return true;
+            ),
+        (Cast,
+            if( are.type != bre.type )
+                return false;
+            if( are.val != bre.val )
+                return false;
+            return true;
+            ),
+        (BinOp,
+            if( are.val_l != bre.val_l )
+                return false;
+            if( are.op != bre.op )
+                return false;
+            if( are.val_r != bre.val_r )
+                return false;
+            return true;
+            ),
+        (UniOp,
+            if( are.op != bre.op )
+                return false;
+            if( are.val != bre.val )
+                return false;
+            return true;
+            ),
+        (DstPtr,
+            return are.val == bre.val;
+            ),
+        (DstMeta,
+            return are.val == bre.val;
+            ),
+        (MakeDst,
+            if( are.meta_val != bre.meta_val )
+                return false;
+            if( are.ptr_val != bre.ptr_val )
+                return false;
+            return true;
+            ),
+        (Tuple,
+            return are.vals == bre.vals;
+            ),
+        (Array,
+            return are.vals == bre.vals;
+            ),
+        (Variant,
+            if( are.path != bre.path )
+                return false;
+            if( are.index != bre.index )
+                return false;
+            return are.val == bre.val;
+            ),
+        (Struct,
+            if( are.path != bre.path )
+                return false;
+            if( are.variant_idx != bre.variant_idx )
+                return false;
+            return are.vals == bre.vals;
+            )
+        )
+        throw "";
     }
 
     ::std::ostream& operator<<(::std::ostream& os, const Terminator& x)

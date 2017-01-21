@@ -704,6 +704,7 @@ namespace
                     builder.push_stmt_set_dropflag_other(sp, new_flag, flag_idx);
                     old_state = VarState::make_Optional( new_flag );
                     #else
+                    // TODO: Rewrite history. I.e. visit all previous branches and set this drop flag to `false` in all of them
                     TODO(sp, "Drop flag default not false when going Invalid->Optional");
                     #endif
                 }
@@ -723,7 +724,7 @@ namespace
                         builder.push_stmt_set_dropflag_val(sp, nse.outer_flag, false);
                     }
                 }
-                
+
                 auto out = new_state.clone();
                 auto& ose = out.as_Partial();
                 if( is_box ) {

@@ -210,7 +210,14 @@ namespace {
                         m_os << ";\n";
                         ),
                     (SetDropFlag,
-                        m_os << "df$" << e.idx << " = " << e.new_val << ";\n";
+                        m_os << "df$" << e.idx << " = ";
+                        if( e.other == ~0u )
+                            m_os << e.new_val;
+                        else if( ! e.new_val )
+                            m_os << "df$" << e.other;
+                        else
+                            m_os << "! df$" << e.other;
+                        m_os << ";\n";
                         ),
                     (Drop,
                         DEBUG("- DROP " << e.slot);

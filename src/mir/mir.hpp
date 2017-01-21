@@ -101,6 +101,10 @@ TAGGED_UNION(Constant, Int,
     (ItemAddr, ::HIR::Path) // address of a value
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
+extern bool operator==(const Constant& a, const Constant& b);
+static inline bool operator!=(const Constant& a, const Constant& b) {
+    return !(a == b);
+}
 
 TAGGED_UNION_EX(RValue, (), Use, (
     (Use, LValue),
@@ -168,6 +172,10 @@ TAGGED_UNION_EX(RValue, (), Use, (
     )
 );
 extern ::std::ostream& operator<<(::std::ostream& os, const RValue& x);
+extern bool operator==(const RValue& a, const RValue& b);
+static inline bool operator!=(const RValue& a, const RValue& b) {
+    return !(a == b);
+}
 
 TAGGED_UNION(CallTarget, Intrinsic,
     (Value, LValue),
