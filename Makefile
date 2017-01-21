@@ -169,6 +169,7 @@ $(LLVM_LINKAGE_FILE): output/librustc_llvm_build
 	TARGET=$(RUSTC_TARGET) HOST=$(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}') output/librustc_llvm_build
 else
 $(LLVM_LINKAGE_FILE):
+	mkdir -p $(dir $@)
 	echo > $@
 endif
 
