@@ -13,8 +13,9 @@
 #include <mir/visit_crate_mir.hpp>
 
 namespace {
-    ::HIR::TypeRef get_metadata_type(const StaticTraitResolve& resolve, const ::HIR::TypeRef& unsized_ty)
+    ::HIR::TypeRef get_metadata_type(const ::MIR::TypeResolve& state, const ::HIR::TypeRef& unsized_ty)
     {
+        static Span sp;
         if( const auto* tep = unsized_ty.m_data.opt_TraitObject() )
         {
             const auto& trait_path = tep->m_trait;
@@ -28,7 +29,7 @@ namespace {
             {
                 auto vtable_ty_spath = trait_path.m_path.m_path;
                 vtable_ty_spath.m_components.back() += "#vtable";
-                const auto& vtable_ref = resolve.m_crate.get_struct_by_path(Span(), vtable_ty_spath);
+                const auto& vtable_ref = state.m_resolve.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
                 // Copy the param set from the trait in the trait object
                 ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
                 // - Include associated types
@@ -38,12 +39,43 @@ namespace {
                         vtable_params.m_types.resize(idx+1);
                     vtable_params.m_types[idx] = ty_b.second.clone();
                 }
+                // TODO: This should be a pointer
                 return ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
             }
         }
         else if( unsized_ty.m_data.is_Slice() )
         {
             return ::HIR::CoreType::Usize;
+        }
+        else if( const auto* tep = unsized_ty.m_data.opt_Path() )
+        {
+            if( tep->binding.is_Struct() )
+            {
+                switch( tep->binding.as_Struct()->m_markings.dst_type )
+                {
+                case ::HIR::TraitMarkings::DstType::None:
+                    return ::HIR::TypeRef();
+                case ::HIR::TraitMarkings::DstType::Possible: {
+                    const auto& path = tep->path.m_data.as_Generic();
+                    const auto& str = *tep->binding.as_Struct();
+                    auto monomorph = [&](const auto& tpl) {
+                        auto rv = monomorphise_type(state.sp, str.m_params, path.m_params, tpl);
+                        state.m_resolve.expand_associated_types(sp, rv);
+                        return rv;
+                        };
+                    TU_MATCHA( (str.m_data), (se),
+                    (Unit,  MIR_BUG(state, "Unit-like struct with DstType::Possible - " << unsized_ty ); ),
+                    (Tuple, return get_metadata_type( state, monomorph(se.back().ent) ); ),
+                    (Named, return get_metadata_type( state, monomorph(se.back().second.ent) ); )
+                    )
+                    throw ""; }
+                case ::HIR::TraitMarkings::DstType::Slice:
+                    return ::HIR::CoreType::Usize;
+                case ::HIR::TraitMarkings::DstType::TraitObject:
+                    return ::HIR::TypeRef::new_unit();  // TODO: Get the actual inner metadata type?
+                }
+            }
+            return ::HIR::TypeRef();
         }
         else
         {
@@ -671,7 +703,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         else
                             MIR_BUG(state, "DstMeta requires a pointer as output, got " << ty);
                         assert(ity_p);
-                        auto meta = get_metadata_type(state.m_resolve, *ity_p);
+                        auto meta = get_metadata_type(state, *ity_p);
                         if( meta == ::HIR::TypeRef() )
                         {
                             MIR_BUG(state, "DstMeta requires a pointer to an unsized type as output, got " << ty);
