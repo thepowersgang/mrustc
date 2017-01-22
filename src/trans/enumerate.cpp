@@ -59,21 +59,31 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 
     EnumState   state { crate };
 
-    // "start" language item
-    // - Takes main, and argc/argv as arguments
+    auto c_start_path = crate.get_lang_item_path_opt("mrustc-start");
+    if( c_start_path == ::HIR::SimplePath() )
     {
-        auto start_path = crate.get_lang_item_path(sp, "start");
-        const auto& fcn = crate.get_function_by_path(sp, start_path);
+        // "start" language item
+        // - Takes main, and argc/argv as arguments
+        {
+            auto start_path = crate.get_lang_item_path(sp, "start");
+            const auto& fcn = crate.get_function_by_path(sp, start_path);
 
-        state.enum_fcn( start_path, fcn, {} );
+            state.enum_fcn( start_path, fcn, {} );
+        }
+
+        // user entrypoint
+        {
+            auto main_path = crate.get_lang_item_path(Span(), "mrustc-main");
+            const auto& fcn = crate.get_function_by_path(sp, main_path);
+
+            state.enum_fcn( main_path, fcn, {} );
+        }
     }
-
-    // user entrypoint
+    else
     {
-        auto main_path = crate.get_lang_item_path(Span(), "mrustc-main");
-        const auto& fcn = crate.get_function_by_path(sp, main_path);
+        const auto& fcn = crate.get_function_by_path(sp, c_start_path);
 
-        state.enum_fcn( main_path, fcn, {} );
+        state.enum_fcn( c_start_path, fcn, {} );
     }
 
     return Trans_Enumerate_CommonPost(state);
