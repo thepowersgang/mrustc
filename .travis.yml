@@ -19,6 +19,6 @@ script:
 # libstd
  - CC=gcc-6 make test TAIL_COUNT=2
 # rustc (not the actual binary, because that doesn't emit a file yet)
- - CC=gcc-6 make output/librustc_driver.hir TAIL_COUNT=2
+ - CC=gcc-6 make output/librustc_driver.hir TAIL_COUNT=2 TBGTPL=gdb
 # Tests
 # - CC=gcc-6 make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=expand -k
