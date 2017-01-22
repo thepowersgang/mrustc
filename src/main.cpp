@@ -67,6 +67,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Constant Evaluate Full" );
     g_debug_disable_map.insert( "MIR Cleanup" );
     g_debug_disable_map.insert( "MIR Optimise" );
+    g_debug_disable_map.insert( "MIR Validate PO" );
 
     g_debug_disable_map.insert( "HIR Serialise" );
     g_debug_disable_map.insert( "Trans Enumerate" );
@@ -421,6 +422,9 @@ int main(int argc, char *argv[])
         // Optimise the MIR
         CompilePhaseV("MIR Optimise", [&]() {
             MIR_OptimiseCrate(*hir_crate);
+            });
+        CompilePhaseV("MIR Validate PO", [&]() {
+            MIR_CheckCrate(*hir_crate);
             });
 
         CompilePhaseV("Dump MIR", [&]() {
