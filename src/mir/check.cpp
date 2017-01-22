@@ -15,32 +15,40 @@
 namespace {
     ::HIR::TypeRef get_metadata_type(const StaticTraitResolve& resolve, const ::HIR::TypeRef& unsized_ty)
     {
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (unsized_ty.m_data), (te),
-        (
-            return ::HIR::TypeRef();
-            ),
-        (TraitObject,
-            const auto& trait_path = te.m_trait;
-            const auto& trait = *te.m_trait.m_trait_ptr;
+        if( const auto* tep = unsized_ty.m_data.opt_TraitObject() )
+        {
+            const auto& trait_path = tep->m_trait;
+            const auto& trait = *tep->m_trait.m_trait_ptr;
 
-            auto vtable_ty_spath = trait_path.m_path.m_path;
-            vtable_ty_spath.m_components.back() += "#vtable";
-            const auto& vtable_ref = resolve.m_crate.get_struct_by_path(Span(), vtable_ty_spath);
-            // Copy the param set from the trait in the trait object
-            ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
-            // - Include associated types
-            for(const auto& ty_b : trait_path.m_type_bounds) {
-                auto idx = trait.m_type_indexes.at(ty_b.first);
-                if(vtable_params.m_types.size() <= idx)
-                    vtable_params.m_types.resize(idx+1);
-                vtable_params.m_types[idx] = ty_b.second.clone();
+            if( trait_path.m_path.m_path == ::HIR::SimplePath() )
+            {
+                return ::HIR::TypeRef::new_unit();
             }
-            return ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
-            ),
-        (Slice,
+            else
+            {
+                auto vtable_ty_spath = trait_path.m_path.m_path;
+                vtable_ty_spath.m_components.back() += "#vtable";
+                const auto& vtable_ref = resolve.m_crate.get_struct_by_path(Span(), vtable_ty_spath);
+                // Copy the param set from the trait in the trait object
+                ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();
+                // - Include associated types
+                for(const auto& ty_b : trait_path.m_type_bounds) {
+                    auto idx = trait.m_type_indexes.at(ty_b.first);
+                    if(vtable_params.m_types.size() <= idx)
+                        vtable_params.m_types.resize(idx+1);
+                    vtable_params.m_types[idx] = ty_b.second.clone();
+                }
+                return ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref );
+            }
+        }
+        else if( unsized_ty.m_data.is_Slice() )
+        {
             return ::HIR::CoreType::Usize;
-            )
-        )
+        }
+        else
+        {
+            return ::HIR::TypeRef();
+        }
     }
 }
 
@@ -656,12 +664,13 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         ::HIR::TypeRef  tmp;
                         const auto& ty = state.get_lvalue_type(tmp, a.dst);
                         const ::HIR::TypeRef*   ity_p = nullptr;
-                        if( ty.m_data.is_Borrow() )
-                            ity_p = &*ty.m_data.as_Borrow().inner;
-                        else if( ty.m_data.is_Pointer() )
-                            ity_p = &*ty.m_data.as_Pointer().inner;
+                        if( const auto* te = ty.m_data.opt_Borrow() )
+                            ity_p = &*te->inner;
+                        else if( const auto* te = ty.m_data.opt_Pointer() )
+                            ity_p = &*te->inner;
                         else
                             MIR_BUG(state, "DstMeta requires a pointer as output, got " << ty);
+                        assert(ity_p);
                         auto meta = get_metadata_type(state.m_resolve, *ity_p);
                         if( meta == ::HIR::TypeRef() )
                         {
