@@ -324,6 +324,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     MIR_Optimise_UnifyBlocks(state, fcn);
 
 
+    // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
+    MIR_Validate(resolve, path, fcn, args, ret_type);
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.
     MIR_Optimise_GarbageCollect(state, fcn);
