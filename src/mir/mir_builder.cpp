@@ -727,6 +727,10 @@ namespace
 
                 auto out = new_state.clone();
                 auto& ose = out.as_Partial();
+                if( ose.outer_flag == ~0u )
+                {
+                    ose.outer_flag = builder.new_drop_flag_and_set(sp, true);   // Only in this arm is the container valid
+                }
                 if( is_box ) {
                     merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), ose.inner_states[0], old_state);
                 }
@@ -788,9 +792,13 @@ namespace
                         builder.push_stmt_set_dropflag_val(sp, nse.outer_flag, true);
                     }
                 }
-                
+
                 auto out = new_state.clone();
                 auto& ose = out.as_Partial();
+                if( ose.outer_flag == ~0u )
+                {
+                    ose.outer_flag = builder.new_drop_flag(true);   // In both arms, the container is valid
+                }
                 if( is_box ) {
                     merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), ose.inner_states[0], old_state);
                 }
