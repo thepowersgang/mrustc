@@ -470,7 +470,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 if( e.fcn.is_Value() )
                     val_state.ensure_valid( state, e.fcn.as_Value() );
                 for(const auto& arg : e.args)
-                    val_state.ensure_valid( state, arg );
+                    val_state.move_val( state, arg );
                 // Push blocks (with return valid only in one)
                 add_to_visit(e.panic_block, path, val_state);
 
