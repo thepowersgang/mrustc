@@ -298,6 +298,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
                 assert( &fcn.blocks[tgt] != &block );
                 auto src_block = mv$(fcn.blocks[tgt]);
+                fcn.blocks[tgt].terminator = ::MIR::Terminator::make_Incomplete({});
 
                 for(auto& stmt : src_block.statements)
                     block.statements.push_back( mv$(stmt) );
@@ -311,7 +312,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     //MIR_Optimise_Inlining(state, fcn);
 
     // >> Propagate dead assignments
-    MIR_Optimise_PropagateSingleAssignments(state, fcn);
+    while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
+        ;
 
     // >> Unify duplicate temporaries
     // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
@@ -612,7 +614,6 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
         }
     }
 
-    //MIR_Optimise_Helper_ReplaceTemporaries(state, fcn,  replacements);
     if( replacement_needed )
     {
         DEBUG("Replacing temporaries using {" << replacements << "}");
@@ -820,6 +821,8 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 // --------------------------------------------------------------------
 bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
+    bool replacement_happend;
+
     // TODO: This requires kowing that doing so has no effect.
     // - Can use little heristics like a Call pointing to an assignment of its RV
     // - Count the read/write count of a variable, if it's 1,1 then this optimisation is correct.
@@ -881,11 +884,13 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         };
     visit_mir_lvalues(state, fcn, [&](const auto& lv, bool im){ val_uses.use_lvalue(lv, im); return false; });
 
-    // Rules:
-    // - Find an assignment `tmp = Use(...)` where the temporary is only written and read once
-    // - Stop on any conditional terminator
-    // - Any lvalues in the source lvalue must not be mutated between the source assignment and the usage.
-    //  > This includes mutation, borrowing, or moving.
+    // --- Eliminate `tmp = Use(...)` (moves lvalues downwards)
+    // > Find an assignment `tmp = Use(...)` where the temporary is only written and read once
+    // > Locate the usage of this temporary
+    //  - Stop on any conditional terminator
+    // > Any lvalues in the source lvalue must not be mutated between the source assignment and the usage.
+    //  - This includes mutation, borrowing, or moving.
+    // > Replace usage with the inner of the original `Use`
     {
         // 1. Assignments (forward propagate)
         ::std::map< ::MIR::LValue, ::MIR::RValue>    replacements;
@@ -893,7 +898,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         {
             if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
                 continue ;
-            //FOREACH_IDX(stmt_idx, block.statements)
+
             for(unsigned int stmt_idx = 0; stmt_idx < block.statements.size(); stmt_idx ++)
             {
                 const auto& stmt = block.statements[stmt_idx];
@@ -1098,16 +1103,90 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         {
             for(auto it = block.statements.begin(); it != block.statements.end(); )
             {
+                state.set_cur_stmt(&block - &fcn.blocks.front(), (it - block.statements.begin()));
                 // If the statement was an assign of a replaced temporary, remove it.
                 if( it->is_Assign() && replacements.count( it->as_Assign().dst ) > 0 )
                     it = block.statements.erase(it);
-                else
+                else {
+                    MIR_ASSERT(state, !( it->is_Assign() && it->as_Assign().src.tag() == ::MIR::RValue::TAGDEAD ), "");
                     ++it;
+                }
             }
         }
+        replacement_happend = (replaced > 0);
+    }
+    // --- Eliminate `... = Use(tmp)` (propagate lvalues upwards)
+    {
+        // TODO
+        //::std::map< ::MIR::LValue, ::MIR::RValue>    replacements;
+        for(auto& block : fcn.blocks)
+        {
+            for(auto it = block.statements.begin(); it != block.statements.end(); ++it)
+            {
+                if( !it->is_Assign() )
+                    continue;
+                if( it->as_Assign().src.tag() == ::MIR::RValue::TAGDEAD )
+                    continue ;
+                auto& to_replace_lval = it->as_Assign().dst;
+                if( const auto* e = to_replace_lval.opt_Temporary() ) {
+                    const auto& vu = val_uses.tmp_uses[e->idx];
+                    if( !( vu.read == 1 && vu.write == 1 ) )
+                        continue ;
+                }
+                else {
+                    continue;
+                }
+                // ^^^  `tmp[1:1] = some_rvalue`
 
+                // Find where it's used
+                for(auto it2 = it+1; it2 != block.statements.end(); ++it2)
+                {
+                    if( !it2->is_Assign() )
+                        continue ;
+                    if( it2->as_Assign().src.tag() == ::MIR::RValue::TAGDEAD )
+                        continue ;
+                    if( !it2->as_Assign().src.is_Use() )
+                        continue ;
+                    if( it2->as_Assign().src.as_Use() != to_replace_lval )
+                        continue ;
+                    const auto& new_dst_lval = it2->as_Assign().dst;
+                    // `... = Use(to_replace_lval)`
 
-        // 2. Function returns (reverse propagate)
+                    // Ensure that the target doesn't change in the intervening time.
+                    bool was_invalidated = false;
+                    for(auto it3 = it+1; it3 != it2; it3++)
+                    {
+                        // Closure returns `true` if the passed lvalue is a component of `new_dst_lval`
+                        auto is_lvalue_in_val = [&](const auto& lv) {
+                            return visit_mir_lvalue(new_dst_lval, false, [&](const auto& slv, bool ) { return lv == slv; });
+                            };
+                        if( visit_mir_lvalues(*it3, [&](const auto& lv, bool is_write){ return is_write && is_lvalue_in_val(lv); }) )
+                        {
+                            was_invalidated = true;
+                            break;
+                        }
+                    }
+
+                    // Replacement is valid.
+                    if( ! was_invalidated )
+                    {
+                        DEBUG("Replace assignment of " << to_replace_lval << " with " << new_dst_lval);
+                        it->as_Assign().dst = mv$(it2->as_Assign().dst);
+                        block.statements.erase(it2);
+                        replacement_happend = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Function returns (reverse propagate)
+    // > Find `tmp = <function call>` where the temporary is used 1:1
+    // > Search the following block for `<anything> = Use(this_tmp)`
+    // > Ensure that the target of the above assignment isn't used in the intervening statements
+    // > Replace function call result value with target of assignment
+    {
         for(auto& block : fcn.blocks)
         {
             if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
@@ -1129,7 +1208,8 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 const ::MIR::LValue* new_dst = nullptr;
                 auto& blk2 = fcn.blocks.at(e.ret_block);
                 for(const auto& stmt : blk2.statements)
-                {
+                { 
+                    // Find `RValue::Use( this_lvalue )`
                     if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val ) {
                         new_dst = &stmt.as_Assign().dst;
                         break;
@@ -1150,6 +1230,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                             DEBUG("- Replace function return " << e.ret_val << " with " << *new_dst);
                             e.ret_val = new_dst->clone();
                             it = blk2.statements.erase(it);
+                            replacement_happend = true;
                             break;
                         }
                         if( visit_mir_lvalues(stmt, [&](const auto& lv, bool is_write){ return lv == *new_dst || (is_write && lvalue_impacts_dst(lv)); }) )
@@ -1163,7 +1244,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
     }
 
     // TODO: Detect if any optimisations happened, and return true in that case
-    return false;
+    return replacement_happend;
 }
 
 
