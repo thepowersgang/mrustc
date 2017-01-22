@@ -60,9 +60,10 @@ namespace {
             return visit_mir_lvalue_mut(*e.val, is_write, cb);
             ),
         (Index,
-            if( visit_mir_lvalue_mut(*e.val, is_write, cb) )
-                return true;
-            return visit_mir_lvalue_mut(*e.idx, false, cb);
+            bool rv = false;
+            rv |= visit_mir_lvalue_mut(*e.val, is_write, cb);
+            rv |= visit_mir_lvalue_mut(*e.idx, false, cb);
+            return rv;
             ),
         (Downcast,
             return visit_mir_lvalue_mut(*e.val, is_write, cb);
@@ -196,13 +197,13 @@ namespace {
         for(unsigned int block_idx = 0; block_idx < fcn.blocks.size(); block_idx ++)
         {
             auto& block = fcn.blocks[block_idx];
-            if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
-                continue ;
             for(auto& stmt : block.statements)
             {
                 state.set_cur_stmt(block_idx, (&stmt - &block.statements.front()));
                 visit_mir_lvalues_mut(stmt, cb);
             }
+            if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )
+                continue ;
             state.set_cur_stmt_term(block_idx);
             visit_mir_lvalues_mut(block.terminator, cb);
         }
@@ -606,7 +607,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
             // Variables are of the same type, check if they overlap
             if( tmp_lifetimes[tmpidx].overlaps( tmp_lifetimes[i] ) )
                 continue ;
-            // They overlap, unify 
+            // They overlap, unify
             tmp_lifetimes[tmpidx].unify( tmp_lifetimes[i] );
             replacements[i] = tmpidx;
             replacement_needed = true;
@@ -622,9 +623,10 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                 auto it = replacements.find(ve->idx);
                 if( it != replacements.end() )
                 {
+                    MIR_DEBUG(state, lv << " => Temporary(" << it->second << ")");
                     ve->idx = it->second;
+                    return true;
                 }
-                return true;
             }
             return false;
             });
@@ -1342,6 +1344,7 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 if( lv.is_Temporary() ) {
                     auto& e = lv.as_Temporary();
                     MIR_ASSERT(state, e.idx < temp_rewrite_table.size(), "Temporary out of range - " << lv);
+                    // If the table entry for this temporary is !0, it wasn't marked as used
                     MIR_ASSERT(state, temp_rewrite_table.at(e.idx) != ~0u, "LValue " << lv << " incorrectly marked as unused");
                     e.idx = temp_rewrite_table.at(e.idx);
                 }

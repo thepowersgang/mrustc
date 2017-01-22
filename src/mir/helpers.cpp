@@ -11,10 +11,9 @@
 #include <hir/type.hpp>
 #include <mir/mir.hpp>
 
-void ::MIR::TypeResolve::print_msg(const char* tag, ::std::function<void(::std::ostream& os)> cb) const
+void ::MIR::TypeResolve::fmt_pos(::std::ostream& os) const
 {
-    auto& os = ::std::cerr;
-    os << "MIR " << tag << ": " << this->m_path << " BB" << this->bb_idx << "/";
+    os << this->m_path << " BB" << this->bb_idx << "/";
     if( this->stmt_idx == STMT_TERM ) {
         os << "TERM";
     }
@@ -22,6 +21,12 @@ void ::MIR::TypeResolve::print_msg(const char* tag, ::std::function<void(::std::
         os << this->stmt_idx;
     }
     os << ": ";
+}
+void ::MIR::TypeResolve::print_msg(const char* tag, ::std::function<void(::std::ostream& os)> cb) const
+{
+    auto& os = ::std::cerr;
+    os << "MIR " << tag << ": ";
+    fmt_pos(os);
     cb(os);
     os << ::std::endl;
     abort();

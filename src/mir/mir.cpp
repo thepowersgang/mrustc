@@ -108,7 +108,7 @@ namespace MIR {
             os << "Deref(" << *e.val << ")";
             ),
         (Index,
-            os << "Deref(" << *e.val << ", " << *e.idx << ")";
+            os << "Index(" << *e.val << ", " << *e.idx << ")";
             ),
         (Downcast,
             os << "Downcast(" << e.variant_index << ", " << *e.val << ")";

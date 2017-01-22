@@ -33,6 +33,7 @@ struct CheckFailure:
 #define MIR_BUG(state, ...) do { (state).print_bug( [&](auto& _os){_os << __VA_ARGS__; } ); throw ""; } while(0)
 #define MIR_ASSERT(state, cnd, ...) do { if( !(cnd) ) (state).print_bug( [&](auto& _os){_os << "ASSERT " #cnd " failed - " << __VA_ARGS__; } ); } while(0)
 #define MIR_TODO(state, ...) do { (state).print_todo( [&](auto& _os){_os << __VA_ARGS__; } ); throw ""; } while(0)
+#define MIR_DEBUG(state, ...) do { DEBUG(FMT_CB(_ss, (state).fmt_pos(_ss);) << __VA_ARGS__); } while(0)
 
 class TypeResolve
 {
@@ -79,6 +80,7 @@ public:
         this->stmt_idx = STMT_TERM;
     }
 
+    void fmt_pos(::std::ostream& os) const;
     void print_bug(::std::function<void(::std::ostream& os)> cb) const {
         print_msg("ERROR", cb);
     }
@@ -94,6 +96,5 @@ public:
 
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 };
-
 
 }   // namespace MIR
