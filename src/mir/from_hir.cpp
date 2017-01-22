@@ -1404,6 +1404,7 @@ namespace {
                 auto place_refmut = m_builder.lvalue_or_temp(node.span(), place_refmut__type,  ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Unique, place.clone() }));
                 // <typeof(place) as ops::Place<T>>::pointer (T = inner)
                 auto fcn_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Place, ::HIR::PathParams(data_ty.clone())), "pointer");
+                m_builder.moved_lvalue(node.span(), place_refmut);
                 m_builder.end_block(::MIR::Terminator::make_Call({
                     place_raw__ok, place_raw__panic,
                     place_raw.clone(), mv$(fcn_path),
@@ -1440,6 +1441,7 @@ namespace {
             auto res = m_builder.new_temporary( node.m_res_type );
             auto res__panic = m_builder.new_bb_unlinked();
             auto res__ok = m_builder.new_bb_unlinked();
+            m_builder.moved_lvalue(node.span(), place);
             m_builder.end_block(::MIR::Terminator::make_Call({
                 res__ok, res__panic,
                 res.clone(), mv$(finalize_path),
