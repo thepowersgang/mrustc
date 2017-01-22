@@ -423,13 +423,13 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Optimise", [&]() {
             MIR_OptimiseCrate(*hir_crate);
             });
-        CompilePhaseV("MIR Validate PO", [&]() {
-            MIR_CheckCrate(*hir_crate);
-            });
 
         CompilePhaseV("Dump MIR", [&]() {
             ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
             MIR_Dump( os, *hir_crate );
+            });
+        CompilePhaseV("MIR Validate PO", [&]() {
+            MIR_CheckCrate(*hir_crate);
             });
 
         if( params.last_stage == ProgramParams::STAGE_MIR ) {
