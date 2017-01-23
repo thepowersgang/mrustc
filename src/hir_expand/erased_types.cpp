@@ -125,7 +125,7 @@ namespace {
         public ::HIR::Visitor
     {
         StaticTraitResolve  m_resolve;
-        const ::HIR::ItemPath* m_fcn_path;
+        const ::HIR::ItemPath* m_fcn_path = nullptr;
     public:
         OuterVisitor(const ::HIR::Crate& crate):
             m_resolve(crate)
