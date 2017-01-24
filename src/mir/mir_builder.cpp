@@ -930,11 +930,13 @@ void MirBuilder::terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_l
         // Obtain states of changed variables/temporaries
         for(const auto& ent : sd_loop.changed_vars)
         {
+            DEBUG("Variable(" << ent.first << ") = " << ent.second);
             auto idx = ent.first;
             sd_loop.exit_state.var_states.insert(::std::make_pair( idx, get_variable_state(sp, idx).clone() ));
         }
         for(const auto& ent : sd_loop.changed_tmps)
         {
+            DEBUG("Temporary(" << ent.first << ") = " << ent.second);
             auto idx = ent.first;
             sd_loop.exit_state.tmp_states.insert(::std::make_pair( idx, get_temp_state(sp, idx).clone() ));
         }
@@ -1007,10 +1009,12 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
         // Clone this arm's state
         for(auto& ent : this_arm_state.var_states)
         {
+            DEBUG("Variable(" << ent.first << ") = " << ent.second);
             sd_split.end_state.var_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
         }
         for(auto& ent : this_arm_state.tmp_states)
         {
+            DEBUG("Temporary(" << ent.first << ") = " << ent.second);
             sd_split.end_state.tmp_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
         }
         sd_split.end_state_valid = true;
@@ -1324,6 +1328,7 @@ const VarState& MirBuilder::get_variable_state(const Span& sp, unsigned int idx,
 }
 VarState& MirBuilder::get_variable_state_mut(const Span& sp, unsigned int idx)
 {
+    VarState* ret = nullptr;
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
         auto& scope_def = m_scopes.at(scope_idx);
@@ -1337,12 +1342,22 @@ VarState& MirBuilder::get_variable_state_mut(const Span& sp, unsigned int idx)
         }
         else if( scope_def.data.is_Split() )
         {
-            auto& e = scope_def.data.as_Split();
-            auto& cur_arm = e.arms.back();
-            auto it = cur_arm.var_states.find(idx);
-            if( it == cur_arm.var_states.end() )
-                return cur_arm.var_states[idx] = get_variable_state(sp, idx).clone();
-            return it->second;
+            if( ! ret )
+            {
+                auto& e = scope_def.data.as_Split();
+                auto& cur_arm = e.arms.back();
+                auto it = cur_arm.var_states.find(idx);
+                if( it == cur_arm.var_states.end() )
+                {
+                    DEBUG("Split new (scope " << scope_idx << ")");
+                    ret = &(cur_arm.var_states[idx] = get_variable_state(sp, idx).clone());
+                }
+                else
+                {
+                    DEBUG("Split existing (scope " << scope_idx << ")");
+                    ret = &it->second;
+                }
+            }
         }
         else if( scope_def.data.is_Loop() )
         {
@@ -1358,8 +1373,16 @@ VarState& MirBuilder::get_variable_state_mut(const Span& sp, unsigned int idx)
         }
     }
 
-    ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
-    return m_variable_states[idx];
+    if( !ret )
+    {
+        DEBUG("Outer");
+        ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
+        return m_variable_states[idx];
+    }
+    else
+    {
+        return *ret;
+    }
 }
 const VarState& MirBuilder::get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count) const
 {
@@ -1394,6 +1417,7 @@ const VarState& MirBuilder::get_temp_state(const Span& sp, unsigned int idx, uns
 }
 VarState& MirBuilder::get_temp_state_mut(const Span& sp, unsigned int idx)
 {
+    VarState* ret = nullptr;
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
         auto& scope_def = m_scopes.at(scope_idx);
@@ -1407,12 +1431,20 @@ VarState& MirBuilder::get_temp_state_mut(const Span& sp, unsigned int idx)
         }
         else if( scope_def.data.is_Split() )
         {
-            auto& e = scope_def.data.as_Split();
-            auto& cur_arm = e.arms.back();
-            auto it = cur_arm.tmp_states.find(idx);
-            if(it == cur_arm.tmp_states.end())
-                return cur_arm.tmp_states[idx] = get_temp_state(sp, idx).clone();
-            return it->second;
+            if( ! ret )
+            {
+                auto& e = scope_def.data.as_Split();
+                auto& cur_arm = e.arms.back();
+                auto it = cur_arm.tmp_states.find(idx);
+                if(it == cur_arm.tmp_states.end())
+                {
+                    ret = &(cur_arm.tmp_states[idx] = get_temp_state(sp, idx).clone());
+                }
+                else
+                {
+                    ret = &it->second;
+                }
+            }
         }
         else if( scope_def.data.is_Loop() )
         {
@@ -1428,8 +1460,15 @@ VarState& MirBuilder::get_temp_state_mut(const Span& sp, unsigned int idx)
         }
     }
 
-    ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
-    return m_temporary_states[idx];
+    if( !ret )
+    {
+        ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
+        return m_temporary_states[idx];
+    }
+    else
+    {
+        return *ret;
+    }
 }
 
 void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR::LValue lv)
