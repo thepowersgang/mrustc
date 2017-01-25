@@ -12,6 +12,20 @@
 
 #include "common.hpp"
 
+static inline bool type_is_unbounded_infer(const ::HIR::TypeRef& ty)
+{
+    if( const auto* te = ty.m_data.opt_Infer() ) {
+        switch( te->ty_class )
+        {
+        case ::HIR::InferClass::Integer:    return false;
+        case ::HIR::InferClass::Float:      return false;
+        case ::HIR::InferClass::None:   return true;
+        case ::HIR::InferClass::Diverge:return true;
+        }
+    }
+    return false;
+}
+
 class HMTypeInferrence
 {
 public:
@@ -251,6 +265,8 @@ public:
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
 
     ::HIR::Compare type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+    const ::HIR::TypeRef* type_is_owned_box(const Span& sp, const ::HIR::TypeRef& ty) const;
+
 private:
     void expand_associated_types_inplace(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const;
     void expand_associated_types_inplace__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, LList<const ::HIR::TypeRef*> stack) const;

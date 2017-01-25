@@ -2956,7 +2956,7 @@ namespace {
 
 bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, AllowedReceivers ar,  ::HIR::GenericPath& out_path) const
 {
-    TRACE_FUNCTION_FR(trait_path << " has " << name, out_path);
+    TRACE_FUNCTION_FR("trait_path=" << trait_path << ",name=" << name << ",ar=" << ar, out_path);
 
     if( trait_contains_method_(trait_ptr, name, ar) )
     {
@@ -3109,6 +3109,18 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         )
     )
 }
+const ::HIR::TypeRef* TraitResolution::type_is_owned_box(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
+        TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
+            if( pe.m_path == m_lang_Box )
+            {
+                return &this->m_ivars.get_type( pe.m_params.m_types.at(0) );
+            }
+        )
+    )
+    return nullptr;
+}
 
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -3165,32 +3177,13 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         deref_count += 1;
     )
 
-    // Handle `self: Box<Self>` methods by detecting m_lang_Box and searchig for box receiver methods
-    TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Path, e,
-        TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
-            if( pe.m_path == m_lang_Box )
-            {
-                const auto& ty = this->m_ivars.get_type( pe.m_params.m_types.at(0) );
-                if( ! ty.m_data.is_Infer() )
-                {
-                    // Search for methods on the inner type with Receiver::Box
-                    if( this->find_method(sp, traits, ivars, ty, method_name, AllowedReceivers::Box, fcn_path) ) {
-                        DEBUG("FOUND Box, fcn_path = " << fcn_path);
-                        borrow = AutoderefBorrow::None;
-                        return 1;
-                    }
-                }
-            }
-        )
-    )
-
     // TODO: This appears to dereference a &mut to call a `self: Self` method, where it should use the trait impl on &mut Self.
     // - Shouldn't deref to get a by-value receiver.// unless it's via a &move.
-
+    bool can_move = unconditional_allow_move;
     do {
         // TODO: Update `unconditional_allow_move` based on the current type.
         const auto& ty = this->m_ivars.get_type(*current_ty);
-        if( ty.m_data.is_Infer() ) {
+        if( type_is_unbounded_infer(ty) ) {
             DEBUG("- Ivar, pausing");
             return ~0u;
         }
@@ -3198,12 +3191,31 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
             DEBUG("- Unbound type path " << ty << ", pausing");
             return ~0u;
         }
+        DEBUG("ty = " << ty);
 
-        auto allowed_receivers = (unconditional_allow_move || (deref_count == 0) ? AllowedReceivers::All : AllowedReceivers::AnyBorrow);
+        auto allowed_receivers = (can_move ? AllowedReceivers::All : AllowedReceivers::AnyBorrow);
         if( this->find_method(sp, traits, ivars, ty, method_name,  allowed_receivers, fcn_path) ) {
             DEBUG("FOUND " << deref_count << ", fcn_path = " << fcn_path);
             borrow = AutoderefBorrow::None;
             return deref_count;
+        }
+
+        // Handle `self: Box<Self>` methods by detecting m_lang_Box and searchig for box receiver methods
+        // - Only possible if we can move the receiver
+        if( allowed_receivers == AllowedReceivers::All )
+        {
+            if( const auto* typ = this->type_is_owned_box(sp, ty) )
+            {
+                if( ! type_is_unbounded_infer(*typ) )
+                {
+                    // Search for methods on the inner type with Receiver::Box
+                    if( this->find_method(sp, traits, ivars, *typ, method_name, AllowedReceivers::Box, fcn_path) ) {
+                        DEBUG("FOUND Box, fcn_path = " << fcn_path);
+                        borrow = AutoderefBorrow::None;
+                        return deref_count+1;
+                    }
+                }
+            }
         }
 
 
@@ -3228,7 +3240,16 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
 
         // 3. Dereference and try again
         deref_count += 1;
-        current_ty = this->autoderef(sp, ty,  tmp_type);
+        if( const auto* typ = this->type_is_owned_box(sp, ty) )
+        {
+            current_ty = typ;
+        }
+        else
+        {
+            current_ty = this->autoderef(sp, ty,  tmp_type);
+            if( current_ty )
+                can_move = this->type_is_copy(sp, *current_ty) == ::HIR::Compare::Equal;
+        }
     } while( current_ty );
 
     // If the top is a borrow, search for methods on &/&mut
@@ -3513,6 +3534,7 @@ bool TraitResolution::find_method(
     {
         if( trait_ref.first == nullptr )
             break;
+        DEBUG("Search " << *trait_ref.first);
 
         //::HIR::GenericPath final_trait_path;
         //if( !this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, method_name,  final_trait_path) )
