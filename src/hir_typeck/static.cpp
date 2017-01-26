@@ -1141,7 +1141,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
 {
     TRACE_FUNCTION_F(des << des_params << " from " << trait_path << pp);
     if( pp.m_types.size() != trait_ptr.m_params.m_types.size() ) {
-        BUG(sp, "Incorrect number of parameters for trait");
+        BUG(sp, "Incorrect number of parameters for trait - " << trait_path << pp);
     }
 
     auto monomorph_cb = [&](const auto& gt)->const auto& {

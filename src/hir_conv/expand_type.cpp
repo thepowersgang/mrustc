@@ -1,5 +1,9 @@
 /*
- * Expand `type` aliases in HIR
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir_conv/expand_type.cpp
+ * - Expand `type` aliases in HIR
  */
 #include "main_bindings.hpp"
 #include <hir/hir.hpp>

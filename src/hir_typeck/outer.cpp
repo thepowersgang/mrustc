@@ -254,6 +254,19 @@ namespace {
             const Span& sp = _sp;
             ::HIR::Visitor::visit_type(ty);
 
+            #if 0
+            if( const auto* te = ty.m_data.opt_Generic() )
+            {
+                if(te->name == "Self" && te->binding == 0xFFFF) {
+                    if( m_self_types.empty() )
+                        ERROR(sp, E0000, "Self appeared in unexpected location");
+                    if( !m_self_types.back() )
+                        ERROR(sp, E0000, "Self appeared in unexpected location");
+                    ty = m_self_types.back()->clone();
+                }
+            }
+            #endif
+
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
                 TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
                 (Generic,
@@ -537,6 +550,7 @@ namespace {
 
         void visit_params(::HIR::GenericParams& params) override
         {
+            TRACE_FUNCTION_F(params.fmt_args());
             for(auto& tps : params.m_types)
                 this->visit_type( tps.m_default );
 
@@ -637,6 +651,8 @@ namespace {
 
         void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override {
             auto _ = m_resolve.set_item_generics(item.m_params);
+            // NOTE: Superfluous... except that it makes the params valid for the return type.
+            visit_params(item.m_params);
 
             m_fcn_path = &p;
             m_fcn_ptr = &item;
