@@ -263,6 +263,8 @@ rust_tests: rust_tests-run-pass rust_tests-run-fail
 
 # - Require external symbols that aren't generated.
 DISABLED_TESTS = run-pass/abi-sysv64-arg-passing run-pass/abi-sysv64-register-usage run-pass/anon-extern-mod run-pass/anon-extern-mod-cross-crate-2
+# - NOT A TEST
+DISABLED_TESTS += run-pass/backtrace-debuginfo-aux
 # - asm! is hard to trnaslate
 DISABLED_TESTS += run-pass/asm-in-out-operand run-pass/asm-indirect-memory run-pass/asm-out-assign
 # - Requires jemalloc
@@ -270,7 +272,8 @@ DISABLED_TESTS += run-pass/allocator-default run-pass/allocator-override
 # - Bug in inferrence order.
 DISABLED_TESTS += run-pass/associated-types-conditional-dispatch
 # - Lazy.
-DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause
+DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause run-pass/autoderef-privacy
+
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
@@ -333,7 +336,7 @@ RUSTOS_ENV += TK_BUILD="mrustc:0"
 
 output/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output/libcore.hir output/libstack_dst.hir $(BIN)
 	@mkdir -p $(dir $@)
-	$(RUSTOS_ENV) $(DBG) $(BIN) $< -o $@ --cfg arch=amd64 $(PIPECMD)
+	export $(RUSTOS_ENV) ; $(DBG) $(BIN) $< -o $@ --cfg arch=amd64 $(PIPECMD)
 output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
 	@mkdir -p $(dir $@)
 	$(DBG) $(BIN) $< -o $@ --cfg feature=no_std $(PIPECMD)
