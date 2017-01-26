@@ -214,9 +214,10 @@ namespace {
     }
 }
 
+bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
 void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
@@ -309,19 +310,25 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         }
     }
 
-    // >> Inline short functions
-    //MIR_Optimise_Inlining(state, fcn);
+    bool change_happened;
+    do
+    {
+        change_happened = false;
 
-    // >> Propagate dead assignments
-    while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
-        ;
+        // >> Inline short functions
+        //change_happened |= MIR_Optimise_Inlining(state, fcn);
 
-    // >> Unify duplicate temporaries
-    // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
-    MIR_Optimise_UnifyTemporaries(state, fcn);
+        // >> Propagate dead assignments
+        while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
+            ;
 
-    // >> Combine Duplicate Blocks
-    MIR_Optimise_UnifyBlocks(state, fcn);
+        // >> Unify duplicate temporaries
+        // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
+        change_happened = MIR_Optimise_UnifyTemporaries(state, fcn) || change_happened;
+
+        // >> Combine Duplicate Blocks
+        change_happened = MIR_Optimise_UnifyBlocks(state, fcn) || change_happened;
+    } while( change_happened );
 
 
     // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
@@ -329,6 +336,28 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.
     MIR_Optimise_GarbageCollect(state, fcn);
+}
+
+
+// --------------------------------------------------------------------
+// If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
+// --------------------------------------------------------------------
+bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    for(auto& block : fcn.blocks)
+    {
+        if(auto* te = block.terminator.opt_Call())
+        {
+            if( ! te->fcn.is_Path() )
+                continue ;
+
+            // Check the size of the target function.
+            // Inline IF:
+            // - First BB ends with a call and total count is 3
+            // - Statement count smaller than 10
+        }
+    }
+    return false;
 }
 
 // --------------------------------------------------------------------
@@ -368,6 +397,12 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
         {
         }
 
+        bool is_valid() const {
+            for(auto v : blocks)
+                if( v )
+                    return true;
+            return false;
+        }
         bool overlaps(const VarLifetime& x) const {
             assert(blocks.size() == x.blocks.size());
             for(unsigned int i = 0; i < blocks.size(); i ++)
@@ -463,6 +498,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
             // 1. Merge with block state
             if( ! block_states[bb_idx].merge(val_state) )
                 continue ;
+            //DEBUG("BB" << bb_idx);
 
             // 2. Run block
             const auto& bb = fcn.blocks[bb_idx];
@@ -536,6 +572,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
 
             // 3. During terminator, merge again
             state.set_cur_stmt_term(bb_idx);
+            //DEBUG("- " << bb.terminator);
             TU_MATCH(::MIR::Terminator, (bb.terminator), (e),
             (Incomplete,
                 // Should be impossible here.
@@ -598,6 +635,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
     {
         if( ! replacable[tmpidx] )  continue ;
         if( visited[tmpidx] )   continue ;
+        if( ! tmp_lifetimes[tmpidx].is_valid() )  continue ;
         visited[tmpidx] = true;
 
         for(unsigned int i = tmpidx+1; i < fcn.temporaries.size(); i ++)
@@ -606,6 +644,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                 continue ;
             if( fcn.temporaries[i] != fcn.temporaries[tmpidx] )
                 continue ;
+            if( ! tmp_lifetimes[i].is_valid() )  continue ;
             // Variables are of the same type, check if they overlap
             if( tmp_lifetimes[tmpidx].overlaps( tmp_lifetimes[i] ) )
                 continue ;
@@ -641,6 +680,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
 // --------------------------------------------------------------------
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
+    TRACE_FUNCTION_F("");
     struct H {
         static bool blocks_equal(const ::MIR::BasicBlock& a, const ::MIR::BasicBlock& b) {
             if( a.statements.size() != b.statements.size() )
@@ -757,6 +797,8 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     {
         if( fcn.blocks[bb_idx].terminator.tag() == ::MIR::Terminator::TAGDEAD )
             continue ;
+        if( fcn.blocks[bb_idx].terminator.is_Incomplete() && fcn.blocks[bb_idx].statements.size() == 0 )
+            continue ;
         if( visited[bb_idx] )
             continue ;
         for(unsigned int i = bb_idx+1; i < fcn.blocks.size(); i ++)
@@ -778,6 +820,7 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             auto it = replacements.find(tgt);
             if( it != replacements.end() )
             {
+                //DEBUG("BB" << tgt << " => BB" << it->second);
                 tgt = it->second;
             }
             };
@@ -811,7 +854,15 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 patch_tgt(te.panic_block);
                 )
             )
+            //DEBUG("- " << bb.terminator);
         }
+
+        for(const auto& r : replacements)
+        {
+            fcn.blocks[r.first] = ::MIR::BasicBlock {};
+            //auto _ = mv$(fcn.blocks[r.first].terminator);
+        }
+
         return true;
     }
     else
@@ -826,6 +877,7 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     bool replacement_happend;
+    TRACE_FUNCTION_FR("", replacement_happend);
 
     // TODO: This requires kowing that doing so has no effect.
     // - Can use little heristics like a Call pointing to an assignment of its RV
@@ -915,6 +967,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 if( e.dst.is_Temporary() )
                 {
                     const auto& vu = val_uses.tmp_uses[e.dst.as_Temporary().idx];
+                    DEBUG("VU " << e.dst << " R:" << vu.read << " W:" << vu.write);
                     // > Where the temporary is written once and read once
                     if( !( vu.read == 1 && vu.write == 1 ) )
                         continue ;
@@ -923,6 +976,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 {
                     continue ;
                 }
+                DEBUG(e.dst << " = " << e.src);
                 if( e.src.is_Use() )
                 {
                     // Keep the complexity down
@@ -958,7 +1012,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     // Usage found.
                     if( visit_mir_lvalues(stmt2, is_lvalue_usage) )
                     {
-                        // TODO: If the source isn't a Use, ensure that this is a Use
+                        // If the source isn't a Use, ensure that this is a Use
                         if( !src_is_lvalue )
                         {
                             if( stmt2.is_Assign() && stmt2.as_Assign().src.is_Use() ) {
@@ -985,6 +1039,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 }
                 if( !stop )
                 {
+                    DEBUG(block.terminator);
                     TU_MATCHA( (block.terminator), (e),
                     (Incomplete,
                         ),
@@ -993,7 +1048,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     (Diverge,
                         ),
                     (Goto,
-                        // TODO: Chain.
+                        DEBUG("TODO: Chain");
                         ),
                     (Panic,
                         ),
@@ -1012,8 +1067,10 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                             if( src_is_lvalue && visit_mir_lvalue(e.fcn.as_Value(), false, is_lvalue_usage) )
                                 found = true;
                         for(const auto& v : e.args)
+                        {
                             if( src_is_lvalue && visit_mir_lvalue(v, false, is_lvalue_usage) )
                                 found = true;
+                        }
                         stop = true;
                         )
                     )

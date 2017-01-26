@@ -91,6 +91,13 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
     // Validation rules:
 
+    {
+        for(const auto& bb : fcn.blocks)
+        {
+            state.set_cur_stmt_term(&bb - &fcn.blocks.front());
+            MIR_ASSERT(state, bb.terminator.tag() != ::MIR::Terminator::TAGDEAD, "Moved terminator");
+        }
+    }
     // [CFA] = Control Flow Analysis
     // - [CFA] All code paths from bb0 must end with either a return or a diverge (or loop)
     //  - Requires checking the links between basic blocks, with a bitmap to catch loops/multipath
