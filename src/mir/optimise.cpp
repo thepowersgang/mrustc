@@ -212,6 +212,44 @@ namespace {
     {
         visit_mir_lvalues_mut(state, const_cast<::MIR::Function&>(fcn), [&](auto& lv, bool im){ return cb(lv, im); });
     }
+
+    struct ParamsSet {
+        ::HIR::PathParams   impl_params;
+        const ::HIR::PathParams*  fcn_params;
+        const ::HIR::TypeRef*   self_ty;
+
+        ParamsSet():
+            fcn_params(nullptr),
+            self_ty(nullptr)
+        {}
+
+        ::HIR::TypeRef monomorph(const Span& sp, const ::HIR::TypeRef& ty) const {
+            return monomorphise_type_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr));
+        }
+    };
+    const ::MIR::Function* get_called_mir(const ::MIR::TypeResolve& state, const ::HIR::Path& path, ParamsSet& params)
+    {
+        TU_MATCHA( (path.m_data), (pe),
+        (Generic,
+            const auto& fcn = state.m_crate.get_function_by_path(state.sp, pe.m_path);
+            if( fcn.m_code.m_mir )
+            {
+                params.fcn_params = &pe.m_params;
+                return &*fcn.m_code.m_mir;
+            }
+            ),
+        (UfcsKnown,
+            // TODO.
+            ),
+        (UfcsInherent,
+            // TODO.
+            ),
+        (UfcsUnknown,
+            MIR_BUG(state, "UfcsUnknown hit - " << path);
+            )
+        )
+        return nullptr;
+    }
 }
 
 bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn);
@@ -316,7 +354,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         change_happened = false;
 
         // >> Inline short functions
-        //change_happened |= MIR_Optimise_Inlining(state, fcn);
+        change_happened |= MIR_Optimise_Inlining(state, fcn);
 
         // >> Propagate dead assignments
         while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
@@ -344,17 +382,64 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 // --------------------------------------------------------------------
 bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
+    struct H
+    {
+        static bool can_inline(const ::MIR::Function& fcn)
+        {
+            if( fcn.blocks.size() == 1 )
+            {
+                return fcn.blocks[0].statements.size() < 5 && ! fcn.blocks[0].terminator.is_Goto();
+            }
+            else if( fcn.blocks.size() == 3 && fcn.blocks[0].terminator.is_Call() )
+            {
+                if( !(fcn.blocks[1].terminator.is_Diverge() || fcn.blocks[1].terminator.is_Return()) )
+                    return false;
+                if( !(fcn.blocks[2].terminator.is_Diverge() || fcn.blocks[2].terminator.is_Return()) )
+                    return false;
+                if( fcn.blocks[0].statements.size() + fcn.blocks[1].statements.size() + fcn.blocks[2].statements.size() > 10 )
+                    return false;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+    };
+
     for(auto& block : fcn.blocks)
     {
+        state.set_cur_stmt_term(&block - &fcn.blocks.front());
         if(auto* te = block.terminator.opt_Call())
         {
             if( ! te->fcn.is_Path() )
+                continue ;
+
+            ParamsSet p;
+            const auto* called_mir = get_called_mir(state, te->fcn.as_Path(),  p);
+            if( !called_mir )
                 continue ;
 
             // Check the size of the target function.
             // Inline IF:
             // - First BB ends with a call and total count is 3
             // - Statement count smaller than 10
+            if( ! H::can_inline(*called_mir) )
+                continue ;
+
+            // Monomorph values and append
+            //unsigned int start_var = fcn.variables.size();
+            for(const auto& ty : called_mir->named_variables)
+                fcn.named_variables.push_back( p.monomorph(state.sp, ty) );
+            //unsigned int start_tmp = fcn.temporaries.size();
+            for(const auto& ty : called_mir->temporaries)
+                fcn.temporaries.push_back( p.monomorph(state.sp, ty) );
+            // Append monomorphised copy of all blocks.
+            // > Arguments replaced by input lvalues
+            //for(const auto& bb : called_mir->blocks)
+            //{
+            //}
+            //MIR_TODO(state, "Inline call to " << te->fcn.as_Path());
         }
     }
     return false;
