@@ -226,6 +226,15 @@ namespace {
         ::HIR::TypeRef monomorph(const Span& sp, const ::HIR::TypeRef& ty) const {
             return monomorphise_type_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr));
         }
+        ::HIR::GenericPath monomorph(const Span& sp, const ::HIR::GenericPath& ty) const {
+            return monomorphise_genericpath_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr), false);
+        }
+        ::HIR::Path monomorph(const Span& sp, const ::HIR::Path& ty) const {
+            return monomorphise_path_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr), false);
+        }
+        ::HIR::PathParams monomorph(const Span& sp, const ::HIR::PathParams& ty) const {
+            return monomorphise_path_params_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr), false);
+        }
     };
     const ::MIR::Function* get_called_mir(const ::MIR::TypeResolve& state, const ::HIR::Path& path, ParamsSet& params)
     {
@@ -406,17 +415,249 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             }
         }
     };
-
-    for(auto& block : fcn.blocks)
+    struct Cloner
     {
-        state.set_cur_stmt_term(&block - &fcn.blocks.front());
-        if(auto* te = block.terminator.opt_Call())
+        const Span& sp;
+        const ::MIR::Terminator::Data_Call& te;
+        ParamsSet   params;
+        unsigned int bb_base = ~0u;
+        unsigned int tmp_base = ~0u;
+        unsigned int var_base = ~0u;
+        unsigned int df_base = ~0u;
+
+        Cloner(const Span& sp, ::MIR::Terminator::Data_Call& te):
+            sp(sp), te(te)
+        {}
+
+        ::MIR::BasicBlock clone_bb(const ::MIR::BasicBlock& src) const
+        {
+            ::MIR::BasicBlock   rv;
+            rv.statements.reserve( src.statements.size() );
+            for(const auto& stmt : src.statements)
+            {
+                TU_MATCHA( (stmt), (se),
+                (Assign,
+                    DEBUG(se.dst << " = " << se.src);
+                    rv.statements.push_back( ::MIR::Statement::make_Assign({
+                        this->clone_lval(se.dst),
+                        this->clone_rval(se.src)
+                        }) );
+                    ),
+                (Asm,
+                    DEBUG("asm!");
+                    rv.statements.push_back( ::MIR::Statement::make_Asm({
+                        se.tpl,
+                        this->clone_name_lval_vec(se.outputs),
+                        this->clone_name_lval_vec(se.inputs),
+                        se.clobbers,
+                        se.flags
+                        }) );
+                    ),
+                (SetDropFlag,
+                    DEBUG("df" << se.idx << " = ");
+                    rv.statements.push_back( ::MIR::Statement::make_SetDropFlag({
+                        this->df_base + se.idx,
+                        se.new_val,
+                        se.other == ~0u ? ~0u : this->df_base + se.other
+                        }) );
+                    ),
+                (Drop,
+                    DEBUG("drop " << se.slot);
+                    rv.statements.push_back( ::MIR::Statement::make_Drop({
+                        se.kind,
+                        this->clone_lval(se.slot),
+                        se.flag_idx == ~0u ? ~0u : this->df_base + se.flag_idx
+                        }) );
+                    )
+                )
+            }
+            DEBUG(src.terminator);
+            rv.terminator = this->clone_term(src.terminator);
+            return rv;
+        }
+        ::MIR::Terminator clone_term(const ::MIR::Terminator& src) const
+        {
+            TU_MATCHA( (src), (se),
+            (Incomplete,
+                return ::MIR::Terminator::make_Incomplete({});
+                ),
+            (Return,
+                return ::MIR::Terminator::make_Goto(this->te.ret_block);
+                ),
+            (Diverge,
+                return ::MIR::Terminator::make_Goto(this->te.panic_block);
+                ),
+            (Panic,
+                return ::MIR::Terminator::make_Panic({});
+                ),
+            (Goto,
+                return ::MIR::Terminator::make_Goto(se + this->bb_base);
+                ),
+            (If,
+                return ::MIR::Terminator::make_If({
+                    this->clone_lval(se.cond),
+                    se.bb0 + this->bb_base,
+                    se.bb1 + this->bb_base
+                    });
+                ),
+            (Switch,
+                ::std::vector<::MIR::BasicBlockId>  arms;
+                arms.reserve(se.targets.size());
+                for(const auto& bbi : se.targets)
+                    arms.push_back( bbi + this->bb_base );
+                return ::MIR::Terminator::make_Switch({ this->clone_lval(se.val), mv$(arms) });
+                ),
+            (Call,
+                ::MIR::CallTarget   tgt;
+                TU_MATCHA( (se.fcn), (ste),
+                (Value,
+                    tgt = ::MIR::CallTarget::make_Value( this->clone_lval(ste) );
+                    ),
+                (Path,
+                    tgt = ::MIR::CallTarget::make_Path( this->params.monomorph(this->sp, ste) );
+                    ),
+                (Intrinsic,
+                    tgt = ::MIR::CallTarget::make_Intrinsic({ ste.name, this->params.monomorph(this->sp, ste.params) });
+                    )
+                )
+                return ::MIR::Terminator::make_Call({
+                    this->bb_base + se.ret_block,
+                    this->bb_base + se.panic_block,
+                    this->clone_lval(se.ret_val),
+                    mv$(tgt),
+                    this->clone_lval_vec(se.args)
+                    });
+                )
+            )
+            throw "";
+        }
+        ::std::vector< ::std::pair<::std::string,::MIR::LValue> > clone_name_lval_vec(const ::std::vector< ::std::pair<::std::string,::MIR::LValue> >& src) const
+        {
+            ::std::vector< ::std::pair<::std::string,::MIR::LValue> >  rv;
+            rv.reserve(src.size());
+            for(const auto& e : src)
+                rv.push_back(::std::make_pair(e.first, this->clone_lval(e.second)));
+            return rv;
+        }
+        ::std::vector<::MIR::LValue> clone_lval_vec(const ::std::vector<::MIR::LValue>& src) const
+        {
+            ::std::vector<::MIR::LValue>    rv;
+            rv.reserve(src.size());
+            for(const auto& lv : src)
+                rv.push_back( this->clone_lval(lv) );
+            return rv;
+        }
+        ::MIR::LValue clone_lval(const ::MIR::LValue& src) const
+        {
+            TU_MATCHA( (src), (se),
+            (Variable,
+                return ::MIR::LValue::make_Variable(se + this->var_base);
+                ),
+            (Temporary,
+                return ::MIR::LValue::make_Temporary({se.idx + this->tmp_base});
+                ),
+            (Argument,
+                return this->te.args.at(se.idx).clone();
+                ),
+            (Return,
+                return this->te.ret_val.clone();
+                ),
+            (Static,
+                return this->params.monomorph( this->sp, se );
+                ),
+            
+            (Deref,
+                return ::MIR::LValue::make_Deref({ box$(this->clone_lval(*se.val)) });
+                ),
+            (Field,
+                return ::MIR::LValue::make_Field({ box$(this->clone_lval(*se.val)), se.field_index });
+                ),
+            (Index,
+                return ::MIR::LValue::make_Index({
+                    box$(this->clone_lval(*se.val)),
+                    box$(this->clone_lval(*se.idx))
+                    });
+                ),
+            (Downcast,
+                return ::MIR::LValue::make_Downcast({ box$(this->clone_lval(*se.val)), se.variant_index });
+                )
+            )
+            throw "";
+        }
+        ::MIR::RValue clone_rval(const ::MIR::RValue& src) const
+        {
+            TU_MATCHA( (src), (se),
+            (Use,
+                return ::MIR::RValue( this->clone_lval(se) );
+                ),
+            (Constant,
+                TU_MATCHA( (se), (ce),
+                (Int  , return ::MIR::Constant(ce);),
+                (Uint , return ::MIR::Constant(ce);),
+                (Float, return ::MIR::Constant(ce);),
+                (Bool , return ::MIR::Constant(ce);),
+                (Bytes, return ::MIR::Constant(ce);),
+                (StaticString, return ::MIR::Constant(ce);),
+                (Const,
+                    return ::MIR::Constant::make_Const({ this->params.monomorph(this->sp, ce.p) });
+                    ),
+                (ItemAddr,
+                    return ::MIR::Constant::make_ItemAddr(this->params.monomorph(this->sp, ce));
+                    )
+                )
+                ),
+            (SizedArray,
+                return ::MIR::RValue::make_SizedArray({ this->clone_lval(se.val), se.count });
+                ),
+            (Borrow,
+                // TODO: Region IDs
+                return ::MIR::RValue::make_Borrow({ se.region, se.type, this->clone_lval(se.val) });
+                ),
+            (Cast,
+                return ::MIR::RValue::make_Cast({ this->clone_lval(se.val), this->params.monomorph(this->sp, se.type) });
+                ),
+            (BinOp,
+                return ::MIR::RValue::make_BinOp({ this->clone_lval(se.val_l), se.op, this->clone_lval(se.val_r) });
+                ),
+            (UniOp,
+                return ::MIR::RValue::make_UniOp({ this->clone_lval(se.val), se.op });
+                ),
+            (DstMeta,
+                return ::MIR::RValue::make_DstMeta({ this->clone_lval(se.val) });
+                ),
+            (DstPtr,
+                return ::MIR::RValue::make_DstPtr({ this->clone_lval(se.val) });
+                ),
+            (MakeDst,
+                return ::MIR::RValue::make_MakeDst({ this->clone_lval(se.ptr_val), this->clone_lval(se.meta_val) });
+                ),
+            (Tuple,
+                return ::MIR::RValue::make_Tuple({ this->clone_lval_vec(se.vals) });
+                ),
+            (Array,
+                return ::MIR::RValue::make_Array({ this->clone_lval_vec(se.vals) });
+                ),
+            (Variant,
+                return ::MIR::RValue::make_Variant({ this->params.monomorph(this->sp, se.path), se.index, this->clone_lval(se.val) });
+                ),
+            (Struct,
+                return ::MIR::RValue::make_Struct({ this->params.monomorph(this->sp, se.path), se.variant_idx, this->clone_lval_vec(se.vals) });
+                )
+            )
+            throw "";
+        }
+    };
+
+    for(unsigned int i = 0; i < fcn.blocks.size(); i ++)
+    {
+        state.set_cur_stmt_term(i);
+        if(auto* te = fcn.blocks[i].terminator.opt_Call())
         {
             if( ! te->fcn.is_Path() )
                 continue ;
 
-            ParamsSet p;
-            const auto* called_mir = get_called_mir(state, te->fcn.as_Path(),  p);
+            Cloner  cloner { state.sp, *te };
+            const auto* called_mir = get_called_mir(state, te->fcn.as_Path(),  cloner.params);
             if( !called_mir )
                 continue ;
 
@@ -426,20 +667,34 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // - Statement count smaller than 10
             if( ! H::can_inline(*called_mir) )
                 continue ;
+            TRACE_FUNCTION_F("Inline " << te->fcn.as_Path());
 
             // Monomorph values and append
-            //unsigned int start_var = fcn.variables.size();
+            cloner.var_base = fcn.named_variables.size();
             for(const auto& ty : called_mir->named_variables)
-                fcn.named_variables.push_back( p.monomorph(state.sp, ty) );
-            //unsigned int start_tmp = fcn.temporaries.size();
+                fcn.named_variables.push_back( cloner.params.monomorph(state.sp, ty) );
+            cloner.tmp_base = fcn.temporaries.size();
             for(const auto& ty : called_mir->temporaries)
-                fcn.temporaries.push_back( p.monomorph(state.sp, ty) );
+                fcn.temporaries.push_back( cloner.params.monomorph(state.sp, ty) );
+            cloner.df_base = fcn.drop_flags.size();
+            fcn.drop_flags.insert( fcn.drop_flags.end(), called_mir->drop_flags.begin(), called_mir->drop_flags.end() );
+            cloner.bb_base = fcn.blocks.size();
             // Append monomorphised copy of all blocks.
             // > Arguments replaced by input lvalues
-            //for(const auto& bb : called_mir->blocks)
-            //{
-            //}
-            //MIR_TODO(state, "Inline call to " << te->fcn.as_Path());
+            ::std::vector<::MIR::BasicBlock>    new_blocks;
+            new_blocks.reserve( called_mir->blocks.size() );
+            for(const auto& bb : called_mir->blocks)
+            {
+                new_blocks.push_back( cloner.clone_bb(bb) );
+            }
+
+            fcn.blocks.reserve( fcn.blocks.size() + new_blocks.size() );
+            for(auto& b : new_blocks)
+            {
+                fcn.blocks.push_back( mv$(b) );
+            }
+
+            fcn.blocks[i].terminator = ::MIR::Terminator::make_Goto( cloner.bb_base );
         }
     }
     return false;
