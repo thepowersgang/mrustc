@@ -328,6 +328,7 @@ namespace {
     }
 }
 
+bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
@@ -340,6 +341,49 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     TRACE_FUNCTION_F(path);
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
 
+
+    bool change_happened;
+    do
+    {
+        change_happened = false;
+
+        // >> Simplify call graph
+        MIR_Optimise_BlockSimplify(state, fcn);
+
+        // >> Inline short functions
+        bool inline_happened = MIR_Optimise_Inlining(state, fcn);
+        if( inline_happened )
+        {
+            // Apply cleanup again (as monomorpisation in inlining may have exposed a vtable call)
+            MIR_Cleanup(resolve, path, fcn, args, ret_type);
+            change_happened = true;
+        }
+
+        // >> Propagate dead assignments
+        while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
+            ;
+
+        // >> Unify duplicate temporaries
+        // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
+        change_happened |= MIR_Optimise_UnifyTemporaries(state, fcn) || change_happened;
+
+        // >> Combine Duplicate Blocks
+        change_happened |= MIR_Optimise_UnifyBlocks(state, fcn) || change_happened;
+    } while( change_happened );
+
+
+    // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
+    MIR_Validate(resolve, path, fcn, args, ret_type);
+    // GC pass on blocks and variables
+    // - Find unused blocks, then delete and rewrite all references.
+    MIR_Optimise_GarbageCollect(state, fcn);
+}
+
+// --------------------------------------------------------------------
+// Performs basic simplications on the call graph (merging/removing blocks)
+// --------------------------------------------------------------------
+bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
     // >> Replace targets that point to a block that is just a goto
     for(auto& block : fcn.blocks)
     {
@@ -424,32 +468,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         }
     }
 
-    bool change_happened;
-    do
-    {
-        change_happened = false;
-
-        // >> Inline short functions
-        change_happened |= MIR_Optimise_Inlining(state, fcn);
-
-        // >> Propagate dead assignments
-        while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
-            ;
-
-        // >> Unify duplicate temporaries
-        // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
-        change_happened = MIR_Optimise_UnifyTemporaries(state, fcn) || change_happened;
-
-        // >> Combine Duplicate Blocks
-        change_happened = MIR_Optimise_UnifyBlocks(state, fcn) || change_happened;
-    } while( change_happened );
-
-
-    // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
-    MIR_Validate(resolve, path, fcn, args, ret_type);
-    // GC pass on blocks and variables
-    // - Find unused blocks, then delete and rewrite all references.
-    MIR_Optimise_GarbageCollect(state, fcn);
+    // NOTE: Not strictly true, but these can't trigger other optimisations
+    return false;
 }
 
 
