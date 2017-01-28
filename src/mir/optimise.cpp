@@ -223,17 +223,8 @@ namespace {
             self_ty(nullptr)
         {}
 
-        ::HIR::TypeRef monomorph(const Span& sp, const ::HIR::TypeRef& ty) const {
-            return monomorphise_type_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr));
-        }
-        ::HIR::GenericPath monomorph(const Span& sp, const ::HIR::GenericPath& ty) const {
-            return monomorphise_genericpath_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr), false);
-        }
-        ::HIR::Path monomorph(const Span& sp, const ::HIR::Path& ty) const {
-            return monomorphise_path_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr), false);
-        }
-        ::HIR::PathParams monomorph(const Span& sp, const ::HIR::PathParams& ty) const {
-            return monomorphise_path_params_with(sp, ty, monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr), false);
+        t_cb_generic get_cb(const Span& sp) const {
+            return monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr);
         }
     };
     const ::MIR::Function* get_called_mir(const ::MIR::TypeResolve& state, const ::HIR::Path& path, ParamsSet& params)
@@ -418,6 +409,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     struct Cloner
     {
         const Span& sp;
+        const ::StaticTraitResolve& resolve;
         const ::MIR::Terminator::Data_Call& te;
         ParamsSet   params;
         unsigned int bb_base = ~0u;
@@ -425,9 +417,58 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         unsigned int var_base = ~0u;
         unsigned int df_base = ~0u;
 
-        Cloner(const Span& sp, ::MIR::Terminator::Data_Call& te):
-            sp(sp), te(te)
+        Cloner(const Span& sp, const ::StaticTraitResolve& resolve, ::MIR::Terminator::Data_Call& te):
+            sp(sp),
+            resolve(resolve),
+            te(te)
         {}
+
+        // TODO: Expand associated types
+        ::HIR::TypeRef monomorph(const ::HIR::TypeRef& ty) const {
+            auto rv = monomorphise_type_with(sp, ty, params.get_cb(sp));
+            resolve.expand_associated_types(sp, rv);
+            return rv;
+        }
+        ::HIR::GenericPath monomorph(const ::HIR::GenericPath& ty) const {
+            auto rv = monomorphise_genericpath_with(sp, ty, params.get_cb(sp), false);
+            for(auto& arg : rv.m_params.m_types)
+                resolve.expand_associated_types(sp, arg);
+            return rv;
+        }
+        ::HIR::Path monomorph(const ::HIR::Path& ty) const {
+            auto rv = monomorphise_path_with(sp, ty, params.get_cb(sp), false);
+            TU_MATCH(::HIR::Path::Data, (rv.m_data), (e2),
+            (Generic,
+                for(auto& arg : e2.m_params.m_types)
+                    resolve.expand_associated_types(sp, arg);
+                ),
+            (UfcsInherent,
+                resolve.expand_associated_types(sp, *e2.type);
+                for(auto& arg : e2.params.m_types)
+                    resolve.expand_associated_types(sp, arg);
+                // TODO: impl params too?
+                for(auto& arg : e2.impl_params.m_types)
+                    resolve.expand_associated_types(sp, arg);
+                ),
+            (UfcsKnown,
+                resolve.expand_associated_types(sp, *e2.type);
+                for(auto& arg : e2.trait.m_params.m_types)
+                    resolve.expand_associated_types(sp, arg);
+                for(auto& arg : e2.params.m_types)
+                    resolve.expand_associated_types(sp, arg);
+                ),
+            (UfcsUnknown,
+                BUG(sp, "Encountered UfcsUnknown");
+                )
+            )
+            return rv;
+        }
+        ::HIR::PathParams monomorph(const ::HIR::PathParams& ty) const {
+            auto rv = monomorphise_path_params_with(sp, ty, params.get_cb(sp), false);
+            for(auto& arg : rv.m_types)
+                resolve.expand_associated_types(sp, arg);
+            return rv;
+        }
 
         ::MIR::BasicBlock clone_bb(const ::MIR::BasicBlock& src) const
         {
@@ -514,10 +555,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     tgt = ::MIR::CallTarget::make_Value( this->clone_lval(ste) );
                     ),
                 (Path,
-                    tgt = ::MIR::CallTarget::make_Path( this->params.monomorph(this->sp, ste) );
+                    tgt = ::MIR::CallTarget::make_Path( this->monomorph(ste) );
                     ),
                 (Intrinsic,
-                    tgt = ::MIR::CallTarget::make_Intrinsic({ ste.name, this->params.monomorph(this->sp, ste.params) });
+                    tgt = ::MIR::CallTarget::make_Intrinsic({ ste.name, this->monomorph(ste.params) });
                     )
                 )
                 return ::MIR::Terminator::make_Call({
@@ -563,7 +604,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return this->te.ret_val.clone();
                 ),
             (Static,
-                return this->params.monomorph( this->sp, se );
+                return this->monomorph( se );
                 ),
             
             (Deref,
@@ -599,10 +640,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 (Bytes, return ::MIR::Constant(ce);),
                 (StaticString, return ::MIR::Constant(ce);),
                 (Const,
-                    return ::MIR::Constant::make_Const({ this->params.monomorph(this->sp, ce.p) });
+                    return ::MIR::Constant::make_Const({ this->monomorph(ce.p) });
                     ),
                 (ItemAddr,
-                    return ::MIR::Constant::make_ItemAddr(this->params.monomorph(this->sp, ce));
+                    return ::MIR::Constant::make_ItemAddr(this->monomorph(ce));
                     )
                 )
                 ),
@@ -614,7 +655,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return ::MIR::RValue::make_Borrow({ se.region, se.type, this->clone_lval(se.val) });
                 ),
             (Cast,
-                return ::MIR::RValue::make_Cast({ this->clone_lval(se.val), this->params.monomorph(this->sp, se.type) });
+                return ::MIR::RValue::make_Cast({ this->clone_lval(se.val), this->monomorph(se.type) });
                 ),
             (BinOp,
                 return ::MIR::RValue::make_BinOp({ this->clone_lval(se.val_l), se.op, this->clone_lval(se.val_r) });
@@ -638,16 +679,17 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return ::MIR::RValue::make_Array({ this->clone_lval_vec(se.vals) });
                 ),
             (Variant,
-                return ::MIR::RValue::make_Variant({ this->params.monomorph(this->sp, se.path), se.index, this->clone_lval(se.val) });
+                return ::MIR::RValue::make_Variant({ this->monomorph(se.path), se.index, this->clone_lval(se.val) });
                 ),
             (Struct,
-                return ::MIR::RValue::make_Struct({ this->params.monomorph(this->sp, se.path), se.variant_idx, this->clone_lval_vec(se.vals) });
+                return ::MIR::RValue::make_Struct({ this->monomorph(se.path), se.variant_idx, this->clone_lval_vec(se.vals) });
                 )
             )
             throw "";
         }
     };
 
+    bool inline_happened = false;
     for(unsigned int i = 0; i < fcn.blocks.size(); i ++)
     {
         state.set_cur_stmt_term(i);
@@ -656,7 +698,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             if( ! te->fcn.is_Path() )
                 continue ;
 
-            Cloner  cloner { state.sp, *te };
+            Cloner  cloner { state.sp, state.m_resolve, *te };
             const auto* called_mir = get_called_mir(state, te->fcn.as_Path(),  cloner.params);
             if( !called_mir )
                 continue ;
@@ -672,10 +714,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // Monomorph values and append
             cloner.var_base = fcn.named_variables.size();
             for(const auto& ty : called_mir->named_variables)
-                fcn.named_variables.push_back( cloner.params.monomorph(state.sp, ty) );
+                fcn.named_variables.push_back( cloner.monomorph(ty) );
             cloner.tmp_base = fcn.temporaries.size();
             for(const auto& ty : called_mir->temporaries)
-                fcn.temporaries.push_back( cloner.params.monomorph(state.sp, ty) );
+                fcn.temporaries.push_back( cloner.monomorph(ty) );
             cloner.df_base = fcn.drop_flags.size();
             fcn.drop_flags.insert( fcn.drop_flags.end(), called_mir->drop_flags.begin(), called_mir->drop_flags.end() );
             cloner.bb_base = fcn.blocks.size();
@@ -688,16 +730,17 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 new_blocks.push_back( cloner.clone_bb(bb) );
             }
 
+            // Apply
             fcn.blocks.reserve( fcn.blocks.size() + new_blocks.size() );
             for(auto& b : new_blocks)
             {
                 fcn.blocks.push_back( mv$(b) );
             }
-
             fcn.blocks[i].terminator = ::MIR::Terminator::make_Goto( cloner.bb_base );
+            inline_happened = true;
         }
     }
-    return false;
+    return inline_happened;
 }
 
 // --------------------------------------------------------------------
