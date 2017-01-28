@@ -318,7 +318,30 @@ namespace {
             return nullptr;
             ),
         (UfcsInherent,
-            // TODO.
+            const ::HIR::TypeImpl* best_impl;
+            state.m_resolve.m_crate.find_type_impls(*pe.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+                DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                // TODO: Specialisation.
+                auto fit = impl.m_methods.find(pe.item);
+                if( fit != impl.m_methods.end() )
+                {
+                    DEBUG("- Contains method, good");
+                    best_impl = &impl;
+                    return true;
+                }
+                return false;
+                });
+            MIR_ASSERT(state, best_impl, "Couldn't find an impl for " << path);
+            auto fit = best_impl->m_methods.find(pe.item);
+            MIR_ASSERT(state, fit != best_impl->m_methods.end(), "Couldn't find method in best inherent impl");
+            if( fit->second.data.m_code.m_mir )
+            {
+                params.self_ty = &*pe.type;
+                params.fcn_params = &pe.params;
+                params.impl_params = pe.impl_params.clone();
+                return &*fit->second.data.m_code.m_mir;
+            }
+            return nullptr;
             ),
         (UfcsUnknown,
             MIR_BUG(state, "UfcsUnknown hit - " << path);
