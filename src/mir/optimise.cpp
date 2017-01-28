@@ -239,7 +239,83 @@ namespace {
             }
             ),
         (UfcsKnown,
-            // TODO.
+            TRACE_FUNCTION_F(path);
+            
+            // Obtain trait pointer (for default impl and to know what the item type is)
+            const auto& trait_ref = state.m_resolve.m_crate.get_trait_by_path(state.sp, pe.trait.m_path);
+            auto trait_vi_it = trait_ref.m_values.find(pe.item);
+            MIR_ASSERT(state, trait_vi_it != trait_ref.m_values.end(), "Couldn't find item " << pe.item << " in trait " << pe.trait.m_path);
+            const auto& trait_vi = trait_vi_it->second;
+            MIR_ASSERT(state, trait_vi.is_Function(), "Item '" << pe.item << " in trait " << pe.trait.m_path << " isn't a function");
+            const auto& ve = trait_vi.as_Function();
+
+            bool bound_found = false;
+            bool is_spec = false;
+            ::std::vector<::HIR::TypeRef>    best_impl_params;
+            const ::HIR::TraitImpl* best_impl = nullptr;
+            state.m_resolve.find_impl(state.sp, pe.trait.m_path, pe.trait.m_params, *pe.type, [&](auto impl_ref, auto is_fuzz) {
+                DEBUG("[get_called_mir] Found " << impl_ref);
+                if( ! impl_ref.m_data.is_TraitImpl() ) {
+                    MIR_ASSERT(state, best_impl == nullptr, "Generic impl and `impl` block collided");
+                    bound_found = true;
+                    return true;
+                }
+                const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
+                const auto& impl = *impl_ref_e.impl;
+                MIR_ASSERT(state, impl.m_trait_args.m_types.size() == pe.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe.trait.m_params);
+
+                if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
+                    best_impl = &impl;
+
+                    auto fit = impl.m_methods.find(pe.item);
+                    if( fit == impl.m_methods.end() ) {
+                        DEBUG("[get_called_mir] Method " << pe.item << " missing in impl " << pe.trait << " for " << *pe.type);
+                        return false;
+                    }
+                    best_impl_params.clear();
+                    for(unsigned int i = 0; i < impl_ref_e.params.size(); i ++)
+                    {
+                        if( impl_ref_e.params[i] )
+                            best_impl_params.push_back( impl_ref_e.params[i]->clone() );
+                        else if( ! impl_ref_e.params_ph[i].m_data.is_Generic() )
+                            best_impl_params.push_back( impl_ref_e.params_ph[i].clone() );
+                        else
+                            MIR_BUG(state, "[get_called_mir] Parameter " << i << " unset");
+                    }
+                    is_spec = fit->second.is_specialisable;
+                    return !is_spec;
+                }
+                return false;
+                });
+            
+            if( bound_found ) {
+                return nullptr;
+            }
+            MIR_ASSERT(state, best_impl, "Couldn't find an impl for " << path);
+            if( is_spec )
+            {
+                DEBUG(path << " pointed to a specialisable impl, not inlining");
+                return nullptr;
+            }
+            const auto& impl = *best_impl;
+
+            params.self_ty = &*pe.type;
+            params.fcn_params = &pe.params;
+            auto fit = impl.m_methods.find(pe.item);
+            if( fit != impl.m_methods.end() )
+            {
+                params.impl_params.m_types = mv$(best_impl_params);
+                DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+                if( fit->second.data.m_code.m_mir )
+                    return &*fit->second.data.m_code.m_mir;
+            }
+            else
+            {
+                params.impl_params = pe.trait.m_params.clone();
+                if( ve.m_code.m_mir )
+                    return &*ve.m_code.m_mir;
+            }
+            return nullptr;
             ),
         (UfcsInherent,
             // TODO.
