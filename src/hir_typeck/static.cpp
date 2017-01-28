@@ -6,6 +6,7 @@
  * - Non-inferred type checking
  */
 #include "static.hpp"
+#include <algorithm>
 
 void StaticTraitResolve::prep_indexes()
 {
@@ -227,6 +228,7 @@ bool StaticTraitResolve::find_impl(
         {
             ASSERT_BUG(sp, e.path.m_data.is_UfcsKnown(), "Opaque bound type wasn't UfcsKnown - " << type);
             const auto& pe = e.path.m_data.as_UfcsKnown();
+            DEBUG("Checking bounds on definition of " << pe.item << " in " << pe.trait);
 
             // If this associated type has a bound of the desired trait, return it.
             const auto& trait_ref = m_crate.get_trait_by_path(sp, pe.trait.m_path);
@@ -240,20 +242,31 @@ bool StaticTraitResolve::find_impl(
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
+                DEBUG(": " << bound.m_path.m_path << b_params_mono);
 
                 if( bound.m_path.m_path == trait_path )
                 {
                     if( !trait_params || b_params_mono == *trait_params )
                     {
-                        if( &b_params_mono == &params_mono_o )
+                        if( &b_params_mono == &params_mono_o || ::std::any_of(bound.m_type_bounds.begin(), bound.m_type_bounds.end(), [&](const auto& x){ return monomorphise_type_needed(x.second); }) )
                         {
-                            if( found_cb( ImplRef(type.clone(), mv$(params_mono_o), {}), false ) )
+                            ::std::map< ::std::string, ::HIR::TypeRef>  atys;
+                            if( ! bound.m_type_bounds.empty() )
+                            {
+                                for(const auto& tb : bound.m_type_bounds)
+                                {
+                                    auto aty = monomorphise_type_with(sp, tb.second, monomorph_cb, false);
+                                    expand_associated_types(sp, aty);
+                                    atys.insert(::std::make_pair( tb.first, mv$(aty) ));
+                                }
+                            }
+                            if( found_cb( ImplRef(type.clone(), mv$(params_mono_o), mv$(atys)), false ) )
                                 return true;
                             params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
                         }
                         else
                         {
-                            if( found_cb( ImplRef(&type, &bound.m_path.m_params, &null_assoc), false ) )
+                            if( found_cb( ImplRef(&type, &bound.m_path.m_params, &bound.m_type_bounds), false ) )
                                 return true;
                         }
                     }
@@ -269,6 +282,7 @@ bool StaticTraitResolve::find_impl(
                 if( ret )
                     return true;
             }
+            DEBUG("- No bounds matched");
         }
     )
     // --- /UfcsKnown ---
