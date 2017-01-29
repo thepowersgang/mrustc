@@ -152,7 +152,7 @@ namespace {
         (SetDropFlag,
             ),
         (Drop,
-            rv |= visit_mir_lvalue_mut(e.slot, false, cb);
+            rv |= visit_mir_lvalue_mut(e.slot, true, cb);
             )
         )
         return rv;
@@ -379,6 +379,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         {
             // Apply cleanup again (as monomorpisation in inlining may have exposed a vtable call)
             MIR_Cleanup(resolve, path, fcn, args, ret_type);
+            //MIR_Dump_Fcn(::std::cout, fcn);
             change_happened = true;
         }
 
@@ -392,9 +393,19 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn) || change_happened;
+        #if 0
+        if( change_happened )
+        {
+            MIR_Dump_Fcn(::std::cout, fcn);
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+        }
+        #endif
     } while( change_happened );
 
 
+    #if 0
+    MIR_Dump_Fcn(::std::cout, fcn);
+    #endif
     // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
     MIR_Validate(resolve, path, fcn, args, ret_type);
     // GC pass on blocks and variables
@@ -503,7 +514,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     struct H
     {
-        static bool can_inline(const ::MIR::Function& fcn)
+        static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn)
         {
             if( fcn.blocks.size() == 1 )
             {
@@ -511,11 +522,16 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             }
             else if( fcn.blocks.size() == 3 && fcn.blocks[0].terminator.is_Call() )
             {
+                const auto& blk0_te = fcn.blocks[0].terminator.as_Call();
                 if( !(fcn.blocks[1].terminator.is_Diverge() || fcn.blocks[1].terminator.is_Return()) )
                     return false;
                 if( !(fcn.blocks[2].terminator.is_Diverge() || fcn.blocks[2].terminator.is_Return()) )
                     return false;
                 if( fcn.blocks[0].statements.size() + fcn.blocks[1].statements.size() + fcn.blocks[2].statements.size() > 10 )
+                    return false;
+                // Detect and avoid simple recursion.
+                // - This won't detect mutual recursion - that also needs prevention.
+                if( blk0_te.fcn.is_Path() && blk0_te.fcn.as_Path() == path )
                     return false;
                 return true;
             }
@@ -816,9 +832,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         {
             if( ! te->fcn.is_Path() )
                 continue ;
+            const auto& path = te->fcn.as_Path();
 
             Cloner  cloner { state.sp, state.m_resolve, *te };
-            const auto* called_mir = get_called_mir(state, te->fcn.as_Path(),  cloner.params);
+            const auto* called_mir = get_called_mir(state, path,  cloner.params);
             if( !called_mir )
                 continue ;
 
@@ -826,9 +843,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // Inline IF:
             // - First BB ends with a call and total count is 3
             // - Statement count smaller than 10
-            if( ! H::can_inline(*called_mir) )
+            if( ! H::can_inline(path, *called_mir) )
                 continue ;
-            TRACE_FUNCTION_F("Inline " << te->fcn.as_Path());
+            TRACE_FUNCTION_F("Inline " << path);
 
             // Monomorph values and append
             cloner.var_base = fcn.named_variables.size();
@@ -867,6 +884,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 // --------------------------------------------------------------------
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
+    TRACE_FUNCTION;
     ::std::vector<bool> replacable( fcn.temporaries.size() );
     // 1. Enumerate which (if any) temporaries share the same type
     {
@@ -1680,8 +1698,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
     }
     // --- Eliminate `... = Use(tmp)` (propagate lvalues upwards)
     {
-        // TODO
-        //::std::map< ::MIR::LValue, ::MIR::RValue>    replacements;
+        DEBUG("- Move upwards");
         for(auto& block : fcn.blocks)
         {
             for(auto it = block.statements.begin(); it != block.statements.end(); ++it)
@@ -1750,6 +1767,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
     // > Ensure that the target of the above assignment isn't used in the intervening statements
     // > Replace function call result value with target of assignment
     {
+        DEBUG("- Returns");
         for(auto& block : fcn.blocks)
         {
             if( block.terminator.tag() == ::MIR::Terminator::TAGDEAD )

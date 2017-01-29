@@ -8,156 +8,19 @@
 #include "main_bindings.hpp"
 #include <hir/visitor.hpp>
 #include "mir.hpp"
+#include "operations.hpp"
 
 namespace {
 
-    class TreeVisitor:
-        public ::HIR::Visitor
+    class MirDumper
     {
         ::std::ostream& m_os;
-        unsigned int    m_indent_level;
-        bool m_short_item_name = false;
-
+        unsigned int m_indent_level;
     public:
-        TreeVisitor(::std::ostream& os):
+        MirDumper(::std::ostream& os, unsigned int il):
             m_os(os),
-            m_indent_level(0)
-        {
-        }
-
-        void visit_type_impl(::HIR::TypeImpl& impl) override
-        {
-            m_short_item_name = true;
-
-            m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << impl.m_type << "\n";
-            if( ! impl.m_params.m_bounds.empty() )
-            {
-                m_os << indent() << " " << impl.m_params.fmt_bounds() << "\n";
-            }
-            m_os << indent() << "{\n";
-            inc_indent();
-            ::HIR::Visitor::visit_type_impl(impl);
-            dec_indent();
-            m_os << indent() << "}\n";
-
-            m_short_item_name = false;
-        }
-        virtual void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
-        {
-            m_short_item_name = true;
-
-            m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << "\n";
-            if( ! impl.m_params.m_bounds.empty() )
-            {
-                m_os << indent() << " " << impl.m_params.fmt_bounds() << "\n";
-            }
-            m_os << indent() << "{\n";
-            inc_indent();
-            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
-            dec_indent();
-            m_os << indent() << "}\n";
-
-            m_short_item_name = false;
-        }
-        void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
-        {
-            m_short_item_name = true;
-
-            m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << (impl.is_positive ? "" : "!") << trait_path << impl.m_trait_args << " for " << impl.m_type << "\n";
-            if( ! impl.m_params.m_bounds.empty() )
-            {
-                m_os << indent() << " " << impl.m_params.fmt_bounds() << "\n";
-            }
-            m_os << indent() << "{ }\n";
-
-            m_short_item_name = false;
-        }
-
-        // - Type Items
-        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
-        {
-            m_short_item_name = true;
-
-            m_os << indent() << "trait " << p << item.m_params.fmt_args() << "\n";
-            if( ! item.m_params.m_bounds.empty() )
-            {
-                m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
-            }
-            m_os << indent() << "{\n";
-            inc_indent();
-            ::HIR::Visitor::visit_trait(p, item);
-            dec_indent();
-            m_os << indent() << "}\n";
-
-            m_short_item_name = false;
-        }
-
-        void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override
-        {
-            m_os << indent();
-            if( item.m_const )
-                m_os << "const ";
-            if( item.m_unsafe )
-                m_os << "unsafe ";
-            if( item.m_abi != ABI_RUST )
-                m_os << "extern \"" << item.m_abi << "\" ";
-            m_os << "fn ";
-            if( m_short_item_name )
-                m_os << p.get_name();
-            else
-                m_os << p;
-            m_os << item.m_params.fmt_args() << "(";
-            for(unsigned int i = 0; i < item.m_args.size(); i ++)
-            {
-                if( i == 0 && item.m_args[i].first.m_binding.m_name == "self" ) {
-                    m_os << "self=";
-                }
-                m_os << "arg$" << i << ": " << item.m_args[i].second << ", ";
-            }
-            m_os << ") -> " << item.m_return << "\n";
-            if( ! item.m_params.m_bounds.empty() )
-            {
-                m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
-            }
-
-            if( item.m_code )
-            {
-                m_os << indent() << "{\n";
-                inc_indent();
-                this->dump_mir(*item.m_code.m_mir);
-                dec_indent();
-                m_os << indent() << "}\n";
-            }
-            else
-            {
-                m_os << indent() << "  ;\n";
-            }
-        }
-        void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
-        {
-            m_os << indent();
-            m_os << "static ";
-            if( m_short_item_name )
-                m_os << p.get_name();
-            else
-                m_os << p;
-            m_os << ": " << item.m_type;
-            if( item.m_value )
-            {
-                inc_indent();
-                m_os << "= {\n";
-                inc_indent();
-                this->dump_mir(*item.m_value.m_mir);
-                dec_indent();
-                m_os << indent() << "} /* = " << item.m_value_res << "*/;\n";
-                dec_indent();
-            }
-            else
-            {
-                m_os << ";\n";
-            }
-        }
-
+            m_indent_level(il)
+        {}
 
         void dump_mir(const ::MIR::Function& fcn)
         {
@@ -178,7 +41,7 @@ namespace {
             for(unsigned int i = 0; i < fcn.blocks.size(); i ++)
             {
                 const auto& block = fcn.blocks[i];
-                DEBUG("BB" << i);
+                //DEBUG("BB" << i);
 
                 m_os << indent() << "bb" << i << ": {\n";
                 inc_indent();
@@ -188,11 +51,11 @@ namespace {
 
                     TU_MATCHA( (stmt), (e),
                     (Assign,
-                        DEBUG("- Assign " << e.dst << " = " << e.src);
+                        //DEBUG("- Assign " << e.dst << " = " << e.src);
                         m_os << FMT_M(e.dst) << " = " << FMT_M(e.src) << ";\n";
                         ),
                     (Asm,
-                        DEBUG("- Asm");
+                        //DEBUG("- Asm");
                         m_os << "(";
                         for(const auto& v : e.outputs)
                             m_os << FMT_M(v.second) << ",";
@@ -220,7 +83,7 @@ namespace {
                         m_os << ";\n";
                         ),
                     (Drop,
-                        DEBUG("- DROP " << e.slot);
+                        //DEBUG("- DROP " << e.slot);
                         m_os << "drop(" << FMT_M(e.slot);
                         switch( e.kind )
                         {
@@ -477,6 +340,172 @@ namespace {
                 )
             )
         }
+
+    private:
+        RepeatLitStr indent() const {
+            return RepeatLitStr { "   ", static_cast<int>(m_indent_level) };
+        }
+        void inc_indent() {
+            m_indent_level ++;
+        }
+        void dec_indent() {
+            m_indent_level --;
+        }
+    };
+
+    void dump_mir(::std::ostream& os, unsigned int il, const ::MIR::Function& fcn)
+    {
+        MirDumper   md { os, il };
+        md.dump_mir(fcn);
+    }
+
+    class TreeVisitor:
+        public ::HIR::Visitor
+    {
+        ::std::ostream& m_os;
+        unsigned int    m_indent_level;
+        bool m_short_item_name = false;
+
+    public:
+        TreeVisitor(::std::ostream& os):
+            m_os(os),
+            m_indent_level(0)
+        {
+        }
+
+        void visit_type_impl(::HIR::TypeImpl& impl) override
+        {
+            m_short_item_name = true;
+
+            m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << impl.m_type << "\n";
+            if( ! impl.m_params.m_bounds.empty() )
+            {
+                m_os << indent() << " " << impl.m_params.fmt_bounds() << "\n";
+            }
+            m_os << indent() << "{\n";
+            inc_indent();
+            ::HIR::Visitor::visit_type_impl(impl);
+            dec_indent();
+            m_os << indent() << "}\n";
+
+            m_short_item_name = false;
+        }
+        virtual void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
+        {
+            m_short_item_name = true;
+
+            m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << "\n";
+            if( ! impl.m_params.m_bounds.empty() )
+            {
+                m_os << indent() << " " << impl.m_params.fmt_bounds() << "\n";
+            }
+            m_os << indent() << "{\n";
+            inc_indent();
+            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+            dec_indent();
+            m_os << indent() << "}\n";
+
+            m_short_item_name = false;
+        }
+        void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
+        {
+            m_short_item_name = true;
+
+            m_os << indent() << "impl" << impl.m_params.fmt_args() << " " << (impl.is_positive ? "" : "!") << trait_path << impl.m_trait_args << " for " << impl.m_type << "\n";
+            if( ! impl.m_params.m_bounds.empty() )
+            {
+                m_os << indent() << " " << impl.m_params.fmt_bounds() << "\n";
+            }
+            m_os << indent() << "{ }\n";
+
+            m_short_item_name = false;
+        }
+
+        // - Type Items
+        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
+        {
+            m_short_item_name = true;
+
+            m_os << indent() << "trait " << p << item.m_params.fmt_args() << "\n";
+            if( ! item.m_params.m_bounds.empty() )
+            {
+                m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
+            }
+            m_os << indent() << "{\n";
+            inc_indent();
+            ::HIR::Visitor::visit_trait(p, item);
+            dec_indent();
+            m_os << indent() << "}\n";
+
+            m_short_item_name = false;
+        }
+
+        void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override
+        {
+            m_os << indent();
+            if( item.m_const )
+                m_os << "const ";
+            if( item.m_unsafe )
+                m_os << "unsafe ";
+            if( item.m_abi != ABI_RUST )
+                m_os << "extern \"" << item.m_abi << "\" ";
+            m_os << "fn ";
+            if( m_short_item_name )
+                m_os << p.get_name();
+            else
+                m_os << p;
+            m_os << item.m_params.fmt_args() << "(";
+            for(unsigned int i = 0; i < item.m_args.size(); i ++)
+            {
+                if( i == 0 && item.m_args[i].first.m_binding.m_name == "self" ) {
+                    m_os << "self=";
+                }
+                m_os << "arg$" << i << ": " << item.m_args[i].second << ", ";
+            }
+            m_os << ") -> " << item.m_return << "\n";
+            if( ! item.m_params.m_bounds.empty() )
+            {
+                m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
+            }
+
+            if( item.m_code )
+            {
+                m_os << indent() << "{\n";
+                inc_indent();
+                dump_mir(m_os, m_indent_level, *item.m_code.m_mir);
+                dec_indent();
+                m_os << indent() << "}\n";
+            }
+            else
+            {
+                m_os << indent() << "  ;\n";
+            }
+        }
+        void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
+        {
+            m_os << indent();
+            m_os << "static ";
+            if( m_short_item_name )
+                m_os << p.get_name();
+            else
+                m_os << p;
+            m_os << ": " << item.m_type;
+            if( item.m_value )
+            {
+                inc_indent();
+                m_os << "= {\n";
+                inc_indent();
+                dump_mir(m_os, m_indent_level, *item.m_value.m_mir);
+                dec_indent();
+                m_os << indent() << "} /* = " << item.m_value_res << "*/;\n";
+                dec_indent();
+            }
+            else
+            {
+                m_os << ";\n";
+            }
+        }
+
     private:
         RepeatLitStr indent() const {
             return RepeatLitStr { "   ", static_cast<int>(m_indent_level) };
@@ -495,5 +524,11 @@ void MIR_Dump(::std::ostream& sink, const ::HIR::Crate& crate)
     TreeVisitor tv { sink };
 
     tv.visit_crate( const_cast< ::HIR::Crate&>(crate) );
+}
+
+void MIR_Dump_Fcn(::std::ostream& sink, const ::MIR::Function& fcn, unsigned int il)
+{
+    MirDumper md { sink, il };
+    md.dump_mir(fcn);
 }
 
