@@ -32,6 +32,7 @@ public:
     // - Inner-most types are visited first.
     virtual void emit_type_proto(const ::HIR::TypeRef& ) {}
     virtual void emit_type(const ::HIR::TypeRef& ) {}
+    virtual void emit_type_id(const ::HIR::TypeRef& ) {}
 
     // Called when a TypeRef::Path is encountered (after visiting inner types)
     virtual void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) {}

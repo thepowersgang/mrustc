@@ -58,6 +58,10 @@ public:
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Function> > m_functions;
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Static> > m_statics;
     ::std::map< ::HIR::Path, Trans_Params> m_vtables;
+    /// Required type_id values
+    ::std::set< ::HIR::TypeRef> m_typeids;
+    /// Required struct/enum constructor impls
+    ::std::set< ::HIR::GenericPath> m_constructors;
 
     // .second is `true` if this is a from a reference to the type
     ::std::vector< ::std::pair<::HIR::TypeRef, bool> >  m_types;

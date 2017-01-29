@@ -594,6 +594,7 @@ void Trans_Enumerate_Types(EnumState& state)
                 return monomorphise_type_needed(ty) ? tmp = pp.monomorph(tv.m_resolve, ty) : ty;
                 };
             // TODO: Handle erased types in the return type.
+            ASSERT_BUG(sp, !visit_ty_with(fcn.m_return, [](const auto& x) { return x.m_data.is_ErasedType(); }), "TODO: Erased types in enumerate");
             tv.visit_type( monomorph(fcn.m_return) );
             for(const auto& arg : fcn.m_args)
                 tv.visit_type( monomorph(arg.second) );
@@ -1258,25 +1259,27 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         BUG(sp, "Item not found for " << path_mono);
         ),
     (AutoGenerate,
-        // This is returned either if the item is <T as U>::#vtable or if it's <(Trait) as Trait>::method
         if( path_mono.m_data.is_Generic() )
         {
             // Leave generation of struct/enum constructors to codgen
+            // TODO: Add to a list of required constructors
         }
-        else if( path_mono.m_data.as_UfcsKnown().item == "#vtable" )
+        // - <T as U>::#vtable
+        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().item == "#vtable" )
         {
             if( state.rv.add_vtable( path_mono.clone(), {} ) )
             {
-                // TODO: Add the vtable type to enumerte list?
                 // Fill from the vtable
                 Trans_Enumerate_FillFrom_VTable(state, mv$(path_mono), sub_pp);
             }
         }
-        else if( path_mono.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
+        // - <(Trait) as Trait>::method
+        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type->m_data.is_TraitObject() )
         {
             // Must have been a dynamic dispatch request, just leave as-is
         }
-        else if( path_mono.m_data.as_UfcsKnown().type->m_data.is_Function() )
+        // - <fn(...) as Fn*>::call*
+        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type->m_data.is_Function() )
         {
             // Must have been a dynamic dispatch request, just leave as-is
         }
@@ -1441,6 +1444,10 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                 Trans_Enumerate_FillFrom_Path(state, e2, pp);
                 ),
             (Intrinsic,
+                if( e2.name == "type_id" ) {
+                    // Add <T>::#type_id to the enumerate list
+                    state.rv.m_typeids.insert( pp.monomorph(state.crate, e2.params.m_types.at(0)) );
+                }
                 )
             )
             for(const auto& arg : e.args)

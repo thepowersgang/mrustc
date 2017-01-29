@@ -195,6 +195,10 @@ namespace {
             m_mir_res = nullptr;
         }
 
+        void emit_type_id(const ::HIR::TypeRef& ty) override
+        {
+            m_of << "tTYPEID __typeid_" << Trans_Mangle(ty) << " __attribute__((weak));\n";
+        }
         void emit_type_proto(const ::HIR::TypeRef& ty) override
         {
             TRACE_FUNCTION_F(ty);
@@ -288,7 +292,6 @@ namespace {
             else {
             }
 
-            m_of << "tTYPEID __typeid_" << Trans_Mangle(ty) << ";\n";
             m_mir_res = nullptr;
         }
 

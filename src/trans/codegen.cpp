@@ -47,6 +47,10 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
             codegen->emit_type(ty.first);
         }
     }
+    for(const auto& ty : list.m_typeids)
+    {
+        codegen->emit_type_id(ty);
+    }
 
     // 2. Emit function prototypes
     for(const auto& ent : list.m_functions)
