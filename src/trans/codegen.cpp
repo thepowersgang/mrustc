@@ -129,6 +129,7 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
                 MIR_Validate(resolve, ::HIR::ItemPath(""), *mir, args, ret_type);
                 codegen->emit_function_code(path, fcn, ent.second->pp,  mir);
             }
+            // TODO: Detect if the function was a #[inline] function from another crate, and don't emit if that is the case?
             else {
                 codegen->emit_function_code(path, fcn, pp,  fcn.m_code.m_mir);
             }

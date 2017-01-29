@@ -894,6 +894,7 @@ namespace {
             (Variant,
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
                 auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
                 if( it != m_enum_repr_cache.end() )
                 {
@@ -905,6 +906,11 @@ namespace {
                         emit_literal(get_inner_type(e.idx, 0), e.vals[0], params);
                         m_of << "}";
                     }
+                }
+                else if( enm.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(enm.m_variants.begin(), enm.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
+                {
+                    MIR_ASSERT(*m_mir_res, e.vals.empty(), "Value-only enum with fields");
+                    m_of << "{" << e.idx << "}";
                 }
                 else
                 {
@@ -2631,6 +2637,7 @@ namespace {
             (Variant,
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
                 auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
                 if( it != m_enum_repr_cache.end() )
                 {
@@ -2641,6 +2648,11 @@ namespace {
                     else {
                         assign_from_literal([&](){ emit_dst(); m_of << "._0"; }, get_inner_type(e.idx, 0), e.vals[0]);
                     }
+                }
+                else if( enm.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(enm.m_variants.begin(), enm.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
+                {
+                    MIR_ASSERT(*m_mir_res, e.vals.empty(), "Value-only enum with fields");
+                    emit_dst(); m_of << ".TAG = " << e.idx;
                 }
                 else
                 {
