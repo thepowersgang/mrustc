@@ -593,7 +593,7 @@ void Trans_Enumerate_Types(EnumState& state)
             auto monomorph = [&](const auto& ty)->const auto& {
                 return monomorphise_type_needed(ty) ? tmp = pp.monomorph(tv.m_resolve, ty) : ty;
                 };
-            // TODO: Handle erased types in the return type.
+            // Handle erased types in the return type.
             if( visit_ty_with(fcn.m_return, [](const auto& x) { return x.m_data.is_ErasedType()||x.m_data.is_Generic(); }) )
             {
                 auto ret_ty = clone_ty_with(sp, fcn.m_return, [&](const auto& x, auto& out) {

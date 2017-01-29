@@ -516,6 +516,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     {
         static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn)
         {
+            // TODO: Allow functions that are just a switch on an input.
             if( fcn.blocks.size() == 1 )
             {
                 return fcn.blocks[0].statements.size() < 5 && ! fcn.blocks[0].terminator.is_Goto();
