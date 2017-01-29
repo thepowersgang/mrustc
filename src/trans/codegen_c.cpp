@@ -580,6 +580,27 @@ namespace {
                 m_of << "\treturn rv;\n";
                 m_of << "}\n";
             }
+            else if( item.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(item.m_variants.begin(), item.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
+            {
+                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
+                switch(item.m_repr)
+                {
+                case ::HIR::Enum::Repr::Rust:
+                case ::HIR::Enum::Repr::C:
+                    m_of << "\tunsigned int TAG;\n";
+                    break;
+                case ::HIR::Enum::Repr::U8:
+                    m_of << "\tuint8_t TAG;\n";
+                    break;
+                case ::HIR::Enum::Repr::U16:
+                    m_of << "\tuint16_t TAG;\n";
+                    break;
+                case ::HIR::Enum::Repr::U32:
+                    m_of << "\tuint32_t TAG;\n";
+                    break;
+                }
+                m_of << "};\n";
+            }
             else
             {
                 m_of << "struct e_" << Trans_Mangle(p) << " {\n";
@@ -683,6 +704,10 @@ namespace {
                     fld_lv.as_Field().field_index ++;
                 }
                 m_of << "\t}\n";
+            }
+            else if( item.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(item.m_variants.begin(), item.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
+            {
+                // Glue does nothing (except call the destructor, if there is one)
             }
             else
             {
@@ -2091,6 +2116,7 @@ namespace {
             }
             else if( name == "type_id" ) {
                 const auto& ty = params.m_types.at(0);
+                // NOTE: Would define the typeid here, but it has to be public
                 emit_lvalue(e.ret_val); m_of << " = (uintptr_t)&__typeid_" << Trans_Mangle(ty);
             }
             else if( name == "type_name" ) {
