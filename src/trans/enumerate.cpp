@@ -594,8 +594,28 @@ void Trans_Enumerate_Types(EnumState& state)
                 return monomorphise_type_needed(ty) ? tmp = pp.monomorph(tv.m_resolve, ty) : ty;
                 };
             // TODO: Handle erased types in the return type.
-            ASSERT_BUG(sp, !visit_ty_with(fcn.m_return, [](const auto& x) { return x.m_data.is_ErasedType(); }), "TODO: Erased types in enumerate");
-            tv.visit_type( monomorph(fcn.m_return) );
+            if( visit_ty_with(fcn.m_return, [](const auto& x) { return x.m_data.is_ErasedType()||x.m_data.is_Generic(); }) )
+            {
+                auto ret_ty = clone_ty_with(sp, fcn.m_return, [&](const auto& x, auto& out) {
+                    if( const auto* te = x.m_data.opt_ErasedType() ) {
+                        out = pp.monomorph(tv.m_resolve, fcn.m_code.m_erased_types.at(te->m_index));
+                        return true;
+                    }
+                    else if( x.m_data.is_Generic() ) {
+                        out = pp.monomorph(tv.m_resolve, x);
+                        return true;
+                    }
+                    else {
+                        return false;
+                    }
+                    });
+                tv.m_resolve.expand_associated_types(sp, ret_ty);
+                tv.visit_type(ret_ty);
+            }
+            else
+            {
+                tv.visit_type( fcn.m_return );
+            }
             for(const auto& arg : fcn.m_args)
                 tv.visit_type( monomorph(arg.second) );
 
