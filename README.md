@@ -21,6 +21,7 @@ Current Features
 - MIR generation (with partial validation pass)
 - HIR/MIR (de)serialisation, allowing for `extern crate` handling
 - C-based code generation
+- Basic MIR optimisations (including inlining)
 
 Short-Term Plans
 ===
@@ -37,5 +38,5 @@ Progress
 ===
 - Compiles the standard library into loadable MIR
 - Compiles the "hello, world" test into compilable and running C code
-- Compiles `rustc` through to failing codegen
+- Compiles `rustc` through to failing to link
 

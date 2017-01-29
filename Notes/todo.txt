@@ -1,14 +1,10 @@
 TODO:
-- Implement asm! macro fully
 - Get all run-pass and run-fail tests passing resolve
  - Lots of fixes to do here
 - Audit TODOs in codebase
 - MIR Optimisations
- - Assignment elision (e.g. remove intermediate temporaries assigned to RETURN)
  - Dead code eliminiation
- - BB Unificiation
-- HIR Optimisation (remove dead code in `if true/if false` branches)
-- Basic codegen such that `hello.rs` runs
+ - Remove variables that are just assigned from arguments
 - Convert enum variants to point to structs for the data type
  - Four types of variants: Unit, Value, Tuple1, Composite
   - TODO: Have value enums be a different structure to data enums
