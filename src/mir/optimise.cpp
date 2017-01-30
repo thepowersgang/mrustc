@@ -38,9 +38,15 @@ namespace {
         }
     }
 
-    bool visit_mir_lvalue_mut(::MIR::LValue& lv, bool is_write, ::std::function<bool(::MIR::LValue& , bool)> cb)
+    enum class ValUsage {
+        Read,
+        Write,
+        Borrow,
+    };
+
+    bool visit_mir_lvalue_mut(::MIR::LValue& lv, ValUsage u, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
-        if( cb(lv, is_write) )
+        if( cb(lv, u) )
             return true;
         TU_MATCHA( (lv), (e),
         (Variable,
@@ -54,115 +60,115 @@ namespace {
         (Return,
             ),
         (Field,
-            return visit_mir_lvalue_mut(*e.val, is_write, cb);
+            return visit_mir_lvalue_mut(*e.val, u, cb);
             ),
         (Deref,
-            return visit_mir_lvalue_mut(*e.val, is_write, cb);
+            return visit_mir_lvalue_mut(*e.val, u, cb);
             ),
         (Index,
             bool rv = false;
-            rv |= visit_mir_lvalue_mut(*e.val, is_write, cb);
-            rv |= visit_mir_lvalue_mut(*e.idx, false, cb);
+            rv |= visit_mir_lvalue_mut(*e.val, u, cb);
+            rv |= visit_mir_lvalue_mut(*e.idx, ValUsage::Read, cb);
             return rv;
             ),
         (Downcast,
-            return visit_mir_lvalue_mut(*e.val, is_write, cb);
+            return visit_mir_lvalue_mut(*e.val, u, cb);
             )
         )
         return false;
     }
-    bool visit_mir_lvalue(const ::MIR::LValue& lv, bool is_write, ::std::function<bool(const ::MIR::LValue& , bool)> cb)
+    bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        return visit_mir_lvalue_mut( const_cast<::MIR::LValue&>(lv), is_write, [&](auto& v, bool im) { return cb(v,im); } );
+        return visit_mir_lvalue_mut( const_cast<::MIR::LValue&>(lv), u, [&](auto& v, auto u) { return cb(v,u); } );
     }
 
-    bool visit_mir_lvalues_mut(::MIR::RValue& rval, ::std::function<bool(::MIR::LValue& , bool)> cb)
+    bool visit_mir_lvalues_mut(::MIR::RValue& rval, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         bool rv = false;
         TU_MATCHA( (rval), (se),
         (Use,
-            rv |= visit_mir_lvalue_mut(se, false, cb);
+            rv |= visit_mir_lvalue_mut(se, ValUsage::Read, cb);
             ),
         (Constant,
             ),
         (SizedArray,
-            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
             ),
         (Borrow,
-            rv |= visit_mir_lvalue_mut(se.val, (se.type != ::HIR::BorrowType::Shared), cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Borrow, cb);
             ),
         (Cast,
-            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
             ),
         (BinOp,
-            rv |= visit_mir_lvalue_mut(se.val_l, false, cb);
-            rv |= visit_mir_lvalue_mut(se.val_r, false, cb);
+            rv |= visit_mir_lvalue_mut(se.val_l, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se.val_r, ValUsage::Read, cb);
             ),
         (UniOp,
-            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
             ),
         (DstMeta,
-            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
             ),
         (DstPtr,
-            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
             ),
         (MakeDst,
-            // TODO: Would prefer a flag to indicate "move"
-            rv |= visit_mir_lvalue_mut(se.ptr_val, false, cb);
-            rv |= visit_mir_lvalue_mut(se.meta_val, false, cb);
+            rv |= visit_mir_lvalue_mut(se.ptr_val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se.meta_val, ValUsage::Read, cb);
             ),
         (Tuple,
             for(auto& v : se.vals)
-                rv |= visit_mir_lvalue_mut(v, false, cb);
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Read, cb);
             ),
         (Array,
             for(auto& v : se.vals)
-                rv |= visit_mir_lvalue_mut(v, false, cb);
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Read, cb);
             ),
         (Variant,
-            rv |= visit_mir_lvalue_mut(se.val, false, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
             ),
         (Struct,
             for(auto& v : se.vals)
-                rv |= visit_mir_lvalue_mut(v, false, cb);
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Read, cb);
             )
         )
         return rv;
     }
-    bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , bool)> cb)
+    bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        return visit_mir_lvalues_mut(const_cast<::MIR::RValue&>(rval), [&](auto& lv, bool im){ return cb(lv, im); });
+        return visit_mir_lvalues_mut(const_cast<::MIR::RValue&>(rval), [&](auto& lv, auto u){ return cb(lv, u); });
     }
 
-    bool visit_mir_lvalues_mut(::MIR::Statement& stmt, ::std::function<bool(::MIR::LValue& , bool)> cb)
+    bool visit_mir_lvalues_mut(::MIR::Statement& stmt, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         bool rv = false;
         TU_MATCHA( (stmt), (e),
         (Assign,
             rv |= visit_mir_lvalues_mut(e.src, cb);
-            rv |= visit_mir_lvalue_mut(e.dst, true, cb);
+            rv |= visit_mir_lvalue_mut(e.dst, ValUsage::Write, cb);
             ),
         (Asm,
             for(auto& v : e.inputs)
-                rv |= visit_mir_lvalue_mut(v.second, false, cb);
+                rv |= visit_mir_lvalue_mut(v.second, ValUsage::Read, cb);
             for(auto& v : e.outputs)
-                rv |= visit_mir_lvalue_mut(v.second, true, cb);
+                rv |= visit_mir_lvalue_mut(v.second, ValUsage::Write, cb);
             ),
         (SetDropFlag,
             ),
         (Drop,
-            rv |= visit_mir_lvalue_mut(e.slot, true, cb);
+            // Well, it mutates...
+            rv |= visit_mir_lvalue_mut(e.slot, ValUsage::Write, cb);
             )
         )
         return rv;
     }
-    bool visit_mir_lvalues(const ::MIR::Statement& stmt, ::std::function<bool(const ::MIR::LValue& , bool)> cb)
+    bool visit_mir_lvalues(const ::MIR::Statement& stmt, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        return visit_mir_lvalues_mut(const_cast<::MIR::Statement&>(stmt), [&](auto& lv, bool im){ return cb(lv, im); });
+        return visit_mir_lvalues_mut(const_cast<::MIR::Statement&>(stmt), [&](auto& lv, auto im){ return cb(lv, im); });
     }
 
-    void visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , bool)> cb)
+    void visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         TU_MATCHA( (term), (e),
         (Incomplete,
@@ -176,23 +182,23 @@ namespace {
         (Panic,
             ),
         (If,
-            visit_mir_lvalue_mut(e.cond, false, cb);
+            visit_mir_lvalue_mut(e.cond, ValUsage::Read, cb);
             ),
         (Switch,
-            visit_mir_lvalue_mut(e.val, false, cb);
+            visit_mir_lvalue_mut(e.val, ValUsage::Read, cb);
             ),
         (Call,
             if( e.fcn.is_Value() ) {
-                visit_mir_lvalue_mut(e.fcn.as_Value(), false, cb);
+                visit_mir_lvalue_mut(e.fcn.as_Value(), ValUsage::Read, cb);
             }
             for(auto& v : e.args)
-                visit_mir_lvalue_mut(v, false, cb);
-            visit_mir_lvalue_mut(e.ret_val, true, cb);
+                visit_mir_lvalue_mut(v, ValUsage::Read, cb);
+            visit_mir_lvalue_mut(e.ret_val, ValUsage::Write, cb);
             )
         )
     }
 
-    void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , bool)> cb)
+    void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         for(unsigned int block_idx = 0; block_idx < fcn.blocks.size(); block_idx ++)
         {
@@ -208,9 +214,9 @@ namespace {
             visit_mir_lvalues_mut(block.terminator, cb);
         }
     }
-    void visit_mir_lvalues(::MIR::TypeResolve& state, const ::MIR::Function& fcn, ::std::function<bool(const ::MIR::LValue& , bool)> cb)
+    void visit_mir_lvalues(::MIR::TypeResolve& state, const ::MIR::Function& fcn, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        visit_mir_lvalues_mut(state, const_cast<::MIR::Function&>(fcn), [&](auto& lv, bool im){ return cb(lv, im); });
+        visit_mir_lvalues_mut(state, const_cast<::MIR::Function&>(fcn), [&](auto& lv, auto im){ return cb(lv, im); });
     }
 
     struct ParamsSet {
@@ -1184,7 +1190,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
     if( replacement_needed )
     {
         DEBUG("Replacing temporaries using {" << replacements << "}");
-        visit_mir_lvalues_mut(state, fcn, [&](auto& lv, bool) {
+        visit_mir_lvalues_mut(state, fcn, [&](auto& lv, auto ) {
             if( auto* ve = lv.opt_Temporary() ) {
                 auto it = replacements.find(ve->idx);
                 if( it != replacements.end() )
@@ -1421,7 +1427,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         else
             continue;
 
-        auto has_cond = [&](const auto& lv, bool is_write)->bool {
+        auto has_cond = [&](const auto& lv, auto ut)->bool {
             return lv == te.cond;
             };
         bool val_known = false;
@@ -1477,59 +1483,58 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
     struct ValUse {
         unsigned int    read = 0;
         unsigned int    write = 0;
+        unsigned int    borrow = 0;
     };
     struct {
         ::std::vector<ValUse> var_uses;
         ::std::vector<ValUse> tmp_uses;
 
-        void use_lvalue(const ::MIR::LValue& lv, bool is_write) {
+        void use_lvalue(const ::MIR::LValue& lv, ValUsage ut) {
             TU_MATCHA( (lv), (e),
             (Variable,
                 auto& vu = var_uses[e];
-                if( is_write )
-                    vu.write += 1;
-                else
-                    vu.read += 1;
+                switch(ut)
+                {
+                case ValUsage::Read:    vu.read += 1;   break;
+                case ValUsage::Write:   vu.write += 1;  break;
+                case ValUsage::Borrow:  vu.borrow += 1; break;
+                }
                 ),
             (Argument,
                 ),
             (Temporary,
                 auto& vu = tmp_uses[e.idx];
-                if( is_write )
-                    vu.write += 1;
-                else
-                    vu.read += 1;
+                switch(ut)
+                {
+                case ValUsage::Read:    vu.read += 1;   break;
+                case ValUsage::Write:   vu.write += 1;  break;
+                case ValUsage::Borrow:  vu.borrow += 1; break;
+                }
                 ),
             (Static,
                 ),
             (Return,
                 ),
             (Field,
-                use_lvalue(*e.val, is_write);
+                use_lvalue(*e.val, ut);
                 ),
             (Deref,
-                use_lvalue(*e.val, is_write);
+                use_lvalue(*e.val, ut);
                 ),
             (Index,
-                use_lvalue(*e.val, is_write);
-                use_lvalue(*e.idx, false);
+                use_lvalue(*e.val, ut);
+                use_lvalue(*e.idx, ValUsage::Read);
                 ),
             (Downcast,
-                use_lvalue(*e.val, is_write);
+                use_lvalue(*e.val, ut);
                 )
             )
-        }
-        void read_lvalue(const ::MIR::LValue& lv) {
-            use_lvalue(lv, false);
-        }
-        void write_lvalue(const ::MIR::LValue& lv) {
-            use_lvalue(lv, true);
         }
     } val_uses = {
         ::std::vector<ValUse>(fcn.named_variables.size()),
         ::std::vector<ValUse>(fcn.temporaries.size())
         };
-    visit_mir_lvalues(state, fcn, [&](const auto& lv, bool im){ val_uses.use_lvalue(lv, im); return false; });
+    visit_mir_lvalues(state, fcn, [&](const auto& lv, auto ut){ val_uses.use_lvalue(lv, ut); return false; });
 
     // --- Eliminate `tmp = Use(...)` (moves lvalues downwards)
     // > Find an assignment `tmp = Use(...)` where the temporary is only written and read once
@@ -1586,10 +1591,10 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 }
                 bool src_is_lvalue = e.src.is_Use();
 
-                auto is_lvalue_usage = [&](const auto& lv, bool ){ return lv == e.dst; };
+                auto is_lvalue_usage = [&](const auto& lv, auto ){ return lv == e.dst; };
 
                 auto is_lvalue_in_val = [&](const auto& lv) {
-                    return visit_mir_lvalues(e.src, [&](const auto& slv, bool ) { return lv == slv; });
+                    return visit_mir_lvalues(e.src, [&](const auto& slv, auto ) { return lv == slv; });
                     };
                 // Eligable for replacement
                 // Find where this value is used
@@ -1623,7 +1628,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 
                     // Determine if source is mutated.
                     // > Assume that any mutating access of the root value counts (over-cautious)
-                    if( visit_mir_lvalues(block.statements[si2], [&](const auto& lv, bool is_write){ return is_write && is_lvalue_in_val(lv); }) )
+                    if( visit_mir_lvalues(block.statements[si2], [&](const auto& lv, auto vu){ return vu == ValUsage::Write && is_lvalue_in_val(lv); }) )
                     {
                         stop = true;
                         break;
@@ -1645,22 +1650,22 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     (Panic,
                         ),
                     (If,
-                        if( src_is_lvalue && visit_mir_lvalue(e.cond, false, is_lvalue_usage) )
+                        if( src_is_lvalue && visit_mir_lvalue(e.cond, ValUsage::Read, is_lvalue_usage) )
                             found = true;
                         stop = true;
                         ),
                     (Switch,
-                        if( src_is_lvalue && visit_mir_lvalue(e.val, false, is_lvalue_usage) )
+                        if( src_is_lvalue && visit_mir_lvalue(e.val, ValUsage::Read, is_lvalue_usage) )
                             found = true;
                         stop = true;
                         ),
                     (Call,
                         if( e.fcn.is_Value() )
-                            if( src_is_lvalue && visit_mir_lvalue(e.fcn.as_Value(), false, is_lvalue_usage) )
+                            if( src_is_lvalue && visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, is_lvalue_usage) )
                                 found = true;
                         for(const auto& v : e.args)
                         {
-                            if( src_is_lvalue && visit_mir_lvalue(v, false, is_lvalue_usage) )
+                            if( src_is_lvalue && visit_mir_lvalue(v, ValUsage::Read, is_lvalue_usage) )
                                 found = true;
                         }
                         stop = true;
@@ -1685,8 +1690,8 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             unsigned int inner_replaced_count = 0;
             for(auto& r : replacements)
             {
-                visit_mir_lvalues_mut(r.second, [&](auto& lv, bool is_write) {
-                    if( !is_write )
+                visit_mir_lvalues_mut(r.second, [&](auto& lv, auto vu) {
+                    if( vu == ValUsage::Read )
                     {
                         auto it = replacements.find(lv);
                         if( it != replacements.end() && it->second.is_Use() )
@@ -1707,8 +1712,8 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         while( replaced < replacements.size() )
         {
             auto old_replaced = replaced;
-            auto cb = [&](auto& lv, bool is_write){
-                if( !is_write )
+            auto cb = [&](auto& lv, auto vu){
+                if( vu == ValUsage::Read )
                 {
                     auto it = replacements.find(lv);
                     if( it != replacements.end() )
@@ -1810,9 +1815,9 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     {
                         // Closure returns `true` if the passed lvalue is a component of `new_dst_lval`
                         auto is_lvalue_in_val = [&](const auto& lv) {
-                            return visit_mir_lvalue(new_dst_lval, false, [&](const auto& slv, bool ) { return lv == slv; });
+                            return visit_mir_lvalue(new_dst_lval, ValUsage::Write, [&](const auto& slv, auto ) { return lv == slv; });
                             };
-                        if( visit_mir_lvalues(*it3, [&](const auto& lv, bool is_write){ return is_write && is_lvalue_in_val(lv); }) )
+                        if( visit_mir_lvalues(*it3, [&](const auto& lv, auto vu){ return vu == ValUsage::Write && is_lvalue_in_val(lv); }) )
                         {
                             was_invalidated = true;
                             break;
@@ -1873,7 +1878,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 if( new_dst )
                 {
                     auto lvalue_impacts_dst = [&](const ::MIR::LValue& lv) {
-                        return visit_mir_lvalue(*new_dst, true, [&](const auto& slv, bool ) { return lv == slv; });
+                        return visit_mir_lvalue(*new_dst, ValUsage::Write, [&](const auto& slv, auto ) { return lv == slv; });
                         };
                     for(auto it = blk2.statements.begin(); it != blk2.statements.end(); ++ it)
                     {
@@ -1886,7 +1891,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                             replacement_happend = true;
                             break;
                         }
-                        if( visit_mir_lvalues(stmt, [&](const auto& lv, bool is_write){ return lv == *new_dst || (is_write && lvalue_impacts_dst(lv)); }) )
+                        if( visit_mir_lvalues(stmt, [&](const auto& lv, ValUsage vu){ return lv == *new_dst || (vu == ValUsage::Write && lvalue_impacts_dst(lv)); }) )
                         {
                             break;
                         }
@@ -1991,7 +1996,7 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         }
         else
         {
-            auto lvalue_cb = [&](auto& lv, bool ) {
+            auto lvalue_cb = [&](auto& lv, auto ) {
                 if( lv.is_Temporary() ) {
                     auto& e = lv.as_Temporary();
                     MIR_ASSERT(state, e.idx < temp_rewrite_table.size(), "Temporary out of range - " << lv);
@@ -2023,22 +2028,22 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             (Panic,
                 ),
             (If,
-                visit_mir_lvalue_mut(e.cond, false, lvalue_cb);
+                visit_mir_lvalue_mut(e.cond, ValUsage::Read, lvalue_cb);
                 e.bb0 = block_rewrite_table[e.bb0];
                 e.bb1 = block_rewrite_table[e.bb1];
                 ),
             (Switch,
-                visit_mir_lvalue_mut(e.val, false, lvalue_cb);
+                visit_mir_lvalue_mut(e.val, ValUsage::Read, lvalue_cb);
                 for(auto& target : e.targets)
                     target = block_rewrite_table[target];
                 ),
             (Call,
                 if( e.fcn.is_Value() ) {
-                    visit_mir_lvalue_mut(e.fcn.as_Value(), false, lvalue_cb);
+                    visit_mir_lvalue_mut(e.fcn.as_Value(), ValUsage::Read, lvalue_cb);
                 }
                 for(auto& v : e.args)
-                    visit_mir_lvalue_mut(v, false, lvalue_cb);
-                visit_mir_lvalue_mut(e.ret_val, true, lvalue_cb);
+                    visit_mir_lvalue_mut(v, ValUsage::Read, lvalue_cb);
+                visit_mir_lvalue_mut(e.ret_val, ValUsage::Write, lvalue_cb);
                 e.ret_block   = block_rewrite_table[e.ret_block];
                 e.panic_block = block_rewrite_table[e.panic_block];
                 )
