@@ -675,6 +675,18 @@ namespace {
                 }
             }
 
+            if( auto* cond_lit = dynamic_cast<::HIR::ExprNode_Literal*>(cond_p->get()) )
+            {
+                DEBUG("- constant condition");
+                if( cond_lit->m_data.as_Boolean() ) {
+                    m_builder.end_block( ::MIR::Terminator::make_Goto({ true_branch }) );
+                }
+                else {
+                    m_builder.end_block( ::MIR::Terminator::make_Goto({ false_branch }) );
+                }
+                return ;
+            }
+
             // If short-circuiting didn't apply, emit condition
             ::MIR::LValue   decision_val;
             {
