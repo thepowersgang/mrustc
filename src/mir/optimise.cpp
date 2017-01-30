@@ -1946,6 +1946,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     ::std::vector<bool> used_temps( fcn.temporaries.size() );
+    ::std::vector<bool> used_dfs( fcn.drop_flags.size() );
     ::std::vector<bool> visited( fcn.blocks.size() );
     ::std::vector< ::MIR::BasicBlockId> to_visit;
     to_visit.push_back( 0 );
@@ -1965,6 +1966,16 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             TU_IFLET( ::MIR::Statement, stmt, Assign, e,
                 assigned_lval(e.dst);
             )
+            else if( const auto* e = stmt.opt_Drop() )
+            {
+                if( e->flag_idx != ~0u )
+                    used_dfs.at(e->flag_idx) = true;
+            }
+            else if( const auto* e = stmt.opt_SetDropFlag() )
+            {
+                if( e->other != ~0u )
+                    used_dfs.at(e->other) = true;
+            }
         }
 
         TU_MATCHA( (block.terminator), (e),
@@ -2018,6 +2029,17 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         }
         temp_rewrite_table.push_back( used_temps[i] ? j ++ : ~0u );
     }
+    ::std::vector<unsigned int> df_rewrite_table;
+    unsigned int n_df = fcn.drop_flags.size();
+    for(unsigned int i = 0, j = 0; i < n_df; i ++)
+    {
+        if( !used_dfs[i] )
+        {
+            DEBUG("GC df" << i);
+            fcn.drop_flags.erase(fcn.drop_flags.begin() + j);
+        }
+        df_rewrite_table.push_back( used_dfs[i] ? j ++ : ~0u );
+    }
 
     auto it = fcn.blocks.begin();
     for(unsigned int i = 0; i < visited.size(); i ++)
@@ -2040,12 +2062,27 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 }
                 return false;
                 };
-            unsigned int stmt_idx = 0;
-            for(auto& stmt : it->statements)
+            for(auto stmt_it = it->statements.begin(); stmt_it != it->statements.end(); ++ stmt_it)
             {
-                state.set_cur_stmt(i, stmt_idx);
-                visit_mir_lvalues_mut(stmt, lvalue_cb);
-                stmt_idx ++;
+                state.set_cur_stmt(i, stmt_it - it->statements.begin());
+                visit_mir_lvalues_mut(*stmt_it, lvalue_cb);
+                if( auto* se = stmt_it->opt_Drop() )
+                {
+                    // Rewrite drop flag indexes
+                    if( se->flag_idx != ~0u )
+                        se->flag_idx = df_rewrite_table[se->flag_idx];
+                }
+                else if( auto* se = stmt_it->opt_SetDropFlag() )
+                {
+                    // Rewrite drop flag indexes OR delete
+                    if( df_rewrite_table[se->idx] == ~0u ) {
+                        stmt_it = it->statements.erase(stmt_it)-1;
+                        continue ;
+                    }
+                    se->idx = df_rewrite_table[se->idx];
+                    if( se->other != ~0u )
+                        se->other = df_rewrite_table[se->other];
+                }
             }
             state.set_cur_stmt_term(i);
             // Rewrite and advance
