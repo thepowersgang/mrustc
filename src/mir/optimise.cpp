@@ -356,6 +356,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
 void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
@@ -373,6 +374,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         // >> Simplify call graph
         MIR_Optimise_BlockSimplify(state, fcn);
 
+        // >> Apply known constants
+        change_happened |= MIR_Optimise_ConstPropagte(state, fcn);
+
         // >> Inline short functions
         bool inline_happened = MIR_Optimise_Inlining(state, fcn);
         if( inline_happened )
@@ -383,16 +387,16 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             change_happened = true;
         }
 
-        // >> Propagate dead assignments
+        // >> Propagate/remove dead assignments
         while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
             ;
 
         // >> Unify duplicate temporaries
         // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
-        change_happened |= MIR_Optimise_UnifyTemporaries(state, fcn) || change_happened;
+        change_happened |= MIR_Optimise_UnifyTemporaries(state, fcn);
 
         // >> Combine Duplicate Blocks
-        change_happened |= MIR_Optimise_UnifyBlocks(state, fcn) || change_happened;
+        change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
         #if 0
         if( change_happened )
         {
@@ -1392,6 +1396,72 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     }
 }
 
+
+// --------------------------------------------------------------------
+// Propagate constants and eliminate known paths
+// --------------------------------------------------------------------
+bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    // 1. Remove based on known booleans within a single block
+    // - Eliminates `if false`/`if true` branches
+    for(auto& bb : fcn.blocks)
+    {
+        auto bbidx = &bb - &fcn.blocks.front();
+        if( ! bb.terminator.is_If() )   continue;
+        const auto& te = bb.terminator.as_If();
+
+        // Restrict condition to being a temporary/variable
+        if( te.cond.is_Temporary() )
+            ;
+        else if( te.cond.is_Argument() )
+            ;
+        else
+            continue;
+
+        auto has_cond = [&](const auto& lv, bool is_write)->bool {
+            return lv == te.cond;
+            };
+        bool val_known = false;
+        bool known_val;
+        for(unsigned int i = bb.statements.size(); i --; )
+        {
+            if( bb.statements[i].is_Assign() )
+            {
+                const auto& se = bb.statements[i].as_Assign();
+                // If the condition was mentioned, don't assume it has the same value
+                // TODO: What if the condition is a field/index and something else is edited?
+                if( visit_mir_lvalues(se.src, has_cond) )
+                    break;
+
+                if( se.dst != te.cond )
+                    continue;
+                if( !se.src.is_Constant() )
+                    continue;
+                if( !se.src.as_Constant().is_Bool() )
+                    continue;
+                val_known = true;
+                known_val = se.src.as_Constant().as_Bool();
+                break;
+            }
+            else
+            {
+                if( visit_mir_lvalues(bb.statements[i], has_cond) )
+                    break;
+            }
+        }
+        if( val_known )
+        {
+            DEBUG("bb" << bbidx << ": Condition known to be " << known_val);
+            bb.terminator = ::MIR::Terminator::make_Goto( known_val ? te.bb0 : te.bb1 );
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 // --------------------------------------------------------------------
 // Replace `tmp = RValue::Use()` where the temp is only used once
 // --------------------------------------------------------------------
@@ -1489,6 +1559,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 {
                     const auto& vu = val_uses.tmp_uses[e.dst.as_Temporary().idx];
                     DEBUG("VU " << e.dst << " R:" << vu.read << " W:" << vu.write);
+                    // TODO: Allow write many?
                     // > Where the temporary is written once and read once
                     if( !( vu.read == 1 && vu.write == 1 ) )
                         continue ;
