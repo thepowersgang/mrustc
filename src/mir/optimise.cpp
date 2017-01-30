@@ -1559,14 +1559,22 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     continue ;
                 const auto& e = stmt.as_Assign();
                 // > Of a temporary from with a RValue::Use
-                // TODO: Variables too (can eliminate arguments)
-                if( e.dst.is_Temporary() )
+                if( const auto* de = e.dst.opt_Temporary() )
                 {
-                    const auto& vu = val_uses.tmp_uses[e.dst.as_Temporary().idx];
-                    DEBUG("VU " << e.dst << " R:" << vu.read << " W:" << vu.write);
+                    const auto& vu = val_uses.tmp_uses[de->idx];
+                    DEBUG(e.dst << " - VU " << e.dst << " R:" << vu.read << " W:" << vu.write);
                     // TODO: Allow write many?
                     // > Where the temporary is written once and read once
-                    if( !( vu.read == 1 && vu.write == 1 ) )
+                    if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
+                        continue ;
+                }
+                else if( const auto* de = e.dst.opt_Variable() )
+                {
+                    const auto& vu = val_uses.var_uses[*de];
+                    DEBUG(e.dst << " - VU " << e.dst << " R:" << vu.read << " W:" << vu.write);
+                    // TODO: Allow write many?
+                    // > Where the variable is written once and read once
+                    if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
                         continue ;
                 }
                 else
