@@ -63,7 +63,7 @@ namespace {
             return visit_mir_lvalue_mut(*e.val, u, cb);
             ),
         (Deref,
-            return visit_mir_lvalue_mut(*e.val, u, cb);
+            return visit_mir_lvalue_mut(*e.val, ValUsage::Read, cb);
             ),
         (Index,
             bool rv = false;
@@ -1901,7 +1901,41 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         }
     }
 
-    // TODO: Detect if any optimisations happened, and return true in that case
+    // Locate values that are written, but not read or borrowed
+    // - Current implementation requires a single write (to avoid issues with drop)
+    // - if T: Drop (or T: !Copy) then the write should become a drop
+    {
+        DEBUG("- Write-only");
+        for(auto& block : fcn.blocks)
+        {
+            for(auto it = block.statements.begin(); it != block.statements.end(); ++it)
+            {
+                if( const auto& se = it->opt_Assign() )
+                {
+                    TU_MATCH_DEF( ::MIR::LValue, (se->dst), (de),
+                    (
+                        ),
+                    (Variable,
+                        const auto& vu = val_uses.var_uses[de];
+                        if( vu.write == 1 && vu.read == 0 && vu.borrow == 0 ) {
+                            DEBUG(se->dst << " only written, removing write");
+                            it = block.statements.erase(it)-1;
+                        }
+                        ),
+                    (Temporary,
+                        const auto& vu = val_uses.tmp_uses[de.idx];
+                        if( vu.write == 1 && vu.read == 0 && vu.borrow == 0 ) {
+                            DEBUG(se->dst << " only written, removing write with " << se->src);
+                            it = block.statements.erase(it)-1;
+                        }
+                        )
+                    )
+                }
+            }
+            // NOTE: Calls can write values, but they also have side-effects
+        }
+    }
+
     return replacement_happend;
 }
 
