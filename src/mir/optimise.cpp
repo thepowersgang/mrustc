@@ -439,7 +439,8 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         (Diverge,
             ),
         (Goto,
-            e = get_new_target(state, e);
+            if( &fcn.blocks[e] != &block )
+                e = get_new_target(state, e);
             ),
         (Panic,
             ),
@@ -498,6 +499,8 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 auto tgt = block.terminator.as_Goto();
                 if( uses[tgt] != 1 )
                     break ;
+                if( tgt == i )
+                    break;
                 DEBUG("Append bb " << tgt << " to bb" << i);
 
                 assert( &fcn.blocks[tgt] != &block );
