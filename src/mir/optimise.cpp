@@ -406,7 +406,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         #if 0
         if( change_happened )
         {
-            MIR_Dump_Fcn(::std::cout, fcn);
+            //MIR_Dump_Fcn(::std::cout, fcn);
             MIR_Validate(resolve, path, fcn, args, ret_type);
         }
         #endif
@@ -1791,6 +1791,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         {
             for(auto it = block.statements.begin(); it != block.statements.end(); ++it)
             {
+                state.set_cur_stmt(&block - &fcn.blocks.front(), it - block.statements.begin());
                 if( !it->is_Assign() )
                     continue;
                 if( it->as_Assign().src.tag() == ::MIR::RValue::TAGDEAD )
@@ -1828,7 +1829,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                         auto is_lvalue_in_val = [&](const auto& lv) {
                             return visit_mir_lvalue(new_dst_lval, ValUsage::Write, [&](const auto& slv, auto ) { return lv == slv; });
                             };
-                        if( visit_mir_lvalues(*it3, [&](const auto& lv, auto vu){ return vu == ValUsage::Write && is_lvalue_in_val(lv); }) )
+                        if( visit_mir_lvalues(*it3, [&](const auto& lv, auto ){ return is_lvalue_in_val(lv); }) )
                         {
                             was_invalidated = true;
                             break;
@@ -1838,7 +1839,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     // Replacement is valid.
                     if( ! was_invalidated )
                     {
-                        DEBUG("Replace assignment of " << to_replace_lval << " with " << new_dst_lval);
+                        DEBUG(state << "Replace assignment of " << to_replace_lval << " with " << new_dst_lval);
                         it->as_Assign().dst = mv$(it2->as_Assign().dst);
                         block.statements.erase(it2);
                         replacement_happend = true;
