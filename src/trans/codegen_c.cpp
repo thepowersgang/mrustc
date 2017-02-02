@@ -1083,8 +1083,8 @@ namespace {
                     auto  arg_ty = ::HIR::TypeRef::new_unit();
                     for(const auto& ty : te->m_arg_types)
                         arg_ty.m_data.as_Tuple().push_back( ty.clone() );
-                    m_of << " " << Trans_Mangle(fcn_p) << "("; emit_ctype(type, FMT_CB(ss, ss << "ptr";)); m_of << ", "; emit_ctype(arg_ty, FMT_CB(ss, ss << "args";)); m_of << ") {\n";
-                    m_of << "\treturn ptr(";
+                    m_of << " " << Trans_Mangle(fcn_p) << "("; emit_ctype(type, FMT_CB(ss, ss << "*ptr";)); m_of << ", "; emit_ctype(arg_ty, FMT_CB(ss, ss << "args";)); m_of << ") {\n";
+                    m_of << "\treturn (*ptr)(";
                         for(unsigned int i = 0; i < te->m_arg_types.size(); i++)
                         {
                             if(i != 0)  m_of << ", ";
