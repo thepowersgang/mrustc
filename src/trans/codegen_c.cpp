@@ -80,10 +80,22 @@ namespace {
                 << "static inline TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
                 << "static inline size_t max(size_t a, size_t b) { return a < b ? b : a; }\n"
+                << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
+                << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
+                << "}\n"
+                << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
+                << "\treturn (v&0xFFFFFFFF == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
+                << "}\n"
                 << "static inline unsigned __int128 __builtin_bswap128(unsigned __int128 v) {\n"
                 << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
                 << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
                 << "\treturn ((unsigned __int128)lo << 64) | (unsigned __int128)hi;\n"
+                << "}\n"
+                << "static inline unsigned __int128 __builtin_clz128(unsigned __int128 v) {\n"
+                << "\treturn (v >> 64 != 0 ? __builtin_clz64(v>>64) : 64 + __builtin_clz64(v));\n"
+                << "}\n"
+                << "static inline unsigned __int128 __builtin_ctz128(unsigned __int128 v) {\n"
+                << "\treturn (v&0xFFFFFFFFFFFFFFFF == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
                 << "}\n"
                 << "\n"
                 ;
@@ -2292,12 +2304,39 @@ namespace {
             }
             // Bit Twiddling
             // - CounT Leading Zeroes
-            else if( name == "ctlz" ) {
-                emit_lvalue(e.ret_val); m_of << " = __builtin_clz("; emit_lvalue(e.args.at(0)); m_of << ")";
-            }
             // - CounT Trailing Zeroes
-            else if( name == "cttz" ) {
-                emit_lvalue(e.ret_val); m_of << " = __builtin_ctz("; emit_lvalue(e.args.at(0)); m_of << ")";
+            else if( name == "ctlz" || name == "cttz" ) {
+                auto emit_arg0 = [&](){ emit_lvalue(e.args.at(0)); };
+                const auto& ty = params.m_types.at(0);
+                emit_lvalue(e.ret_val); m_of << " = ("; emit_lvalue(e.args.at(0)); m_of << " != 0 ? ";
+                if( ty == ::HIR::CoreType::U128 )
+                {
+                    if( name == "ctlz" ) {
+                        m_of << "__builtin_clz128("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    }
+                    else {
+                        m_of << "__builtin_ctz128("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    }
+                }
+                else if( ty == ::HIR::CoreType::U64 || (ty == ::HIR::CoreType::Usize /*&& target_is_64_bit */) )
+                {
+                    if( name == "ctlz" ) {
+                        m_of << "__builtin_clz64("; emit_arg0(); m_of << ")";
+                    }
+                    else {
+                        m_of << "__builtin_ctz64("; emit_arg0(); m_of << ")";
+                    }
+                }
+                else
+                {
+                    if( name == "ctlz" ) {
+                        m_of << "__builtin_clz("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    }
+                    else {
+                        m_of << "__builtin_ctz("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    }
+                }
+                m_of << " : sizeof("; emit_ctype(ty); m_of << ")*8)";
             }
             // - CounT POPulated
             else if( name == "ctpop" ) {
