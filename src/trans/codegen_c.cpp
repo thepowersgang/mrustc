@@ -1602,7 +1602,7 @@ namespace {
                             ::HIR::TypeRef  tmp;
                             const auto& ty = mir_res.get_lvalue_type(tmp, ve.val_l);
                             if( ty.m_data.is_Borrow() ) {
-                                m_of << "(slice_cmp("; emit_lvalue(ve.val_l); m_of << ", "; emit_lvalue(ve.val_l); m_of << ")";
+                                m_of << "(slice_cmp("; emit_lvalue(ve.val_l); m_of << ", "; emit_lvalue(ve.val_r); m_of << ")";
                                 switch(ve.op)
                                 {
                                 case ::MIR::eBinOp::EQ: m_of << " == 0";    break;
