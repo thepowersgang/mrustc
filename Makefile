@@ -20,7 +20,7 @@ TARGET_CC ?= clang
 TAIL_COUNT ?= 45
 
 .SUFFIXES:
-.PRECIOUS: output/rust/run-pass/%
+.PRECIOUS: %
 
 # - Final stage for tests run as part of the rust_tests target.
 #  VALID OPTIONS: parse, expand, mir, ALL
@@ -273,6 +273,10 @@ DISABLED_TESTS += run-pass/allocator-default run-pass/allocator-override
 DISABLED_TESTS += run-pass/associated-types-conditional-dispatch
 # - Lazy.
 DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause run-pass/autoderef-privacy
+# - Line information that isn't avaliable due to codegen
+DISABLED_TESTS += run-pass/backtrace-debuginfo run-pass/backtrace
+# - No unwind catching support
+DISABLED_TESTS += run-pass/binary-heap-panic-safe run-pass/box-of-array-of-drop-1 run-pass/box-of-array-of-drop-2
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
