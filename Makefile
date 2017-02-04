@@ -19,8 +19,10 @@ TARGET_CC ?= clang
 
 TAIL_COUNT ?= 45
 
+# - Disable implicit rules
 .SUFFIXES:
-.PRECIOUS: %
+# - Disable deleting intermediate files
+.SECONDARY:
 
 # - Final stage for tests run as part of the rust_tests target.
 #  VALID OPTIONS: parse, expand, mir, ALL
