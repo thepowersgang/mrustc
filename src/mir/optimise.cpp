@@ -331,7 +331,6 @@ namespace {
                 auto fit = impl.m_methods.find(pe.item);
                 if( fit != impl.m_methods.end() )
                 {
-                    DEBUG("- Contains method, good");
                     best_impl = &impl;
                     return true;
                 }
@@ -373,9 +372,11 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
 
     bool change_happened;
+    unsigned int pass_num = 0;
     do
     {
         change_happened = false;
+        TRACE_FUNCTION_FR("Pass " << pass_num, change_happened);
 
         // >> Simplify call graph
         MIR_Optimise_BlockSimplify(state, fcn);
@@ -395,7 +396,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Propagate/remove dead assignments
         while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
-            ;
+            change_happened = true;
 
         // >> Unify duplicate temporaries
         // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
@@ -410,6 +411,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             MIR_Validate(resolve, path, fcn, args, ret_type);
         }
         #endif
+        pass_num += 1;
     } while( change_happened );
 
 
@@ -461,9 +463,19 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
     // >> Merge blocks where a block goto-s to a single-use block.
     {
+        ::std::vector<bool> visited( fcn.blocks.size() );
         ::std::vector<unsigned int> uses( fcn.blocks.size() );
-        for(auto& block : fcn.blocks)
+        ::std::vector< ::MIR::BasicBlockId> to_visit;
+        to_visit.push_back( 0 );
+        uses[0] ++;
+        while( to_visit.size() > 0 )
         {
+            auto bb = to_visit.back(); to_visit.pop_back();
+            if( visited[bb] )
+                continue ;
+            visited[bb] = true;
+            const auto& block = fcn.blocks[bb];
+
             TU_MATCHA( (block.terminator), (e),
             (Incomplete,
                 ),
@@ -472,19 +484,28 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             (Diverge,
                 ),
             (Goto,
+                if( !visited[e] )   to_visit.push_back(e);
                 uses[e] ++;
                 ),
             (Panic,
                 ),
             (If,
+                if( !visited[e.bb0] )   to_visit.push_back(e.bb0);
+                if( !visited[e.bb1] )   to_visit.push_back(e.bb1);
                 uses[e.bb0] ++;
                 uses[e.bb1] ++;
                 ),
             (Switch,
                 for(auto& target : e.targets)
+                {
+                    if( !visited[target] )
+                        to_visit.push_back(target);
                     uses[target] ++;
+                }
                 ),
             (Call,
+                if( !visited[e.ret_block] )     to_visit.push_back(e.ret_block);
+                if( !visited[e.panic_block] )   to_visit.push_back(e.panic_block);
                 uses[e.ret_block] ++;
                 uses[e.panic_block] ++;
                 )
@@ -494,6 +515,11 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         unsigned int i = 0;
         for(auto& block : fcn.blocks)
         {
+            if( !visited[i] )
+            {
+                i++;
+                continue ;
+            }
             while( block.terminator.is_Goto() )
             {
                 auto tgt = block.terminator.as_Goto();
@@ -504,6 +530,7 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 DEBUG("Append bb " << tgt << " to bb" << i);
 
                 assert( &fcn.blocks[tgt] != &block );
+                // Move contents of source block, then set the TAGDEAD terminator to Incomplete
                 auto src_block = mv$(fcn.blocks[tgt]);
                 fcn.blocks[tgt].terminator = ::MIR::Terminator::make_Incomplete({});
 
@@ -525,6 +552,8 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 // --------------------------------------------------------------------
 bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
+    TRACE_FUNCTION;
+    
     struct H
     {
         static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn)
@@ -858,7 +887,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // - First BB ends with a call and total count is 3
             // - Statement count smaller than 10
             if( ! H::can_inline(path, *called_mir) )
+            {
+                DEBUG("Can't inline " << path);
                 continue ;
+            }
             TRACE_FUNCTION_F("Inline " << path);
 
             // Monomorph values and append
@@ -1430,6 +1462,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             //{
             //    bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::Constant::make_Uint(size_val) }));
             //    bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+            //    changed = true;
             //}
         }
         else if( tef.name == "align_of" )
@@ -1439,7 +1472,16 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             //{
             //    bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::Constant::make_Uint(size_val) }));
             //    bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+            //    changed = true;
             //}
+        }
+        // NOTE: Quick special-case for bswap<u8> (a no-op)
+        else if( tef.name == "bswap" && tef.params.m_types.at(0) == ::HIR::CoreType::U8 )
+        {
+            DEBUG("bswap<u8> is a no-op");
+            bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(te.args.at(0)) }));
+            bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+            changed = true;
         }
         else
         {
