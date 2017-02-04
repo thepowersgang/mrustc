@@ -1414,6 +1414,45 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     bool changed = false;
     TRACE_FUNCTION_FR("", changed);
 
+    // - Remove calls to `size_of` and `align_of` (replace with value if known)
+    for(auto& bb : fcn.blocks)
+    {
+        if( !bb.terminator.is_Call() )
+            continue ;
+        auto& te = bb.terminator.as_Call();
+        if( !te.fcn.is_Intrinsic() )
+            continue ;
+        const auto& tef = te.fcn.as_Intrinsic();
+        if( tef.name == "size_of" )
+        {
+            //size_t size_val = 0;
+            //if( Target_GetSizeOf(tef.params.m_types.at(0), size_val) )
+            //{
+            //    bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::Constant::make_Uint(size_val) }));
+            //    bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+            //}
+        }
+        else if( tef.name == "align_of" )
+        {
+            //size_t size_val = 0;
+            //if( Target_GetAlignOf(tef.params.m_types.at(0), size_val) )
+            //{
+            //    bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::Constant::make_Uint(size_val) }));
+            //    bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+            //}
+        }
+        else
+        {
+            // Ignore any other intrinsics
+        }
+    }
+
+    // - Propage constants within BBs
+    //  > Evaluate BinOp with known values
+    //  > Understand intrinsics like overflowing_* (with correct semantics)
+    //   > NOTE: No need to locally stitch blocks, next pass will do that
+    // TODO: Use ValState to do full constant propagation across blocks
+
     // 1. Remove based on known booleans within a single block
     // - Eliminates `if false`/`if true` branches
     for(auto& bb : fcn.blocks)
@@ -1468,6 +1507,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             changed = true;
         }
     }
+
     return changed;
 }
 
@@ -1588,8 +1628,10 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 if( e.src.is_Use() )
                 {
                     // Keep the complexity down
-                    const auto& src = e.src.as_Use();
-                    if( !( src.is_Temporary() || src.is_Variable() || src.is_Argument() ) )
+                    const auto* srcp = &e.src.as_Use();
+                    while( srcp->is_Field() )
+                        srcp = &*srcp->as_Field().val;
+                    if( !( srcp->is_Temporary() || srcp->is_Variable() || srcp->is_Argument() ) )
                         continue ;
                 }
                 // TODO: Allow any rvalue, but that currently breaks due to chaining
@@ -1947,6 +1989,8 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             // NOTE: Calls can write values, but they also have side-effects
         }
     }
+
+    // TODO: Run special case replacements for when there's `tmp/var = arg` and `rv = tmp/var`
 
     return replacement_happend;
 }
