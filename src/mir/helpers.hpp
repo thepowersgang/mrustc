@@ -48,9 +48,11 @@ public:
     const ::HIR::Crate& m_crate;
 private:
     ::FmtLambda m_path;
+public:
     const ::HIR::TypeRef&   m_ret_type;
     const args_t&    m_args;
     const ::MIR::Function&  m_fcn;
+private:
     const ::HIR::SimplePath*    m_lang_Box = nullptr;
 
     unsigned int bb_idx = 0;
