@@ -159,6 +159,7 @@ namespace {
                     }
                 }
                 args.push_back("-z"); args.push_back("muldefs");
+                args.push_back("-Wl,--gc-sections");
             }
             else
             {
