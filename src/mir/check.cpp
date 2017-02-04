@@ -84,6 +84,59 @@ namespace {
     }
 }
 
+namespace {
+    template<typename T>
+    struct RunIterable {
+        const ::std::vector<T>& list;
+        unsigned int ofs;
+        ::std::pair<size_t,size_t> cur;
+        RunIterable(const ::std::vector<T>& list):
+            list(list), ofs(0)
+        {
+            advance();
+        }
+        void advance() {
+            if( ofs < list.size() )
+            {
+                auto start = ofs;
+                while(ofs < list.size() && list[ofs] == list[start])
+                    ofs ++;
+                cur = ::std::make_pair(start, ofs-1);
+            }
+            else
+            {
+                ofs = list.size()+1;
+            }
+        }
+        RunIterable<T> begin() { return *this; }
+        RunIterable<T> end() { auto rv = *this; rv.ofs = list.size()+1; return rv; }
+        bool operator==(const RunIterable<T>& x) {
+            return x.ofs == ofs;
+        }
+        bool operator!=(const RunIterable<T>& x) {
+            return !(*this == x);
+        }
+        void operator++() {
+            advance();
+        }
+        const ::std::pair<size_t,size_t>& operator*() const {
+            return this->cur;
+        }
+        const ::std::pair<size_t,size_t>* operator->() const {
+            return &this->cur;
+        }
+    };
+    template<typename T>
+    RunIterable<T> runs(const ::std::vector<T>& x) {
+        return RunIterable<T>(x);
+    }
+}
+//template<typename T>
+//::std::ostream& operator<<(::std::ostream& os, const T& v) {
+//    v.fmt(os);
+//    return os;
+//}
+
 // [ValState] = Value state tracking (use after move, uninit, ...)
 // - [ValState] No drops or usage of uninitalised values (Uninit, Moved, or Dropped)
 // - [ValState] Temporaries are write-once.
@@ -110,11 +163,47 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         {
         }
 
+        void fmt(::std::ostream& os) {
+            os << "ValStates { ";
+            switch(ret_state)
+            {
+            case State::Invalid:    break;
+            case State::Either:
+                os << "?";
+            case State::Valid:
+                os << "rv, ";
+                break;
+            }
+            auto fmt_val_range = [&](const char* prefix, const auto& list) {
+                for(auto range : runs(list)) {
+                    switch(list[range.first])
+                    {
+                    case State::Invalid:    continue;
+                    case State::Either: os << "?";  break;
+                    case State::Valid:  break;
+                    }
+                    if( range.first == range.second ) {
+                        os << prefix << "$" << range.first << ", ";
+                    }
+                    else {
+                        os << prefix << "$" << range.first << "-" << prefix << "$" << range.second << ", ";
+                    }
+                }
+                };
+            fmt_val_range("arg", this->arguments);
+            fmt_val_range("tmp", this->temporaries);
+            fmt_val_range("var", this->variables);
+            os << "}";
+        }
+
         bool operator==(const ValStates& x) const {
-            if( ret_state != x.ret_state )  return false;
-            if( arguments != x.arguments )  return false;
+            if( ret_state   != x.ret_state   )  return false;
+            if( arguments   != x.arguments   )  return false;
+            DEBUG("arg");
             if( temporaries != x.temporaries )  return false;
-            if( variables != x.variables )  return false;
+            DEBUG("tmp");
+            if( variables   != x.variables   )  return false;
+            DEBUG("var");
             return true;
         }
 
@@ -124,21 +213,23 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
 
         bool merge(ValStates& other)
         {
+            DEBUG("this=" << FMT_CB(ss,this->fmt(ss);) << ", other=" << FMT_CB(ss,other.fmt(ss);));
             if( this->empty() )
             {
                 *this = other;
                 return true;
             }
-            else if( this->arguments == other.arguments && this->temporaries == other.temporaries && this->variables == other.variables )
+            else if( *this == other )
             {
                 return false;
             }
             else
             {
                 bool rv = false;
-                rv |= ValStates::merge_lists(this->arguments, other.arguments);
+                rv |= ValStates::merge_state(this->ret_state, other.ret_state);
+                rv |= ValStates::merge_lists(this->arguments  , other.arguments);
                 rv |= ValStates::merge_lists(this->temporaries, other.temporaries);
-                rv |= ValStates::merge_lists(this->variables, other.variables);
+                rv |= ValStates::merge_lists(this->variables  , other.variables);
                 return rv;
             }
         }
@@ -214,18 +305,29 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             }
         }
     private:
+        static bool merge_state(State& a, State& b)
+        {
+            bool rv = false;
+            if( a != b )
+            {
+                if( a == State::Either || b == State::Either ) {
+                }
+                else {
+                    rv = true;
+                }
+                a = State::Either;
+                b = State::Either;
+            }
+            return rv;
+        }
         static bool merge_lists(::std::vector<State>& a, ::std::vector<State>& b)
         {
+            DEBUG("merge_lists");
             bool rv = false;
             assert( a.size() == b.size() );
             for(unsigned int i = 0; i < a.size(); i++)
             {
-                if( a[i] != b[i] ) {
-                    if( a[i] == State::Either || b[i] == State::Either ) {
-                        rv = true;
-                    }
-                    a[i] = b[i] = State::Either;
-                }
+                rv |= merge_state(a[i], b[i]);
             }
             return rv;
         }
