@@ -167,7 +167,8 @@ crates.io/gcc-0.3.28.tar.gz:
 	curl -s https://crates.io/api/v1/crates/gcc/0.3.28/download -o $@
 
 $(LLVM_LINKAGE_FILE): output/librustc_llvm_build
-	TARGET=$(RUSTC_TARGET) HOST=$(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}') output/librustc_llvm_build
+	@mkdir -p rustc-nightly/$(RUSTC_TARGET)/cargo_out
+	cd rustc-nightly/src/librustc_llvm && (export OUT_DIR=rustc-nightly/$(RUSTC_TARGET)/cargo_out OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}') ; $(DBGTPL) ../../../output/librustc_llvm_build)
 else
 $(LLVM_LINKAGE_FILE):
 	mkdir -p $(dir $@)
