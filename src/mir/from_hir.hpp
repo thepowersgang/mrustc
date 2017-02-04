@@ -165,7 +165,7 @@ public:
     /// Obtains the result, unwrapping into a LValue (and erroring if not)
     ::MIR::LValue get_result_unwrap_lvalue(const Span& sp);
     /// Obtains the result, copying into a temporary if required
-    ::MIR::LValue get_result_in_lvalue(const Span& sp, const ::HIR::TypeRef& ty);
+    ::MIR::LValue get_result_in_lvalue(const Span& sp, const ::HIR::TypeRef& ty, bool allow_missing_value=false);
 
     // - Statements
     // Push an assignment. NOTE: This also marks the rvalue as moved

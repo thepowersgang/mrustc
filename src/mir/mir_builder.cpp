@@ -154,8 +154,12 @@ void MirBuilder::define_variable(unsigned int idx)
         BUG(sp, "LValue expected, got RValue");
     }
 }
-::MIR::LValue MirBuilder::get_result_in_lvalue(const Span& sp, const ::HIR::TypeRef& ty)
+::MIR::LValue MirBuilder::get_result_in_lvalue(const Span& sp, const ::HIR::TypeRef& ty, bool allow_missing_value/*=false*/)
 {
+    if( allow_missing_value && !block_active() )
+    {
+        return new_temporary(ty);
+    }
     auto rv = get_result(sp);
     TU_IFLET(::MIR::RValue, rv, Use, e,
         return mv$(e);

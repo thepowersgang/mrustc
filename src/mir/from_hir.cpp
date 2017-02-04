@@ -1514,13 +1514,16 @@ namespace {
 
                 if( node.m_args.size() == 1 )
                 {
-                    values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
+                    values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type, /*allow_missing_value=*/true) );
                 }
                 else
                 {
                     // NOTE: Have to allocate a new temporary because ordering matters
                     auto tmp = m_builder.new_temporary(arg->m_res_type);
-                    m_builder.push_stmt_assign( arg->span(), tmp.clone(), m_builder.get_result(arg->span()) );
+                    if( m_builder.block_active() )
+                    {
+                        m_builder.push_stmt_assign( arg->span(), tmp.clone(), m_builder.get_result(arg->span()) );
+                    }
                     values.push_back( mv$(tmp) );
                 }
 
