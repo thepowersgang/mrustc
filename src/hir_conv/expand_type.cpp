@@ -28,7 +28,7 @@
             // TODO: Better `monomorphise_type`
             return monomorphise_type_with(sp, e2.m_type, [&](const auto& gt)->const auto& {
                 const auto& ge = gt.m_data.as_Generic();
-                if( ge.binding == 0xFFFF ) {
+                if( ge.binding == GENERIC_Self ) {
                     BUG(sp, "Self encountered in expansion for " << path << " - " << e2.m_type);
                 }
                 else if( (ge.binding >> 8) == 0 ) {
@@ -77,6 +77,7 @@ class Expander:
     public ::HIR::Visitor
 {
     const ::HIR::Crate& m_crate;
+    const ::HIR::TypeRef*   m_impl_type = nullptr;
     bool m_in_expr = false;
 
 public:
@@ -87,6 +88,23 @@ public:
     void visit_type(::HIR::TypeRef& ty) override
     {
         ::HIR::Visitor::visit_type(ty);
+
+        if(const auto* te = ty.m_data.opt_Generic() )
+        {
+            if( te->binding == GENERIC_Self )
+            {
+                if( m_impl_type )
+                {
+                    DEBUG("Replace Self with " << *m_impl_type);
+                    ty = m_impl_type->clone();
+                }
+                else
+                {
+                    // NOTE: Valid for `trait` definitions.
+                    DEBUG("Self outside of an `impl` block");
+                }
+            }
+        }
 
         TU_IFLET(::HIR::TypeRef::Data, (ty.m_data), Path, (e),
             ::HIR::TypeRef  new_type = ConvertHIR_ExpandAliases_GetExpansion(m_crate, e.path, m_in_expr);
@@ -268,6 +286,19 @@ public:
 
             m_in_expr = old;
         }
+    }
+
+    void visit_type_impl(::HIR::TypeImpl& impl) override
+    {
+        m_impl_type = &impl.m_type;
+        ::HIR::Visitor::visit_type_impl(impl);
+        m_impl_type = nullptr;
+    }
+    void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
+    {
+        m_impl_type = &impl.m_type;
+        ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+        m_impl_type = nullptr;
     }
 };
 

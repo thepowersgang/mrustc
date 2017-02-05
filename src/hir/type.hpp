@@ -14,6 +14,9 @@
 #include <hir/expr_ptr.hpp>
 #include <span.hpp>
 
+/// Binding index for a Generic that indicates "Self"
+#define GENERIC_Self    0xFFFF
+
 namespace HIR {
 
 class Struct;
