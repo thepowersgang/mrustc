@@ -415,8 +415,10 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     } while( change_happened );
 
 
-    #if 0
-    MIR_Dump_Fcn(::std::cout, fcn);
+    #if 1
+    if( debug_enabled() ) {
+        MIR_Dump_Fcn(::std::cout, fcn);
+    }
     #endif
     // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
     MIR_Validate(resolve, path, fcn, args, ret_type);
@@ -1688,6 +1690,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 
                 auto is_lvalue_usage = [&](const auto& lv, auto ){ return lv == e.dst; };
 
+                // Returns `true` if the passed lvalue is used as a part of the source
                 auto is_lvalue_in_val = [&](const auto& lv) {
                     return visit_mir_lvalues(e.src, [&](const auto& slv, auto ) { return lv == slv; });
                     };
@@ -1723,7 +1726,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 
                     // Determine if source is mutated.
                     // > Assume that any mutating access of the root value counts (over-cautious)
-                    if( visit_mir_lvalues(block.statements[si2], [&](const auto& lv, auto vu){ return vu == ValUsage::Write && is_lvalue_in_val(lv); }) )
+                    if( visit_mir_lvalues(block.statements[si2], [&](const auto& lv, auto vu){ return /*vu == ValUsage::Write &&*/ is_lvalue_in_val(lv); }) )
                     {
                         stop = true;
                         break;
