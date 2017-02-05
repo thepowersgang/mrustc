@@ -395,6 +395,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             change_happened = true;
         }
 
+        // TODO: Convert `&mut *mut_foo` into `mut_foo` if the source is movable and not used afterwards
+
         // >> Propagate/remove dead assignments
         while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
             change_happened = true;
@@ -2137,6 +2139,11 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             {
                 if( e->flag_idx != ~0u )
                     used_dfs.at(e->flag_idx) = true;
+            }
+            else if( const auto* e = stmt.opt_Asm() )
+            {
+                for(const auto& val : e->outputs)
+                    assigned_lval(val.second);
             }
             else if( const auto* e = stmt.opt_SetDropFlag() )
             {
