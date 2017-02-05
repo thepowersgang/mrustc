@@ -2110,6 +2110,7 @@ bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Funct
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     ::std::vector<bool> used_temps( fcn.temporaries.size() );
+    ::std::vector<bool> used_vars( fcn.named_variables.size() );
     ::std::vector<bool> used_dfs( fcn.drop_flags.size() );
     ::std::vector<bool> visited( fcn.blocks.size() );
     ::std::vector< ::MIR::BasicBlockId> to_visit;
@@ -2121,8 +2122,10 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         const auto& block = fcn.blocks[bb];
 
         auto assigned_lval = [&](const ::MIR::LValue& lv) {
-            if( lv.is_Temporary() )
-                used_temps[lv.as_Temporary().idx] = true;
+            if(const auto* le = lv.opt_Temporary() )
+                used_temps[le->idx] = true;
+            if(const auto* le = lv.opt_Variable() )
+                used_vars[*le] = true;
             };
 
         for(const auto& stmt : block.statements)
@@ -2193,6 +2196,17 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         }
         temp_rewrite_table.push_back( used_temps[i] ? j ++ : ~0u );
     }
+    ::std::vector<unsigned int> var_rewrite_table;
+    unsigned int n_var = fcn.named_variables.size();
+    for(unsigned int i = 0, j = 0; i < n_var; i ++)
+    {
+        if( !used_vars[i] )
+        {
+            DEBUG("GC Variable(" << i << ")");
+            fcn.named_variables.erase(fcn.named_variables.begin() + j);
+        }
+        var_rewrite_table.push_back( used_vars[i] ? j ++ : ~0u );
+    }
     ::std::vector<unsigned int> df_rewrite_table;
     unsigned int n_df = fcn.drop_flags.size();
     for(unsigned int i = 0, j = 0; i < n_df; i ++)
@@ -2217,12 +2231,17 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         else
         {
             auto lvalue_cb = [&](auto& lv, auto ) {
-                if( lv.is_Temporary() ) {
-                    auto& e = lv.as_Temporary();
-                    MIR_ASSERT(state, e.idx < temp_rewrite_table.size(), "Temporary out of range - " << lv);
+                if(auto* e = lv.opt_Temporary() ) {
+                    MIR_ASSERT(state, e->idx < temp_rewrite_table.size(), "Temporary out of range - " << lv);
                     // If the table entry for this temporary is !0, it wasn't marked as used
-                    MIR_ASSERT(state, temp_rewrite_table.at(e.idx) != ~0u, "LValue " << lv << " incorrectly marked as unused");
-                    e.idx = temp_rewrite_table.at(e.idx);
+                    MIR_ASSERT(state, temp_rewrite_table.at(e->idx) != ~0u, "LValue " << lv << " incorrectly marked as unused");
+                    e->idx = temp_rewrite_table.at(e->idx);
+                }
+                if(auto* e = lv.opt_Variable() ) {
+                    MIR_ASSERT(state, *e < var_rewrite_table.size(), "Variable out of range - " << lv);
+                    // If the table entry for this variable is !0, it wasn't marked as used
+                    MIR_ASSERT(state, var_rewrite_table.at(*e) != ~0u, "LValue " << lv << " incorrectly marked as unused");
+                    *e = var_rewrite_table.at(*e);
                 }
                 return false;
                 };
