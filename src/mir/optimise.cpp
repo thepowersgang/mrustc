@@ -362,6 +362,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
 void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
@@ -411,6 +412,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             MIR_Validate(resolve, path, fcn, args, ret_type);
         }
         #endif
+
+        MIR_Optimise_GarbageCollect_Partial(state, fcn);
         pass_num += 1;
     } while( change_happened );
 
@@ -2041,6 +2044,66 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 }
 
 
+// --------------------------------------------------------------------
+// Clear all unused blocks
+// --------------------------------------------------------------------
+bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    ::std::vector<bool> visited( fcn.blocks.size() );
+    ::std::vector< ::MIR::BasicBlockId> to_visit;
+    to_visit.push_back( 0 );
+    while( to_visit.size() > 0 )
+    {
+        auto bb = to_visit.back(); to_visit.pop_back();
+        if( visited[bb] )   continue;
+        visited[bb] = true;
+        const auto& block = fcn.blocks[bb];
+
+        TU_MATCHA( (block.terminator), (e),
+        (Incomplete,
+            ),
+        (Return,
+            ),
+        (Diverge,
+            ),
+        (Goto,
+            if( !visited[e] )
+                to_visit.push_back(e);
+            ),
+        (Panic,
+            ),
+        (If,
+            if( !visited[e.bb0] )
+                to_visit.push_back(e.bb0);
+            if( !visited[e.bb1] )
+                to_visit.push_back(e.bb1);
+            ),
+        (Switch,
+            for(auto& target : e.targets)
+                if( !visited[target] )
+                    to_visit.push_back(target);
+            ),
+        (Call,
+            if( !visited[e.ret_block] )
+                to_visit.push_back(e.ret_block);
+            if( !visited[e.panic_block] )
+                to_visit.push_back(e.panic_block);
+            )
+        )
+    }
+    bool rv = false;
+    for(unsigned int i = 0; i < visited.size(); i ++)
+    {
+        if( !visited[i] )
+        {
+            DEBUG("CLEAR bb" << i);
+            fcn.blocks[i].statements.clear();
+            fcn.blocks[i].terminator = ::MIR::Terminator::make_Incomplete({});
+            rv = true;
+        }
+    }
+    return rv;
+}
 // --------------------------------------------------------------------
 // Remove all unused temporaries and blocks
 // --------------------------------------------------------------------
