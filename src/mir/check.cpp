@@ -199,11 +199,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         bool operator==(const ValStates& x) const {
             if( ret_state   != x.ret_state   )  return false;
             if( arguments   != x.arguments   )  return false;
-            DEBUG("arg");
             if( temporaries != x.temporaries )  return false;
-            DEBUG("tmp");
             if( variables   != x.variables   )  return false;
-            DEBUG("var");
             return true;
         }
 
