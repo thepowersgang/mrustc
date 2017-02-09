@@ -61,7 +61,13 @@ void Trans_Codegen(const ::std::string& outfile, const ::HIR::Crate& crate, cons
             codegen->emit_function_proto(ent.first, *ent.second->ptr, ent.second->pp);
         }
         else {
-            codegen->emit_function_ext(ent.first, *ent.second->ptr, ent.second->pp);
+            // TODO: Why would an intrinsic be in the queue?
+            // - If it's exported it does.
+            if( ent.second->ptr->m_abi == "rust-intrinsic" ) {
+            }
+            else {
+                codegen->emit_function_ext(ent.first, *ent.second->ptr, ent.second->pp);
+            }
         }
     }
     // 3. Emit statics
