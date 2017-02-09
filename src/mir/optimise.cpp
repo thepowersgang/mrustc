@@ -283,7 +283,7 @@ namespace {
                     {
                         if( impl_ref_e.params[i] )
                             best_impl_params.push_back( impl_ref_e.params[i]->clone() );
-                        else if( ! impl_ref_e.params_ph[i].m_data.is_Generic() )
+                        else if( ! impl_ref_e.params_ph[i].m_data.is_Generic() || impl_ref_e.params_ph[i].m_data.as_Generic().binding >> 8 != 2 )
                             best_impl_params.push_back( impl_ref_e.params_ph[i].clone() );
                         else
                             MIR_BUG(state, "[get_called_mir] Parameter " << i << " unset");
