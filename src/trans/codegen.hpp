@@ -8,6 +8,7 @@
 #pragma once
 
 #include "trans_list.hpp"
+#include "main_bindings.hpp"    // TransOptions
 
 namespace HIR {
     class TypeRef;
@@ -26,7 +27,7 @@ class CodeGenerator
 {
 public:
     virtual ~CodeGenerator() {}
-    virtual void finalise(bool is_executable) {}
+    virtual void finalise(bool is_executable, const TransOptions& opt) {}
 
     // Called on all types directly mentioned (e.g. variables, arguments, and fields)
     // - Inner-most types are visited first.

@@ -131,6 +131,8 @@ struct ProgramParams
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
     ::std::string   crate_name;
 
+    ::std::vector<const char*> lib_search_dirs;
+
     ::std::set< ::std::string> features;
 
     ProgramParams(int argc, char *argv[]);
@@ -440,6 +442,10 @@ int main(int argc, char *argv[])
         // - Signature Exportable (public)
         // - MIR Exportable (public generic, #[inline], or used by a either of those)
         // - Require codegen (public or used by an exported function)
+        TransOptions    trans_opt;
+        for(const char* libdir : params.lib_search_dirs ) {
+            trans_opt.library_search_dirs.push_back( libdir );
+        }
 
         // Generate code for non-generic public items (if requested)
         switch( crate_type )
@@ -451,7 +457,7 @@ int main(int argc, char *argv[])
             #if 1
             // Generate a .o
             TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", *hir_crate, items, false); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
             #endif
 
             // Save a loadable HIR dump
@@ -466,7 +472,7 @@ int main(int argc, char *argv[])
             #if 1
             // Generate a .o
             TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", *hir_crate, items, false); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
             #endif
             // Save a loadable HIR dump
             CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
@@ -482,7 +488,7 @@ int main(int argc, char *argv[])
             // - Enumerate items for translation
             TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
             // - Perform codegen
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, *hir_crate, items, true); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, trans_opt, *hir_crate, items, true); });
             // - Invoke linker?
             break;
         }
@@ -525,6 +531,21 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         else if( arg[1] != '-' )
         {
             arg ++; // eat '-'
+
+            if( *arg == 'L' ) {
+                if( arg[1] == '\0' ) {
+                    if( i == argc - 1 ) {
+                        // TODO: BAIL!
+                        exit(1);
+                    }
+                    this->lib_search_dirs.push_back( argv[++i] );
+                }
+                else {
+                    this->lib_search_dirs.push_back( arg+1 );
+                }
+                continue ;
+            }
+
             for( ; *arg; arg ++ )
             {
                 switch(*arg)

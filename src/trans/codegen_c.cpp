@@ -103,7 +103,7 @@ namespace {
 
         ~CodeGenerator_C() {}
 
-        void finalise(bool is_executable) override
+        void finalise(bool is_executable, const TransOptions& opt) override
         {
             // Emit box drop glue after everything else to avoid definition ordering issues
             for(auto& e : m_box_glue_todo)
@@ -135,8 +135,20 @@ namespace {
             ::std::vector<const char*>  args;
             args.push_back( getenv("CC") ? getenv("CC") : "gcc" );
             args.push_back("-pthread");
-            args.push_back("-O2");
-            args.push_back("-g");
+            switch(opt.opt_level)
+            {
+            case 0: break;
+            case 1:
+                args.push_back("-O1");
+                break;
+            case 2:
+                args.push_back("-O2");
+                break;
+            }
+            if( opt.emit_debug_info )
+            {
+                args.push_back("-g");
+            }
             args.push_back("-o");
             args.push_back(m_outfile_path.c_str());
             args.push_back(m_outfile_path_c.c_str());
@@ -146,6 +158,10 @@ namespace {
                 {
                     tmp.push_back(crate.second.m_filename + ".o");
                     args.push_back(tmp.back().c_str());
+                }
+                for(const auto& path : opt.library_search_dirs )
+                {
+                    args.push_back("-L"); args.push_back(path.c_str());
                 }
                 for(const auto& lib : m_crate.m_ext_libs) {
                     ASSERT_BUG(Span(), lib.name != "", "");
@@ -157,6 +173,10 @@ namespace {
                         ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
                         args.push_back("-l"); args.push_back(lib.name.c_str());
                     }
+                }
+                for(const auto& path : opt.libraries )
+                {
+                    args.push_back("-l"); args.push_back(path.c_str());
                 }
                 args.push_back("-z"); args.push_back("muldefs");
                 args.push_back("-Wl,--gc-sections");
