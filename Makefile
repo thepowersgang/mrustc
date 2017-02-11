@@ -48,7 +48,7 @@ SHELL = bash
 
 ifeq ($(DBGTPL),)
 else ifeq ($(DBGTPL),gdb)
-  DBG := echo -e "r\nbt 12\nq" | gdb --args
+  DBG := echo -e "r\nbt 14\nq" | gdb --args
 else ifeq ($(DBGTPL),valgrind)
   DBG := valgrind --leak-check=full --num-callers=35
 else ifeq ($(DBGTPL),time)
@@ -179,10 +179,20 @@ $(LLVM_LINKAGE_FILE): output/librustc_llvm_build Makefile
 	@mkdir -p $(dir $@)
 	@mkdir -p rustc-nightly/$(RUSTC_TARGET)/cargo_out
 	@echo "--- [rustc-nightly/src/librustc_llvm]"
-	$Vcd rustc-nightly/src/librustc_llvm && (export OUT_DIR=$(abspath rustc-nightly/$(RUSTC_TARGET)/cargo_out) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_TARGET); $(DBGTPL) ../../../output/librustc_llvm_build > ../../../output/librustc_llvm_build-output.txt)
+	$Vcd rustc-nightly/src/librustc_llvm && (export OUT_DIR=$(abspath rustc-nightly/$(RUSTC_TARGET)/cargo_out) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST); $(DBG) ../../../output/librustc_llvm_build > ../../../output/librustc_llvm_build-output.txt)
 	$Vcat output/librustc_llvm_build-output.txt | grep '^cargo:' > output/librustc_llvm_build-output_cargo.txt
 	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-lib=.*=' | awk -F = '{ print "#[link(name=\""$$3"\")] extern{}" }' > $@
 	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' > output/rustc_link_opts.txt
+
+output/cargo_libflate/libminiz.a: output/libflate_build Makefile
+	@echo "--- $<"
+	$Vcd rustc-nightly/src/libflate && (export OUT_DIR=$(abspath output/cargo_libflate) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST); $(DBG) ../../../$< > ../../../$<-output.txt)
+	$Vcat $<-output.txt | grep '^cargo:' > $<-output_cargo.txt
+	$Vcat $<-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' > output/rustc_link_opts-libflate.txt
+
+output/libflate_build: rustc-nightly/src/libflate/build.rs output/libstd.hir output/libgcc.hir
+	@echo "--- [MRUSTC] $@"
+	$(BIN) $< -o $@ $(PIPECMD)
 
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
@@ -202,7 +212,7 @@ output/libpanic_unwind.hir: $(call fcn_extcrate, core alloc libc unwind)
 output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/libpanic_abort/lib.rs))
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
-output/libflate.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs))
+output/libflate.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs)) output/cargo_libflate/libminiz.a
 output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs))
 
 output/liballoc_system.hir: $(call fcn_extcrate, core libc)
@@ -246,7 +256,7 @@ output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc_driver.hir output/ru
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(BIN) $< -o $@ $$(cat output/rustc_link_opts.txt) $(PIPECMD)
+	$(DBG) $(BIN) $< -o $@ $$(cat output/rustc_link_opts.txt output/rustc_link_opts-libflate.txt) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 
