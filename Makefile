@@ -169,6 +169,7 @@ output/libbuild_helper.hir: rustc-nightly/src/build_helper/lib.rs $(BIN) output/
 
 crates.io/%/src/lib.rs: crates.io/%.tar.gz
 	tar -xf $< -C crates.io/
+	@test -e $@ && touch $@
 crates.io/gcc-0.3.28.tar.gz:
 	@mkdir -p $(dir $@)
 	curl -s https://crates.io/api/v1/crates/gcc/0.3.28/download -o $@
@@ -181,7 +182,7 @@ $(LLVM_LINKAGE_FILE): output/librustc_llvm_build Makefile
 	@echo "--- [rustc-nightly/src/librustc_llvm]"
 	$Vcd rustc-nightly/src/librustc_llvm && (export OUT_DIR=$(abspath rustc-nightly/$(RUSTC_TARGET)/cargo_out) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST); $(DBG) ../../../output/librustc_llvm_build > ../../../output/librustc_llvm_build-output.txt)
 	$Vcat output/librustc_llvm_build-output.txt | grep '^cargo:' > output/librustc_llvm_build-output_cargo.txt
-	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-lib=.*=' | awk -F = '{ print "#[link(name=\""$$3"\")] extern{}" }' > $@
+	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-lib=.*=' | awk -F = '{ print "-l" $$3 }' >> output/rustc_link_opts.txt
 	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' > output/rustc_link_opts.txt
 
 output/cargo_libflate/libminiz.a: output/libflate_build Makefile
