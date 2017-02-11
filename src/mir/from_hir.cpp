@@ -918,14 +918,59 @@ namespace {
             TRACE_FUNCTION_F("_BinOp");
 
             const auto& ty_l = node.m_left->m_res_type;
+            const auto& ty_r = node.m_right->m_res_type;
+            auto res = m_builder.new_temporary(node.m_res_type);
+
             this->visit_node_ptr(node.m_left);
             auto left = m_builder.get_result_in_lvalue(node.m_left->span(), ty_l);
 
-            const auto& ty_r = node.m_right->m_res_type;
+            // Short-circuiting boolean operations
+            if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
+            {
+                auto bb_next = m_builder.new_bb_unlinked();
+                auto bb_true = m_builder.new_bb_unlinked();
+                auto bb_false = m_builder.new_bb_unlinked();
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(left), bb_true, bb_false }) );
+
+                if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
+                {
+                    // If left is true, assign result true and return
+                    m_builder.set_cur_block( bb_true );
+                    m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(true) ));
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
+
+                    // If left is false, assign result to right
+                    m_builder.set_cur_block( bb_false );
+                }
+                else
+                {
+                    // If left is false, assign result false and return
+                    m_builder.set_cur_block( bb_false );
+                    m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(false) ));
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
+
+                    // If left is true, assign result to right
+                    m_builder.set_cur_block( bb_true );
+                }
+
+                auto tmp_scope = m_builder.new_scope_temp(node.m_right->span());
+                this->visit_node_ptr(node.m_right);
+                m_builder.push_stmt_assign(node.span(), res.clone(), m_builder.get_result(node.m_right->span()));
+                m_builder.terminate_scope(node.m_right->span(), mv$(tmp_scope));
+
+                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
+
+                m_builder.set_cur_block( bb_next );
+                m_builder.set_result( node.span(), mv$(res) );
+                return ;
+            }
+            else
+            {
+            }
+
             this->visit_node_ptr(node.m_right);
             auto right = m_builder.get_result_in_lvalue(node.m_right->span(), ty_r);
 
-            auto res = m_builder.new_temporary(node.m_res_type);
             ::MIR::eBinOp   op;
             switch(node.m_op)
             {
@@ -957,40 +1002,11 @@ namespace {
                 this->generate_checked_binop(sp, res.clone(), op, mv$(left), ty_l, mv$(right), ty_r);
                 break;
 
-            case ::HIR::ExprNode_BinOp::Op::BoolAnd: {
-                auto bb_next = m_builder.new_bb_unlinked();
-                auto bb_true = m_builder.new_bb_unlinked();
-                auto bb_false = m_builder.new_bb_unlinked();
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(left), bb_true, bb_false }) );
-                // If left is false, assign result false and return
-                m_builder.set_cur_block( bb_false );
-                m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(false) ));
-                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
-
-                // If left is true, assign result to right
-                m_builder.set_cur_block( bb_true );
-                m_builder.push_stmt_assign(node.span(), res.clone(), mv$(right));    // TODO: Right doens't need to be an LValue here.
-                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
-
-                m_builder.set_cur_block( bb_next );
-                } break;
-            case ::HIR::ExprNode_BinOp::Op::BoolOr: {
-                auto bb_next = m_builder.new_bb_unlinked();
-                auto bb_true = m_builder.new_bb_unlinked();
-                auto bb_false = m_builder.new_bb_unlinked();
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(left), bb_true, bb_false }) );
-                // If left is true, assign result true and return
-                m_builder.set_cur_block( bb_true );
-                m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(true) ));
-                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
-
-                // If left is false, assign result to right
-                m_builder.set_cur_block( bb_false );
-                m_builder.push_stmt_assign(node.span(), res.clone(), mv$(right));    // TODO: Right doens't need to be an LValue here.
-                m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
-
-                m_builder.set_cur_block( bb_next );
-                } break;
+            // Short-circuiting boolean operations
+            case ::HIR::ExprNode_BinOp::Op::BoolAnd:
+            case ::HIR::ExprNode_BinOp::Op::BoolOr:
+                BUG(node.span(), "");
+                break;
             }
             m_builder.set_result( node.span(), mv$(res) );
         }
