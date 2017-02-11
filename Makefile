@@ -148,10 +148,15 @@ fn_getdeps = \
 
 # --- rustc: librustc_llvm ---
 RUSTC_TARGET := x86_64-unknown-linux-gnu
+RUSTC_HOST := $(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}')
 LLVM_LINKAGE_FILE := $(abspath rustc-nightly/$(RUSTC_TARGET)/rt/llvmdeps.rs)
+
 output/librustc_llvm.hir: $(LLVM_LINKAGE_FILE)
 
-ifeq ($(USE_BUILD_SCRIPT),yes)
+#
+# librustc_llvm build script
+#
+RUSTC_LLVM_LINKAGE: $(LLVM_LINKAGE_FILE)
 output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs output/libstd.hir output/libgcc.hir output/libbuild_helper.hir
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ $(PIPECMD)
@@ -168,14 +173,16 @@ crates.io/gcc-0.3.28.tar.gz:
 	@mkdir -p $(dir $@)
 	curl -s https://crates.io/api/v1/crates/gcc/0.3.28/download -o $@
 
+output/rustc_link_opts.txt: $(LLVM_LINKAGE_FILE)
+	@
 $(LLVM_LINKAGE_FILE): output/librustc_llvm_build Makefile
+	@mkdir -p $(dir $@)
 	@mkdir -p rustc-nightly/$(RUSTC_TARGET)/cargo_out
-	cd rustc-nightly/src/librustc_llvm && (export OUT_DIR=rustc-nightly/$(RUSTC_TARGET)/cargo_out OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}') ; $(DBGTPL) ../../../output/librustc_llvm_build | grep 'cargo:rustc-link-lib=.*=' | awk -F = '{ print "#[link(name=\""$$3"\")] extern{}" }' > $@)
-else
-$(LLVM_LINKAGE_FILE):
-	mkdir -p $(dir $@)
-	echo > $@
-endif
+	@echo "--- [rustc-nightly/src/librustc_llvm]"
+	$Vcd rustc-nightly/src/librustc_llvm && (export OUT_DIR=$(abspath rustc-nightly/$(RUSTC_TARGET)/cargo_out) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_TARGET); $(DBGTPL) ../../../output/librustc_llvm_build > ../../../output/librustc_llvm_build-output.txt)
+	$Vcat output/librustc_llvm_build-output.txt | grep '^cargo:' > output/librustc_llvm_build-output_cargo.txt
+	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-lib=.*=' | awk -F = '{ print "#[link(name=\""$$3"\")] extern{}" }' > $@
+	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' > output/rustc_link_opts.txt
 
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
@@ -235,11 +242,11 @@ output/librustc_bitflags.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUS
 output/librustc_privacy.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_privacy/lib.rs))
 output/librustc_platform_intrinsics.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_platform_intrinsics/lib.rs))
 
-output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc.hir output/librustc_driver.hir
+output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc_driver.hir output/rustc_link_opts.txt
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+	$(DBG) $(BIN) $< -o $@ $$(cat output/rustc_link_opts.txt) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 
