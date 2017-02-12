@@ -252,9 +252,21 @@ namespace {
                     mv$(rval)
                     }) );
                 } break;
-            case ::MIR::Statement::TAG_Asm:
-                TODO(params.sp, "Monormorphise asm!");
-                break;
+            case ::MIR::Statement::TAG_Asm: {
+                const auto& e = stmt.as_Asm();
+                DEBUG("- asm! \"" << e.tpl << "\"");
+                ::std::vector< ::std::pair<::std::string, ::MIR::LValue>>   new_out, new_in;
+                new_out.reserve( e.outputs.size() );
+                for(auto& ent : e.outputs)
+                    new_out.push_back(::std::make_pair( ent.first, monomorph_LValue(resolve, params, ent.second) ));
+                new_in.reserve( e.inputs.size() );
+                for(auto& ent : e.inputs)
+                    new_in.push_back(::std::make_pair( ent.first, monomorph_LValue(resolve, params, ent.second) ));
+
+                statements.push_back( ::MIR::Statement::make_Asm({
+                    e.tpl, mv$(new_out), mv$(new_in), e.clobbers, e.flags
+                    }) );
+                } break;
             }
         }
 
