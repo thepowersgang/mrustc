@@ -11,8 +11,9 @@ addons:
     - zlib1g-dev
 
 install:
-  # Build mrustc
+ # Build mrustc
  - CC=gcc-6 CXX=g++-6 make
+ - make rustc-nightly/
 
 # Tests! (check that they parse, and keep going)
 script:
