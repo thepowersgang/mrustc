@@ -172,7 +172,7 @@ crates.io/%/src/lib.rs: crates.io/%.tar.gz
 	@test -e $@ && touch $@
 crates.io/gcc-0.3.28.tar.gz:
 	@mkdir -p $(dir $@)
-	curl -s https://crates.io/api/v1/crates/gcc/0.3.28/download -o $@
+	curl -LsS https://crates.io/api/v1/crates/gcc/0.3.28/download -o $@
 
 output/rustc_link_opts.txt: $(LLVM_LINKAGE_FILE)
 	@
@@ -268,7 +268,7 @@ $(RUSTCSRC): rust-nightly-date
 		echo "Rust version on disk is '$${DISK_RUST_DATE}'. Downloading $${DL_RUST_DATE}."; \
 		rm -f rustc-nightly-src.tar.gz; \
 		rm -rf rustc-nightly; \
-		curl -s https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz; \
+		curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz; \
 		tar -xf rustc-nightly-src.tar.gz --transform 's~^rustc-nightly-src~rustc-nightly~'; \
 		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
 	fi
