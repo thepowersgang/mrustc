@@ -2370,6 +2370,13 @@ namespace {
             else if( name == "fmaf32" || name == "fmaf64" ) {
                 emit_lvalue(e.ret_val); m_of << " = fma" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
             }
+            // --- Volatile Load/Store
+            else if( name == "volatile_load" ) {
+                emit_lvalue(e.ret_val); m_of << " = *(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0));
+            }
+            else if( name == "volatile_store" ) {
+                m_of << "*(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << " = "; emit_lvalue(e.args.at(1));
+            }
             // --- Atomics!
             // > Single-ordering atomics
             else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
