@@ -157,7 +157,7 @@ output/librustc_llvm.hir: $(LLVM_LINKAGE_FILE)
 # librustc_llvm build script
 #
 RUSTC_LLVM_LINKAGE: $(LLVM_LINKAGE_FILE)
-output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs output/libstd.hir output/libgcc.hir output/libbuild_helper.hir
+output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs  $(call fcn_extcrate, std gcc build_helper alloc_system panic_abort)
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ $(PIPECMD)
 output/libgcc.hir: crates.io/gcc-0.3.28/src/lib.rs $(BIN) output/libstd.hir
@@ -191,7 +191,7 @@ output/cargo_libflate/libminiz.a: output/libflate_build Makefile
 	$Vcat $<-output.txt | grep '^cargo:' > $<-output_cargo.txt
 	$Vcat $<-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' > output/rustc_link_opts-libflate.txt
 
-output/libflate_build: rustc-nightly/src/libflate/build.rs output/libstd.hir output/libgcc.hir
+output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, std gcc alloc_system panic_abort)
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ $(PIPECMD)
 
@@ -263,6 +263,9 @@ output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc_driver.hir output/ru
 	$(DBG) $(BIN) $< -o $@ $$(cat output/rustc_link_opts.txt output/rustc_link_opts-libflate.txt) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
+
+.PHONY: RUSTCSRC
+RUSTCSRC: $(RUSTCSRC)
 
 $(RUSTCSRC): rust-nightly-date
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \

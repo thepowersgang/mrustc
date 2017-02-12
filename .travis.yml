@@ -12,8 +12,8 @@ addons:
 
 install:
  # Build mrustc
+ - make RUSTCSRC
  - CC=gcc-6 CXX=g++-6 make
- - make rustc-nightly/
 
 # Tests! (check that they parse, and keep going)
 script:
