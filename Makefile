@@ -198,6 +198,9 @@ output/libflate_build: rustc-nightly/src/libflate/build.rs output/libstd.hir out
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
 
+# Optional: linux only
+output/libstd.hir: output/libs/libbacktrace.a
+
 output/libarena.hir: output/libstd.hir
 output/liballoc.hir: output/libcore.hir
 output/libstd_unicode.hir: output/libcore.hir
@@ -273,6 +276,14 @@ $(RUSTCSRC): rust-nightly-date
 		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
 	fi
 
+# - libbacktrace, needed for libstd on linux
+output/libs/libbacktrace.a: $(RUSTCSRC)src/libbacktrace/Makefile
+	@mkdir -p $(dir $@)
+	@cd $(RUSTCSRC)src/libbacktrace && make INCDIR=.
+	@cp $(RUSTCSRC)src/libbacktrace/.libs/libbacktrace.a $@
+$(RUSTCSRC)src/libbacktrace/Makefile:
+	@echo "[configure] $(RUSTCSRC)src/libbacktrace"
+	@cd $(RUSTCSRC)src/libbacktrace && ./configure --target=$(RUSTC_HOST) --host=$(RUSTC_HOST) --build=$(RUSTC_HOST)
 
 # 
 # RUSTC TESTS
@@ -307,7 +318,7 @@ rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN) output/liballoc_system.hir output/libpanic_abort.hir
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+	$(DBG) $(BIN) $< -L output/libs -o $@ $(PIPECMD)
 	@echo "--- [$@]"
 	@./$@
 
@@ -317,7 +328,7 @@ output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output
 	@mkdir -p $(dir $@)
 	@echo "=== TEST $(patsubst output/rust/%,%,$@)"
 	@echo "--- [MRUSTC] -o $@"
-	$V$(BIN) $< -o $@ --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
+	$V$(BIN) $< -o $@ -L output/libs --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
 output/rust/%_out.txt: output/rust/%
 	@echo "--- [$<]"
 	@./$< > $@ || (tail -n 1 $@; false)
