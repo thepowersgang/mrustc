@@ -310,8 +310,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             DEBUG("Arm diverged");
             // Nothing need be done, as the block diverged.
             // - Drops were handled by the diverging block (if not, the below will panic)
-            { auto _ = mv$(tmp_scope); }
-            { auto _ = mv$(drop_scope); }
+            builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope), false );
+            builder.terminate_scope( arm.m_code->span(), mv$(drop_scope), false );
             builder.end_split_arm( arm.m_code->span(), match_scope, false );
         }
         else {

@@ -616,9 +616,11 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
     }
 
     auto& scope_def = m_scopes.at(scope.idx);
-    ASSERT_BUG( sp, scope_def.complete == false, "Terminating scope which is already terminated" );
+    //if( emit_cleanup ) {
+    //    ASSERT_BUG( sp, scope_def.complete == false, "Terminating scope which is already terminated" );
+    //}
 
-    if( emit_cleanup )
+    if( emit_cleanup && scope_def.complete == false )
     {
         // 2. Emit drops for all non-moved variables (share with below)
         drop_scope_values(scope_def);
@@ -663,7 +665,6 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope,
         if( !is_conditional ) {
             DEBUG("Complete scope " << idx);
             drop_scope_values(scope_def);
-            m_scope_stack.pop_back();
             complete_scope(scope_def);
         }
         else {
@@ -1029,23 +1030,23 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
 void MirBuilder::end_split_arm_early(const Span& sp)
 {
     TRACE_FUNCTION_F("");
+    size_t i = m_scope_stack.size();
     // Terminate all scopes until a split is found.
-    while( ! m_scope_stack.empty() && ! (m_scopes.at( m_scope_stack.back() ).data.is_Split() || m_scopes.at( m_scope_stack.back() ).data.is_Loop()) )
+    while( i -- && ! (m_scopes.at(m_scope_stack[i]).data.is_Split() || m_scopes.at(m_scope_stack[i]).data.is_Loop()) )
     {
-        auto& scope_def = m_scopes[m_scope_stack.back()];
+        auto& scope_def = m_scopes[m_scope_stack[i]];
         // Fully drop the scope
-        DEBUG("Complete scope " << m_scope_stack.back());
+        DEBUG("Complete scope " << m_scope_stack[i]);
         drop_scope_values(scope_def);
-        m_scope_stack.pop_back();
         complete_scope(scope_def);
     }
 
-    if( !m_scope_stack.empty() )
+    if( i < m_scope_stack.size() )
     {
-        if( m_scopes.at( m_scope_stack.back() ).data.is_Split() )
+        if( m_scopes.at( m_scope_stack[i] ).data.is_Split() )
         {
             DEBUG("Early terminate split scope " << m_scope_stack.back());
-            auto& sd = m_scopes[ m_scope_stack.back() ];
+            auto& sd = m_scopes[ m_scope_stack[i] ];
             auto& sd_split = sd.data.as_Split();
             sd_split.arms.back().has_early_terminated = true;
 

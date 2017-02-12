@@ -383,16 +383,14 @@ namespace {
 
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
-                    if( m_builder.has_result() ) {
-                        // TODO: Drop.
-                        m_builder.get_result(sp);
-                    }
 
-                    if( m_builder.block_active() ) {
+                    if( m_builder.block_active() || m_builder.has_result() ) {
+                        // TODO: Emit a drop
+                        m_builder.get_result(sp);
                         m_builder.terminate_scope(sp, mv$(stmt_scope));
                     }
                     else {
-                        auto _ = mv$(stmt_scope);
+                        m_builder.terminate_scope(sp, mv$(stmt_scope), false);
 
                         m_builder.set_cur_block( m_builder.new_bb_unlinked() );
                         diverged = true;
@@ -422,8 +420,8 @@ namespace {
                     }
                     else
                     {
-                        { auto _ = mv$(stmt_scope); }
-                        { auto _ = mv$(scope); }
+                        m_builder.terminate_scope( node.span(), mv$(stmt_scope), false );
+                        m_builder.terminate_scope( node.span(), mv$(scope), false );
                         // Block diverged in final node.
                     }
                 }
@@ -431,7 +429,7 @@ namespace {
                 {
                     if( diverged )
                     {
-                        auto _ = mv$(scope);
+                        m_builder.terminate_scope( node.span(), mv$(scope), false );
                         m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
                         // Don't set a result if there's no block.
                     }
@@ -617,8 +615,8 @@ namespace {
                     m_builder.terminate_scope( node.span(), mv$(scope) );
                 }
                 else {
-                    { auto _ = mv$(tmp_scope); }
-                    { auto _ = mv$(scope); }
+                    m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
+                    m_builder.terminate_scope( node.span(), mv$(scope), false );
                 }
             }
             else {
@@ -726,7 +724,7 @@ namespace {
                     m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                 }
                 else {
-                    { auto _ = mv$(stmt_scope); }
+                    m_builder.terminate_scope(node.span(), mv$(stmt_scope), false);
                     m_builder.end_split_arm(node.span(), scope, false);
                 }
             }
@@ -745,7 +743,7 @@ namespace {
                     m_builder.end_block( ::MIR::Terminator::make_Goto(next_block) );
                 }
                 else {
-                    { auto _ = mv$(stmt_scope); }
+                    m_builder.terminate_scope(node.span(), mv$(stmt_scope), false);
                     m_builder.end_split_arm(node.span(), scope, false);
                 }
             }
