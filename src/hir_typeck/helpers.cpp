@@ -2311,7 +2311,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         // NOTE: Expected behavior is for Ivars to return false
         // TODO: Should they return Compare::Fuzzy instead?
         if( type.m_data.is_Infer() ) {
-            return false;
+            return callback( ImplRef(&type, params_ptr, &null_assoc), ::HIR::Compare::Fuzzy );
         }
 
         const ::HIR::TraitMarkings* markings = nullptr;
