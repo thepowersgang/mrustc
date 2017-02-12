@@ -237,12 +237,11 @@ bool StaticTraitResolve::find_impl(
 
             auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
 
-            for(const auto& bound : aty_def.m_trait_bounds)
-            {
+            auto check_bound = [&](const ::HIR::TraitPath& bound) {
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
-                DEBUG(": " << bound.m_path.m_path << b_params_mono);
+                DEBUG("[find_impl] : " << bound.m_path.m_path << b_params_mono);
 
                 if( bound.m_path.m_path == trait_path )
                 {
@@ -279,9 +278,40 @@ bool StaticTraitResolve::find_impl(
                         DEBUG("impl " << trait_path << i_params << " for " << type << " -- desired " << trait_path << *trait_params);
                         return found_cb( ImplRef(type.clone(), i_params.clone(), {}), false );
                     });
-                if( ret )
+                return ret;
+                };
+
+            for(const auto& bound : aty_def.m_trait_bounds)
+            {
+                if( check_bound(bound) )
                     return true;
             }
+
+            // Check `where` clauses on the trait too
+            for(const auto& bound : trait_ref.m_params.m_bounds)
+            {
+                if( !bound.is_TraitBound() )   continue;
+                const auto& be = bound.as_TraitBound();
+
+                DEBUG("be.type = " << be.type);
+                if( !be.type.m_data.is_Path() )
+                    continue;
+                if( !be.type.m_data.as_Path().path.m_data.is_UfcsKnown() )
+                    continue ;
+                {
+                    const auto& pe2 = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
+                    if( *pe2.type != ::HIR::TypeRef("Self",GENERIC_Self) )
+                        continue ;
+                    if( pe2.trait.m_path != pe.trait.m_path )
+                        continue ;
+                    if( pe2.item != pe.item )
+                        continue ;
+                }
+
+                if( check_bound(be.trait) )
+                    return true;
+            }
+
             DEBUG("- No bounds matched");
         }
     )
