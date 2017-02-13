@@ -132,6 +132,7 @@ struct ProgramParams
     ::std::string   crate_name;
 
     ::std::vector<const char*> lib_search_dirs;
+    ::std::vector<const char*> libraries;
 
     ::std::set< ::std::string> features;
 
@@ -446,6 +447,9 @@ int main(int argc, char *argv[])
         for(const char* libdir : params.lib_search_dirs ) {
             trans_opt.library_search_dirs.push_back( libdir );
         }
+        for(const char* libdir : params.libraries ) {
+            trans_opt.libraries.push_back( libdir );
+        }
 
         // Generate code for non-generic public items (if requested)
         switch( crate_type )
@@ -532,7 +536,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         {
             arg ++; // eat '-'
 
-            if( *arg == 'L' ) {
+            switch( *arg )
+            {
+            case 'L':
                 if( arg[1] == '\0' ) {
                     if( i == argc - 1 ) {
                         // TODO: BAIL!
@@ -544,6 +550,21 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     this->lib_search_dirs.push_back( arg+1 );
                 }
                 continue ;
+            case 'l':
+                if( arg[1] == '\0' ) {
+                    if( i == argc - 1 ) {
+                        // TODO: BAIL!
+                        exit(1);
+                    }
+                    this->libraries.push_back( argv[++i] );
+                }
+                else {
+                    this->libraries.push_back( arg+1 );
+                }
+                continue ;
+
+            default:
+                break;
             }
 
             for( ; *arg; arg ++ )
