@@ -149,6 +149,9 @@ fn_getdeps = \
 # --- rustc: librustc_llvm ---
 RUSTC_TARGET := x86_64-unknown-linux-gnu
 RUSTC_HOST := $(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}')
+ifeq ($(RUSTC_HOST),x86_64-linux-gnu)
+	RUSTC_HOST := x86_64-unknown-linux-gnu
+endif
 LLVM_LINKAGE_FILE := $(abspath rustc-nightly/$(RUSTC_TARGET)/rt/llvmdeps.rs)
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 
@@ -199,6 +202,8 @@ output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, 
 
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86 --cfg cargobuild
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
+
+ENV_output/librustc.hir := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_HOST)
 
 # Optional: linux only
 output/libstd.hir: output/libs/libbacktrace.a
