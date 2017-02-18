@@ -150,6 +150,7 @@ fn_getdeps = \
 RUSTC_TARGET := x86_64-unknown-linux-gnu
 RUSTC_HOST := $(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}')
 LLVM_LINKAGE_FILE := $(abspath rustc-nightly/$(RUSTC_TARGET)/rt/llvmdeps.rs)
+LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 
 output/librustc_llvm.hir: $(LLVM_LINKAGE_FILE)
 
@@ -159,7 +160,7 @@ output/librustc_llvm.hir: $(LLVM_LINKAGE_FILE)
 RUSTC_LLVM_LINKAGE: $(LLVM_LINKAGE_FILE)
 output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs  $(call fcn_extcrate, std gcc build_helper alloc_system panic_abort)
 	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ $(PIPECMD)
+	$(BIN) $< -o $@ -L output/libs $(PIPECMD)
 output/libgcc.hir: crates.io/gcc-0.3.28/src/lib.rs $(BIN) output/libstd.hir
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ --crate-type rlib --crate-name gcc $(PIPECMD)
@@ -176,16 +177,17 @@ crates.io/gcc-0.3.28.tar.gz:
 
 output/rustc_link_opts.txt: $(LLVM_LINKAGE_FILE)
 	@
-$(LLVM_LINKAGE_FILE): output/librustc_llvm_build Makefile
+$(LLVM_LINKAGE_FILE): output/librustc_llvm_build $(LLVM_CONFIG)
 	@mkdir -p $(dir $@)
 	@mkdir -p rustc-nightly/$(RUSTC_TARGET)/cargo_out
 	@echo "--- [rustc-nightly/src/librustc_llvm]"
-	$Vcd rustc-nightly/src/librustc_llvm && (export OUT_DIR=$(abspath rustc-nightly/$(RUSTC_TARGET)/cargo_out) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST); $(DBG) ../../../output/librustc_llvm_build > ../../../output/librustc_llvm_build-output.txt)
+	$Vcd rustc-nightly/src/librustc_llvm && (export OUT_DIR=$(abspath rustc-nightly/$(RUSTC_TARGET)/cargo_out) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST) LLVM_CONFIG=$(abspath $(LLVM_CONFIG)); $(DBG) ../../../output/librustc_llvm_build > ../../../output/librustc_llvm_build-output.txt)
 	$Vcat output/librustc_llvm_build-output.txt | grep '^cargo:' > output/librustc_llvm_build-output_cargo.txt
-	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-lib=.*=' | awk -F = '{ print "-l" $$3 }' >> output/rustc_link_opts.txt
-	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' > output/rustc_link_opts.txt
+	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-lib=.*=' | grep -v =rustllvm | awk -F = '{ print "-l" $$3 }' > output/rustc_link_opts.txt
+	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' >> output/rustc_link_opts.txt
+	@touch $@
 
-output/cargo_libflate/libminiz.a: output/libflate_build Makefile
+output/cargo_libflate/libminiz.a: output/libflate_build
 	@echo "--- $<"
 	$Vcd rustc-nightly/src/libflate && (export OUT_DIR=$(abspath output/cargo_libflate) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST); $(DBG) ../../../$< > ../../../$<-output.txt)
 	$Vcat $<-output.txt | grep '^cargo:' > $<-output_cargo.txt
@@ -193,9 +195,9 @@ output/cargo_libflate/libminiz.a: output/libflate_build Makefile
 
 output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, std gcc alloc_system panic_abort)
 	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ $(PIPECMD)
+	$(BIN) $< -o $@ -L output/libs $(PIPECMD)
 
-ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86
+ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86 --cfg cargobuild
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
 
 # Optional: linux only
@@ -260,7 +262,7 @@ output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc_driver.hir output/ru
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(BIN) $< -o $@ $$(cat output/rustc_link_opts.txt output/rustc_link_opts-libflate.txt) $(PIPECMD)
+	$V$(DBG) $(BIN) $< -o $@ -L output/libs $$(cat output/rustc_link_opts.txt output/rustc_link_opts-libflate.txt) -l stdc++ $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 
@@ -287,6 +289,22 @@ output/libs/libbacktrace.a: $(RUSTCSRC)src/libbacktrace/Makefile
 $(RUSTCSRC)src/libbacktrace/Makefile:
 	@echo "[configure] $(RUSTCSRC)src/libbacktrace"
 	@cd $(RUSTCSRC)src/libbacktrace && ./configure --target=$(RUSTC_HOST) --host=$(RUSTC_HOST) --build=$(RUSTC_HOST)
+
+
+LLVM_CMAKE_OPTS := LLVM_TARGET_ARCH=$(firstword $(subst -, ,$(RUSTC_TARGET))) LLVM_DEFAULT_TARGET_TRIPLE=$(RUSTC_TARGET)
+LLVM_CMAKE_OPTS += LLVM_TARGETS_TO_BUILD=X86#;ARM;AArch64;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
+LLVM_CMAKE_OPTS += LLVM_ENABLE_ASSERTIONS=OFF
+LLVM_CMAKE_OPTS += LLVM_INCLUDE_EXAMPLES=OFF LLVM_INCLUDE_TESTS=OFF LLVM_INCLUDE_DOCS=OFF
+LLVM_CMAKE_OPTS += LLVM_ENABLE_ZLIB=OFF LLVM_ENABLE_TERMINFO=OFF LLVM_ENABLE_LIBEDIT=OFF WITH_POLLY=OFF
+LLVM_CMAKE_OPTS += CMAKE_CXX_COMPILER="g++" CMAKE_C_COMPILER="gcc" 
+LLVM_PAR_LEVEL ?= 
+
+$(LLVM_CONFIG): $(RUSTCSRC)build/Makefile
+		$Vcd $(RUSTCSRC)build && make $(LLVM_PAR_LEVEL)
+$(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
+		@mkdir -p $(RUSTCSRC)build
+		$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
+
 
 # 
 # RUSTC TESTS
