@@ -335,6 +335,8 @@ DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause run-pass/
 DISABLED_TESTS += run-pass/backtrace-debuginfo run-pass/backtrace
 # - No unwind catching support
 DISABLED_TESTS += run-pass/binary-heap-panic-safe run-pass/box-of-array-of-drop-1 run-pass/box-of-array-of-drop-2
+# - Infinite loops
+DISABLED_TESTS += run-pass/issue-16671
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
