@@ -17,3 +17,7 @@ TODO:
  - Could be a good idea to do as part of changing HIR::TraitImpl to only contain the impl data
  - May not be too useful due to argument monomorphisation.
 - Optimise typecheck.
+
+
+- MIR: Add a Parameter type that is either LValue, Constant
+ > For any place a LValue is currently used, but a constant is valid
