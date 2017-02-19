@@ -1283,6 +1283,7 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         {
             // Leave generation of struct/enum constructors to codgen
             // TODO: Add to a list of required constructors
+            state.rv.m_constructors.insert( mv$(path_mono.m_data.as_Generic()) );
         }
         // - <T as U>::#vtable
         else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().item == "#vtable" )

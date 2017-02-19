@@ -398,30 +398,6 @@ namespace {
                 )
             )
             m_of << "};\n";
-            // Crate constructor function
-            if( !has_unsized )
-            {
-                TU_IFLET(::HIR::Struct::Data, item.m_data, Tuple, e,
-                    m_of << "struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        if(i != 0)
-                            m_of << ", ";
-                        emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
-                    }
-                    m_of << ") {\n";
-                    m_of << "\tstruct s_" << Trans_Mangle(p) << " rv = {";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        if(i != 0)
-                            m_of << ",";
-                        m_of << "\n\t\t_" << i;
-                    }
-                    m_of << "\n\t\t};\n";
-                    m_of << "\treturn rv;\n";
-                    m_of << "}\n";
-                )
-            }
 
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
@@ -608,13 +584,6 @@ namespace {
                 m_of << "struct e_" << Trans_Mangle(p) << " {\n";
                 m_of << "\t"; emit_ctype(data_type, FMT_CB(s, s << "_0";)); m_of << ";\n";
                 m_of << "};\n";
-
-                m_of << "struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(::HIR::GenericPath(p.m_path + data_var.first, p.m_params.clone())) << "(";
-                emit_ctype( data_type, FMT_CB(ss, ss << "_0";) );
-                m_of << ") {\n";
-                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { ._0 = _0 };\n";
-                m_of << "\treturn rv;\n";
-                m_of << "}\n";
             }
             else if( item.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(item.m_variants.begin(), item.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
             {
@@ -677,32 +646,6 @@ namespace {
                 }
                 m_of << "\t} DATA;\n";
                 m_of << "};\n";
-
-                // Constructors for tuple variants
-                for(unsigned int var_idx = 0; var_idx < item.m_variants.size(); var_idx ++)
-                {
-                    const auto& var = item.m_variants[var_idx];
-                    TU_IFLET(::HIR::Enum::Variant, var.second, Tuple, e,
-                        m_of << "struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(::HIR::GenericPath(p.m_path + var.first, p.m_params.clone())) << "(";
-                        for(unsigned int i = 0; i < e.size(); i ++)
-                        {
-                            if(i != 0)
-                                m_of << ", ";
-                            emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
-                        }
-                        m_of << ") {\n";
-                        m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx << ", .DATA = {.var_" << var_idx << " = {";
-                        for(unsigned int i = 0; i < e.size(); i ++)
-                        {
-                            if(i != 0)
-                                m_of << ",";
-                            m_of << "\n\t\t_" << i;
-                        }
-                        m_of << "\n\t\t}}};\n";
-                        m_of << "\treturn rv;\n";
-                        m_of << "}\n";
-                    )
-                }
             }
 
             // ---
@@ -792,6 +735,91 @@ namespace {
             {
                 m_enum_repr_cache.insert( ::std::make_pair( p.clone(), mv$(nonzero_path) ) );
             }
+        }
+
+        void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) override
+        {
+            TRACE_FUNCTION_F(path << " var_idx=" << var_idx);
+            ::HIR::TypeRef  tmp;
+            auto monomorph = [&](const auto& x)->const auto& {
+                if( monomorphise_type_needed(x) ) {
+                    tmp = monomorphise_type(sp, item.m_params, path.m_params, x);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return x;
+                }
+                };
+
+            auto p = path.clone();
+            p.m_path.m_components.pop_back();
+            const auto& var = item.m_variants[var_idx];
+            ASSERT_BUG(sp, var.second.is_Tuple(), "");
+            const auto& e = var.second.as_Tuple();
+
+
+            m_of << "struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(path) << "(";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ", ";
+                emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+            }
+            m_of << ") {\n";
+            auto it = m_enum_repr_cache.find(p);
+            if( it != m_enum_repr_cache.end() )
+            {
+                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { ._0 = _0 };\n";
+            }
+            else
+            {
+                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx << ", .DATA = {.var_" << var_idx << " = {";
+                for(unsigned int i = 0; i < e.size(); i ++)
+                {
+                    if(i != 0)
+                        m_of << ",";
+                    m_of << "\n\t\t_" << i;
+                }
+                m_of << "\n\t\t}}};\n";
+            }
+            m_of << "\treturn rv;\n";
+            m_of << "}\n";
+        }
+        void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
+        {
+            TRACE_FUNCTION_F(p);
+            ::HIR::TypeRef  tmp;
+            auto monomorph = [&](const auto& x)->const auto& {
+                if( monomorphise_type_needed(x) ) {
+                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return x;
+                }
+                };
+            // Crate constructor function
+            const auto& e = item.m_data.as_Tuple();
+            m_of << "struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ", ";
+                emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
+            }
+            m_of << ") {\n";
+            m_of << "\tstruct s_" << Trans_Mangle(p) << " rv = {";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ",";
+                m_of << "\n\t\t_" << i;
+            }
+            m_of << "\n\t\t};\n";
+            m_of << "\treturn rv;\n";
+            m_of << "}\n";
         }
 
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override

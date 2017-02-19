@@ -10,6 +10,7 @@
 #include <hir/hir.hpp>
 #include <mir/mir.hpp>
 #include <mir/operations.hpp>
+#include <algorithm>
 
 #include "codegen.hpp"
 #include "monomorphise.hpp"
@@ -50,6 +51,35 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
     for(const auto& ty : list.m_typeids)
     {
         codegen->emit_type_id(ty);
+    }
+    // Emit required constructor methods (and other wrappers)
+    for(const auto& path : list.m_constructors)
+    {
+        // Get the item type
+        // - Function (must be an intrinsic)
+        // - Struct (must be a tuple struct)
+        // - Enum variant (must be a tuple variant)
+        const ::HIR::Module* mod_ptr = nullptr;
+        if(path.m_path.m_components.size() > 1)
+        {
+            const auto& nse = crate.get_typeitem_by_path(sp, path.m_path, false, true);
+            if(const auto* e = nse.opt_Enum())
+            {
+                auto it = ::std::find_if(e->m_variants.begin(), e->m_variants.end(), [&](const auto& x){ return x.first == path.m_path.m_components.back(); });
+                auto var_idx = it - e->m_variants.begin();
+                codegen->emit_constructor_enum(sp, path, *e, var_idx);
+                continue ;
+            }
+            mod_ptr = &nse.as_Module();
+        }
+        else
+        {
+            mod_ptr = &crate.get_mod_by_path(sp, path.m_path, true);
+        }
+
+        // Not an enum, currently must be a struct
+        const auto& te = mod_ptr->m_mod_items.at(path.m_path.m_components.back())->ent;
+        codegen->emit_constructor_struct(sp, path, te.as_Struct());
     }
 
     // 2. Emit function prototypes
