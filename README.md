@@ -26,10 +26,10 @@ Current Features
 Short-Term Plans
 ===
 - Parse and Typecheck all run-pass tests
+- Compile a running rustc
 
 Medium-Term Goals
 ===
-- Compile rustc
 - Extensive MIR optimisations
 - Propagate lifetime annotations so that MIR can include a borrow checker
 
@@ -38,5 +38,6 @@ Progress
 ===
 - Compiles the standard library into loadable MIR
 - Compiles the "hello, world" test into compilable and running C code
-- Compiles `rustc` through to failing to link
+- Compiles `rustc`
+ - Generated code is likely not correct
 
