@@ -289,7 +289,7 @@ $(RUSTCSRC): rust-nightly-date
 # - libbacktrace, needed for libstd on linux
 output/libs/libbacktrace.a: $(RUSTCSRC)src/libbacktrace/Makefile
 	@mkdir -p $(dir $@)
-	@cd $(RUSTCSRC)src/libbacktrace && make INCDIR=.
+	@cd $(RUSTCSRC)src/libbacktrace && $(MAKE) INCDIR=.
 	@cp $(RUSTCSRC)src/libbacktrace/.libs/libbacktrace.a $@
 $(RUSTCSRC)src/libbacktrace/Makefile:
 	@echo "[configure] $(RUSTCSRC)src/libbacktrace"
@@ -301,11 +301,10 @@ LLVM_CMAKE_OPTS += LLVM_TARGETS_TO_BUILD=X86#;ARM;AArch64;Mips;PowerPC;SystemZ;J
 LLVM_CMAKE_OPTS += LLVM_ENABLE_ASSERTIONS=OFF
 LLVM_CMAKE_OPTS += LLVM_INCLUDE_EXAMPLES=OFF LLVM_INCLUDE_TESTS=OFF LLVM_INCLUDE_DOCS=OFF
 LLVM_CMAKE_OPTS += LLVM_ENABLE_ZLIB=OFF LLVM_ENABLE_TERMINFO=OFF LLVM_ENABLE_LIBEDIT=OFF WITH_POLLY=OFF
-LLVM_CMAKE_OPTS += CMAKE_CXX_COMPILER="g++" CMAKE_C_COMPILER="gcc" 
-LLVM_PAR_LEVEL ?= 
+LLVM_CMAKE_OPTS += CMAKE_CXX_COMPILER="g++" CMAKE_C_COMPILER="gcc"
 
 $(LLVM_CONFIG): $(RUSTCSRC)build/Makefile
-		$Vcd $(RUSTCSRC)build && make $(LLVM_PAR_LEVEL)
+		$Vcd $(RUSTCSRC)build && $(MAKE)
 $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 		@mkdir -p $(RUSTCSRC)build
 		$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
