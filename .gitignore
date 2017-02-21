@@ -4,6 +4,7 @@
 /mrustc.layout
 /rustc-nightly-src.tar.gz
 /rustc-nightly
+/crates.io
 /test_deps_run-pass.mk
 
 /.obj
