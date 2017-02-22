@@ -301,6 +301,13 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 mark_validity(state, lv, false);
             }
         }
+        void move_val(const ::MIR::TypeResolve& state, const ::MIR::Param& p)
+        {
+            if( const auto* e = p.opt_LValue() )
+            {
+                move_val(state, *e);
+            }
+        }
     private:
         static bool merge_state(State& a, State& b)
         {
@@ -720,6 +727,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check suitability of source type (COMPLEX)
                         ),
                     (BinOp,
+                        #if 0
                         ::HIR::TypeRef  tmp_l, tmp_r;
                         const auto& ty_l = state.get_lvalue_type(tmp_l, e.val_l);
                         const auto& ty_r = state.get_lvalue_type(tmp_r, e.val_r);
@@ -734,6 +742,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             if( ty_l != ty_r )
                                 MIR_BUG(state, "Type mismatch in binop, " << ty_l << " != " << ty_r);
                         }
+                        #endif
                         // TODO: Check return type
                         ),
                     (UniOp,

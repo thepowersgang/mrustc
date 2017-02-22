@@ -552,6 +552,15 @@ namespace {
                 )
             )
         }
+        void serialise(const ::MIR::Param& p)
+        {
+            TRACE_FUNCTION_F("Param = "<<p);
+            m_out.write_tag( static_cast<int>(p.tag()) );
+            TU_MATCHA( (p), (e),
+            (LValue, serialise(e);),
+            (Constant, serialise(e);)
+            )
+        }
         void serialise(const ::MIR::LValue& lv)
         {
             TRACE_FUNCTION_F("LValue = "<<lv);

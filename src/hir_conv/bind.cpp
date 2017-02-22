@@ -499,6 +499,28 @@ namespace {
                             )
                         )
                     }
+                    static void visit_param(Visitor& upper_visitor, ::MIR::Param& p)
+                    {
+                        TU_MATCHA( (p), (e),
+                        (LValue, H::visit_lvalue(upper_visitor, e);),
+                        (Constant,
+                            TU_MATCHA( (e), (ce),
+                            (Int, ),
+                            (Uint,),
+                            (Float, ),
+                            (Bool, ),
+                            (Bytes, ),
+                            (StaticString, ),  // String
+                            (Const,
+                                // TODO: Should this trigger anything?
+                                ),
+                            (ItemAddr,
+                                upper_visitor.visit_path(ce, ::HIR::Visitor::PathContext::VALUE);
+                                )
+                            )
+                            )
+                        )
+                    }
                 };
                 for(auto& ty : expr.m_mir->named_variables)
                     this->visit_type(ty);
@@ -531,7 +553,7 @@ namespace {
                                 )
                                 ),
                             (SizedArray,
-                                H::visit_lvalue(*this, e.val);
+                                H::visit_param(*this, e.val);
                                 ),
                             (Borrow,
                                 H::visit_lvalue(*this, e.val);
@@ -541,8 +563,8 @@ namespace {
                                 this->visit_type(e.type);
                                 ),
                             (BinOp,
-                                H::visit_lvalue(*this, e.val_l);
-                                H::visit_lvalue(*this, e.val_r);
+                                H::visit_param(*this, e.val_l);
+                                H::visit_param(*this, e.val_r);
                                 ),
                             (UniOp,
                                 H::visit_lvalue(*this, e.val);
@@ -554,23 +576,23 @@ namespace {
                                 H::visit_lvalue(*this, e.val);
                                 ),
                             (MakeDst,
-                                H::visit_lvalue(*this, e.meta_val);
                                 H::visit_lvalue(*this, e.ptr_val);
+                                H::visit_param(*this, e.meta_val);
                                 ),
                             (Tuple,
                                 for(auto& val : e.vals)
-                                    H::visit_lvalue(*this, val);
+                                    H::visit_param(*this, val);
                                 ),
                             (Array,
                                 for(auto& val : e.vals)
-                                    H::visit_lvalue(*this, val);
+                                    H::visit_param(*this, val);
                                 ),
                             (Variant,
-                                H::visit_lvalue(*this, e.val);
+                                H::visit_param(*this, e.val);
                                 ),
                             (Struct,
                                 for(auto& val : e.vals)
-                                    H::visit_lvalue(*this, val);
+                                    H::visit_param(*this, val);
                                 )
                             )
                         )
@@ -606,7 +628,7 @@ namespace {
                             )
                         )
                         for(auto& arg : te.args)
-                            H::visit_lvalue(*this, arg);
+                            H::visit_param(*this, arg);
                         )
                     )
                 }

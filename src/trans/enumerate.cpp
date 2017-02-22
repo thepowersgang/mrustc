@@ -848,6 +848,17 @@ void Trans_Enumerate_Types(EnumState& state)
                             )
                             return blank;
                         }
+
+                        static void visit_param(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::Param& p)
+                        {
+                            TU_MATCHA( (p), (e),
+                            (LValue,
+                                H::visit_lvalue(tv, pp, fcn, e);
+                                ),
+                            (Constant,
+                                )
+                            )
+                        }
                     };
                     for(const auto& stmt : block.statements)
                     {
@@ -872,7 +883,7 @@ void Trans_Enumerate_Types(EnumState& state)
                             (Constant,
                                 ),
                             (SizedArray,
-                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                H::visit_param(tv,pp,fcn, re.val);
                                 ),
                             (Borrow,
                                 H::visit_lvalue(tv,pp,fcn, re.val);
@@ -881,8 +892,8 @@ void Trans_Enumerate_Types(EnumState& state)
                                 H::visit_lvalue(tv,pp,fcn, re.val);
                                 ),
                             (BinOp,
-                                H::visit_lvalue(tv,pp,fcn, re.val_l);
-                                H::visit_lvalue(tv,pp,fcn, re.val_l);
+                                H::visit_param(tv,pp,fcn, re.val_l);
+                                H::visit_param(tv,pp,fcn, re.val_l);
                                 ),
                             (UniOp,
                                 H::visit_lvalue(tv,pp,fcn, re.val);
@@ -895,22 +906,22 @@ void Trans_Enumerate_Types(EnumState& state)
                                 ),
                             (MakeDst,
                                 H::visit_lvalue(tv,pp,fcn, re.ptr_val);
-                                H::visit_lvalue(tv,pp,fcn, re.meta_val);
+                                H::visit_param(tv,pp,fcn, re.meta_val);
                                 ),
                             (Tuple,
                                 for(const auto& v : re.vals)
-                                    H::visit_lvalue(tv,pp,fcn, v);
+                                    H::visit_param(tv,pp,fcn, v);
                                 ),
                             (Array,
                                 for(const auto& v : re.vals)
-                                    H::visit_lvalue(tv,pp,fcn, v);
+                                    H::visit_param(tv,pp,fcn, v);
                                 ),
                             (Variant,
-                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                H::visit_param(tv,pp,fcn, re.val);
                                 ),
                             (Struct,
                                 for(const auto& v : re.vals)
-                                    H::visit_lvalue(tv,pp,fcn, v);
+                                    H::visit_param(tv,pp,fcn, v);
                                 )
                             )
                             )
@@ -938,7 +949,7 @@ void Trans_Enumerate_Types(EnumState& state)
                         }
                         H::visit_lvalue(tv,pp,fcn, te.ret_val);
                         for(const auto& arg : te.args)
-                            H::visit_lvalue(tv,pp,fcn, arg);
+                            H::visit_param(tv,pp,fcn, arg);
                         )
                     )
                 }
@@ -1353,6 +1364,30 @@ void Trans_Enumerate_FillFrom_MIR_LValue(EnumState& state, const ::MIR::LValue& 
         )
     )
 }
+void Trans_Enumerate_FillFrom_MIR_Constant(EnumState& state, const ::MIR::Constant& c, const Trans_Params& pp)
+{
+    TU_MATCHA( (c), (ce),
+    (Int, ),
+    (Uint,),
+    (Float, ),
+    (Bool, ),
+    (Bytes, ),
+    (StaticString, ),  // String
+    (Const,
+        //Trans_Enumerate_FillFrom_Path(state, ce.p, pp);
+        ),
+    (ItemAddr,
+        Trans_Enumerate_FillFrom_Path(state, ce, pp);
+        )
+    )
+}
+void Trans_Enumerate_FillFrom_MIR_Param(EnumState& state, const ::MIR::Param& p, const Trans_Params& pp)
+{
+    TU_MATCHA( (p), (e),
+    (LValue, Trans_Enumerate_FillFrom_MIR_LValue(state, e, pp); ),
+    (Constant, Trans_Enumerate_FillFrom_MIR_Constant(state, e, pp); )
+    )
+}
 void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code, const Trans_Params& pp)
 {
     for(const auto& bb : code.blocks)
@@ -1368,23 +1403,10 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, e, pp);
                     ),
                 (Constant,
-                    TU_MATCHA( (e), (ce),
-                    (Int, ),
-                    (Uint,),
-                    (Float, ),
-                    (Bool, ),
-                    (Bytes, ),
-                    (StaticString, ),  // String
-                    (Const,
-                        //Trans_Enumerate_FillFrom_Path(state, ce.p, pp);
-                        ),
-                    (ItemAddr,
-                        Trans_Enumerate_FillFrom_Path(state, ce, pp);
-                        )
-                    )
+                    Trans_Enumerate_FillFrom_MIR_Constant(state, e, pp);
                     ),
                 (SizedArray,
-                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_Param(state, e.val, pp);
                     ),
                 (Borrow,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
@@ -1393,8 +1415,8 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (BinOp,
-                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val_l, pp);
-                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val_r, pp);
+                    Trans_Enumerate_FillFrom_MIR_Param(state, e.val_l, pp);
+                    Trans_Enumerate_FillFrom_MIR_Param(state, e.val_r, pp);
                     ),
                 (UniOp,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
@@ -1407,22 +1429,22 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                     ),
                 (MakeDst,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, e.ptr_val, pp);
-                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.meta_val, pp);
+                    Trans_Enumerate_FillFrom_MIR_Param(state, e.meta_val, pp);
                     ),
                 (Tuple,
                     for(const auto& val : e.vals)
-                        Trans_Enumerate_FillFrom_MIR_LValue(state, val, pp);
+                        Trans_Enumerate_FillFrom_MIR_Param(state, val, pp);
                     ),
                 (Array,
                     for(const auto& val : e.vals)
-                        Trans_Enumerate_FillFrom_MIR_LValue(state, val, pp);
+                        Trans_Enumerate_FillFrom_MIR_Param(state, val, pp);
                     ),
                 (Variant,
-                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
+                    Trans_Enumerate_FillFrom_MIR_Param(state, e.val, pp);
                     ),
                 (Struct,
                     for(const auto& val : e.vals)
-                        Trans_Enumerate_FillFrom_MIR_LValue(state, val, pp);
+                        Trans_Enumerate_FillFrom_MIR_Param(state, val, pp);
                     )
                 )
                 ),
@@ -1472,7 +1494,7 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                 )
             )
             for(const auto& arg : e.args)
-                Trans_Enumerate_FillFrom_MIR_LValue(state, arg, pp);
+                Trans_Enumerate_FillFrom_MIR_Param(state, arg, pp);
             )
         )
     }

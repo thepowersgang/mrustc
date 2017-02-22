@@ -1083,6 +1083,48 @@ namespace {
                 )
             )
             };
+        auto const_to_lit = [&](const ::MIR::Constant& c)->::HIR::Literal {
+            TU_MATCH(::MIR::Constant, (c), (e2),
+            (Int,
+                return ::HIR::Literal(static_cast<uint64_t>(e2));
+                ),
+            (Uint,
+                return ::HIR::Literal(e2);
+                ),
+            (Float,
+                return ::HIR::Literal(e2);
+                ),
+            (Bool,
+                return ::HIR::Literal(static_cast<uint64_t>(e2));
+                ),
+            (Bytes,
+                return ::HIR::Literal::make_String({e2.begin(), e2.end()});
+                ),
+            (StaticString,
+                return ::HIR::Literal(e2);
+                ),
+            (Const,
+                auto ent = get_ent_fullpath(sp, crate, e2.p, EntNS::Value);
+                ASSERT_BUG(sp, ent.is_Constant(), "MIR Constant::Const("<<e2.p<<") didn't point to a Constant - " << ent.tag_str());
+                return clone_literal( ent.as_Constant()->m_value_res );
+                ),
+            (ItemAddr,
+                return ::HIR::Literal::make_BorrowOf( e2.clone() );
+                )
+            )
+            throw "";
+            };
+        auto read_param = [&](const ::MIR::Param& p) ->::HIR::Literal {
+            TU_MATCH(::MIR::Param, (p), (e),
+            (LValue,
+                return read_lval(e);
+                ),
+            (Constant,
+                return const_to_lit(e);
+                )
+            )
+            throw "";
+            };
 
         unsigned int cur_block = 0;
         for(;;)
@@ -1105,41 +1147,14 @@ namespace {
                     val = read_lval(e);
                     ),
                 (Constant,
-                    TU_MATCH(::MIR::Constant, (e), (e2),
-                    (Int,
-                        val = ::HIR::Literal(static_cast<uint64_t>(e2));
-                        ),
-                    (Uint,
-                        val = ::HIR::Literal(e2);
-                        ),
-                    (Float,
-                        val = ::HIR::Literal(e2);
-                        ),
-                    (Bool,
-                        val = ::HIR::Literal(static_cast<uint64_t>(e2));
-                        ),
-                    (Bytes,
-                        val = ::HIR::Literal::make_String({e2.begin(), e2.end()});
-                        ),
-                    (StaticString,
-                        val = ::HIR::Literal(e2);
-                        ),
-                    (Const,
-                        auto ent = get_ent_fullpath(sp, crate, e2.p, EntNS::Value);
-                        ASSERT_BUG(sp, ent.is_Constant(), "MIR Constant::Const("<<e2.p<<") didn't point to a Constant - " << ent.tag_str());
-                        val = clone_literal( ent.as_Constant()->m_value_res );
-                        ),
-                    (ItemAddr,
-                        val = ::HIR::Literal::make_BorrowOf( e2.clone() );
-                        )
-                    )
+                    val = const_to_lit(e);
                     ),
                 (SizedArray,
                     ::std::vector< ::HIR::Literal>  vals;
                     if( e.count > 0 )
                     {
                         vals.reserve( e.count );
-                        val = read_lval(e.val);
+                        val = read_param(e.val);
                         for(unsigned int i = 1; i < e.count; i++)
                             vals.push_back( clone_literal(val) );
                         vals.push_back( mv$(val) );
@@ -1235,8 +1250,8 @@ namespace {
                     )
                     ),
                 (BinOp,
-                    auto inval_l = read_lval(e.val_l);
-                    auto inval_r = read_lval(e.val_r);
+                    auto inval_l = read_param(e.val_l);
+                    auto inval_r = read_param(e.val_r);
                     ASSERT_BUG(sp, inval_l.tag() == inval_r.tag(), "Mismatched literal types in binop - " << inval_l << " and " << inval_r);
                     TU_MATCH_DEF( ::HIR::Literal, (inval_l, inval_r), (l, r),
                     (
@@ -1337,7 +1352,7 @@ namespace {
                     ),
                 (MakeDst,
                     auto ptr = read_lval(e.ptr_val);
-                    auto meta = read_lval(e.meta_val);
+                    auto meta = read_param(e.meta_val);
                     if( ! meta.is_Integer() ) {
                         TODO(sp, "RValue::MakeDst - (non-integral meta) " << ptr << " , " << meta);
                     }
@@ -1349,14 +1364,14 @@ namespace {
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
                     for(const auto& v : e.vals)
-                        vals.push_back( read_lval(v) );
+                        vals.push_back( read_param(v) );
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     ),
                 (Array,
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
                     for(const auto& v : e.vals)
-                        vals.push_back( read_lval(v) );
+                        vals.push_back( read_param(v) );
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     ),
                 (Variant,
@@ -1366,7 +1381,7 @@ namespace {
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
                     for(const auto& v : e.vals)
-                        vals.push_back( read_lval(v) );
+                        vals.push_back( read_param(v) );
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     )
                 )
@@ -1436,7 +1451,7 @@ namespace {
                 ::std::vector< ::HIR::Literal>  call_args;
                 call_args.reserve( e.args.size() );
                 for(const auto& a : e.args)
-                    call_args.push_back( read_lval(a) );
+                    call_args.push_back( read_param(a) );
                 // TODO: Set m_const during parse and check here
 
                 // Call by invoking evaluate_constant on the function

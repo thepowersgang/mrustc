@@ -186,6 +186,11 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     ASSERT_BUG(sp, dst.tag() != ::MIR::LValue::TAGDEAD, "");
     ASSERT_BUG(sp, val.tag() != ::MIR::RValue::TAGDEAD, "");
 
+    auto moved_param = [&](const ::MIR::Param& p) {
+        if(const auto* e = p.opt_LValue()) {
+            this->moved_lvalue(sp, *e);
+        }
+        };
     TU_MATCHA( (val), (e),
     (Use,
         this->moved_lvalue(sp, e);
@@ -193,7 +198,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     (Constant,
         ),
     (SizedArray,
-        this->moved_lvalue(sp, e.val);
+        moved_param(e.val);
         ),
     (Borrow,
         if( e.type == ::HIR::BorrowType::Owned ) {
@@ -220,8 +225,8 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
             // Takes an implicit borrow... and only works on copy, so why is this block here?
             break;
         default:
-            this->moved_lvalue(sp, e.val_l);
-            this->moved_lvalue(sp, e.val_r);
+            moved_param(e.val_l);
+            moved_param(e.val_r);
             break;
         }
         ),
@@ -236,22 +241,22 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         ),
     (MakeDst,
         // Doesn't move ptr_val
-        this->moved_lvalue(sp, e.meta_val);
+        moved_param(e.meta_val);
         ),
     (Tuple,
         for(const auto& val : e.vals)
-            this->moved_lvalue(sp, val);
+            moved_param(val);
         ),
     (Array,
         for(const auto& val : e.vals)
-            this->moved_lvalue(sp, val);
+            moved_param(val);
         ),
     (Variant,
-        this->moved_lvalue(sp, e.val);
+        moved_param(e.val);
         ),
     (Struct,
         for(const auto& val : e.vals)
-            this->moved_lvalue(sp, val);
+            moved_param(val);
         )
     )
 
@@ -453,6 +458,10 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
 }
 void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope)
 {
+    auto raise_vars = [&](const ::MIR::Param& p) {
+        if( const auto* e = p.opt_LValue() )
+            this->raise_variables(sp, *e, scope);
+        };
     TU_MATCHA( (rval), (e),
     (Use,
         this->raise_variables(sp, e, scope);
@@ -460,7 +469,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, cons
     (Constant,
         ),
     (SizedArray,
-        this->raise_variables(sp, e.val, scope);
+        raise_vars(e.val);
         ),
     (Borrow,
         // TODO: Wait, is this valid?
@@ -470,8 +479,8 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, cons
         this->raise_variables(sp, e.val, scope);
         ),
     (BinOp,
-        this->raise_variables(sp, e.val_l, scope);
-        this->raise_variables(sp, e.val_r, scope);
+        raise_vars(e.val_l);
+        raise_vars(e.val_r);
         ),
     (UniOp,
         this->raise_variables(sp, e.val, scope);
@@ -484,22 +493,22 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, cons
         ),
     (MakeDst,
         this->raise_variables(sp, e.ptr_val, scope);
-        this->raise_variables(sp, e.meta_val, scope);
+        raise_vars(e.meta_val);
         ),
     (Tuple,
         for(const auto& val : e.vals)
-            this->raise_variables(sp, val, scope);
+            raise_vars(val);
         ),
     (Array,
         for(const auto& val : e.vals)
-            this->raise_variables(sp, val, scope);
+            raise_vars(val);
         ),
     (Variant,
-        this->raise_variables(sp, e.val, scope);
+        raise_vars(e.val);
         ),
     (Struct,
         for(const auto& val : e.vals)
-            this->raise_variables(sp, val, scope);
+            raise_vars(val);
         )
     )
 }

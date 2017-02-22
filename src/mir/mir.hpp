@@ -90,7 +90,7 @@ enum class eUniOp
 };
 
 // Compile-time known values
-TAGGED_UNION(Constant, Int,
+TAGGED_UNION_EX(Constant, (), Int, (
     (Int, ::std::int64_t),
     (Uint, ::std::uint64_t),
     (Float, double),
@@ -99,18 +99,36 @@ TAGGED_UNION(Constant, Int,
     (StaticString, ::std::string),  // String
     (Const, struct { ::HIR::Path p; }),   // `const`
     (ItemAddr, ::HIR::Path) // address of a value
-    );
-extern ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
-extern bool operator==(const Constant& a, const Constant& b);
-static inline bool operator!=(const Constant& a, const Constant& b) {
-    return !(a == b);
-}
+    ), (), (), (
+        friend ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
+        bool operator==(const Constant& b) const;
+        inline bool operator!=(const Constant& b) const {
+            return !(*this == b);
+        }
+        Constant clone() const;
+    )
+);
+
+/// Parameter - A value used when a rvalue just reads (doesn't require a lvalue)
+/// Can be either a lvalue (memory address), or a constant
+TAGGED_UNION_EX(Param, (), LValue, (
+    (LValue, LValue),
+    (Constant, Constant)
+    ), (), (), (
+        Param clone() const;
+        friend ::std::ostream& operator<<(::std::ostream& os, const Param& v);
+        bool operator==(const Param& b) const;
+        inline bool operator!=(const Param& b) const {
+            return !(*this == b);
+        }
+    )
+);
 
 TAGGED_UNION_EX(RValue, (), Use, (
     (Use, LValue),
     (Constant, Constant),
     (SizedArray, struct {
-        LValue  val;
+        Param   val;
         unsigned int    count;
         }),
     (Borrow, struct {
@@ -125,13 +143,13 @@ TAGGED_UNION_EX(RValue, (), Use, (
         }),
     // Binary operation on primitives
     (BinOp, struct {
-        LValue  val_l;
+        Param   val_l;
         eBinOp  op;
-        LValue  val_r;
+        Param   val_r;
         }),
     // Unary operation on primitives
     (UniOp, struct {
-        LValue  val;
+        LValue  val;    // NOTE: Not a param, because UniOps can be const propagated
         eUniOp  op;
         }),
     // Extract the metadata from a DST pointer
@@ -145,27 +163,27 @@ TAGGED_UNION_EX(RValue, (), Use, (
         }),
     // Construct a DST pointer from a thin pointer and metadata
     (MakeDst, struct {
-        LValue  ptr_val;
-        LValue  meta_val;
+        LValue  ptr_val;    // NOTE: Not a Param, becuase the pointer is a borrow
+        Param   meta_val;
         }),
     (Tuple, struct {
-        ::std::vector<LValue>   vals;
+        ::std::vector<Param>   vals;
         }),
     // Array literal
     (Array, struct {
-        ::std::vector<LValue>   vals;
+        ::std::vector<Param>   vals;
         }),
     // Create a new instance of a union (and eventually enum)
     (Variant, struct {
         ::HIR::GenericPath  path;
         unsigned int index;
-        LValue    val;
+        Param   val;
         }),
     // Create a new instance of a struct (or enum)
     (Struct, struct {
         ::HIR::GenericPath  path;
         unsigned int variant_idx;   // if ~0, it's a struct
-        ::std::vector<LValue>   vals;
+        ::std::vector<Param>   vals;
         })
     ), (),(), (
         RValue clone() const;
@@ -206,7 +224,7 @@ TAGGED_UNION(Terminator, Incomplete,
         BasicBlockId    panic_block;
         LValue  ret_val;
         CallTarget  fcn;
-        ::std::vector<LValue>   args;
+        ::std::vector<Param>   args;
         })
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Terminator& x);

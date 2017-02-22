@@ -317,6 +317,16 @@ namespace {
         ::MIR::Terminator deserialise_mir_terminator();
         ::MIR::CallTarget deserialise_mir_calltarget();
 
+        ::MIR::Param deserialise_mir_param()
+        {
+            switch(auto tag = m_in.read_tag())
+            {
+            case ::MIR::Param::TAG_LValue:  return deserialise_mir_lvalue();
+            case ::MIR::Param::TAG_Constant: return deserialise_mir_constant();
+            default:
+                throw ::std::runtime_error(FMT("Invalid MIR LValue tag - " << tag));
+            }
+        }
         ::MIR::LValue deserialise_mir_lvalue() {
             ::MIR::LValue   rv;
             TRACE_FUNCTION_FR("", rv);
@@ -361,7 +371,7 @@ namespace {
             _(Use, deserialise_mir_lvalue() )
             _(Constant, deserialise_mir_constant() )
             _(SizedArray, {
-                deserialise_mir_lvalue(),
+                deserialise_mir_param(),
                 static_cast<unsigned int>(m_in.read_u64c())
                 })
             _(Borrow, {
@@ -374,9 +384,9 @@ namespace {
                 deserialise_type()
                 })
             _(BinOp, {
-                deserialise_mir_lvalue(),
+                deserialise_mir_param(),
                 static_cast< ::MIR::eBinOp>( m_in.read_tag() ),
-                deserialise_mir_lvalue()
+                deserialise_mir_param()
                 })
             _(UniOp, {
                 deserialise_mir_lvalue(),
@@ -390,23 +400,23 @@ namespace {
                 })
             _(MakeDst, {
                 deserialise_mir_lvalue(),
-                deserialise_mir_lvalue()
+                deserialise_mir_param()
                 })
             _(Tuple, {
-                deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
+                deserialise_vec< ::MIR::Param>()
                 })
             _(Array, {
-                deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
+                deserialise_vec< ::MIR::Param>()
                 })
             _(Variant, {
                 deserialise_genericpath(),
                 static_cast<unsigned int>( m_in.read_count() ),
-                deserialise_mir_lvalue()
+                deserialise_mir_param()
                 })
             _(Struct, {
                 deserialise_genericpath(),
                 static_cast<unsigned int>( m_in.read_count() ),
-                deserialise_vec_c< ::MIR::LValue>([&](){ return deserialise_mir_lvalue(); })
+                deserialise_vec< ::MIR::Param>()
                 })
             #undef _
             default:
@@ -642,6 +652,7 @@ namespace {
     template<> DEF_D( ::HIR::AssociatedType, return d.deserialise_associatedtype(); )
     template<> DEF_D( ::HIR::TraitValueItem, return d.deserialise_traitvalueitem(); )
 
+    template<> DEF_D( ::MIR::Param, return d.deserialise_mir_param(); )
     template<> DEF_D( ::MIR::LValue, return d.deserialise_mir_lvalue(); )
     template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )
@@ -1017,7 +1028,7 @@ namespace {
             static_cast<unsigned int>(m_in.read_count()),
             deserialise_mir_lvalue(),
             deserialise_mir_calltarget(),
-            deserialise_vec< ::MIR::LValue>()
+            deserialise_vec< ::MIR::Param>()
             })
         #undef _
         default:

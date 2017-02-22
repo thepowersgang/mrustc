@@ -1398,178 +1398,28 @@ namespace {
                             emit_lvalue(ve);
                             ),
                         (Constant,
-                            TU_MATCHA( (ve), (c),
-                            (Int,
-                                emit_lvalue(e.dst);
-                                m_of << " = ";
-                                if( c == INT64_MIN )
-                                    m_of << "INT64_MIN";
-                                else
-                                    m_of << c;
-                                ),
-                            (Uint,
-                                ::HIR::TypeRef  tmp;
-                                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
-                                emit_lvalue(e.dst);
-                                m_of << " = ";
-                                switch(ty.m_data.as_Primitive())
-                                {
-                                case ::HIR::CoreType::U8:
-                                    m_of << ::std::hex << "0x" << (c & 0xFF) << ::std::dec;
-                                    break;
-                                case ::HIR::CoreType::U16:
-                                    m_of << ::std::hex << "0x" << (c & 0xFFFF) << ::std::dec;
-                                    break;
-                                case ::HIR::CoreType::U32:
-                                    m_of << ::std::hex << "0x" << (c & 0xFFFFFFFF) << ::std::dec;
-                                    break;
-                                case ::HIR::CoreType::U64:
-                                case ::HIR::CoreType::U128:
-                                case ::HIR::CoreType::Usize:
-                                    m_of << ::std::hex << "0x" << c << ::std::dec;
-                                    break;
-                                case ::HIR::CoreType::Char:
-                                    assert(0 <= c && c <= 0x10FFFF);
-                                    if( c < 256 ) {
-                                        m_of << c;
-                                    }
-                                    else {
-                                        m_of << ::std::hex << "0x" << c << ::std::dec;
-                                    }
-                                    break;
-                                default:
-                                    MIR_BUG(*m_mir_res, "Invalid type for UInt literal - " << ty);
-                                }
-                                ),
-                            (Float,
-                                emit_lvalue(e.dst);
-                                m_of << " = ";
-                                if( ::std::isnan(c) ) {
-                                    m_of << "NAN";
-                                }
-                                else if( ::std::isinf(c) ) {
-                                    m_of << "INFINITY";
-                                }
-                                else {
-                                    m_of << c;
-                                }
-                                ),
-                            (Bool,
-                                emit_lvalue(e.dst);
-                                m_of << " = ";
-                                m_of << (c ? "true" : "false");
-                                ),
-                            (Bytes,
-                                ::HIR::TypeRef  tmp;
-                                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
-                                MIR_ASSERT(mir_res, ty.m_data.is_Borrow(), "Const::Bytes returning non-borrow - " << ty);
-                                if( ty.m_data.as_Borrow().inner->m_data.is_Array() ) {
-                                    // Array borrow : Cast the C string to the array
-                                    emit_lvalue(e.dst);
-                                    m_of << " = ";
-                                    // - Laziness
-                                    m_of << "(void*)\"" << ::std::oct;
-                                    for(const auto& v : c) {
-                                        if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                                            m_of << v;
-                                        else
-                                            m_of << "\\" << (unsigned int)v;
-                                    }
-                                    m_of << "\"" << ::std::dec;
-                                }
-                                else {
-                                    // Slice borrow (asumed), pointer and metadata
-                                    emit_lvalue(e.dst);
-                                    m_of << ".PTR = ";
-                                    m_of << "\"" << ::std::oct;
-                                    for(const auto& v : c) {
-                                        if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                                            m_of << v;
-                                        else
-                                            m_of << "\\" << (unsigned int)v;
-                                    }
-                                    m_of << "\"" << ::std::dec;
-                                    m_of << ";\n\t";
-                                    emit_lvalue(e.dst);
-                                    m_of << ".META = " << c.size();
-                                }
-                                ),
-                            (StaticString,
-                                emit_lvalue(e.dst);
-                                m_of << ".PTR = ";
-                                m_of << "\"" << ::std::oct;
-                                for(const auto& v : c) {
-                                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                                        m_of << v;
-                                    else
-                                        m_of << "\\" << (unsigned int)v;
-                                }
-                                m_of << "\"" << ::std::dec;
-
-                                m_of << ";\n\t";
-                                emit_lvalue(e.dst);
-                                m_of << ".META = " << c.size();
-                                ),
-                            (Const,
-                                // TODO: This should have been eliminated?
-                                ::HIR::TypeRef  tmp;
-                                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
-                                const auto& lit = get_literal_for_const(c.p);
-                                assign_from_literal([&](){ emit_lvalue(e.dst); }, ty, lit);
-                                ),
-                            (ItemAddr,
-                                emit_lvalue(e.dst);
-                                m_of << " = ";
-                                TU_MATCHA( (c.m_data), (pe),
-                                (Generic,
-                                    if( pe.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, pe.m_path, false, true).is_Enum() )
-                                        ;
-                                    else
-                                    {
-                                        const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
-                                        if( vi.is_Function() || vi.is_StructConstructor() )
-                                        {
-                                        }
-                                        else
-                                        {
-                                            m_of << "&";
-                                        }
-                                    }
-                                    ),
-                                (UfcsUnknown,
-                                    MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << c);
-                                    ),
-                                (UfcsInherent,
-                                    // TODO: If the target is a function, don't emit the &
-                                    m_of << "&";
-                                    ),
-                                (UfcsKnown,
-                                    // TODO: If the target is a function, don't emit the &
-                                    m_of << "&";
-                                    )
-                                )
-                                m_of << Trans_Mangle(c);
-                                )
-                            )
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
+                            emit_constant(ve, &e.dst);
                             ),
                         (SizedArray,
                             if( ve.count == 0 ) {
                             }
                             else if( ve.count == 1 ) {
-                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_lvalue(ve.val);
+                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val);
                             }
                             else if( ve.count == 2 ) {
-                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_lvalue(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_lvalue(ve.val);
+                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val);
                             }
                             else if( ve.count == 3 ) {
-                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_lvalue(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_lvalue(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA[2] = "; emit_lvalue(ve.val);
+                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val); m_of << ";\n\t";
+                                emit_lvalue(e.dst); m_of << ".DATA[2] = "; emit_param(ve.val);
                             }
                             else {
                                 m_of << "for(unsigned int i = 0; i < " << ve.count << "; i ++)\n";
-                                m_of << "\t\t"; emit_lvalue(e.dst); m_of << ".DATA[i] = "; emit_lvalue(ve.val);
+                                m_of << "\t\t"; emit_lvalue(e.dst); m_of << ".DATA[i] = "; emit_param(ve.val);
                             }
                             ),
                         (Borrow,
@@ -1648,10 +1498,11 @@ namespace {
                         (BinOp,
                             emit_lvalue(e.dst);
                             m_of << " = ";
+                            MIR_ASSERT(mir_res, ve.val_l.is_LValue() || ve.val_r.is_LValue(), "");
                             ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val_l);
+                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val_l.is_LValue() ? ve.val_l.as_LValue() : ve.val_r.as_LValue());
                             if( ty.m_data.is_Borrow() ) {
-                                m_of << "(slice_cmp("; emit_lvalue(ve.val_l); m_of << ", "; emit_lvalue(ve.val_r); m_of << ")";
+                                m_of << "(slice_cmp("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
                                 switch(ve.op)
                                 {
                                 case ::MIR::eBinOp::EQ: m_of << " == 0";    break;
@@ -1672,12 +1523,12 @@ namespace {
                                     switch(ve.op)
                                     {
                                     case ::MIR::eBinOp::EQ:
-                                        emit_lvalue(ve.val_l); m_of << ".PTR == "; emit_lvalue(ve.val_r); m_of << ".PTR && ";
-                                        emit_lvalue(ve.val_l); m_of << ".META == "; emit_lvalue(ve.val_r); m_of << ".META";
+                                        emit_param(ve.val_l); m_of << ".PTR == "; emit_param(ve.val_r); m_of << ".PTR && ";
+                                        emit_param(ve.val_l); m_of << ".META == "; emit_param(ve.val_r); m_of << ".META";
                                         break;
                                     case ::MIR::eBinOp::NE:
-                                        emit_lvalue(ve.val_l); m_of << ".PTR != "; emit_lvalue(ve.val_r); m_of << ".PTR || ";
-                                        emit_lvalue(ve.val_l); m_of << ".META != "; emit_lvalue(ve.val_r); m_of << ".META";
+                                        emit_param(ve.val_l); m_of << ".PTR != "; emit_param(ve.val_r); m_of << ".PTR || ";
+                                        emit_param(ve.val_l); m_of << ".META != "; emit_param(ve.val_r); m_of << ".META";
                                         break;
                                     default:
                                         MIR_BUG(mir_res, "Unknown comparison of a *-ptr - " << e.src << " with " << ty);
@@ -1685,7 +1536,7 @@ namespace {
                                 }
                                 else
                                 {
-                                    emit_lvalue(ve.val_l);
+                                    emit_param(ve.val_l);
                                     switch(ve.op)
                                     {
                                     case ::MIR::eBinOp::EQ: m_of << " == "; break;
@@ -1697,7 +1548,7 @@ namespace {
                                     default:
                                         MIR_BUG(mir_res, "Unknown comparison of a *-ptr - " << e.src << " with " << ty);
                                     }
-                                    emit_lvalue(ve.val_r);
+                                    emit_param(ve.val_r);
                                 }
                                 break;
                             }
@@ -1706,13 +1557,13 @@ namespace {
                                     m_of << "remainderf";
                                 else
                                     m_of << "remainder";
-                                m_of << "("; emit_lvalue(ve.val_l); m_of << ", "; emit_lvalue(ve.val_r); m_of << ")";
+                                m_of << "("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
                                 break;
                             }
                             else {
                             }
 
-                            emit_lvalue(ve.val_l);
+                            emit_param(ve.val_l);
                             switch(ve.op)
                             {
                             case ::MIR::eBinOp::ADD:   m_of << " + ";    break;
@@ -1740,7 +1591,7 @@ namespace {
                                 MIR_TODO(mir_res, "Overflow");
                                 break;
                             }
-                            emit_lvalue(ve.val_r);
+                            emit_param(ve.val_r);
                             ),
                         (UniOp,
                             ::HIR::TypeRef  tmp;
@@ -1777,21 +1628,21 @@ namespace {
                             m_of << ";\n\t";
                             emit_lvalue(e.dst);
                             m_of << ".META = ";
-                            emit_lvalue(ve.meta_val);
+                            emit_param(ve.meta_val);
                             ),
                         (Tuple,
                             for(unsigned int j = 0; j < ve.vals.size(); j ++) {
                                 if( j != 0 )    m_of << ";\n\t";
                                 emit_lvalue(e.dst);
                                 m_of << "._" << j << " = ";
-                                emit_lvalue(ve.vals[j]);
+                                emit_param(ve.vals[j]);
                             }
                             ),
                         (Array,
                             for(unsigned int j = 0; j < ve.vals.size(); j ++) {
                                 if( j != 0 )    m_of << ";\n\t";
                                 emit_lvalue(e.dst); m_of << ".DATA[" << j << "] = ";
-                                emit_lvalue(ve.vals[j]);
+                                emit_param(ve.vals[j]);
                             }
                             ),
                         (Variant,
@@ -1805,7 +1656,7 @@ namespace {
                                 emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
                                 emit_lvalue(e.dst); m_of << ".DATA";
                             }
-                            m_of << ".var_" << ve.index << " = "; emit_lvalue(ve.val);
+                            m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
                             ),
                         (Struct,
                             if(ve.variant_idx != ~0u) {
@@ -1822,7 +1673,7 @@ namespace {
                                         else if( ve.variant_idx == 1 ) {
                                             emit_lvalue(e.dst);
                                             m_of << "._0 = ";
-                                            emit_lvalue(ve.vals[0]);
+                                            emit_param(ve.vals[0]);
                                         }
                                         else {
                                         }
@@ -1840,7 +1691,7 @@ namespace {
                             {
                                 // HACK: Don't emit assignment of PhantomData
                                 ::HIR::TypeRef  tmp;
-                                if( m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j])) )
+                                if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j].as_LValue())) )
                                     continue ;
 
                                 if( j != 0 )    m_of << ";\n\t";
@@ -1848,7 +1699,7 @@ namespace {
                                 if(ve.variant_idx != ~0u)
                                     m_of << ".DATA.var_" << ve.variant_idx;
                                 m_of << "._" << j << " = ";
-                                emit_lvalue(ve.vals[j]);
+                                emit_param(ve.vals[j]);
                             }
                             )
                         )
@@ -1971,7 +1822,7 @@ namespace {
                     m_of << "(";
                     for(unsigned int j = 0; j < e.args.size(); j ++) {
                         if(j != 0)  m_of << ",";
-                        m_of << " "; emit_lvalue(e.args[j]);
+                        m_of << " "; emit_param(e.args[j]);
                     }
                     m_of << " );\n";
                     m_of << "\tgoto bb" << e.ret_block << ";\n";
@@ -2063,17 +1914,17 @@ namespace {
                 }
             };
             auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail, bool is_weak) {
-                emit_lvalue(e.ret_val); m_of << "._0 = "; emit_lvalue(e.args.at(1)); m_of << ";\n\t";
+                emit_lvalue(e.ret_val); m_of << "._0 = "; emit_param(e.args.at(1)); m_of << ";\n\t";
                 emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_" << (is_weak ? "weak" : "strong") << "_explicit(";
-                    m_of << "(_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0));
+                    m_of << "(_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
-                    m_of << ", "; emit_lvalue(e.args.at(2));
+                    m_of << ", "; emit_param(e.args.at(2));
                     m_of << ", "<<o_succ<<", "<<o_fail<<")";
                 };
             auto emit_atomic_arith = [&](const char* name, const char* ordering) {
                 emit_lvalue(e.ret_val); m_of << " = atomic_" << name << "_explicit";
-                    m_of <<"((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(1));
+                    m_of <<"((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", " << ordering << ")";
                 };
             if( name == "size_of" ) {
@@ -2096,19 +1947,19 @@ namespace {
                     if( ! ty.m_data.is_Slice() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
-                    emit_lvalue(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(*te->inner); m_of << ")";
+                    emit_param(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(*te->inner); m_of << ")";
                 }
                 else if( inner_ty == ::HIR::CoreType::Str ) {
                     if( ! ty.m_data.is_Primitive() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
-                    emit_lvalue(e.args.at(0)); m_of << ".META";
+                    emit_param(e.args.at(0)); m_of << ".META";
                 }
                 else if( inner_ty.m_data.is_TraitObject() ) {
                     if( ! ty.m_data.is_TraitObject() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
-                    m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->size";
+                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->size";
                 }
                 else {
                     MIR_BUG(mir_res, "Unknown inner unsized type " << inner_ty << " for " << ty);
@@ -2122,10 +1973,10 @@ namespace {
                 case MetadataType::Slice: {
                     // TODO: Have a function that fetches the inner type for types like `Path` or `str`
                     const auto& ity = *ty.m_data.as_Slice().inner;
-                    emit_lvalue(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(ity); m_of << ")";
+                    emit_param(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(ity); m_of << ")";
                     break; }
                 case MetadataType::TraitObject:
-                    m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->size";
+                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->size";
                     break;
                 }
                 #endif
@@ -2159,7 +2010,7 @@ namespace {
                     if( ! ty.m_data.is_TraitObject() ) {
                         m_of << "max( __alignof__("; emit_ctype(ty); m_of << "), ";
                     }
-                    m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->align";
+                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->align";
                     if( ! ty.m_data.is_TraitObject() ) {
                         m_of << " )";
                     }
@@ -2179,7 +2030,7 @@ namespace {
                     m_of << "__alignof__("; emit_ctype(ity); m_of << ")";
                     break; }
                 case MetadataType::TraitObject:
-                    m_of << "((VTABLE_HDR*)"; emit_lvalue(e.args.at(0)); m_of << ".META)->align";
+                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->align";
                     break;
                 }
                 #endif
@@ -2195,7 +2046,7 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
             }
             else if( name == "transmute" ) {
-                m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_lvalue(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
+                m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_param(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
             }
             else if( name == "copy_nonoverlapping" || name == "copy" ) {
                 if( name == "copy" ) {
@@ -2205,23 +2056,23 @@ namespace {
                     m_of << "memcpy";
                 }
                 // 0: Source, 1: Destination, 2: Count
-                m_of << "( "; emit_lvalue(e.args.at(1));
-                    m_of << ", "; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                m_of << "( "; emit_param(e.args.at(1));
+                    m_of << ", "; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                     m_of << ")";
             }
             else if( name == "write_bytes" ) {
                 // 0: Destination, 1: Value, 2: Count
-                m_of << "memset( "; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(1));
-                    m_of << ", "; emit_lvalue(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                m_of << "memset( "; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(1));
+                    m_of << ", "; emit_param(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                     m_of << ")";
             }
             else if( name == "forget" ) {
                 // Nothing needs to be done, this just stops the destructor from running.
             }
             else if( name == "drop_in_place" ) {
-                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).clone()) }), params.m_types.at(0), true );
+                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).as_LValue().clone()) }), params.m_types.at(0), true );
             }
             else if( name == "needs_drop" ) {
                 // Returns `true` if the actual type given as `T` requires drop glue;
@@ -2244,19 +2095,19 @@ namespace {
                 m_of << "memset( &"; emit_lvalue(e.ret_val); m_of << ", 0, sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
             }
             else if( name == "move_val_init" ) {
-                m_of << "*"; emit_lvalue(e.args.at(0)); m_of << " = "; emit_lvalue(e.args.at(1));
+                m_of << "*"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
             }
             else if( name == "abort" ) {
                 m_of << "abort()";
             }
             else if( name == "try" ) {
-                emit_lvalue(e.args.at(0)); m_of << "("; emit_lvalue(e.args.at(1)); m_of << ")";
+                emit_param(e.args.at(0)); m_of << "("; emit_param(e.args.at(1)); m_of << ")";
             }
             else if( name == "offset" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
             }
             else if( name == "arith_offset" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " + "; emit_lvalue(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
             }
             else if( name == "bswap" ) {
                 const auto& ty = params.m_types.at(0);
@@ -2264,19 +2115,19 @@ namespace {
                 switch( ty.m_data.as_Primitive() )
                 {
                 case ::HIR::CoreType::U8:
-                    emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0));
+                    emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0));
                     break;
                 case ::HIR::CoreType::U16:
-                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap16("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap16("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U32:
-                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap32("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap32("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U64:
-                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap64("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap64("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U128:
-                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap128("; emit_lvalue(e.args.at(0)); m_of << ")";
+                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap128("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 default:
                     MIR_TODO(mir_res, "bswap<" << ty << ">");
@@ -2290,11 +2141,11 @@ namespace {
                     auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
                     if( it != m_enum_repr_cache.end() )
                     {
-                        emit_lvalue(e.args.at(0)); emit_nonzero_path(it->second); m_of << " != 0";
+                        emit_param(e.args.at(0)); emit_nonzero_path(it->second); m_of << " != 0";
                     }
                     else
                     {
-                        emit_lvalue(e.args.at(0)); m_of << "->TAG";
+                        emit_param(e.args.at(0)); m_of << "->TAG";
                     }
                 }
                 else {
@@ -2315,56 +2166,56 @@ namespace {
             // Overflowing Arithmatic
             // HACK: Uses GCC intrinsics
             else if( name == "add_with_overflow" ) {
-                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow("; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow("; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
             }
             else if( name == "sub_with_overflow" ) {
-                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow("; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow("; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
             }
             else if( name == "mul_with_overflow" ) {
-                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
             }
             else if( name == "overflowing_add" ) {
-                m_of << "__builtin_add_overflow("; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(1));
+                m_of << "__builtin_add_overflow("; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
             }
             else if( name == "overflowing_sub" ) {
-                m_of << "__builtin_sub_overflow("; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(1));
+                m_of << "__builtin_sub_overflow("; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
             }
             else if( name == "overflowing_mul" ) {
-                m_of << "__builtin_mul_overflow("; emit_lvalue(e.args.at(0));
-                    m_of << ", "; emit_lvalue(e.args.at(1));
+                m_of << "__builtin_mul_overflow("; emit_param(e.args.at(0));
+                    m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
             }
             // Unchecked Arithmatic
             else if( name == "unchecked_div" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " / "; emit_lvalue(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " / "; emit_param(e.args.at(1));
             }
             else if( name == "unchecked_rem" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_lvalue(e.args.at(0)); m_of << " % "; emit_lvalue(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " % "; emit_param(e.args.at(1));
             }
             // Bit Twiddling
             // - CounT Leading Zeroes
             // - CounT Trailing Zeroes
             else if( name == "ctlz" || name == "cttz" ) {
-                auto emit_arg0 = [&](){ emit_lvalue(e.args.at(0)); };
+                auto emit_arg0 = [&](){ emit_param(e.args.at(0)); };
                 const auto& ty = params.m_types.at(0);
-                emit_lvalue(e.ret_val); m_of << " = ("; emit_lvalue(e.args.at(0)); m_of << " != 0 ? ";
+                emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " != 0 ? ";
                 if( ty == ::HIR::CoreType::U128 )
                 {
                     if( name == "ctlz" ) {
-                        m_of << "__builtin_clz128("; emit_lvalue(e.args.at(0)); m_of << ")";
+                        m_of << "__builtin_clz128("; emit_param(e.args.at(0)); m_of << ")";
                     }
                     else {
-                        m_of << "__builtin_ctz128("; emit_lvalue(e.args.at(0)); m_of << ")";
+                        m_of << "__builtin_ctz128("; emit_param(e.args.at(0)); m_of << ")";
                     }
                 }
                 else if( ty == ::HIR::CoreType::U64 || (ty == ::HIR::CoreType::Usize /*&& target_is_64_bit */) )
@@ -2379,74 +2230,74 @@ namespace {
                 else
                 {
                     if( name == "ctlz" ) {
-                        m_of << "__builtin_clz("; emit_lvalue(e.args.at(0)); m_of << ")";
+                        m_of << "__builtin_clz("; emit_param(e.args.at(0)); m_of << ")";
                     }
                     else {
-                        m_of << "__builtin_ctz("; emit_lvalue(e.args.at(0)); m_of << ")";
+                        m_of << "__builtin_ctz("; emit_param(e.args.at(0)); m_of << ")";
                     }
                 }
                 m_of << " : sizeof("; emit_ctype(ty); m_of << ")*8)";
             }
             // - CounT POPulated
             else if( name == "ctpop" ) {
-                emit_lvalue(e.ret_val); m_of << " = __builtin_popcount("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = __builtin_popcount("; emit_param(e.args.at(0)); m_of << ")";
             }
             // --- Floating Point
             // > Round to nearest integer, half-way rounds away from zero
             else if( name == "roundf32" && name == "roundf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "fabsf32" || name == "fabsf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = fabs" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = fabs" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "copysignf32" || name == "copysignf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = copysign" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = copysign" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
             }
             // > Returns the integer part of an `f32`.
             else if( name == "truncf32" || name == "truncf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = trunc" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = trunc" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "powif32" || name == "powif64" ) {
-                emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
             }
             else if( name == "powf32" || name == "powf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = pow" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
             }
             else if( name == "expf32" || name == "expf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = exp" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = exp" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "exp2f32" || name == "exp2f64" ) {
-                emit_lvalue(e.ret_val); m_of << " = exp2" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = exp2" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "logf32" || name == "logf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = log" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = log" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "log10f32" || name == "log10f64" ) {
-                emit_lvalue(e.ret_val); m_of << " = log10" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = log10" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "log2f32" || name == "log2f64" ) {
-                emit_lvalue(e.ret_val); m_of << " = log2" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = log2" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "sqrtf32" || name == "sqrtf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = sqrt" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = sqrt" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "ceilf32" || name == "ceilf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = ceil" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = ceil" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "floorf32" || name == "floorf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = floor" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = floor" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "roundf32" || name == "roundf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = round" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "cosf32" || name == "cosf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = cos" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = cos" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "sinf32" || name == "sinf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = sin" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = sin" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             else if( name == "fmaf32" || name == "fmaf64" ) {
-                emit_lvalue(e.ret_val); m_of << " = fma" << (name.back()=='2'?"f":"") << "("; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = fma" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
             }
             // --- Atomics!
             // > Single-ordering atomics
@@ -2472,11 +2323,11 @@ namespace {
             }
             else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << ", " << ordering << ")";
+                emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << ", " << ordering << ")";
             }
             else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+5+1);
-                m_of << "atomic_store_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                m_of << "atomic_store_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
             }
             // Comare+Exchange (has two orderings)
             else if( name == "atomic_cxchg_acq_failrelaxed" ) {
@@ -2517,7 +2368,7 @@ namespace {
             }
             else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
-                emit_lvalue(e.ret_val); m_of << " = atomic_exchange_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << ", "; emit_lvalue(e.args.at(1)); m_of << ", " << ordering << ")";
+                emit_lvalue(e.ret_val); m_of << " = atomic_exchange_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
             }
             else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
@@ -2614,13 +2465,15 @@ namespace {
             )
         }
 
-        const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path)
+        const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path, ::HIR::TypeRef& ty)
         {
             TU_MATCHA( (path.m_data), (pe),
             (Generic,
                 if( pe.m_params.m_types.size() > 0 )
                     MIR_TODO(*m_mir_res, "get_literal_for_const - Paths with generics " << path);
-                return m_crate.get_constant_by_path(Span(), pe.m_path).m_value_res;
+                const auto& c = m_crate.get_constant_by_path(Span(), pe.m_path);
+                ty = c.m_type.clone();
+                return c.m_value_res;
                 ),
             (UfcsUnknown,
                 MIR_BUG(*m_mir_res, "get_literal_for_const - UfcsUnknown " << path);
@@ -2928,6 +2781,153 @@ namespace {
                     }
                 }
                 m_of << ".var_" << e.variant_index;
+                )
+            )
+        }
+        void emit_constant(const ::MIR::Constant& ve, const ::MIR::LValue* dst_ptr=nullptr)
+        {
+            TU_MATCHA( (ve), (c),
+            (Int,
+                if( c == INT64_MIN )
+                    m_of << "INT64_MIN";
+                else
+                    m_of << c;
+                ),
+            (Uint,
+                ::HIR::TypeRef  tmp;
+                const auto& ty = dst_ptr ? m_mir_res->get_lvalue_type(tmp, *dst_ptr) : tmp = ::HIR::CoreType::U128;
+                switch(ty.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::U8:
+                    m_of << ::std::hex << "0x" << (c & 0xFF) << ::std::dec;
+                    break;
+                case ::HIR::CoreType::U16:
+                    m_of << ::std::hex << "0x" << (c & 0xFFFF) << ::std::dec;
+                    break;
+                case ::HIR::CoreType::U32:
+                    m_of << ::std::hex << "0x" << (c & 0xFFFFFFFF) << ::std::dec;
+                    break;
+                case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::U128:
+                case ::HIR::CoreType::Usize:
+                    m_of << ::std::hex << "0x" << c << ::std::dec;
+                    break;
+                case ::HIR::CoreType::Char:
+                    assert(0 <= c && c <= 0x10FFFF);
+                    if( c < 256 ) {
+                        m_of << c;
+                    }
+                    else {
+                        m_of << ::std::hex << "0x" << c << ::std::dec;
+                    }
+                    break;
+                default:
+                    MIR_BUG(*m_mir_res, "Invalid type for UInt literal - " << ty);
+                }
+                ),
+            (Float,
+                if( ::std::isnan(c) ) {
+                    m_of << "NAN";
+                }
+                else if( ::std::isinf(c) ) {
+                    m_of << "INFINITY";
+                }
+                else {
+                    m_of << c;
+                }
+                ),
+            (Bool,
+                m_of << (c ? "true" : "false");
+                ),
+            (Bytes,
+                // TODO: Need to know the desired value for this
+                // - Ideally, Bytes would always return a thin pointer (and
+                // be combined with a MakeDST to make a fat pointer)
+                ::HIR::TypeRef  tmp;
+                const auto& ty = dst_ptr ? m_mir_res->get_lvalue_type(tmp, *dst_ptr) : tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::U8);
+                MIR_ASSERT(*m_mir_res, ty.m_data.is_Borrow(), "Const::Bytes returning non-borrow - " << ty);
+                if( !dst_ptr || ty.m_data.as_Borrow().inner->m_data.is_Array() ) {
+                    // Array borrow : Cast the C string to the array
+                    // - Laziness
+                    m_of << "(void*)\"" << ::std::oct;
+                    for(const auto& v : c) {
+                        if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                            m_of << v;
+                        else
+                            m_of << "\\" << (unsigned int)v;
+                    }
+                    m_of << "\"" << ::std::dec;
+                }
+                else {
+                    // Slice borrow (asumed), pointer and metadata
+                    m_of << "make_sliceptr(\"" << ::std::oct;
+                    for(const auto& v : c) {
+                        if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                            m_of << v;
+                        else
+                            m_of << "\\" << (unsigned int)v;
+                    }
+                    m_of << "\", " << ::std::dec << c.size() << ")";
+                }
+                ),
+            (StaticString,
+                m_of << "make_sliceptr(\"" << ::std::oct;
+                for(const auto& v : c) {
+                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                        m_of << v;
+                    else
+                        m_of << "\\" << (unsigned int)v;
+                }
+                m_of << "\", " << ::std::dec << c.size() << ")";
+                ),
+            (Const,
+                // TODO: This should have been eliminated?
+                ::HIR::TypeRef  ty;
+                const auto& lit = get_literal_for_const(c.p, ty);
+                m_of << "({"; emit_ctype(ty, FMT_CB(ss, ss<<"v";)); m_of << ";";
+                assign_from_literal([&](){ m_of << "v"; }, ty, lit);
+                m_of << "v})";
+                ),
+            (ItemAddr,
+                TU_MATCHA( (c.m_data), (pe),
+                (Generic,
+                    if( pe.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, pe.m_path, false, true).is_Enum() )
+                        ;
+                    else
+                    {
+                        const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
+                        if( vi.is_Function() || vi.is_StructConstructor() )
+                        {
+                        }
+                        else
+                        {
+                            m_of << "&";
+                        }
+                    }
+                    ),
+                (UfcsUnknown,
+                    MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << c);
+                    ),
+                (UfcsInherent,
+                    // TODO: If the target is a function, don't emit the &
+                    m_of << "&";
+                    ),
+                (UfcsKnown,
+                    // TODO: If the target is a function, don't emit the &
+                    m_of << "&";
+                    )
+                )
+                m_of << Trans_Mangle(c);
+                )
+            )
+        }
+        void emit_param(const ::MIR::Param& p) {
+            TU_MATCHA( (p), (e),
+            (LValue,
+                emit_lvalue(e);
+                ),
+            (Constant,
+                emit_constant(e);
                 )
             )
         }

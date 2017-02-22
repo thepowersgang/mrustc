@@ -50,11 +50,11 @@ namespace MIR {
         )
         return os;
     }
-    bool operator==(const Constant& a, const Constant& b)
+    bool Constant::operator==(const Constant& b) const
     {
-        if( a.tag() != b.tag() )
+        if( this->tag() != b.tag() )
             return false;
-        TU_MATCHA( (a,b), (ae,be),
+        TU_MATCHA( (*this,b), (ae,be),
         (Int,
             return ae == be;
             ),
@@ -202,6 +202,33 @@ namespace MIR {
             if( ea.variant_index != eb.variant_index )
                 return false;
             return true;
+            )
+        )
+        throw "";
+    }
+
+    ::std::ostream& operator<<(::std::ostream& os, const Param& x)
+    {
+        TU_MATCHA( (x), (e),
+        (LValue,
+            os << e;
+            ),
+        (Constant,
+            os << e;
+            )
+        )
+        return os;
+    }
+    bool Param::operator==(const Param& x) const
+    {
+        if( this->tag() != x.tag() )
+            return false;
+        TU_MATCHA( (*this, x), (ea, eb),
+        (LValue,
+            return ea == eb;
+            ),
+        (Constant,
+            return ea == eb;
             )
         )
         throw "";
@@ -445,6 +472,33 @@ namespace MIR {
     )
     throw "";
 }
+::MIR::Constant MIR::Constant::clone() const
+{
+    TU_MATCHA( (*this), (e2),
+    (Int, return ::MIR::Constant(e2); ),
+    (Uint, return ::MIR::Constant(e2); ),
+    (Float, return ::MIR::Constant(e2); ),
+    (Bool, return ::MIR::Constant(e2); ),
+    (Bytes, return ::MIR::Constant(e2); ),
+    (StaticString, return ::MIR::Constant(e2); ),
+    (Const, return ::MIR::Constant::make_Const({e2.p.clone()}); ),
+    (ItemAddr, return ::MIR::Constant(e2.clone()); )
+    )
+    throw "";
+}
+
+::MIR::Param MIR::Param::clone() const
+{
+    TU_MATCHA( (*this), (e),
+    (LValue,
+        return e.clone();
+        ),
+    (Constant,
+        return e.clone();
+        )
+    )
+    throw "";
+}
 
 ::MIR::RValue MIR::RValue::clone() const
 {
@@ -453,16 +507,7 @@ namespace MIR {
         return ::MIR::RValue(e.clone());
         ),
     (Constant,
-        TU_MATCHA( (e), (e2),
-        (Int, return ::MIR::Constant(e2); ),
-        (Uint, return ::MIR::Constant(e2); ),
-        (Float, return ::MIR::Constant(e2); ),
-        (Bool, return ::MIR::Constant(e2); ),
-        (Bytes, return ::MIR::Constant(e2); ),
-        (StaticString, return ::MIR::Constant(e2); ),
-        (Const, return ::MIR::Constant::make_Const({e2.p.clone()}); ),
-        (ItemAddr, return ::MIR::Constant(e2.clone()); )
-        )
+        return e.clone();
         ),
     (SizedArray,
         return ::MIR::RValue::make_SizedArray({ e.val.clone(), e.count });
@@ -490,7 +535,7 @@ namespace MIR {
         return ::MIR::RValue::make_MakeDst({ e.ptr_val.clone(), e.meta_val.clone() });
         ),
     (Tuple,
-        ::std::vector<::MIR::LValue>   ret;
+        decltype(e.vals)    ret;
         ret.reserve(e.vals.size());
         for(const auto& v : e.vals)
             ret.push_back( v.clone() );
@@ -498,7 +543,7 @@ namespace MIR {
         ),
     // Array literal
     (Array,
-        ::std::vector<::MIR::LValue>   ret;
+        decltype(e.vals)    ret;
         ret.reserve(e.vals.size());
         for(const auto& v : e.vals)
             ret.push_back( v.clone() );
@@ -510,7 +555,7 @@ namespace MIR {
         ),
     // Create a new instance of a struct (or enum)
     (Struct,
-        ::std::vector<::MIR::LValue>   ret;
+        decltype(e.vals)    ret;
         ret.reserve(e.vals.size());
         for(const auto& v : e.vals)
             ret.push_back( v.clone() );

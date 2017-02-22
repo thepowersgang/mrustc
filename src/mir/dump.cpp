@@ -193,38 +193,51 @@ namespace {
                 )
             )
         }
+        void fmt_val(::std::ostream& os, const ::MIR::Constant& e) {
+            TU_MATCHA( (e), (ce),
+            (Int,
+                os << ce;
+                ),
+            (Uint,
+                os << "0x" << ::std::hex << ce << ::std::dec;
+                ),
+            (Float,
+                os << ce;
+                ),
+            (Bool,
+                os << (ce ? "true" : "false");
+                ),
+            (Bytes,
+                os << "b\"" << ce << "\"";
+                ),
+            (StaticString,
+                os << "\"" << ce << "\"";
+                ),
+            (Const,
+                os << ce.p;
+                ),
+            (ItemAddr,
+                os << "addr " << ce;
+                )
+            )
+        }
+        void fmt_val(::std::ostream& os, const ::MIR::Param& param) {
+            TU_MATCHA( (param), (e),
+            (LValue,
+                fmt_val(os, e);
+                ),
+            (Constant,
+                fmt_val(os, e);
+                )
+            )
+        }
         void fmt_val(::std::ostream& os, const ::MIR::RValue& rval) {
             TU_MATCHA( (rval), (e),
             (Use,
                 fmt_val(os, e);
                 ),
             (Constant,
-                TU_MATCHA( (e), (ce),
-                (Int,
-                    os << ce;
-                    ),
-                (Uint,
-                    os << "0x" << ::std::hex << ce << ::std::dec;
-                    ),
-                (Float,
-                    os << ce;
-                    ),
-                (Bool,
-                    os << (ce ? "true" : "false");
-                    ),
-                (Bytes,
-                    os << "b\"" << ce << "\"";
-                    ),
-                (StaticString,
-                    os << "\"" << ce << "\"";
-                    ),
-                (Const,
-                    os << ce.p;
-                    ),
-                (ItemAddr,
-                    os << "addr " << ce;
-                    )
-                )
+                fmt_val(os, e);
                 ),
             (SizedArray,
                 os << "[";

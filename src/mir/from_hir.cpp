@@ -1434,7 +1434,7 @@ namespace {
                 m_builder.end_block(::MIR::Terminator::make_Call({
                     place_raw__ok, place_raw__panic,
                     place_raw.clone(), mv$(fcn_path),
-                    ::make_vec1( mv$(place_refmut) )
+                    ::make_vec1( ::MIR::Param(mv$(place_refmut)) )
                     }));
             }
 
@@ -1471,7 +1471,7 @@ namespace {
             m_builder.end_block(::MIR::Terminator::make_Call({
                 res__ok, res__panic,
                 res.clone(), mv$(finalize_path),
-                ::make_vec1( mv$(place) )
+                ::make_vec1( ::MIR::Param(mv$(place)) )
                 }));
 
             // TODO: Proper panic handling, including scope destruction
@@ -1488,7 +1488,7 @@ namespace {
         {
             const Span& sp = node.span();
             TRACE_FUNCTION_F("_TupleVariant");
-            ::std::vector< ::MIR::LValue>   values;
+            ::std::vector< ::MIR::Param>   values;
             values.reserve( node.m_args.size() );
             for(auto& arg : node.m_args)
             {
@@ -1517,16 +1517,15 @@ namespace {
                 }) );
         }
 
-        void visit(::HIR::ExprNode_CallPath& node) override
+        ::std::vector< ::MIR::Param> get_args(/*const*/ ::std::vector<::HIR::ExprNodeP>& args)
         {
-            TRACE_FUNCTION_F("_CallPath " << node.m_path);
-            ::std::vector< ::MIR::LValue>   values;
-            values.reserve( node.m_args.size() );
-            for(auto& arg : node.m_args)
+            ::std::vector< ::MIR::Param>   values;
+            values.reserve( args.size() );
+            for(auto& arg : args)
             {
                 this->visit_node_ptr(arg);
 
-                if( node.m_args.size() == 1 )
+                if( args.size() == 1 )
                 {
                     values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type, /*allow_missing_value=*/true) );
                 }
@@ -1541,9 +1540,18 @@ namespace {
                     values.push_back( mv$(tmp) );
                 }
 
-                m_builder.moved_lvalue( arg->span(), values.back() );
+                if(const auto* e = values.back().opt_LValue() )
+                {
+                    m_builder.moved_lvalue( arg->span(), *e );
+                }
             }
+            return values;
+        }
 
+        void visit(::HIR::ExprNode_CallPath& node) override
+        {
+            TRACE_FUNCTION_F("_CallPath " << node.m_path);
+            auto values = get_args(node.m_args);
 
             auto panic_block = m_builder.new_bb_unlinked();
             auto next_block = m_builder.new_bb_unlinked();
@@ -1616,14 +1624,7 @@ namespace {
             this->visit_node_ptr(node.m_value);
             auto fcn_val = m_builder.get_result_in_lvalue( node.m_value->span(), node.m_value->m_res_type );
 
-            ::std::vector< ::MIR::LValue>   values;
-            values.reserve( node.m_args.size() );
-            for(auto& arg : node.m_args)
-            {
-                this->visit_node_ptr(arg);
-                values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
-                m_builder.moved_lvalue( arg->span(), values.back() );
-            }
+            auto values = get_args(node.m_args);
 
 
             auto panic_block = m_builder.new_bb_unlinked();
@@ -1924,7 +1925,7 @@ namespace {
             const ::HIR::t_struct_fields& fields = *fields_ptr;
 
             ::std::vector<bool> values_set;
-            ::std::vector< ::MIR::LValue>   values;
+            ::std::vector< ::MIR::Param>   values;
             values.resize( fields.size() );
             values_set.resize( fields.size() );
 
@@ -1982,7 +1983,7 @@ namespace {
         void visit(::HIR::ExprNode_Tuple& node) override
         {
             TRACE_FUNCTION_F("_Tuple");
-            ::std::vector< ::MIR::LValue>   values;
+            ::std::vector< ::MIR::Param>   values;
             values.reserve( node.m_vals.size() );
             for(auto& arg : node.m_vals)
             {
@@ -1998,7 +1999,7 @@ namespace {
         void visit(::HIR::ExprNode_ArrayList& node) override
         {
             TRACE_FUNCTION_F("_ArrayList");
-            ::std::vector< ::MIR::LValue>   values;
+            ::std::vector< ::MIR::Param>   values;
             values.reserve( node.m_vals.size() );
             for(auto& arg : node.m_vals)
             {
@@ -2027,7 +2028,7 @@ namespace {
         {
             TRACE_FUNCTION_F("_Closure - " << node.m_obj_path);
 
-            ::std::vector< ::MIR::LValue>   vals;
+            ::std::vector< ::MIR::Param>   vals;
             vals.reserve( node.m_captures.size() );
             for(auto& arg : node.m_captures)
             {

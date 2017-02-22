@@ -82,6 +82,29 @@ namespace {
         return visit_mir_lvalue_mut( const_cast<::MIR::LValue&>(lv), u, [&](auto& v, auto u) { return cb(v,u); } );
     }
 
+    bool visit_mir_lvalue_mut(::MIR::Param& p, ValUsage u, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
+    {
+        if( auto* e = p.opt_LValue() )
+        {
+            return visit_mir_lvalue_mut(*e, u, cb);
+        }
+        else
+        {
+            return false;
+        }
+    }
+    bool visit_mir_lvalue(const ::MIR::Param& p, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
+    {
+        if( const auto* e = p.opt_LValue() )
+        {
+            return visit_mir_lvalue(*e, u, cb);
+        }
+        else
+        {
+            return false;
+        }
+    }
+
     bool visit_mir_lvalues_mut(::MIR::RValue& rval, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         bool rv = false;
@@ -751,7 +774,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     this->bb_base + se.panic_block,
                     this->clone_lval(se.ret_val),
                     mv$(tgt),
-                    this->clone_lval_vec(se.args)
+                    this->clone_param_vec(se.args)
                     });
                 )
             )
@@ -773,6 +796,14 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 rv.push_back( this->clone_lval(lv) );
             return rv;
         }
+        ::std::vector<::MIR::Param> clone_param_vec(const ::std::vector<::MIR::Param>& src) const
+        {
+            ::std::vector<::MIR::Param>    rv;
+            rv.reserve(src.size());
+            for(const auto& lv : src)
+                rv.push_back( this->clone_param(lv) );
+            return rv;
+        }
         ::MIR::LValue clone_lval(const ::MIR::LValue& src) const
         {
             TU_MATCHA( (src), (se),
@@ -783,7 +814,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return ::MIR::LValue::make_Temporary({se.idx + this->tmp_base});
                 ),
             (Argument,
-                return this->te.args.at(se.idx).clone();
+                // TODO: If this argument is a literal, need to allocate a
+                // tmep for it
+                return this->te.args.at(se.idx).as_LValue().clone();
                 ),
             (Return,
                 return this->te.ret_val.clone();
@@ -791,7 +824,6 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             (Static,
                 return this->monomorph( se );
                 ),
-            
             (Deref,
                 return ::MIR::LValue::make_Deref({ box$(this->clone_lval(*se.val)) });
                 ),
@@ -810,6 +842,32 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             )
             throw "";
         }
+        ::MIR::Constant clone_constant(const ::MIR::Constant& src) const
+        {
+            TU_MATCHA( (src), (ce),
+            (Int  , return ::MIR::Constant(ce);),
+            (Uint , return ::MIR::Constant(ce);),
+            (Float, return ::MIR::Constant(ce);),
+            (Bool , return ::MIR::Constant(ce);),
+            (Bytes, return ::MIR::Constant(ce);),
+            (StaticString, return ::MIR::Constant(ce);),
+            (Const,
+                return ::MIR::Constant::make_Const({ this->monomorph(ce.p) });
+                ),
+            (ItemAddr,
+                return ::MIR::Constant::make_ItemAddr(this->monomorph(ce));
+                )
+            )
+            throw "";
+        }
+        ::MIR::Param clone_param(const ::MIR::Param& src) const
+        {
+            TU_MATCHA( (src), (se),
+            (LValue, return clone_lval(se);),
+            (Constant, return clone_constant(se); )
+            )
+            throw "";
+        }
         ::MIR::RValue clone_rval(const ::MIR::RValue& src) const
         {
             TU_MATCHA( (src), (se),
@@ -817,23 +875,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return ::MIR::RValue( this->clone_lval(se) );
                 ),
             (Constant,
-                TU_MATCHA( (se), (ce),
-                (Int  , return ::MIR::Constant(ce);),
-                (Uint , return ::MIR::Constant(ce);),
-                (Float, return ::MIR::Constant(ce);),
-                (Bool , return ::MIR::Constant(ce);),
-                (Bytes, return ::MIR::Constant(ce);),
-                (StaticString, return ::MIR::Constant(ce);),
-                (Const,
-                    return ::MIR::Constant::make_Const({ this->monomorph(ce.p) });
-                    ),
-                (ItemAddr,
-                    return ::MIR::Constant::make_ItemAddr(this->monomorph(ce));
-                    )
-                )
+                return this->clone_constant(se);
                 ),
             (SizedArray,
-                return ::MIR::RValue::make_SizedArray({ this->clone_lval(se.val), se.count });
+                return ::MIR::RValue::make_SizedArray({ this->clone_param(se.val), se.count });
                 ),
             (Borrow,
                 // TODO: Region IDs
@@ -843,7 +888,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return ::MIR::RValue::make_Cast({ this->clone_lval(se.val), this->monomorph(se.type) });
                 ),
             (BinOp,
-                return ::MIR::RValue::make_BinOp({ this->clone_lval(se.val_l), se.op, this->clone_lval(se.val_r) });
+                return ::MIR::RValue::make_BinOp({ this->clone_param(se.val_l), se.op, this->clone_param(se.val_r) });
                 ),
             (UniOp,
                 return ::MIR::RValue::make_UniOp({ this->clone_lval(se.val), se.op });
@@ -855,19 +900,19 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return ::MIR::RValue::make_DstPtr({ this->clone_lval(se.val) });
                 ),
             (MakeDst,
-                return ::MIR::RValue::make_MakeDst({ this->clone_lval(se.ptr_val), this->clone_lval(se.meta_val) });
+                return ::MIR::RValue::make_MakeDst({ this->clone_lval(se.ptr_val), this->clone_param(se.meta_val) });
                 ),
             (Tuple,
-                return ::MIR::RValue::make_Tuple({ this->clone_lval_vec(se.vals) });
+                return ::MIR::RValue::make_Tuple({ this->clone_param_vec(se.vals) });
                 ),
             (Array,
-                return ::MIR::RValue::make_Array({ this->clone_lval_vec(se.vals) });
+                return ::MIR::RValue::make_Array({ this->clone_param_vec(se.vals) });
                 ),
             (Variant,
-                return ::MIR::RValue::make_Variant({ this->monomorph(se.path), se.index, this->clone_lval(se.val) });
+                return ::MIR::RValue::make_Variant({ this->monomorph(se.path), se.index, this->clone_param(se.val) });
                 ),
             (Struct,
-                return ::MIR::RValue::make_Struct({ this->monomorph(se.path), se.variant_idx, this->clone_lval_vec(se.vals) });
+                return ::MIR::RValue::make_Struct({ this->monomorph(se.path), se.variant_idx, this->clone_param_vec(se.vals) });
                 )
             )
             throw "";
@@ -1053,6 +1098,12 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                 }
                 else {
                     mark_validity(mir_res, lv, false);
+                }
+            }
+            void move_val(const ::MIR::TypeResolve& mir_res, const ::MIR::Param& p) {
+                if(const auto* e = p.opt_LValue())
+                {
+                    move_val(mir_res, *e);
                 }
             }
         };
@@ -1486,7 +1537,10 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         else if( tef.name == "bswap" && tef.params.m_types.at(0) == ::HIR::CoreType::U8 )
         {
             DEBUG("bswap<u8> is a no-op");
-            bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(te.args.at(0)) }));
+            if( auto* e = te.args.at(0).opt_LValue() )
+                bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(*e) }));
+            else
+                bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(te.args.at(0).as_Constant()) }));
             bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
             changed = true;
         }

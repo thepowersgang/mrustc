@@ -46,12 +46,68 @@ namespace {
         )
         throw "";
     }
-    ::std::vector<::MIR::LValue> monomorph_LValue_list(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::std::vector<::MIR::LValue>& tpl)
+    ::MIR::Constant monomorph_Constant(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::Constant& tpl)
     {
-        ::std::vector<::MIR::LValue>    rv;
+        TU_MATCHA( (tpl), (ce),
+        (Int,
+            return ::MIR::Constant::make_Int(ce);
+            ),
+        (Uint,
+            return ::MIR::Constant::make_Uint(ce);
+            ),
+        (Float,
+            return ::MIR::Constant::make_Float(ce);
+            ),
+        (Bool,
+            return ::MIR::Constant::make_Bool(ce);
+            ),
+        (Bytes,
+            return ::MIR::Constant(ce);
+            ),
+        (StaticString,
+            return ::MIR::Constant(ce);
+            ),
+        (Const,
+            return ::MIR::Constant::make_Const({
+                params.monomorph(resolve, ce.p)
+                });
+            ),
+        (ItemAddr,
+            auto p = params.monomorph(resolve, ce);
+            // TODO: If this is a pointer to a function on a trait object, replace with the address loaded from the vtable.
+            // - Requires creating a new temporary for the vtable pointer.
+            // - Also requires knowing what the receiver is.
+            return ::MIR::Constant( mv$(p) );
+            )
+        )
+        throw "";
+    }
+    ::MIR::Param monomorph_Param(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::Param& tpl)
+    {
+        TU_MATCHA( (tpl), (e),
+        (LValue,
+            return monomorph_LValue(resolve, params, e);
+            ),
+        (Constant,
+            return monomorph_Constant(resolve, params, e);
+            )
+        )
+        throw "";
+    }
+    //::std::vector<::MIR::LValue> monomorph_LValue_list(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::std::vector<::MIR::LValue>& tpl)
+    //{
+    //    ::std::vector<::MIR::LValue>    rv;
+    //    rv.reserve( tpl.size() );
+    //    for(const auto& v : tpl)
+    //        rv.push_back( monomorph_LValue(resolve, params, v) );
+    //    return rv;
+    //}
+    ::std::vector<::MIR::Param> monomorph_Param_list(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::std::vector<::MIR::Param>& tpl)
+    {
+        ::std::vector<::MIR::Param>    rv;
         rv.reserve( tpl.size() );
         for(const auto& v : tpl)
-            rv.push_back( monomorph_LValue(resolve, params, v) );
+            rv.push_back( monomorph_Param(resolve, params, v) );
         return rv;
     }
 }
@@ -113,42 +169,11 @@ namespace {
                     rval = ::MIR::RValue( monomorph_LValue(resolve, params, se) );
                     ),
                 (Constant,
-                    TU_MATCHA( (se), (ce),
-                    (Int,
-                        rval = ::MIR::Constant::make_Int(ce);
-                        ),
-                    (Uint,
-                        rval = ::MIR::Constant::make_Uint(ce);
-                        ),
-                    (Float,
-                        rval = ::MIR::Constant::make_Float(ce);
-                        ),
-                    (Bool,
-                        rval = ::MIR::Constant::make_Bool(ce);
-                        ),
-                    (Bytes,
-                        rval = ::MIR::Constant(ce);
-                        ),
-                    (StaticString,
-                        rval = ::MIR::Constant(ce);
-                        ),
-                    (Const,
-                        rval = ::MIR::Constant::make_Const({
-                            params.monomorph(resolve, ce.p)
-                            });
-                        ),
-                    (ItemAddr,
-                        auto p = params.monomorph(resolve, ce);
-                        // TODO: If this is a pointer to a function on a trait object, replace with the address loaded from the vtable.
-                        // - Requires creating a new temporary for the vtable pointer.
-                        // - Also requires knowing what the receiver is.
-                        rval = ::MIR::Constant( mv$(p) );
-                        )
-                    )
+                    rval = monomorph_Constant(resolve, params, se);
                     ),
                 (SizedArray,
                     rval = ::MIR::RValue::make_SizedArray({
-                        monomorph_LValue(resolve, params, se.val),
+                        monomorph_Param(resolve, params, se.val),
                         se.count
                         });
                     ),
@@ -166,9 +191,9 @@ namespace {
                     ),
                 (BinOp,
                     rval = ::MIR::RValue::make_BinOp({
-                        monomorph_LValue(resolve, params, se.val_l),
+                        monomorph_Param(resolve, params, se.val_l),
                         se.op,
-                        monomorph_LValue(resolve, params, se.val_r)
+                        monomorph_Param(resolve, params, se.val_r)
                         });
                     ),
                 (UniOp,
@@ -188,17 +213,17 @@ namespace {
                 (MakeDst,
                     rval = ::MIR::RValue::make_MakeDst({
                         monomorph_LValue(resolve, params, se.ptr_val),
-                        monomorph_LValue(resolve, params, se.meta_val)
+                        monomorph_Param(resolve, params, se.meta_val)
                         });
                     ),
                 (Tuple,
                     rval = ::MIR::RValue::make_Tuple({
-                        monomorph_LValue_list(resolve, params, se.vals)
+                        monomorph_Param_list(resolve, params, se.vals)
                         });
                     ),
                 (Array,
                     rval = ::MIR::RValue::make_Array({
-                        monomorph_LValue_list(resolve, params, se.vals)
+                        monomorph_Param_list(resolve, params, se.vals)
                         });
                     ),
                 // Create a new instance of a union (and eventually enum)
@@ -206,7 +231,7 @@ namespace {
                     rval = ::MIR::RValue::make_Variant({
                         params.monomorph(resolve, se.path),
                         se.index,
-                        monomorph_LValue(resolve, params, se.val)
+                        monomorph_Param(resolve, params, se.val)
                         });
                     ),
                 // Create a new instance of a struct (or enum)
@@ -214,7 +239,7 @@ namespace {
                     rval = ::MIR::RValue::make_Struct({
                         params.monomorph(resolve, se.path),
                         se.variant_idx,
-                        monomorph_LValue_list(resolve, params, se.vals)
+                        monomorph_Param_list(resolve, params, se.vals)
                         });
                     )
                 )
@@ -283,7 +308,7 @@ namespace {
                 e.ret_block, e.panic_block,
                 monomorph_LValue(resolve, params, e.ret_val),
                 H::monomorph_calltarget(resolve, params, e.fcn),
-                monomorph_LValue_list(resolve, params, e.args)
+                monomorph_Param_list(resolve, params, e.args)
                 });
             )
         )

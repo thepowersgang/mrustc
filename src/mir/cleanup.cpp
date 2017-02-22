@@ -207,7 +207,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         const auto& vals = lit.as_List();
         MIR_ASSERT(state, vals.size() == te.size(), "Literal size mismatched with tuple size");
 
-        ::std::vector< ::MIR::LValue>   lvals;
+        ::std::vector< ::MIR::Param>   lvals;
         lvals.reserve( vals.size() );
 
         for(unsigned int i = 0; i < vals.size(); i ++)
@@ -245,7 +245,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         }
         else
         {
-            ::std::vector< ::MIR::LValue>   lvals;
+            ::std::vector< ::MIR::Param>   lvals;
             lvals.reserve( vals.size() );
 
             for(const auto& val: vals)
@@ -265,7 +265,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
 
             auto monomorph = [&](const auto& tpl) { return monomorphise_type(state.sp, str.m_params, te.path.m_data.as_Generic().m_params, tpl); };
 
-            ::std::vector< ::MIR::LValue>   lvals;
+            ::std::vector< ::MIR::Param>   lvals;
             TU_MATCHA( (str.m_data), (se),
             (Unit,
                 MIR_ASSERT(state, vals.size() == 0, "Values passed for unit struct");
@@ -298,7 +298,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
 
             auto monomorph = [&](const auto& tpl) { return monomorphise_type(state.sp, enm.m_params, te.path.m_data.as_Generic().m_params, tpl); };
 
-            ::std::vector< ::MIR::LValue>   lvals;
+            ::std::vector< ::MIR::Param>   lvals;
             MIR_ASSERT(state, lit_var.idx < enm.m_variants.size(), "Variant index out of range");
             TU_MATCHA( (enm.m_variants[lit_var.idx].second), (ve),
             (Unit,
@@ -487,7 +487,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                     const auto& str = *te.binding.as_Struct();
                     ::HIR::TypeRef  tmp;
                     auto monomorph = [&](const auto& t) { return monomorphise_type(Span(), str.m_params, ty_path.m_params, t); };
-                    ::std::vector< ::MIR::LValue>   vals;
+                    ::std::vector< ::MIR::Param>   vals;
                     TU_MATCHA( (str.m_data), (se),
                     (Unit,
                         ),
@@ -732,7 +732,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         auto monomorph_cb_s = monomorphise_type_get_cb(state.sp, nullptr, &ste.path.m_data.as_Generic().m_params, nullptr);
 
         // - Destructure and restrucure with the unsized fields
-        ::std::vector<::MIR::LValue>    ents;
+        ::std::vector<::MIR::Param>    ents;
         TU_MATCHA( (str.m_data), (se),
         (Unit,
             MIR_BUG(state, "Unit-like struct CoerceUnsized is impossible - " << src_ty);
@@ -904,6 +904,17 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
         }
     }
 }
+void MIR_Cleanup_Param(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::Param& p)
+{
+    TU_MATCHA( (p), (e),
+    (LValue,
+        MIR_Cleanup_LValue(state, mutator, e);
+        ),
+    (Constant,
+        // NOTE: No cleanup
+        )
+    )
+}
 
 void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
@@ -941,7 +952,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 (Constant,
                     ),
                 (SizedArray,
-                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    MIR_Cleanup_Param(state, mutator,  re.val);
                     ),
                 (Borrow,
                     MIR_Cleanup_LValue(state, mutator,  re.val);
@@ -950,8 +961,8 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     MIR_Cleanup_LValue(state, mutator,  re.val);
                     ),
                 (BinOp,
-                    MIR_Cleanup_LValue(state, mutator,  re.val_l);
-                    MIR_Cleanup_LValue(state, mutator,  re.val_r);
+                    MIR_Cleanup_Param(state, mutator,  re.val_l);
+                    MIR_Cleanup_Param(state, mutator,  re.val_r);
                     ),
                 (UniOp,
                     MIR_Cleanup_LValue(state, mutator,  re.val);
@@ -987,22 +998,22 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     ),
                 (MakeDst,
                     MIR_Cleanup_LValue(state, mutator,  re.ptr_val);
-                    MIR_Cleanup_LValue(state, mutator,  re.meta_val);
+                    MIR_Cleanup_Param(state, mutator,  re.meta_val);
                     ),
                 (Tuple,
                     for(auto& lv : re.vals)
-                        MIR_Cleanup_LValue(state, mutator,  lv);
+                        MIR_Cleanup_Param(state, mutator,  lv);
                     ),
                 (Array,
                     for(auto& lv : re.vals)
-                        MIR_Cleanup_LValue(state, mutator,  lv);
+                        MIR_Cleanup_Param(state, mutator,  lv);
                     ),
                 (Variant,
-                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    MIR_Cleanup_Param(state, mutator,  re.val);
                     ),
                 (Struct,
                     for(auto& lv : re.vals)
-                        MIR_Cleanup_LValue(state, mutator,  lv);
+                        MIR_Cleanup_Param(state, mutator,  lv);
                     )
                 )
                 )
@@ -1103,7 +1114,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 MIR_Cleanup_LValue(state, mutator, e.fcn.as_Value());
             }
             for(auto& lv : e.args)
-                MIR_Cleanup_LValue(state, mutator, lv);
+                MIR_Cleanup_Param(state, mutator, lv);
             )
         )
 
@@ -1125,7 +1136,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                             )
                         )
                     {
-                        auto tgt_lvalue = MIR_Cleanup_Virtualize(sp, state, mutator, e.args.front(), te, pe);
+                        auto tgt_lvalue = MIR_Cleanup_Virtualize(sp, state, mutator, e.args.front().as_LValue(), te, pe);
                         e.fcn = mv$(tgt_lvalue);
                     }
                 }
@@ -1137,8 +1148,8 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     if( pe.trait.m_path == resolve.m_lang_Fn || pe.trait.m_path == resolve.m_lang_FnMut || pe.trait.m_path == resolve.m_lang_FnOnce )
                     {
                         MIR_ASSERT(state, e.args.size() == 2, "Fn* call requires two arguments");
-                        auto fcn_lvalue = mv$(e.args[0]);
-                        auto args_lvalue = mv$(e.args[1]);
+                        auto fcn_lvalue = mv$(e.args[0].as_LValue());
+                        auto args_lvalue = mv$(e.args[1].as_LValue());
 
                         DEBUG("Convert function pointer call");
 
