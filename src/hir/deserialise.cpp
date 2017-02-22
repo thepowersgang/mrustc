@@ -399,7 +399,7 @@ namespace {
                 deserialise_mir_lvalue()
                 })
             _(MakeDst, {
-                deserialise_mir_lvalue(),
+                deserialise_mir_param(),
                 deserialise_mir_param()
                 })
             _(Tuple, {

@@ -492,7 +492,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, cons
         this->raise_variables(sp, e.val, scope);
         ),
     (MakeDst,
-        this->raise_variables(sp, e.ptr_val, scope);
+        raise_vars(e.ptr_val);
         raise_vars(e.meta_val);
         ),
     (Tuple,

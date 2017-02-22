@@ -212,7 +212,7 @@ namespace {
                     ),
                 (MakeDst,
                     rval = ::MIR::RValue::make_MakeDst({
-                        monomorph_LValue(resolve, params, se.ptr_val),
+                        monomorph_Param(resolve, params, se.ptr_val),
                         monomorph_Param(resolve, params, se.meta_val)
                         });
                     ),

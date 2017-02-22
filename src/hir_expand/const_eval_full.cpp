@@ -677,7 +677,7 @@ namespace {
                     TODO(sp, "RValue::DstPtr");
                     ),
                 (MakeDst,
-                    auto ptr = read_lval(e.ptr_val);
+                    auto ptr = read_param(e.ptr_val);
                     auto meta = read_param(e.meta_val);
                     if( ! meta.is_Integer() ) {
                         TODO(sp, "RValue::MakeDst - (non-integral meta) " << ptr << " , " << meta);

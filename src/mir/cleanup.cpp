@@ -997,7 +997,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     re.val = mv$( *v.as_Deref().val );
                     ),
                 (MakeDst,
-                    MIR_Cleanup_LValue(state, mutator,  re.ptr_val);
+                    MIR_Cleanup_Param(state, mutator,  re.ptr_val);
                     MIR_Cleanup_Param(state, mutator,  re.meta_val);
                     ),
                 (Tuple,

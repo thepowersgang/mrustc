@@ -905,7 +905,7 @@ void Trans_Enumerate_Types(EnumState& state)
                                 H::visit_lvalue(tv,pp,fcn, re.val);
                                 ),
                             (MakeDst,
-                                H::visit_lvalue(tv,pp,fcn, re.ptr_val);
+                                H::visit_param(tv,pp,fcn, re.ptr_val);
                                 H::visit_param(tv,pp,fcn, re.meta_val);
                                 ),
                             (Tuple,
@@ -1428,7 +1428,7 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
                     ),
                 (MakeDst,
-                    Trans_Enumerate_FillFrom_MIR_LValue(state, e.ptr_val, pp);
+                    Trans_Enumerate_FillFrom_MIR_Param(state, e.ptr_val, pp);
                     Trans_Enumerate_FillFrom_MIR_Param(state, e.meta_val, pp);
                     ),
                 (Tuple,

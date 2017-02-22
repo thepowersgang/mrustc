@@ -91,8 +91,8 @@ enum class eUniOp
 
 // Compile-time known values
 TAGGED_UNION_EX(Constant, (), Int, (
-    (Int, ::std::int64_t),
-    (Uint, ::std::uint64_t),
+    (Int, ::std::int64_t),  // TODO: Include eCoreType
+    (Uint, ::std::uint64_t),    // TODO: Include eCoreType
     (Float, double),
     (Bool, bool),
     (Bytes, ::std::vector< ::std::uint8_t>),    // Byte string
@@ -163,7 +163,7 @@ TAGGED_UNION_EX(RValue, (), Use, (
         }),
     // Construct a DST pointer from a thin pointer and metadata
     (MakeDst, struct {
-        LValue  ptr_val;    // NOTE: Not a Param, becuase the pointer is a borrow
+        Param   ptr_val;
         Param   meta_val;
         }),
     (Tuple, struct {

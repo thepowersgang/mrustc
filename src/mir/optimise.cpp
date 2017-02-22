@@ -900,7 +900,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return ::MIR::RValue::make_DstPtr({ this->clone_lval(se.val) });
                 ),
             (MakeDst,
-                return ::MIR::RValue::make_MakeDst({ this->clone_lval(se.ptr_val), this->clone_param(se.meta_val) });
+                return ::MIR::RValue::make_MakeDst({ this->clone_param(se.ptr_val), this->clone_param(se.meta_val) });
                 ),
             (Tuple,
                 return ::MIR::RValue::make_Tuple({ this->clone_param_vec(se.vals) });

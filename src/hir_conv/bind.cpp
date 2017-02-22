@@ -576,7 +576,7 @@ namespace {
                                 H::visit_lvalue(*this, e.val);
                                 ),
                             (MakeDst,
-                                H::visit_lvalue(*this, e.ptr_val);
+                                H::visit_param(*this, e.ptr_val);
                                 H::visit_param(*this, e.meta_val);
                                 ),
                             (Tuple,

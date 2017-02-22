@@ -1624,7 +1624,7 @@ namespace {
                         (MakeDst,
                             emit_lvalue(e.dst);
                             m_of << ".PTR = ";
-                            emit_lvalue(ve.ptr_val);
+                            emit_param(ve.ptr_val);
                             m_of << ";\n\t";
                             emit_lvalue(e.dst);
                             m_of << ".META = ";

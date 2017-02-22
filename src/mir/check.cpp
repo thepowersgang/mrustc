@@ -430,7 +430,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                     ),
                 (MakeDst,
                     //val_state.move_val(state, se.ptr_val);
-                    val_state.ensure_valid(state, se.ptr_val);
+                    if( const auto* e = se.ptr_val.opt_LValue() )
+                        val_state.ensure_valid(state, *e);
                     val_state.move_val(state, se.meta_val);
                     ),
                 (Tuple,
