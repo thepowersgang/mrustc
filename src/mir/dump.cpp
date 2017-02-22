@@ -196,16 +196,16 @@ namespace {
         void fmt_val(::std::ostream& os, const ::MIR::Constant& e) {
             TU_MATCHA( (e), (ce),
             (Int,
-                os << ce;
+                os << ce.v;
                 ),
             (Uint,
-                os << "0x" << ::std::hex << ce << ::std::dec;
+                os << "0x" << ::std::hex << ce.v << ::std::dec;
                 ),
             (Float,
-                os << ce;
+                os << ce.v;
                 ),
             (Bool,
-                os << (ce ? "true" : "false");
+                os << (ce.v ? "true" : "false");
                 ),
             (Bytes,
                 os << "b\"" << ce << "\"";

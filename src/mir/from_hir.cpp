@@ -331,7 +331,7 @@ namespace {
                     if( e.extra_bind.is_valid() )
                     {
                         // 1. Obtain remaining length
-                        auto sub_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_Constant( e.leading.size() + e.trailing.size() ));
+                        auto sub_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ e.leading.size() + e.trailing.size(), ::HIR::CoreType::Usize }));
                         ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
 
                         // 2. Obtain pointer to element
@@ -934,7 +934,7 @@ namespace {
                 {
                     // If left is true, assign result true and return
                     m_builder.set_cur_block( bb_true );
-                    m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(true) ));
+                    m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool({true}) ));
                     m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
 
                     // If left is false, assign result to right
@@ -944,7 +944,7 @@ namespace {
                 {
                     // If left is false, assign result false and return
                     m_builder.set_cur_block( bb_false );
-                    m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool(false) ));
+                    m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool({false}) ));
                     m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
 
                     // If left is true, assign result to right
@@ -1244,7 +1244,7 @@ namespace {
                     if( ty_in.m_data.is_Array() )
                     {
                         const auto& in_array = ty_in.m_data.as_Array();
-                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) ) );
+                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant::make_Uint({ static_cast<uint64_t>(in_array.size_val), ::HIR::CoreType::Usize } ) );
                         m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
                     }
                     else if( ty_in.m_data.is_Generic() || (ty_in.m_data.is_Path() && ty_in.m_data.as_Path().binding.is_Opaque()) )
@@ -1294,7 +1294,7 @@ namespace {
                 BUG(node.span(), "Indexing unsupported type " << ty_val);
                 ),
             (Array,
-                limit_val = ::MIR::Constant( e.size_val );
+                limit_val = ::MIR::Constant::make_Uint({ e.size_val, ::HIR::CoreType::Usize });
                 ),
             (Slice,
                 limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value).clone() });
@@ -1681,7 +1681,8 @@ namespace {
             TU_MATCHA( (node.m_data), (e),
             (Integer,
                 ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Non-primitive return type for Integer literal - " << node.m_res_type);
-                switch(node.m_res_type.m_data.as_Primitive())
+                auto ity = node.m_res_type.m_data.as_Primitive();
+                switch(ity)
                 {
                 case ::HIR::CoreType::U8:
                 case ::HIR::CoreType::U16:
@@ -1689,7 +1690,10 @@ namespace {
                 case ::HIR::CoreType::U64:
                 case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Usize:
-                    m_builder.set_result(node.span(), ::MIR::RValue( ::MIR::Constant(e.m_value) ));
+                    m_builder.set_result(node.span(), ::MIR::Constant::make_Uint({ e.m_value, ity }) );
+                    break;
+                case ::HIR::CoreType::Char:
+                    m_builder.set_result(node.span(), ::MIR::Constant::make_Uint({ static_cast<uint64_t>(e.m_value), ity }) );
                     break;
                 case ::HIR::CoreType::I8:
                 case ::HIR::CoreType::I16:
@@ -1697,20 +1701,19 @@ namespace {
                 case ::HIR::CoreType::I64:
                 case ::HIR::CoreType::I128:
                 case ::HIR::CoreType::Isize:
-                    m_builder.set_result(node.span(), ::MIR::RValue( ::MIR::Constant( static_cast<int64_t>(e.m_value) ) ));
-                    break;
-                case ::HIR::CoreType::Char:
-                    m_builder.set_result(node.span(), ::MIR::RValue( ::MIR::Constant( static_cast<uint64_t>(e.m_value) ) ));
+                    m_builder.set_result(node.span(), ::MIR::Constant::make_Int({ static_cast<int64_t>(e.m_value), ity }) );
                     break;
                 default:
                     BUG(node.span(), "Integer literal with unexpected type - " << node.m_res_type);
                 }
                 ),
             (Float,
-                m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e.m_value) ));
+                ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Non-primitive return type for Float literal - " << node.m_res_type);
+                auto ity = node.m_res_type.m_data.as_Primitive();
+                m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant::make_Float({ e.m_value, ity }) ));
                 ),
             (Boolean,
-                m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e) ));
+                m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant::make_Bool({e}) ));
                 ),
             (String,
                 m_builder.set_result(node.span(), ::MIR::RValue::make_Constant( ::MIR::Constant(e) ));

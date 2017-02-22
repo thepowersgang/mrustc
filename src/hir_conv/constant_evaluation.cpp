@@ -1086,16 +1086,16 @@ namespace {
         auto const_to_lit = [&](const ::MIR::Constant& c)->::HIR::Literal {
             TU_MATCH(::MIR::Constant, (c), (e2),
             (Int,
-                return ::HIR::Literal(static_cast<uint64_t>(e2));
+                return ::HIR::Literal(static_cast<uint64_t>(e2.v));
                 ),
             (Uint,
-                return ::HIR::Literal(e2);
+                return ::HIR::Literal(e2.v);
                 ),
             (Float,
-                return ::HIR::Literal(e2);
+                return ::HIR::Literal(e2.v);
                 ),
             (Bool,
-                return ::HIR::Literal(static_cast<uint64_t>(e2));
+                return ::HIR::Literal(static_cast<uint64_t>(e2.v));
                 ),
             (Bytes,
                 return ::HIR::Literal::make_String({e2.begin(), e2.end()});

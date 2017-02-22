@@ -430,10 +430,21 @@ namespace {
             switch( m_in.read_tag() )
             {
             #define _(x, ...)    case ::MIR::Constant::TAG_##x: DEBUG("- " #x); return ::MIR::Constant::make_##x( __VA_ARGS__ );
-            _(Int, m_in.read_i64c())
-            _(Uint, m_in.read_u64c())
-            _(Float, m_in.read_double())
-            _(Bool, m_in.read_bool())
+            _(Int, {
+                m_in.read_i64c(),
+                static_cast< ::HIR::CoreType>(m_in.read_tag())
+                })
+            _(Uint, {
+                m_in.read_u64c(),
+                static_cast< ::HIR::CoreType>(m_in.read_tag())
+                })
+            _(Float, {
+                m_in.read_double(),
+                static_cast< ::HIR::CoreType>(m_in.read_tag())
+                })
+            _(Bool, {
+                m_in.read_bool()
+                })
             case ::MIR::Constant::TAG_Bytes: {
                 ::std::vector<unsigned char>    bytes;
                 bytes.resize( m_in.read_count() );

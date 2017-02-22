@@ -515,7 +515,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             // Yes, this is valid.
             ASSERT_BUG(sp, lit.is_Float(), "Matching floating point type with non-float literal - " << lit);
             double val = lit.as_Float();
-            this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+            this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ val, e }) ) );
             } break;
         case ::HIR::CoreType::U8:
         case ::HIR::CoreType::U16:
@@ -525,7 +525,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         case ::HIR::CoreType::Usize: {
             ASSERT_BUG(sp, lit.is_Integer(), "Matching integer type with non-integer literal - " << lit);
             uint64_t val = lit.as_Integer();
-            this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+            this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({val, e}) ) );
             } break;
         case ::HIR::CoreType::I8:
         case ::HIR::CoreType::I16:
@@ -535,7 +535,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         case ::HIR::CoreType::Isize: {
             ASSERT_BUG(sp, lit.is_Integer(), "Matching integer type with non-integer literal - " << lit);
             int64_t val = static_cast<int64_t>( lit.as_Integer() );
-            this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+            this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({ val, e }) ) );
             } break;
         case ::HIR::CoreType::Bool:
             ASSERT_BUG(sp, lit.is_Integer(), "Matching boolean with non-integer literal - " << lit);
@@ -545,7 +545,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
             // Char is just another name for 'u32'... but with a restricted range
             ASSERT_BUG(sp, lit.is_Integer(), "Matching char with non-integer literal - " << lit);
             uint64_t val = lit.as_Integer();
-            this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+            this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({ val, e }) ) );
             } break;
         case ::HIR::CoreType::Str:
             BUG(sp, "Hit match over `str` - must be `&str`");
@@ -807,7 +807,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::F64: {
                 double start = H::get_pattern_value_float(sp, pat, pe.start);
                 double end   = H::get_pattern_value_float(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Float({ start, e }), ::MIR::Constant::make_Float({ end, e })} ) );
                 } break;
             case ::HIR::CoreType::U8:
             case ::HIR::CoreType::U16:
@@ -817,7 +817,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::Usize: {
                 uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
                 uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Uint({ start, e }), ::MIR::Constant::make_Uint({ end, e })} ) );
                 } break;
             case ::HIR::CoreType::I8:
             case ::HIR::CoreType::I16:
@@ -827,7 +827,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::Isize: {
                 int64_t start = H::get_pattern_value_int(sp, pat, pe.start);
                 int64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Int({ start, e }), ::MIR::Constant::make_Int({ end, e })} ) );
                 } break;
             case ::HIR::CoreType::Bool:
                 BUG(sp, "Can't range match on Bool");
@@ -835,7 +835,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::Char: {
                 uint64_t start = H::get_pattern_value_int(sp, pat, pe.start);
                 uint64_t end   = H::get_pattern_value_int(sp, pat, pe.end  );
-                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant(start), ::MIR::Constant(end)} ) );
+                this->push_rule( PatternRule::make_ValueRange( {::MIR::Constant::make_Uint({ start, e }), ::MIR::Constant::make_Uint({ end, e })} ) );
                 } break;
             case ::HIR::CoreType::Str:
                 BUG(sp, "Hit match over `str` - must be `&str`");
@@ -849,7 +849,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::F64: {
                 // Yes, this is valid.
                 double val = H::get_pattern_value_float(sp, pat, pe.val);
-                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Float({ val, e }) ) );
                 } break;
             case ::HIR::CoreType::U8:
             case ::HIR::CoreType::U16:
@@ -858,7 +858,12 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::U128:
             case ::HIR::CoreType::Usize: {
                 uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
-                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({ val, e }) ) );
+                } break;
+            case ::HIR::CoreType::Char: {
+                // Char is just another name for 'u32'... but with a restricted range
+                uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Uint({ val, e }) ) );
                 } break;
             case ::HIR::CoreType::I8:
             case ::HIR::CoreType::I16:
@@ -867,17 +872,12 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             case ::HIR::CoreType::I128:
             case ::HIR::CoreType::Isize: {
                 int64_t val = H::get_pattern_value_int(sp, pat, pe.val);
-                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
+                this->push_rule( PatternRule::make_Value( ::MIR::Constant::make_Int({ val, e }) ) );
                 } break;
             case ::HIR::CoreType::Bool:
                 // TODO: Support values from `const` too
                 this->push_rule( PatternRule::make_Bool( pe.val.as_Integer().value != 0 ) );
                 break;
-            case ::HIR::CoreType::Char: {
-                // Char is just another name for 'u32'... but with a restricted range
-                uint64_t val = H::get_pattern_value_int(sp, pat, pe.val);
-                this->push_rule( PatternRule::make_Value( ::MIR::Constant(val) ) );
-                } break;
             case ::HIR::CoreType::Str:
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
@@ -1548,7 +1548,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 (Value,
                     auto succ_bb = builder.new_bb_unlinked();
 
-                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Uint()));
+                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant::make_Uint({ re.as_Uint().v, te }));
                     auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
@@ -1571,7 +1571,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 (Value,
                     auto succ_bb = builder.new_bb_unlinked();
 
-                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Int()));
+                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant::make_Int({ re.as_Int().v, te }));
                     auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
@@ -1589,8 +1589,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 (Value,
                     auto succ_bb = builder.new_bb_unlinked();
 
-                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.as_Uint()));
-                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                    auto test_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant::make_Uint({ re.as_Uint().v, te }));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
@@ -1599,15 +1599,15 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     auto test_bb_2 = builder.new_bb_unlinked();
 
                     // IF `val` < `first` : fail_bb
-                    auto test_lt_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.first.as_Uint()));
-                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::LT, mv$(test_lt_lval) }));
+                    auto test_lt_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant::make_Uint({ re.first.as_Uint().v, te }));
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, mv$(test_lt_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
 
                     builder.set_cur_block(test_bb_2);
 
                     // IF `val` > `last` : fail_bb
-                    auto test_gt_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant(re.last.as_Uint()));
-                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::GT, mv$(test_gt_lval) }));
+                    auto test_gt_lval = builder.lvalue_or_temp(sp, te, ::MIR::Constant::make_Uint({ re.last.as_Uint().v, te }));
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_lval) }));
                     builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
 
                     builder.set_cur_block(succ_bb);
@@ -1768,7 +1768,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 const auto& re = rule.as_Slice();
 
                 // Compare length
-                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint(re.len) ));
+                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint({ re.len, ::HIR::CoreType::Usize }) ));
                 auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val).clone() }));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::EQ, mv$(test_lval) }));
 
@@ -1787,7 +1787,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 const auto& re = rule.as_SplitSlice();
 
                 // Compare length
-                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint(re.min_len) ));
+                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint({ re.min_len, ::HIR::CoreType::Usize}) ));
                 auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val).clone() }));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::LT, mv$(test_lval) }));
 
@@ -2535,8 +2535,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         (Int,
             auto& be = GET_BRANCHES(m_branches, Signed);
 
-            // TODO: De-duplicate this code between Uint and Float
-            from_rule_value(sp, be, ve, "Signed", rule.field_path,
+            from_rule_value(sp, be, ve.v, "Signed", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 ) {
                         assert( branch.as_Subtree() );
@@ -2552,7 +2551,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         (Uint,
             auto& be = GET_BRANCHES(m_branches, Unsigned);
 
-            from_rule_value(sp, be, ve, "Unsigned", rule.field_path,
+            from_rule_value(sp, be, ve.v, "Unsigned", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 ) {
                         assert( branch.as_Subtree() );
@@ -2568,7 +2567,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         (Float,
             auto& be = GET_BRANCHES(m_branches, Float);
 
-            from_rule_value(sp, be, ve, "Float", rule.field_path,
+            from_rule_value(sp, be, ve.v, "Float", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 ) {
                         assert( branch.as_Subtree() );
@@ -2581,7 +2580,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 });
             ),
         (Bool,
-            throw "";
+            BUG(sp, "Hit Bool in PatternRule::Value - " << e);
             ),
         (Bytes,
             TODO(sp, "Value patterns - Bytes");
@@ -2606,20 +2605,20 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             }
             ),
         (Const,
-            throw "";
+            BUG(sp, "Hit Const in PatternRule::Value - " << e);
             ),
         (ItemAddr,
-            throw "";
+            BUG(sp, "Hit ItemAddr in PatternRule::Value - " << e);
             )
         )
         ),
     (ValueRange,
 
-        ASSERT_BUG(sp, e.first.tag() == e.last.tag(), "");
+        ASSERT_BUG(sp, e.first.tag() == e.last.tag(), "Constant type mismatch in ValueRange - " << e.first << " and " << e.last);
         TU_MATCHA( (e.first, e.last), (ve_start, ve_end),
         (Int,
             auto& be = GET_BRANCHES(m_branches, Signed);
-            from_rule_valuerange(sp, be, ve_start, ve_end, "Signed", rule.field_path,
+            from_rule_valuerange(sp, be, ve_start.v, ve_end.v, "Signed", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 )
                     {
@@ -2636,7 +2635,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         (Uint,
             // TODO: Share code between the three numeric groups
             auto& be = GET_BRANCHES(m_branches, Unsigned);
-            from_rule_valuerange(sp, be, ve_start, ve_end, "Unsigned", rule.field_path,
+            from_rule_valuerange(sp, be, ve_start.v, ve_end.v, "Unsigned", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 )
                     {
@@ -2652,7 +2651,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             ),
         (Float,
             auto& be = GET_BRANCHES(m_branches, Float);
-            from_rule_valuerange(sp, be, ve_start, ve_end, "Float", rule.field_path,
+            from_rule_valuerange(sp, be, ve_start.v, ve_end.v, "Float", rule.field_path,
                 [&](auto& branch) {
                     if( rule_count > 1 )
                     {
@@ -2667,7 +2666,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
                 });
             ),
         (Bool,
-            throw "";
+            BUG(sp, "Hit Bool in PatternRule::ValueRange - " << e.first);
             ),
         (Bytes,
             TODO(sp, "ValueRange patterns - Bytes");
@@ -2676,10 +2675,10 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
             ERROR(sp, E0000, "Use of string in value range patter");
             ),
         (Const,
-            throw "";
+            BUG(sp, "Hit Const in PatternRule::ValueRange - " << e.first);
             ),
         (ItemAddr,
-            throw "";
+            BUG(sp, "Hit ItemAddr in PatternRule::ValueRange - " << e.first);
             )
         )
         )
@@ -3285,6 +3284,7 @@ void DecisionTreeGen::generate_branches_Signed(
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
+    auto ity = ty.m_data.as_Primitive();
     auto default_block = m_builder.new_bb_unlinked();
 
     // TODO: Convert into an integer switch w/ offset instead of chained comparisons
@@ -3293,8 +3293,8 @@ void DecisionTreeGen::generate_branches_Signed(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
 
-        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.start));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.end)));
+        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Int({branch.first.start, ity}));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Int({ branch.first.end, ity })));
 
         auto cmp_gt_block = m_builder.new_bb_unlinked();
         auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
@@ -3332,6 +3332,7 @@ void DecisionTreeGen::generate_branches_Unsigned(
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
+    auto ity = ty.m_data.as_Primitive();
     auto default_block = m_builder.new_bb_unlinked();
 
     // TODO: Convert into an integer switch w/ offset instead of chained comparisons
@@ -3340,8 +3341,8 @@ void DecisionTreeGen::generate_branches_Unsigned(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
 
-        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.start));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.end)));
+        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Uint({ branch.first.start, ity }));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Uint({ branch.first.end, ity })));
 
         auto cmp_gt_block = m_builder.new_bb_unlinked();
         auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
@@ -3379,14 +3380,15 @@ void DecisionTreeGen::generate_branches_Float(
     ::std::function<void(const DecisionTreeNode&)> and_then
     )
 {
+    auto ity = ty.m_data.as_Primitive();
     auto default_block = m_builder.new_bb_unlinked();
 
     for( const auto& branch : branches )
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
 
-        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.start));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.end)));
+        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Float({ branch.first.start, ity }));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Float({ branch.first.end, ity })));
 
         auto cmp_gt_block = m_builder.new_bb_unlinked();
         auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
@@ -3431,8 +3433,8 @@ void DecisionTreeGen::generate_branches_Char(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
 
-        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.start));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant(branch.first.end)));
+        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Uint({ branch.first.start, ::HIR::CoreType::Char }));
+        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Uint({ branch.first.end, ::HIR::CoreType::Char })));
 
         auto cmp_gt_block = m_builder.new_bb_unlinked();
         auto val_cmp_lt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
@@ -3693,7 +3695,7 @@ void DecisionTreeGen::generate_branches_Slice(
     // TODO: Binary search instead.
     for( const auto& branch : branches.fixed_arms )
     {
-        auto val_des = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::Constant(static_cast<uint64_t>(branch.first)));
+        auto val_des = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ static_cast<uint64_t>(branch.first), ::HIR::CoreType::Usize }));
 
         // Special case - final just does equality
         if( &branch == &branches.fixed_arms.back() )

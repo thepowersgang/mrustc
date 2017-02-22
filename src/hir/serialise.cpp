@@ -663,16 +663,19 @@ namespace {
             m_out.write_tag(v.tag());
             TU_MATCHA( (v), (e),
             (Int,
-                m_out.write_i64c(e);
+                m_out.write_i64c(e.v);
+                m_out.write_tag(static_cast<unsigned>(e.t));
                 ),
             (Uint,
-                m_out.write_u64c(e);
+                m_out.write_u64c(e.v);
+                m_out.write_tag(static_cast<unsigned>(e.t));
                 ),
             (Float,
-                m_out.write_double(e);
+                m_out.write_double(e.v);
+                m_out.write_tag(static_cast<unsigned>(e.t));
                 ),
             (Bool,
-                m_out.write_bool(e);
+                m_out.write_bool(e.v);
                 ),
             (Bytes,
                 m_out.write_count(e.size());

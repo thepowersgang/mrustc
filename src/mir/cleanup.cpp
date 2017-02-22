@@ -341,19 +341,19 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         case ::HIR::CoreType::U32:
         case ::HIR::CoreType::U16:
         case ::HIR::CoreType::U8:
-            return ::MIR::Constant::make_Uint( lit.as_Integer() );
+            return ::MIR::Constant::make_Uint({ lit.as_Integer(), te });
         case ::HIR::CoreType::Isize:
         case ::HIR::CoreType::I128:
         case ::HIR::CoreType::I64:
         case ::HIR::CoreType::I32:
         case ::HIR::CoreType::I16:
         case ::HIR::CoreType::I8:
-            return ::MIR::Constant::make_Int( lit.as_Integer() );
+            return ::MIR::Constant::make_Int({ static_cast<int64_t>(lit.as_Integer()), te });
         case ::HIR::CoreType::F64:
         case ::HIR::CoreType::F32:
-            return ::MIR::Constant::make_Float( lit.as_Float() );
+            return ::MIR::Constant::make_Float({ lit.as_Float(), te });
         case ::HIR::CoreType::Bool:
-            return ::MIR::Constant::make_Bool( !!lit.as_Integer() );
+            return ::MIR::Constant::make_Bool({ !!lit.as_Integer() });
         case ::HIR::CoreType::Str:
             MIR_BUG(state, "Const of type `str` - " << path);
         }
@@ -365,7 +365,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
             MIR_TODO(state, "BorrowOf into pointer - " << lit << " into " << ty);
         }
         else {
-            auto lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint( lit.as_Integer() ) ) );
+            auto lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint({ lit.as_Integer(), ::HIR::CoreType::Usize }) ) );
             return ::MIR::RValue::make_Cast({ mv$(lval), mv$(ty) });
         }
         ),
@@ -384,7 +384,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                 auto ptr_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, (&ty == &tmp ? mv$(tmp) : ty.clone()) );
 
                 auto ptr_lval = mutator.in_temporary( mv$(ptr_type), ::MIR::Constant::make_ItemAddr(path.clone()) );
-                auto size_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint(size) );
+                auto size_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
                 return ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) });
             }
             else if( const auto* tep = te.inner->m_data.opt_TraitObject() )
@@ -604,7 +604,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         {
             const auto& in_array = src_ty.m_data.as_Array();
             out_meta_ty = ::HIR::CoreType::Usize;
-            out_meta_val = ::MIR::Constant( static_cast<uint64_t>(in_array.size_val) );
+            out_meta_val = ::MIR::Constant::make_Uint({ static_cast<uint64_t>(in_array.size_val), ::HIR::CoreType::Usize });
             return true;
         }
         else if( src_ty.m_data.is_Generic() || (src_ty.m_data.is_Path() && src_ty.m_data.as_Path().binding.is_Opaque()) )
@@ -632,7 +632,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         // - Codegen assumes it's a pointer.
         if( de.m_trait.m_path.m_path == ::HIR::SimplePath() )
         {
-            auto null_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint(0u) );
+            auto null_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ 0u, ::HIR::CoreType::Usize }) );
             out_meta_ty = ty_unit_ptr.clone();
             out_meta_val = ::MIR::RValue::make_Cast({ mv$(null_lval), mv$(ty_unit_ptr) });
         }
@@ -987,7 +987,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         BUG(Span(), "Unexpected input type for DstMeta - " << ty);
                     }
                     if( const auto* te = ity_p->m_data.opt_Array() ) {
-                        se.src = ::MIR::Constant::make_Uint( te->size_val );
+                        se.src = ::MIR::Constant::make_Uint({ te->size_val, ::HIR::CoreType::Usize });
                     }
                     ),
                 (DstPtr,

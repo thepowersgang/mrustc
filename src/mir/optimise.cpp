@@ -1594,7 +1594,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 if( !se.src.as_Constant().is_Bool() )
                     continue;
                 val_known = true;
-                known_val = se.src.as_Constant().as_Bool();
+                known_val = se.src.as_Constant().as_Bool().v;
                 break;
             }
             else

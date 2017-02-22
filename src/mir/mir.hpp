@@ -91,10 +91,21 @@ enum class eUniOp
 
 // Compile-time known values
 TAGGED_UNION_EX(Constant, (), Int, (
-    (Int, ::std::int64_t),  // TODO: Include eCoreType
-    (Uint, ::std::uint64_t),    // TODO: Include eCoreType
-    (Float, double),
-    (Bool, bool),
+    (Int, struct {
+        ::std::int64_t  v;
+        ::HIR::CoreType t;
+        }),
+    (Uint, struct {
+        ::std::uint64_t v;
+        ::HIR::CoreType t;
+        }),
+    (Float, struct {
+        double  v;
+        ::HIR::CoreType t;
+        }),
+    (Bool, struct {
+        bool    v;  // NOTE: Defensive to prevent implicit casts
+        }),
     (Bytes, ::std::vector< ::std::uint8_t>),    // Byte string
     (StaticString, ::std::string),  // String
     (Const, struct { ::HIR::Path p; }),   // `const`

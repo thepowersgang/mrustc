@@ -11,17 +11,17 @@ namespace MIR {
     ::std::ostream& operator<<(::std::ostream& os, const Constant& v) {
         TU_MATCHA( (v), (e),
         (Int,
-            os << (e < 0 ? "-" : "+");
-            os << (e < 0 ? -e : e);
+            os << (e.v < 0 ? "-" : "+");
+            os << (e.v < 0 ? -e.v : e.v);
             ),
         (Uint,
-            os << e;
+            os << e.v;
             ),
         (Float,
-            os << e;
+            os << e.v;
             ),
         (Bool,
-            os << (e ? "true" : "false");
+            os << (e.v ? "true" : "false");
             ),
         (Bytes,
             os << "[";
@@ -56,16 +56,16 @@ namespace MIR {
             return false;
         TU_MATCHA( (*this,b), (ae,be),
         (Int,
-            return ae == be;
+            return ae.v == be.v && ae.t == be.t;
             ),
         (Uint,
-            return ae == be;
+            return ae.v == be.v && ae.t == be.t;
             ),
         (Float,
-            return ae == be;
+            return ae.v == be.v && ae.t == be.t;
             ),
         (Bool,
-            return ae == be;
+            return ae.v == be.v;
             ),
         (Bytes,
             return ae == be;

@@ -2788,56 +2788,54 @@ namespace {
         {
             TU_MATCHA( (ve), (c),
             (Int,
-                if( c == INT64_MIN )
+                if( c.v == INT64_MIN )
                     m_of << "INT64_MIN";
                 else
-                    m_of << c;
+                    m_of << c.v;
                 ),
             (Uint,
-                ::HIR::TypeRef  tmp;
-                const auto& ty = dst_ptr ? m_mir_res->get_lvalue_type(tmp, *dst_ptr) : tmp = ::HIR::CoreType::U128;
-                switch(ty.m_data.as_Primitive())
+                switch(c.t)
                 {
                 case ::HIR::CoreType::U8:
-                    m_of << ::std::hex << "0x" << (c & 0xFF) << ::std::dec;
+                    m_of << ::std::hex << "0x" << (c.v & 0xFF) << ::std::dec;
                     break;
                 case ::HIR::CoreType::U16:
-                    m_of << ::std::hex << "0x" << (c & 0xFFFF) << ::std::dec;
+                    m_of << ::std::hex << "0x" << (c.v & 0xFFFF) << ::std::dec;
                     break;
                 case ::HIR::CoreType::U32:
-                    m_of << ::std::hex << "0x" << (c & 0xFFFFFFFF) << ::std::dec;
+                    m_of << ::std::hex << "0x" << (c.v & 0xFFFFFFFF) << ::std::dec;
                     break;
                 case ::HIR::CoreType::U64:
                 case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Usize:
-                    m_of << ::std::hex << "0x" << c << ::std::dec;
+                    m_of << ::std::hex << "0x" << c.v << ::std::dec;
                     break;
                 case ::HIR::CoreType::Char:
-                    assert(0 <= c && c <= 0x10FFFF);
-                    if( c < 256 ) {
-                        m_of << c;
+                    assert(0 <= c.v && c.v <= 0x10FFFF);
+                    if( c.v < 256 ) {
+                        m_of << c.v;
                     }
                     else {
-                        m_of << ::std::hex << "0x" << c << ::std::dec;
+                        m_of << ::std::hex << "0x" << c.v << ::std::dec;
                     }
                     break;
                 default:
-                    MIR_BUG(*m_mir_res, "Invalid type for UInt literal - " << ty);
+                    MIR_BUG(*m_mir_res, "Invalid type for UInt literal - " << c.t);
                 }
                 ),
             (Float,
-                if( ::std::isnan(c) ) {
+                if( ::std::isnan(c.v) ) {
                     m_of << "NAN";
                 }
-                else if( ::std::isinf(c) ) {
+                else if( ::std::isinf(c.v) ) {
                     m_of << "INFINITY";
                 }
                 else {
-                    m_of << c;
+                    m_of << c.v;
                 }
                 ),
             (Bool,
-                m_of << (c ? "true" : "false");
+                m_of << (c.v ? "true" : "false");
                 ),
             (Bytes,
                 // TODO: Need to know the desired value for this
