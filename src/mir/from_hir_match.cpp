@@ -1754,12 +1754,14 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             if( rule.is_Value() ) {
                 ASSERT_BUG(sp, *te.inner == ::HIR::CoreType::U8, "Bytes pattern on non-&[u8]");
                 auto cloned_val = ::MIR::Constant( rule.as_Value().as_Bytes() );
+                auto size_val = ::MIR::Constant::make_Uint({ rule.as_Value().as_Bytes().size(), ::HIR::CoreType::Usize });
 
                 auto succ_bb = builder.new_bb_unlinked();
 
                 auto inner_val = val.as_Deref().val->clone();
 
-                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone()), ::MIR::RValue(mv$(cloned_val)));
+                auto slice_rval = ::MIR::RValue::make_MakeDst({ mv$(cloned_val), mv$(size_val) });
+                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone()), mv$(slice_rval));
                 auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(inner_val), ::MIR::eBinOp::EQ, mv$(test_lval) }));
                 builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
                 builder.set_cur_block(succ_bb);
@@ -1768,9 +1770,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 const auto& re = rule.as_Slice();
 
                 // Compare length
-                auto test_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue( ::MIR::Constant::make_Uint({ re.len, ::HIR::CoreType::Usize }) ));
+                auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ re.len, ::HIR::CoreType::Usize }) );
                 auto len_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, val).clone() }));
-                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::EQ, mv$(test_lval) }));
+                auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(len_val), ::MIR::eBinOp::EQ, mv$(test_val) }));
 
                 auto len_succ_bb = builder.new_bb_unlinked();
                 builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), len_succ_bb, fail_bb }) );

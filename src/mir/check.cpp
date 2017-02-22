@@ -143,6 +143,7 @@ namespace {
 //  - Requires maintaining state information for all variables/temporaries with support for loops
 void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn)
 {
+    TRACE_FUNCTION;
     // > Iterate through code, creating state maps. Save map at the start of each bb.
     struct ValStates {
         enum class State {
@@ -326,7 +327,6 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         }
         static bool merge_lists(::std::vector<State>& a, ::std::vector<State>& b)
         {
-            DEBUG("merge_lists");
             bool rv = false;
             assert( a.size() == b.size() );
             for(unsigned int i = 0; i < a.size(); i++)
@@ -597,9 +597,6 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         }
     }
 
-    // [ValState] = Value state tracking (use after move, uninit, ...)
-    MIR_Validate_ValState(state, fcn);
-
     // [Flat] = Basic checks (just iterates BBs)
     // - [Flat] Types must be valid (correct type for slot etc.)
     //  - Simple check of all assignments/calls/...
@@ -703,7 +700,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             check_type( ::HIR::TypeRef(::HIR::CoreType::Bool) );
                             ),
                         (Bytes,
-                            // TODO: Check result (could be either &[u8; N] or &[u8])
+                            check_type( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, c.size())) );
                             ),
                         (StaticString,
                             check_type( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str) );
@@ -892,6 +889,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             )
         }
     }
+
+    // [ValState] = Value state tracking (use after move, uninit, ...)
+    MIR_Validate_ValState(state, fcn);
 }
 
 // --------------------------------------------------------------------

@@ -2838,35 +2838,16 @@ namespace {
                 m_of << (c.v ? "true" : "false");
                 ),
             (Bytes,
-                // TODO: Need to know the desired value for this
-                // - Ideally, Bytes would always return a thin pointer (and
-                // be combined with a MakeDST to make a fat pointer)
-                ::HIR::TypeRef  tmp;
-                const auto& ty = dst_ptr ? m_mir_res->get_lvalue_type(tmp, *dst_ptr) : tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::U8);
-                MIR_ASSERT(*m_mir_res, ty.m_data.is_Borrow(), "Const::Bytes returning non-borrow - " << ty);
-                if( !dst_ptr || ty.m_data.as_Borrow().inner->m_data.is_Array() ) {
-                    // Array borrow : Cast the C string to the array
-                    // - Laziness
-                    m_of << "(void*)\"" << ::std::oct;
-                    for(const auto& v : c) {
-                        if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                            m_of << v;
-                        else
-                            m_of << "\\" << (unsigned int)v;
-                    }
-                    m_of << "\"" << ::std::dec;
+                // Array borrow : Cast the C string to the array
+                // - Laziness
+                m_of << "(void*)\"" << ::std::oct;
+                for(const auto& v : c) {
+                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
+                        m_of << v;
+                    else
+                        m_of << "\\" << (unsigned int)v;
                 }
-                else {
-                    // Slice borrow (asumed), pointer and metadata
-                    m_of << "make_sliceptr(\"" << ::std::oct;
-                    for(const auto& v : c) {
-                        if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                            m_of << v;
-                        else
-                            m_of << "\\" << (unsigned int)v;
-                    }
-                    m_of << "\", " << ::std::dec << c.size() << ")";
-                }
+                m_of << "\"" << ::std::dec;
                 ),
             (StaticString,
                 m_of << "make_sliceptr(\"" << ::std::oct;

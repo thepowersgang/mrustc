@@ -410,7 +410,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
             ::std::vector<uint8_t>  bytestr;
             for(auto v : lit.as_String())
                 bytestr.push_back( static_cast<uint8_t>(v) );
-            return ::MIR::Constant::make_Bytes( mv$(bytestr) );
+            return ::MIR::RValue::make_MakeDst({ ::MIR::Constant(mv$(bytestr)), ::MIR::Constant::make_Uint({ lit.as_String().size(), ::HIR::CoreType::Usize }) });
         }
         else if( te.inner->m_data.is_Array() && *te.inner->m_data.as_Array().inner == ::HIR::CoreType::U8 ) {
             // TODO: How does this differ at codegen to the above?
