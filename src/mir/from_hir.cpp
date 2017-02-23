@@ -1244,8 +1244,8 @@ namespace {
                     if( ty_in.m_data.is_Array() )
                     {
                         const auto& in_array = ty_in.m_data.as_Array();
-                        auto size_lval = m_builder.lvalue_or_temp( node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), ::MIR::Constant::make_Uint({ static_cast<uint64_t>(in_array.size_val), ::HIR::CoreType::Usize } ) );
-                        m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) }) );
+                        auto size_val = ::MIR::Constant::make_Uint({ static_cast<uint64_t>(in_array.size_val), ::HIR::CoreType::Usize });
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_val) }) );
                     }
                     else if( ty_in.m_data.is_Generic() || (ty_in.m_data.is_Path() && ty_in.m_data.as_Path().binding.is_Opaque()) )
                     {

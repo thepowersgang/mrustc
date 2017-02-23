@@ -381,25 +381,21 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                 MIR_ASSERT(state, ty.m_data.is_Array(), "BorrowOf returning slice not of an array, instead " << ty);
                 unsigned int size = ty.m_data.as_Array().size_val;
 
-                auto ptr_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, (&ty == &tmp ? mv$(tmp) : ty.clone()) );
-
-                auto ptr_lval = mutator.in_temporary( mv$(ptr_type), ::MIR::Constant::make_ItemAddr(path.clone()) );
-                auto size_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
-                return ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(size_lval) });
+                auto ptr_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(path.clone()) );
+                auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
+                return ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(size_val) });
             }
             else if( const auto* tep = te.inner->m_data.opt_TraitObject() )
             {
                 ::HIR::TypeRef tmp;
                 const auto& ty = state.get_static_type(tmp, path);
-                auto vtable_type = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Shared, get_vtable_type(state.sp, state.m_resolve, *tep) );
-                auto ptr_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ty.clone() );
 
                 auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : ty.clone(), tep->m_trait.m_path.clone(), "#vtable");
 
-                auto ptr_lval = mutator.in_temporary( mv$(ptr_type), ::MIR::Constant::make_ItemAddr(path.clone()) );
-                auto vtable_lval = mutator.in_temporary( mv$(vtable_type), ::MIR::Constant::make_ItemAddr(mv$(vtable_path)) );
+                auto ptr_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(path.clone()) );
+                auto vtable_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(mv$(vtable_path)) );
 
-                return ::MIR::RValue::make_MakeDst({ mv$(ptr_lval), mv$(vtable_lval) });
+                return ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(vtable_val) });
             }
             else
             {
@@ -549,7 +545,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
 
 bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator& mutator,
         const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty, const ::MIR::LValue& ptr_value,
-        ::MIR::RValue& out_meta_val, ::HIR::TypeRef& out_meta_ty, bool& out_src_is_dst
+        ::MIR::Param& out_meta_val, ::HIR::TypeRef& out_meta_ty, bool& out_src_is_dst
         )
 {
     TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (de),
@@ -634,7 +630,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         {
             auto null_lval = mutator.in_temporary( ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ 0u, ::HIR::CoreType::Usize }) );
             out_meta_ty = ty_unit_ptr.clone();
-            out_meta_val = ::MIR::RValue::make_Cast({ mv$(null_lval), mv$(ty_unit_ptr) });
+            out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_Cast({ mv$(null_lval), mv$(ty_unit_ptr) }) );
         }
         else
         {
@@ -662,14 +658,14 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             if( src_ty.m_data.is_TraitObject() )
             {
                 out_src_is_dst = true;
-                out_meta_val = ::MIR::RValue::make_DstMeta({ ptr_value.clone() });
+                out_meta_val = mutator.in_temporary( out_meta_ty.clone(), ::MIR::RValue::make_DstMeta({ ptr_value.clone() }) );
             }
             else
             {
                 MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
 
                 ::HIR::Path vtable { src_ty.clone(), trait_path.m_path.clone(), "#vtable" };
-                out_meta_val = ::MIR::RValue( ::MIR::Constant::make_ItemAddr(mv$(vtable)) );
+                out_meta_val = ::MIR::Constant::make_ItemAddr(mv$(vtable));
             }
         }
         return true;
@@ -682,22 +678,21 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
     const auto& dst_ty_inner = (dst_ty.m_data.is_Borrow() ? *dst_ty.m_data.as_Borrow().inner : *dst_ty.m_data.as_Pointer().inner);
 
     ::HIR::TypeRef  meta_type;
-    ::MIR::RValue   meta_value;
+    ::MIR::Param   meta_value;
     bool source_is_dst = false;
     if( MIR_Cleanup_Unsize_GetMetadata(state, mutator, dst_ty_inner, src_ty_inner, ptr_value,  meta_value, meta_type, source_is_dst) )
     {
         // TODO: There is a case where the source is already a fat pointer. In that case the pointer of the new DST must be the source DST pointer
-        auto meta_lval = mutator.in_temporary( mv$(meta_type), mv$(meta_value) );
         if( source_is_dst )
         {
             auto ty_unit_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit());
             auto thin_ptr_lval = mutator.in_temporary( mv$(ty_unit_ptr), ::MIR::RValue::make_DstPtr({ mv$(ptr_value) }) );
 
-            return ::MIR::RValue::make_MakeDst({ mv$(thin_ptr_lval), mv$(meta_lval) });
+            return ::MIR::RValue::make_MakeDst({ mv$(thin_ptr_lval), mv$(meta_value) });
         }
         else
         {
-            return ::MIR::RValue::make_MakeDst({ mv$(ptr_value), mv$(meta_lval) });
+            return ::MIR::RValue::make_MakeDst({ mv$(ptr_value), mv$(meta_value) });
         }
     }
     else
