@@ -192,6 +192,7 @@ $(LLVM_LINKAGE_FILE): output/librustc_llvm_build $(LLVM_CONFIG)
 
 output/cargo_libflate/libminiz.a: output/libflate_build
 	@echo "--- $<"
+	$Vmkdir -p $(abspath output/cargo_libflate)
 	$Vcd rustc-nightly/src/libflate && (export OUT_DIR=$(abspath output/cargo_libflate) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST); $(DBG) ../../../$< > ../../../$<-output.txt)
 	$Vcat $<-output.txt | grep '^cargo:' > $<-output_cargo.txt
 	$Vcat $<-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' > output/rustc_link_opts-libflate.txt
