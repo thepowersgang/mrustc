@@ -14,6 +14,7 @@
 #include "../parse/interpolated_fragment.hpp"
 #include <ast/crate.hpp>    // for m_load_std
 #include <ast/expr.hpp>    // for ExprNode_*
+#include <cctype>
 
 namespace {
 
@@ -527,7 +528,7 @@ class CFormatArgsExpander:
             toks.push_back( Token(TOK_LIFETIME, "static") );
             toks.push_back( Token(TOK_IDENT, "str") );
             toks.push_back( Token(TOK_SEMICOLON) );
-            toks.push_back( Token(fragments.size() + 1, CORETYPE_UINT) );
+            toks.push_back( Token(static_cast<uint64_t>(fragments.size() + 1), CORETYPE_UINT) );
             toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
 
             toks.push_back( Token(TOK_EQUAL) );

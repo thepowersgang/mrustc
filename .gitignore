@@ -1,3 +1,10 @@
+
+.*
+*.gch
+*.gch.dep
+*.sw[po]
+*~
+
 /obj
 /bin
 /mrustc.depend
@@ -7,12 +14,14 @@
 /crates.io
 /test_deps_run-pass.mk
 
-/.obj
-*.gch
-*.gch.dep
-*.sw[po]
-*~
 /output
+/vsproject/Win32
+/vsproject/x64
+/vsproject/tu_test/Win32
+/vsproject/tu_test/x64
+/vsproject/*.sdf
+/vsproject/*.depend
+/vsproject/*.opendb
 
 /gitstats
 

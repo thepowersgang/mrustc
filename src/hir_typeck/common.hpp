@@ -88,7 +88,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const MonomorphState& ms);
 
 static inline t_cb_generic monomorphise_type_get_cb(const Span& sp, const ::HIR::TypeRef* self_ty, const ::HIR::PathParams* params_i, const ::HIR::PathParams* params_m, const ::HIR::PathParams* params_p=nullptr)
 {
-    return [=](const auto& gt)->const auto& {
+    return [=](const ::HIR::TypeRef& gt)->const ::HIR::TypeRef& {
         const auto& ge = gt.m_data.as_Generic();
         if( ge.binding == 0xFFFF ) {
             ASSERT_BUG(sp, self_ty, "Self wasn't expected here");

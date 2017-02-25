@@ -173,12 +173,12 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         ),
     (Closure,
         os << "closure["<<e.node<<"]";
-        #if 0
+        /*
         os << "(";
         for(const auto& t : e.m_arg_types)
             os << t << ", ";
         os << ") -> " << *e.m_rettype;
-        #endif
+        */
         )
     )
 }
@@ -370,7 +370,7 @@ Ordering HIR::TypeRef::ord(const ::HIR::TypeRef& x) const
         return ::ord(*te.m_rettype, *xe.m_rettype);
         ),
     (Closure,
-        ORD( (::std::uintptr_t)te.node, xe.node);
+        ORD( reinterpret_cast<::std::uintptr_t>(te.node), reinterpret_cast<::std::uintptr_t>(xe.node) );
         //assert( te.m_rettype == xe.m_rettype );
         return OrdEqual;
         )
@@ -813,7 +813,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
             // TODO: Need to invoke const eval here? Or support cloning expressions? Or run consteval earlier.
             if( const auto* ptr = dynamic_cast<const ::HIR::ExprNode_Literal*>(&**e.size) )
             {
-                size_val = ptr->m_data.as_Integer().m_value;
+                size_val = static_cast<unsigned int>( ptr->m_data.as_Integer().m_value );
             }
             else
             {

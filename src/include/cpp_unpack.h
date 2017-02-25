@@ -25,7 +25,7 @@
 // Macro to obtain a numbered macro for argument counts
 // - Raw variant
 #define CC_GM_I(SUF,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,COUNT,...) SUF##COUNT
-#define CC_GM(SUF,...) CC_GM_I(SUF,__VA_ARGS__,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1)
+#define CC_GM(SUF,...) CC_EXP( CC_GM_I(SUF,__VA_ARGS__,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1) )
 
 #define CC_ITERATE(fcn, args, ...)  CC_EXP( CC_GM(CC_CALL_A, __VA_ARGS__)(fcn, args, __VA_ARGS__) )
 

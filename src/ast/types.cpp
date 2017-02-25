@@ -118,7 +118,7 @@ TypeRef TypeRef::clone() const
     {
     case TypeData::TAGDEAD: assert(!"Copying a destructed type");
     #define _COPY(VAR)  case TypeData::TAG_##VAR: return TypeRef(m_span, TypeData::make_##VAR(m_data.as_##VAR()) ); break;
-    #define _CLONE(VAR, code...)    case TypeData::TAG_##VAR: { auto& old = m_data.as_##VAR(); return TypeRef(m_span, TypeData::make_##VAR(code) ); } break;
+    #define _CLONE(VAR, ...)    case TypeData::TAG_##VAR: { auto& old = m_data.as_##VAR(); return TypeRef(m_span, TypeData::make_##VAR(__VA_ARGS__) ); } break;
     _COPY(None)
     _COPY(Any)
     _COPY(Bang)

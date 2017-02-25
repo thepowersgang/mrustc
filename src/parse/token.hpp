@@ -49,8 +49,9 @@ namespace AST {
     class ExprNode;
     class MetaItem;
     class Item;
+
     template<typename T>
-    class Named;
+    struct Named;
 };
 
 class InterpolatedFragment;

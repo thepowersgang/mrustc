@@ -11,7 +11,7 @@ namespace AST {
     class Path;
     class ExprNode;
     class MetaItem;
-    template<typename T> class Named;
+    template<typename T> struct Named;
     class Item;
 };
 

@@ -38,11 +38,14 @@ struct RepeatLitStr
     }
 };
 
-class NullSink:
-    public ::std::ostream
+class NullSink
 {
 public:
-    NullSink() {}
+    NullSink()
+	{}
+
+	template<typename T>
+	const NullSink& operator<<(const T&) const { return *this;  }
 };
 
 class TraceLog

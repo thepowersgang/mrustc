@@ -97,8 +97,9 @@ public:
 
     Literal   m_value_res;
 };
-struct Constant
+class Constant
 {
+public:
     // NOTE: The generics can't influence the value of this `const`
     GenericParams   m_params;
 
@@ -269,8 +270,9 @@ TAGGED_UNION(TraitValueItem, Constant,
     (Static,    Static),
     (Function,  Function)
     );
-struct Trait
+class Trait
 {
+public:
     GenericParams   m_params;
     ::std::string   m_lifetime;
     ::std::vector< ::HIR::TraitPath >  m_parent_traits;

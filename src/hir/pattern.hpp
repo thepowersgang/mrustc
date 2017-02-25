@@ -52,11 +52,11 @@ struct Pattern
 {
     TAGGED_UNION(Value, String,
         (Integer, struct {
-            enum ::HIR::CoreType type;  // Str == _
+            ::HIR::CoreType type;  // Str == _
             uint64_t value; // Signed numbers are encoded as 2's complement
             }),
         (Float, struct {
-            enum ::HIR::CoreType type;  // Str == _
+            ::HIR::CoreType type;  // Str == _
             double value;
             }),
         (String, ::std::string),

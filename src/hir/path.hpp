@@ -16,7 +16,7 @@
 
 namespace HIR {
 
-struct Trait;
+class Trait;
 
 enum Compare {
     Equal,

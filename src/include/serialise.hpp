@@ -141,7 +141,7 @@ protected:
 public:
     virtual void item(bool& b) = 0;
     virtual void item(uint64_t& v) = 0;
-    void item(unsigned int& v) { uint64_t v1; this->item(v1); v = v1; }
+    void item(unsigned int& v) { uint64_t v1; this->item(v1); v = static_cast<unsigned int>(v1); }
     virtual void item(int64_t& val) = 0;
     virtual void item(double& v) = 0;
     virtual void item(::std::string& s) = 0;

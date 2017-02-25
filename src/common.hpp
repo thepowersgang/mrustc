@@ -14,8 +14,8 @@
 #define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
 // XXX: Evil hack - Define 'mv$' to be ::std::move
 #define mv$(x)    ::std::move(x)
-#define box$(x...) ::make_unique_ptr(::std::move(x))
-#define rc_new$(x...) ::make_shared_ptr(::std::move(x))
+#define box$(...) ::make_unique_ptr(::std::move(__VA_ARGS__))
+#define rc_new$(...) ::make_shared_ptr(::std::move(__VA_ARGS__))
 
 #include "include/debug.hpp"
 #include "include/rustic.hpp"	// slice and option
@@ -77,6 +77,7 @@ static inline Ordering ord(unsigned l, unsigned r)
     else
         return OrdLess;
 }
+#if UINTPTR_MAX != UINT_MAX
 static inline Ordering ord(::std::uintptr_t l, ::std::uintptr_t r)
 {
     if(l == r)
@@ -86,6 +87,7 @@ static inline Ordering ord(::std::uintptr_t l, ::std::uintptr_t r)
     else
         return OrdLess;
 }
+#endif
 static inline Ordering ord(const ::std::string& l, const ::std::string& r)
 {
     if(l == r)
