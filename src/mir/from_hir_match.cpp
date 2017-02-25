@@ -2012,6 +2012,9 @@ struct DecisionTreeGen
 
     void generate_branch(const DecisionTreeNode::Branch& branch, ::std::function<void(const DecisionTreeNode&)> cb);
 
+    // HELPER
+    ::MIR::LValue push_compare(const Span& sp, ::MIR::LValue left, ::MIR::eBinOp op, ::MIR::Param right);
+
     void generate_branches_Signed(
         const Span& sp,
         const DecisionTreeNode::Branch& default_branch,
@@ -3279,6 +3282,14 @@ void DecisionTreeGen::generate_branch(const DecisionTreeNode::Branch& branch, ::
     }
 }
 
+::MIR::LValue DecisionTreeGen::push_compare(const Span& sp, ::MIR::LValue left, ::MIR::eBinOp op, ::MIR::Param right)
+{
+    return m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool,
+            ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) })
+            );
+}
+
+// TODO: Unify logic for these two, and support simpler checks for sequential values
 void DecisionTreeGen::generate_branches_Signed(
     const Span& sp,
     const DecisionTreeNode::Branch& default_branch,
@@ -3296,19 +3307,13 @@ void DecisionTreeGen::generate_branches_Signed(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
 
-        auto val_start = ::MIR::Param(::MIR::Constant::make_Int({ branch.first.start, ity }));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : ::MIR::Param(::MIR::Constant::make_Int({ branch.first.end, ity })));
-
         auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-            val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
-            }) );
+        auto val_cmp_lt = push_compare(sp,  val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Int({ branch.first.start, ity }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
         m_builder.set_cur_block( cmp_gt_block );
+
         auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-            val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
-            }) );
+        auto val_cmp_gt = push_compare(sp,  val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant::make_Int({ branch.first.end, ity }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
 
         m_builder.set_cur_block( success_block );
@@ -3344,19 +3349,13 @@ void DecisionTreeGen::generate_branches_Unsigned(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
 
-        auto val_start = ::MIR::Param(::MIR::Constant::make_Uint({ branch.first.start, ity }));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : ::MIR::Param(::MIR::Constant::make_Uint({ branch.first.end, ity })));
-
         auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-            val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
-            }) );
+        auto val_cmp_lt = push_compare(sp,  val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Uint({ branch.first.start, ity }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
         m_builder.set_cur_block( cmp_gt_block );
+
         auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-            val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
-            }) );
+        auto val_cmp_gt = push_compare(sp,  val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant::make_Uint({ branch.first.end, ity }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
 
         m_builder.set_cur_block( success_block );
@@ -3390,19 +3389,13 @@ void DecisionTreeGen::generate_branches_Float(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
 
-        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Float({ branch.first.start, ity }));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Float({ branch.first.end, ity })));
-
         auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-            val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
-            }) );
+        auto val_cmp_lt = push_compare(sp,  val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Float({ branch.first.start, ity }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
         m_builder.set_cur_block( cmp_gt_block );
+
         auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-            val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
-            }) );
+        auto val_cmp_gt = push_compare(sp,  val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant::make_Float({ branch.first.end, ity }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
 
         m_builder.set_cur_block( success_block );
@@ -3436,19 +3429,13 @@ void DecisionTreeGen::generate_branches_Char(
     {
         auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
 
-        auto val_start = m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Uint({ branch.first.start, ::HIR::CoreType::Char }));
-        auto val_end = (branch.first.end == branch.first.start ? val_start.clone() : m_builder.lvalue_or_temp(sp, ty, ::MIR::Constant::make_Uint({ branch.first.end, ::HIR::CoreType::Char })));
-
         auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-            val.clone(), ::MIR::eBinOp::LT, mv$(val_start)
-            }) );
+        auto val_cmp_lt = push_compare(sp,  val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Uint({ branch.first.start, ::HIR::CoreType::Char }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
         m_builder.set_cur_block( cmp_gt_block );
+
         auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-            val.clone(), ::MIR::eBinOp::GT, mv$(val_end)
-            }) );
+        auto val_cmp_gt = push_compare(sp,  val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant::make_Uint({ branch.first.end, ::HIR::CoreType::Char }));
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
 
         m_builder.set_cur_block( success_block );
@@ -3525,22 +3512,20 @@ void DecisionTreeGen::generate_branches_Borrow_str(
 
     auto default_bb = m_builder.new_bb_unlinked();
 
+    // TODO: Binary search? Perfect-Hash-Function?
     assert( !branches.empty() );
     for(const auto& branch : branches)
     {
-        auto have_val = val.clone();
-
         auto next_bb = (&branch == &branches.back() ? default_bb : m_builder.new_bb_unlinked());
 
-        auto test_val = m_builder.lvalue_or_temp(sp, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str), ::MIR::Constant(branch.first) );
         auto cmp_gt_bb = m_builder.new_bb_unlinked();
 
-        auto lt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ have_val.clone(), ::MIR::eBinOp::LT, test_val.clone() }) );
+        auto lt_val = push_compare(sp, val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant(branch.first) );
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(lt_val), default_bb, cmp_gt_bb }) );
         m_builder.set_cur_block(cmp_gt_bb);
 
         auto eq_bb = m_builder.new_bb_unlinked();
-        auto gt_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ mv$(have_val), ::MIR::eBinOp::GT, test_val.clone() }) );
+        auto gt_val = push_compare(sp, val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant(branch.first) );
         m_builder.end_block( ::MIR::Terminator::make_If({ mv$(gt_val), next_bb, eq_bb }) );
         m_builder.set_cur_block(eq_bb);
 
@@ -3695,41 +3680,50 @@ void DecisionTreeGen::generate_branches_Slice(
     // - Binary search
     // - Sequential comparisons
 
-    // TODO: Binary search instead.
+    // TODO: Binary search instead?
     for( const auto& branch : branches.fixed_arms )
     {
-        auto val_des = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ static_cast<uint64_t>(branch.first), ::HIR::CoreType::Usize }));
+        auto val_des = ::MIR::Constant::make_Uint({ static_cast<uint64_t>(branch.first), ::HIR::CoreType::Usize });
 
         // Special case - final just does equality
         if( &branch == &branches.fixed_arms.back() )
         {
-            auto val_cmp_eq = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-                val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_des)
-                }) );
+            auto val_cmp_eq = push_compare(sp,  val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_des));
 
             auto success_block = m_builder.new_bb_unlinked();
-            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_eq), any_block, success_block }) );
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_eq), success_block, any_block }) );
 
             m_builder.set_cur_block( success_block );
             this->generate_branch(branch.second, and_then);
 
             m_builder.set_cur_block( any_block );
         }
-        // TODO: Special case for zero (which can't have a LT)
+        // Special case for zero (which can't have a LT)
+        else if( branch.first == 0 )
+        {
+            auto next_block = m_builder.new_bb_unlinked();
+            auto val_cmp_eq = push_compare(sp,  val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_des));
+
+            auto success_block = m_builder.new_bb_unlinked();
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_eq), success_block, next_block }) );
+
+            m_builder.set_cur_block( success_block );
+            this->generate_branch(branch.second, and_then);
+
+            m_builder.set_cur_block( next_block );
+        }
+        // General case, with two comparisons
         else
         {
             auto next_block = m_builder.new_bb_unlinked();
 
             auto cmp_gt_block = m_builder.new_bb_unlinked();
-            auto val_cmp_lt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-                val_len.clone(), ::MIR::eBinOp::LT, val_des.clone()
-                }) );
+            auto val_cmp_lt = push_compare(sp,  val_len.clone(), ::MIR::eBinOp::LT, val_des.clone());
             m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), any_block, cmp_gt_block }) );
             m_builder.set_cur_block( cmp_gt_block );
+
             auto success_block = m_builder.new_bb_unlinked();
-            auto val_cmp_gt = m_builder.lvalue_or_temp( sp, ::HIR::TypeRef(::HIR::CoreType::Bool), ::MIR::RValue::make_BinOp({
-                val_len.clone(), ::MIR::eBinOp::GT, mv$(val_des)
-                }) );
+            auto val_cmp_gt = push_compare(sp,  val_len.clone(), ::MIR::eBinOp::GT, mv$(val_des));
             m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
 
             m_builder.set_cur_block( success_block );
