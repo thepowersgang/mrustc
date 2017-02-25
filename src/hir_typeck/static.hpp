@@ -180,5 +180,16 @@ public:
 
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
     const ::HIR::TypeRef* is_type_phantom_data(const ::HIR::TypeRef& ty) const;
+
+
+    TAGGED_UNION(ValuePtr, NotFound,
+    (NotFound, struct{}),
+    (Constant, const ::HIR::Constant*),
+    (Static, const ::HIR::Static*),
+    (Function, const ::HIR::Function*)
+    );
+
+    /// `signature_only` - Returns a pointer to an item with the correct signature, not the actual implementation (faster)
+    ValuePtr get_value(const Span& sp, const ::HIR::Path& p, MonomorphState& out_params, bool signature_only=false) const;
 };
 

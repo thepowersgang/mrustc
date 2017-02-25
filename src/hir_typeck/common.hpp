@@ -45,6 +45,36 @@ struct MonomorphState
     const ::HIR::PathParams*    pp_impl;
     const ::HIR::PathParams*    pp_method;
 
+    ::HIR::PathParams   pp_impl_data;
+
+    MonomorphState():
+        self_ty(nullptr),
+        pp_impl(nullptr),
+        pp_method(nullptr)
+    {
+    }
+    MonomorphState(MonomorphState&& x):
+        MonomorphState()
+    {
+        *this = ::std::move(x);
+    }
+
+    MonomorphState& operator=(MonomorphState&& x) {
+        this->self_ty = x.self_ty;
+        this->pp_impl = (x.pp_impl == &x.pp_impl_data ? &this->pp_impl_data : x.pp_impl);
+        this->pp_method = x.pp_method;
+        this->pp_impl_data = ::std::move(x.pp_impl_data);
+        return *this;
+    }
+    MonomorphState clone() const {
+        MonomorphState  rv;
+        rv.self_ty = this->self_ty;
+        rv.pp_impl = (this->pp_impl == &this->pp_impl_data ? &rv.pp_impl_data : this->pp_impl);
+        rv.pp_method = this->pp_method;
+        rv.pp_impl_data = this->pp_impl_data.clone();
+        return rv;
+    }
+
     t_cb_generic    get_cb(const Span& sp) const;
 
     ::HIR::TypeRef  monomorph(const Span& sp, const ::HIR::TypeRef& ty, bool allow_infer=true) const {

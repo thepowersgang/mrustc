@@ -225,6 +225,45 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
     )
     throw "";
 }
+
+::HIR::TypeRef MIR::TypeResolve::get_const_type(const ::MIR::Constant& c) const
+{
+    TU_MATCHA( (c), (e),
+    (Int,
+        return e.t;
+        ),
+    (Uint,
+        return e.t;
+        ),
+    (Float,
+        return e.t;
+        ),
+    (Bool,
+        return ::HIR::CoreType::Bool;
+        ),
+    (Bytes,
+        return ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array( ::HIR::CoreType::U8, e.size() ) );
+        ),
+    (StaticString,
+        return ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::CoreType::Str );
+        ),
+    (Const,
+        MonomorphState  p;
+        auto v = m_resolve.get_value(this->sp, e.p, p, /*signature_only=*/true);
+        if( const auto* ve = v.opt_Constant() ) {
+            const auto& ty = (*ve)->m_type;
+            MIR_TODO(*this, "Monomorphise type " << ty);
+        }
+        else {
+            MIR_BUG(*this, "");
+        }
+        ),
+    (ItemAddr,
+        MIR_TODO(*this, "Get type for constant `" << c << "`");
+        )
+    )
+    throw "";
+}
 const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef& ty) const
 {
     return m_resolve.is_type_owned_box(ty);

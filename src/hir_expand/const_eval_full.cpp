@@ -750,7 +750,7 @@ namespace {
                 // Call by invoking evaluate_constant on the function
                 {
                     TRACE_FUNCTION_F("Call const fn " << fcnp << " args={ " << call_args << " }");
-                    dst = evaluate_constant(sp, resolve, newval_state, FMT_CB(ss, ss << fcnp;),  fcn.m_code, fcn_ms, mv$(call_args));
+                    dst = evaluate_constant(sp, resolve, newval_state, FMT_CB(ss, ss << fcnp;),  fcn.m_code, mv$(fcn_ms), mv$(call_args));
                 }
 
                 DEBUG("= " << dst);
@@ -763,7 +763,7 @@ namespace {
     ::HIR::Literal evaluate_constant(const Span& sp, const StaticTraitResolve& resolve, NewvalState newval_state, FmtLambda name, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
     {
         if( expr.m_mir ) {
-            return evaluate_constant_mir(sp, resolve, mv$(newval_state), name, *expr.m_mir, ms, mv$(args));
+            return evaluate_constant_mir(sp, resolve, mv$(newval_state), name, *expr.m_mir, mv$(ms), mv$(args));
         }
         else {
             BUG(sp, "Attempting to evaluate constant expression with no associated code");

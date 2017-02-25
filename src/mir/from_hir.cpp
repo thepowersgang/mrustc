@@ -1493,7 +1493,7 @@ namespace {
             for(auto& arg : node.m_args)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type) );
+                values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type) );
             }
 
             unsigned int variant_index = ~0u;
@@ -1527,7 +1527,7 @@ namespace {
 
                 if( args.size() == 1 )
                 {
-                    values.push_back( m_builder.get_result_in_lvalue(arg->span(), arg->m_res_type, /*allow_missing_value=*/true) );
+                    values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type, /*allow_missing_value=*/true) );
                 }
                 else
                 {
@@ -1940,10 +1940,18 @@ namespace {
                 values_set[idx] = true;
                 this->visit_node_ptr(valnode);
 
-                // NOTE: Have to allocate a new temporary because ordering matters
-                auto tmp = m_builder.new_temporary(valnode->m_res_type);
-                m_builder.push_stmt_assign( valnode->span(), tmp.clone(), m_builder.get_result(valnode->span()) );
-                values.at(idx) = mv$(tmp);
+                auto res = m_builder.get_result(valnode->span());
+                if( auto* e = res.opt_Constant() )
+                {
+                    values.at(idx) = mv$(*e);
+                }
+                else
+                {
+                    // NOTE: Have to allocate a new temporary because ordering matters
+                    auto tmp = m_builder.new_temporary(valnode->m_res_type);
+                    m_builder.push_stmt_assign( valnode->span(), tmp.clone(), mv$(res) );
+                    values.at(idx) = mv$(tmp);
+                }
             }
             for(unsigned int i = 0; i < values.size(); i ++)
             {
@@ -1991,7 +1999,7 @@ namespace {
             for(auto& arg : node.m_vals)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.lvalue_or_temp( arg->span(), arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type) );
             }
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Tuple({
@@ -2007,7 +2015,7 @@ namespace {
             for(auto& arg : node.m_vals)
             {
                 this->visit_node_ptr(arg);
-                values.push_back( m_builder.lvalue_or_temp( arg->span(), arg->m_res_type, m_builder.get_result(arg->span()) ) );
+                values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type) );
             }
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Array({
@@ -2019,7 +2027,7 @@ namespace {
         {
             TRACE_FUNCTION_F("_ArraySized");
             this->visit_node_ptr( node.m_val );
-            auto value = m_builder.lvalue_or_temp( node.span(), node.m_val->m_res_type, m_builder.get_result(node.m_val->span()) );
+            auto value = m_builder.get_result_in_param(node.span(), node.m_val->m_res_type);
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_SizedArray({
                 mv$(value),

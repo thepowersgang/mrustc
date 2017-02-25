@@ -625,13 +625,15 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         unsigned int var_base = ~0u;
         unsigned int df_base = ~0u;
 
+        size_t tmp_end = 0;
+        mutable ::std::vector< ::MIR::Constant >  const_assignments;
+
         Cloner(const Span& sp, const ::StaticTraitResolve& resolve, ::MIR::Terminator::Data_Call& te):
             sp(sp),
             resolve(resolve),
             te(te)
         {}
 
-        // TODO: Expand associated types
         ::HIR::TypeRef monomorph(const ::HIR::TypeRef& ty) const {
             auto rv = monomorphise_type_with(sp, ty, params.get_cb(sp));
             resolve.expand_associated_types(sp, rv);
@@ -814,9 +816,13 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 return ::MIR::LValue::make_Temporary({se.idx + this->tmp_base});
                 ),
             (Argument,
-                // TODO: If this argument is a literal, need to allocate a
-                // tmep for it
-                return this->te.args.at(se.idx).as_LValue().clone();
+                const auto& arg = this->te.args.at(se.idx);
+                if( const auto* e = arg.opt_Constant() ) {
+                    auto tmp = ::MIR::LValue::make_Temporary({ static_cast<unsigned>(this->tmp_end + this->const_assignments.size()) });
+                    this->const_assignments.push_back( e->clone() );
+                    return tmp;
+                }
+                return arg.as_LValue().clone();
                 ),
             (Return,
                 return this->te.ret_val.clone();
@@ -863,7 +869,11 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         ::MIR::Param clone_param(const ::MIR::Param& src) const
         {
             TU_MATCHA( (src), (se),
-            (LValue, return clone_lval(se);),
+            (LValue,
+                if( se.is_Argument() )
+                    return this->te.args.at(se.as_Argument().idx).clone();
+                return clone_lval(se);
+                ),
             (Constant, return clone_constant(se); )
             )
             throw "";
@@ -872,6 +882,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         {
             TU_MATCHA( (src), (se),
             (Use,
+                if( se.is_Argument() )
+                    if( const auto* e = this->te.args.at(se.as_Argument().idx).opt_Constant() )
+                        return e->clone();
                 return ::MIR::RValue( this->clone_lval(se) );
                 ),
             (Constant,
@@ -952,6 +965,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             cloner.tmp_base = fcn.temporaries.size();
             for(const auto& ty : called_mir->temporaries)
                 fcn.temporaries.push_back( cloner.monomorph(ty) );
+            cloner.tmp_end = fcn.temporaries.size();
             cloner.df_base = fcn.drop_flags.size();
             fcn.drop_flags.insert( fcn.drop_flags.end(), called_mir->drop_flags.begin(), called_mir->drop_flags.end() );
             cloner.bb_base = fcn.blocks.size();
@@ -963,6 +977,15 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             {
                 new_blocks.push_back( cloner.clone_bb(bb) );
             }
+            // > Append new temporaries
+            for(auto& val : cloner.const_assignments)
+            {
+                auto ty = state.get_const_type(val);
+                auto lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned>(fcn.temporaries.size()) });
+                fcn.temporaries.push_back( mv$(ty) );
+                new_blocks[0].statements.insert( new_blocks[0].statements.begin(), ::MIR::Statement::make_Assign({ mv$(lv), mv$(val) }) );
+            }
+            cloner.const_assignments.clear();
 
             // Apply
             fcn.blocks.reserve( fcn.blocks.size() + new_blocks.size() );

@@ -21,6 +21,7 @@ namespace MIR {
 
 class Function;
 class LValue;
+class Constant;
 class BasicBlock;
 
 typedef unsigned int    BasicBlockId;
@@ -95,6 +96,8 @@ public:
 
     const ::HIR::TypeRef& get_static_type(::HIR::TypeRef& tmp, const ::HIR::Path& path) const;
     const ::HIR::TypeRef& get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const;
+
+    ::HIR::TypeRef get_const_type(const ::MIR::Constant& c) const;
 
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 

@@ -1410,3 +1410,87 @@ const ::HIR::TypeRef* StaticTraitResolve::is_type_phantom_data(const ::HIR::Type
     // TODO: Properly assert?
     return &pe.m_params.m_types.at(0);
 }
+
+StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const ::HIR::Path& p, MonomorphState& out_params, bool signature_only/*=false*/) const
+{
+    out_params = MonomorphState {};
+    TU_MATCHA( (p.m_data), (pe),
+    (Generic,
+        out_params.pp_method = &pe.m_params;
+        const ::HIR::Module& mod = m_crate.get_mod_by_path(sp, pe.m_path, true);
+        const auto& v = mod.m_value_items.at(pe.m_path.m_components.back());
+        TU_MATCHA( (v->ent), (ve),
+        (Import, BUG(sp, "Module Import");),
+        (Constant,
+            return &ve;
+            ),
+        (Static,
+            return &ve;
+            ),
+        (Function,
+            return &ve;
+            ),
+        (StructConstant,
+            TODO(sp, "StructConstant - " << p);
+            ),
+        (StructConstructor,
+            TODO(sp, "StructConstructor - " << p);
+            )
+        )
+        throw "";
+        ),
+    (UfcsKnown,
+        out_params.self_ty = &*pe.type;
+        out_params.pp_impl = &pe.trait.m_params;
+        out_params.pp_method = &pe.params;
+        const ::HIR::Trait& tr = m_crate.get_trait_by_path(sp, pe.trait.m_path);
+        if( signature_only )
+        {
+            const ::HIR::TraitValueItem& v = tr.m_values.at(pe.item);
+            TU_MATCHA( (v), (ve),
+            (Constant, return &ve; ),
+            (Static,   return &ve; ),
+            (Function, return &ve; )
+            )
+        }
+        else
+        {
+            TODO(sp, "Search for trait impl");
+        }
+        throw "";
+        ),
+    (UfcsInherent,
+        out_params.self_ty = &*pe.type;
+        out_params.pp_impl = &out_params.pp_impl_data;
+        out_params.pp_method = &pe.params;
+        ValuePtr    rv;
+        m_crate.find_type_impls(*pe.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+            DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
+            // TODO: Populate pp_impl
+            {
+                auto fit = impl.m_methods.find(pe.item);
+                if( fit != impl.m_methods.end() )
+                {
+                    DEBUG("- Contains method, good");
+                    rv = ValuePtr { &fit->second.data };
+                    return true;
+                }
+            }
+            {
+                auto it = impl.m_constants.find(pe.item);
+                if( it != impl.m_constants.end() )
+                {
+                    rv = ValuePtr { &it->second.data };
+                    return true;
+                }
+            }
+            return false;
+            });
+        return rv;
+        ),
+    (UfcsUnknown,
+        BUG(sp, "UfcsUnknown - " << p);
+        )
+    )
+    throw "";
+}

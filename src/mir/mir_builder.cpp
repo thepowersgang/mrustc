@@ -170,6 +170,29 @@ void MirBuilder::define_variable(unsigned int idx)
         return temp;
     }
 }
+::MIR::Param MirBuilder::get_result_in_param(const Span& sp, const ::HIR::TypeRef& ty, bool allow_missing_value)
+{
+    if( allow_missing_value && !block_active() )
+    {
+        return new_temporary(ty);
+    }
+
+    auto rv = get_result(sp);
+    if( auto* e = rv.opt_Constant() )
+    {
+        return mv$(*e);
+    }
+    else if( auto* e = rv.opt_Use() )
+    {
+        return mv$(*e);
+    }
+    else
+    {
+        auto temp = new_temporary(ty);
+        push_stmt_assign( sp, ::MIR::LValue(temp.clone()), mv$(rv) );
+        return temp;
+    }
+}
 void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
 {
     if(m_result_valid) {

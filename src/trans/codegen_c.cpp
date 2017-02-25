@@ -2467,25 +2467,17 @@ namespace {
 
         const ::HIR::Literal& get_literal_for_const(const ::HIR::Path& path, ::HIR::TypeRef& ty)
         {
-            TU_MATCHA( (path.m_data), (pe),
-            (Generic,
-                if( pe.m_params.m_types.size() > 0 )
-                    MIR_TODO(*m_mir_res, "get_literal_for_const - Paths with generics " << path);
-                const auto& c = m_crate.get_constant_by_path(Span(), pe.m_path);
-                ty = c.m_type.clone();
-                return c.m_value_res;
-                ),
-            (UfcsUnknown,
-                MIR_BUG(*m_mir_res, "get_literal_for_const - UfcsUnknown " << path);
-                ),
-            (UfcsKnown,
-                MIR_TODO(*m_mir_res, "get_literal_for_const - UfcsKnown " << path);
-                ),
-            (UfcsInherent,
-                MIR_TODO(*m_mir_res, "get_literal_for_const - UfcsInherent " << path);
-                )
-            )
-            throw "";
+            MonomorphState  params;
+            auto v = m_resolve.get_value(m_mir_res->sp, path, params);
+            if( const auto* e = v.opt_Constant() )
+            {
+                ty = params.monomorph(m_mir_res->sp, (*e)->m_type);
+                return (*e)->m_value_res;
+            }
+            else
+            {
+                MIR_BUG(*m_mir_res, "get_literal_for_const - Not a constant - " << path);
+            }
         }
 
         void assign_from_literal(::std::function<void()> emit_dst, const ::HIR::TypeRef& ty, const ::HIR::Literal& lit)
@@ -2861,11 +2853,12 @@ namespace {
                 ),
             (Const,
                 // TODO: This should have been eliminated?
+                // NOTE: GCC hack - statement expressions
                 ::HIR::TypeRef  ty;
                 const auto& lit = get_literal_for_const(c.p, ty);
-                m_of << "({"; emit_ctype(ty, FMT_CB(ss, ss<<"v";)); m_of << ";";
+                m_of << "({"; emit_ctype(ty, FMT_CB(ss, ss<<"v";)); m_of << "; ";
                 assign_from_literal([&](){ m_of << "v"; }, ty, lit);
-                m_of << "v})";
+                m_of << "; v;})";
                 ),
             (ItemAddr,
                 TU_MATCHA( (c.m_data), (pe),
