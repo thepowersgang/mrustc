@@ -20,8 +20,9 @@ class CExpander:
         auto lex = TTStream(tt);
         while( GET_TOK(tok, lex) != TOK_EOF )
         {
+            if(!rv.empty())
+                rv += " ";
             rv += tok.to_str();
-            rv += " ";
         }
 
         return box$( TTStreamO(TokenTree(Token(TOK_STRING, mv$(rv)))) );
