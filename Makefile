@@ -44,6 +44,11 @@ CXXFLAGS += -Wno-pessimizing-move
 CXXFLAGS += -Wno-misleading-indentation
 #CXXFLAGS += -Wno-unused-private-field
 
+
+# - Flags to pass to all mrustc invocations
+RUST_FLAGS := --cfg debug_assertions
+#RUST_FLAGS += -g
+
 SHELL = bash
 
 ifeq ($(DBGTPL),)
@@ -127,14 +132,14 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(ARGS_$@) $(PIPECMD)
+	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
+	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 
@@ -163,13 +168,13 @@ output/librustc_llvm.hir: $(LLVM_LINKAGE_FILE)
 RUSTC_LLVM_LINKAGE: $(LLVM_LINKAGE_FILE)
 output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs  $(call fcn_extcrate, std gcc build_helper alloc_system panic_abort)
 	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ -L output/libs $(PIPECMD)
+	$(BIN) $< -o $@ -L output/libs $(RUST_FLAGS) $(PIPECMD)
 output/libgcc.hir: crates.io/gcc-0.3.28/src/lib.rs $(BIN) output/libstd.hir
 	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ --crate-type rlib --crate-name gcc $(PIPECMD)
+	$(BIN) $< -o $@ --crate-type rlib --crate-name gcc $(RUST_FLAGS) $(PIPECMD)
 output/libbuild_helper.hir: rustc-nightly/src/build_helper/lib.rs $(BIN) output/libstd.hir
 	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ --crate-type rlib --crate-name build_helper $(PIPECMD)
+	$(BIN) $< -o $@ --crate-type rlib --crate-name build_helper $(RUST_FLAGS) $(PIPECMD)
 
 crates.io/%/src/lib.rs: crates.io/%.tar.gz
 	tar -xf $< -C crates.io/
@@ -199,7 +204,7 @@ output/cargo_libflate/libminiz.a: output/libflate_build
 
 output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, std gcc alloc_system panic_abort)
 	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ -L output/libs $(PIPECMD)
+	$(BIN) $< -o $@ -L output/libs $(RUST_FLAGS) $(PIPECMD)
 
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86 --cfg cargobuild
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
@@ -268,7 +273,7 @@ output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc_driver.hir output/ru
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$V$(DBG) $(BIN) $< -o $@ -L output/libs $$(cat output/rustc_link_opts.txt output/rustc_link_opts-libflate.txt) -l stdc++ $(PIPECMD)
+	$V$(DBG) $(BIN) $< -o $@ -L output/libs $$(cat output/rustc_link_opts.txt output/rustc_link_opts-libflate.txt) -l stdc++ $(RUST_FLAGS) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 
@@ -346,7 +351,7 @@ rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN) output/liballoc_system.hir output/libpanic_abort.hir
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
-	$(DBG) $(BIN) $< -L output/libs -o $@ $(PIPECMD)
+	$(DBG) $(BIN) $< -L output/libs -o $@ $(RUST_FLAGS) $(PIPECMD)
 	@echo "--- [$@]"
 	@./$@
 

@@ -131,6 +131,9 @@ struct ProgramParams
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
     ::std::string   crate_name;
 
+    unsigned opt_level = 0;
+    bool emit_debug_info = false;
+
     ::std::vector<const char*> lib_search_dirs;
     ::std::vector<const char*> libraries;
 
@@ -450,6 +453,7 @@ int main(int argc, char *argv[])
         for(const char* libdir : params.libraries ) {
             trans_opt.libraries.push_back( libdir );
         }
+        trans_opt.emit_debug_info = params.emit_debug_info;
 
         // Generate code for non-generic public items (if requested)
         switch( crate_type )
@@ -578,6 +582,12 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                         exit(1);
                     }
                     this->outfile = argv[++i];
+                    break;
+                case 'O':
+                    this->opt_level = 2;
+                    break;
+                case 'g':
+                    this->emit_debug_info = true;
                     break;
                 default:
                     exit(1);
