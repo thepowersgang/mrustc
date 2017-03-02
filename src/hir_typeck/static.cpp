@@ -548,7 +548,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         (
             ),
         (TraitBound,
-            DEBUG("[find_impl] Trait bound " << e.type << " : " << e.trait);
+            DEBUG("Trait bound " << e.type << " : " << e.trait);
             auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
             this->expand_associated_types(sp, b_ty_mono);
             auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
@@ -559,14 +559,15 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 // TODO: These should be tagged with the source trait and that source trait used for expansion.
                 this->expand_associated_types(sp, assoc_bound.second);
             }
-            DEBUG("[find_impl] - b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
+            DEBUG("- b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
             // HACK: If the type is '_', assume the bound passes
             if( b_ty_mono.m_data.is_Infer() ) {
                 continue ;
             }
 
             // TODO: This is extrememly inefficient (looks up the trait impl 1+N times)
-            if( b_tp_mono.m_type_bounds.size() > 0 ) {
+            if( b_tp_mono.m_type_bounds.size() > 0 )
+            {
                 //
                 for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
                     const auto& aty_name = assoc_bound.first;
@@ -597,10 +598,13 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     }
                 }
             }
-            else
+
+            // TODO: Detect if the associated type bound above is from directly the bounded trait, and skip this if it's the case
+            //else
             {
                 bool rv = false;
                 if( b_ty_mono.m_data.is_Generic() && (b_ty_mono.m_data.as_Generic().binding >> 8) == 2 ) {
+                    DEBUG("- Placeholder param " << b_ty_mono << ", magic success");
                     rv = true;
                 }
                 else {

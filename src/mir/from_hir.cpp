@@ -1524,20 +1524,29 @@ namespace {
             for(auto& arg : args)
             {
                 this->visit_node_ptr(arg);
-
-                if( args.size() == 1 )
+                if( !m_builder.block_active() )
+                {
+                    auto tmp = m_builder.new_temporary(arg->m_res_type);
+                    values.push_back( mv$(tmp) );
+                }
+                else if( args.size() == 1 )
                 {
                     values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type, /*allow_missing_value=*/true) );
                 }
                 else
                 {
-                    // NOTE: Have to allocate a new temporary because ordering matters
-                    auto tmp = m_builder.new_temporary(arg->m_res_type);
-                    if( m_builder.block_active() )
+                    auto res = m_builder.get_result(arg->span());
+                    if( auto* e = res.opt_Constant() )
                     {
-                        m_builder.push_stmt_assign( arg->span(), tmp.clone(), m_builder.get_result(arg->span()) );
+                        values.push_back( mv$(*e) );
                     }
-                    values.push_back( mv$(tmp) );
+                    else
+                    {
+                        // NOTE: Have to allocate a new temporary because ordering matters
+                        auto tmp = m_builder.new_temporary(arg->m_res_type);
+                        m_builder.push_stmt_assign( arg->span(), tmp.clone(), mv$(res) );
+                        values.push_back( mv$(tmp) );
+                    }
                 }
 
                 if(const auto* e = values.back().opt_LValue() )

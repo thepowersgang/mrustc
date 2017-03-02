@@ -1498,9 +1498,8 @@ namespace {
                         (BinOp,
                             emit_lvalue(e.dst);
                             m_of << " = ";
-                            MIR_ASSERT(mir_res, ve.val_l.is_LValue() || ve.val_r.is_LValue(), "");
                             ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val_l.is_LValue() ? ve.val_l.as_LValue() : ve.val_r.as_LValue());
+                            const auto& ty = ve.val_l.is_LValue() ? mir_res.get_lvalue_type(tmp, ve.val_l.as_LValue()) : tmp = mir_res.get_const_type(ve.val_l.as_Constant());
                             if( ty.m_data.is_Borrow() ) {
                                 m_of << "(slice_cmp("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
                                 switch(ve.op)

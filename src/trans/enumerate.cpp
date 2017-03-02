@@ -1150,7 +1150,7 @@ namespace {
             ::std::vector<::HIR::TypeRef>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
             resolve.find_impl(sp, e.trait.m_path, e.trait.m_params, *e.type, [&](auto impl_ref, auto is_fuzz) {
-                DEBUG("Found " << impl_ref);
+                DEBUG("[get_ent_fullpath] Found " << impl_ref);
                 //ASSERT_BUG(sp, !is_fuzz, "Fuzzy match not allowed here");
                 if( ! impl_ref.m_data.is_TraitImpl() ) {
                     DEBUG("Trans impl search found an invalid impl type");
@@ -1201,6 +1201,8 @@ namespace {
                         else
                             BUG(sp, "Parameter " << i << " unset");
                     }
+                    if( is_spec )
+                        DEBUG("- Specialisable");
                     return !is_spec;
                 }
                 return false;
