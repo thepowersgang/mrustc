@@ -302,6 +302,12 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int 
     auto stmt = ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val), flag });
 
     m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
+
+    if( flag != ~0u )
+    {
+        // Reset flag value back to default.
+        push_stmt_set_dropflag_val(sp, flag, m_output.drop_flags.at(flag));
+    }
 }
 void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val, unsigned int flag/*=~0u*/)
 {
@@ -312,6 +318,12 @@ void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val, unsig
 
     DEBUG("DROP shallow " << val);
     m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val), flag }) );
+
+    if( flag != ~0u )
+    {
+        // Reset flag value back to default.
+        push_stmt_set_dropflag_val(sp, flag, m_output.drop_flags.at(flag));
+    }
 }
 void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
 {
