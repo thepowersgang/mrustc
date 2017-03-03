@@ -1199,7 +1199,7 @@ namespace {
             {
                 const auto& name = val.first;
                 auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
-                assert(it != fields.end());
+                ASSERT_BUG(node.span(), it != fields.end(), "Field '" << name << "' not found in struct " << node.m_path);
                 const auto& des_ty_r = it->second.ent;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
