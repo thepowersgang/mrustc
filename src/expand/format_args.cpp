@@ -406,6 +406,24 @@ namespace {
             toks.push_back( Token(TOK_IDENT, ent) );
         }
     }
+    void push_toks(::std::vector<TokenTree>& toks, Token t1) {
+        toks.push_back( mv$(t1) );
+    }
+    void push_toks(::std::vector<TokenTree>& toks, Token t1, Token t2) {
+        toks.push_back( mv$(t1) );
+        toks.push_back( mv$(t2) );
+    }
+    //void push_toks(::std::vector<TokenTree>& toks, Token t1, Token t2, Token t3) {
+    //    toks.push_back( mv$(t1) );
+    //    toks.push_back( mv$(t2) );
+    //    toks.push_back( mv$(t3) );
+    //}
+    void push_toks(::std::vector<TokenTree>& toks, Token t1, Token t2, Token t3, Token t4) {
+        toks.push_back( mv$(t1) );
+        toks.push_back( mv$(t2) );
+        toks.push_back( mv$(t3) );
+        toks.push_back( mv$(t4) );
+    }
 }
 
 class CFormatArgsExpander:
@@ -575,10 +593,12 @@ class CFormatArgsExpander:
         }
         else    // if(is_simple)
         {
+            // 1. Generate a set of arguments+formatters
+            // > Each combination of argument index and fragment type needs a unique entry in the `args` array
+
             // Use new_v1_formatted
             // - requires creating more entries in the `args` list to cover multiple formatters for one value
-            //push_path(toks, crate,  {"fmt", "Arguments", "new_v1_formatted"});
-            push_path(toks, crate,  {"fmt", "Arguments", "new_v1"});
+            push_path(toks, crate,  {"fmt", "Arguments", "new_v1_formatted"});
             // (
             toks.push_back( TokenTree(TOK_PAREN_OPEN) );
             {
@@ -586,14 +606,97 @@ class CFormatArgsExpander:
                 toks.push_back( Token(TOK_IDENT, "FRAGMENTS") );
                 toks.push_back( TokenTree(TOK_COMMA) );
 
-                // 1. Generate a set of arguments+formatters
-
                 // TODO: Fragments to format
                 // - The format stored by mrustc doesn't quite work with how rustc (and fmt::rt::v1) works
                 toks.push_back( TokenTree(TOK_AMP) );
                 toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
-                //for(const auto& frag : fragments ) {
-                //}
+                for(const auto& frag : fragments )
+                {
+                    push_path(toks, crate, {"fmt", "ArgumentV1", "new"});
+                    toks.push_back( Token(TOK_PAREN_OPEN) );
+                    toks.push_back( Token(TOK_IDENT, FMT("a" << frag.arg_index)) );
+
+                    toks.push_back( TokenTree(TOK_COMMA) );
+
+                    push_path(toks, crate, {"fmt", frag.trait_name, "fmt"});
+                    toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+                    toks.push_back( TokenTree(TOK_COMMA) );
+                }
+                toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
+                toks.push_back( TokenTree(TOK_COMMA) );
+
+                toks.push_back( TokenTree(TOK_AMP) );
+                toks.push_back( TokenTree(TOK_SQUARE_OPEN) );
+                for(const auto& frag : fragments)
+                {
+                    push_path(toks, crate, {"fmt", "rt", "v1", "Argument"});
+                    toks.push_back( TokenTree(TOK_BRACE_OPEN) );
+
+                    push_toks(toks, Token(TOK_IDENT, "position"), TOK_COLON );
+                    push_path(toks, crate, {"fmt", "rt", "v1", "Position", "Next"});
+                    push_toks(toks, TOK_COMMA);
+
+                    push_toks(toks, Token(TOK_IDENT, "format"), TOK_COLON );
+                    push_path(toks, crate, {"fmt", "rt", "v1", "FormatSpec"});
+                    toks.push_back( TokenTree(TOK_BRACE_OPEN) );
+                    {
+                        push_toks(toks, Token(TOK_IDENT, "fill"), TOK_COLON, Token(uint64_t(frag.args.align_char), CORETYPE_CHAR), TOK_COMMA );
+
+                        push_toks(toks, Token(TOK_IDENT, "align"), TOK_COLON);
+                        const char* align_var_name = nullptr;
+                        switch( frag.args.align )
+                        {
+                        case FmtArgs::Align::Unspec:    align_var_name = "Unknown"; break;
+                        case FmtArgs::Align::Left:      align_var_name = "Left";    break;
+                        case FmtArgs::Align::Center:    align_var_name = "Center";  break;
+                        case FmtArgs::Align::Right:     align_var_name = "Right";   break;
+                        }
+                        push_path(toks, crate, {"fmt", "rt", "v1", "Alignment", align_var_name});
+                        push_toks(toks, TOK_COMMA);
+
+                        push_toks(toks, Token(TOK_IDENT, "flags"), TOK_COLON);
+                        push_toks(toks, Token(uint64_t(0), CORETYPE_U32));
+                        push_toks(toks, TOK_COMMA);
+
+                        push_toks(toks, Token(TOK_IDENT, "precision"), TOK_COLON );
+                        if( frag.args.prec_is_arg || frag.args.prec != 0 ) {
+                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Is"});
+                            push_toks(toks, TOK_PAREN_OPEN);
+                            if( frag.args.prec_is_arg ) {
+                                push_toks(toks, TOK_STAR, Token(TOK_IDENT, FMT("a" << frag.args.prec)) );
+                            }
+                            else {
+                                push_toks(toks, Token(uint64_t(frag.args.prec), CORETYPE_UINT) );
+                            }
+                            toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+                        }
+                        else {
+                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Implied"});
+                        }
+                        toks.push_back( TokenTree(TOK_COMMA) );
+
+                        push_toks(toks, Token(TOK_IDENT, "width"), TOK_COLON );
+                        if( frag.args.width_is_arg || frag.args.width != 0 ) {
+                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Is"});
+                            push_toks(toks, TOK_PAREN_OPEN);
+                            if( frag.args.width_is_arg ) {
+                                push_toks(toks, TOK_STAR, Token(TOK_IDENT, FMT("a" << frag.args.width)) );
+                            }
+                            else {
+                                push_toks(toks, Token(uint64_t(frag.args.width), CORETYPE_UINT) );
+                            }
+                            toks.push_back( TokenTree(TOK_PAREN_CLOSE) );
+                        }
+                        else {
+                            push_path(toks, crate, {"fmt", "rt", "v1", "Count", "Implied"});
+                        }
+                        toks.push_back( TokenTree(TOK_COMMA) );
+                    }
+                    toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
+
+                    toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
+                    toks.push_back( TokenTree(TOK_COMMA) );
+                }
                 toks.push_back( TokenTree(TOK_SQUARE_CLOSE) );
             }
             // )
