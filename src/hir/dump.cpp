@@ -418,7 +418,7 @@ namespace {
         void visit(::HIR::ExprNode_Assign& node) override
         {
             this->visit_node_ptr(node.m_slot);
-            m_os << " = ";
+            m_os << " " << ::HIR::ExprNode_Assign::opname(node.m_op) << "= ";
             this->visit_node_ptr(node.m_value);
         }
         void visit(::HIR::ExprNode_BinOp& node) override

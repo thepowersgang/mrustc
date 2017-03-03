@@ -89,8 +89,8 @@ struct LowerHIR_ExprNode_Visitor:
                 case ::AST::ExprNode_Assign::ADD:   return ::HIR::ExprNode_Assign::Op::Add;
                 case ::AST::ExprNode_Assign::SUB:   return ::HIR::ExprNode_Assign::Op::Sub;
 
-                case ::AST::ExprNode_Assign::DIV:   return ::HIR::ExprNode_Assign::Op::Mul;
-                case ::AST::ExprNode_Assign::MUL:   return ::HIR::ExprNode_Assign::Op::Div;
+                case ::AST::ExprNode_Assign::MUL:   return ::HIR::ExprNode_Assign::Op::Mul;
+                case ::AST::ExprNode_Assign::DIV:   return ::HIR::ExprNode_Assign::Op::Div;
                 case ::AST::ExprNode_Assign::MOD:   return ::HIR::ExprNode_Assign::Op::Mod;
 
                 case ::AST::ExprNode_Assign::AND:   return ::HIR::ExprNode_Assign::Op::And;
