@@ -1567,6 +1567,12 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
             changed = true;
         }
+        //else if( tef.name == "get_dst_meta_slice" )
+        //{
+        //    MIR_ASSERT(state, te.args.at(0).is_LValue(), "Argument to `get_dst_meta` must be a lvalue");
+        //    auto& e = te.args.at(0).as_LValue();
+        //    bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::RValue::make_DstMeta({ mv$(*e) }) }));
+        //}
         else
         {
             // Ignore any other intrinsics
@@ -1579,8 +1585,186 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     //   > NOTE: No need to locally stitch blocks, next pass will do that
     // TODO: Use ValState to do full constant propagation across blocks
 
-    // 1. Remove based on known booleans within a single block
-    // - Eliminates `if false`/`if true` branches
+    // Remove redundant temporaries and evaluate known binops
+    for(auto& bb : fcn.blocks)
+    {
+        auto bbidx = &bb - &fcn.blocks.front();
+
+        ::std::map< ::MIR::LValue, ::MIR::Constant >    known_values;
+
+        auto check_param = [&](::MIR::Param& p) {
+            if(const auto* pe = p.opt_LValue()) {
+                auto it = known_values.find(*pe);
+                if( it != known_values.end() )
+                {
+                    p = it->second.clone();
+                }
+            }
+            };
+
+        for(auto& stmt : bb.statements)
+        {
+            auto stmtidx = &stmt - &bb.statements.front();
+            state.set_cur_stmt(bbidx, stmtidx);
+            // Scan statements forwards:
+            // - If a known temporary is used as Param::LValue, replace LValue with the value
+            // - If a UniOp has its input known, evaluate
+            // - If a BinOp has both values known, evaluate
+            if( auto* e = stmt.opt_Assign() )
+            {
+                TU_MATCHA( (e->src), (se),
+                (Use,
+                    auto it = known_values.find(se);
+                    if( it != known_values.end() )
+                    {
+                        e->src = it->second.clone();
+                    }
+                    ),
+                (Constant,
+                    // Ignore (knowledge done below)
+                    ),
+                (SizedArray,
+                    check_param(se.val);
+                    ),
+                (Borrow,
+                    ),
+                (Cast,
+                    ),
+                (BinOp,
+                    check_param(se.val_l);
+                    check_param(se.val_r);
+
+                    if( se.val_l.is_Constant() && se.val_r.is_Constant() )
+                    {
+                        // TODO: Evaluate BinOp
+                    }
+                    ),
+                (UniOp,
+                    auto it = known_values.find(se.val);
+                    if( it != known_values.end() )
+                    {
+                        const auto& val = it->second;
+                        // TODO: Evaluate UniOp
+                        switch( se.op )
+                        {
+                        case ::MIR::eUniOp::INV:
+                            TU_MATCHA( (val), (ve),
+                            (Uint,
+                                auto val = ve.v;
+                                switch(ve.t)
+                                {
+                                case ::HIR::CoreType::U8:   val = (~val) & 0xFF;  break;
+                                case ::HIR::CoreType::U16:  val = (~val) & 0xFFFF;  break;
+                                case ::HIR::CoreType::U32:  val = (~val) & 0xFFFFFFFF;  break;
+                                case ::HIR::CoreType::Usize:
+                                case ::HIR::CoreType::U64:
+                                    val = ~val;
+                                    break;
+                                case ::HIR::CoreType::U128:
+                                    val = ~val;
+                                    break;
+                                case ::HIR::CoreType::Char:
+                                    MIR_BUG(state, "Invalid use of ! on char");
+                                    break;
+                                default:
+                                    // Invalid type for Uint literal
+                                    break;
+                                }
+                                e->src = ::MIR::Constant::make_Uint({ val, ve.t });
+                                ),
+                            (Int,
+                                // Is ! valid on Int?
+                                ),
+                            (Float,
+                                // Not valid?
+                                ),
+                            (Bool,
+                                e->src = ::MIR::Constant::make_Bool({ !ve.v });
+                                ),
+                            (Bytes, ),
+                            (StaticString, ),
+                            (Const,
+                                // TODO:
+                                ),
+                            (ItemAddr,
+                                )
+                            )
+                            break;
+                        case ::MIR::eUniOp::NEG:
+                            TU_MATCHA( (val), (ve),
+                            (Uint,
+                                // Not valid?
+                                ),
+                            (Int,
+                                e->src = ::MIR::Constant::make_Int({ -ve.v, ve.t });
+                                ),
+                            (Float,
+                                e->src = ::MIR::Constant::make_Float({ -ve.v, ve.t });
+                                ),
+                            (Bool,
+                                // Not valid?
+                                ),
+                            (Bytes, ),
+                            (StaticString, ),
+                            (Const,
+                                // TODO:
+                                ),
+                            (ItemAddr,
+                                )
+                            )
+                            break;
+                        }
+                    }
+                    ),
+                (DstMeta,
+                    ),
+                (DstPtr,
+                    ),
+                (MakeDst,
+                    check_param(se.ptr_val);
+                    check_param(se.meta_val);
+                    ),
+                (Tuple,
+                    for(auto& p : se.vals)
+                        check_param(p);
+                    ),
+                (Array,
+                    for(auto& p : se.vals)
+                        check_param(p);
+                    ),
+                (Variant,
+                    check_param(se.val);
+                    ),
+                (Struct,
+                    for(auto& p : se.vals)
+                        check_param(p);
+                    )
+                )
+            }
+            // - If a known temporary is borrowed mutably or mutated somehow, clear its knowledge
+            visit_mir_lvalues(stmt, [&known_values](const ::MIR::LValue& lv, ValUsage vu)->bool {
+                if( vu == ValUsage::Write ) {
+                    auto it = known_values.find(lv);
+                    if(it != known_values.end())
+                        known_values.erase(it);
+                }
+                return false;
+                });
+            // - Locate `temp = SOME_CONST` and record value
+            if( const auto* e = stmt.opt_Assign() )
+            {
+                if( e->dst.is_Temporary() && e->src.is_Constant() )
+                {
+                    known_values.insert(::std::make_pair( e->dst.clone(), e->src.as_Constant().clone() ));
+                }
+            }
+        }
+
+        state.set_cur_stmt_term(bbidx);
+    }
+
+    // - Remove based on known booleans within a single block
+    //  > Eliminates `if false`/`if true` branches
     for(auto& bb : fcn.blocks)
     {
         auto bbidx = &bb - &fcn.blocks.front();
