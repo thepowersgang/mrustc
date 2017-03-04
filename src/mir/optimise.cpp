@@ -13,6 +13,8 @@
 #include <mir/helpers.hpp>
 #include <mir/operations.hpp>
 #include <mir/visit_crate_mir.hpp>
+#include <algorithm>
+#include <iomanip>
 
 namespace {
     ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
@@ -1065,9 +1067,268 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
     //::std::vector<VarLifetime>  var_lifetimes;
     ::std::vector<VarLifetime>  tmp_lifetimes( fcn.temporaries.size(), VarLifetime(fcn) );
 
+
+    // New algorithm notes:
+    // ---
+    // The lifetime of a value starts when it is written, and ends the last time it is read
+    // - When a variable is read, end any existing lifetime and start a new one.
+    // - When the value is read, update the end of its lifetime.
+    // ---
+    // A lifetime is a range in the call graph (with a start and end, including list of blocks)
+    // - Representation: Bitmap with a bit per statement.
+    // - Record the current block path in general state, along with known active lifetimes
+    {
+        // Scan through all possible paths in the graph (with loopback detection using a memory of the path)
+        // - If a loop is detected, determine if there were changes to the lifetime set during that pass
+        //  > Changes are noticed by recording in the state structure when it triggers a change in the lifetime
+        //    map.
+        struct Position
+        {
+            size_t path_index = 0; // index into the block path.
+            unsigned int stmt_idx = 0;
+        };
+        struct ProtoLifetime
+        {
+            Position    start;
+            Position    end;
+        };
+        struct State
+        {
+            ::std::vector<unsigned int> block_path;
+            ::std::vector<unsigned int> block_change_idx;
+            unsigned int cur_change_idx = 0;
+
+            // if read, update. If set, save and update
+            ::std::vector<ProtoLifetime> tmp_ends;
+            //::std::vector<Position> var_ends;
+
+            State clone() const {
+                return *this;
+            }
+        };
+
+        struct ValueLifetime
+        {
+            ::std::vector<bool> stmt_bitmap;
+            ValueLifetime(size_t stmt_count):
+                stmt_bitmap(stmt_count)
+            {}
+        };
+
+        size_t  statement_count = 0;
+        ::std::vector<size_t>   block_offsets;
+        block_offsets.reserve( fcn.blocks.size() );
+        for(const auto& bb : fcn.blocks)
+        {
+            block_offsets.push_back(statement_count);
+            statement_count += bb.statements.size() + 1;    // +1 for the terminator
+        }
+
+        ::std::vector<ValueLifetime>    temporary_lifetimes( fcn.temporaries.size(), ValueLifetime(statement_count) );
+
+        ::std::vector<::std::pair<unsigned int, State>> todo_queue;
+
+        State   init_state;
+        init_state.tmp_ends.resize( fcn.temporaries.size(), ProtoLifetime() );
+        todo_queue.push_back(::std::make_pair( 0, mv$(init_state) ));
+
+        while(!todo_queue.empty())
+        {
+            auto bb_idx = todo_queue.back().first;
+            auto val_state = mv$(todo_queue.back().second);
+            todo_queue.pop_back();
+            state.set_cur_stmt(bb_idx, 0);
+
+            // Check if this state has visited this block before, and if anything changed since last time
+            {
+                auto it = ::std::find(val_state.block_path.rbegin(), val_state.block_path.rend(), bb_idx);
+                if( it != val_state.block_path.rend() )
+                {
+                    auto idx = &*it - &val_state.block_path.front();
+                    if( val_state.block_change_idx[idx] == val_state.cur_change_idx )
+                    {
+                        DEBUG(state << "Loop and no change");
+                        continue ;
+                    }
+                }
+                val_state.block_path.push_back(bb_idx);
+                val_state.block_change_idx.push_back( val_state.cur_change_idx );
+            }
+
+            // Fill alive time in the bitmap
+            auto add_lifetime = [&](const ::MIR::LValue& lv, const Position& start, const Position& end) {
+                assert(start.path_index <= end.path_index);
+                assert(start.path_index < end.path_index || start.stmt_idx <= end.stmt_idx);
+                if(start.path_index == end.path_index && start.stmt_idx == end.stmt_idx)
+                    return;
+                DEBUG("[add_lifetime] " << lv << " (" << start.path_index << "," << start.stmt_idx << ") -- (" << end.path_index << "," << end.stmt_idx << ")");
+                ValueLifetime* lft;
+                if(const auto* e = lv.opt_Temporary())
+                {
+                    lft = &temporary_lifetimes[e->idx];
+                }
+                else
+                {
+                    MIR_TODO(state, "[add_lifetime] " << lv);
+                    return;
+                }
+
+                // Fill lifetime map for this temporary in the indicated range
+                bool did_set = false;
+                unsigned int j = start.stmt_idx;
+                unsigned int i = start.path_index;
+                while( i <= end.path_index )
+                {
+                    auto bb_idx = val_state.block_path.at(i);
+                    const auto& bb = fcn.blocks[bb_idx];
+                    MIR_ASSERT(state, j <= bb.statements.size(), "");
+
+                    auto block_base = block_offsets.at(bb_idx);
+                    auto idx = block_base + j;
+                    if( !lft->stmt_bitmap.at(idx) )
+                    {
+                        lft->stmt_bitmap[idx] = true;
+                        did_set = true;
+                    }
+
+                    if( i == end.path_index && j == end.stmt_idx )
+                        break;
+
+                    // If the current index is the terminator (one after the size)
+                    if(j == bb.statements.size())
+                    {
+                        j = 0;
+                        i++;
+                    }
+                    else
+                    {
+                        j ++;
+                    }
+                }
+
+                // - If the above set a new bit, increment `val_state.cur_change_idx`
+                if( did_set )
+                {
+                    val_state.cur_change_idx += 1;
+                }
+                };
+
+            Position    cur_pos;
+            cur_pos.path_index = val_state.block_path.size() - 1;
+            cur_pos.stmt_idx = 0;
+            auto lvalue_read = [&](const ::MIR::LValue& lv) {
+                if(const auto* e = lv.opt_Temporary())
+                {
+                    // Update the last read location
+                    val_state.tmp_ends.at(e->idx).end = cur_pos;
+                }
+                };
+            auto lvalue_set = [&](const ::MIR::LValue& lv) {
+                if(const auto* e = lv.opt_Temporary())
+                {
+                    // End whatever value was originally there, and insert this new one
+                    add_lifetime(lv, val_state.tmp_ends.at(e->idx).start, val_state.tmp_ends.at(e->idx).end);
+                    val_state.tmp_ends.at(e->idx).start = cur_pos;
+                    val_state.tmp_ends.at(e->idx).end = cur_pos;
+                }
+                };
+
+            // Run statements
+            for(const auto& stmt : fcn.blocks[bb_idx].statements)
+            {
+                auto stmt_idx = &stmt - &fcn.blocks[bb_idx].statements.front();
+                cur_pos.stmt_idx = stmt_idx;
+                state.set_cur_stmt(bb_idx, stmt_idx);
+                DEBUG(state << " " << stmt);
+
+                visit_mir_lvalues(stmt, [&](const auto& lv, ValUsage vu)->bool{
+                    if(vu == ValUsage::Read)
+                        lvalue_read(lv);
+                    if(vu == ValUsage::Write)
+                        lvalue_set(lv);
+                    return false;
+                    });
+            }
+            cur_pos.stmt_idx = fcn.blocks[bb_idx].statements.size();
+
+            state.set_cur_stmt_term(bb_idx);
+            DEBUG(state << "TERM " << fcn.blocks[bb_idx].terminator);
+            TU_MATCH(::MIR::Terminator, (fcn.blocks[bb_idx].terminator), (e),
+            (Incomplete,
+                // Should be impossible here.
+                ),
+            (Return,
+                // End all active lifetimes at their previous location.
+                for(unsigned i = 0; i < fcn.temporaries.size(); i++)
+                    add_lifetime(::MIR::LValue::make_Temporary({i}), val_state.tmp_ends[i].start, val_state.tmp_ends[i].end );
+                ),
+            (Diverge,
+                for(unsigned i = 0; i < fcn.temporaries.size(); i++)
+                    add_lifetime(::MIR::LValue::make_Temporary({i}), val_state.tmp_ends[i].start, val_state.tmp_ends[i].end );
+                ),
+            (Goto,
+                todo_queue.push_back(::std::make_pair( e, mv$(val_state) ));
+                ),
+            (Panic,
+                // What should be done here?
+                ),
+            (If,
+                lvalue_read(e.cond);
+
+                // Push blocks
+                todo_queue.push_back(::std::make_pair( e.bb0, val_state.clone() ));
+                todo_queue.push_back(::std::make_pair( e.bb1, mv$(val_state) ));
+                ),
+            (Switch,
+                lvalue_read(e.val);
+                for(const auto& tgt : e.targets)
+                {
+                    if( &tgt != &e.targets.back() )
+                        todo_queue.push_back(::std::make_pair( tgt, val_state.clone() ));
+                    else
+                        todo_queue.push_back(::std::make_pair( tgt, mv$(val_state) ));
+                }
+                ),
+            (Call,
+                if( const auto* f = e.fcn.opt_Value() )
+                    lvalue_read(*f);
+                for(const auto& arg : e.args)
+                    if( const auto* e = arg.opt_LValue() )
+                        lvalue_read(*e);
+
+                // Push blocks (with return valid only in one)
+                todo_queue.push_back(::std::make_pair( e.panic_block, val_state.clone() ));
+
+                // TODO: If the function returns !, don't follow the ret_block
+                lvalue_set(e.ret_val);
+                todo_queue.push_back(::std::make_pair( e.ret_block, mv$(val_state) ));
+                )
+            )
+        }
+
+        // Dump out variable lifetimes.
+        for(unsigned int i = 0; i < temporary_lifetimes.size(); i ++)
+        {
+            const auto& lft = temporary_lifetimes[i];
+            auto name = FMT("tmp$" << i);
+            while(name.size() < 3+1+3)
+                name += " ";
+            DEBUG(name << " : " << FMT_CB(os,
+                for(unsigned int j = 0; j < lft.stmt_bitmap.size(); j++)
+                {
+                    if(j != 0 && ::std::find(block_offsets.begin(), block_offsets.end(), j) != block_offsets.end())
+                        os << "|";
+                    os << (lft.stmt_bitmap[j] ? "X" : " ");
+                }
+                ));
+        }
+    }
+
+
     // 1. Calculate lifetimes of all variables/temporaries that are eligable to be merged
     // - Lifetime is from first write to last read. Borrows lead to the value being assumed to live forever
     // - > BUT: Since this is lazy, it's taken as only being the lifetime of non-Copy items (as determined by the drop call or a move)
+    // TODO: Support extended lifetime inferrence that extends from first write to last read (before a write)
     {
         auto mark_borrowed = [&](const ::MIR::LValue& lv) {
             if( const auto* ve = lv.opt_Temporary() ) {
