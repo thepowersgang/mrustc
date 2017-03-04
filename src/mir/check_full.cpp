@@ -76,6 +76,58 @@ namespace
         }
         bool is_equivalent_to(const ValueStates& x) const
         {
+            struct H {
+                static bool equal(const ValueStates& vss_a, const State& a,  const ValueStates& vss_b, const State& b)
+                {
+                    if( a.index == 0 )
+                    {
+                        return b.index == 0;
+                    }
+                    if( a.index == ~0u )
+                    {
+                        return b.index == ~0u;
+                    }
+                    if( b.index == 0 || b.index == ~0u )
+                    {
+                        return false;
+                    }
+
+                    const auto& states_a = vss_a.inner_states.at( a.index - 1 );
+                    const auto& states_b = vss_b.inner_states.at( b.index - 1 );
+                    // NOTE: If there's two differen variants, this can happen.
+                    if( states_a.size() != states_b.size() )
+                        return false;
+
+                    for(size_t i = 0; i < states_a.size(); i ++)
+                    {
+                        if( ! H::equal(vss_a, states_a[i],  vss_b, states_b[i]) )
+                            return false;
+                    }
+                    // If the above loop didn't early exit, the two states are equal
+                    return true;
+                }
+            };
+
+            if( ! H::equal(*this, return_value,  x, x.return_value) )
+                return false;
+            assert(vars.size() == x.vars.size());
+            for(size_t i = 0; i < vars.size(); i ++)
+            {
+                if( ! H::equal(*this, vars[i],  x, x.vars[i]) )
+                    return false;
+            }
+            assert(temporaries.size() == x.temporaries.size());
+            for(size_t i = 0; i < temporaries.size(); i ++)
+            {
+                if( ! H::equal(*this, temporaries[i],  x, x.temporaries[i]) )
+                    return false;
+            }
+            assert(arguments.size() == x.arguments.size());
+            for(size_t i = 0; i < arguments.size(); i ++)
+            {
+                if( ! H::equal(*this, arguments[i],  x, x.arguments[i]) )
+                    return false;
+            }
             return true;
         }
 
@@ -152,6 +204,8 @@ namespace
                         used.at(s.index-1) = true;
                         for(const auto& s : vss.inner_states.at(s.index-1))
                             mark_from_state(vss, s);
+
+                        // TODO: Should this compact composites with all-equal inner states?
                     }
                 }
             };
@@ -418,6 +472,27 @@ namespace
     return os;
 }
 
+namespace std {
+    ostream& operator<<(ostream& os, const ValueStates& x)
+    {
+        auto print_val = [&](auto tag, const State& s) {
+            if(s.is_composite()) {
+                os << tag << "=" << StateFmt(x,s);
+            }
+            else if( s.is_valid() ) {
+                os << tag;
+            }
+            else {
+            }
+            };
+
+        os << "ValueStates(path=[" << x.bb_path << "]";
+        print_val(",rv", x.return_value);
+        os << ")";
+        return os;
+    }
+}
+
 
 // "Executes" the function, keeping track of drop flags and variable validities
 void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Function& fcn)
@@ -442,6 +517,7 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
         {
             continue ;
         }
+        DEBUG("BB" << cur_block << " - " << state);
         state.bb_path.push_back( cur_block );
 
         const auto& blk = fcn.blocks.at(cur_block);
