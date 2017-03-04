@@ -26,7 +26,7 @@
         }
         if( e2.m_params.m_types.size() > 0 ) {
             // TODO: Better `monomorphise_type`
-            return monomorphise_type_with(sp, e2.m_type, [&](const auto& gt)->const auto& {
+            return monomorphise_type_with(sp, e2.m_type, [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == GENERIC_Self ) {
                     BUG(sp, "Self encountered in expansion for " << path << " - " << e2.m_type);

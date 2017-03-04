@@ -105,9 +105,8 @@ ProtoSpan TokenStream::start_span() const
 {
     auto p = this->getPosition();
     return ProtoSpan {
-        .filename = p.filename,
-        .start_line = p.line,
-        .start_ofs = p.ofs,
+        p.filename,
+        p.line, p.ofs
         };
 }
 Span TokenStream::end_span(ProtoSpan ps) const

@@ -108,7 +108,7 @@ public:
     enum eTokenType type() const { return m_type; }
     ::std::string& str() { return m_data.as_String(); }
     const ::std::string& str() const { return m_data.as_String(); }
-    enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) }
+    enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) throw ""; }
     uint64_t intval() const { return m_data.as_Integer().m_intval; }
     double floatval() const { return m_data.as_Float().m_floatval; }
 

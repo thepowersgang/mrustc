@@ -930,7 +930,7 @@ void TraitResolution::prep_indexes()
         this->m_type_equalities.insert(::std::make_pair( mv$(long_ty), mv$(short_ty) ));
         };
 
-    this->iterate_bounds([&](const auto& b) {
+    this->iterate_bounds([&](const auto& b)->bool {
         TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
         (
             ),
@@ -945,7 +945,7 @@ void TraitResolution::prep_indexes()
             }
 
             const auto& trait_params = be.trait.m_path.m_params;
-            auto cb_mono = [&](const auto& ty)->const auto& {
+            auto cb_mono = [&](const auto& ty)->const ::HIR::TypeRef& {
                 const auto& ge = ty.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     return be.type;
@@ -1955,7 +1955,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     // 1. Bounds
     bool rv;
     bool assume_opaque = true;
-    rv = this->iterate_bounds([&](const auto& b) {
+    rv = this->iterate_bounds([&](const auto& b)->bool {
         TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
         (
             ),
@@ -2055,7 +2055,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             DEBUG("TODO: Search bounds on associated type - " << assoc_ty.m_trait_bounds);
 
             // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
-            auto cb_placeholders_trait = [&](const auto& ty)->const auto&{
+            auto cb_placeholders_trait = [&](const auto& ty)->const ::HIR::TypeRef&{
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                     if( e.binding == 0xFFFF )
                         return *pe_inner.type;
@@ -2104,7 +2104,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     unsigned int    count = 0;
     bool is_specialisable = false;
     ImplRef best_impl;
-    rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *pe.type, [&](auto impl, auto qual) {
+    rv = this->find_trait_impls_crate(sp, trait_path.m_path, trait_path.m_params, *pe.type, [&](auto impl, auto qual)->bool {
         DEBUG("[expand_associated_types__UfcsKnown] Found " << impl << " qual=" << qual);
         // If it's a fuzzy match, keep going (but count if a concrete hasn't been found)
         if( qual == ::HIR::Compare::Fuzzy ) {
@@ -2138,8 +2138,8 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 if( ty == ::HIR::TypeRef() )
                     ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
 
-                if( impl.has_magic_params() )
-                    ;
+                if( impl.has_magic_params() ) {
+				}
 
                 // TODO: What if there's multiple impls?
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << ty);
@@ -2207,7 +2207,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
         BUG(sp, "Incorrect number of parameters for trait");
     }
 
-    const auto monomorph_cb = [&](const auto& gt)->const auto& {
+    const auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
         const auto& ge = gt.m_data.as_Generic();
         if( ge.binding == 0xFFFF ) {
             return target_type;
@@ -2252,7 +2252,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
 
     // TODO: A bound can imply something via its associated types. How deep can this go?
     // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
-    return this->iterate_bounds([&](const auto& b) {
+    return this->iterate_bounds([&](const auto& b)->bool {
         if( b.is_TraitBound() )
         {
             const auto& e = b.as_TraitBound();
@@ -2326,7 +2326,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 for(const auto& bound : at.m_trait_bounds) {
                     if( bound.m_path.m_path == trait )
                     {
-                        auto monomorph_cb = [&](const auto& gt)->const auto& {
+                        auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                             const auto& ge = gt.m_data.as_Generic();
                             if( ge.binding == 0xFFFF ) {
                                 return *assoc_info->type;
@@ -2454,7 +2454,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         DEBUG("- Search positive impls");
         bool positive_found = false;
         this->m_crate.find_auto_trait_impls(trait, type, this->m_ivars.callback_resolve_infer(),
-            [&](const auto& impl) {
+            [&](const auto& impl)->bool {
                 // Skip any negative impls on this pass
                 if( impl.is_positive != true )
                     return false;
@@ -2470,7 +2470,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     return false;
                 }
 
-                auto monomorph = [&](const auto& gt)->const auto& {
+                auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
                         const auto& ge = gt.m_data.as_Generic();
                         ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
                         assert( ge.binding < impl_params.size() );
@@ -2573,7 +2573,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
         (Generic,
             ::HIR::TypeRef  tmp;
-            auto monomorph_cb = [&](const auto& gt)->const auto& {
+            auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     BUG(sp, "Self type in struct/enum generics");
@@ -2588,7 +2588,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 }
                 };
             // HELPER: Get a possibily monomorphised version of the input type (stored in `tmp` if needed)
-            auto monomorph_get = [&](const auto& ty)->const auto& {
+            auto monomorph_get = [&](const auto& ty)->const ::HIR::TypeRef& {
                 if( monomorphise_type_needed(ty) ) {
                     return (tmp = monomorphise_type_with(sp, ty,  monomorph_cb));
                 }
@@ -2714,7 +2714,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     ) const
 {
     impl_params.resize( impl_params_def.m_types.size() );
-    auto cb = [&](auto idx, const auto& ty) {
+    auto cb = [&](auto idx, const auto& ty)->::HIR::Compare{
         DEBUG("[ftic_check_params] Param " << idx << " = " << ty);
         assert( idx < impl_params.size() );
         if( ! impl_params[idx] ) {
@@ -2727,7 +2727,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
         };
 
-    //auto cb_res = [&](const auto& ty)->const auto& {
+    //auto cb_res = [&](const auto& ty)->const ::HIR::TypeRef& {
     //    if( ty.m_data.is_Infer() ) {
     //        return this->m_ivars.get_type(ty);
     //    }
@@ -2771,7 +2771,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             placeholders[i] = ::HIR::TypeRef("impl_?", 2*256 + i);
         }
     }
-    auto cb_infer = [&](const auto& ty)->const auto& {
+    auto cb_infer = [&](const auto& ty)->const ::HIR::TypeRef& {
         if( ty.m_data.is_Infer() )
             return this->m_ivars.get_type(ty);
         #if 0
@@ -2796,7 +2796,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         else
             return ty;
         };
-    auto cb_match = [&](unsigned int idx, const auto& ty) {
+    auto cb_match = [&](unsigned int idx, const auto& ty)->::HIR::Compare {
         if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
             return ::HIR::Compare::Equal;
         if( idx >> 8 == 2 ) {
@@ -2816,7 +2816,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             return ::HIR::Compare::Unequal;
         }
         };
-    auto monomorph = [&](const auto& gt)->const auto& {
+    auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
             const auto& ge = gt.m_data.as_Generic();
             ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
             assert( ge.binding < impl_params.size() );
@@ -2964,20 +2964,7 @@ bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::Generic
         return true;
     }
 
-    auto monomorph_cb = [&](const auto& gt)->const auto& {
-            const auto& ge = gt.m_data.as_Generic();
-            if( ge.binding == 0xFFFF ) {
-                return self;
-            }
-            else if( (ge.binding >> 8) == 0 ) {
-                auto idx = ge.binding & 0xFF;
-                assert(idx < trait_path.m_params.m_types.size());
-                return trait_path.m_params.m_types[ge.binding];
-            }
-            else {
-                BUG(sp, "Unexpected type parameter " << gt);
-            }
-            };
+    auto monomorph_cb = monomorphise_type_get_cb(sp, &self, &trait_path.m_params, nullptr);
     for(const auto& st : trait_ptr.m_all_parent_traits)
     {
         if( trait_contains_method_(*st.m_trait_ptr, name, ar) )
@@ -3000,7 +2987,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         return true;
     }
 
-    auto monomorph_cb = [&](const auto& gt)->const auto& {
+    auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
             const auto& ge = gt.m_data.as_Generic();
             assert(ge.binding < 256);
             assert(ge.binding < trait_path.m_params.m_types.size());
@@ -3027,7 +3014,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
         // NOTE: Don't use find_trait_impls, because that calls this
         bool is_fuzzy = false;
-        bool has_eq = find_trait_impls_crate(sp, lang_Copy, ::HIR::PathParams{}, ty,  [&](auto , auto c){
+        bool has_eq = find_trait_impls_crate(sp, lang_Copy, ::HIR::PathParams{}, ty,  [&](auto , auto c)->bool{
             switch(c)
             {
             case ::HIR::Compare::Equal: return true;
@@ -3063,7 +3050,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     (Generic,
         // TODO: Store this result - or even pre-calculate it.
         const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
-        return this->iterate_bounds([&](const auto& b) {
+        return this->iterate_bounds([&](const auto& b)->bool {
             TU_IFLET(::HIR::GenericBound, b, TraitBound, be,
                 if(be.type == ty)
                 {
@@ -3072,7 +3059,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
                     ::HIR::PathParams   pp;
                     bool rv = this->find_named_trait_in_trait(sp,
                             lang_Copy,pp,  *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, type,
-                            [&](const auto& , const auto&, const auto&) { return true; }
+                            [&](const auto& , const auto&, const auto&)->bool { return true; }
                             );
                     if(rv)
                         return true;
@@ -3409,7 +3396,7 @@ bool TraitResolution::find_method(
 
         // `Self` = `*e.type`
         // `/*I:#*/` := `e.trait.m_params`
-        auto monomorph_cb = [&](const auto& gt)->const auto& {
+        auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
             const auto& ge = gt.m_data.as_Generic();
             if( ge.binding == 0xFFFF ) {
                 return *e.type;
@@ -3572,7 +3559,7 @@ bool TraitResolution::find_method(
             ::HIR::PathParams   trait_params;
             trait_params.m_types.reserve( n_params );
             for(unsigned int i = 0; i < n_params; i++) {
-                trait_params.m_types.push_back( ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Infer({ ivars[i], ::HIR::InferClass::None }) ) );
+                trait_params.m_types.push_back( ::HIR::TypeRef::new_infer(ivars[i], ::HIR::InferClass::None) );
                 ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
             }
 
@@ -3649,7 +3636,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             // Has fields!
             const auto& str = *be;
             const auto& params = e.path.m_data.as_Generic().m_params;
-            auto monomorph = [&](const auto& gt)->const auto& {
+            auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF )
                     TODO(sp, "Monomorphise struct field types (Self) - " << gt);
@@ -3694,7 +3681,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
         (Union,
             const auto& unm = *be;
             const auto& params = e.path.m_data.as_Generic().m_params;
-            auto monomorph = [&](const auto& gt)->const auto& {
+            auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF )
                     TODO(sp, "Monomorphise union field types (Self) - " << gt);

@@ -253,7 +253,7 @@ namespace {
                 return true;
             }
 
-            auto monomorph_cb = [&](const auto& ty)->const auto& {
+            auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
                 const auto& ge = ty.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     // TODO: This has to be the _exact_ same type, including future ivars.
@@ -282,7 +282,7 @@ namespace {
                 }
                 };
             ::HIR::GenericPath  par_trait_path_tmp;
-            auto monomorph_gp_if_needed = [&](const auto& tpl)->const auto& {
+            auto monomorph_gp_if_needed = [&](const ::HIR::GenericPath& tpl)->const ::HIR::GenericPath& {
                 // NOTE: This doesn't monomorph if the parameter set is the same
                 if( monomorphise_genericpath_needed(tpl) && tpl.m_params != trait_path.m_params ) {
                     DEBUG("- Monomorph " << tpl);
@@ -321,10 +321,10 @@ namespace {
             const auto& type = *e.type;
 
             // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
-            this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy){
+            this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy)->bool{
                 auto pp = impl.get_trait_params();
                 // Replace all placeholder parameters (group 2) with ivars (empty types)
-                pp = monomorphise_path_params_with(sp, pp, [&](const auto& gt)->const auto& {
+                pp = monomorphise_path_params_with(sp, pp, [&](const auto& gt)->const ::HIR::TypeRef& {
                     const auto& ge = gt.m_data.as_Generic();
                     if( (ge.binding >> 8) == 2 ) {
                         static ::HIR::TypeRef   empty_type;

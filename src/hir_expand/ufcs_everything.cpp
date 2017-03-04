@@ -289,8 +289,7 @@ namespace {
                 ASSERT_BUG(sp, ty_slot == ty_val, "Types must equal for non-operator assignment, " << ty_slot << " != " << ty_val);
                 return ;
             _(Shr): {langitem = "shr_assign"; opname = "shr_assign"; } if(0)
-            _(Shl): {langitem = "shl_assign"; opname = "shl_assign"; } if(0)
-                ;
+			_(Shl): {langitem = "shl_assign"; opname = "shl_assign"; }
                 if( is_op_valid_shift(ty_slot, ty_val) ) {
                     return ;
                 }
@@ -298,8 +297,7 @@ namespace {
 
             _(And): {langitem = "bitand_assign"; opname = "bitand_assign"; } if(0)
             _(Or ): {langitem = "bitor_assign" ; opname = "bitor_assign" ; } if(0)
-            _(Xor): {langitem = "bitxor_assign"; opname = "bitxor_assign"; } if(0)
-                ;
+            _(Xor): {langitem = "bitxor_assign"; opname = "bitxor_assign"; }
                 if( is_op_valid_bitmask(ty_slot, ty_val) ) {
                     return ;
                 }
@@ -309,8 +307,7 @@ namespace {
             _(Sub): {langitem = "sub_assign"; opname = "sub_assign"; } if(0)
             _(Mul): {langitem = "mul_assign"; opname = "mul_assign"; } if(0)
             _(Div): {langitem = "div_assign"; opname = "div_assign"; } if(0)
-            _(Mod): {langitem = "rem_assign"; opname = "rem_assign"; } if(0)
-                ;
+            _(Mod): {langitem = "rem_assign"; opname = "rem_assign"; }
                 if( is_op_valid_arith(ty_slot, ty_val) ) {
                     return ;
                 }
@@ -359,8 +356,8 @@ namespace {
             case ::HIR::ExprNode_BinOp::Op::CmpLt:  { langitem = "ord"; method = "lt"; } if(0)
             case ::HIR::ExprNode_BinOp::Op::CmpLtE: { langitem = "ord"; method = "le"; } if(0)
             case ::HIR::ExprNode_BinOp::Op::CmpGt:  { langitem = "ord"; method = "gt"; } if(0)
-            case ::HIR::ExprNode_BinOp::Op::CmpGtE: { langitem = "ord"; method = "ge"; } if(0)
-                ; {
+            case ::HIR::ExprNode_BinOp::Op::CmpGtE: { langitem = "ord"; method = "ge"; }
+                {
                 // 1. Check if the types are valid for primitive comparison
                 if( ty_l == ty_r ) {
                     TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_l.m_data), (e),
@@ -406,8 +403,7 @@ namespace {
 
             case ::HIR::ExprNode_BinOp::Op::Xor: langitem = method = "bitxor"; if(0)
             case ::HIR::ExprNode_BinOp::Op::Or : langitem = method = "bitor" ; if(0)
-            case ::HIR::ExprNode_BinOp::Op::And: langitem = method = "bitand"; if(0)
-                ;
+            case ::HIR::ExprNode_BinOp::Op::And: langitem = method = "bitand";
                 if( is_op_valid_bitmask(ty_l, ty_r) ) {
                     return ;
                 }

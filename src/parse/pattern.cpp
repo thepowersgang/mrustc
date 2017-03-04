@@ -409,7 +409,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         ::std::map<unsigned int, AST::Pattern> pats;
         while( GET_TOK(tok, lex) == TOK_INTEGER )
         {
-            unsigned int ofs = tok.intval();
+            unsigned int ofs = static_cast<unsigned int>(tok.intval());
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             auto val = Parse_Pattern(lex, is_refutable);
             if( ! pats.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {

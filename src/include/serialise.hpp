@@ -25,7 +25,7 @@ class Deserialiser;
 #define SERIALISE_TU(class_, tag_str, val_name, ...)  SERIALISE_TYPE(class_::, tag_str,\
     {\
         s << class_::tag_to_str(this->tag());\
-        TU_MATCH(class_, (*this), (val_name), __VA_ARGS__);\
+        TU_MATCH(class_, (*this), (val_name), __VA_ARGS__)\
     },/*
 */  {\
         ::std::string   STU_tag_str;\
@@ -41,7 +41,7 @@ class Deserialiser;
 */    auto& VAL_NAME = this->as_##TAG(); /*
 */    __VA_ARGS__/*
 */} break;
-#define SERIALISE_TU_MATCH_ARMS(CLASS, NAME, ...)    TU_GMA(__VA_ARGS__)(SERIALISE_TU_MATCH_ARM, (CLASS, NAME), __VA_ARGS__)
+#define SERIALISE_TU_MATCH_ARMS(CLASS, NAME, ...)    TU_EXP1( TU_GMA(__VA_ARGS__)(SERIALISE_TU_MATCH_ARM, (CLASS, NAME), __VA_ARGS__) )
 
 class DeserialiseFailure:
     public ::std::runtime_error

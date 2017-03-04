@@ -262,7 +262,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             BUG(span, "Invalid anon path segment '" << des_item_name << "'");
         }
         assert( mod.anon_mods()[idx] );
-        return ::AST::PathBinding::make_Module({&*mod.anon_mods()[idx]});
+        return ::AST::PathBinding::make_Module({&*mod.anon_mods()[idx], nullptr});
     }
 
     // Seach for the name defined in the module.

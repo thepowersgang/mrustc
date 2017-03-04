@@ -48,27 +48,27 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
         }),
     (Module, struct {
         const Module* module_;
-        const ::HIR::Module* hir = nullptr;
+        const ::HIR::Module* hir;
         }),
     (Struct, struct {
         const Struct* struct_;
-        const ::HIR::Struct* hir = nullptr;
+        const ::HIR::Struct* hir;
         }),
     (Enum,   struct {
         const Enum* enum_;
-        const ::HIR::Enum*  hir = nullptr;
+        const ::HIR::Enum*  hir;
         }),
     (Union,   struct {
         const Union* union_;
-        const ::HIR::Union*  hir = nullptr;
+        const ::HIR::Union*  hir;
         }),
     (Trait,  struct {
         const Trait* trait_;
-        const ::HIR::Trait* hir = nullptr;
+        const ::HIR::Trait* hir;
         }),
     (Static, struct {
         const Static* static_;
-        const ::HIR::Static* hir = nullptr; // if nullptr and static_ == nullptr, points to a `const`
+        const ::HIR::Static* hir; // if nullptr and static_ == nullptr, points to a `const`
         }),
     (Function, struct {
         const Function* func_;
@@ -76,7 +76,7 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
     (EnumVar, struct {
         const Enum* enum_;
         unsigned int idx;
-        const ::HIR::Enum*  hir = nullptr;
+        const ::HIR::Enum*  hir;
         }),
     (TypeAlias, struct {
         const TypeAlias* alias_;

@@ -427,7 +427,7 @@ namespace {
                 case ::HIR::ExprNode_UniOp::Op::Negate:
                     TU_MATCH_DEF(::HIR::Literal, (val), (e),
                     ( throw ""; ),
-                    (Integer,   m_rv = ::HIR::Literal(-e); ),
+                    (Integer,   m_rv = ::HIR::Literal(static_cast<uint64_t>(-static_cast<int64_t>(e))); ),
                     (Float,     m_rv = ::HIR::Literal(-e); )
                     )
                     break;
@@ -538,7 +538,7 @@ namespace {
                 node.m_index->visit(*this);
                 if( !m_rv.is_Integer() )
                     ERROR(node.span(), E0000, "Array index isn't an integer - got " << m_rv.tag_str());
-                auto idx = m_rv.as_Integer();
+                auto idx = static_cast<size_t>( m_rv.as_Integer() );
 
                 // Value
                 m_exp_type = ::HIR::TypeRef::new_slice( mv$(exp_ty) );
@@ -1019,7 +1019,7 @@ namespace {
         TRACE_FUNCTION_F("exp=" << exp << ", args=" << args);
 
         StaticTraitResolve  resolve { crate };
-        ::MIR::TypeResolve  state { sp, resolve, FMT_CB(), exp, {}, fcn };
+        ::MIR::TypeResolve  state { sp, resolve, FMT_CB(,), exp, {}, fcn };
 
         ::HIR::Literal  retval;
         ::std::vector< ::HIR::Literal>  locals;
@@ -1592,7 +1592,7 @@ namespace {
                     auto val = evaluate_constant(expr_ptr->span(), m_crate, nvs, expr_ptr, ::HIR::CoreType::Usize);
                     if( !val.is_Integer() )
                         ERROR(expr_ptr->span(), E0000, "Array size isn't an integer");
-                    e.size_val = val.as_Integer();
+                    e.size_val = static_cast<size_t>(val.as_Integer());
                 }
                 DEBUG("Array " << ty << " - size = " << e.size_val);
             )
@@ -1666,7 +1666,7 @@ namespace {
                     auto val = evaluate_constant_hir(node.span(), m_exp.m_crate, mv$(nvs), *node.m_size, ::HIR::CoreType::Usize, {});
                     if( !val.is_Integer() )
                         ERROR(node.span(), E0000, "Array size isn't an integer");
-                    node.m_size_val = val.as_Integer();
+                    node.m_size_val = static_cast<size_t>(val.as_Integer());
                     DEBUG("Array literal [?; " << node.m_size_val << "]");
                 }
 

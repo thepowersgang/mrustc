@@ -1733,7 +1733,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             ),
         (Array,
             TODO(sp, "Match directly on array?");
-            #if 0
+            /*
             unsigned int total = 0;
             for( unsigned int i = 0; i < te.size_val; i ++ ) {
                 unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
@@ -1748,7 +1748,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 if( num_rules == 0 )
                     return total;
             }
-            #endif
+            */
             ),
         (Slice,
             ASSERT_BUG(sp, rule.is_Slice() || rule.is_SplitSlice() || (rule.is_Value() && rule.as_Value().is_Bytes()), "Can only match slice with Bytes or Slice rules - " << rule);
@@ -1933,7 +1933,7 @@ struct DecisionTreeNode
     DecisionTreeNode clone() const;
 
     void populate_tree_from_rule(const Span& sp, unsigned int arm_index, const PatternRule* first_rule, unsigned int rule_count) {
-        populate_tree_from_rule(sp, first_rule, rule_count, [sp,arm_index](auto& branch){
+        populate_tree_from_rule(sp, first_rule, rule_count, [sp,arm_index](Branch& branch){
             TU_MATCHA( (branch), (e),
             (Unset,
                 // Good
@@ -2385,13 +2385,17 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
         ASSERT_BUG(sp, m_field_path == rule.field_path, "Patterns with mismatched field paths - " << m_field_path << " != " << rule.field_path);
     }
 
-    #define GET_BRANCHES(fld, var)  (({if( fld.is_Unset() ) {\
-            fld = Values::make_##var({}); \
-        } \
-        else if( !fld.is_##var() ) { \
-            BUG(sp, "Mismatched rules - have " #var ", but have seen " << fld.tag_str()); \
-        }}), \
-        fld.as_##var())
+	struct GET_BRANCHES_H {
+		static void unexpected_type(const Span& sp, const char* exp, const char* have) {
+			BUG(sp, "Mismatched rules - have " << exp << ", but have seen " << have);
+		}
+	};
+	#define GET_BRANCHES(fld, var)	(fld.is_Unset()\
+		? (fld = Values::make_##var({})).as_##var() \
+		: (fld.is_##var() \
+			? fld.as_##var() : (GET_BRANCHES_H::unexpected_type(sp, #var, fld.tag_str()), fld.as_##var()) \
+			)\
+		)
 
 
     TU_MATCHA( (rule), (e),
@@ -2437,7 +2441,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
 
         if( e.sub_rules.size() > 0 && rule_count > 1 )
         {
-            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](auto& branch){
+            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](Branch& branch){
                 TU_MATCH_DEF(Branch, (branch), (be),
                 (
                     BUG(sp, "Duplicate terminator");
@@ -2482,7 +2486,7 @@ void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule
 
         if( e.sub_rules.size() > 0 && rule_count > 1 )
         {
-            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](auto& branch){
+            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](Branch& branch){
                 TU_MATCH_DEF(Branch, (branch), (be),
                 (
                     BUG(sp, "Duplicate terminator");

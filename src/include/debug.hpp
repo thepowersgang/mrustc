@@ -62,11 +62,15 @@ public:
 struct FmtLambda
 {
     ::std::function<void(::std::ostream&)>  m_cb;
+	FmtLambda(::std::function<void(::std::ostream&)> cb):
+		m_cb(cb)
+	{ }
     friend ::std::ostream& operator<<(::std::ostream& os, const FmtLambda& x) {
         x.m_cb(os);
         return os;
     }
 };
-#define FMT_CB(os, ...)  ::FmtLambda { [&](auto& os) { __VA_ARGS__ } }
+#define FMT_CB(os, ...)  ::FmtLambda( [&](auto& os) { __VA_ARGS__; } )
+#define FMT_CB_S(...)  ::FmtLambda( [&](auto& _os) { _os << __VA_ARGS__; } )
 
 

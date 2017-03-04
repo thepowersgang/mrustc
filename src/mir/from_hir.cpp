@@ -884,19 +884,16 @@ namespace {
                 case _(Sub): op = ::MIR::eBinOp::SUB; if(0)
                 case _(Mul): op = ::MIR::eBinOp::MUL; if(0)
                 case _(Div): op = ::MIR::eBinOp::DIV; if(0)
-                case _(Mod): op = ::MIR::eBinOp::MOD; if(0)
-                    ;
+                case _(Mod): op = ::MIR::eBinOp::MOD;
                     this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
                     break;
                 case _(Xor): op = ::MIR::eBinOp::BIT_XOR; if(0)
                 case _(Or ): op = ::MIR::eBinOp::BIT_OR ; if(0)
-                case _(And): op = ::MIR::eBinOp::BIT_AND; if(0)
-                    ;
+                case _(And): op = ::MIR::eBinOp::BIT_AND;
                     this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
                     break;
                 case _(Shl): op = ::MIR::eBinOp::BIT_SHL; if(0)
-                case _(Shr): op = ::MIR::eBinOp::BIT_SHR; if(0)
-                    ;
+                case _(Shr): op = ::MIR::eBinOp::BIT_SHR;
                     this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
                     break;
                 }
@@ -1794,7 +1791,7 @@ namespace {
                 (Function,
                     // TODO: Why not use the result type?
                     //auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &pe.m_params);
-                    auto monomorph_cb = [&](const auto& gt)->const auto& {
+                    auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                         const auto& e = gt.m_data.as_Generic();
                         if( e.binding == 0xFFFF ) {
                             BUG(sp, "Reference to Self in free function - " << gt);
@@ -1860,7 +1857,7 @@ namespace {
                 ),
             (UfcsInherent,
                 // 1. Find item in an impl block
-                auto rv = m_builder.crate().find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+                auto rv = m_builder.crate().find_type_impls(*pe.type, [&](const auto& ty)->const ::HIR::TypeRef& { return ty; },
                     [&](const auto& impl) {
                         DEBUG("- impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                         // Associated functions

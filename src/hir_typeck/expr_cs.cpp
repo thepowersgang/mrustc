@@ -283,7 +283,7 @@ namespace {
 
             //const auto& params_def = fcn.m_params;
             const auto& path_params = e.m_params;
-            cache.m_monomorph_cb = [&](const auto& gt)->const auto& {
+            cache.m_monomorph_cb = [&](const ::HIR::TypeRef& gt)->const ::HIR::TypeRef& {
                     const auto& e = gt.m_data.as_Generic();
                     if( e.name == "Self" || e.binding == 0xFFFF )
                         TODO(sp, "Handle 'Self' when monomorphising");
@@ -320,7 +320,7 @@ namespace {
 
             const auto& trait_params = e.trait.m_params;
             const auto& path_params = e.params;
-            cache.m_monomorph_cb = [&](const auto& gt)->const auto& {
+            cache.m_monomorph_cb = [&](const ::HIR::TypeRef& gt)->const ::HIR::TypeRef& {
                     const auto& ge = gt.m_data.as_Generic();
                     if( ge.binding == 0xFFFF ) {
                         return *e.type;
@@ -431,7 +431,7 @@ namespace {
 
 
                 // Monomorphise the impl type with the new ivars, and equate to *e.type
-                auto impl_monomorph_cb = [&](const auto& gt)->const auto& {
+                auto impl_monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                     const auto& ge = gt.m_data.as_Generic();
                     if( ge.binding == 0xFFFF ) {
                         return context.get_type(*e.type);
@@ -464,7 +464,7 @@ namespace {
 
         // Create monomorphise callback
         const auto& fcn_params = e.params;
-        cache.m_monomorph_cb = [&](const auto& gt)->const auto& {
+        cache.m_monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     return context.get_type(*e.type);
@@ -1099,7 +1099,7 @@ namespace {
             }
 
             const auto& ty_params = node.m_path.m_params.m_types;
-            auto monomorph_cb = [&](const auto& gt)->const auto& {
+            auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     return ty;
@@ -1176,7 +1176,7 @@ namespace {
             const ::HIR::t_struct_fields& fields = *fields_ptr;
 
             const auto& ty_params = node.m_path.m_params.m_types;
-            auto monomorph_cb = [&](const auto& gt)->const auto& {
+            auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     return ty;
@@ -1241,22 +1241,7 @@ namespace {
 
             this->context.equate_types(node.span(), node.m_res_type, ty);
 
-            const auto& ty_params = node.m_path.m_params.m_types;
-            auto monomorph_cb = [&](const auto& gt)->const auto& {
-                const auto& ge = gt.m_data.as_Generic();
-                if( ge.binding == 0xFFFF ) {
-                    return ty;
-                }
-                else if( ge.binding < 256 ) {
-                    if( ge.binding >= ty_params.size() ) {
-                        BUG(node.span(), "Type parameter index out of range (#" << ge.binding << " " << ge.name << ")");
-                    }
-                    return ty_params[ge.binding];
-                }
-                else {
-                    BUG(node.span(), "Method-level parameter on struct (#" << ge.binding << " " << ge.name << ")");
-                }
-                };
+            auto monomorph_cb = monomorphise_type_get_cb(node.span(), &ty, &node.m_path.m_params, nullptr);
 
             // Convert bounds on the type into rules
             apply_bounds_as_rules(context, node.span(), unm.m_params, monomorph_cb);
@@ -1542,26 +1527,7 @@ namespace {
                     const auto& f = this->context.m_crate.get_function_by_path(sp, e.m_path);
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, f.m_params, e.m_params);
 
-                    const auto& params = e.m_params;
-                    auto monomorph_cb = [&](const auto& gt)->const auto& {
-                        const auto& e = gt.m_data.as_Generic();
-                        if( e.binding == 0xFFFF ) {
-                            BUG(sp, "Reference to Self in free function - " << gt);
-                        }
-                        else if( (e.binding >> 8) == 0 ) {
-                            BUG(sp, "Reference to impl-level param in free function - " << gt);
-                        }
-                        else if( (e.binding >> 8) == 1 ) {
-                            auto idx = e.binding & 0xFF;
-                            if( idx >= params.m_types.size() ) {
-                                BUG(sp, "Generic param out of input range - " << gt << " >= " << params.m_types.size());
-                            }
-                            return params.m_types[idx];
-                        }
-                        else {
-                            BUG(sp, "Unknown param in free function - " << gt);
-                        }
-                        };
+                    auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &e.m_params);
 
                     ::HIR::FunctionType ft {
                         f.m_unsafe,
@@ -1665,27 +1631,7 @@ namespace {
 
                     const auto& fcn_params = e.params;
                     const auto& trait_params = e.trait.m_params;
-                    auto monomorph_cb = [&](const auto& gt)->const auto& {
-                            const auto& ge = gt.m_data.as_Generic();
-                            if( ge.binding == 0xFFFF ) {
-                                return this->context.get_type(*e.type);
-                            }
-                            else if( (ge.binding >> 8) == 0 ) {
-                                auto idx = ge.binding;
-                                ASSERT_BUG(sp, idx < trait_params.m_types.size(), "Generic param out of input range - " << gt << " >= " << trait_params.m_types.size());
-                                return this->context.get_type(trait_params.m_types[idx]);
-                            }
-                            else if( (ge.binding >> 8) == 1 ) {
-                                auto idx = ge.binding & 0xFF;
-                                if( idx >= fcn_params.m_types.size() ) {
-                                    BUG(sp, "Generic param out of input range - " << gt << " >= " << fcn_params.m_types.size());
-                                }
-                                return this->context.get_type(fcn_params.m_types[idx]);
-                            }
-                            else {
-                                BUG(sp, "Generic bounding out of total range - " << gt);
-                            }
-                        };
+					auto monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &e.trait.m_params, &e.params);
                     ::HIR::FunctionType ft {
                         ie.m_unsafe, ie.m_abi,
                         box$( monomorphise_type_with(sp, ie.m_return,  monomorph_cb) ),
@@ -1768,7 +1714,7 @@ namespace {
                 {
                     // Create monomorphise callback
                     const auto& fcn_params = e.params;
-                    auto monomorph_cb = [&](const auto& gt)->const auto& {
+                    auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                             const auto& ge = gt.m_data.as_Generic();
                             if( ge.binding == 0xFFFF ) {
                                 return this->context.get_type(*e.type);
@@ -2046,29 +1992,6 @@ namespace {
                 this->m_completed = true;
                 ),
             (Path,
-                #if 0
-                TU_MATCHA( (e.binding), (be),
-                (Unbound,
-                    BUG(sp, "Encountered unbound type in _Cast Path - " << tgt_ty);
-                    ),
-                (Opaque,
-                    // TODO: Bounds search
-                    TODO(sp, "Cast Path::Opaque with CoerceUnsized - " << tgt_ty);
-                    ),
-                (Struct,
-                    if( !be->m_markings.can_coerce )
-                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
-                    ),
-                (Union,
-                    if( !be->m_markings.can_coerce )
-                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
-                    ),
-                (Enum,
-                    if( !be->m_markings.can_coerce )
-                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty));
-                    )
-                )
-                #endif
                 this->context.equate_types_coerce(sp, tgt_ty, node.m_value);
                 this->m_completed = true;
                 return ;
@@ -2430,147 +2353,148 @@ namespace {
 
                 const auto& ty = *ty_p;
                 DEBUG("- ty = " << ty);
-                TU_MATCH_DEF(decltype(ty.m_data), (ty.m_data), (e),
-                (
-                    ::HIR::TypeRef  fcn_args_tup;
-                    ::HIR::TypeRef  fcn_ret;
+				if( const auto* e = ty.m_data.opt_Closure() )
+				{
+					for( const auto& arg : e->m_arg_types )
+						node.m_arg_types.push_back(arg.clone());
+					node.m_arg_types.push_back(e->m_rettype->clone());
+					node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
+				}
+				else if( const auto* e = ty.m_data.opt_Function() )
+				{
+					for( const auto& arg : e->m_arg_types )
+						node.m_arg_types.push_back(arg.clone());
+					node.m_arg_types.push_back(e->m_rettype->clone());
+					node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+				}
+				else if( ty.m_data.is_Infer() )
+				{
+					// No idea yet
+					return ;
+				}
+				else
+				{
+					::HIR::TypeRef  fcn_args_tup;
+					::HIR::TypeRef  fcn_ret;
 
-                    // TODO: Use `find_trait_impls` instead of two different calls
-                    // - This will get the TraitObject impl search too
+					// TODO: Use `find_trait_impls` instead of two different calls
+					// - This will get the TraitObject impl search too
 
-                    // Locate an impl of FnOnce (exists for all other Fn* traits)
-                    unsigned int count = 0;
-                    this->context.m_resolve.find_trait_impls(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
-                            count ++;
+					// Locate an impl of FnOnce (exists for all other Fn* traits)
+					unsigned int count = 0;
+					this->context.m_resolve.find_trait_impls(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp)->bool {
+						count++;
 
-                            auto tup = impl.get_trait_ty_param(0);
-                            if( !tup.m_data.is_Tuple() )
-                                ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
-                            fcn_args_tup = mv$(tup);
+						auto tup = impl.get_trait_ty_param(0);
+						if (!tup.m_data.is_Tuple())
+							ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
+						fcn_args_tup = mv$(tup);
 
-                            fcn_ret = impl.get_type("Output");
-                            DEBUG("[visit:_CallValue] fcn_args_tup=" << fcn_args_tup << ", fcn_ret=" << fcn_ret);
-                            return cmp == ::HIR::Compare::Equal;
-                            });
-                    DEBUG("Found " << count << " impls of FnOnce");
-                    if( count > 1 ) {
-                        return ;
-                    }
-                    if( count == 1 )
-                    {
+						fcn_ret = impl.get_type("Output");
+						DEBUG("[visit:_CallValue] fcn_args_tup=" << fcn_args_tup << ", fcn_ret=" << fcn_ret);
+						return cmp == ::HIR::Compare::Equal;
+					});
+					DEBUG("Found " << count << " impls of FnOnce");
+					if(count > 1) {
+						return;
+					}
+					if(count == 1)
+					{
 
-                        // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
-                        // NOTE: Borrowing is added by the expansion to CallPath
-                        if( this->context.m_resolve.find_trait_impls(node.span(), lang_Fn, trait_pp, ty, [&](auto impl, auto cmp) {
-                            // TODO: Take the value of `cmp` into account
-                            fcn_ret = impl.get_type("Output");
-                            return true;
-                            //return cmp == ::HIR::Compare::Equal;
-                            })
-                            )
-                        {
-                            DEBUG("-- Using Fn");
-                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
+						// 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
+						// NOTE: Borrowing is added by the expansion to CallPath
+						if( this->context.m_resolve.find_trait_impls(node.span(), lang_Fn, trait_pp, ty, [&](auto impl, auto cmp) {
+								// TODO: Take the value of `cmp` into account
+								fcn_ret = impl.get_type("Output");
+								return true;
+								//return cmp == ::HIR::Compare::Equal;
+							}) )
+						{
+							DEBUG("-- Using Fn");
+							node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
 
-                            this->context.equate_types_assoc(node.span(),  node.m_res_type,  lang_Fn, ::make_vec1( fcn_args_tup.clone() ), ty, "Output");
-                        }
-                        else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto impl, auto cmp) {
-                            // TODO: Take the value of `cmp` into account
-                            fcn_ret = impl.get_type("Output");
-                            return true;
-                            //return cmp == ::HIR::Compare::Equal;
-                            })
-                            )
-                        {
-                            DEBUG("-- Using FnMut");
-                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
+							this->context.equate_types_assoc(node.span(), node.m_res_type, lang_Fn, ::make_vec1(fcn_args_tup.clone()), ty, "Output");
+						}
+						else if( this->context.m_resolve.find_trait_impls(node.span(), lang_FnMut, trait_pp, ty, [&](auto impl, auto cmp) {
+								// TODO: Take the value of `cmp` into account
+								fcn_ret = impl.get_type("Output");
+								return true;
+								//return cmp == ::HIR::Compare::Equal;
+							}) )
+						{
+							DEBUG("-- Using FnMut");
+							node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnMut;
 
-                            this->context.equate_types_assoc(node.span(),  node.m_res_type,  lang_FnMut, ::make_vec1( fcn_args_tup.clone() ), ty, "Output");
-                        }
-                        else
-                        {
-                            DEBUG("-- Using FnOnce (default)");
-                            node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
+							this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnMut, ::make_vec1(fcn_args_tup.clone()), ty, "Output");
+						}
+						else
+						{
+							DEBUG("-- Using FnOnce (default)");
+							node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::FnOnce;
 
-                            this->context.equate_types_assoc(node.span(),  node.m_res_type,  lang_FnOnce, ::make_vec1( fcn_args_tup.clone() ), ty, "Output");
-                        }
+							this->context.equate_types_assoc(node.span(), node.m_res_type, lang_FnOnce, ::make_vec1(fcn_args_tup.clone()), ty, "Output");
+						}
 
-                        // If the return type wasn't found in the impls, emit it as a UFCS
-                        if( fcn_ret == ::HIR::TypeRef() )
-                        {
-                            fcn_ret = ::HIR::TypeRef( ::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
-                                box$( ty.clone() ),
-                                // - Clone argument tuple, as it's stolen into cache below
-                                ::HIR::GenericPath(lang_FnOnce, ::HIR::PathParams( fcn_args_tup.clone() )),
-                                "Output",
-                                {}
-                                })) );
-                        }
-                    }
-                    else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Borrow, e,
-                        deref_count ++;
-                        ty_p = &this->context.get_type(*e.inner);
-                        DEBUG("Deref " << ty << " -> " << *ty_p);
-                        keep_looping = true;
-                        continue ;
-                    )
-                    else
-                    {
-                        if( !ty.m_data.is_Generic() )
-                        {
-                            bool found = this->context.m_resolve.find_trait_impls_crate(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp) {
-                                if( cmp == ::HIR::Compare::Fuzzy )
-                                    TODO(node.span(), "Handle fuzzy match - " << impl);
+						// If the return type wasn't found in the impls, emit it as a UFCS
+						if(fcn_ret == ::HIR::TypeRef())
+						{
+							fcn_ret = ::HIR::TypeRef(::HIR::Path(::HIR::Path::Data::make_UfcsKnown({
+								box$(ty.clone()),
+								// - Clone argument tuple, as it's stolen into cache below
+								::HIR::GenericPath(lang_FnOnce, ::HIR::PathParams(fcn_args_tup.clone())),
+								"Output",
+								{}
+							})));
+						}
+					}
+					else if( const auto* e = ty.m_data.opt_Borrow() )
+					{
+						deref_count++;
+						ty_p = &this->context.get_type(*e->inner);
+						DEBUG("Deref " << ty << " -> " << *ty_p);
+						keep_looping = true;
+						continue;
+					}
+					else
+					{
+						if( !ty.m_data.is_Generic() )
+						{
+							bool found = this->context.m_resolve.find_trait_impls_crate(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp)->bool {
+								if (cmp == ::HIR::Compare::Fuzzy)
+									TODO(node.span(), "Handle fuzzy match - " << impl);
 
-                                auto tup = impl.get_trait_ty_param(0);
-                                if( !tup.m_data.is_Tuple() )
-                                    ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
-                                fcn_args_tup = mv$(tup);
-                                fcn_ret = impl.get_type("Output");
-                                ASSERT_BUG(node.span(), fcn_ret != ::HIR::TypeRef(), "Impl didn't have a type for Output - " << impl);
-                                return true;
-                                });
-                            if( found ) {
-                                // Fill cache and leave the TU_MATCH
-                                node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
-                                node.m_arg_types.push_back( mv$(fcn_ret) );
-                                node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
-                                break ; // leaves TU_MATCH
-                            }
-                        }
-                        if( const auto* next_ty_p = this->context.m_resolve.autoderef(node.span(), ty, tmp_type) )
-                        {
-                            DEBUG("Deref (autoderef) " << ty << " -> " << *next_ty_p);
-                            deref_count ++;
-                            ty_p = next_ty_p;
-                            keep_looping = true;
-                            continue ;
-                        }
+								auto tup = impl.get_trait_ty_param(0);
+								if (!tup.m_data.is_Tuple())
+									ERROR(node.span(), E0000, "FnOnce expects a tuple argument, got " << tup);
+								fcn_args_tup = mv$(tup);
+								fcn_ret = impl.get_type("Output");
+								ASSERT_BUG(node.span(), fcn_ret != ::HIR::TypeRef(), "Impl didn't have a type for Output - " << impl);
+								return true;
+							});
+							if (found) {
+								// Fill cache and leave the TU_MATCH
+								node.m_arg_types = mv$(fcn_args_tup.m_data.as_Tuple());
+								node.m_arg_types.push_back(mv$(fcn_ret));
+								node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
+								break; // leaves TU_MATCH
+							}
+						}
+						if( const auto* next_ty_p = this->context.m_resolve.autoderef(node.span(), ty, tmp_type) )
+						{
+							DEBUG("Deref (autoderef) " << ty << " -> " << *next_ty_p);
+							deref_count++;
+							ty_p = next_ty_p;
+							keep_looping = true;
+							continue;
+						}
 
-                        // Didn't find anything. Error?
-                        ERROR(node.span(), E0000, "Unable to find an implementation of Fn*"<<trait_pp<<" for " << this->context.m_ivars.fmt_type(ty));
-                    }
+						// Didn't find anything. Error?
+						ERROR(node.span(), E0000, "Unable to find an implementation of Fn*" << trait_pp << " for " << this->context.m_ivars.fmt_type(ty));
+					}
 
-                    node.m_arg_types = mv$( fcn_args_tup.m_data.as_Tuple() );
-                    node.m_arg_types.push_back( mv$(fcn_ret) );
-                    ),
-                (Closure,
-                    for( const auto& arg : e.m_arg_types )
-                        node.m_arg_types.push_back( arg.clone() );
-                    node.m_arg_types.push_back( e.m_rettype->clone() );
-                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Unknown;
-                    ),
-                (Function,
-                    for( const auto& arg : e.m_arg_types )
-                        node.m_arg_types.push_back( arg.clone() );
-                    node.m_arg_types.push_back( e.m_rettype->clone() );
-                    node.m_trait_used = ::HIR::ExprNode_CallValue::TraitUsed::Fn;
-                    ),
-                (Infer,
-                    // No idea yet
-                    return ;
-                    )
-                )
+					node.m_arg_types = mv$(fcn_args_tup.m_data.as_Tuple());
+					node.m_arg_types.push_back(mv$(fcn_ret));
+				}
             } while( keep_looping );
 
             if( deref_count > 0 )
@@ -3168,13 +3092,13 @@ void Context::equate_types(const Span& sp, const ::HIR::TypeRef& li, const ::HIR
     // Instantly apply equality
     TRACE_FUNCTION_F(li << " == " << ri);
 
-    visit_ty_with(ri, [&](const auto& ty) {
+    visit_ty_with(ri, [&](const auto& ty)->bool {
         if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) {
             BUG(sp, "Type contained an impl placeholder parameter - " << ri);
         }
         return false;
         });
-    visit_ty_with(li, [&](const auto& ty) {
+    visit_ty_with(li, [&](const auto& ty)->bool {
         if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding >> 8 == 2 ) {
             BUG(sp, "Type contained an impl placeholder parameter - " << li);
         }
@@ -4087,7 +4011,7 @@ void fix_param_count_(const Span& sp, Context& context, const ::HIR::TypeRef& se
                     ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                 }
                 else if( monomorphise_type_needed(typ.m_default) ) {
-                    auto cb = [&](const auto& ty)->const auto& {
+                    auto cb = [&](const auto& ty)->const ::HIR::TypeRef& {
                         const auto& ge = ty.m_data.as_Generic();
                         if( ge.binding == 0xFFFF ) {
                             ASSERT_BUG(sp, self_ty != ::HIR::TypeRef(), "Self not allowed in this context");
@@ -4304,7 +4228,7 @@ namespace {
                     }
                 }
 
-                add_coerce_borrow(context, node_ptr, types.back(), [&](auto& node_ptr) {
+                add_coerce_borrow(context, node_ptr, types.back(), [&](auto& node_ptr)->void {
                     // node_ptr = node that yeilds ty_src
                     assert( count == types.size() );
                     for(unsigned int i = 0; i < types.size(); i ++ )
@@ -4502,7 +4426,7 @@ namespace {
 
             bool fuzzy_match = false;
             ImplRef  best_impl;
-            bool found = context.m_resolve.find_trait_impls(sp, lang_CoerceUnsized, pp, ty_src, [&](auto impl, auto cmp) {
+            bool found = context.m_resolve.find_trait_impls(sp, lang_CoerceUnsized, pp, ty_src, [&](auto impl, auto cmp)->bool {
                 DEBUG("[check_coerce] cmp=" << cmp << ", impl=" << impl);
                 // TODO: Allow fuzzy match if it's the only matching possibility?
                 // - Recorded for now to know if there could be a matching impl later
@@ -4707,7 +4631,6 @@ namespace {
 
                     // If the coercion is of a block, do the reborrow on the last node of the block
                     // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
-                    #if 1
                     ::HIR::ExprNodeP* npp = &node_ptr;
                     while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
                     {
@@ -4721,7 +4644,6 @@ namespace {
                         npp = &p->m_nodes.back();
                     }
                     ::HIR::ExprNodeP& node_ptr = *npp;
-                    #endif
 
                     // Add cast down
                     auto span = node_ptr->span();

@@ -725,7 +725,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check suitability of source type (COMPLEX)
                         ),
                     (BinOp,
-                        #if 0
+						/*
                         ::HIR::TypeRef  tmp_l, tmp_r;
                         const auto& ty_l = state.get_lvalue_type(tmp_l, e.val_l);
                         const auto& ty_r = state.get_lvalue_type(tmp_r, e.val_r);
@@ -740,7 +740,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             if( ty_l != ty_r )
                                 MIR_BUG(state, "Type mismatch in binop, " << ty_l << " != " << ty_r);
                         }
-                        #endif
+                        */
                         // TODO: Check return type
                         ),
                     (UniOp,
@@ -757,8 +757,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             ity_p = &*ty.m_data.as_Borrow().inner;
                         else if( ty.m_data.is_Pointer() )
                             ity_p = &*ty.m_data.as_Pointer().inner;
-                        else
+                        else {
                             MIR_BUG(state, "DstMeta requires a &-ptr as input, got " << ty);
+						}
                         const auto& ity = *ity_p;
                         if( ity.m_data.is_Generic() )
                             ;
@@ -790,8 +791,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             ity_p = &*ty.m_data.as_Borrow().inner;
                         else if( ty.m_data.is_Pointer() )
                             ity_p = &*ty.m_data.as_Pointer().inner;
-                        else
+                        else {
                             MIR_BUG(state, "DstPtr requires a &-ptr as input, got " << ty);
+						}
                         const auto& ity = *ity_p;
                         if( ity.m_data.is_Slice() )
                             ;
@@ -817,8 +819,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             ity_p = &*te->inner;
                         else if( const auto* te = ty.m_data.opt_Pointer() )
                             ity_p = &*te->inner;
-                        else
+                        else {
                             MIR_BUG(state, "DstMeta requires a pointer as output, got " << ty);
+						}
                         assert(ity_p);
                         auto meta = get_metadata_type(state, *ity_p);
                         if( meta == ::HIR::TypeRef() )

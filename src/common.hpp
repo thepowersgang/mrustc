@@ -11,6 +11,10 @@
 #include <sstream>
 #include <memory>
 
+#ifdef _MSC_VER
+#define __attribute__(x)	
+#endif
+
 #define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
 // XXX: Evil hack - Define 'mv$' to be ::std::move
 #define mv$(x)    ::std::move(x)

@@ -1,3 +1,10 @@
+/*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/generics.hpp
+ * - AST Generics (type parameters, bounds, ...)
+ */
 #pragma once
 
 #include <string>
@@ -5,11 +12,10 @@
 
 namespace AST {
 
-
 class TypeParam
 {
     ::std::string   m_name;
-    TypeRef m_default;
+    ::TypeRef m_default;
 public:
     TypeParam(TypeParam&& x) = default;
     TypeParam& operator=(TypeParam&& x) = default;

@@ -190,7 +190,7 @@ void MirBuilder::define_variable(unsigned int idx)
     {
         auto temp = new_temporary(ty);
         push_stmt_assign( sp, ::MIR::LValue(temp.clone()), mv$(rv) );
-        return temp;
+        return ::MIR::Param( mv$(temp) );
     }
 }
 void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
@@ -1627,10 +1627,10 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
                         BUG(sp, "Box move out of invalid LValue " << inner_lv << " - should have been moved");
                         ),
                     (Variable,
-                        get_variable_state_mut(sp, ei) = VarState::make_Partial({ mv$(ivs) });
+                        get_variable_state_mut(sp, ei) = VarState::make_Partial({ mv$(ivs), ~0u });
                         ),
                     (Temporary,
-                        get_temp_state_mut(sp, ei.idx) = VarState::make_Partial({ mv$(ivs) });
+                        get_temp_state_mut(sp, ei.idx) = VarState::make_Partial({ mv$(ivs), ~0u });
                         ),
                     (Argument,
                         TODO(sp, "Mark arg " << ei.idx << " for shallow drop");

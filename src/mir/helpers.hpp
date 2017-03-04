@@ -13,8 +13,8 @@
 namespace HIR {
 class Crate;
 class TypeRef;
-class Pattern;
-class SimplePath;
+struct Pattern;
+struct SimplePath;
 }
 
 namespace MIR {
@@ -22,7 +22,7 @@ namespace MIR {
 class Function;
 class LValue;
 class Constant;
-class BasicBlock;
+struct BasicBlock;
 
 typedef unsigned int    BasicBlockId;
 

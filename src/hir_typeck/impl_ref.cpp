@@ -86,7 +86,7 @@ bool ImplRef::type_is_specialisable(const char* name) const
 ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> ImplRef::get_cb_monomorph_traitimpl(const Span& sp) const
 {
     const auto& e = this->m_data.as_TraitImpl();
-    return [this,&e,&sp](const auto& gt)->const auto& {
+    return [this,&e,&sp](const auto& gt)->const ::HIR::TypeRef& {
         const auto& ge = gt.m_data.as_Generic();
         if( ge.binding == 0xFFFF ) {
             // Store (or cache) a monomorphisation of Self, and error if this recurses

@@ -351,7 +351,7 @@ namespace {
                     auto& idx = get_lval(*e.idx);
                     MIR_ASSERT(state, idx.is_Integer(), "LValue::Index with non-integer index literal - " << idx.tag_str() << " - " << lv);
                     auto& vals = val.as_List();
-                    auto idx_v = idx.as_Integer();
+                    auto idx_v = static_cast<size_t>( idx.as_Integer() );
                     MIR_ASSERT(state, idx_v < vals.size(), "LValue::Index index out of range");
                     return vals[ idx_v ];
                     ),

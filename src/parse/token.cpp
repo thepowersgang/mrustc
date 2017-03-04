@@ -244,11 +244,10 @@ enum eTokenType Token::typefromstr(const ::std::string& s)
 {
     if(s == "")
         return TOK_NULL;
-    #define _(t)    else if( s == #t ) return t;
+    #define _(t)    if( s == #t ) return t;
     #include "eTokenType.enum.h"
     #undef _
-    else
-        return TOK_NULL;
+    return TOK_NULL;
 }
 
 struct EscapedString {

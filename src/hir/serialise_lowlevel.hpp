@@ -52,7 +52,7 @@ public:
     // Variable-length encoded u64 (for array sizes)
     void write_u64c(uint64_t v) {
         if( v < (1<<7) ) {
-            write_u8(v);
+            write_u8(static_cast<uint8_t>(v));
         }
         else if( v < (1<<(6+16)) ) {
             uint8_t buf[] = {
@@ -62,7 +62,7 @@ public:
                 };
             this->write(buf, sizeof buf);
         }
-        else if( v < (1ul << (5 + 32)) ) {
+        else if( v < (1ull << (5 + 32)) ) {
             uint8_t buf[] = {
                 static_cast<uint8_t>(0xC0 + (v >> 32)), // 0xC0 -- 0xDF
                 static_cast<uint8_t>(v >> 24),

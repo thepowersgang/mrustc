@@ -505,10 +505,10 @@ namespace {
 
         ::HIR::Linkage deserialise_linkage()
         {
-            return ::HIR::Linkage {
-                ::HIR::Linkage::Type::Auto,
-                m_in.read_string(),
-                };
+			::HIR::Linkage	l;
+			l.type = ::HIR::Linkage::Type::Auto;
+			l.name = m_in.read_string();
+			return l;
         }
 
         // - Value items
@@ -707,7 +707,7 @@ namespace {
         _(Array, {
             deserialise_ptr< ::HIR::TypeRef>(),
             nullptr,
-            m_in.read_u64c()
+            m_in.read_u64c() & SIZE_MAX
             })
         _(Slice, {
             deserialise_ptr< ::HIR::TypeRef>()
@@ -1002,12 +1002,13 @@ namespace {
                 deserialise_vec< ::std::string>(),
                 deserialise_vec< ::std::string>()
                 });
-        case 3:
-            return ::MIR::Statement::make_SetDropFlag({
-                static_cast<unsigned int>(m_in.read_count()),
-                m_in.read_bool(),
-                static_cast<unsigned int>(m_in.read_count())
-                });
+        case 3: {
+			::MIR::Statement::Data_SetDropFlag	sdf;
+			sdf.idx = static_cast<unsigned int>(m_in.read_count());
+			sdf.new_val = m_in.read_bool();
+			sdf.other = static_cast<unsigned int>(m_in.read_count());
+			return ::MIR::Statement::make_SetDropFlag(sdf);
+			}
         default:
             ::std::cerr << "Bad tag for a MIR Statement" << ::std::endl;
             throw "";

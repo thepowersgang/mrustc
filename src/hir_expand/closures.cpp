@@ -507,7 +507,7 @@ namespace {
                 impl_path_params.m_types.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
             }
 
-            auto monomorph_cb = [&](const auto& ty)->const auto& {
+            auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
                 const auto& ge = ty.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
                     return params_placeholders.at(0);
@@ -527,7 +527,7 @@ namespace {
                 }
                 };
             auto monomorph = [&](const auto& ty){ return monomorphise_type_with(sp, ty, monomorph_cb); };
-            auto cb_replace = [&](const auto& tpl, auto& rv) {
+            auto cb_replace = [&](const auto& tpl, auto& rv)->bool {
                 if( tpl.m_data.is_Infer() ) {
                     BUG(sp, "");
                 }
@@ -551,7 +551,7 @@ namespace {
                 };
 
             // - Clone the bounds (from both levels)
-            auto monomorph_bound = [&](const ::HIR::GenericBound& b)->auto {
+            auto monomorph_bound = [&](const ::HIR::GenericBound& b)->::HIR::GenericBound {
                 TU_MATCHA( (b), (e),
                 (Lifetime,
                     return ::HIR::GenericBound(e); ),

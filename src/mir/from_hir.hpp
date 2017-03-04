@@ -51,7 +51,7 @@ TAGGED_UNION_EX(VarState, (), Invalid, (
     // Partially valid (Map of field states, Box is assumed to have one field)
     (Partial, struct {
         ::std::vector<VarState> inner_states;
-        unsigned int outer_flag = ~0u;   // If ~0u there's no condition on the outer
+        unsigned int outer_flag;   // If ~0u there's no condition on the outer
         }),
     // Optionally valid (integer indicates the drop flag index)
     (Optional, unsigned int),

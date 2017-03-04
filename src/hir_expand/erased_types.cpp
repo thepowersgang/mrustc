@@ -14,19 +14,21 @@
 const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Path& origin_path, t_cb_generic& monomorph_cb, ::HIR::PathParams& impl_params)
 {
     const ::HIR::Function*  fcn_ptr = nullptr;
-    TU_MATCHA( (origin_path.m_data), (pe),
-    (UfcsUnknown,
-        BUG(Span(), "UfcsUnknown in ErasedType - " << origin_path);
-        ),
-    (Generic,
-        monomorph_cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &pe.m_params);
-        fcn_ptr = &resolve.m_crate.get_function_by_path(sp, pe.m_path);
-        ),
-    (UfcsKnown,
-        // NOTE: This isn't possible yet (will it be? or will it expand to an associated type?)
-        TODO(sp, "Replace ErasedType - " << origin_path << " with source (UfcsKnown)");
-        ),
-    (UfcsInherent,
+	switch(origin_path.m_data.tag())
+	{
+	case ::HIR::Path::Data::TAG_UfcsUnknown:
+		BUG(Span(), "UfcsUnknown in ErasedType - " << origin_path);
+	case ::HIR::Path::Data::TAG_Generic: {
+		const auto& pe = origin_path.m_data.as_Generic();
+		monomorph_cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &pe.m_params);
+		fcn_ptr = &resolve.m_crate.get_function_by_path(sp, pe.m_path);
+		} break;
+	case ::HIR::Path::Data::TAG_UfcsKnown:
+		// NOTE: This isn't possible yet (will it be? or will it expand to an associated type?)
+		TODO(sp, "Replace ErasedType - " << origin_path << " with source (UfcsKnown)");
+		break;
+	case ::HIR::Path::Data::TAG_UfcsInherent: {
+		const auto& pe = origin_path.m_data.as_UfcsInherent();
         // 1. Find correct impl block for the path
         const ::HIR::TypeImpl* impl_ptr = nullptr;
         resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
@@ -50,12 +52,16 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
             return ::HIR::Compare::Equal;
             });
         for(const auto& t : impl_params.m_types)
+		{
             if( t == ::HIR::TypeRef() )
+			{
                 TODO(sp, "Handle ErasedType where an impl parameter comes from a bound - " << origin_path);
+			}
+		}
 
         monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &impl_params, &pe.params);
-        )
-    )
+		} break;
+	}
     assert(fcn_ptr);
     return *fcn_ptr;
 }

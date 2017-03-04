@@ -727,8 +727,8 @@ const ::HIR::SimplePath& ::HIR::Crate::get_lang_item_path_opt(const char* name) 
 
 const ::HIR::TypeItem& ::HIR::Crate::get_typeitem_by_path(const Span& sp, const ::HIR::SimplePath& path, bool ignore_crate_name, bool ignore_last_node) const
 {
-    ASSERT_BUG(sp, path.m_components.size() > 0, "get_typeitem_by_path received invalid path - " << path);
-    ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1 : 0), "get_typeitem_by_path received invalid path - " << path);
+    ASSERT_BUG(sp, path.m_components.size() > 0u, "get_typeitem_by_path received invalid path - " << path);
+    ASSERT_BUG(sp, path.m_components.size() > (ignore_last_node ? 1u : 0u), "get_typeitem_by_path received invalid path - " << path);
 
     const ::HIR::Module* mod;
     if( !ignore_crate_name && path.m_crate_name != m_crate_name ) {

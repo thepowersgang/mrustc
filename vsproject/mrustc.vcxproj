@@ -146,7 +146,10 @@
     <ClCompile Include="..\src\expand\mod.cpp" />
     <ClCompile Include="..\src\expand\std_prelude.cpp" />
     <ClCompile Include="..\src\expand\stringify.cpp" />
+    <ClCompile Include="..\src\hir\crate_post_load.cpp" />
     <ClCompile Include="..\src\hir\crate_ptr.cpp" />
+    <ClCompile Include="..\src\hir\deserialise.cpp" />
+    <ClCompile Include="..\src\hir\dump.cpp" />
     <ClCompile Include="..\src\hir\expr.cpp" />
     <ClCompile Include="..\src\hir\expr_ptr.cpp" />
     <ClCompile Include="..\src\hir\from_ast.cpp" />
@@ -155,16 +158,23 @@
     <ClCompile Include="..\src\hir\hir.cpp" />
     <ClCompile Include="..\src\hir\path.cpp" />
     <ClCompile Include="..\src\hir\pattern.cpp" />
+    <ClCompile Include="..\src\hir\serialise.cpp" />
+    <ClCompile Include="..\src\hir\serialise_lowlevel.cpp" />
     <ClCompile Include="..\src\hir\type.cpp" />
-    <ClCompile Include="..\src\hir\type_ptr.cpp" />
     <ClCompile Include="..\src\hir\visitor.cpp" />
     <ClCompile Include="..\src\hir_conv\bind.cpp" />
     <ClCompile Include="..\src\hir_conv\constant_evaluation.cpp" />
     <ClCompile Include="..\src\hir_conv\expand_type.cpp" />
+    <ClCompile Include="..\src\hir_conv\markings.cpp" />
     <ClCompile Include="..\src\hir_conv\resolve_ufcs.cpp" />
     <ClCompile Include="..\src\hir_expand\annotate_value_usage.cpp" />
     <ClCompile Include="..\src\hir_expand\closures.cpp" />
+    <ClCompile Include="..\src\hir_expand\const_eval_full.cpp" />
+    <ClCompile Include="..\src\hir_expand\erased_types.cpp" />
+    <ClCompile Include="..\src\hir_expand\reborrow.cpp" />
     <ClCompile Include="..\src\hir_expand\ufcs_everything.cpp" />
+    <ClCompile Include="..\src\hir_expand\vtable.cpp" />
+    <ClCompile Include="..\src\hir_typeck\common.cpp" />
     <ClCompile Include="..\src\hir_typeck\expr_check.cpp" />
     <ClCompile Include="..\src\hir_typeck\expr_cs.cpp" />
     <ClCompile Include="..\src\hir_typeck\expr_visit.cpp" />
@@ -172,14 +182,22 @@
     <ClCompile Include="..\src\hir_typeck\impl_ref.cpp" />
     <ClCompile Include="..\src\hir_typeck\outer.cpp" />
     <ClCompile Include="..\src\hir_typeck\static.cpp" />
+    <ClCompile Include="..\src\ident.cpp" />
     <ClCompile Include="..\src\macro_rules\eval.cpp" />
     <ClCompile Include="..\src\macro_rules\mod.cpp" />
     <ClCompile Include="..\src\macro_rules\parse.cpp" />
     <ClCompile Include="..\src\main.cpp" />
+    <ClCompile Include="..\src\mir\check.cpp" />
+    <ClCompile Include="..\src\mir\cleanup.cpp" />
+    <ClCompile Include="..\src\mir\dump.cpp" />
     <ClCompile Include="..\src\mir\from_hir.cpp" />
     <ClCompile Include="..\src\mir\from_hir_match.cpp" />
+    <ClCompile Include="..\src\mir\helpers.cpp" />
     <ClCompile Include="..\src\mir\mir.cpp" />
+    <ClCompile Include="..\src\mir\mir_builder.cpp" />
     <ClCompile Include="..\src\mir\mir_ptr.cpp" />
+    <ClCompile Include="..\src\mir\optimise.cpp" />
+    <ClCompile Include="..\src\mir\visit_crate_mir.cpp" />
     <ClCompile Include="..\src\parse\expr.cpp" />
     <ClCompile Include="..\src\parse\interpolated_fragment.cpp" />
     <ClCompile Include="..\src\parse\lex.cpp" />
@@ -188,6 +206,9 @@
     <ClCompile Include="..\src\parse\pattern.cpp" />
     <ClCompile Include="..\src\parse\root.cpp" />
     <ClCompile Include="..\src\parse\token.cpp" />
+    <ClCompile Include="..\src\parse\tokenstream.cpp" />
+    <ClCompile Include="..\src\parse\tokentree.cpp" />
+    <ClCompile Include="..\src\parse\ttstream.cpp" />
     <ClCompile Include="..\src\parse\types.cpp" />
     <ClCompile Include="..\src\rc_string.cpp" />
     <ClCompile Include="..\src\resolve\absolute.cpp" />
@@ -195,6 +216,12 @@
     <ClCompile Include="..\src\resolve\use.cpp" />
     <ClCompile Include="..\src\serialise.cpp" />
     <ClCompile Include="..\src\span.cpp" />
+    <ClCompile Include="..\src\trans\codegen.cpp" />
+    <ClCompile Include="..\src\trans\codegen_c.cpp" />
+    <ClCompile Include="..\src\trans\enumerate.cpp" />
+    <ClCompile Include="..\src\trans\mangling.cpp" />
+    <ClCompile Include="..\src\trans\monomorphise.cpp" />
+    <ClCompile Include="..\src\trans\trans_list.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\ast\ast.hpp" />
@@ -220,7 +247,6 @@
     <ClInclude Include="..\src\hir\path.hpp" />
     <ClInclude Include="..\src\hir\pattern.hpp" />
     <ClInclude Include="..\src\hir\type.hpp" />
-    <ClInclude Include="..\src\hir\type_ptr.hpp" />
     <ClInclude Include="..\src\hir\visitor.hpp" />
     <ClInclude Include="..\src\hir_conv\main_bindings.hpp" />
     <ClInclude Include="..\src\hir_expand\main_bindings.hpp" />
@@ -246,19 +272,41 @@
     <ClInclude Include="..\src\macro_rules\macro_rules_ptr.hpp" />
     <ClInclude Include="..\src\macro_rules\pattern_checks.hpp" />
     <ClInclude Include="..\src\mir\from_hir.hpp" />
+    <ClInclude Include="..\src\mir\helpers.hpp" />
     <ClInclude Include="..\src\mir\main_bindings.hpp" />
     <ClInclude Include="..\src\mir\mir.hpp" />
     <ClInclude Include="..\src\mir\mir_ptr.hpp" />
+    <ClInclude Include="..\src\mir\operations.hpp" />
+    <ClInclude Include="..\src\mir\visit_crate_mir.hpp" />
     <ClInclude Include="..\src\parse\common.hpp" />
     <ClInclude Include="..\src\parse\eTokenType.enum.h" />
     <ClInclude Include="..\src\parse\interpolated_fragment.hpp" />
     <ClInclude Include="..\src\parse\lex.hpp" />
     <ClInclude Include="..\src\parse\parseerror.hpp" />
     <ClInclude Include="..\src\parse\token.hpp" />
+    <ClInclude Include="..\src\parse\tokenstream.hpp" />
     <ClInclude Include="..\src\parse\tokentree.hpp" />
+    <ClInclude Include="..\src\parse\ttstream.hpp" />
     <ClInclude Include="..\src\resolve\main_bindings.hpp" />
+    <ClInclude Include="..\src\trans\codegen.hpp" />
+    <ClInclude Include="..\src\trans\main_bindings.hpp" />
+    <ClInclude Include="..\src\trans\mangling.hpp" />
+    <ClInclude Include="..\src\trans\monomorphise.hpp" />
+    <ClInclude Include="..\src\trans\trans_list.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="packages\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.targets" Condition="Exists('packages\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.targets')" />
+    <Import Project="packages\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.targets" Condition="Exists('packages\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.targets')" />
   </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('packages\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v120.windesktop.msvcstl.dyn.rt-dyn.targets'))" />
+    <Error Condition="!Exists('packages\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.1.2.8.8\build\native\zlib.v140.windesktop.msvcstl.dyn.rt-dyn.targets'))" />
+  </Target>
 </Project>

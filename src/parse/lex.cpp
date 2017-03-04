@@ -14,6 +14,7 @@
 #include <cstdlib>  // strtol
 #include <typeinfo>
 #include <algorithm>    // std::count
+#include <cctype>
 
 Lexer::Lexer(const ::std::string& filename):
     m_path(filename.c_str()),
@@ -222,7 +223,9 @@ signed int Lexer::getSymbol()
 
 bool issym(Codepoint ch)
 {
-    if( ::std::isalnum(ch.v) )
+	if('0' <= ch.v && ch.v <= '9')
+		return true;
+    if( ::std::isalpha(ch.v) )
         return true;
     if( ch == '_' )
         return true;
@@ -659,11 +662,11 @@ Token Lexer::getTokenInt()
             }
         }
     }
-    catch(const Lexer::EndOfFile& e)
+    catch(const Lexer::EndOfFile& /*e*/)
     {
         return Token(TOK_EOF);
     }
-    //assert(!"bugcheck");
+	throw "Fell off the end of getTokenInt";
 }
 
 Token Lexer::getTokenInt_RawString(bool is_byte)
@@ -693,7 +696,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
         try {
             ch = this->getc();
         }
-        catch( Lexer::EndOfFile e ) {
+        catch( const Lexer::EndOfFile& /*e*/ ) {
             throw ParseError::Generic(*this, "EOF reached in raw string");
         }
 
@@ -981,7 +984,7 @@ bool Codepoint::isspace() const {
     case ' ':
     case 0xC:   // ^L
     case 0x85:
-    case 0x200E ... 0x200F: // LTR / RTL markers
+	case 0x200E: case 0x200F: // LTR / RTL markers
     case 0x2028:    // Line Separator
     case 0x2029:    // Paragrah Separator
         return true;

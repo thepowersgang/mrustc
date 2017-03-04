@@ -3,7 +3,7 @@
 
 #include <memory>
 
-#include "common.hpp"
+#include "../common.hpp"
 #include "coretypes.hpp"
 #include "ast/path.hpp"
 #include "ast/macro.hpp"

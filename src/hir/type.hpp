@@ -125,8 +125,8 @@ public:
 
     TAGGED_UNION(Data, Infer,
     (Infer, struct {
-        unsigned int index = ~0u;
-        InferClass  ty_class = InferClass::None;
+        unsigned int index;
+        InferClass  ty_class;
         }),
     (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),
@@ -210,6 +210,9 @@ public:
     static TypeRef new_diverge() {
         return TypeRef(Data::make_Diverge({}));
     }
+	static TypeRef new_infer(unsigned int idx = ~0u, InferClass ty_class = InferClass::None) {
+		return TypeRef(Data::make_Infer({idx, ty_class}));
+	}
     static TypeRef new_borrow(BorrowType bt, TypeRef inner) {
         return TypeRef(Data::make_Borrow({bt, box$(mv$(inner))}));
     }

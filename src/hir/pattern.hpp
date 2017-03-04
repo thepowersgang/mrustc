@@ -85,7 +85,7 @@ struct Pattern
         (SplitTuple, struct {
             ::std::vector<Pattern> leading;
             ::std::vector<Pattern> trailing;
-            unsigned int total_size = 0;
+            unsigned int total_size;
             }),
         (StructValue, struct {
             GenericPath path;

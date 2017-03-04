@@ -14,6 +14,7 @@
 #include <string>
 #include <tagged_union.hpp>
 #include <ident.hpp>
+#include "path.hpp"
 
 namespace AST {
 
