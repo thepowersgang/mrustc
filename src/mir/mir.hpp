@@ -271,6 +271,7 @@ TAGGED_UNION(Statement, Assign,
         unsigned int flag_idx;  // Valid if != ~0u
         })
     );
+extern ::std::ostream& operator<<(::std::ostream& os, const Statement& x);
 
 struct BasicBlock
 {

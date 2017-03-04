@@ -444,6 +444,32 @@ namespace MIR {
 
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const Statement& x)
+    {
+        TU_MATCHA( (x), (e),
+        (Assign,
+            os << e.dst << " = " << e.src;
+            ),
+        (Asm,
+            os << "(";
+            for(const auto& spec : e.outputs)
+                os << "\"" << spec.first << "\" : " << spec.second << ", ";
+            os << ") = asm!(\"\", input=( ";
+            for(const auto& spec : e.inputs)
+                os << "\"" << spec.first << "\" : " << spec.second << ", ";
+            os << "), clobbers=[" << e.clobbers << "], flags=[" << e.flags << "])";
+            ),
+        (SetDropFlag,
+            ),
+        (Drop,
+            os << "drop(" << e.slot;
+            if(e.kind == ::MIR::eDropKind::SHALLOW)
+                os << " SHALLOW";
+            os << ")";
+            )
+        )
+        return os;
+    }
 }
 
 ::MIR::LValue MIR::LValue::clone() const
