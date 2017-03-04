@@ -12,6 +12,8 @@
 #include <mir/helpers.hpp>
 #include <mir/visit_crate_mir.hpp>
 
+#define ENABLE_LEAK_DETECTOR    0
+
 namespace
 {
     struct State
@@ -42,6 +44,20 @@ namespace
             return !(*this == x);
         }
     };
+
+    struct ValueStates;
+}
+
+struct StateFmt {
+    const ValueStates&  vss;
+    State   s;
+    StateFmt( const ValueStates& vss, State s ):
+        vss(vss), s(s)
+    {}
+};
+
+namespace
+{
     struct ValueStates
     {
         ::std::vector<State> vars;
@@ -61,6 +77,10 @@ namespace
         bool is_equivalent_to(const ValueStates& x) const
         {
             return true;
+        }
+
+        StateFmt fmt_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv) const {
+            return StateFmt(*this, get_lvalue_state(mir_res, lv));
         }
 
         void ensure_param_valid(const ::MIR::TypeResolve& mir_res, const ::MIR::Param& lv) const
@@ -120,14 +140,60 @@ namespace
         {
             this->set_lvalue_state(mir_res, lv, State(true));
         }
+
+        // Scan states and clear unused composite slots
+        void garbage_collect()
+        {
+            struct Marker {
+                ::std::vector<bool> used;
+
+                void mark_from_state(const ValueStates& vss, const State& s) {
+                    if(s.is_composite()) {
+                        used.at(s.index-1) = true;
+                        for(const auto& s : vss.inner_states.at(s.index-1))
+                            mark_from_state(vss, s);
+                    }
+                }
+            };
+            Marker  m;
+            m.used.resize(this->inner_states.size(), false);
+
+            for(const auto& s : this->vars)
+                m.mark_from_state(*this, s);
+            for(const auto& s : this->temporaries)
+                m.mark_from_state(*this, s);
+            for(const auto& s : this->arguments)
+                m.mark_from_state(*this, s);
+            m.mark_from_state(*this, this->return_value);
+        }
     private:
         State allocate_composite(unsigned int n_fields, State basis)
         {
+            assert(n_fields > 0);
+            for(size_t i = 0; i < this->inner_states.size(); i ++)
+            {
+                if( this->inner_states[i].size() == 0 )
+                {
+                    inner_states[i] = ::std::vector<State>(n_fields, basis);
+                    return State(i);
+                }
+            }
             auto idx = inner_states.size();
             inner_states.push_back( ::std::vector<State>(n_fields, basis) );
             return State(idx);
         }
 
+    public:
+        ::std::vector<State>& get_composite(const ::MIR::TypeResolve& mir_res, const State& vs)
+        {
+            MIR_ASSERT(mir_res, vs.index-1 < this->inner_states.size(), "");
+            return this->inner_states.at( vs.index - 1 );
+        }
+        const ::std::vector<State>& get_composite(const ::MIR::TypeResolve& mir_res, const State& vs) const
+        {
+            MIR_ASSERT(mir_res, vs.index-1 < this->inner_states.size(), "");
+            return this->inner_states.at( vs.index - 1 );
+        }
         State get_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv) const
         {
             TU_MATCHA( (lv), (e),
@@ -150,8 +216,7 @@ namespace
                 auto vs = get_lvalue_state(mir_res, *e.val);
                 if( vs.is_composite() )
                 {
-                    MIR_ASSERT(mir_res, vs.index-1 < this->inner_states.size(), "");
-                    const auto& states = this->inner_states.at( vs.index - 1 );
+                    const auto& states = this->get_composite(mir_res, vs);
                     MIR_ASSERT(mir_res, e.field_index < states.size(), "Field index out of range");
                     return states[e.field_index];
                 }
@@ -186,6 +251,7 @@ namespace
             )
             throw "";
         }
+
         void set_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv, State new_vs)
         {
             TU_MATCHA( (lv), (e),
@@ -243,27 +309,32 @@ namespace
                         set_lvalue_state(mir_res, *e.val, cur_vs);
                     }
                     // Get composite state and assign into it
-                    auto& states = this->inner_states.at( cur_vs.index - 1 );
+                    auto& states = this->get_composite(mir_res, cur_vs);
                     MIR_ASSERT(mir_res, e.field_index < states.size(), "Field index out of range");
                     states[e.field_index] = new_vs;
                 }
                 ),
             (Deref,
                 auto cur_vs = get_lvalue_state(mir_res, *e.val);
-                if( cur_vs.is_composite() )
+                if( !cur_vs.is_composite() && cur_vs == new_vs )
                 {
-                    MIR_TODO(mir_res, "Deref with composite state");
-                }
-                else if( new_vs.is_composite() )
-                {
-                    MIR_TODO(mir_res, "Deref with composite state (store a composite)");
-                }
-                else if( cur_vs != new_vs )
-                {
-                    MIR_TODO(mir_res, "Deref with composite state, store mismatched");
+                    // Not a composite, and no state change
                 }
                 else
                 {
+                    if( !cur_vs.is_composite() )
+                    {
+                        //::HIR::TypeRef    tmp;
+                        //const auto& ty = mir_res.get_lvalue_type(tmp, *e.val);
+                        // TODO: Should this check if the type is Box?
+
+                        cur_vs = this->allocate_composite(2, cur_vs);
+                        set_lvalue_state(mir_res, *e.val, cur_vs);
+                    }
+                    // Get composite state and assign into it
+                    auto& states = this->get_composite(mir_res, cur_vs);
+                    MIR_ASSERT(mir_res, states.size() == 2, "Deref with invalid state list size");
+                    states[1] = new_vs;
                 }
                 ),
             (Index,
@@ -302,6 +373,25 @@ namespace
             return true;
         }
     };
+}
+
+::std::ostream& operator<<(::std::ostream& os, const StateFmt& x)
+{
+    if(x.s.index == 0) {
+        os << "_";
+    }
+    else if( x.s.index == ~0u ) {
+        os << "X";
+    }
+    else {
+        assert(x.s.index-1 < x.vss.inner_states.size());
+        const auto& is = x.vss.inner_states[x.s.index-1];
+        os << "[";
+        for(const auto& s : is)
+            os << StateFmt(x.vss, s);
+        os << "]";
+    }
+    return os;
 }
 
 
@@ -421,12 +511,50 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
             (Drop,
                 if( se.flag_idx == ~0u || state.drop_flags.at(se.flag_idx) )
                 {
-                    // TODO: Treat shallow drops differently
-                    state.move_lvalue(mir_res, se.slot);
+                    if( se.kind == ::MIR::eDropKind::SHALLOW )
+                    {
+                        // HACK: A move out of a Box generates the following pattern: `[[[[X_]]X]]`
+                        // - Ensure that that is the pattern we're seeing here.
+                        auto vs = state.get_lvalue_state(mir_res, se.slot);
+
+                        MIR_ASSERT(mir_res, !vs.is_valid(), "Shallow drop on fully-valid value - " << se.slot);
+
+                        // Box<T> - Wrapper around Unique<T>
+                        MIR_ASSERT(mir_res, vs.is_composite(), "Shallow drop on non-composite state - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
+                        const auto& sub_states = state.get_composite(mir_res, vs);
+                        MIR_ASSERT(mir_res, sub_states.size() == 1, "");
+                        // Unique<T> - NonZero<*const T>, PhantomData<T>
+                        MIR_ASSERT(mir_res, sub_states[0].is_composite(), "");
+                        const auto& sub_states2 = state.get_composite(mir_res, sub_states[0]);
+                        MIR_ASSERT(mir_res, sub_states2.size() == 2, "- " << StateFmt(state, sub_states[0]));
+                        MIR_ASSERT(mir_res, sub_states2[0].is_composite(), "");
+                        MIR_ASSERT(mir_res, sub_states2[1].is_valid(), "");
+                        // `NonZero<*const T>` - *const T
+                        const auto& sub_states3 = state.get_composite(mir_res, sub_states2[0]);
+                        MIR_ASSERT(mir_res, sub_states3.size() == 1, "- " << StateFmt(state, sub_states2[0]));
+                        MIR_ASSERT(mir_res, sub_states3[0].is_composite(), "");
+                        // `*const T` - Moved out of, so has a composite state
+                        const auto& sub_states4 = state.get_composite(mir_res, sub_states3[0]);
+                        MIR_ASSERT(mir_res, sub_states4.size() == 2, "- " << StateFmt(state, sub_states3[0]));
+                        MIR_ASSERT(mir_res, sub_states4[0].is_valid(), "Shallow drop on deallocated Box - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
+                        // TODO: This is leak protection, enable it once the rest works
+                        if( ENABLE_LEAK_DETECTOR )
+                        {
+                            MIR_ASSERT(mir_res, !sub_states4[1].is_valid(), "Shallow drop on populated Box - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
+                        }
+
+                        state.set_lvalue_state(mir_res, se.slot, State(false));
+                    }
+                    else
+                    {
+                        state.move_lvalue(mir_res, se.slot);
+                    }
                 }
                 )
             )
         }
+
+        state.garbage_collect();
 
         mir_res.set_cur_stmt_term(cur_block);
         DEBUG(mir_res << " " << blk.terminator);
@@ -434,6 +562,28 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
         (Incomplete,
             ),
         (Return,
+            state.ensure_lvalue_valid(mir_res, ::MIR::LValue::make_Return({}));
+            if( ENABLE_LEAK_DETECTOR )
+            {
+                auto ensure_dropped = [&](const State& s, const ::MIR::LValue& lv) {
+                    if( s.is_valid() ) {
+                        // Check if !Copy
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty = mir_res.get_lvalue_type(tmp, lv);
+                        if( mir_res.m_resolve.type_is_copy(mir_res.sp, ty) ) {
+                        }
+                        else {
+                            MIR_BUG(mir_res, "Value " << lv << " was not dropped at end of function");
+                        }
+                    }
+                    };
+                for(unsigned i = 0; i < state.arguments.size(); i ++ ) {
+                    ensure_dropped(state.arguments[i], ::MIR::LValue::make_Argument({i}));
+                }
+                for(unsigned i = 0; i < state.vars.size(); i ++ ) {
+                    ensure_dropped(state.vars[i], ::MIR::LValue::make_Variable(i));
+                }
+            }
             ),
         (Diverge,
             ),
