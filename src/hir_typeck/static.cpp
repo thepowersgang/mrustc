@@ -1459,7 +1459,44 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         }
         else
         {
-            TODO(sp, "Search for trait impl");
+            ImplRef best_impl;
+            this->find_impl(sp, pe.trait.m_path, &pe.trait.m_params, *pe.type, [&](auto impl, bool is_fuzz)->bool{
+                if( ! impl.m_data.is_TraitImpl() )
+                    return false;
+                const auto& ti = *impl.m_data.as_TraitImpl().impl;
+                auto it = ti.m_constants.find(pe.item);
+                if(it == ti.m_constants.end())
+                    return false;
+
+                if( impl.more_specific_than(best_impl) )
+                {
+                    best_impl = mv$(impl);
+                    // If this value is specialisable, keep searching (return false)
+                    return !it->second.is_specialisable;
+                }
+                // Keep searching
+                return false;
+                });
+            if( !best_impl.is_valid() )
+            {
+                TODO(sp, "What should be done when an impl can't be found? " << p);
+            }
+
+            if( ! best_impl.m_data.is_TraitImpl() )
+                TODO(sp, "Use bounded constant values for " << p);
+            auto& ie = best_impl.m_data.as_TraitImpl();
+            out_params.pp_impl = &out_params.pp_impl_data;
+            for(auto ptr : ie.params)
+            {
+                // TODO: Avoid cloning when the params are in the placeholder array
+                out_params.pp_impl_data.m_types.push_back( ptr->clone() );
+            }
+
+            const auto& ti = *ie.impl;
+            const auto& c = ti.m_constants.at(pe.item);
+
+            // TODO: What if the type requires monomorphisation? Leave it up to the caller
+            return &c.data;
         }
         throw "";
         ),
@@ -1471,6 +1508,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         m_crate.find_type_impls(*pe.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
             DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             // TODO: Populate pp_impl
+            // TODO: Specialisation
             {
                 auto fit = impl.m_methods.find(pe.item);
                 if( fit != impl.m_methods.end() )
