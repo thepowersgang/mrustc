@@ -747,7 +747,7 @@ namespace
             case VarState::TAG_Optional: {
                 // Was invalid, now optional.
                 auto flag_idx = new_state.as_Optional();
-                if( builder.get_drop_flag_default(sp, flag_idx) != false ) {
+                if( true || builder.get_drop_flag_default(sp, flag_idx) != false ) {
                     #if 1
                     auto new_flag = builder.new_drop_flag(false);
                     builder.push_stmt_set_dropflag_other(sp, new_flag, flag_idx);
@@ -757,7 +757,9 @@ namespace
                     TODO(sp, "Drop flag default not false when going Invalid->Optional");
                     #endif
                 }
-                old_state = VarState::make_Optional( flag_idx );
+                else {
+                    old_state = VarState::make_Optional( flag_idx );
+                }
                 return ;
                 }
             case VarState::TAG_Partial: {
@@ -1594,7 +1596,7 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
         if( lvalue_is_copy(sp, lv) ) {
         }
         else {
-            // TODO: Partial moves.
+            // TODO: Partial moves of fields.
             moved_lvalue(sp, *e.val);
         }
         ),
