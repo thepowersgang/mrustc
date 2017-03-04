@@ -245,8 +245,16 @@ namespace
                 ),
             (Downcast,
                 auto vs_v = get_lvalue_state(mir_res, *e.val);
-                MIR_ASSERT(mir_res, !vs_v.is_composite(), "");
-                return vs_v;
+                if( vs_v.is_composite() )
+                {
+                    const auto& states = this->get_composite(mir_res, vs_v);
+                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size");
+                    return states[0];
+                }
+                else
+                {
+                    return vs_v;
+                }
                 )
             )
             throw "";
@@ -349,7 +357,23 @@ namespace
                 // NOTE: Ignore
                 ),
             (Downcast,
-                // NOTE: Ignore
+                auto cur_vs = get_lvalue_state(mir_res, *e.val);
+                if( !cur_vs.is_composite() && cur_vs == new_vs )
+                {
+                    // Not a composite, and no state change
+                }
+                else
+                {
+                    if( !cur_vs.is_composite() )
+                    {
+                        cur_vs = this->allocate_composite(1, cur_vs);
+                        set_lvalue_state(mir_res, *e.val, cur_vs);
+                    }
+                    // Get composite state and assign into it
+                    auto& states = this->get_composite(mir_res, cur_vs);
+                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size");
+                    states[0] = new_vs;
+                }
                 )
             )
         }
@@ -517,7 +541,7 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                         // - Ensure that that is the pattern we're seeing here.
                         auto vs = state.get_lvalue_state(mir_res, se.slot);
 
-                        MIR_ASSERT(mir_res, !vs.is_valid(), "Shallow drop on fully-valid value - " << se.slot);
+                        MIR_ASSERT(mir_res, vs.index != ~0u, "Shallow drop on fully-valid value - " << se.slot);
 
                         // Box<T> - Wrapper around Unique<T>
                         MIR_ASSERT(mir_res, vs.is_composite(), "Shallow drop on non-composite state - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
