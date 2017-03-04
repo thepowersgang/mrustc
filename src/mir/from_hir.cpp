@@ -331,7 +331,7 @@ namespace {
                     if( e.extra_bind.is_valid() )
                     {
                         // 1. Obtain remaining length
-                        auto sub_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ e.leading.size() + e.trailing.size(), ::HIR::CoreType::Usize }));
+                        auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ e.leading.size() + e.trailing.size(), ::HIR::CoreType::Usize }));
                         ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
 
                         // 2. Obtain pointer to element
@@ -760,7 +760,7 @@ namespace {
             m_builder.set_result( node.span(), mv$(result_val) );
         }
 
-        void generate_checked_binop(const Span& sp, ::MIR::LValue res_slot, ::MIR::eBinOp op, ::MIR::LValue val_l, const ::HIR::TypeRef& ty_l, ::MIR::LValue val_r, const ::HIR::TypeRef& ty_r)
+        void generate_checked_binop(const Span& sp, ::MIR::LValue res_slot, ::MIR::eBinOp op, ::MIR::Param val_l, const ::HIR::TypeRef& ty_l, ::MIR::Param val_r, const ::HIR::TypeRef& ty_r)
         {
             switch(op)
             {
@@ -870,7 +870,16 @@ namespace {
             if( node.m_op != ::HIR::ExprNode_Assign::Op::None )
             {
                 auto dst_clone = dst.clone();
-                auto val_lv = m_builder.lvalue_or_temp( node.span(), ty_val, mv$(val) );
+                ::MIR::Param    val_p;
+                if( auto* e = val.opt_Use() ) {
+                    val_p = mv$(*e);
+                }
+                else if( auto* e = val.opt_Constant() ) {
+                    val_p = mv$(*e);
+                }
+                else {
+                    val_p = m_builder.lvalue_or_temp( node.span(), ty_val, mv$(val) );
+                }
 
                 ASSERT_BUG(sp, ty_slot.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_slot="<<ty_slot);
                 ASSERT_BUG(sp, ty_val.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_val="<<ty_val);
@@ -886,18 +895,18 @@ namespace {
                 case _(Div): op = ::MIR::eBinOp::DIV; if(0)
                 case _(Mod): op = ::MIR::eBinOp::MOD; if(0)
                     ;
-                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_p), ty_val);
                     break;
                 case _(Xor): op = ::MIR::eBinOp::BIT_XOR; if(0)
                 case _(Or ): op = ::MIR::eBinOp::BIT_OR ; if(0)
                 case _(And): op = ::MIR::eBinOp::BIT_AND; if(0)
                     ;
-                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_p), ty_val);
                     break;
                 case _(Shl): op = ::MIR::eBinOp::BIT_SHL; if(0)
                 case _(Shr): op = ::MIR::eBinOp::BIT_SHR; if(0)
                     ;
-                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_p), ty_val);
                     break;
                 }
                 #undef _
@@ -919,12 +928,12 @@ namespace {
             const auto& ty_r = node.m_right->m_res_type;
             auto res = m_builder.new_temporary(node.m_res_type);
 
-            this->visit_node_ptr(node.m_left);
-            auto left = m_builder.get_result_in_lvalue(node.m_left->span(), ty_l);
-
             // Short-circuiting boolean operations
             if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
             {
+                this->visit_node_ptr(node.m_left);
+                auto left = m_builder.get_result_in_lvalue(node.m_left->span(), ty_l);
+
                 auto bb_next = m_builder.new_bb_unlinked();
                 auto bb_true = m_builder.new_bb_unlinked();
                 auto bb_false = m_builder.new_bb_unlinked();
@@ -966,8 +975,10 @@ namespace {
             {
             }
 
+            this->visit_node_ptr(node.m_left);
+            auto left = m_builder.get_result_in_param(node.m_left->span(), ty_l);
             this->visit_node_ptr(node.m_right);
-            auto right = m_builder.get_result_in_lvalue(node.m_right->span(), ty_r);
+            auto right = m_builder.get_result_in_param(node.m_right->span(), ty_r);
 
             ::MIR::eBinOp   op;
             switch(node.m_op)
