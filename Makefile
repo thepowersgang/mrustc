@@ -47,7 +47,7 @@ CXXFLAGS += -Wno-misleading-indentation
 
 # - Flags to pass to all mrustc invocations
 RUST_FLAGS := --cfg debug_assertions
-#RUST_FLAGS += -g
+RUST_FLAGS += -g
 
 SHELL = bash
 
@@ -104,6 +104,7 @@ OBJ += mir/mir.o mir/mir_ptr.o
 OBJ +=  mir/dump.o mir/helpers.o mir/visit_crate_mir.o
 OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o
 OBJ +=  mir/check.o mir/cleanup.o mir/optimise.o
+OBJ +=  mir/check_full.o
 OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
 OBJ += trans/trans_list.o trans/mangling.o
 OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o trans/codegen_c.o
