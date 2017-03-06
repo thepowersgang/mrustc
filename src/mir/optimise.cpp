@@ -434,7 +434,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
-        #if 1
+        #if 0
         if( change_happened )
         {
             //MIR_Dump_Fcn(::std::cout, fcn);
@@ -1449,7 +1449,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
         }
 
         // Dump out variable lifetimes.
-#if 1
+#if 0
         for(unsigned int i = 0; i < temporary_lifetimes.size(); i ++)
         {
             const auto& lft = temporary_lifetimes[i];
