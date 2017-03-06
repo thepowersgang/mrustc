@@ -2370,9 +2370,20 @@ namespace {
                 auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+10+4);
                 emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering, true);
             }
-            else if( name == "atomic_cxchgweak" || name.compare(0, 7+9+1, "atomic_cxchgweak_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+9+1);
-                emit_atomic_cxchg(e, ordering, ordering, true);
+            else if( name == "atomic_cxchgweak" ) {
+                emit_atomic_cxchg(e, "memory_order_seq_cst", "memory_order_seq_cst", true);
+            }
+            else if( name == "atomic_cxchgweak_acq" ) {
+                emit_atomic_cxchg(e, "memory_order_acquire", "memory_order_acquire", true);
+            }
+            else if( name == "atomic_cxchgweak_rel" ) {
+                emit_atomic_cxchg(e, "memory_order_release", "memory_order_relaxed", true);
+            }
+            else if( name == "atomic_cxchgweak_acqrel" ) {
+                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_acquire", true);
+            }
+            else if( name == "atomic_cxchgweak_relaxed" ) {
+                emit_atomic_cxchg(e, "memory_order_relaxed", "memory_order_relaxed", true);
             }
             else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
@@ -2792,6 +2803,15 @@ namespace {
                     m_of << "INT64_MIN";
                 else
                     m_of << c.v;
+                switch(c.t)
+                {
+                case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::I128:
+                case ::HIR::CoreType::Isize:
+                    m_of << "ull";
+                default:
+                    break;
+                }
                 ),
             (Uint,
                 switch(c.t)
@@ -2808,7 +2828,7 @@ namespace {
                 case ::HIR::CoreType::U64:
                 case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Usize:
-                    m_of << ::std::hex << "0x" << c.v << ::std::dec;
+                    m_of << ::std::hex << "0x" << c.v << "ull" << ::std::dec;
                     break;
                 case ::HIR::CoreType::Char:
                     assert(0 <= c.v && c.v <= 0x10FFFF);
