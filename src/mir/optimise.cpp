@@ -434,7 +434,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
-        #if 0
+        #if 1
         if( change_happened )
         {
             //MIR_Dump_Fcn(::std::cout, fcn);
@@ -1146,9 +1146,11 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
         ::std::vector<ValueLifetime>    temporary_lifetimes( fcn.temporaries.size(), ValueLifetime(statement_count) );
 
         struct BlockSeenLifetimes {
+            const ::std::vector<size_t>& block_offsets;
             ::std::vector< ::std::vector<unsigned int> > tmp;
 
-            BlockSeenLifetimes(const ::MIR::Function& fcn):
+            BlockSeenLifetimes(const ::std::vector<size_t>& block_offsets, const ::MIR::Function& fcn):
+                block_offsets( block_offsets ),
                 tmp( fcn.temporaries.size() )
             {}
 
@@ -1156,8 +1158,45 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
             {
                 return ::std::any_of(tmp.begin(), tmp.end(), [&](const auto& x){ return !x.empty(); });
             }
+
+            bool try_merge(const State& val_state) const
+            {
+                for(size_t i = 0; i < val_state.tmp_ends.size(); i++)
+                {
+                    const auto& lft = val_state.tmp_ends[i];
+                    const auto& seen = this->tmp[i];
+                    if(lft.is_empty())  continue ;
+                    auto end_idx = block_offsets.at( val_state.block_path.at(lft.end.path_index) ) + lft.end.stmt_idx;
+
+                    auto it = ::std::find(seen.begin(), seen.end(), end_idx);
+                    if( it == seen.end() )
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            bool merge(const State& val_state)
+            {
+                bool rv = false;
+                for(size_t i = 0; i < val_state.tmp_ends.size(); i++)
+                {
+                    const auto& lft = val_state.tmp_ends[i];
+                    auto& seen = this->tmp[i];
+                    if(lft.is_empty())  continue ;
+                    auto end_idx = block_offsets.at( val_state.block_path.at(lft.end.path_index) ) + lft.end.stmt_idx;
+
+                    auto it = ::std::find(seen.begin(), seen.end(), end_idx);
+                    if( it == seen.end() )
+                    {
+                        rv = true;
+                        seen.push_back( end_idx );
+                    }
+                }
+                return rv;
+            }
         };
-        ::std::vector<BlockSeenLifetimes>   block_seen_lifetimes( fcn.blocks.size(), BlockSeenLifetimes(fcn) );
+        ::std::vector<BlockSeenLifetimes>   block_seen_lifetimes( fcn.blocks.size(), BlockSeenLifetimes(block_offsets, fcn) );
 
         State   init_state;
         init_state.tmp_ends.resize( fcn.temporaries.size(), ProtoLifetime() );
@@ -1174,7 +1213,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
 
             // Fill alive time in the bitmap
             // TODO: Maybe also store the range (as a sequence of {block,start,end})
-            auto add_lifetime = [&](const ::MIR::LValue& lv, const Position& start, const Position& end) {
+            auto add_lifetime_s = [&](State& val_state, const ::MIR::LValue& lv, const Position& start, const Position& end) {
                 assert(start.path_index <= end.path_index);
                 assert(start.path_index < end.path_index || start.stmt_idx <= end.stmt_idx);
                 if(start.path_index == end.path_index && start.stmt_idx == end.stmt_idx)
@@ -1200,6 +1239,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                     auto bb_idx = val_state.block_path.at(i);
                     const auto& bb = fcn.blocks[bb_idx];
                     MIR_ASSERT(state, j <= bb.statements.size(), "");
+                    MIR_ASSERT(state, bb_idx < block_offsets.size(), "");
 
                     auto block_base = block_offsets.at(bb_idx);
                     auto idx = block_base + j;
@@ -1231,33 +1271,47 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                     val_state.cur_change_idx += 1;
                 }
                 };
+            auto add_lifetime = [&](const ::MIR::LValue& lv, const Position& start, const Position& end) {
+                add_lifetime_s(val_state, lv, start, end);
+                };
+
+            auto apply_state = [&](State& state) {
+                // Apply all changes in this state, just in case there was new information
+                for(unsigned i = 0; i < fcn.temporaries.size(); i++)
+                    add_lifetime_s( state, ::MIR::LValue::make_Temporary({i}), state.tmp_ends[i].start, state.tmp_ends[i].end );
+                };
+            auto add_to_visit = [&](unsigned int new_bb_idx, State new_state) {
+                auto& bb_memory_ent = block_seen_lifetimes[new_bb_idx];
+                /*if( !bb_memory_ent.has_state() )
+                {
+                    // No recorded state, needs to be visited
+                    DEBUG(state << " " << new_state.index << " -> bb" << new_bb_idx << " (no existing state)");
+                }
+                else*/ if( bb_memory_ent.try_merge(new_state) )
+                {
+                    // This state has new information, needs to be visited
+                    DEBUG(state << " " << new_state.index << " -> bb" << new_bb_idx << " (new info)");
+                }
+                else
+                {
+                    // Skip
+                    DEBUG(state << " " << new_state.index << " No new state before push (to bb" << new_bb_idx << "), applying");
+                    apply_state(new_state);
+                    return ;
+                }
+                todo_queue.push_back(::std::make_pair( new_bb_idx, mv$(new_state) ));
+                };
 
             // Compare this state to a composite list of lifetimes seen in this block
             // - Just compares the end of each proto lifetime
             {
                 auto& bb_memory_ent = block_seen_lifetimes[bb_idx];
-                bool has_new = false;
-                for(size_t i = 0; i < val_state.tmp_ends.size(); i++)
-                {
-                    const auto& lft = val_state.tmp_ends[i];
-                    if(lft.is_empty())  continue ;
-                    auto end_idx = block_offsets.at( val_state.block_path.at(lft.end.path_index) ) + lft.end.stmt_idx;
-
-                    auto it = ::std::find(bb_memory_ent.tmp[i].begin(), bb_memory_ent.tmp[i].end(), end_idx);
-                    if( it == bb_memory_ent.tmp[i].end() )
-                    {
-                        has_new = true;
-                        bb_memory_ent.tmp[i].push_back( end_idx );
-                    }
-                }
+                bool has_new = bb_memory_ent.merge(val_state);
 
                 if( !has_new && bb_memory_ent.has_state() )
                 {
                     DEBUG(state << " " << val_state.index << " No new entry state");
-
-                    // Apply all changes in this state, just in case there was new information
-                    for(unsigned i = 0; i < fcn.temporaries.size(); i++)
-                        add_lifetime( ::MIR::LValue::make_Temporary({i}), val_state.tmp_ends[i].start, val_state.tmp_ends[i].end );
+                    apply_state(val_state);
 
                     continue ;
                 }
@@ -1302,9 +1356,9 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                 if(const auto* e = lv.opt_Temporary())
                 {
                     // End whatever value was originally there, and insert this new one
+                    val_state.tmp_ends.at(e->idx).end = cur_pos;
                     add_lifetime(lv, val_state.tmp_ends.at(e->idx).start, val_state.tmp_ends.at(e->idx).end);
                     val_state.tmp_ends.at(e->idx).start = cur_pos;
-                    val_state.tmp_ends.at(e->idx).end = cur_pos;
                 }
                 };
 
@@ -1347,15 +1401,13 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                 ),
             (Return,
                 // End all active lifetimes at their previous location.
-                for(unsigned i = 0; i < fcn.temporaries.size(); i++)
-                    add_lifetime(::MIR::LValue::make_Temporary({i}), val_state.tmp_ends[i].start, val_state.tmp_ends[i].end );
+                apply_state(val_state);
                 ),
             (Diverge,
-                for(unsigned i = 0; i < fcn.temporaries.size(); i++)
-                    add_lifetime(::MIR::LValue::make_Temporary({i}), val_state.tmp_ends[i].start, val_state.tmp_ends[i].end );
+                apply_state(val_state);
                 ),
             (Goto,
-                todo_queue.push_back(::std::make_pair( e, mv$(val_state) ));
+                add_to_visit(e, mv$(val_state));
                 ),
             (Panic,
                 // What should be done here?
@@ -1364,8 +1416,8 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                 lvalue_read(e.cond);
 
                 // Push blocks
-                todo_queue.push_back(::std::make_pair( e.bb0, val_state.clone() ));
-                todo_queue.push_back(::std::make_pair( e.bb1, mv$(val_state) ));
+                add_to_visit(e.bb0, val_state.clone());
+                add_to_visit(e.bb1, mv$(val_state));
                 ),
             (Switch,
                 lvalue_read(e.val);
@@ -1375,9 +1427,8 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
 
                 for(const auto& tgt : tgts)
                 {
-                    //auto vs = (tgt == *tgts.rbegin() ? mv$(val_state) : val_state.clone());
-                    auto vs = val_state.clone();
-                    todo_queue.push_back(::std::make_pair( tgt, mv$(vs) ));
+                    auto vs = (tgt == *tgts.rbegin() ? mv$(val_state) : val_state.clone());
+                    add_to_visit(tgt, mv$(vs));
                 }
                 ),
             (Call,
@@ -1388,11 +1439,11 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
                         lvalue_read(*e);
 
                 // Push blocks (with return valid only in one)
-                todo_queue.push_back(::std::make_pair( e.panic_block, val_state.clone() ));
+                add_to_visit(e.panic_block, val_state.clone());
 
                 // TODO: If the function returns !, don't follow the ret_block
                 lvalue_set(e.ret_val);
-                todo_queue.push_back(::std::make_pair( e.ret_block, mv$(val_state) ));
+                add_to_visit(e.ret_block, mv$(val_state));
                 )
             )
         }
