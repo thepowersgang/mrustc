@@ -15,6 +15,7 @@
 #include <mir/visit_crate_mir.hpp>
 #include <algorithm>
 #include <iomanip>
+#include <trans/target.hpp>
 
 namespace {
     ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
@@ -1738,23 +1739,25 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         const auto& tef = te.fcn.as_Intrinsic();
         if( tef.name == "size_of" )
         {
-            //size_t size_val = 0;
-            //if( Target_GetSizeOf(tef.params.m_types.at(0), size_val) )
-            //{
-            //    bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::Constant::make_Uint(size_val) }));
-            //    bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
-            //    changed = true;
-            //}
+            size_t size_val = 0;
+            if( Target_GetSizeOf(state.sp, tef.params.m_types.at(0), size_val) )
+            {
+                auto val = ::MIR::Constant::make_Uint({ size_val, ::HIR::CoreType::Usize });
+                bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
+                bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+                changed = true;
+            }
         }
         else if( tef.name == "align_of" )
         {
-            //size_t size_val = 0;
-            //if( Target_GetAlignOf(tef.params.m_types.at(0), size_val) )
-            //{
-            //    bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::Constant::make_Uint(size_val) }));
-            //    bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
-            //    changed = true;
-            //}
+            size_t align_val = 0;
+            if( Target_GetAlignOf(state.sp, tef.params.m_types.at(0), align_val) )
+            {
+                auto val = ::MIR::Constant::make_Uint({ align_val, ::HIR::CoreType::Usize });
+                bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
+                bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+                changed = true;
+            }
         }
         // NOTE: Quick special-case for bswap<u8> (a no-op)
         else if( tef.name == "bswap" && tef.params.m_types.at(0) == ::HIR::CoreType::U8 )
