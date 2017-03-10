@@ -252,14 +252,17 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
         auto v = m_resolve.get_value(this->sp, e.p, p, /*signature_only=*/true);
         if( const auto* ve = v.opt_Constant() ) {
             const auto& ty = (*ve)->m_type;
-            MIR_TODO(*this, "Monomorphise type " << ty);
+            if( monomorphise_type_needed(ty) )
+                MIR_TODO(*this, "get_const_type - Monomorphise type " << ty);
+            else
+                return ty.clone();
         }
         else {
-            MIR_BUG(*this, "");
+            MIR_BUG(*this, "get_const_type - Not a constant");
         }
         ),
     (ItemAddr,
-        MIR_TODO(*this, "Get type for constant `" << c << "`");
+        MIR_TODO(*this, "get_const_type - Get type for constant `" << c << "`");
         )
     )
     throw "";
