@@ -134,6 +134,7 @@ namespace {
             ::std::vector<::std::string>    tmp;
             ::std::vector<const char*>  args;
             args.push_back( getenv("CC") ? getenv("CC") : "gcc" );
+            args.push_back("-ffunction-sections");
             args.push_back("-pthread");
             switch(opt.opt_level)
             {
@@ -2802,15 +2803,17 @@ namespace {
                 if( c.v == INT64_MIN )
                     m_of << "INT64_MIN";
                 else
-                    m_of << c.v;
-                switch(c.t)
                 {
-                case ::HIR::CoreType::I64:
-                case ::HIR::CoreType::I128:
-                case ::HIR::CoreType::Isize:
-                    m_of << "ull";
-                default:
-                    break;
+                    m_of << c.v;
+                    switch(c.t)
+                    {
+                    case ::HIR::CoreType::I64:
+                    case ::HIR::CoreType::I128:
+                    case ::HIR::CoreType::Isize:
+                        m_of << "ull";
+                    default:
+                        break;
+                    }
                 }
                 ),
             (Uint,
