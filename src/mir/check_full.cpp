@@ -12,7 +12,7 @@
 #include <mir/helpers.hpp>
 #include <mir/visit_crate_mir.hpp>
 
-#define ENABLE_LEAK_DETECTOR    0
+#define ENABLE_LEAK_DETECTOR    1
 
 namespace
 {
@@ -108,6 +108,8 @@ namespace
                 }
             };
 
+            if( this->drop_flags != x.drop_flags )
+                return false;
             if( ! H::equal(*this, return_value,  x, x.return_value) )
                 return false;
             assert(vars.size() == x.vars.size());
@@ -182,6 +184,7 @@ namespace
             const auto& ty = mir_res.get_lvalue_type(tmp, lv);
             if( mir_res.m_resolve.type_is_copy(mir_res.sp, ty) )
             {
+                // NOTE: Copy types aren't moved.
             }
             else
             {
@@ -448,6 +451,7 @@ namespace
                 }
             }
             this->known_state_sets.push_back( state_set.clone() );
+            this->known_state_sets.back().bb_path = ::std::vector<unsigned int>();
             return true;
         }
     };
@@ -488,6 +492,12 @@ namespace std {
 
         os << "ValueStates(path=[" << x.bb_path << "]";
         print_val(",rv", x.return_value);
+        for(unsigned int i = 0; i < x.arguments.size(); i ++)
+            print_val(FMT_CB(ss, ss << ",a" << i;), x.arguments[i]);
+        for(unsigned int i = 0; i < x.vars.size(); i ++)
+            print_val(FMT_CB(ss, ss << ",_" << i;), x.vars[i]);
+        for(unsigned int i = 0; i < x.temporaries.size(); i ++)
+            print_val(FMT_CB(ss, ss << ",t" << i;), x.temporaries[i]);
         os << ")";
         return os;
     }
