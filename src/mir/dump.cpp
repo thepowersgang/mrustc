@@ -9,6 +9,7 @@
 #include <hir/visitor.hpp>
 #include "mir.hpp"
 #include "operations.hpp"
+#include <iomanip>
 
 namespace {
 
@@ -208,7 +209,19 @@ namespace {
                 os << (ce.v ? "true" : "false");
                 ),
             (Bytes,
-                os << "b\"" << ce << "\"";
+                os << ::std::hex << "b\"";
+                for(auto b : ce)
+                {
+                    if( b == '\\' )
+                        os << "\\\\";
+                    else if( b == '"' )
+                        os << "\\\"";
+                    else if( ' ' <= b && b < 0x7F )
+                        os << b;
+                    else
+                        os << "\\x" << ::std::setw(2) << ::std::setfill('0') << (int)b;
+                }
+                os << ::std::dec << "\"";
                 ),
             (StaticString,
                 os << "\"" << ce << "\"";
