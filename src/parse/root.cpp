@@ -1336,7 +1336,6 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         {
             GET_CHECK_TOK(tok, lex, TOK_STRING);
             path = ::AST::Path(tok.str(), {});
-            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         }
         else {
             PUTBACK(tok, lex);
@@ -1387,7 +1386,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     else
     {
         PUTBACK(tok, lex);
-        assert(path.nodes().size() > 0);
+        ASSERT_BUG(lex.getPosition(), path.nodes().size() > 0, "`use` with no path");
         name = path.nodes().back().name();
     }
 
