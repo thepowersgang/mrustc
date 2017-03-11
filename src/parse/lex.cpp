@@ -857,9 +857,13 @@ uint32_t Lexer::parseEscape(char enclosing)
     case '\n':
         while( ch.isspace() )
             ch = this->getc();
-        this->ungetc();
-        if( ch == enclosing )
+        if(ch == '\\' )
+            return parseEscape(enclosing);
+        else if( ch == enclosing )
+        {
+            this->ungetc();
             return ~0;
+        }
         else
             return ch.v;
     default:
