@@ -2365,8 +2365,7 @@ namespace
                 //assert(it->first.start == ve_start);
                 assert((it->first.end) < ve_end);
 
-                if( it->first.start != it->first.end )
-                    and_then(it->second);
+                and_then(it->second);
                 ve_start = it->first.end + 1;
                 ++ it;
             }
