@@ -1554,7 +1554,23 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     builder.set_cur_block(succ_bb);
                     ),
                 (ValueRange,
-                    TODO(sp, "Simple match over primitive - " << ty << " - ValueRange");
+                    auto succ_bb = builder.new_bb_unlinked();
+                    auto test_bb_2 = builder.new_bb_unlinked();
+
+                    auto test_lt_val = ::MIR::Param(::MIR::Constant::make_Uint({ re.first.as_Uint().v, te }));
+                    auto test_gt_val = ::MIR::Param(::MIR::Constant::make_Uint({ re.last.as_Uint().v, te }));
+
+                    // IF `val` < `first` : fail_bb
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, mv$(test_lt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
+
+                    builder.set_cur_block(test_bb_2);
+
+                    // IF `val` > `last` : fail_bb
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
+
+                    builder.set_cur_block(succ_bb);
                     )
                 )
                 break;
@@ -1577,7 +1593,23 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     builder.set_cur_block(succ_bb);
                     ),
                 (ValueRange,
-                    TODO(sp, "Simple match over primitive - " << ty << " - ValueRange");
+                    auto succ_bb = builder.new_bb_unlinked();
+                    auto test_bb_2 = builder.new_bb_unlinked();
+
+                    auto test_lt_val = ::MIR::Param(::MIR::Constant::make_Int({ re.first.as_Int().v, te }));
+                    auto test_gt_val = ::MIR::Param(::MIR::Constant::make_Int({ re.last.as_Int().v, te }));
+
+                    // IF `val` < `first` : fail_bb
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, mv$(test_lt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
+
+                    builder.set_cur_block(test_bb_2);
+
+                    // IF `val` > `last` : fail_bb
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
+
+                    builder.set_cur_block(succ_bb);
                     )
                 )
                 break;
