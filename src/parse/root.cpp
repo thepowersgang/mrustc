@@ -44,13 +44,13 @@ AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs);
 
 //::AST::Path Parse_Publicity(TokenStream& lex)
-bool Parse_Publicity(TokenStream& lex)
+bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
 {
     Token   tok;
     if( LOOK_AHEAD(lex) == TOK_RWORD_PUB )
     {
         GET_TOK(tok, lex);
-        if( LOOK_AHEAD(lex) == TOK_PAREN_OPEN )
+        if( allow_restricted && LOOK_AHEAD(lex) == TOK_PAREN_OPEN )
         {
             auto    path = AST::Path("", {});
             // Restricted publicity.
@@ -541,7 +541,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             SET_ATTRS(lex, item_attrs);
 
             PUTBACK(tok, lex);
-            bool    is_pub = Parse_Publicity(lex);
+            bool    is_pub = Parse_Publicity(lex, /*allow_restricted=*/false);  // HACK: Disable `pub(restricted)` syntax in tuple structs, due to ambiguity
 
             refs.push_back( AST::TupleItem( mv$(item_attrs), is_pub, Parse_Type(lex) ) );
             if( GET_TOK(tok, lex) != TOK_COMMA )
