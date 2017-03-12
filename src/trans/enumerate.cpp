@@ -515,6 +515,7 @@ namespace {
                     // Ensure that the data trait's vtable is present
                     const auto& trait = *te.m_trait.m_trait_ptr;
 
+                    ASSERT_BUG(Span(), ! te.m_trait.m_path.m_path.m_components.empty(), "TODO: Data trait is empty, what can be done?");
                     auto vtable_ty_spath = te.m_trait.m_path.m_path;
                     vtable_ty_spath.m_components.back() += "#vtable";
                     const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
