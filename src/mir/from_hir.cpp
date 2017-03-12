@@ -381,6 +381,19 @@ namespace {
                     auto& subnode = node.m_nodes[i];
                     const Span& sp = subnode->span();
 
+                    // Let statements don't generate a new temporary scope
+                    if( dynamic_cast<::HIR::ExprNode_Let*>(subnode.get()) ) {
+                        this->visit_node_ptr(subnode);
+                        if( ! m_builder.block_active() ) {
+                            m_builder.set_cur_block( m_builder.new_bb_unlinked() );
+                            diverged = true;
+                        }
+                        else {
+                            m_builder.get_result(sp);
+                        }
+                        continue ;
+                    }
+
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
 
