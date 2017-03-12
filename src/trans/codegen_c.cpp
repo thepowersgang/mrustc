@@ -2810,7 +2810,7 @@ namespace {
                     case ::HIR::CoreType::I64:
                     case ::HIR::CoreType::I128:
                     case ::HIR::CoreType::Isize:
-                        m_of << "ull";
+                        m_of << "ll";
                     default:
                         break;
                     }
