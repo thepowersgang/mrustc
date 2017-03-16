@@ -174,6 +174,7 @@ int main(int argc, char *argv[])
     Cfg_SetFlag("unix");
     Cfg_SetFlag("linux");
     Cfg_SetValue("target_os", "linux");
+    Cfg_SetValue("target_family", "unix");
     Cfg_SetValue("target_pointer_width", "64");
     Cfg_SetValue("target_endian", "little");
     Cfg_SetValue("target_arch", "x86_64");
@@ -436,6 +437,9 @@ int main(int argc, char *argv[])
             });
         CompilePhaseV("MIR Validate PO", [&]() {
             MIR_CheckCrate(*hir_crate);
+            });
+        CompilePhaseV("MIR Validate Full", [&]() {
+            //MIR_CheckCrate_Full(*hir_crate);
             });
 
         if( params.last_stage == ProgramParams::STAGE_MIR ) {
