@@ -116,6 +116,22 @@ void MirBuilder::define_variable(unsigned int idx)
             top_scope = &m_scopes.at(idx);
             break ;
         }
+        else if( m_scopes.at(idx).data.is_Loop() )
+        {
+            // Newly created temporary within a loop, if there is a saved
+            // state this temp needs a drop flag.
+            // TODO: ^
+        }
+        else if( m_scopes.at(idx).data.is_Split() )
+        {
+            // Newly created temporary within a split, if there is a saved
+            // state this temp needs a drop flag.
+            // TODO: ^
+        }
+        else
+        {
+            // Nothign.
+        }
     }
     assert( top_scope );
     auto& tmp_scope = top_scope->data.as_Temporaries();
@@ -396,22 +412,33 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
     // HACK: Working around cases where values are dropped while the result is not yet used.
     (Deref,
         raise_variables(sp, *e.val, scope);
+        return ;
         ),
     (Field,
         raise_variables(sp, *e.val, scope);
+        return ;
         ),
     (Downcast,
         raise_variables(sp, *e.val, scope);
+        return ;
         ),
     // Actual value types
     (Variable,
-        auto idx = e;
-        auto scope_it = m_scope_stack.rbegin();
-        while( scope_it != m_scope_stack.rend() )
-        {
-            auto& scope_def = m_scopes.at(*scope_it);
+        ),
+    (Temporary,
+        )
+    )
+    ASSERT_BUG(sp, val.is_Variable() || val.is_Temporary(), "");
 
-            TU_IFLET( ScopeType, scope_def.data, Variables, e,
+    auto scope_it = m_scope_stack.rbegin();
+    while( scope_it != m_scope_stack.rend() )
+    {
+        auto& scope_def = m_scopes.at(*scope_it);
+
+        TU_IFLET( ScopeType, scope_def.data, Variables, e,
+            if( const auto* ve = val.opt_Variable() )
+            {
+                auto idx = *ve;
                 auto tmp_it = ::std::find( e.vars.begin(), e.vars.end(), idx );
                 if( tmp_it != e.vars.end() )
                 {
@@ -419,41 +446,12 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
                     DEBUG("Raise variable " << idx << " from " << *scope_it);
                     break ;
                 }
-            )
-            // If the variable was defined above the desired scope (i.e. this didn't find it), return
-            if( *scope_it == scope.idx )
-                return ;
-            ++scope_it;
-        }
-        if( scope_it == m_scope_stack.rend() )
-        {
-            // Temporary wasn't defined in a visible scope?
-            return ;
-        }
-        ++scope_it;
-
-        while( scope_it != m_scope_stack.rend() )
-        {
-            auto& scope_def = m_scopes.at(*scope_it);
-
-            TU_IFLET( ScopeType, scope_def.data, Variables, e,
-                e.vars.push_back( idx );
-                DEBUG("- to " << *scope_it);
-                return ;
-            )
-            ++scope_it;
-        }
-
-        DEBUG("- top");
-        ),
-    (Temporary,
-        auto idx = e.idx;
-        auto scope_it = m_scope_stack.rbegin();
-        while( scope_it != m_scope_stack.rend() )
-        {
-            auto& scope_def = m_scopes.at(*scope_it);
-
-            TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
+            }
+        )
+        else TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
+            if( const auto* ve = val.opt_Temporary() )
+            {
+                auto idx = ve->idx;
                 auto tmp_it = ::std::find( e.temporaries.begin(), e.temporaries.end(), idx );
                 if( tmp_it != e.temporaries.end() )
                 {
@@ -461,35 +459,59 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
                     DEBUG("Raise temporary " << idx << " from " << *scope_it);
                     break ;
                 }
-            )
-
-            // If the temporary was defined above the desired scope (i.e. this didn't find it), return
-            if( *scope_it == scope.idx )
-                return ;
-            ++scope_it;
-        }
-        if( scope_it == m_scope_stack.rend() )
+            }
+        )
+        else
         {
-            // Temporary wasn't defined in a visible scope?
+            // TODO: Does this need to handle this value being set in the
+            // split scopes?
+        }
+        // If the variable was defined above the desired scope (i.e. this didn't find it), return
+        if( *scope_it == scope.idx )
             return ;
-        }
         ++scope_it;
+    }
+    if( scope_it == m_scope_stack.rend() )
+    {
+        // Temporary wasn't defined in a visible scope?
+        BUG(sp, val << " wasn't defined in a visible scope");
+        return ;
+    }
+    ++scope_it;
 
-        while( scope_it != m_scope_stack.rend() )
-        {
-            auto& scope_def = m_scopes.at(*scope_it);
+    while( scope_it != m_scope_stack.rend() )
+    {
+        auto& scope_def = m_scopes.at(*scope_it);
 
-            TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
-                e.temporaries.push_back( idx );
+        TU_IFLET( ScopeType, scope_def.data, Variables, e,
+            if( const auto* ve = val.opt_Variable() )
+            {
+                e.vars.push_back( *ve );
                 DEBUG("- to " << *scope_it);
                 return ;
-            )
-            ++scope_it;
-        }
-
-        DEBUG("- top");
+            }
         )
-    )
+        else TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
+            if( const auto* ve = val.opt_Temporary() )
+            {
+                e.temporaries.push_back( ve->idx );
+                DEBUG("- to " << *scope_it);
+                return ;
+            }
+        )
+        else if( scope_def.data.is_Loop() )
+        {
+            //TODO(sp, "Raising " << val << " to outside of a loop");
+        }
+        else if( scope_def.data.is_Split() )
+        {
+            //TODO(sp, "Raising " << val << " to outside of a split");
+        }
+        else
+        {
+        }
+        ++scope_it;
+    }
 }
 void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope)
 {

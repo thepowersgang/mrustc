@@ -374,6 +374,8 @@ namespace {
             {
                 bool diverged = false;
 
+                auto res_val = (node.m_yields_final ? m_builder.new_temporary(node.m_res_type) : ::MIR::LValue());
+                auto tmp_scope = m_builder.new_scope_temp(node.span());
                 auto scope = m_builder.new_scope_var(node.span());
 
                 for(unsigned int i = 0; i < node.m_nodes.size() - (node.m_yields_final ? 1 : 0); i ++)
@@ -416,7 +418,6 @@ namespace {
                     auto& subnode = node.m_nodes.back();
                     const Span& sp = subnode->span();
 
-                    auto res_val = m_builder.new_temporary(node.m_res_type);
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
                     if( m_builder.has_result() || m_builder.block_active() )
@@ -428,13 +429,15 @@ namespace {
                         m_builder.push_stmt_assign(sp, res_val.clone(), m_builder.get_result(sp));
 
                         m_builder.terminate_scope(sp, mv$(stmt_scope));
-                        m_builder.terminate_scope( node.span(), mv$(scope) );
+                        m_builder.terminate_scope(node.span(), mv$(scope) );
+                        m_builder.terminate_scope(node.span(), mv$(tmp_scope) );
                         m_builder.set_result( node.span(), mv$(res_val) );
                     }
                     else
                     {
-                        m_builder.terminate_scope( node.span(), mv$(stmt_scope), false );
+                        m_builder.terminate_scope( sp, mv$(stmt_scope), false );
                         m_builder.terminate_scope( node.span(), mv$(scope), false );
+                        m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
                         // Block diverged in final node.
                     }
                 }
@@ -443,12 +446,14 @@ namespace {
                     if( diverged )
                     {
                         m_builder.terminate_scope( node.span(), mv$(scope), false );
+                        m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
                         m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
                         // Don't set a result if there's no block.
                     }
                     else
                     {
                         m_builder.terminate_scope( node.span(), mv$(scope) );
+                        m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
                         m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
                     }
                 }
@@ -593,6 +598,7 @@ namespace {
         {
             TRACE_FUNCTION_FR("_Match", "_Match");
             this->visit_node_ptr(node.m_value);
+            auto stmt_scope = m_builder.new_scope_temp(node.span());
             auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
 
             if( node.m_arms.size() == 0 ) {
@@ -634,6 +640,19 @@ namespace {
             }
             else {
                 MIR_LowerHIR_Match(m_builder, *this, node, mv$(match_val));
+            }
+
+            if( m_builder.block_active() ) {
+                const auto& sp = node.span();
+
+                auto res = m_builder.get_result(sp);
+                m_builder.raise_variables(sp, res, stmt_scope);
+                m_builder.set_result(sp, mv$(res));
+
+                m_builder.terminate_scope( node.span(), mv$(stmt_scope) );
+            }
+            else {
+                m_builder.terminate_scope( node.span(), mv$(stmt_scope), false );
             }
         } // ExprNode_Match
 
