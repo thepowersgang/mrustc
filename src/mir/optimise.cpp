@@ -272,7 +272,7 @@ namespace {
             ),
         (UfcsKnown,
             TRACE_FUNCTION_F(path);
-            
+
             // Obtain trait pointer (for default impl and to know what the item type is)
             const auto& trait_ref = state.m_resolve.m_crate.get_trait_by_path(state.sp, pe.trait.m_path);
             auto trait_vi_it = trait_ref.m_values.find(pe.item);
@@ -319,7 +319,7 @@ namespace {
                 }
                 return false;
                 });
-            
+
             if( bound_found ) {
                 return nullptr;
             }
@@ -333,6 +333,7 @@ namespace {
 
             params.self_ty = &*pe.type;
             params.fcn_params = &pe.params;
+            // Search for the method in the impl
             auto fit = impl.m_methods.find(pe.item);
             if( fit != impl.m_methods.end() )
             {
@@ -2146,6 +2147,12 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                         srcp = &*srcp->as_Field().val;
                     if( !( srcp->is_Temporary() || srcp->is_Variable() || srcp->is_Argument() ) )
                         continue ;
+
+                    if( replacements.find(*srcp) != replacements.end() )
+                    {
+                        DEBUG("> Can't replace, source has pending replacement");
+                        continue;
+                    }
                 }
                 // TODO: Allow any rvalue, but that currently breaks due to chaining
                 //else if( e.src.is_Borrow() )
@@ -2172,6 +2179,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 for(unsigned int si2 = stmt_idx+1; si2 < block.statements.size(); si2 ++)
                 {
                     const auto& stmt2 = block.statements[si2];
+                    DEBUG("[find usage] " << stmt2);
 
                     // Usage found.
                     if( visit_mir_lvalues(stmt2, is_lvalue_usage) )
@@ -2195,7 +2203,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 
                     // Determine if source is mutated.
                     // > Assume that any mutating access of the root value counts (over-cautious)
-                    if( visit_mir_lvalues(block.statements[si2], [&](const auto& lv, auto vu){ return /*vu == ValUsage::Write &&*/ is_lvalue_in_val(lv); }) )
+                    if( visit_mir_lvalues(stmt2, [&](const auto& lv, auto vu){ return /*vu == ValUsage::Write &&*/ is_lvalue_in_val(lv); }) )
                     {
                         stop = true;
                         break;
@@ -2203,7 +2211,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 }
                 if( !stop )
                 {
-                    DEBUG(block.terminator);
+                    DEBUG("[find usage] " << block.terminator);
                     TU_MATCHA( (block.terminator), (e),
                     (Incomplete,
                         ),
