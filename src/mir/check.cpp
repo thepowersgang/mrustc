@@ -209,9 +209,9 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             return arguments.empty() && temporaries.empty() && variables.empty();
         }
 
-        bool merge(ValStates& other)
+        bool merge(unsigned bb_idx, ValStates& other)
         {
-            DEBUG("this=" << FMT_CB(ss,this->fmt(ss);) << ", other=" << FMT_CB(ss,other.fmt(ss);));
+            DEBUG("bb" << bb_idx << " this=" << FMT_CB(ss,this->fmt(ss);) << ", other=" << FMT_CB(ss,other.fmt(ss);));
             if( this->empty() )
             {
                 *this = other;
@@ -242,14 +242,17 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 ),
             (Argument,
                 MIR_ASSERT(state, e.idx < this->arguments.size(), "");
+                DEBUG("arg" << e.idx << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->arguments[e.idx] = is_valid ? State::Valid : State::Invalid;
                 ),
             (Variable,
                 MIR_ASSERT(state, e < this->variables.size(), "");
+                DEBUG("var" << e << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->variables[e] = is_valid ? State::Valid : State::Invalid;
                 ),
             (Temporary,
                 MIR_ASSERT(state, e.idx < this->temporaries.size(), "");
+                DEBUG("tmp" << e.idx << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->temporaries[e.idx] = is_valid ? State::Valid : State::Invalid;
                 )
             )
@@ -364,7 +367,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
 
         // 1. Apply current state to `block_start_states` (merging if needed)
         // - If no change happened, skip.
-        if( ! block_start_states.at(block).merge( val_state ) ) {
+        if( ! block_start_states.at(block).merge(block, val_state) ) {
             continue ;
         }
         DEBUG("BB" << block << " via [" << path << "]");
@@ -376,6 +379,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             const auto& stmt = bb.statements[stmt_idx];
             state.set_cur_stmt(block, stmt_idx);
 
+            DEBUG(state << stmt);
             switch( stmt.tag() )
             {
             case ::MIR::Statement::TAGDEAD:
@@ -458,6 +462,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
 
         // 3. Pass new state on to destination blocks
         state.set_cur_stmt_term(block);
+        DEBUG(state << bb.terminator);
         TU_MATCH(::MIR::Terminator, (bb.terminator), (e),
         (Incomplete,
             // Should be impossible here.
