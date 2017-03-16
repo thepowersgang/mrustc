@@ -6,9 +6,11 @@ addons:
  apt:
   sources:
     - ubuntu-toolchain-r-test
+    - george-edison55-precise-backports
   packages:
     - g++-6
     - zlib1g-dev
+    - cmake cmake-data
 
 install:
  # Build mrustc
