@@ -139,6 +139,11 @@ namespace {
             if( *s != '{' )
             {
                 if( *s == '}' ) {
+                    s ++;
+                    if( *s != '}' ) {
+                        // TODO: Error? Warning?
+                        s --;   // Step backwards, just in case
+                    }
                     // Doesn't need escaping
                     cur_literal += '}';
                 }
