@@ -334,6 +334,7 @@ DISABLED_TESTS += run-pass/backtrace-debuginfo-aux
 DISABLED_TESTS += run-pass/asm-in-out-operand run-pass/asm-indirect-memory run-pass/asm-out-assign
 DISABLED_TESTS += run-pass/i128
 DISABLED_TESTS += run-pass/issue-14936
+DISABLED_TESTS += run-pass/issue-32947
 # - Requires jemalloc
 DISABLED_TESTS += run-pass/allocator-default run-pass/allocator-override
 # - Bug in inferrence order.
@@ -377,6 +378,34 @@ DISABLED_TESTS += run-pass/issue-14399
 DISABLED_TESTS += run-pass/issue-15221
 DISABLED_TESTS += run-pass/issue-20575
 DISABLED_TESTS += run-pass/issue-20797
+DISABLED_TESTS += run-pass/issue-21306
+DISABLED_TESTS += run-pass/issue-21245
+DISABLED_TESTS += run-pass/issue-21486	# Type mismatch
+DISABLED_TESTS += run-pass/issue-21410	# Infinite recursion
+DISABLED_TESTS += run-pass/issue-25439	# ^
+DISABLED_TESTS += run-pass/issue-22629	# Auto trait + UFCS todo
+DISABLED_TESTS += run-pass/issue-22828	# ^
+DISABLED_TESTS += run-pass/issue-23485	# _ type with no ivar num
+DISABLED_TESTS += run-pass/issue-26805	# ^
+DISABLED_TESTS += run-pass/issue-23699	# fn() inferrence
+DISABLED_TESTS += run-pass/issue-25549-multiple-drop
+DISABLED_TESTS += run-pass/issue-26709
+DISABLED_TESTS += run-pass/issue-30371	# destructuring pattern on !
+DISABLED_TESTS += run-pass/issue-33687	# Unit struct implementing FnOnce call
+DISABLED_TESTS += run-pass/issue-38033
+DISABLED_TESTS += run-pass/issue-7784	# Comparison
+DISABLED_TESTS += run-pass/issue-9951	# Trait impled for i32
+# - Lazy (Typecheck - Leftover rules)
+DISABLED_TESTS += run-pass/issue-33387
+DISABLED_TESTS += run-pass/issue-35815
+# - Lazy (Typecheck - Array unsize)
+DISABLED_TESTS += run-pass/issue-21562
+DISABLED_TESTS += run-pass/issue-23261
+DISABLED_TESTS += run-pass/issue-23491
+DISABLED_TESTS += run-pass/issue-36278-prefix-nesting
+DISABLED_TESTS += run-pass/issue-9382
+# - Lazy (Typecheck + Trait unsize)
+DISABLED_TESTS += run-pass/issue-27105
 # - Lazy (MIR)
 DISABLED_TESTS += run-pass/if-ret
 DISABLED_TESTS += run-pass/intrinsics-integer
@@ -387,11 +416,29 @@ DISABLED_TESTS += run-pass/issue-15080
 DISABLED_TESTS += run-pass/issue-15104
 DISABLED_TESTS += run-pass/issue-15763
 DISABLED_TESTS += run-pass/issue-17877	# - SplitSlice + array
+DISABLED_TESTS += run-pass/issue-37598	# - SplitSlice in DTN
 DISABLED_TESTS += run-pass/issue-18060	# - Overlapping value ranges
 DISABLED_TESTS += run-pass/issue-18110	# - Missing value
 DISABLED_TESTS += run-pass/issue-18352	# - Match+const
-# - Lazy (misg)
+DISABLED_TESTS += run-pass/issue-28839	# - Move &mut ?
+DISABLED_TESTS += run-pass/issue-28950	# - Stack overflow in vec!
+DISABLED_TESTS += run-pass/issue-29227	# - Excessive time in MIR lowering
+DISABLED_TESTS += run-pass/issue-30018-nopanic	# Missing value
+DISABLED_TESTS += run-pass/issue-36936	# - Cast removed
+DISABLED_TESTS += run-pass/issue-4734	# Destructor on unused rvalue
+DISABLED_TESTS += run-pass/issue-8860	# No argument drop
+# - Lazy (trans)
+DISABLED_TESTS += run-pass/issue-21058	# Empty trait object vtable
+DISABLED_TESTS += run-pass/issue-25515	# ^
+DISABLED_TESTS += run-pass/issue-29663	# Missing volatile_store intrinsic
+# - Lazy (misc)
 DISABLED_TESTS += run-pass/issue-13494
+DISABLED_TESTS += run-pass/issue-6919	# Literal function pointer
+DISABLED_TESTS += run-pass/item-attributes	# Attributed function after last statement leads to last statement yielded
+# - Resolve
+DISABLED_TESTS += run-pass/issue-22546	# None::<u8> handling in patterns
+DISABLED_TESTS += run-pass/issue-29540	# Infinite recursion
+DISABLED_TESTS += run-pass/issue-38002	# Enum::StructVariant
 # - Overly-restrictive consteval
 DISABLED_TESTS += run-pass/check-static-mut-slices run-pass/check-static-slice
 DISABLED_TESTS += run-pass/const-binops
@@ -409,6 +456,11 @@ DISABLED_TESTS += run-pass/enum-vec-initializer
 DISABLED_TESTS += run-pass/huge-largest-array
 DISABLED_TESTS += run-pass/issue-17233
 DISABLED_TESTS += run-pass/issue-19244	# Missing type info
+DISABLED_TESTS += run-pass/issue-22894	# TODO: Deref
+DISABLED_TESTS += run-pass/issue-25180	# Closure in const
+DISABLED_TESTS += run-pass/issue-27268	# ^
+DISABLED_TESTS += run-pass/issue-28189	# ^
+DISABLED_TESTS += run-pass/issue-25757	# UFCS function pointer
 # - Type defaults not supported
 DISABLED_TESTS += run-pass/default-associated-types
 DISABLED_TESTS += run-pass/default_ty_param_default_dependent_associated_type
@@ -427,8 +479,7 @@ DISABLED_TESTS += run-pass/issue-17718
 DISABLED_TESTS += run-pass/fn-item-type-zero-sized	# fn() items are not ZSTs
 DISABLED_TESTS += run-pass/int-abs-overflow	# No overflow checks
 DISABLED_TESTS += run-pass/issue-18859	# module_path output is differend
-# - BUG-USE AFTER FREE (scoping)
-DISABLED_TESTS += run-pass/cleanup-rvalue-scopes
+DISABLED_TESTS += run-pass/issue-8709	# stringify! output
 # - BUG-Expand: Copy,Clone calls Clone for inner values instead of copying
 DISABLED_TESTS += run-pass/deriving-copyclone
 # - BUG-Expand: format_args!
@@ -439,13 +490,30 @@ DISABLED_TESTS += run-pass/ifmt
 DISABLED_TESTS += run-pass/intrinsic-alignment
 # - BUG-Expand: No cfg on enum vars
 DISABLED_TESTS += run-pass/issue-11085
+# - BUG-Expand: line/column macros don't work properly
+DISABLED_TESTS += run-pass/issue-26322
+# - Expand
+DISABLED_TESTS += run-pass/lexer-crlf-line-endings-string-literal-doc-comment	# Missing include_str!
+DISABLED_TESTS += run-pass/link-cfg-works	# cfg in #[link]
+DISABLED_TESTS += run-pass/linkage1	# #[linkage]
+DISABLED_TESTS += run-pass/log_syntax-trace_macros-macro-locations	# no trace_macros!
 # - BUG-Parse: `use *`
 DISABLED_TESTS += run-pass/import-glob-crate
 DISABLED_TESTS += run-pass/import-prefix-macro
+# - BUG-Parse
+DISABLED_TESTS += run-pass/issue-37733	# for<'a,>
+DISABLED_TESTS += run-pass/loop-break-value	# `break value`
 # - BUG-CODEGEN: Missing symbol
 DISABLED_TESTS += run-pass/const-enum-ptr
 DISABLED_TESTS += run-pass/const-enum-vec-ptr
 DISABLED_TESTS += run-pass/const-vecs-and-slices
+DISABLED_TESTS += run-pass/issue-5688
+DISABLED_TESTS += run-pass/issue-5917
+DISABLED_TESTS += run-pass/issue-7012
+DISABLED_TESTS += run-pass/issue-29147	# Missing type
+DISABLED_TESTS += run-pass/issue-30081	# ^
+DISABLED_TESTS += run-pass/issue-3447	# ^
+DISABLED_TESTS += run-pass/issue-34796	# Missing vtable type (in dep)
 # - BUG: Codegen drops
 DISABLED_TESTS += run-pass/extern_fat_drop
 # - BUG: Enum variants not getting correct integer values
@@ -456,6 +524,10 @@ DISABLED_TESTS += run-pass/enum-disr-val-pretty
 DISABLED_TESTS += run-pass/enum-univariant-repr
 DISABLED_TESTS += run-pass/issue-15523-big
 DISABLED_TESTS += run-pass/issue-15523
+DISABLED_TESTS += run-pass/issue-23304-1
+DISABLED_TESTS += run-pass/issue-23304-2
+DISABLED_TESTS += run-pass/issue-2428
+DISABLED_TESTS += run-pass/issue-9837
 # - BUG: Null pointer opt not fully correct
 DISABLED_TESTS += run-pass/enum-null-pointer-opt
 # - BUG: Incorrect enum sizing
@@ -475,6 +547,12 @@ DISABLED_TESTS += run-pass/intrinsics-math
 DISABLED_TESTS += run-pass/hygiene
 DISABLED_TESTS += run-pass/hygienic-labels-in-let
 DISABLED_TESTS += run-pass/hygienic-labels
+# - BUG: Incorrect drop order of ?
+DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
+# - BUG: Incorrect consteval
+DISABLED_TESTS += run-pass/issue-23968-const-not-overflow	# !0 / 2 incorrect value
+# - BUG: Incorrect ordering of read in binops
+DISABLED_TESTS += run-pass/issue-27054-primitive-binary-ops
 # - ?? Is this valid
 DISABLED_TESTS += run-pass/const-enum-vec-index
 # - Line information that isn't avaliable due to codegen
@@ -485,18 +563,31 @@ DISABLED_TESTS += run-pass/cleanup-rvalue-temp-during-incomplete-alloc
 DISABLED_TESTS += run-pass/drop-trait-enum
 DISABLED_TESTS += run-pass/intrinsic-move-val-cleanups
 DISABLED_TESTS += run-pass/issue-14875
+DISABLED_TESTS += run-pass/issue-25089
+DISABLED_TESTS += run-pass/issue-26655
+DISABLED_TESTS += run-pass/issue-30018-panic
+DISABLED_TESTS += run-pass/issue-8460
+DISABLED_TESTS += run-pass/iter-step-overflow-debug
+DISABLED_TESTS += run-pass/iter-sum-overflow-debug
 # - Test framework required
 DISABLED_TESTS += run-pass/core-run-destroy
 DISABLED_TESTS += run-pass/exec-env
 DISABLED_TESTS += run-pass/issue-16597-empty
 DISABLED_TESTS += run-pass/issue-16597	# NOTE: Crashes in resolve
 DISABLED_TESTS += run-pass/issue-20823
+DISABLED_TESTS += run-pass/issue-34932
+DISABLED_TESTS += run-pass/issue-36768
 # - Makefile test framework quirks
 DISABLED_TESTS += run-pass/issue-18913
+DISABLED_TESTS += run-pass/issue-2380-b
+DISABLED_TESTS += run-pass/issue-29485
 # - Target Features
 DISABLED_TESTS += run-pass/crt-static-on-works
 # - Infinite loops
 DISABLED_TESTS += run-pass/issue-16671
+DISABLED_TESTS += run-pass/issue-27890	# - Stack exhausted : Resolve
+# - Impl selection
+DISABLED_TESTS += run-pass/issue-23208
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
@@ -514,7 +605,7 @@ TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
 TEST_ARGS_run-pass/cfg-macros-foo := --cfg foo
 TEST_ARGS_run-pass/cfg_attr := --cfg set1 --cfg set2
 TEST_ARGS_run-pass/issue-11085 := --cfg foo
-TEST_ARGS_run-pass/issue-15881-model-lexer-dotdotdot := -g
+TEST_ARGS_run-pass/issue-21361 := -g
 
 output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir output/test_deps/librust_test_helpers.a
 	@mkdir -p $(dir $@)
