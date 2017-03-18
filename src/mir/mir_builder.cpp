@@ -407,6 +407,8 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
     TRACE_FUNCTION_F(val);
     TU_MATCH_DEF(::MIR::LValue, (val), (e),
     (
+        // No raising of these source values
+        return ;
         ),
     // TODO: This may not be correct, because it can change the drop points and ordering
     // HACK: Working around cases where values are dropped while the result is not yet used.
@@ -428,7 +430,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
     (Temporary,
         )
     )
-    ASSERT_BUG(sp, val.is_Variable() || val.is_Temporary(), "");
+    ASSERT_BUG(sp, val.is_Variable() || val.is_Temporary(), "Hit value raising code with non-variable value - " << val);
 
     auto scope_it = m_scope_stack.rbegin();
     while( scope_it != m_scope_stack.rend() )

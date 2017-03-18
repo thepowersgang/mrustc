@@ -36,6 +36,11 @@ public:
     ScopeHandle& operator=(const ScopeHandle& x) = delete;
     ScopeHandle& operator=(ScopeHandle&& x) = delete;
     ~ScopeHandle();
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const ScopeHandle& x) {
+        os << x.idx;
+        return os;
+    }
 };
 
 // - Needs to handle future DerefMove (which can't use the Box hack)

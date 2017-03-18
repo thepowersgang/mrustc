@@ -21,6 +21,26 @@
 
 namespace {
 
+    template<typename T>
+    struct SaveAndEditVal {
+        T&  m_dst;
+        T   m_saved;
+        SaveAndEditVal(T& dst, T newval):
+            m_dst(dst),
+            m_saved(dst)
+        {
+            m_dst = mv$(newval);
+        }
+        ~SaveAndEditVal()
+        {
+            this->m_dst = this->m_saved;
+        }
+    };
+    template<typename T>
+    SaveAndEditVal<T> save_and_edit(T& dst, typename ::std::remove_reference<T&>::type newval) {
+        return SaveAndEditVal<T> { dst, mv$(newval) };
+    }
+
     class ExprVisitor_Conv:
         public MirConverter
     {
@@ -35,6 +55,9 @@ namespace {
             unsigned int    next;
         };
         ::std::vector<LoopDesc> m_loop_stack;
+
+        const ScopeHandle*  m_block_tmp_scope = nullptr;
+        const ScopeHandle*  m_borrow_raise_target = nullptr;
 
     public:
         ExprVisitor_Conv(MirBuilder& builder, const ::std::vector< ::HIR::TypeRef>& var_types):
@@ -153,11 +176,22 @@ namespace {
                     m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
                     break;
                 case ::HIR::PatternBinding::Type::Ref:
+                    if(m_borrow_raise_target)
+                    {
+                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
+                        m_builder.raise_variables(sp, lval, *m_borrow_raise_target);
+                    }
+
                     m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
                         0, ::HIR::BorrowType::Shared, mv$(lval)
                         }) );
                     break;
                 case ::HIR::PatternBinding::Type::MutRef:
+                    if(m_borrow_raise_target)
+                    {
+                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
+                        m_builder.raise_variables(sp, lval, *m_borrow_raise_target);
+                    }
                     m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
                         0, ::HIR::BorrowType::Unique, mv$(lval)
                         }) );
@@ -376,25 +410,14 @@ namespace {
 
                 auto res_val = (node.m_yields_final ? m_builder.new_temporary(node.m_res_type) : ::MIR::LValue());
                 auto tmp_scope = m_builder.new_scope_temp(node.span());
+                auto _block_tmp_scope = save_and_edit(m_block_tmp_scope, &tmp_scope);
                 auto scope = m_builder.new_scope_var(node.span());
 
                 for(unsigned int i = 0; i < node.m_nodes.size() - (node.m_yields_final ? 1 : 0); i ++)
                 {
+                    auto _ = save_and_edit(m_borrow_raise_target, nullptr);
                     auto& subnode = node.m_nodes[i];
                     const Span& sp = subnode->span();
-
-                    // Let statements don't generate a new temporary scope
-                    if( dynamic_cast<::HIR::ExprNode_Let*>(subnode.get()) ) {
-                        this->visit_node_ptr(subnode);
-                        if( ! m_builder.block_active() ) {
-                            m_builder.set_cur_block( m_builder.new_bb_unlinked() );
-                            diverged = true;
-                        }
-                        else {
-                            m_builder.get_result(sp);
-                        }
-                        continue ;
-                    }
 
                     auto stmt_scope = m_builder.new_scope_temp(sp);
                     this->visit_node_ptr(subnode);
@@ -495,23 +518,35 @@ namespace {
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
-            TRACE_FUNCTION_F("_Let");
+            TRACE_FUNCTION_F("_Let " << node.m_pattern);
             this->define_vars_from(node.span(), node.m_pattern);
             if( node.m_value )
             {
+                auto _ = save_and_edit(m_borrow_raise_target, m_block_tmp_scope);
                 this->visit_node_ptr(node.m_value);
 
                 if( ! m_builder.block_active() ) {
                     return ;
                 }
+                auto res = m_builder.get_result(node.span());
+
+                // NOTE: `let foo = &bar();` is valid!
+                // - So is `let (ref foo, _) = (bar(), 1);`
+                // - Raising the variables if there's a borrow works for most
+                //   cases, but not cases where the let causes an unsizing.
+                if( res.is_Borrow() )
+                {
+                    assert(m_block_tmp_scope);
+                    m_builder.raise_variables(node.span(), res, *m_block_tmp_scope);
+                }
 
                 if( node.m_pattern.m_binding.is_valid() && node.m_pattern.m_data.is_Any() && node.m_pattern.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
                 {
-                    m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Variable(node.m_pattern.m_binding.m_slot),  m_builder.get_result(node.span()) );
+                    m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Variable(node.m_pattern.m_binding.m_slot),  mv$(res) );
                 }
                 else
                 {
-                    this->destructure_from(node.span(), node.m_pattern, m_builder.get_result_in_lvalue(node.m_value->span(), node.m_type));
+                    this->destructure_from(node.span(), node.m_pattern, m_builder.lvalue_or_temp(node.m_value->span(), node.m_type, mv$(res)));
                 }
             }
             m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
@@ -597,6 +632,7 @@ namespace {
         void visit(::HIR::ExprNode_Match& node) override
         {
             TRACE_FUNCTION_FR("_Match", "_Match");
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
             this->visit_node_ptr(node.m_value);
             auto stmt_scope = m_builder.new_scope_temp(node.span());
             auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
@@ -1119,9 +1155,13 @@ namespace {
             this->visit_node_ptr(node.m_value);
             auto val = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
 
-            auto res = m_builder.new_temporary(node.m_res_type);
-            m_builder.push_stmt_assign( node.span(), res.as_Temporary(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }));
-            m_builder.set_result( node.span(), mv$(res) );
+            if( m_borrow_raise_target )
+            {
+                DEBUG("- Raising borrow to scope " << *m_borrow_raise_target);
+                m_builder.raise_variables(node.span(), val, *m_borrow_raise_target);
+            }
+
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }) );
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
@@ -1603,6 +1643,7 @@ namespace {
         void visit(::HIR::ExprNode_CallPath& node) override
         {
             TRACE_FUNCTION_F("_CallPath " << node.m_path);
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
             auto values = get_args(node.m_args);
 
             auto panic_block = m_builder.new_bb_unlinked();
@@ -1670,6 +1711,7 @@ namespace {
         void visit(::HIR::ExprNode_CallValue& node) override
         {
             TRACE_FUNCTION_F("_CallValue " << node.m_value->m_res_type);
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
             // _CallValue is ONLY valid on function pointers (all others must be desugared)
             ASSERT_BUG(node.span(), node.m_value->m_res_type.m_data.is_Function(), "Leftover _CallValue on a non-fn()");
