@@ -195,9 +195,9 @@ public:
     // Mark a value as initialised (used for Call, because it has to be done after the panic block is populated)
     void mark_value_assigned(const Span& sp, const ::MIR::LValue& val);
 
-    // Moves control of temporaries up to the next scope
-    void raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope);
-    void raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope);
+    // Moves control of temporaries up to the specified scope (or to above it)
+    void raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope, bool to_above=false);
+    void raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope, bool to_above=false);
 
     void set_cur_block(unsigned int new_block);
     ::MIR::BasicBlockId pause_cur_block();

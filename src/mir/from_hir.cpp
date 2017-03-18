@@ -530,16 +530,6 @@ namespace {
                 }
                 auto res = m_builder.get_result(node.span());
 
-                // NOTE: `let foo = &bar();` is valid!
-                // - So is `let (ref foo, _) = (bar(), 1);`
-                // - Raising the variables if there's a borrow works for most
-                //   cases, but not cases where the let causes an unsizing.
-                if( res.is_Borrow() )
-                {
-                    assert(m_block_tmp_scope);
-                    m_builder.raise_variables(node.span(), res, *m_block_tmp_scope);
-                }
-
                 if( node.m_pattern.m_binding.is_valid() && node.m_pattern.m_data.is_Any() && node.m_pattern.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
                 {
                     m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Variable(node.m_pattern.m_binding.m_slot),  mv$(res) );
@@ -663,7 +653,7 @@ namespace {
 
                 if( m_builder.block_active() ) {
                     auto res = m_builder.get_result(arm.m_code->span());
-                    m_builder.raise_variables( arm.m_code->span(), res, scope );
+                    m_builder.raise_variables( arm.m_code->span(), res, scope, /*to_above=*/true);
                     m_builder.set_result(arm.m_code->span(), mv$(res));
 
                     m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
@@ -682,7 +672,7 @@ namespace {
                 const auto& sp = node.span();
 
                 auto res = m_builder.get_result(sp);
-                m_builder.raise_variables(sp, res, stmt_scope);
+                m_builder.raise_variables(sp, res, stmt_scope, /*to_above=*/true);
                 m_builder.set_result(sp, mv$(res));
 
                 m_builder.terminate_scope( node.span(), mv$(stmt_scope) );
@@ -1499,6 +1489,7 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(place__panic);
+            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             // TODO: Drop `place`
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             m_builder.set_cur_block(place__ok);
@@ -1523,6 +1514,7 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(place_raw__panic);
+            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             // TODO: Drop `place`
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             m_builder.set_cur_block(place_raw__ok);
@@ -1559,11 +1551,13 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(res__panic);
+            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             // TODO: Should this drop the value written to the rawptr?
             // - No, becuase it's likely invalid now. Goodbye!
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             m_builder.set_cur_block(res__ok);
 
+            m_builder.mark_value_assigned(node.span(), res);
             m_builder.set_result( node.span(), mv$(res) );
         }
 
@@ -1735,6 +1729,8 @@ namespace {
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
 
             m_builder.set_cur_block( next_block );
+            // TODO: Support diverging value calls
+            m_builder.mark_value_assigned(node.span(), res);
             m_builder.set_result( node.span(), mv$(res) );
         }
         void visit(::HIR::ExprNode_CallMethod& node) override

@@ -402,26 +402,31 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
     }
 }
 
-void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope)
+void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope, bool to_above/*=false*/)
 {
     TRACE_FUNCTION_F(val);
     TU_MATCH_DEF(::MIR::LValue, (val), (e),
     (
-        // No raising of these source values
+        // No raising of these source values?
         return ;
         ),
     // TODO: This may not be correct, because it can change the drop points and ordering
     // HACK: Working around cases where values are dropped while the result is not yet used.
+    (Index,
+        raise_variables(sp, *e.val, scope, to_above);
+        raise_variables(sp, *e.idx, scope, to_above);
+        return ;
+        ),
     (Deref,
-        raise_variables(sp, *e.val, scope);
+        raise_variables(sp, *e.val, scope, to_above);
         return ;
         ),
     (Field,
-        raise_variables(sp, *e.val, scope);
+        raise_variables(sp, *e.val, scope, to_above);
         return ;
         ),
     (Downcast,
-        raise_variables(sp, *e.val, scope);
+        raise_variables(sp, *e.val, scope, to_above);
         return ;
         ),
     // Actual value types
@@ -436,6 +441,11 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
     while( scope_it != m_scope_stack.rend() )
     {
         auto& scope_def = m_scopes.at(*scope_it);
+
+        if( *scope_it == scope.idx && !to_above )
+        {
+            DEBUG(val << " defined in or above target (scope " << scope << ")");
+        }
 
         TU_IFLET( ScopeType, scope_def.data, Variables, e,
             if( const auto* ve = val.opt_Variable() )
@@ -470,7 +480,10 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
         }
         // If the variable was defined above the desired scope (i.e. this didn't find it), return
         if( *scope_it == scope.idx )
+        {
+            DEBUG("Value " << val << " is defined above the target (scope " << scope << ")");
             return ;
+        }
         ++scope_it;
     }
     if( scope_it == m_scope_stack.rend() )
@@ -479,7 +492,37 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
         BUG(sp, val << " wasn't defined in a visible scope");
         return ;
     }
-    ++scope_it;
+
+    if( *scope_it == scope.idx )
+    {
+        // Already hit the specified scope
+        if( to_above ) {
+            // Want to shift to any above (but not including) it
+            ++ scope_it;
+        }
+        else {
+            // Want to shift to it or above.
+        }
+    }
+    else
+    {
+        ++scope_it;
+
+        while( scope_it != m_scope_stack.rend() )
+        {
+            if( *scope_it == scope.idx )
+            {
+                break ;
+            }
+            ++ scope_it;
+        }
+    }
+    if( scope_it == m_scope_stack.rend() )
+    {
+        // Temporary wasn't defined in a visible scope?
+        BUG(sp, "Scope " << scope << " isn't on the stack");
+        return ;
+    }
 
     while( scope_it != m_scope_stack.rend() )
     {
@@ -514,16 +557,17 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
         }
         ++scope_it;
     }
+    BUG(sp, "Couldn't find a scope to raise " << val << " into");
 }
-void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope)
+void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope, bool to_above/*=false*/)
 {
     auto raise_vars = [&](const ::MIR::Param& p) {
         if( const auto* e = p.opt_LValue() )
-            this->raise_variables(sp, *e, scope);
+            this->raise_variables(sp, *e, scope, to_above);
         };
     TU_MATCHA( (rval), (e),
     (Use,
-        this->raise_variables(sp, e, scope);
+        this->raise_variables(sp, e, scope, to_above);
         ),
     (Constant,
         ),
@@ -532,23 +576,23 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::RValue& rval, cons
         ),
     (Borrow,
         // TODO: Wait, is this valid?
-        this->raise_variables(sp, e.val, scope);
+        this->raise_variables(sp, e.val, scope, to_above);
         ),
     (Cast,
-        this->raise_variables(sp, e.val, scope);
+        this->raise_variables(sp, e.val, scope, to_above);
         ),
     (BinOp,
         raise_vars(e.val_l);
         raise_vars(e.val_r);
         ),
     (UniOp,
-        this->raise_variables(sp, e.val, scope);
+        this->raise_variables(sp, e.val, scope, to_above);
         ),
     (DstMeta,
-        this->raise_variables(sp, e.val, scope);
+        this->raise_variables(sp, e.val, scope, to_above);
         ),
     (DstPtr,
-        this->raise_variables(sp, e.val, scope);
+        this->raise_variables(sp, e.val, scope, to_above);
         ),
     (MakeDst,
         raise_vars(e.ptr_val);
@@ -1130,10 +1174,10 @@ void MirBuilder::complete_scope(ScopeDef& sd)
 
     TU_MATCHA( (sd.data), (e),
     (Temporaries,
-        DEBUG("Temporaries " << e.temporaries);
+        DEBUG("Temporaries - " << e.temporaries);
         ),
     (Variables,
-        DEBUG("Variables " << e.vars);
+        DEBUG("Variables - " << e.vars);
         ),
     (Loop,
         DEBUG("Loop");
@@ -1574,6 +1618,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
         for(auto tmp_idx : ::reverse(e.temporaries))
         {
             const auto& vs = get_temp_state(sd.span, tmp_idx);
+            DEBUG("tmp" << tmp_idx << " - " << vs);
             drop_value_from_state( sd.span, vs, ::MIR::LValue::make_Temporary({ tmp_idx }) );
         }
         ),
@@ -1581,6 +1626,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
         for(auto var_idx : ::reverse(e.vars))
         {
             const auto& vs = get_variable_state(sd.span, var_idx);
+            DEBUG("var" << var_idx << " - " << vs);
             drop_value_from_state( sd.span, vs, ::MIR::LValue::make_Variable(var_idx) );
         }
         ),
@@ -1599,11 +1645,13 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
     TU_MATCHA( (lv), (e),
     (Variable,
         if( !lvalue_is_copy(sp, lv) ) {
+            DEBUG("var" << e << " = MOVED");
             get_variable_state_mut(sp, e) = VarState::make_Invalid(InvalidType::Moved);
         }
         ),
     (Temporary,
         if( !lvalue_is_copy(sp, lv) ) {
+            DEBUG("tmp" << e.idx << " = MOVED");
             get_temp_state_mut(sp, e.idx) = VarState::make_Invalid(InvalidType::Moved);
         }
         ),
@@ -1665,9 +1713,11 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
                         BUG(sp, "Box move out of invalid LValue " << inner_lv << " - should have been moved");
                         ),
                     (Variable,
+                        DEBUG("var" << ei << " = PARTIAL");
                         get_variable_state_mut(sp, ei) = VarState::make_Partial({ mv$(ivs) });
                         ),
                     (Temporary,
+                        DEBUG("tmp" << ei.idx << " = PARTIAL");
                         get_temp_state_mut(sp, ei.idx) = VarState::make_Partial({ mv$(ivs) });
                         ),
                     (Argument,
