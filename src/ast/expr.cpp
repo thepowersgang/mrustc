@@ -266,7 +266,16 @@ NODE(ExprNode_ByteString, {
 })
 
 NODE(ExprNode_Closure, {
-    os << "/* todo: closure */";
+    if( m_is_move )
+        os << "move ";
+    os << "|";
+    for(const auto& a : m_args)
+    {
+        os << a.first << ": " << a.second << ",";
+    }
+    os << "|";
+    os << "->" << m_return;
+    os << " " << *m_code;
 },{
     ExprNode_Closure::args_t    args;
     for(const auto& a : m_args) {
@@ -276,7 +285,16 @@ NODE(ExprNode_Closure, {
 });
 
 NODE(ExprNode_StructLiteral, {
-    os << "/* todo: sl */";
+    os << m_path << " { ";
+    for(const auto& v : m_values)
+    {
+        os << v.first << ": " << *v.second << ", ";
+    }
+    if(m_base_value)
+    {
+        os << ".." << *m_base_value;
+    }
+    os << "}";
 },{
     ExprNode_StructLiteral::t_values    vals;
 
