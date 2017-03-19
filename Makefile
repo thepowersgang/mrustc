@@ -327,16 +327,12 @@ rust_tests: rust_tests-run-pass
 # rust_tests-run-fail
 # rust_tests-compile-fail
 
-# - Require external symbols that aren't generated.
 DISABLED_TESTS := 
-DISABLED_TESTS += run-pass/abi-sysv64-arg-passing
-DISABLED_TESTS += run-pass/abi-sysv64-register-usage
-DISABLED_TESTS += run-pass/anon-extern-mod
-DISABLED_TESTS += run-pass/anon-extern-mod-cross-crate-2
 # - NOT A TEST
 DISABLED_TESTS += run-pass/backtrace-debuginfo-aux
 DISABLED_TESTS += run-pass/mod_file_aux
-# - asm! is hard to trnaslate
+# - asm! is hard to translate
+DISABLED_TESTS += run-pass/abi-sysv64-register-usage
 DISABLED_TESTS += run-pass/asm-in-out-operand
 DISABLED_TESTS += run-pass/asm-indirect-memory
 DISABLED_TESTS += run-pass/asm-out-assign
@@ -472,6 +468,7 @@ DISABLED_TESTS += run-pass/issue-18352	# - Match+const
 DISABLED_TESTS += run-pass/issue-28839	# - Move &mut ?
 DISABLED_TESTS += run-pass/union/union-inherent-method	# ^ ?
 DISABLED_TESTS += run-pass/issue-28950	# - Stack overflow in vec!
+DISABLED_TESTS += run-pass/mir_heavy_promoted	# Stack overflow in array constant
 DISABLED_TESTS += run-pass/issue-29227	# - Excessive time in MIR lowering
 DISABLED_TESTS += run-pass/issue-30018-nopanic	# Missing value
 DISABLED_TESTS += run-pass/match-bot-2	# ^
