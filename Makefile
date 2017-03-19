@@ -420,6 +420,7 @@ DISABLED_TESTS += run-pass/trans-object-shim	# fn cast to other fn as type annot
 DISABLED_TESTS += run-pass/variadic-ffi	# variadics not supported
 DISABLED_TESTS += run-pass/weird-exprs	# Line 17, let _ = return; result type
 DISABLED_TESTS += run-pass/where-for-self	# Failed deref coercion?
+DISABLED_TESTS += run-pass/union/union-backcomp	# ? discarded value?
 # - Lazy (Typecheck - Leftover rules)
 DISABLED_TESTS += run-pass/issue-33387
 DISABLED_TESTS += run-pass/issue-35815
@@ -459,6 +460,7 @@ DISABLED_TESTS += run-pass/issue-18060	# - Overlapping value ranges
 DISABLED_TESTS += run-pass/issue-18110	# - Missing value
 DISABLED_TESTS += run-pass/issue-18352	# - Match+const
 DISABLED_TESTS += run-pass/issue-28839	# - Move &mut ?
+DISABLED_TESTS += run-pass/union/union-inherent-method	# ^ ?
 DISABLED_TESTS += run-pass/issue-28950	# - Stack overflow in vec!
 DISABLED_TESTS += run-pass/issue-29227	# - Excessive time in MIR lowering
 DISABLED_TESTS += run-pass/issue-30018-nopanic	# Missing value
@@ -470,6 +472,7 @@ DISABLED_TESTS += run-pass/issue-8860	# No argument drop
 DISABLED_TESTS += run-pass/mir_build_match_comparisons	# todo in match
 DISABLED_TESTS += run-pass/struct-order-of-eval-1	# Struct init order
 DISABLED_TESTS += run-pass/struct-order-of-eval-3	# ^
+DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to union field
 # - Lazy (trans)
 DISABLED_TESTS += run-pass/issue-21058	# Empty trait object vtable
 DISABLED_TESTS += run-pass/issue-25515	# ^
@@ -478,6 +481,8 @@ DISABLED_TESTS += run-pass/volatile-fat-ptr	# ^
 DISABLED_TESTS += run-pass/newtype	# Can't handle mutally recursive definitions
 DISABLED_TESTS += run-pass/transmute-specialization	# Opaque type hit?
 DISABLED_TESTS += run-pass/unit-fallback	# ! didn't default to ()
+# - HIR resolve
+DISABLED_TESTS += run-pass/union/union-generic	# Can't find associated type on type param
 # - Trans: No handling of repr()
 DISABLED_TESTS += run-pass/packed-struct-generic-layout
 DISABLED_TESTS += run-pass/packed-struct-generic-size
@@ -534,6 +539,7 @@ DISABLED_TESTS += run-pass/issue-28189	# ^
 DISABLED_TESTS += run-pass/issue-25757	# UFCS function pointer
 DISABLED_TESTS += run-pass/mir_refs_correct
 DISABLED_TESTS += run-pass/vec-fixed-length	# Overflow in costeval
+DISABLED_TESTS += run-pass/union/union-const-trans	# Union literal
 # - Type defaults not supported
 DISABLED_TESTS += run-pass/default-associated-types
 DISABLED_TESTS += run-pass/default_ty_param_default_dependent_associated_type
@@ -597,6 +603,11 @@ DISABLED_TESTS += run-pass/smallest-hello-world	# missing lang item
 DISABLED_TESTS += run-pass/trait-item-inside-macro	# macro invocations in traits
 DISABLED_TESTS += run-pass/try-operator-custom	# `?` carrier
 DISABLED_TESTS += run-pass/wrapping-int-api	# cfg on match arms
+DISABLED_TESTS += run-pass/union/union-c-interop	# union derive
+DISABLED_TESTS += run-pass/union/union-derive	# ^
+DISABLED_TESTS += run-pass/union/union-overwrite	# ? MetaItem::as_String()
+DISABLED_TESTS += run-pass/union/union-packed	# ^
+DISABLED_TESTS += run-pass/union/union-pat-refutability	# ^
 # - Parse
 DISABLED_TESTS += run-pass/issue-37733	# for<'a,>
 DISABLED_TESTS += run-pass/loop-break-value	# `break value`
@@ -608,6 +619,8 @@ DISABLED_TESTS += run-pass/macro-stmt	# ^
 DISABLED_TESTS += run-pass/macro-tt-followed-by-seq	# Mismatched arms?
 DISABLED_TESTS += run-pass/struct-field-shorthand	# Struct field shorthand
 DISABLED_TESTS += run-pass/vec-matching	# [a, [b,..].., c]
+# HIR Lowering
+DISABLED_TESTS += run-pass/union/union-basic	# Union struct pattern
 # - BUG-Parse: `use *`
 DISABLED_TESTS += run-pass/import-glob-crate
 DISABLED_TESTS += run-pass/import-prefix-macro
@@ -633,6 +646,7 @@ DISABLED_TESTS += run-pass/mir_fat_ptr_drop	# fat Box doesn't run inner destruct
 DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior
 DISABLED_TESTS += run-pass/unsized3	# Pointer instead of fat pointer
 DISABLED_TESTS += run-pass/utf8_idents	# C backend doesn't support utf8 idents
+DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
 # - BUG: Enum variants not getting correct integer values
 DISABLED_TESTS += run-pass/discriminant_value
 DISABLED_TESTS += run-pass/const-nullary-univariant-enum
@@ -753,7 +767,7 @@ DISABLED_TESTS += run-pass/issue-23208
 DISABLED_TESTS += run-pass/xcrate-associated-type-defaults	# Failed to find an impl
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
-rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass))
+rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass) $(call DEF_RUST_TESTS,run-pass/union))
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
