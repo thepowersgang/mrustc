@@ -328,27 +328,37 @@ rust_tests: rust_tests-run-pass
 # rust_tests-compile-fail
 
 # - Require external symbols that aren't generated.
-DISABLED_TESTS = run-pass/abi-sysv64-arg-passing run-pass/abi-sysv64-register-usage run-pass/anon-extern-mod run-pass/anon-extern-mod-cross-crate-2
+DISABLED_TESTS := 
+DISABLED_TESTS += run-pass/abi-sysv64-arg-passing
+DISABLED_TESTS += run-pass/abi-sysv64-register-usage
+DISABLED_TESTS += run-pass/anon-extern-mod
+DISABLED_TESTS += run-pass/anon-extern-mod-cross-crate-2
 # - NOT A TEST
 DISABLED_TESTS += run-pass/backtrace-debuginfo-aux
 DISABLED_TESTS += run-pass/mod_file_aux
 # - asm! is hard to trnaslate
-DISABLED_TESTS += run-pass/asm-in-out-operand run-pass/asm-indirect-memory run-pass/asm-out-assign
+DISABLED_TESTS += run-pass/asm-in-out-operand
+DISABLED_TESTS += run-pass/asm-indirect-memory
+DISABLED_TESTS += run-pass/asm-out-assign
 DISABLED_TESTS += run-pass/i128
 DISABLED_TESTS += run-pass/issue-14936
 DISABLED_TESTS += run-pass/issue-32947
 DISABLED_TESTS += run-pass/num-wrapping
 DISABLED_TESTS += run-pass/out-of-stack
 # - Requires jemalloc
-DISABLED_TESTS += run-pass/allocator-default run-pass/allocator-override
+DISABLED_TESTS += run-pass/allocator-default
+DISABLED_TESTS += run-pass/allocator-override
 # - Bug in inferrence order.
 DISABLED_TESTS += run-pass/associated-types-conditional-dispatch
 # - Lazy.
-DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause run-pass/autoderef-privacy
+DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause
+DISABLED_TESTS += run-pass/autoderef-privacy
 DISABLED_TESTS += run-pass/builtin-superkinds-self-type
 DISABLED_TESTS += run-pass/byte-literals
-DISABLED_TESTS += run-pass/c-stack-as-value run-pass/cabi-int-widening
-DISABLED_TESTS += run-pass/cast-rfc0401-vtable-kinds run-pass/cast-rfc0401
+DISABLED_TESTS += run-pass/c-stack-as-value
+DISABLED_TESTS += run-pass/cabi-int-widening
+DISABLED_TESTS += run-pass/cast-rfc0401-vtable-kinds
+DISABLED_TESTS += run-pass/cast-rfc0401
 DISABLED_TESTS += run-pass/cast-in-array-size
 DISABLED_TESTS += run-pass/cast
 DISABLED_TESTS += run-pass/cfg-in-crate-1
@@ -477,6 +487,7 @@ DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to un
 DISABLED_TESTS += run-pass/issue-21058	# Empty trait object vtable
 DISABLED_TESTS += run-pass/issue-25515	# ^
 DISABLED_TESTS += run-pass/issue-29663	# Missing volatile_(load|store) intrinsic
+DISABLED_TESTS += run-pass/intrinsic-alignment	# Missing pref_align_of intrinsic
 DISABLED_TESTS += run-pass/volatile-fat-ptr	# ^
 DISABLED_TESTS += run-pass/newtype	# Can't handle mutally recursive definitions
 DISABLED_TESTS += run-pass/transmute-specialization	# Opaque type hit?
@@ -516,7 +527,8 @@ DISABLED_TESTS += run-pass/match-arm-statics	# ^
 DISABLED_TESTS += run-pass/mir_ascription_coercion	# Missed item
 DISABLED_TESTS += run-pass/type-ascription	# Relative path in lowering
 # - Overly-restrictive consteval
-DISABLED_TESTS += run-pass/check-static-mut-slices run-pass/check-static-slice
+DISABLED_TESTS += run-pass/check-static-mut-slices
+DISABLED_TESTS += run-pass/check-static-slice
 DISABLED_TESTS += run-pass/const-binops
 DISABLED_TESTS += run-pass/const-contents
 DISABLED_TESTS += run-pass/const-deref
@@ -581,13 +593,10 @@ DISABLED_TESTS += run-pass/type-macros-hlist	# Mismatched arms
 DISABLED_TESTS += run-pass/fmt-pointer-trait
 DISABLED_TESTS += run-pass/format-ref-cell
 DISABLED_TESTS += run-pass/ifmt
-# - BUG-Expand: #[main] and cfg
-DISABLED_TESTS += run-pass/intrinsic-alignment
-# - BUG-Expand: No cfg on enum vars
-DISABLED_TESTS += run-pass/issue-11085
 # - BUG-Expand: line/column macros don't work properly
 DISABLED_TESTS += run-pass/issue-26322
 # - Expand
+DISABLED_TESTS += run-pass/issue-11085	# No support for cfg() on enum variants
 DISABLED_TESTS += run-pass/lexer-crlf-line-endings-string-literal-doc-comment	# Missing include_str!
 DISABLED_TESTS += run-pass/syntax-extension-source-utils	# ^
 DISABLED_TESTS += run-pass/link-cfg-works	# cfg in #[link]
@@ -698,9 +707,12 @@ DISABLED_TESTS += run-pass/issue-27054-primitive-binary-ops
 # - ?? Is this valid
 DISABLED_TESTS += run-pass/const-enum-vec-index
 # - Line information that isn't avaliable due to codegen
-DISABLED_TESTS += run-pass/backtrace-debuginfo run-pass/backtrace
+DISABLED_TESTS += run-pass/backtrace-debuginfo
+DISABLED_TESTS += run-pass/backtrace
 # - No unwind catching support
-DISABLED_TESTS += run-pass/binary-heap-panic-safe run-pass/box-of-array-of-drop-1 run-pass/box-of-array-of-drop-2
+DISABLED_TESTS += run-pass/binary-heap-panic-safe
+DISABLED_TESTS += run-pass/box-of-array-of-drop-1
+DISABLED_TESTS += run-pass/box-of-array-of-drop-2
 DISABLED_TESTS += run-pass/cleanup-rvalue-temp-during-incomplete-alloc
 DISABLED_TESTS += run-pass/drop-trait-enum
 DISABLED_TESTS += run-pass/intrinsic-move-val-cleanups
