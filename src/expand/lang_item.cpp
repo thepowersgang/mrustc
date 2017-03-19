@@ -187,7 +187,10 @@ public:
     AttrStage stage() const override { return AttrStage::Post; }
     void handle(const Span& sp, const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
-        TU_IFLET(::AST::Item, i, Function, e,
+        if( i.is_None() ) {
+            // Ignore.
+        }
+        else TU_IFLET(::AST::Item, i, Function, e,
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path(path) ));
             if( !rv.second )
             {
