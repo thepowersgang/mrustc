@@ -660,7 +660,10 @@ class CFormatArgsExpander:
                         push_toks(toks, TOK_COMMA);
 
                         push_toks(toks, Token(TOK_IDENT, "flags"), TOK_COLON);
-                        push_toks(toks, Token(uint64_t(0), CORETYPE_U32));
+                        uint64_t flags = 0;
+                        if(frag.args.alternate)
+                            flags |= 1 << 2;
+                        push_toks(toks, Token(uint64_t(flags), CORETYPE_U32));
                         push_toks(toks, TOK_COMMA);
 
                         push_toks(toks, Token(TOK_IDENT, "precision"), TOK_COLON );
