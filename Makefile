@@ -569,8 +569,6 @@ DISABLED_TESTS += run-pass/tydesc-name	# ^
 DISABLED_TESTS += run-pass/concat	# ^
 DISABLED_TESTS += run-pass/type-id-higher-rank-2	# lifetimes don't apply in type_id
 DISABLED_TESTS += run-pass/type-id-higher-rank	# ^
-# - BUG-Expand: Copy,Clone calls Clone for inner values instead of copying
-DISABLED_TESTS += run-pass/deriving-copyclone
 # - BUG-Expand: macro_rules
 DISABLED_TESTS += run-pass/macro-of-higher-order
 DISABLED_TESTS += run-pass/macro-pat	# :pat doesn't allow MACRO
@@ -582,8 +580,6 @@ DISABLED_TESTS += run-pass/stmt_expr_attr_macro_parse	# Orderign with :expr and 
 DISABLED_TESTS += run-pass/sync-send-iterators-in-libcollections	# .. should match :expr
 DISABLED_TESTS += run-pass/type-macros-hlist	# Mismatched arms
 # - BUG-Expand: format_args!
-DISABLED_TESTS += run-pass/fmt-pointer-trait
-DISABLED_TESTS += run-pass/format-ref-cell
 DISABLED_TESTS += run-pass/ifmt
 # - BUG-Expand: line/column macros don't work properly
 DISABLED_TESTS += run-pass/issue-26322
@@ -640,66 +636,53 @@ DISABLED_TESTS += run-pass/simd-generics	# "platform-intrinsics"
 DISABLED_TESTS += run-pass/simd-intrinsic-generic-arithmetic	# ^
 DISABLED_TESTS += run-pass/simd-intrinsic-generic-elements	# ^
 DISABLED_TESTS += run-pass/thread-local-extern-static	# Extern static not generated?
-# - BUG: Codegen drops
-DISABLED_TESTS += run-pass/extern_fat_drop
-DISABLED_TESTS += run-pass/mir_fat_ptr_drop	# fat Box doesn't run inner destructor
 # - BUG: Codegen
-DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior
 DISABLED_TESTS += run-pass/unsized3	# Pointer instead of fat pointer
 DISABLED_TESTS += run-pass/utf8_idents	# C backend doesn't support utf8 idents
-DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
-# - BUG: Enum variants not getting correct integer values
-DISABLED_TESTS += run-pass/discriminant_value
-DISABLED_TESTS += run-pass/const-nullary-univariant-enum
-DISABLED_TESTS += run-pass/enum-discr
-DISABLED_TESTS += run-pass/enum-disr-val-pretty
-DISABLED_TESTS += run-pass/enum-univariant-repr
-DISABLED_TESTS += run-pass/issue-15523-big
-DISABLED_TESTS += run-pass/issue-15523
-DISABLED_TESTS += run-pass/issue-23304-1
-DISABLED_TESTS += run-pass/issue-23304-2
-DISABLED_TESTS += run-pass/issue-2428
-DISABLED_TESTS += run-pass/issue-9837
-DISABLED_TESTS += run-pass/resolve-issue-2428
-DISABLED_TESTS += run-pass/signed-shift-const-eval
-DISABLED_TESTS += run-pass/small-enum-range-edge
-DISABLED_TESTS += run-pass/tag-variant-disr-val
-# - BUG: Null pointer opt not fully correct
-DISABLED_TESTS += run-pass/enum-null-pointer-opt
-DISABLED_TESTS += run-pass/nonzero-enum
-DISABLED_TESTS += run-pass/nullable-pointer-opt-closures
-DISABLED_TESTS += run-pass/nullable-pointer-size
-# - BUG: Incorrect enum sizing
-DISABLED_TESTS += run-pass/enum-discrim-autosizing
-DISABLED_TESTS += run-pass/enum-discrim-manual-sizing
-DISABLED_TESTS += run-pass/enum-discrim-width-stuff
-DISABLED_TESTS += run-pass/multiple-reprs	# no repr handling
-DISABLED_TESTS += run-pass/small-enums-with-fields
-DISABLED_TESTS += run-pass/type-sizes
-DISABLED_TESTS += run-pass/discrim-explicit-23030
-DISABLED_TESTS += run-pass/issue-13902
-# - BUG: Leaking contents of boxed trait objects
-DISABLED_TESTS += run-pass/drop-struct-as-object
-DISABLED_TESTS += run-pass/dynamic-drop
-DISABLED_TESTS += run-pass/issue-10802
-# - BUG: Bad floats
-DISABLED_TESTS += run-pass/float-nan
-DISABLED_TESTS += run-pass/float_math
-DISABLED_TESTS += run-pass/floatlits
-DISABLED_TESTS += run-pass/intrinsics-math
 # - BUG: Hygine
 DISABLED_TESTS += run-pass/hygiene
 DISABLED_TESTS += run-pass/hygienic-labels-in-let
 DISABLED_TESTS += run-pass/hygienic-labels
 DISABLED_TESTS += run-pass/macro-nested_stmt_macros	# hygine fires when it shouldn't
-# - BUG: Incorrect drop order of ?
-DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
-# - BUG: Incorrect consteval
-DISABLED_TESTS += run-pass/issue-23968-const-not-overflow	# !0 / 2 incorrect value
-# - BUG: Incorrect ordering of read in binops
-DISABLED_TESTS += run-pass/issue-27054-primitive-binary-ops
 # - ?? Is this valid
 DISABLED_TESTS += run-pass/const-enum-vec-index
+# - Test framework required
+DISABLED_TESTS += run-pass/core-run-destroy
+DISABLED_TESTS += run-pass/exec-env
+DISABLED_TESTS += run-pass/issue-16597-empty
+DISABLED_TESTS += run-pass/issue-16597	# NOTE: Crashes in resolve
+DISABLED_TESTS += run-pass/issue-20823
+DISABLED_TESTS += run-pass/issue-34932
+DISABLED_TESTS += run-pass/issue-36768
+DISABLED_TESTS += run-pass/reexport-test-harness-main
+DISABLED_TESTS += run-pass/test-fn-signature-verification-for-explicit-return-type
+DISABLED_TESTS += run-pass/test-main-not-dead-attr
+DISABLED_TESTS += run-pass/test-main-not-dead
+DISABLED_TESTS += run-pass/test-runner-hides-buried-main
+DISABLED_TESTS += run-pass/test-runner-hides-main
+DISABLED_TESTS += run-pass/test-runner-hides-start
+DISABLED_TESTS += run-pass/test-should-fail-good-message
+DISABLED_TESTS += run-pass/test-should-panic-attr
+# - Makefile test framework quirks
+DISABLED_TESTS += run-pass/issue-18913
+DISABLED_TESTS += run-pass/issue-2380-b
+DISABLED_TESTS += run-pass/issue-29485
+DISABLED_TESTS += run-pass/svh-add-comment
+DISABLED_TESTS += run-pass/svh-add-doc
+DISABLED_TESTS += run-pass/svh-add-macro
+DISABLED_TESTS += run-pass/svh-add-nothing
+DISABLED_TESTS += run-pass/svh-add-redundant-cfg
+DISABLED_TESTS += run-pass/svh-add-whitespace
+# - Target Features
+DISABLED_TESTS += run-pass/crt-static-on-works
+DISABLED_TESTS += run-pass/sse2
+# - Infinite loops
+DISABLED_TESTS += run-pass/issue-27890	# - Stack exhausted : Resolve
+DISABLED_TESTS += run-pass/project-cache-issue-31849
+# - Impl selection
+DISABLED_TESTS += run-pass/issue-23208
+DISABLED_TESTS += run-pass/xcrate-associated-type-defaults	# Failed to find an impl
+# --- Runtime Errors ---
 # - Line information that isn't avaliable due to codegen
 DISABLED_TESTS += run-pass/backtrace-debuginfo
 DISABLED_TESTS += run-pass/backtrace
@@ -734,43 +717,62 @@ DISABLED_TESTS += run-pass/unit-like-struct-drop-run
 DISABLED_TESTS += run-pass/unwind-resource
 DISABLED_TESTS += run-pass/unwind-unique
 DISABLED_TESTS += run-pass/vector-sort-panic-safe
-# - Test framework required
-DISABLED_TESTS += run-pass/core-run-destroy
-DISABLED_TESTS += run-pass/exec-env
-DISABLED_TESTS += run-pass/issue-16597-empty
-DISABLED_TESTS += run-pass/issue-16597	# NOTE: Crashes in resolve
-DISABLED_TESTS += run-pass/issue-20823
-DISABLED_TESTS += run-pass/issue-34932
-DISABLED_TESTS += run-pass/issue-36768
-DISABLED_TESTS += run-pass/reexport-test-harness-main
-DISABLED_TESTS += run-pass/test-fn-signature-verification-for-explicit-return-type
-DISABLED_TESTS += run-pass/test-main-not-dead-attr
-DISABLED_TESTS += run-pass/test-main-not-dead
-DISABLED_TESTS += run-pass/test-runner-hides-buried-main
-DISABLED_TESTS += run-pass/test-runner-hides-main
-DISABLED_TESTS += run-pass/test-runner-hides-start
-DISABLED_TESTS += run-pass/test-should-fail-good-message
-DISABLED_TESTS += run-pass/test-should-panic-attr
-# - Makefile test framework quirks
-DISABLED_TESTS += run-pass/issue-18913
-DISABLED_TESTS += run-pass/issue-2380-b
-DISABLED_TESTS += run-pass/issue-29485
-DISABLED_TESTS += run-pass/svh-add-comment
-DISABLED_TESTS += run-pass/svh-add-doc
-DISABLED_TESTS += run-pass/svh-add-macro
-DISABLED_TESTS += run-pass/svh-add-nothing
-DISABLED_TESTS += run-pass/svh-add-redundant-cfg
-DISABLED_TESTS += run-pass/svh-add-whitespace
-# - Target Features
-DISABLED_TESTS += run-pass/crt-static-on-works
-DISABLED_TESTS += run-pass/sse2
-# - Infinite loops
-DISABLED_TESTS += run-pass/issue-16671
-DISABLED_TESTS += run-pass/issue-27890	# - Stack exhausted : Resolve
-DISABLED_TESTS += run-pass/project-cache-issue-31849
-# - Impl selection
-DISABLED_TESTS += run-pass/issue-23208
-DISABLED_TESTS += run-pass/xcrate-associated-type-defaults	# Failed to find an impl
+# - Misc
+DISABLED_TESTS += run-pass/issue-16671	# Blocks forever
+# - BUG: Incorrect drop order of ?
+DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
+# - BUG: Incorrect consteval
+DISABLED_TESTS += run-pass/issue-23968-const-not-overflow	# !0 / 2 incorrect value
+# - BUG: Incorrect ordering of read in binops
+DISABLED_TESTS += run-pass/issue-27054-primitive-binary-ops
+# - BUG: Enum variants not getting correct integer values
+DISABLED_TESTS += run-pass/discriminant_value
+DISABLED_TESTS += run-pass/const-nullary-univariant-enum
+DISABLED_TESTS += run-pass/enum-discr
+DISABLED_TESTS += run-pass/enum-disr-val-pretty
+DISABLED_TESTS += run-pass/enum-univariant-repr
+DISABLED_TESTS += run-pass/issue-15523-big
+DISABLED_TESTS += run-pass/issue-15523
+DISABLED_TESTS += run-pass/issue-23304-1
+DISABLED_TESTS += run-pass/issue-23304-2
+DISABLED_TESTS += run-pass/issue-2428
+DISABLED_TESTS += run-pass/issue-9837
+DISABLED_TESTS += run-pass/resolve-issue-2428
+DISABLED_TESTS += run-pass/signed-shift-const-eval
+DISABLED_TESTS += run-pass/small-enum-range-edge
+DISABLED_TESTS += run-pass/tag-variant-disr-val
+# - BUG: Null pointer opt not fully correct
+DISABLED_TESTS += run-pass/enum-null-pointer-opt
+DISABLED_TESTS += run-pass/nonzero-enum
+DISABLED_TESTS += run-pass/nullable-pointer-opt-closures
+DISABLED_TESTS += run-pass/nullable-pointer-size
+# - BUG: Incorrect enum sizing
+DISABLED_TESTS += run-pass/enum-discrim-autosizing
+DISABLED_TESTS += run-pass/enum-discrim-manual-sizing
+DISABLED_TESTS += run-pass/enum-discrim-width-stuff
+DISABLED_TESTS += run-pass/multiple-reprs	# no repr handling
+DISABLED_TESTS += run-pass/small-enums-with-fields
+DISABLED_TESTS += run-pass/type-sizes
+DISABLED_TESTS += run-pass/discrim-explicit-23030
+DISABLED_TESTS += run-pass/issue-13902
+# - BUG: Leaking contents of boxed trait objects
+DISABLED_TESTS += run-pass/drop-struct-as-object
+DISABLED_TESTS += run-pass/dynamic-drop
+DISABLED_TESTS += run-pass/issue-10802
+DISABLED_TESTS += run-pass/extern_fat_drop
+DISABLED_TESTS += run-pass/mir_fat_ptr_drop	# fat Box doesn't run inner destructor
+# - BUG: Bad floats
+DISABLED_TESTS += run-pass/float-nan
+DISABLED_TESTS += run-pass/float_math
+DISABLED_TESTS += run-pass/floatlits
+DISABLED_TESTS += run-pass/intrinsics-math
+# - BUG: Codegen
+DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
+DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior
+# - BUG-Expand: format_args!
+DISABLED_TESTS += run-pass/format-ref-cell
+# - BUG-Expand: Copy,Clone calls Clone for inner values instead of copying
+DISABLED_TESTS += run-pass/deriving-copyclone
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass) $(call DEF_RUST_TESTS,run-pass/union))
