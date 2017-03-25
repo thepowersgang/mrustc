@@ -544,13 +544,46 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
                 return ;
             }
         )
-        else if( scope_def.data.is_Loop() )
+        else if( auto* sd_loop = scope_def.data.opt_Loop() )
         {
-            //TODO(sp, "Raising " << val << " to outside of a loop");
+            // If there is an exit state present, ensure that this variable is
+            // present in that state (as invalid, as it can't have been valid
+            // externally)
+            if( sd_loop->exit_state_valid )
+            {
+                DEBUG("Adding " << val << " as unset to loop exit state");
+                if( const auto* ve = val.opt_Variable() )
+                {
+                    auto v = sd_loop->exit_state.var_states.insert( ::std::make_pair(*ve, VarState(InvalidType::Uninit)) );
+                    ASSERT_BUG(sp, v.second, "Raising " << val << " which already had a state entry");
+                }
+                else if( const auto* ve = val.opt_Temporary() )
+                {
+                    auto v = sd_loop->exit_state.tmp_states.insert( ::std::make_pair(ve->idx, VarState(InvalidType::Uninit)) );
+                    ASSERT_BUG(sp, v.second, "Raising " << val << " which already had a state entry");
+                }
+                else {
+                    BUG(sp, "Impossible raise value");
+                }
+            }
+            else
+            {
+                DEBUG("Crossing loop with no existing exit state");
+            }
         }
         else if( scope_def.data.is_Split() )
         {
-            //TODO(sp, "Raising " << val << " to outside of a split");
+            auto& sd_split = scope_def.data.as_Split();
+            // If the split has already registered an exit state, ensure that
+            // this variable is present in it. (as invalid)
+            if( sd_split.end_state_valid )
+            {
+                TODO(sp, "Raising " << val << " to outside of a split");
+            }
+            else
+            {
+                DEBUG("Crossing split with no existing end state");
+            }
         }
         else
         {
@@ -1065,11 +1098,11 @@ void MirBuilder::terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_l
 
 void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool reachable)
 {
-    ASSERT_BUG(sp, handle.idx < m_scopes.size(), "");
+    ASSERT_BUG(sp, handle.idx < m_scopes.size(), "Handle passed to end_split_arm is invalid");
     auto& sd = m_scopes.at( handle.idx );
-    ASSERT_BUG(sp, sd.data.is_Split(), "");
+    ASSERT_BUG(sp, sd.data.is_Split(), "Ending split arm on non-Split arm - " << sd.data.tag_str());
     auto& sd_split = sd.data.as_Split();
-    ASSERT_BUG(sp, !sd_split.arms.empty(), "");
+    ASSERT_BUG(sp, !sd_split.arms.empty(), "Split arm list is empty (impossible)");
 
     TRACE_FUNCTION_F("end split scope " << handle.idx << " arm " << (sd_split.arms.size()-1));
     if( reachable )

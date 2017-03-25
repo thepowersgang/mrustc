@@ -409,9 +409,9 @@ namespace {
                 bool diverged = false;
 
                 auto res_val = (node.m_yields_final ? m_builder.new_temporary(node.m_res_type) : ::MIR::LValue());
+                auto scope = m_builder.new_scope_var(node.span());
                 auto tmp_scope = m_builder.new_scope_temp(node.span());
                 auto _block_tmp_scope = save_and_edit(m_block_tmp_scope, &tmp_scope);
-                auto scope = m_builder.new_scope_var(node.span());
 
                 for(unsigned int i = 0; i < node.m_nodes.size() - (node.m_yields_final ? 1 : 0); i ++)
                 {
@@ -452,15 +452,15 @@ namespace {
                         m_builder.push_stmt_assign(sp, res_val.clone(), m_builder.get_result(sp));
 
                         m_builder.terminate_scope(sp, mv$(stmt_scope));
-                        m_builder.terminate_scope(node.span(), mv$(scope) );
                         m_builder.terminate_scope(node.span(), mv$(tmp_scope) );
+                        m_builder.terminate_scope(node.span(), mv$(scope) );
                         m_builder.set_result( node.span(), mv$(res_val) );
                     }
                     else
                     {
                         m_builder.terminate_scope( sp, mv$(stmt_scope), false );
-                        m_builder.terminate_scope( node.span(), mv$(scope), false );
                         m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
+                        m_builder.terminate_scope( node.span(), mv$(scope), false );
                         // Block diverged in final node.
                     }
                 }
@@ -468,15 +468,15 @@ namespace {
                 {
                     if( diverged )
                     {
-                        m_builder.terminate_scope( node.span(), mv$(scope), false );
                         m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
+                        m_builder.terminate_scope( node.span(), mv$(scope), false );
                         m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
                         // Don't set a result if there's no block.
                     }
                     else
                     {
-                        m_builder.terminate_scope( node.span(), mv$(scope) );
                         m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
+                        m_builder.terminate_scope( node.span(), mv$(scope) );
                         m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
                     }
                 }
@@ -1990,6 +1990,7 @@ namespace {
             ::MIR::LValue   base_val;
             if( node.m_base_value )
             {
+                DEBUG("_StructLiteral - base");
                 this->visit_node_ptr(node.m_base_value);
                 base_val = m_builder.get_result_in_lvalue(node.m_base_value->span(), node.m_base_value->m_res_type);
             }
@@ -2028,6 +2029,7 @@ namespace {
                 auto idx = ::std::find_if(fields.begin(), fields.end(), [&](const auto&x){ return x.first == ent.first; }) - fields.begin();
                 assert( !values_set[idx] );
                 values_set[idx] = true;
+                DEBUG("_StructLiteral - fld '" << ent.first << "' (idx " << idx << ")");
                 this->visit_node_ptr(valnode);
 
                 auto res = m_builder.get_result(valnode->span());
@@ -2128,6 +2130,7 @@ namespace {
         void visit(::HIR::ExprNode_Closure& node) override
         {
             TRACE_FUNCTION_F("_Closure - " << node.m_obj_path);
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
             ::std::vector< ::MIR::Param>   vals;
             vals.reserve( node.m_captures.size() );
@@ -2174,6 +2177,8 @@ namespace {
         ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
         root_node.visit( ev );
     }
+
+    MIR_Validate(resolve, path, fcn, args, ptr->m_res_type);
 
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
 }
