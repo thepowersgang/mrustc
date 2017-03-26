@@ -336,7 +336,7 @@ DISABLED_TESTS += run-pass/abi-sysv64-register-usage
 DISABLED_TESTS += run-pass/asm-in-out-operand
 DISABLED_TESTS += run-pass/asm-indirect-memory
 DISABLED_TESTS += run-pass/asm-out-assign
-DISABLED_TESTS += run-pass/i128
+DISABLED_TESTS += run-pass/i128	# Unknown leader 'r'
 DISABLED_TESTS += run-pass/issue-14936
 DISABLED_TESTS += run-pass/issue-32947
 DISABLED_TESTS += run-pass/num-wrapping
@@ -433,23 +433,21 @@ DISABLED_TESTS += run-pass/dst-coercions
 DISABLED_TESTS += run-pass/dst-raw
 DISABLED_TESTS += run-pass/dst-trait
 # - Lazy (MIR)
-DISABLED_TESTS += run-pass/if-ret
-DISABLED_TESTS += run-pass/intrinsics-integer
-DISABLED_TESTS += run-pass/issue-11940
-DISABLED_TESTS += run-pass/issue-13620
-DISABLED_TESTS += run-pass/issue-13867
-DISABLED_TESTS += run-pass/issue-15080
-DISABLED_TESTS += run-pass/issue-15104
-DISABLED_TESTS += run-pass/issue-15763
+DISABLED_TESTS += run-pass/if-ret	# If condition wasn't a bool
+DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
+DISABLED_TESTS += run-pass/issue-11940	# todo: Match literal Borrow
+DISABLED_TESTS += run-pass/issue-13620	# - Todo in cleanup
 DISABLED_TESTS += run-pass/issue-17877	# - SplitSlice + array
 DISABLED_TESTS += run-pass/vec-matching-fixed	# ^
-DISABLED_TESTS += run-pass/issue-37598	# - SplitSlice in DTN
+DISABLED_TESTS += run-pass/issue-15104	# - SplitSlice in DTN
+DISABLED_TESTS += run-pass/issue-15080	# ^
+DISABLED_TESTS += run-pass/issue-37598	# ^
 DISABLED_TESTS += run-pass/vec-matching-fold	# ^
 DISABLED_TESTS += run-pass/vec-matching-legal-tail-element-borrow	# ^
 DISABLED_TESTS += run-pass/vec-tail-matching	# SplitSlice destructure array
 DISABLED_TESTS += run-pass/zero_sized_subslice_match	# ^
 DISABLED_TESTS += run-pass/issue-18060	# - Overlapping value ranges
-DISABLED_TESTS += run-pass/issue-18110	# - Missing value
+DISABLED_TESTS += run-pass/issue-13867	# ^
 DISABLED_TESTS += run-pass/issue-18352	# - Match+const
 DISABLED_TESTS += run-pass/issue-28839	# - Move &mut ?
 DISABLED_TESTS += run-pass/union/union-inherent-method	# ^ ?
@@ -457,16 +455,16 @@ DISABLED_TESTS += run-pass/issue-21306	# ^
 DISABLED_TESTS += run-pass/issue-28950	# - Stack overflow in vec!
 DISABLED_TESTS += run-pass/mir_heavy_promoted	# Stack overflow in array constant
 DISABLED_TESTS += run-pass/issue-29227	# - Excessive time in MIR lowering
-DISABLED_TESTS += run-pass/issue-30018-nopanic	# Missing value
+DISABLED_TESTS += run-pass/issue-15763	# No value avaliable
+DISABLED_TESTS += run-pass/issue-18110	# ^
+DISABLED_TESTS += run-pass/issue-30018-nopanic	# ^
 DISABLED_TESTS += run-pass/match-bot-2	# ^
 DISABLED_TESTS += run-pass/unreachable-code	# ^
 DISABLED_TESTS += run-pass/issue-36936	# - Cast removed
-DISABLED_TESTS += run-pass/issue-4734	# Destructor on unused rvalue
-DISABLED_TESTS += run-pass/issue-8860	# No argument drop
 DISABLED_TESTS += run-pass/mir_build_match_comparisons	# todo in match
-DISABLED_TESTS += run-pass/struct-order-of-eval-1	# Struct init order
+DISABLED_TESTS += run-pass/struct-order-of-eval-1	# Struct init order (fails validation)
 DISABLED_TESTS += run-pass/struct-order-of-eval-3	# ^
-DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to union field
+DISABLED_TESTS += run-pass/const-enum-vec-index	# This is valid code?
 # - Lazy (trans)
 DISABLED_TESTS += run-pass/issue-21058	# Empty trait object vtable
 DISABLED_TESTS += run-pass/issue-25515	# ^
@@ -478,31 +476,20 @@ DISABLED_TESTS += run-pass/transmute-specialization	# Opaque type hit?
 DISABLED_TESTS += run-pass/unit-fallback	# ! didn't default to ()
 # - HIR resolve
 DISABLED_TESTS += run-pass/union/union-generic	# Can't find associated type on type param
-# - Trans: No handling of repr()
-DISABLED_TESTS += run-pass/packed-struct-generic-layout
-DISABLED_TESTS += run-pass/packed-struct-generic-size
-DISABLED_TESTS += run-pass/packed-struct-layout
-DISABLED_TESTS += run-pass/packed-struct-size-xc
-DISABLED_TESTS += run-pass/packed-struct-size
-DISABLED_TESTS += run-pass/packed-struct-vec
-DISABLED_TESTS += run-pass/packed-tuple-struct-layout
-DISABLED_TESTS += run-pass/packed-tuple-struct-size
 # - Lazy (misc)
 DISABLED_TESTS += run-pass/issue-13494
 DISABLED_TESTS += run-pass/issue-6919	# Literal function pointer
 DISABLED_TESTS += run-pass/item-attributes	# Attributed function after last statement leads to last statement yielded
 DISABLED_TESTS += run-pass/new-box-syntax	# todo - placement syntax
 DISABLED_TESTS += run-pass/placement-in-syntax	# ^
-DISABLED_TESTS += run-pass/pat-tuple-1	# assertion in AVU
+DISABLED_TESTS += run-pass/pat-tuple-1	# assertion in "Annotate Value Usage"
 DISABLED_TESTS += run-pass/pat-tuple-2	# ^
 DISABLED_TESTS += run-pass/pat-tuple-3	# ^
 DISABLED_TESTS += run-pass/pat-tuple-4	# ^
 DISABLED_TESTS += run-pass/paths-in-macro-invocations	# MISSING: qualified macro paths
-DISABLED_TESTS += run-pass/process-spawn-with-unicode-params
 DISABLED_TESTS += run-pass/struct-path-associated-type	# non-absolute path for HIR::GenericPath
 DISABLED_TESTS += run-pass/struct-path-self	# ^
 DISABLED_TESTS += run-pass/ufcs-polymorphic-paths	# ^
-DISABLED_TESTS += run-pass/u128	# u128 not very good, unknown where error is
 # - Resolve
 DISABLED_TESTS += run-pass/issue-22546	# None::<u8> handling in patterns
 DISABLED_TESTS += run-pass/issue-29540	# Infinite recursion
@@ -580,7 +567,7 @@ DISABLED_TESTS += run-pass/stmt_expr_attr_macro_parse	# Orderign with :expr and 
 DISABLED_TESTS += run-pass/sync-send-iterators-in-libcollections	# .. should match :expr
 DISABLED_TESTS += run-pass/type-macros-hlist	# Mismatched arms
 # - BUG-Expand: format_args!
-DISABLED_TESTS += run-pass/ifmt
+DISABLED_TESTS += run-pass/ifmt	# Unknown formatting type specifier '*'
 # - BUG-Expand: line/column macros don't work properly
 DISABLED_TESTS += run-pass/issue-26322
 # - Expand
@@ -644,8 +631,6 @@ DISABLED_TESTS += run-pass/hygiene
 DISABLED_TESTS += run-pass/hygienic-labels-in-let
 DISABLED_TESTS += run-pass/hygienic-labels
 DISABLED_TESTS += run-pass/macro-nested_stmt_macros	# hygine fires when it shouldn't
-# - ?? Is this valid
-DISABLED_TESTS += run-pass/const-enum-vec-index
 # - Test framework required
 DISABLED_TESTS += run-pass/core-run-destroy
 DISABLED_TESTS += run-pass/exec-env
@@ -680,7 +665,7 @@ DISABLED_TESTS += run-pass/sse2
 DISABLED_TESTS += run-pass/issue-27890	# - Stack exhausted : Resolve
 DISABLED_TESTS += run-pass/project-cache-issue-31849
 # - Impl selection
-DISABLED_TESTS += run-pass/issue-23208
+DISABLED_TESTS += run-pass/issue-23208	# Couldn't find an impl for <T/*M:0*/ as ::TheSuperTrait<u32,>>::get
 DISABLED_TESTS += run-pass/xcrate-associated-type-defaults	# Failed to find an impl
 # --- Runtime Errors ---
 # - Line information that isn't avaliable due to codegen
@@ -717,6 +702,7 @@ DISABLED_TESTS += run-pass/unit-like-struct-drop-run
 DISABLED_TESTS += run-pass/unwind-resource
 DISABLED_TESTS += run-pass/unwind-unique
 DISABLED_TESTS += run-pass/vector-sort-panic-safe
+DISABLED_TESTS += run-pass/dynamic-drop
 # - Misc
 DISABLED_TESTS += run-pass/issue-16671	# Blocks forever
 # - BUG: Incorrect drop order of ?
@@ -755,24 +741,34 @@ DISABLED_TESTS += run-pass/small-enums-with-fields
 DISABLED_TESTS += run-pass/type-sizes
 DISABLED_TESTS += run-pass/discrim-explicit-23030
 DISABLED_TESTS += run-pass/issue-13902
-# - BUG: Leaking contents of boxed trait objects
-DISABLED_TESTS += run-pass/drop-struct-as-object
-DISABLED_TESTS += run-pass/dynamic-drop
-DISABLED_TESTS += run-pass/issue-10802
-DISABLED_TESTS += run-pass/extern_fat_drop
-DISABLED_TESTS += run-pass/mir_fat_ptr_drop	# fat Box doesn't run inner destructor
 # - BUG: Bad floats
 DISABLED_TESTS += run-pass/float-nan
 DISABLED_TESTS += run-pass/float_math
 DISABLED_TESTS += run-pass/floatlits
 DISABLED_TESTS += run-pass/intrinsics-math
+# - BUG: MIR Generation
+DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to union field
+DISABLED_TESTS += run-pass/issue-4734	# Destructor on unused rvalue
+DISABLED_TESTS += run-pass/issue-8860	# No drop of un-moved arguments
 # - BUG: Codegen
 DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
 DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior
+# - BUG: Codegen - No handling of repr()
+DISABLED_TESTS += run-pass/packed-struct-generic-layout
+DISABLED_TESTS += run-pass/packed-struct-generic-size
+DISABLED_TESTS += run-pass/packed-struct-layout
+DISABLED_TESTS += run-pass/packed-struct-size-xc
+DISABLED_TESTS += run-pass/packed-struct-size
+DISABLED_TESTS += run-pass/packed-struct-vec
+DISABLED_TESTS += run-pass/packed-tuple-struct-layout
+DISABLED_TESTS += run-pass/packed-tuple-struct-size
 # - BUG-Expand: format_args!
 DISABLED_TESTS += run-pass/format-ref-cell
 # - BUG-Expand: Copy,Clone calls Clone for inner values instead of copying
 DISABLED_TESTS += run-pass/deriving-copyclone
+# - BUG: Unknown
+DISABLED_TESTS += run-pass/process-spawn-with-unicode-params	# Bad path for process spawn
+DISABLED_TESTS += run-pass/u128	# u128 not very good, unknown where error is
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass) $(call DEF_RUST_TESTS,run-pass/union))
