@@ -990,6 +990,7 @@ void Trans_Enumerate_Types(EnumState& state)
                 tv.m_resolve.expand_associated_types( sp, vtable_params.m_types[idx] );
             }
 
+            tv.visit_type( *ent.first.m_data.as_UfcsKnown().type );
             tv.visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
         }
 

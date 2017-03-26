@@ -65,7 +65,7 @@ namespace {
                 << "typedef struct { } tTYPEID;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
-                << "typedef struct { size_t size; size_t align; } VTABLE_HDR;\n"
+                << "typedef struct { size_t size; size_t align; void (*drop)(void*); } VTABLE_HDR;\n"
                 << "\n"
                 << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                 << "\n"
@@ -97,6 +97,8 @@ namespace {
                 << "static inline unsigned __int128 __builtin_ctz128(unsigned __int128 v) {\n"
                 << "\treturn (v&0xFFFFFFFFFFFFFFFF == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
                 << "}\n"
+                << "\n"
+                << "static inline void noop_drop(void *p) {}\n"
                 << "\n"
                 ;
         }
@@ -311,6 +313,21 @@ namespace {
                     }
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
                 }
+
+                auto drop_glue_path = ::HIR::Path(ty.clone(), "#drop_glue");
+                auto args = ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> >();
+                auto ty_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ty.clone());
+                ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), ty_ptr, args, *(::MIR::Function*)nullptr };
+                m_mir_res = &mir_res;
+                m_of << "void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {";
+                auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+                auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                for(const auto& ity : te)
+                {
+                    emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false);
+                    fld_lv.as_Field().field_index ++;
+                }
+                m_of << "}\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
                 emit_type_fn(ty);
@@ -407,7 +424,7 @@ namespace {
 
             ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
             if( item.m_markings.has_drop_impl ) {
-                m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
+                m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
             }
             else if( m_resolve.is_type_owned_box(struct_ty) )
             {
@@ -1179,7 +1196,14 @@ namespace {
             m_of << "\t{ ";
             m_of << "sizeof("; emit_ctype(type); m_of << "),";
             m_of << "__alignof__("; emit_ctype(type); m_of << "),";
-            // TODO: Drop glue pointer
+            if( type.m_data.is_Borrow() || m_resolve.type_is_copy(sp, type) )
+            {
+                m_of << "noop_drop,";
+            }
+            else
+            {
+                m_of << "(void*)" << Trans_Mangle(::HIR::Path(type.clone(), "#drop_glue")) << ",";
+            }
             m_of << "}";    // No newline, added below
 
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
@@ -2439,7 +2463,17 @@ namespace {
                     make_fcn = "make_sliceptr"; if(0)
                 case MetadataType::TraitObject:
                     make_fcn = "make_traitobjptr";
-                    m_of << "\t" << Trans_Mangle(p) << "( " << make_fcn << "(&"; emit_lvalue(slot); m_of << ", ";
+                    m_of << "\t" << Trans_Mangle(p) << "( " << make_fcn << "(";
+                    if( slot.is_Deref() )
+                    {
+                        emit_lvalue(*slot.as_Deref().val);
+                        m_of << ".PTR";
+                    }
+                    else
+                    {
+                        m_of << "&"; emit_lvalue(slot);
+                    }
+                    m_of << ", ";
                     const auto* lvp = &slot;
                     while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
                     MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
@@ -2474,13 +2508,31 @@ namespace {
                 ),
             (TraitObject,
                 MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping TraitObject without a pointer");
-                //MIR_ASSERT(*m_mir_res, slot.is_Deref(), "Dropping a TraitObject through a non-Deref");
                 // Call destructor in vtable
+                const auto* lvp = &slot;
+                while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
+                MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
+                m_of << "((VTABLE_HDR*)"; emit_lvalue(*lvp->as_Deref().val); m_of << ".META)->drop(";
+                if( const auto* ve = slot.opt_Deref() )
+                {
+                    emit_lvalue(*ve->val); m_of << ".PTR";
+                }
+                else
+                {
+                    m_of << "&"; emit_lvalue(slot);
+                }
+                m_of << ");";
                 ),
             (Slice,
                 MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping Slice without a pointer");
-                //MIR_ASSERT(*m_mir_res, slot.is_Deref(), "Dropping a slice through a non-Deref");
+                const auto* lvp = &slot;
+                while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
+                MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
                 // Call destructor on all entries
+                m_of << "for(unsigned i = 0; i < "; emit_lvalue(*lvp->as_Deref().val); m_of << ".META; i++) {";
+                m_of << "\t\t";
+                emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Temporary({~0u})) }), *te.inner, false);
+                m_of << "\n\t}";
                 )
             )
         }
@@ -2680,7 +2732,10 @@ namespace {
                 m_of << "var" << e;
                 ),
             (Temporary,
-                m_of << "tmp" << e.idx;
+                if( e.idx == ~0u )
+                    m_of << "i";
+                else
+                    m_of << "tmp" << e.idx;
                 ),
             (Argument,
                 m_of << "arg" << e.idx;
@@ -2733,11 +2788,11 @@ namespace {
                 ::HIR::TypeRef  tmp;
                 const auto& ty = m_mir_res->get_lvalue_type(tmp, val);
                 auto dst_type = metadata_type(ty);
-                if( dst_type != MetadataType:: None )
+                if( dst_type != MetadataType::None )
                 {
                     m_of << "(*("; emit_ctype(ty); m_of << "*)";
                     emit_lvalue(*e.val);
-                    m_of << ")";
+                    m_of << ".PTR)";
                 }
                 else
                 {
