@@ -14,8 +14,8 @@ Current Features
 - Resolves all paths to absolute forms
 - Converts name-resolved AST into a more compact "HIR" (simplified module and expression tree)
 - Hackily evaluates constants
- - Constant evaluation is done by using duck-typing, which is then validated by the Type Check pass
- - This is how rustc did (or still does?) const eval before MIR
+  - Constant evaluation is done by using duck-typing, which is then validated by the Type Check pass
+  - This is how rustc did (or still does?) const eval before MIR
 - Type inference and checking
 - Closure and operator desugaring
 - MIR generation (with partial validation pass)
@@ -39,5 +39,5 @@ Progress
 - Compiles the standard library into loadable MIR
 - Compiles the "hello, world" test into compilable and running C code
 - Compiles `rustc`
- - Generated code is likely not correct
+  - Generated code is likely not correct
 
