@@ -375,7 +375,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     // - A way would be to search for `_` rules with non _ rules following. Would false-positive in some cases, but shouldn't false negative
     // TODO: Merge equal rulesets if there's one with no condition.
 
-    if( fall_back_on_simple ) {
+    if( true || fall_back_on_simple ) {
         MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
     }
     else {
@@ -1649,7 +1649,38 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 break;
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64:
-                TODO(sp, "Simple match over float - " << ty);
+                TU_MATCH_DEF( PatternRule, (rule), (re),
+                (
+                    BUG(sp, "PatternRule for float is not Value or ValueRange");
+                    ),
+                (Value,
+                    auto succ_bb = builder.new_bb_unlinked();
+
+                    auto test_val = ::MIR::Param(::MIR::Constant::make_Float({ re.as_Float().v, te }));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                    builder.set_cur_block(succ_bb);
+                    ),
+                (ValueRange,
+                    auto succ_bb = builder.new_bb_unlinked();
+                    auto test_bb_2 = builder.new_bb_unlinked();
+
+                    auto test_lt_val = ::MIR::Param(::MIR::Constant::make_Float({ re.first.as_Float().v, te }));
+                    auto test_gt_val = ::MIR::Param(::MIR::Constant::make_Float({ re.last.as_Float().v, te }));
+
+                    // IF `val` < `first` : fail_bb
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, mv$(test_lt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
+
+                    builder.set_cur_block(test_bb_2);
+
+                    // IF `val` > `last` : fail_bb
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
+
+                    builder.set_cur_block(succ_bb);
+                    )
+                )
                 break;
             case ::HIR::CoreType::Str: {
                 ASSERT_BUG(sp, rule.is_Value() && rule.as_Value().is_StaticString(), "");
@@ -1690,7 +1721,11 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 TODO(sp, "Match over Union");
                 ),
             (Enum,
-                auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty); };
+                auto monomorph = [&](const auto& ty) {
+                    auto rv = monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty);
+                    builder.resolve().expand_associated_types(sp, rv);
+                    return rv;
+                    };
                 ASSERT_BUG(sp, rule.is_Variant(), "Rule for enum isn't Any or Variant");
                 const auto& re = rule.as_Variant();
                 unsigned int var_idx = re.idx;
