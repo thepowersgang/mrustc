@@ -68,24 +68,56 @@ static inline Ordering ord(bool l, bool r)
     else
         return OrdLess;
 }
+static inline Ordering ord(char l, char r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+
+static inline Ordering ord(unsigned char l, unsigned char r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+static inline Ordering ord(unsigned short l, unsigned short r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
 static inline Ordering ord(unsigned l, unsigned r)
 {
-    if(l == r)
-        return OrdEqual;
-    else if( l > r )
-        return OrdGreater;
-    else
-        return OrdLess;
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
 }
-static inline Ordering ord(::std::uintptr_t l, ::std::uintptr_t r)
+static inline Ordering ord(unsigned long l, unsigned long r)
 {
-    if(l == r)
-        return OrdEqual;
-    else if( l > r )
-        return OrdGreater;
-    else
-        return OrdLess;
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
 }
+static inline Ordering ord(unsigned long long l, unsigned long long r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+static inline Ordering ord(signed char l, signed char r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+static inline Ordering ord(short l, short r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+static inline Ordering ord(long l, long r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+static inline Ordering ord(long long l, long long r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+static inline Ordering ord(float l, float r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+static inline Ordering ord(double l, double r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
+
 static inline Ordering ord(const ::std::string& l, const ::std::string& r)
 {
     if(l == r)

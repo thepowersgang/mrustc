@@ -33,8 +33,6 @@ struct field_path_t
 };
 
 TAGGED_UNION_EX(PatternRule, (), Any,(
-    // _ pattern
-    (Any, struct {}),
     // Enum variant
     (Variant, struct { unsigned int idx; ::std::vector<PatternRule> sub_rules; }),
     // Slice (includes desired length)
@@ -46,11 +44,24 @@ TAGGED_UNION_EX(PatternRule, (), Any,(
     (Bool, bool),
     // General value
     (Value, ::MIR::Constant),
-    (ValueRange, struct { ::MIR::Constant first, last; })
+    (ValueRange, struct { ::MIR::Constant first, last; }),
+    // _ pattern
+    (Any, struct {})
     ),
     ( , field_path(mv$(x.field_path)) ), (field_path = mv$(x.field_path);),
     (
         field_path_t    field_path;
+
+        bool operator<(const PatternRule& x) const {
+            return this->ord(x) == OrdLess;
+        }
+        bool operator==(const PatternRule& x) const {
+            return this->ord(x) == OrdEqual;
+        }
+        bool operator!=(const PatternRule& x) const {
+            return this->ord(x) != OrdEqual;
+        }
+        Ordering ord(const PatternRule& x) const;
     )
     );
 ::std::ostream& operator<<(::std::ostream& os, const PatternRule& x);
@@ -74,11 +85,14 @@ struct ArmCode {
     ::MIR::BasicBlockId   cond_end;
     ::MIR::LValue   cond_lval;
     ::std::vector< ::MIR::BasicBlockId> destructures;   // NOTE: Incomplete
+
+    mutable ::MIR::BasicBlockId cond_fail_tgt = 0;
 };
 
 typedef ::std::vector<PatternRuleset>  t_arm_rules;
 
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code, ::MIR::BasicBlockId first_cmp_block);
+void MIR_LowerHIR_Match_Grouped( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block );
 void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code , ::MIR::BasicBlockId first_cmp_block);
 /// Helper to construct rules from a passed pattern
 struct PatternRulesetBuilder
@@ -102,6 +116,82 @@ struct PatternRulesetBuilder
     void append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty);
     void push_rule(PatternRule r);
 };
+
+class RulesetRef
+{
+    ::std::vector<PatternRuleset>*  m_rules_vec = nullptr;
+    RulesetRef* m_parent = nullptr;
+    size_t  m_parent_ofs=0; // If len == 0, this is the innner index, else it's the base
+    size_t  m_parent_len=0;
+public:
+    RulesetRef(::std::vector<PatternRuleset>& rules):
+        m_rules_vec(&rules)
+    {
+    }
+    RulesetRef(RulesetRef& parent, size_t start, size_t n):
+        m_parent(&parent),
+        m_parent_ofs(start),
+        m_parent_len(n)
+    {
+    }
+    RulesetRef(RulesetRef& parent, size_t idx):
+        m_parent(&parent),
+        m_parent_ofs(idx)
+    {
+    }
+
+    size_t size() const {
+        if( m_rules_vec ) {
+            return m_rules_vec->size();
+        }
+        else if( m_parent_len ) {
+            return m_parent_len;
+        }
+        else {
+            return m_parent->size();
+        }
+    }
+    RulesetRef slice(size_t s, size_t n) {
+        return RulesetRef(*this, s, n);
+    }
+
+    const ::std::vector<PatternRule>& operator[](size_t i) const {
+        if( m_rules_vec ) {
+            return (*m_rules_vec)[i].m_rules;
+        }
+        else if( m_parent_len ) {
+            return (*m_parent)[m_parent_ofs + i];
+        }
+        else {
+            // Fun part - Indexes into inner patterns
+            const auto& parent_rule = (*m_parent)[i][m_parent_ofs];
+            if(const auto* re = parent_rule.opt_Variant()) {
+                return re->sub_rules;
+            }
+            else {
+                throw "TODO";
+            }
+        }
+    }
+    void swap(size_t a, size_t b) {
+        TRACE_FUNCTION_F(a << ", " << b);
+        if( m_rules_vec ) {
+            ::std::swap( (*m_rules_vec)[a], (*m_rules_vec)[b] );
+        }
+        else {
+            assert(m_parent);
+            if( m_parent_len ) {
+                m_parent->swap(m_parent_ofs + a, m_parent_ofs + b);
+            }
+            else {
+                m_parent->swap(a, b);
+            }
+        }
+    }
+};
+
+void sort_rulesets(RulesetRef rulesets, size_t idx=0);
+void sort_rulesets_inner(RulesetRef rulesets, size_t idx);
 
 // --------------------------------------------------------------------
 // CODE
@@ -366,20 +456,54 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
     for(const auto& arm_rule : arm_rules)
     {
-        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules);
+        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules
+                << (arm_code[arm_rule.arm_idx].has_condition ? " (cond)" : ""));
+    }
+
+    // TODO: Remove columns that are all `_`?
+    // - Ideally, only accessible structures would be fully destructured like this.
+
+    // Sort rules using the following restrictions:
+    // - A rule cannot be reordered across an item that has an overlapping match set
+    //  > e.g. nothing can cross _
+    //  > equal rules cannot be reordered
+    //  > Values cannot cross ranges that contain the value
+    //  > This will have to be a bubble sort to ensure that it's correctly stable.
+    sort_rulesets(arm_rules);
+    DEBUG("Post-sort");
+    for(const auto& arm_rule : arm_rules)
+    {
+        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules
+                << (arm_code[arm_rule.arm_idx].has_condition ? " (cond)" : ""));
+    }
+    // De-duplicate arms (emitting a warning when it happens)
+    // - This allows later code to assume that duplicate arms are a codegen bug.
+    if( ! arm_rules.empty() )
+    {
+        for(auto it = arm_rules.begin()+1; it != arm_rules.end(); )
+        {
+            // If duplicate rule, (and neither is conditional)
+            if( (it-1)->m_rules == it->m_rules && !arm_code[it->arm_idx].has_condition && !arm_code[(it-1)->arm_idx].has_condition )
+            {
+                // Remove
+                it = arm_rules.erase(it);
+                WARNING(node.m_arms[it->arm_idx].m_code->span(), W0000, "Duplicate match pattern, unreachable code");
+            }
+            else
+            {
+                ++ it;
+            }
+        }
     }
 
     // TODO: Don't generate inner code until decisions are generated (keeps MIR flow nice)
 
-    // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
-    // - A way would be to search for `_` rules with non _ rules following. Would false-positive in some cases, but shouldn't false negative
-    // TODO: Merge equal rulesets if there's one with no condition.
-
-    if( true || fall_back_on_simple ) {
+    if( fall_back_on_simple ) {
         MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
     }
     else {
-        MIR_LowerHIR_Match_DecisionTree( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
+        MIR_LowerHIR_Match_Grouped( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
+        //MIR_LowerHIR_Match_DecisionTree( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
     }
 
     builder.set_cur_block( next_block );
@@ -424,6 +548,56 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     return os;
 }
 
+::Ordering PatternRule::ord(const PatternRule& x) const
+{
+    if(tag() != x.tag())
+    {
+        return tag() < x.tag() ? ::OrdLess : ::OrdGreater;
+    }
+    TU_MATCHA( (*this, x), (te, xe),
+    (Any, return OrdEqual;),
+    (Variant,
+        if(te.idx != xe.idx)    return ::ord(te.idx, xe.idx);
+        assert( te.sub_rules.size() == xe.sub_rules.size() );
+        for(unsigned int i = 0; i < te.sub_rules.size(); i ++)
+        {
+            auto cmp = te.sub_rules[i].ord( xe.sub_rules[i] );
+            if( cmp != ::OrdEqual )
+                return cmp;
+        }
+        return ::OrdEqual;
+        ),
+    (Slice,
+        if(te.len != xe.len)    return ::ord(te.len, xe.len);
+        // Wait? Why would the rule count be the same?
+        assert( te.sub_rules.size() == xe.sub_rules.size() );
+        for(unsigned int i = 0; i < te.sub_rules.size(); i ++)
+        {
+            auto cmp = te.sub_rules[i].ord( xe.sub_rules[i] );
+            if( cmp != ::OrdEqual )
+                return cmp;
+        }
+        return ::OrdEqual;
+        ),
+    (SplitSlice,
+        auto rv = ::ord( te.leading, xe.leading );
+        if(rv != OrdEqual)  return rv;
+        return ::ord(te.trailing, xe.trailing);
+        ),
+    (Bool,
+        return ::ord( te, xe );
+        ),
+    (Value,
+        return ::ord( te, xe );
+        ),
+    (ValueRange,
+        if( te.first != xe.first )
+            return ::ord(te.first, xe.first);
+        return ::ord(te.last, xe.last);
+        )
+    )
+    throw "";
+}
 ::Ordering PatternRuleset::rule_is_before(const PatternRule& l, const PatternRule& r)
 {
     if( l.tag() != r.tag() ) {
@@ -1281,6 +1455,227 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
 }
 
 namespace {
+    // Order rules ignoring inner rules
+    Ordering ord_rule_compatible(const PatternRule& a, const PatternRule& b)
+    {
+        if(a.tag() != b.tag())
+            return ::ord( (unsigned)a.tag(), b.tag() );
+
+        TU_MATCHA( (a, b), (ae, be),
+        (Any,
+            return OrdEqual;
+            ),
+        (Variant,
+            return ::ord(ae.idx, be.idx);
+            ),
+        (Slice,
+            return ::ord(ae.len, be.len);
+            ),
+        (SplitSlice,
+            auto v = ::ord(ae.leading.size(), be.leading.size());
+            if(v != OrdEqual)   return v;
+            v = ::ord(ae.trailing.size(), be.trailing.size());
+            if(v != OrdEqual)   return v;
+            return OrdEqual;
+            ),
+        (Bool,
+            return ::ord(ae, be);
+            ),
+        (Value,
+            return ::ord(ae, be);
+            ),
+        (ValueRange,
+            auto v = ::ord(ae.first, be.first);
+            if(v != OrdEqual)   return v;
+            return ::ord(ae.last, be.last);
+            )
+        )
+        throw "";
+    }
+    bool rule_compatible(const PatternRule& a, const PatternRule& b)
+    {
+        return ord_rule_compatible(a,b) == OrdEqual;
+    }
+
+    bool rules_overlap(const PatternRule& a, const PatternRule& b)
+    {
+        if( a.is_Any() || b.is_Any() )
+            return true;
+
+        // Defensive: If a constant is encountered, assume it overlaps with anything
+        if(const auto* ae = a.opt_Value()) {
+            if(ae->is_Const())
+                return true;
+        }
+        if(const auto* be = b.opt_Value()) {
+            if(be->is_Const())
+                return true;
+        }
+
+        // Value Range: Overlaps with contained values.
+        if(const auto* ae = a.opt_ValueRange() )
+        {
+            if(const auto* be = b.opt_Value() )
+            {
+                return ( ae->first <= *be && *be <= ae->last );
+            }
+            else if( const auto* be = b.opt_ValueRange() )
+            {
+                // Start of B within A
+                if( ae->first <= be->first && be->first <= ae->last )
+                    return true;
+                // End of B within A
+                if( ae->first <= be->last && be->last <= ae->last )
+                    return true;
+                // Start of A within B
+                if( be->first <= ae->first && ae->first <= be->last )
+                    return true;
+                // End of A within B
+                if( be->first <= ae->last && ae->last <= be->last )
+                    return true;
+
+                // Disjoint
+                return false;
+            }
+            else
+            {
+                TODO(Span(), "Check overlap of " << a << " and " << b);
+            }
+        }
+        if(const auto* be = b.opt_ValueRange())
+        {
+            if(const auto* ae = a.opt_Value() )
+            {
+                return (be->first <= *ae && *ae <= be->last);
+            }
+            // Note: A can't be ValueRange
+            else
+            {
+                TODO(Span(), "Check overlap of " << a << " and " << b);
+            }
+        }
+
+        // SplitSlice patterns overlap with other SplitSlice patterns and larger slices
+        if(const auto* ae = a.opt_SplitSlice())
+        {
+            if( b.is_SplitSlice() )
+            {
+                return true;
+            }
+            else if( const auto* be = b.opt_Slice() )
+            {
+                return be->len >= ae->min_len;
+            }
+            else
+            {
+                TODO(Span(), "Check overlap of " << a << " and " << b);
+            }
+        }
+        if(const auto* be = b.opt_SplitSlice())
+        {
+            if( const auto* ae = a.opt_Slice() )
+            {
+                return ae->len >= be->min_len;
+            }
+            else
+            {
+                TODO(Span(), "Check overlap of " << a << " and " << b);
+            }
+        }
+
+        // Otherwise, If rules are approximately equal, they overlap
+        return ( ord_rule_compatible(a, b) == OrdEqual );
+    }
+}
+void sort_rulesets(RulesetRef rulesets, size_t idx)
+{
+    if(rulesets.size() < 2)
+        return ;
+
+    bool found_non_any = false;
+    for(size_t i = 0; i < rulesets.size(); i ++)
+        if( !rulesets[i][idx].is_Any() )
+            found_non_any = true;
+    if( found_non_any )
+    {
+        TRACE_FUNCTION_F(idx);
+        for(size_t i = 0; i < rulesets.size(); i ++)
+            DEBUG("- " << i << ": " << rulesets[i]);
+
+        bool action_taken;
+        do
+        {
+            action_taken = false;
+            for(size_t i = 0; i < rulesets.size()-1; i ++)
+            {
+                if( rules_overlap(rulesets[i][idx], rulesets[i+1][idx]) )
+                {
+                    // Don't move
+                }
+                else if( ord_rule_compatible(rulesets[i][idx], rulesets[i+1][idx]) == OrdGreater )
+                {
+                    rulesets.swap(i, i+1);
+                    action_taken = true;
+                }
+                else
+                {
+                }
+            }
+        } while(action_taken);
+        for(size_t i = 0; i < rulesets.size(); i ++)
+            DEBUG("- " << i << ": " << rulesets[i]);
+
+        // TODO: Print sorted ruleset
+
+        // Where compatible, sort insides
+        size_t  start = 0;
+        for(size_t i = 1; i < rulesets.size(); i++)
+        {
+            if( ord_rule_compatible(rulesets[i][idx], rulesets[start][idx]) != OrdEqual )
+            {
+                sort_rulesets_inner(rulesets.slice(start, i-start), idx);
+                start = i;
+            }
+        }
+        sort_rulesets_inner(rulesets.slice(start, rulesets.size()-start), idx);
+
+        // Iterate onwards where rules are equal
+        if( idx + 1 < rulesets[0].size() )
+        {
+            size_t  start = 0;
+            for(size_t i = 1; i < rulesets.size(); i++)
+            {
+                if( rulesets[i][idx] != rulesets[start][idx] )
+                {
+                    sort_rulesets(rulesets.slice(start, i-start), idx+1);
+                    start = i;
+                }
+            }
+            sort_rulesets(rulesets.slice(start, rulesets.size()-start), idx+1);
+        }
+    }
+    else
+    {
+        if( idx + 1 < rulesets[0].size() )
+        {
+            sort_rulesets(rulesets, idx + 1);
+        }
+    }
+}
+void sort_rulesets_inner(RulesetRef rulesets, size_t idx)
+{
+    TRACE_FUNCTION_F(idx << " - " << rulesets[0][idx].tag_str());
+    if( const auto* re = rulesets[0][idx].opt_Variant() )
+    {
+        // Sort rules based on contents of enum
+        if( re->sub_rules.size() > 0 )
+        {
+            sort_rulesets(RulesetRef(rulesets, idx), 0);
+        }
+    }
+}
+
+namespace {
     void get_ty_and_val(
         const Span& sp, const StaticTraitResolve& resolve,
         const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
@@ -1437,7 +1832,6 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
     TRACE_FUNCTION;
 
     // 1. Generate pattern matches
-    unsigned int rule_idx = 0;
     builder.set_cur_block( first_cmp_block );
     for( unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++ )
     {
@@ -1451,6 +1845,10 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             if( arm_code.destructures[i] == 0 )
                 continue ;
 
+            size_t rule_idx = 0;
+            for(; rule_idx < arm_rules.size(); rule_idx++)
+                if( arm_rules[rule_idx].arm_idx == arm_idx && arm_rules[rule_idx].pat_idx == i )
+                    break;
             const auto& pat_rule = arm_rules[rule_idx];
             bool is_last_pat = (i+1 == arm.m_patterns.size());
             auto next_pattern_bb = (!is_last_pat ? builder.new_bb_unlinked() : next_arm_bb);
@@ -1478,8 +1876,6 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             {
                 builder.set_cur_block( next_pattern_bb );
             }
-
-            rule_idx ++;
         }
         if( arm_code.has_condition )
         {
@@ -1898,6 +2294,974 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         )
     }
     return 0;
+}
+
+// --
+// Match v2 Algo - Grouped rules
+// --
+
+
+class t_rules_subset
+{
+    ::std::vector<const ::std::vector<PatternRule>*>    rule_sets;
+    bool is_arm_indexes;
+    ::std::vector<size_t>   arm_idxes;
+public:
+    t_rules_subset(size_t exp, bool is_arm_indexes):
+        is_arm_indexes(is_arm_indexes)
+    {
+        rule_sets.reserve(exp);
+        arm_idxes.reserve(exp);
+    }
+
+    size_t size() const {
+        return rule_sets.size();
+    }
+    const ::std::vector<PatternRule>& operator[](size_t n) const {
+        return *rule_sets[n];
+    }
+    bool is_arm() const { return is_arm_indexes; }
+    ::std::pair<size_t,size_t> arm_idx(size_t n) const {
+        assert(is_arm_indexes);
+        auto v = arm_idxes.at(n);
+        return ::std::make_pair(v & 0xFFF, v >> 12);
+    }
+    ::MIR::BasicBlockId bb_idx(size_t n) const {
+        assert(!is_arm_indexes);
+        return arm_idxes.at(n);
+    }
+
+    void sub_sort(size_t ofs, size_t start, size_t n)
+    {
+        ::std::vector<size_t>   v;
+        for(size_t i = 0; i < n; i++)
+            v.push_back(start + i);
+        // Sort rules based on just the value (ignore inner rules)
+        ::std::stable_sort( v.begin(), v.end(), [&](auto a, auto b){ return ord_rule_compatible( (*rule_sets[a])[ofs], (*rule_sets[b])[ofs]) == OrdLess; } );
+
+        // Reorder contents to above sorting
+        {
+            decltype(this->rule_sets)   tmp;
+            for(auto i : v)
+                tmp.push_back(rule_sets[i]);
+            ::std::copy( tmp.begin(), tmp.end(), rule_sets.begin() + start );
+        }
+        {
+            decltype(this->arm_idxes)   tmp;
+            for(auto i : v)
+                tmp.push_back(arm_idxes[i]);
+            ::std::copy( tmp.begin(), tmp.end(), arm_idxes.begin() + start );
+        }
+    }
+
+    t_rules_subset sub_slice(size_t ofs, size_t n)
+    {
+        t_rules_subset  rv { n, this->is_arm_indexes };
+        rv.rule_sets.reserve(n);
+        for(size_t i = 0; i < n; i++)
+        {
+            rv.rule_sets.push_back( this->rule_sets[ofs+i] );
+            rv.arm_idxes.push_back( this->arm_idxes[ofs+i] );
+        }
+        return rv;
+    }
+    void push_arm(const ::std::vector<PatternRule>& x, size_t arm_idx, size_t pat_idx)
+    {
+        assert(is_arm_indexes);
+        rule_sets.push_back(&x);
+        assert(arm_idx <= 0xFFF);
+        assert(pat_idx <= 0xFFF);
+        arm_idxes.push_back(arm_idx | (pat_idx << 12));
+    }
+    void push_bb(const ::std::vector<PatternRule>& x, ::MIR::BasicBlockId bb)
+    {
+        assert(!is_arm_indexes);
+        rule_sets.push_back(&x);
+        arm_idxes.push_back(bb);
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const t_rules_subset& x) {
+        os << "t_rules_subset{";
+        for(size_t i = 0; i < x.rule_sets.size(); i ++)
+        {
+            if(i != 0)
+                os << ", ";
+            os << "[";
+            if(x.is_arm_indexes)
+            {
+                os << (x.arm_idxes[i] & 0xFFF) << "," << (x.arm_idxes[i] >> 12);
+            }
+            else
+            {
+                os << "bb" << x.arm_idxes[i];
+            }
+            os << "]";
+            os << ": " << *x.rule_sets[i];
+        }
+        os << "}";
+        return os;
+    }
+};
+
+class MatchGenGrouped
+{
+    const Span& sp;
+    MirBuilder& m_builder;
+    const ::HIR::TypeRef& m_top_ty;
+    const ::MIR::LValue& m_top_val;
+    const ::std::vector<ArmCode>& m_arms_code;
+
+    size_t m_field_path_ofs;
+public:
+    MatchGenGrouped(MirBuilder& builder, const Span& sp, const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val, const ::std::vector<ArmCode>& arms_code, size_t field_path_ofs):
+        sp(sp),
+        m_builder(builder),
+        m_top_ty(top_ty),
+        m_top_val(top_val),
+        m_arms_code(arms_code),
+        m_field_path_ofs(field_path_ofs)
+    {
+    }
+
+    void gen_for_slice(t_rules_subset rules, size_t ofs, ::MIR::BasicBlockId default_arm);
+    void gen_dispatch(const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch__enum(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
+
+    void gen_dispatch_range(const field_path_t& field_path, const ::MIR::Constant& first, const ::MIR::Constant& last, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch_splitslice(const field_path_t& field_path, const PatternRule::Data_SplitSlice& e, ::MIR::BasicBlockId def_blk);
+
+    ::MIR::LValue push_compare(::MIR::LValue left, ::MIR::eBinOp op, ::MIR::Param right)
+    {
+        return m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool,
+                ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) })
+                );
+    }
+};
+
+void MIR_LowerHIR_Match_Grouped(
+        MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val,
+        t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block
+        )
+{
+    TRACE_FUNCTION_F("");
+
+    // - Create a "slice" of the passed rules, suitable for passing to the recursive part of the algo
+    t_rules_subset  rules { arm_rules.size(), /*is_arm_indexes=*/true };
+    for(const auto& r : arm_rules)
+    {
+        rules.push_arm( r.m_rules, r.arm_idx, r.pat_idx );
+    }
+
+    auto inst = MatchGenGrouped { builder, node.span(), node.m_value->m_res_type, match_val, arms_code, 0 };
+
+    // NOTE: This block should never be used
+    auto default_arm = builder.new_bb_unlinked();
+
+    builder.set_cur_block( first_cmp_block );
+    inst.gen_for_slice( mv$(rules), 0, default_arm );
+
+    // Make the default infinite loop.
+    // - Preferably, it'd abort.
+    builder.set_cur_block(default_arm);
+    builder.end_block( ::MIR::Terminator::make_Goto(default_arm) );
+}
+void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR::BasicBlockId default_arm)
+{
+    TRACE_FUNCTION_F("arm_rules=" << arm_rules << ", ofs="<<ofs);
+    ASSERT_BUG(sp, arm_rules.size() > 0, "");
+
+    // Quick hack: Skip any layers entirely made up of PatternRule::Any
+    for(;;)
+    {
+        bool is_all_any = true;
+        for(size_t i = 0; i < arm_rules.size() && is_all_any; i ++)
+        {
+            if( arm_rules[i].size() <= ofs )
+                is_all_any = false;
+            else if( ! arm_rules[i][ofs].is_Any() )
+                is_all_any = false;
+        }
+        if( ! is_all_any )
+        {
+            break ;
+        }
+        ofs ++;
+        DEBUG("Skip to ofs=" << ofs);
+    }
+
+    // Split current set of rules into groups based on _ patterns
+    for(size_t idx = 0; idx < arm_rules.size(); )
+    {
+        // Completed arms
+        while( idx < arm_rules.size() && arm_rules[idx].size() <= ofs )
+        {
+            auto next = idx+1 == arm_rules.size() ? default_arm : m_builder.new_bb_unlinked();
+            ASSERT_BUG(sp, arm_rules[idx].size() == ofs, "Offset too large for rule - ofs=" << ofs << ", rules=" << arm_rules[idx]);
+            DEBUG(idx << ": Complete");
+            // Emit jump to either arm code, or arm condition
+            if( arm_rules.is_arm() )
+            {
+                auto ai = arm_rules.arm_idx(idx);
+                ASSERT_BUG(sp, m_arms_code.size() > 0, "Bottom-level ruleset with no arm code information");
+                const auto& ac = m_arms_code[ai.first];
+
+                m_builder.end_block( ::MIR::Terminator::make_Goto(ac.destructures[ai.second]) );
+                m_builder.set_cur_block( ac.destructures[ai.second] );
+
+                if( ac.has_condition )
+                {
+                    TODO(sp, "Handle conditionals in Grouped");
+                    // TODO: If the condition fails, this should re-try the match on other rules that could have worked.
+                    // - For now, conditionals are disabled.
+
+                    // TODO: What if there's multiple patterns on this condition?
+                    // - For now, only the first pattern gets edited.
+                    // - Maybe clone the blocks used for the condition?
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(ac.cond_start) );
+
+                    // Check for marking in `ac` that the block has already been terminated, assert that target is `next`
+                    if( ai.second == 0 )
+                    {
+                        if( ac.cond_fail_tgt != 0)
+                        {
+                            ASSERT_BUG(sp, ac.cond_fail_tgt == next, "Condition fail target already set with mismatching arm, set to bb" << ac.cond_fail_tgt << " cur is bb" << next);
+                        }
+                        else
+                        {
+                            ac.cond_fail_tgt = next;
+
+                            m_builder.set_cur_block( ac.cond_end );
+                            m_builder.end_block( ::MIR::Terminator::make_If({ ac.cond_lval.clone(), ac.code, next }) );
+                        }
+                    }
+
+                    if( next != default_arm )
+                        m_builder.set_cur_block(next);
+                }
+                else
+                {
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(ac.code) );
+                    ASSERT_BUG(sp, idx+1 == arm_rules.size(), "Ended arm with other arms present");
+                }
+            }
+            else
+            {
+                auto bb = arm_rules.bb_idx(idx);
+                m_builder.end_block( ::MIR::Terminator::make_Goto(bb) );
+                while( idx+1 < arm_rules.size() && bb == arm_rules.bb_idx(idx) && arm_rules[idx].size() == ofs )
+                    idx ++;
+                ASSERT_BUG(sp, idx+1 == arm_rules.size(), "Ended arm (inner) with other arms present");
+            }
+            idx ++;
+        }
+
+        // - Value arms
+        auto start = idx;
+        for(; idx < arm_rules.size() ; idx ++)
+        {
+            if( arm_rules[idx].size() <= ofs )
+                break;
+            if( arm_rules[idx][ofs].is_Any() )
+                break;
+            if( arm_rules[idx][ofs].is_SplitSlice() )
+                break;
+            // TODO: It would be nice if ValueRange could be combined with Value (if there's no overlap)
+            if( arm_rules[idx][ofs].is_ValueRange() )
+                break;
+        }
+        auto first_any = idx;
+
+        // Generate dispatch based on the above list
+        // - If there's value ranges they need special handling
+        // - Can sort arms within this group (ordering doesn't matter, as long as ranges are handled)
+        // - Sort must be stable.
+
+        if( start < first_any )
+        {
+            DEBUG(start << "+" << (first_any-start) << ": Values");
+            bool has_default = (first_any < arm_rules.size());
+            auto next = (has_default ? m_builder.new_bb_unlinked() : default_arm);
+
+            // Sort rules before getting compatible runs
+            // TODO: Is this a valid operation?
+            arm_rules.sub_sort(ofs,  start, first_any - start);
+
+            // Create list of compatible arm slices (runs with the same selector value)
+            ::std::vector<t_rules_subset>   slices;
+            auto cur_test = start;
+            for(auto i = start; i < first_any; i ++)
+            {
+                // Just check if the decision value differs (don't check nested rules)
+                if( ! rule_compatible(arm_rules[i][ofs], arm_rules[cur_test][ofs]) )
+                {
+                    slices.push_back( arm_rules.sub_slice(cur_test, i - cur_test) );
+                    cur_test = i;
+                }
+            }
+            slices.push_back( arm_rules.sub_slice(cur_test, first_any - cur_test) );
+            DEBUG("- " << slices.size() << " groupings");
+            ::std::vector<::MIR::BasicBlockId>  arm_blocks;
+            arm_blocks.reserve( slices.size() );
+
+            auto cur_blk = m_builder.pause_cur_block();
+            // > Stable sort list
+            ::std::sort( slices.begin(), slices.end(), [&](const auto& a, const auto& b){ return a[0][ofs] < b[0][ofs]; } );
+            // TODO: Should this do a stable sort of inner patterns too?
+            // - A sort of inner patterns such that `_` (and range?) patterns don't change position.
+
+            // > Get type of match, generate dispatch list.
+            for(size_t i = 0; i < slices.size(); i ++)
+            {
+                // If rules are actually different, split here. (handles Enum and Slice)
+                auto cur_block = m_builder.new_bb_unlinked();
+                m_builder.set_cur_block(cur_block);
+                auto cur_start = 0;
+                for(size_t j = 0; j < slices[i].size(); j ++)
+                {
+                    if(slices[i][j][ofs] != slices[i][cur_start][ofs])
+                    {
+                        DEBUG("- Equal range : " << cur_start << "+" << (j - cur_start));
+                        // Package up previous rules and generate dispatch code
+                        auto ns = slices[i].sub_slice(cur_start, j - cur_start);
+                        this->gen_for_slice(mv$(ns), ofs+1, next);
+
+                        cur_block = m_builder.new_bb_unlinked();
+                        m_builder.set_cur_block(cur_block);
+
+                        cur_start = j;
+                    }
+                    arm_blocks.push_back(cur_block);
+                }
+
+                if( cur_start != 0 )
+                {
+                    DEBUG("- Equal range : " << cur_start << "+" << (slices[i].size() - cur_start));
+                    auto ns = slices[i].sub_slice(cur_start, slices[i].size() - cur_start);
+                    this->gen_for_slice( mv$(ns), ofs+1, next);
+                }
+                else
+                {
+                    this->gen_for_slice(slices[i], ofs+1, next);
+                }
+            }
+
+            m_builder.set_cur_block(cur_blk);
+
+            // Generate decision code
+            this->gen_dispatch(slices, ofs, arm_blocks, next);
+
+            if(has_default)
+            {
+                m_builder.set_cur_block(next);
+            }
+        }
+
+        // Collate matching blocks at `first_any`
+        assert(first_any == idx);
+        if( first_any < arm_rules.size() && arm_rules[idx].size() > ofs )
+        {
+            // Collate all equal rules
+            while(idx < arm_rules.size() && arm_rules[idx][ofs] == arm_rules[first_any][ofs])
+                idx ++;
+            DEBUG(first_any << "-" << idx << ": Multi-match");
+
+            bool has_next = idx < arm_rules.size();
+            auto next = (has_next ? m_builder.new_bb_unlinked() : default_arm);
+
+            const auto& rule = arm_rules[first_any][ofs];
+            if(const auto* e = rule.opt_ValueRange())
+            {
+                // Generate branch based on range
+                this->gen_dispatch_range(arm_rules[first_any][ofs].field_path, e->first, e->last, next);
+            }
+            else if(const auto* e = rule.opt_SplitSlice())
+            {
+                // Generate branch based on slice length being at least required.
+                this->gen_dispatch_splitslice(rule.field_path, *e, next);
+            }
+            else
+            {
+                ASSERT_BUG(sp, rule.is_Any(), "Didn't expect non-Any rule here, got " << rule.tag_str() << " " << rule);
+            }
+
+            // Step deeper into these arms
+            auto slice = arm_rules.sub_slice(first_any, idx - first_any);
+            this->gen_for_slice(mv$(slice), ofs+1, next);
+
+            if(has_next)
+            {
+                m_builder.set_cur_block(next);
+            }
+        }
+    }
+
+    ASSERT_BUG(sp, ! m_builder.block_active(), "Block left active after match group");
+}
+
+void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
+{
+    const auto& field_path = rules[0][0][ofs].field_path;
+    TRACE_FUNCTION_F("rules=["<<rules <<"], ofs=" << ofs <<", field_path=" << field_path);
+
+    {
+        size_t n = 0;
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            for(size_t j = 0; j < rules[i].size(); j++)
+            {
+                ASSERT_BUG(sp, rules[i][j][ofs].field_path == field_path, "Field path mismatch, " << rules[i][j][ofs].field_path << " != " << field_path);
+                n ++;
+            }
+        }
+        ASSERT_BUG(sp, arm_targets.size() == n, "Arm target count mismatch - " << n << " != " << arm_targets.size());
+    }
+
+    ::MIR::LValue   val;
+    ::HIR::TypeRef  ty;
+    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
+    DEBUG("ty = " << ty << ", val = " << val);
+
+    TU_MATCHA( (ty.m_data), (te),
+    (Infer,
+        BUG(sp, "Hit _ in type - " << ty);
+        ),
+    (Diverge,
+        BUG(sp, "Matching over !");
+        ),
+    (Primitive,
+        this->gen_dispatch__primitive(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
+        ),
+    (Path,
+        // Matching over a path can only happen with an enum.
+        // TODO: What about `box` destructures?
+        // - They're handled via hidden derefs
+        if( !te.binding.is_Enum() ) {
+            TU_MATCHA( (te.binding), (pbe),
+            (Unbound,
+                BUG(sp, "Encounterd unbound path - " << te.path);
+                ),
+            (Opaque,
+                BUG(sp, "Attempting to match over opaque type - " << ty);
+                ),
+            (Struct,
+                const auto& str_data = pbe->m_data;
+                TU_MATCHA( (str_data), (sd),
+                (Unit,
+                    BUG(sp, "Attempting to match over unit type - " << ty);
+                    ),
+                (Tuple,
+                    TODO(sp, "Matching on tuple-like struct?");
+                    ),
+                (Named,
+                    TODO(sp, "Matching on struct?");
+                    )
+                )
+                ),
+            (Union,
+                TODO(sp, "Match over Union");
+                ),
+            (Enum,
+                )
+            )
+        }
+
+        this->gen_dispatch__enum(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
+        ),
+    (Generic,
+        BUG(sp, "Attempting to match a generic");
+        ),
+    (TraitObject,
+        BUG(sp, "Attempting to match a trait object");
+        ),
+    (ErasedType,
+        BUG(sp, "Attempting to match an erased type");
+        ),
+    (Array,
+        BUG(sp, "Attempting to match on an Array (should have been destructured)");
+        ),
+    (Slice,
+        // TODO: Slice size matches!
+        this->gen_dispatch__slice(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
+        ),
+    (Tuple,
+        BUG(sp, "Match directly on tuple");
+        ),
+    (Borrow,
+        BUG(sp, "Match directly on borrow");
+        ),
+    (Pointer,
+        // TODO: Could this actually be valid?
+        BUG(sp, "Attempting to match a pointer - " << ty);
+        ),
+    (Function,
+        // TODO: Could this actually be valid?
+        BUG(sp, "Attempting to match a function pointer - " << ty);
+        ),
+    (Closure,
+        BUG(sp, "Attempting to match a closure");
+        )
+    )
+}
+
+void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
+{
+    auto te = ty.m_data.as_Primitive();
+    switch(te)
+    {
+    case ::HIR::CoreType::Bool: {
+        ASSERT_BUG(sp, rules.size() <= 2, "More than 2 rules for boolean");
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            ASSERT_BUG(sp, rules[i][0][ofs].is_Bool(), "PatternRule for bool isn't _Bool");
+        }
+
+        // False sorts before true.
+        auto fail_bb = rules.size() == 2 ? arm_targets[              0] : (rules[0][0][ofs].as_Bool() ? def_blk : arm_targets[0]);
+        auto succ_bb = rules.size() == 2 ? arm_targets[rules[0].size()] : (rules[0][0][ofs].as_Bool() ? arm_targets[0] : def_blk);
+
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val), succ_bb, fail_bb }) );
+        } break;
+    case ::HIR::CoreType::U8:
+    case ::HIR::CoreType::U16:
+    case ::HIR::CoreType::U32:
+    case ::HIR::CoreType::U64:
+    case ::HIR::CoreType::U128:
+    case ::HIR::CoreType::Usize:
+
+    case ::HIR::CoreType::I8:
+    case ::HIR::CoreType::I16:
+    case ::HIR::CoreType::I32:
+    case ::HIR::CoreType::I64:
+    case ::HIR::CoreType::I128:
+    case ::HIR::CoreType::Isize:
+
+    case ::HIR::CoreType::Char:
+        if( rules.size() == 1 )
+        {
+            // Special case, single option, equality only
+            const auto& r = rules[0][0][ofs];
+            ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+            const auto& re = r.as_Value();
+            auto test_val = ::MIR::Param(re.clone());
+            auto cmp_lval = this->push_compare( val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) );
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), arm_targets[0], def_blk }) );
+        }
+        else
+        {
+            // TODO: Add a SwitchInt terminator for use with this. (Or just a SwitchVal terminator?)
+
+            // NOTE: Rules are currently sorted
+            // TODO: If there are Constant::Const values in the list, they need to come first! (with equality checks)
+
+            // Does a sorted linear search. Binary search would be nicer but is harder to implement.
+            size_t tgt_ofs = 0;
+            for(size_t i = 0; i < rules.size(); i++)
+            {
+                for(size_t j = 1; j < rules[i].size(); j ++)
+                    ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Value match");
+
+                const auto& r = rules[i][0][ofs];
+                ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+                const auto& re = r.as_Value();
+                if(re.is_Const())
+                    TODO(sp, "Handle Constant::Const in match");
+
+                // IF v < tst : def_blk
+                // Skip if the previous value was the imediat predecesor
+                bool is_succ = i != 0 && (re.is_Uint()
+                    ? re.as_Uint().v == rules[i-1][0][ofs].as_Value().as_Uint().v + 1
+                    : re.as_Int().v == rules[i-1][0][ofs].as_Value().as_Int().v + 1
+                    );
+                if( !is_succ )
+                {
+                    auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                    auto cmp_lval_lt = this->push_compare(val.clone(), ::MIR::eBinOp::LT, ::MIR::Param(re.clone()));
+                    m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                    m_builder.set_cur_block(cmp_eq_blk);
+                }
+
+                // IF v == tst : target
+                {
+                    auto next_cmp_blk = m_builder.new_bb_unlinked();
+                    auto cmp_lval_eq = this->push_compare( val.clone(), ::MIR::eBinOp::EQ, ::MIR::Param(re.clone()) );
+                    m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
+                    m_builder.set_cur_block(next_cmp_blk);
+                }
+
+                tgt_ofs += rules[i].size();
+            }
+            m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+        }
+        break;
+    case ::HIR::CoreType::F32:
+    case ::HIR::CoreType::F64: {
+        // NOTE: Rules are currently sorted
+        // TODO: If there are Constant::Const values in the list, they need to come first!
+        size_t tgt_ofs = 0;
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            for(size_t j = 1; j < rules[i].size(); j ++)
+                ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Value match");
+
+            const auto& r = rules[i][0][ofs];
+            ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+            const auto& re = r.as_Value();
+            if(re.is_Const())
+                TODO(sp, "Handle Constant::Const in match");
+
+            // IF v < tst : def_blk
+            {
+                auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_lt = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::LT, ::MIR::Param(re.clone()) }));
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                m_builder.set_cur_block(cmp_eq_blk);
+            }
+
+            // IF v == tst : target
+            {
+                auto next_cmp_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_eq = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, ::MIR::Param(re.clone()) }));
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
+                m_builder.set_cur_block(next_cmp_blk);
+            }
+
+            tgt_ofs += rules[i].size();
+        }
+        m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+        } break;
+    case ::HIR::CoreType::Str:
+        // Remove the deref on the &str
+        auto oval = mv$(val);
+        auto val = mv$(*oval.as_Deref().val);
+        // NOTE: Rules are currently sorted
+        // TODO: If there are Constant::Const values in the list, they need to come first!
+        size_t tgt_ofs = 0;
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            for(size_t j = 1; j < rules[i].size(); j ++)
+                ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Value match");
+
+            const auto& r = rules[i][0][ofs];
+            ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+            const auto& re = r.as_Value();
+            if(re.is_Const())
+                TODO(sp, "Handle Constant::Const in match");
+
+            // IF v < tst : def_blk
+            {
+                auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_lt = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::LT, ::MIR::Param(re.clone()) }));
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                m_builder.set_cur_block(cmp_eq_blk);
+            }
+
+            // IF v == tst : target
+            {
+                auto next_cmp_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_eq = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, ::MIR::Param(re.clone()) }));
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
+                m_builder.set_cur_block(next_cmp_blk);
+            }
+
+            tgt_ofs += rules[i].size();
+        }
+        m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+        break;
+    }
+}
+
+void MatchGenGrouped::gen_dispatch__enum(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
+{
+    TRACE_FUNCTION;
+    auto& te = ty.m_data.as_Path();
+    const auto& pbe = te.binding.as_Enum();
+
+    auto decison_arm = m_builder.pause_cur_block();
+
+    auto monomorph = [&](const auto& ty) {
+        auto rv = monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty);
+        m_builder.resolve().expand_associated_types(sp, rv);
+        return rv;
+        };
+    auto var_count = pbe->m_variants.size();
+    size_t  arm_idx = 0;
+    ::std::vector< ::MIR::BasicBlockId> arms(var_count, def_blk);
+    for(size_t i = 0; i < rules.size(); i ++)
+    {
+        ASSERT_BUG(sp, rules[i][0][ofs].is_Variant(), "Rule for enum isn't Any or Variant - " << rules[i][0][ofs].tag_str());
+        const auto& re = rules[i][0][ofs].as_Variant();
+        unsigned int var_idx = re.idx;
+        arms[var_idx] = m_builder.new_bb_unlinked();
+        DEBUG("Variant " << var_idx);
+
+        // Create new rule collection based on the variants
+        t_rules_subset  inner_set { rules[i].size(), /*is_arm_indexes=*/false };
+        for(size_t j = 0; j < rules[i].size(); j ++)
+        {
+            const auto& r = rules[i][j];
+            inner_set.push_bb(r[ofs].as_Variant().sub_rules, arm_targets[arm_idx]);
+            arm_idx ++;
+        }
+        ::HIR::TypeRef  fake_tup;
+
+        const auto& var_data = pbe->m_variants.at(re.idx).second;
+        TU_MATCHA( (var_data), (ve),
+        (Unit,
+            // Nothing to recurse
+            ),
+        (Value,
+            // Nothing to recurse
+            ),
+        (Tuple,
+            // Create a dummy tuple to contain the inner types.
+            ::std::vector< ::HIR::TypeRef>  fake_ty_ents;
+            fake_ty_ents.reserve( ve.size() );
+            for(unsigned int i = 0; i < ve.size(); i ++)
+            {
+                fake_ty_ents.push_back( monomorph(ve[i].ent) );
+            }
+            fake_tup = ::HIR::TypeRef( mv$(fake_ty_ents) );
+            ),
+        (Struct,
+            // Create a dummy tuple to contain the inner types.
+            ::std::vector< ::HIR::TypeRef>  fake_ty_ents;
+            fake_ty_ents.reserve( ve.size() );
+            for(unsigned int i = 0; i < ve.size(); i ++)
+            {
+                fake_ty_ents.push_back( monomorph(ve[i].second.ent) );
+            }
+            fake_tup = ::HIR::TypeRef( mv$(fake_ty_ents) );
+            )
+        )
+
+        m_builder.set_cur_block(arms[var_idx]);
+        // Recurse with the new ruleset
+        // - On success, these should jump to targets[i]
+
+        auto new_lval = ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx });
+        auto inst = MatchGenGrouped { m_builder, sp, fake_tup, new_lval, {}, rules[0][0][ofs].field_path.size() };
+        inst.gen_for_slice(inner_set, 0, def_blk);
+        ASSERT_BUG(sp, ! m_builder.block_active(), "Block still active after enum match generation");
+    }
+
+    m_builder.set_cur_block(decison_arm);
+    m_builder.end_block( ::MIR::Terminator::make_Switch({ mv$(val), mv$(arms) }) );
+}
+
+void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
+{
+    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val).clone() }));
+
+    // TODO: Re-sort the rules list to interleve Constant::Bytes and Slice
+
+    // Just needs to check the lengths, then dispatch.
+    size_t tgt_ofs = 0;
+    for(size_t i = 0; i < rules.size(); i++)
+    {
+        //for(size_t j = 1; j < rules[i].size(); j ++)
+        //    ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Slice match");
+
+        const auto& r = rules[i][0][ofs];
+        if(const auto* re = r.opt_Slice())
+        {
+            auto val_tst = ::MIR::Constant::make_Uint({ re->len, ::HIR::CoreType::Usize });
+
+            // IF v < tst : target
+            if( re->len > 0 )
+            {
+                auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_lt = this->push_compare( val_len.clone(), ::MIR::eBinOp::LT, val_tst.clone() );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                m_builder.set_cur_block(cmp_eq_blk);
+            }
+
+            // IF v == tst : target
+            {
+                auto succ_blk = m_builder.new_bb_unlinked();
+                auto next_cmp_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_eq = this->push_compare( val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_tst) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), succ_blk, next_cmp_blk }) );
+                m_builder.set_cur_block(succ_blk);
+
+                // 
+                t_rules_subset  inner_set { rules[i].size(), /*is_arm_indexes=*/false };
+                for(size_t j = 0; j < rules[i].size(); j ++)
+                {
+                    const auto& r = rules[i][j];
+                    inner_set.push_bb(r[ofs].as_Slice().sub_rules, arm_targets[tgt_ofs + j]);
+                }
+                auto inst = MatchGenGrouped { m_builder, sp, ty, val, {}, rules[0][0][ofs].field_path.size() };
+                inst.gen_for_slice(inner_set, 0, def_blk);
+
+                m_builder.set_cur_block(next_cmp_blk);
+            }
+        }
+        else if(const auto* re = r.opt_Value())
+        {
+            ASSERT_BUG(sp, re->is_Bytes(), "Slice with non-Bytes value - " << *re);
+            const auto& b = re->as_Bytes();
+
+            auto val_tst = ::MIR::Constant::make_Uint({ b.size(), ::HIR::CoreType::Usize });
+            auto cmp_slice_val = m_builder.lvalue_or_temp(sp,
+                    ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8) ),
+                    ::MIR::RValue::make_MakeDst({ ::MIR::Param(re->clone()), val_tst.clone() })
+                    );
+
+            if( b.size() > 0 )
+            {
+                auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_lt = this->push_compare( val_len.clone(), ::MIR::eBinOp::LT, val_tst.clone() );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                m_builder.set_cur_block(cmp_eq_blk);
+            }
+
+            // IF v == tst : target
+            {
+                auto succ_blk = m_builder.new_bb_unlinked();
+                auto next_cmp_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_eq = this->push_compare( val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_tst) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), succ_blk, next_cmp_blk }) );
+                m_builder.set_cur_block(succ_blk);
+
+                // TODO: What if `val` isn't a Deref?
+                ASSERT_BUG(sp, val.is_Deref(), "TODO: Handle non-Deref matches of byte strings");
+                cmp_lval_eq = this->push_compare( val.as_Deref().val->clone(), ::MIR::eBinOp::EQ, mv$(cmp_slice_val) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], def_blk }) );
+
+                m_builder.set_cur_block(next_cmp_blk);
+            }
+        }
+        else
+        {
+            BUG(sp, "Matching without _Slice pattern - " << r.tag_str() << " - " << r);
+        }
+
+        tgt_ofs += rules[i].size();
+    }
+    m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+}
+
+
+void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const ::MIR::Constant& first, const ::MIR::Constant& last, ::MIR::BasicBlockId def_blk)
+{
+    TRACE_FUNCTION_F("field_path="<<field_path<<", " << first << " ... " << last);
+    ::MIR::LValue   val;
+    ::HIR::TypeRef  ty;
+    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
+    DEBUG("ty = " << ty << ", val = " << val);
+
+    if( const auto* tep = ty.m_data.opt_Primitive() )
+    {
+        auto te = *tep;
+
+        bool lower_possible = true;
+        bool upper_possible = true;
+
+        switch(te)
+        {
+        case ::HIR::CoreType::Bool:
+            BUG(sp, "Range match over Bool");
+            break;
+        case ::HIR::CoreType::Str:
+            BUG(sp, "Range match over Str - is this valid?");
+            break;
+        case ::HIR::CoreType::U8:
+        case ::HIR::CoreType::U16:
+        case ::HIR::CoreType::U32:
+        case ::HIR::CoreType::U64:
+        case ::HIR::CoreType::U128:
+        case ::HIR::CoreType::Usize:
+            lower_possible = (first.as_Uint().v > 0);
+            // TODO: Should this also check for the end being the max value of the type?
+            // - Can just leave that to the optimiser
+            upper_possible = true;
+            break;
+        case ::HIR::CoreType::I8:
+        case ::HIR::CoreType::I16:
+        case ::HIR::CoreType::I32:
+        case ::HIR::CoreType::I64:
+        case ::HIR::CoreType::I128:
+        case ::HIR::CoreType::Isize:
+            lower_possible = true;
+            upper_possible = true;
+            break;
+        case ::HIR::CoreType::Char:
+            lower_possible = (first.as_Uint().v > 0);
+            upper_possible = (first.as_Uint().v <= 0x10FFFF);
+            break;
+        case ::HIR::CoreType::F32:
+        case ::HIR::CoreType::F64:
+            // NOTE: No upper or lower limits
+            break;
+        }
+
+        if( lower_possible )
+        {
+            auto test_bb_2 = m_builder.new_bb_unlinked();
+            // IF `val` < `first` : fail_bb
+            auto cmp_lt_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, ::MIR::Param(first.clone()) }));
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), def_blk, test_bb_2 }) );
+
+            m_builder.set_cur_block(test_bb_2);
+        }
+
+
+        if( upper_possible )
+        {
+            auto succ_bb = m_builder.new_bb_unlinked();
+
+            // IF `val` > `last` : fail_bb
+            auto cmp_gt_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, ::MIR::Param(last.clone()) }));
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), def_blk, succ_bb }) );
+
+            m_builder.set_cur_block(succ_bb);
+        }
+    }
+    else
+    {
+        TODO(sp, "ValueRange on " << ty);
+    }
+}
+void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, const PatternRule::Data_SplitSlice& e, ::MIR::BasicBlockId def_blk)
+{
+    TRACE_FUNCTION_F("field_path="<<field_path<<", [" << e.leading << ", .., " << e.trailing << "]");
+    ::MIR::LValue   val;
+    ::HIR::TypeRef  ty;
+    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
+    DEBUG("ty = " << ty << ", val = " << val);
+
+    ASSERT_BUG(sp, ty.m_data.is_Slice(), "SplitSlice pattern on non-slice - " << ty);
+
+    // Obtain slice length
+    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val).clone() }));
+
+    // 1. Check that length is sufficient for the pattern to be used
+    // `IF len < min_len : def_blk, next
+    {
+        auto next = m_builder.new_bb_unlinked();
+        auto cmp_val = this->push_compare(val_len.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Uint({ e.min_len, ::HIR::CoreType::Usize }));
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_val), def_blk, next }) );
+        m_builder.set_cur_block(next);
+    }
+
+    // 2. Recurse into leading patterns.
+    if( !e.leading.empty() )
+    {
+        auto next = m_builder.new_bb_unlinked();
+        auto inner_set = t_rules_subset { 1, /*is_arm_indexes=*/false };
+        inner_set.push_bb( e.leading, next );
+        auto inst = MatchGenGrouped { m_builder, sp, ty, val, {}, field_path.size() };
+        inst.gen_for_slice(inner_set, 0, def_blk);
+
+        m_builder.set_cur_block(next);
+    }
+
+    if( !e.trailing.empty() )
+    {
+        TODO(sp, "Handle trailing rules in SplitSlice - " << e.trailing);
+    }
 }
 
 // --------------------------------------------------------------------

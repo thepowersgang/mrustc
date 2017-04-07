@@ -112,10 +112,13 @@ TAGGED_UNION_EX(Constant, (), Int, (
     (ItemAddr, ::HIR::Path) // address of a value
     ), (), (), (
         friend ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
-        bool operator==(const Constant& b) const;
-        inline bool operator!=(const Constant& b) const {
-            return !(*this == b);
-        }
+        ::Ordering ord(const Constant& b) const;
+        inline bool operator==(const Constant& b) const { return ord(b) == ::OrdEqual; }
+        inline bool operator!=(const Constant& b) const { return ord(b) != ::OrdEqual; }
+        inline bool operator<(const Constant& b) const { return ord(b) == ::OrdLess; }
+        inline bool operator<=(const Constant& b) const { return ord(b) != ::OrdGreater; }
+        inline bool operator>(const Constant& b) const { return ord(b) == ::OrdGreater; }
+        inline bool operator>=(const Constant& b) const { return ord(b) != ::OrdLess; }
         Constant clone() const;
     )
 );
