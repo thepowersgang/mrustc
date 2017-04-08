@@ -436,18 +436,13 @@ DISABLED_TESTS += run-pass/dst-trait
 DISABLED_TESTS += run-pass/if-ret	# If condition wasn't a bool
 DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
 DISABLED_TESTS += run-pass/issue-11940	# todo: Match literal Borrow
+DISABLED_TESTS += run-pass/mir_build_match_comparisons	# - ^
 DISABLED_TESTS += run-pass/issue-13620	# - Todo in cleanup
+DISABLED_TESTS += run-pass/vec-matching-fold	# todo: Match SplitSlice with tailing (rule gen)
 DISABLED_TESTS += run-pass/issue-17877	# - SplitSlice + array
 DISABLED_TESTS += run-pass/vec-matching-fixed	# ^
-DISABLED_TESTS += run-pass/issue-15104	# - SplitSlice in DTN
-DISABLED_TESTS += run-pass/issue-15080	# ^
-DISABLED_TESTS += run-pass/issue-37598	# ^
-DISABLED_TESTS += run-pass/vec-matching-fold	# ^
-DISABLED_TESTS += run-pass/vec-matching-legal-tail-element-borrow	# ^
 DISABLED_TESTS += run-pass/vec-tail-matching	# SplitSlice destructure array
 DISABLED_TESTS += run-pass/zero_sized_subslice_match	# ^
-DISABLED_TESTS += run-pass/issue-18060	# - Overlapping value ranges
-DISABLED_TESTS += run-pass/issue-13867	# ^
 DISABLED_TESTS += run-pass/issue-18352	# - Match+const
 DISABLED_TESTS += run-pass/issue-28839	# - Move &mut ?
 DISABLED_TESTS += run-pass/union/union-inherent-method	# ^ ?
@@ -461,7 +456,6 @@ DISABLED_TESTS += run-pass/issue-30018-nopanic	# ^
 DISABLED_TESTS += run-pass/match-bot-2	# ^
 DISABLED_TESTS += run-pass/unreachable-code	# ^
 DISABLED_TESTS += run-pass/issue-36936	# - Cast removed
-DISABLED_TESTS += run-pass/mir_build_match_comparisons	# todo in match
 DISABLED_TESTS += run-pass/struct-order-of-eval-1	# Struct init order (fails validation)
 DISABLED_TESTS += run-pass/struct-order-of-eval-3	# ^
 DISABLED_TESTS += run-pass/const-enum-vec-index	# This is valid code?
@@ -705,6 +699,7 @@ DISABLED_TESTS += run-pass/vector-sort-panic-safe
 DISABLED_TESTS += run-pass/dynamic-drop
 # - Misc
 DISABLED_TESTS += run-pass/issue-16671	# Blocks forever
+DISABLED_TESTS += run-pass/issue-13027	# Infinite loop (match?)
 # - BUG: Incorrect drop order of ?
 DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
 # - BUG: Incorrect consteval
@@ -779,8 +774,9 @@ output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libst
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
 	$(DBG) $(BIN) $< -L output/libs -o $@ $(RUST_FLAGS) $(PIPECMD)
-	@echo "--- [$@]"
-	@./$@
+output/rust/test_run-pass_hello_out.txt: output/rust/test_run-pass_hello
+	@echo "--- [$<]"
+	@./$< | tee $@
 
 TEST_ARGS_run-pass/cfg-in-crate-1 := --cfg bar
 TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
@@ -830,7 +826,7 @@ test_deps_run-pass.mk: Makefile $(wildcard $(RUST_TESTS_DIR)run_pass/*.rs)
 #
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
-test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir output/rust/test_run-pass_hello $(BIN)
+test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
 
 #
 # TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
