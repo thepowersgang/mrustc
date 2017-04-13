@@ -49,6 +49,10 @@ void Expand_TestHarness(::AST::Crate& crate)
 
     for(const auto& test : crate.m_tests)
     {
+        // HACK: Don't emit should_panic tests
+        if( test.panic_type != ::AST::TestDesc::ShouldPanic::No )
+            continue ;
+
         ::AST::ExprNode_StructLiteral::t_values   desc_vals;
         // `name: "foo",`
         desc_vals.push_back( ::std::make_pair("name", NEWNODE(_CallPath,
