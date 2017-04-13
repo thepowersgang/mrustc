@@ -1387,6 +1387,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             sub_builder.m_field_path.back() = 0;
             if( pe.trailing.size() )
             {
+                // Needs a way of encoding the negative offset in the field path
                 TODO(sp, "SplitSlice on [T] with trailing - " << pat);
             }
             auto trailing = mv$(sub_builder.m_rules);

@@ -615,6 +615,7 @@ namespace {
             m_replacement = NEWNODE( mv$(node.m_res_type), Deref, sp,  mv$(m_replacement) );
         }
 
+#if 0
         void visit(::HIR::ExprNode_Deref& node) override
         {
             const auto& sp = node.span();
@@ -693,6 +694,7 @@ namespace {
             // - Dereference the result (which is an &-ptr)
             m_replacement = NEWNODE( mv$(node.m_res_type), Deref, sp,  mv$(m_replacement) );
         }
+#endif
 
 
 

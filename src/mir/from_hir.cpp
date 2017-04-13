@@ -58,6 +58,7 @@ namespace {
 
         const ScopeHandle*  m_block_tmp_scope = nullptr;
         const ScopeHandle*  m_borrow_raise_target = nullptr;
+        bool m_in_borrow = false;
 
     public:
         ExprVisitor_Conv(MirBuilder& builder, const ::std::vector< ::HIR::TypeRef>& var_types):
@@ -1141,6 +1142,8 @@ namespace {
         {
             TRACE_FUNCTION_F("_Borrow");
 
+            auto _ = save_and_edit(m_in_borrow, true);
+
             const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
             auto val = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
@@ -1421,10 +1424,63 @@ namespace {
                 if( m_builder.is_type_owned_box( ty_val ) )
                 {
                     // Box magically derefs.
-                    // HACK: Break out of the switch used for TU_MATCH_DEF
-                    break;
                 }
-                BUG(sp, "Deref on unsupported type - " << ty_val);
+                else
+                {
+                    // TODO: Do operator replacement here after handling scope-raising for _Borrow
+                    if( m_borrow_raise_target && m_in_borrow )
+                    {
+                        DEBUG("- Raising deref in borrow to scope " << *m_borrow_raise_target);
+                        m_builder.raise_variables(node.span(), val, *m_borrow_raise_target);
+                    }
+
+
+                    const char* langitem = nullptr;
+                    const char* method = nullptr;
+                    ::HIR::BorrowType   bt;
+                    // - Uses the value's usage beacuse for T: Copy node.m_value->m_usage is Borrow, but node.m_usage is Move
+                    switch( node.m_value->m_usage )
+                    {
+                    case ::HIR::ValueUsage::Unknown:
+                        BUG(sp, "Unknown usage type of deref value");
+                        break;
+                    case ::HIR::ValueUsage::Borrow:
+                        bt = ::HIR::BorrowType::Shared;
+                        langitem = method = "deref";
+                        break;
+                    case ::HIR::ValueUsage::Mutate:
+                        bt = ::HIR::BorrowType::Unique;
+                        langitem = method = "deref_mut";
+                        break;
+                    case ::HIR::ValueUsage::Move:
+                        TODO(sp, "ValueUsage::Move for desugared Deref of " << node.m_value->m_res_type);
+                        break;
+                    }
+                    // Needs replacement, continue
+                    assert(langitem);
+                    assert(method);
+
+                    // - Construct trait path - Index*<IdxTy>
+                    auto method_path = ::HIR::Path(ty_val.clone(), ::HIR::GenericPath(m_builder.resolve().m_crate.get_lang_item_path(node.span(), langitem), {}), method);
+
+                    // Store a borrow of the input value
+                    ::std::vector<::MIR::Param>    args;
+                    args.push_back( m_builder.lvalue_or_temp(sp,
+                                ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone()),
+                                ::MIR::RValue::make_Borrow({0, bt, mv$(val)})
+                                ) );
+                    m_builder.moved_lvalue(node.span(), args[0].as_LValue());
+                    val = m_builder.new_temporary(::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()));
+                    // Call the above trait method
+                    // Store result of that call in `val` (which will be derefed below)
+                    auto ok_block = m_builder.new_bb_unlinked();
+                    auto panic_block = m_builder.new_bb_unlinked();
+                    m_builder.end_block(::MIR::Terminator::make_Call({ ok_block, panic_block, val.clone(), mv$(method_path), mv$(args) }));
+                    m_builder.set_cur_block(panic_block);
+                    m_builder.end_block(::MIR::Terminator::make_Diverge({}));
+
+                    m_builder.set_cur_block(ok_block);
+                }
                 ),
             (Pointer,
                 // Deref on a pointer - TODO: Requires unsafe
