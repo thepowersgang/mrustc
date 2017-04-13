@@ -134,6 +134,8 @@ struct ProgramParams
     unsigned opt_level = 0;
     bool emit_debug_info = false;
 
+    bool test_harness = false;
+
     ::std::vector<const char*> lib_search_dirs;
     ::std::vector<const char*> libraries;
 
@@ -192,6 +194,11 @@ int main(int argc, char *argv[])
         });
 
 
+    if( params.test_harness )
+    {
+        Cfg_SetFlag("test");
+    }
+
 
     try
     {
@@ -199,6 +206,7 @@ int main(int argc, char *argv[])
         AST::Crate crate = CompilePhase<AST::Crate>("Parse", [&]() {
             return Parse_Crate(params.infile);
             });
+        crate.m_test_harness = params.test_harness;
 
         if( params.last_stage == ProgramParams::STAGE_PARSE ) {
             return 0;
@@ -213,6 +221,12 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand", [&]() {
             Expand(crate);
             });
+
+        if( params.test_harness )
+        {
+            // TODO: Generate harness main (and override the mrustc-main lang item)
+            Expand_TestHarness(crate);
+        }
 
         // Extract the crate type and name from the crate attributes
         auto crate_type = params.crate_type;
@@ -286,7 +300,7 @@ int main(int argc, char *argv[])
         }
 
         // Allocator and panic strategies
-        if( crate.m_crate_type == ::AST::Crate::Type::Executable )
+        if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness )
         {
             // TODO: Detect if an allocator crate is already present.
             crate.load_extern_crate(Span(), "alloc_system");
@@ -460,6 +474,11 @@ int main(int argc, char *argv[])
         trans_opt.emit_debug_info = params.emit_debug_info;
 
         // Generate code for non-generic public items (if requested)
+        if( params.test_harness )
+        {
+            // If the test harness is enabled, override crate type to "Executable"
+            crate_type = ::AST::Crate::Type::Executable;
+        }
         switch( crate_type )
         {
         case ::AST::Crate::Type::Unknown:
@@ -683,6 +702,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     ::std::cerr << "Unknown argument to --stop-after : '" << arg << "'" << ::std::endl;
                     exit(1);
                 }
+            }
+            else if( strcmp(arg, "--test") == 0 ) {
+                this->test_harness = true;
             }
             else {
                 ::std::cerr << "Unknown option '" << arg << "'" << ::std::endl;

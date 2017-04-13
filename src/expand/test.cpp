@@ -7,6 +7,7 @@
  */
 #include <synext_decorator.hpp>
 #include <ast/ast.hpp>
+#include <ast/crate.hpp>
 
 class CTestHandler:
     public ExpandDecorator
@@ -18,8 +19,17 @@ class CTestHandler:
             ERROR(sp, E0000, "#[test] can only be put on functions - found on " << i.tag_str());
         }
 
-        // TODO: Proper #[test] support, for now just remove them
-        i = AST::Item::make_None({});
+        if( crate.m_test_harness )
+        {
+            ::AST::TestDesc td;
+            td.name = path.nodes().back().name();
+            td.path = ::AST::Path(path);
+            crate.m_tests.push_back( mv$(td) );
+        }
+        else
+        {
+            i = AST::Item::make_None({});
+        }
     }
 };
 
