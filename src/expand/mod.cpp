@@ -109,7 +109,8 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
                 return e;
             }
         }
-        // TODO: Shouldn't this use the _last_ located macro? Allowing later (local) defininitions to override it?
+        // Find the last macro of this name (allows later #[macro_use] definitions to override)
+        const MacroRules* last_mac = nullptr;
         for( const auto& mri : mac_mod.macro_imports_res() )
         {
             //DEBUG("- " << mri.name);
@@ -118,9 +119,13 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
-                auto e = Macro_Invoke(name.c_str(), *mri.data, mv$(input_tt), mod);
-                return e;
+                last_mac = mri.data;
             }
+        }
+        if( last_mac )
+        {
+            auto e = Macro_Invoke(name.c_str(), *last_mac, mv$(input_tt), mod);
+            return e;
         }
     }
 
