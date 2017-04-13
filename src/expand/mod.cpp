@@ -67,7 +67,7 @@ void Expand_Attrs(/*const */::AST::MetaItems& attrs, AttrStage stage,  ::std::fu
 }
 void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
 {
-    Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, path, mod, item); });
+    Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ if(!item.is_None()) d.handle(sp, a, crate, path, mod, item); });
 }
 void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
 {

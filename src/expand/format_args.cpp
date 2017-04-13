@@ -251,6 +251,7 @@ namespace {
 
                     if( *s == '0' ) {
                         args.zero_pad = true;
+                        args.align_char = '0';
                         s ++;
                     }
                     else {

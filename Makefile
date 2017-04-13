@@ -146,7 +146,20 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-
+output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
+	@echo "--- [MRUSTC] --test -o $@"
+	@mkdir -p output/
+	@rm -f $@
+	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+#	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
+output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
+	@echo "--- [MRUSTC] $@"
+	@mkdir -p output/
+	@rm -f $@
+	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+#	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
 fcn_extcrate = $(patsubst %,output/lib%.hir,$(1))
 
 fn_getdeps = \

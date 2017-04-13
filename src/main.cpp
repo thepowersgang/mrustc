@@ -224,7 +224,6 @@ int main(int argc, char *argv[])
 
         if( params.test_harness )
         {
-            // TODO: Generate harness main (and override the mrustc-main lang item)
             Expand_TestHarness(crate);
         }
 
@@ -273,6 +272,10 @@ int main(int argc, char *argv[])
             }
         }
         crate.m_crate_name = crate_name;
+        if( params.test_harness )
+        {
+            crate.m_crate_name += "$test";
+        }
 
         if( params.outfile == "" ) {
             switch( crate.m_crate_type )
