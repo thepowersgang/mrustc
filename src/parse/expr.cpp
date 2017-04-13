@@ -669,6 +669,9 @@ bool Parse_IsTokValue(eTokenType tok_type)
     case TOK_PAREN_OPEN:
     case TOK_SQUARE_OPEN:
 
+    case TOK_INTERPOLATED_PATH:
+    case TOK_INTERPOLATED_EXPR:
+
     case TOK_MACRO:
 
     case TOK_PIPE:
