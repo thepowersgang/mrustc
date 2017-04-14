@@ -1010,12 +1010,12 @@ bool Codepoint::isxdigit() const {
         s += (char)(0xC0 | ((cp.v >> 6) & 0x1F));
         s += (char)(0x80 | ((cp.v >> 0) & 0x3F));
     }
-    else if( cp.v <= (0x0F+1)<<(2*6) ) {
+    else if( cp.v < (0x0F+1)<<(2*6) ) {
         s += (char)(0xE0 | ((cp.v >> 12) & 0x0F));
         s += (char)(0x80 | ((cp.v >>  6) & 0x3F));
         s += (char)(0x80 | ((cp.v >>  0) & 0x3F));
     }
-    else if( cp.v <= (0x07+1)<<(3*6) ) {
+    else if( cp.v < (0x07+1)<<(3*6) ) {
         s += (char)(0xF0 | ((cp.v >> 18) & 0x07));
         s += (char)(0x80 | ((cp.v >> 12) & 0x3F));
         s += (char)(0x80 | ((cp.v >>  6) & 0x3F));
@@ -1035,12 +1035,12 @@ bool Codepoint::isxdigit() const {
         os << (char)(0xC0 | ((cp.v >> 6) & 0x1F));
         os << (char)(0x80 | ((cp.v >> 0) & 0x3F));
     }
-    else if( cp.v <= (0x0F+1)<<(2*6) ) {
+    else if( cp.v < (0x0F+1)<<(2*6) ) {
         os << (char)(0xE0 | ((cp.v >> 12) & 0x0F));
         os << (char)(0x80 | ((cp.v >>  6) & 0x3F));
         os << (char)(0x80 | ((cp.v >>  0) & 0x3F));
     }
-    else if( cp.v <= (0x07+1)<<(2*6) ) {
+    else if( cp.v < (0x07+1)<<(2*6) ) {
         os << (char)(0xF0 | ((cp.v >> 18) & 0x07));
         os << (char)(0x80 | ((cp.v >> 12) & 0x3F));
         os << (char)(0x80 | ((cp.v >>  6) & 0x3F));
