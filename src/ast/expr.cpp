@@ -85,9 +85,7 @@ NODE(ExprNode_Block, {
     ::std::vector<ExprNodeP>    nodes;
     for(const auto& n : m_nodes)
         nodes.push_back( n->clone() );
-    if( m_local_mod )
-        TODO(get_pos(), "Handle cloning ExprNode_Block with a module");
-    return NEWNODE(ExprNode_Block, m_is_unsafe, m_yields_final_value, mv$(nodes), nullptr);
+    return NEWNODE(ExprNode_Block, m_is_unsafe, m_yields_final_value, mv$(nodes), m_local_mod);
 })
 
 NODE(ExprNode_Macro, {
