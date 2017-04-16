@@ -328,19 +328,8 @@ struct FmtEscaped {
     FmtEscaped(const ::std::string& s):
         s(s.c_str())
     {}
-    friend ::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x) {
-        for(auto s = x.s; *s != '\0'; s ++)
-        {
-            switch(*s)
-            {
-            case '\n':  os << "\\n";    break;
-            case '\\':  os << "\\\\";   break;
-            case '"':   os << "\\\"";   break;
-            default:    os << *s;   break;
-            }
-        }
-        return os;
-    }
+    // See main.cpp
+    friend ::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x);
 };
 
 // -------------------------------------------------------------------
