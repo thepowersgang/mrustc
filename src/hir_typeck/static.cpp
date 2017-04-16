@@ -588,7 +588,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
 
                             //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
                             auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, cb_match);
-                            ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
+                            ASSERT_BUG(sp, cmp != ::HIR::Compare::Unequal, "Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
                             return true;
                             });
                     }
