@@ -466,11 +466,22 @@ namespace MIR {
             os << "), clobbers=[" << e.clobbers << "], flags=[" << e.flags << "])";
             ),
         (SetDropFlag,
+            os << "df$" << e.idx << " = ";
+            if( e.other == ~0u )
+            {
+                os << e.new_val;
+            }
+            else
+            {
+                os << (e.new_val ? "!" : "") << "df$" << e.other;
+            }
             ),
         (Drop,
             os << "drop(" << e.slot;
             if(e.kind == ::MIR::eDropKind::SHALLOW)
                 os << " SHALLOW";
+            if(e.flag_idx != ~0u)
+                os << "IF df$" << e.flag_idx;
             os << ")";
             )
         )
