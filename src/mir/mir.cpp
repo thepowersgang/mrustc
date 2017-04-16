@@ -33,20 +33,13 @@ namespace MIR {
                 else if( v < 16 )
                     os << "\\x0" << (unsigned int)v;
                 else
-                    os << "\\x" << (unsigned int)v;
+                    os << "\\x" << ((unsigned int)v & 0xFF);
             }
             os << "\"";
             os << ::std::dec;
             ),
         (StaticString,
-            os << "\"";
-            for(auto v : e) {
-                if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                    os << v;
-                else
-                    os << "\\u{" << FMT(::std::hex << (unsigned int)v) << "}";
-            }
-            os << "\"";
+            os << "\"" << FmtEscaped(e) << "\"";
             ),
         (Const,
             os << e.p;
