@@ -32,8 +32,11 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
     m_scopes.push_back( ScopeDef { sp, ScopeType::make_Temporaries({}) } );
     m_scope_stack.push_back( 1 );
 
+    m_arg_states.reserve( args.size() );
+    for(size_t i = 0; i < args.size(); i ++ )
+        m_arg_states.push_back( VarState::make_Valid({}) );
     m_variable_states.reserve( output.named_variables.size() );
-    for(unsigned int i = 0; i < output.named_variables.size(); i ++ )
+    for(size_t i = 0; i < output.named_variables.size(); i ++ )
         m_variable_states.push_back( VarState::make_Invalid(InvalidType::Uninit) );
 }
 MirBuilder::~MirBuilder()
@@ -313,10 +316,8 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int 
         return ;
     }
 
-    DEBUG("DROP " << val);
-
     auto stmt = ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val), flag });
-
+    DEBUG(stmt);
     m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
 
     if( flag != ~0u )
@@ -332,8 +333,9 @@ void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val, unsig
 
     // TODO: Ensure that the type is a Box?
 
-    DEBUG("DROP shallow " << val);
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val), flag }) );
+    auto stmt = ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val), flag });
+    DEBUG(stmt);
+    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
 
     if( flag != ~0u )
     {
@@ -350,17 +352,23 @@ void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
         mark_value_assigned(sp, v.second);
 
     // 2. Push
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Asm( mv$(data) ) );
+    auto stmt = ::MIR::Statement::make_Asm( mv$(data) );
+    DEBUG(stmt);
+    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
 }
 void MirBuilder::push_stmt_set_dropflag_val(const Span& sp, unsigned int idx, bool value)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_SetDropFlag({ idx, value }) );
+    auto stmt = ::MIR::Statement::make_SetDropFlag({ idx, value });
+    DEBUG(stmt);
+    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
 }
 void MirBuilder::push_stmt_set_dropflag_other(const Span& sp, unsigned int idx, unsigned int other)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_SetDropFlag({ idx, false, other }) );
+    auto stmt = ::MIR::Statement::make_SetDropFlag({ idx, false, other });
+    DEBUG(stmt);
+    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
 }
 
 void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
@@ -830,7 +838,7 @@ namespace
 {
     static void merge_state(const Span& sp, MirBuilder& builder, const ::MIR::LValue& lv, VarState& old_state, const VarState& new_state)
     {
-        DEBUG(lv << " : " << old_state << " <= " << new_state);
+        TRACE_FUNCTION_FR(lv << " : " << old_state << " <= " << new_state, lv << " : " << old_state);
         switch(old_state.tag())
         {
         case VarState::TAGDEAD: throw "";
@@ -863,48 +871,85 @@ namespace
                 }
                 return ;
                 }
-            case VarState::TAG_Partial: {
-                const auto& nse = new_state.as_Partial();
-                bool is_box = false;
-                builder.with_val_type(sp, lv, [&](const auto& ty){ is_box = builder.is_type_owned_box(ty); });
-                if( is_box ) {
-                    ASSERT_BUG(sp, nse.inner_states.size() == 1, "");
-                }
-                if( nse.outer_flag != ~0u ) {
-                    // Set the outer flag to `true` if its default isn't true
-                    if( builder.get_drop_flag_default(sp, nse.outer_flag) != false ) {
-                        builder.push_stmt_set_dropflag_val(sp, nse.outer_flag, false);
+            case VarState::TAG_MovedOut: {
+                const auto& nse = new_state.as_MovedOut();
+
+                // Create a new staet that is internally valid and uses the same drop flag
+                old_state = VarState::make_MovedOut({ box$(old_state.clone()), nse.outer_flag });
+                auto& ose = old_state.as_MovedOut();
+                if( ose.outer_flag != ~0u )
+                {
+                    // If the flag's default isn't false, then create a new flag that does have such a default
+                    // - Other arm (old_state) uses default, this arm (new_state) can be manipulated
+                    if( builder.get_drop_flag_default(sp, ose.outer_flag) != false )
+                    {
+                        auto new_flag = builder.new_drop_flag(false);
+                        builder.push_stmt_set_dropflag_other(sp, new_flag, nse.outer_flag);
+                        ose.outer_flag = new_flag;
                     }
                 }
-
-                auto out = new_state.clone();
-                auto& ose = out.as_Partial();
-                if( ose.outer_flag == ~0u )
+                else
                 {
-                    ose.outer_flag = builder.new_drop_flag_and_set(sp, true);   // Only in this arm is the container valid
+                    // In both arms, the container is valid. No need for a drop flag
                 }
-                if( is_box ) {
-                    merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), ose.inner_states[0], old_state);
+
+                bool is_box = false;
+                builder.with_val_type(sp, lv, [&](const auto& ty){
+                        is_box = builder.is_type_owned_box(ty);
+                        });
+                if( is_box )
+                {
+                    merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, *nse.inner_state);
+                }
+                else
+                {
+                    BUG(sp, "Handle MovedOut on non-Box");
+                }
+                return ;
+                }
+            case VarState::TAG_Partial: {
+                const auto& nse = new_state.as_Partial();
+                bool is_enum = false;
+                builder.with_val_type(sp, lv, [&](const auto& ty){
+                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        });
+
+                // Create a partial filled with Invalid
+                {
+                    ::std::vector<VarState> inner; inner.reserve( nse.inner_states.size() );
+                    for(size_t i = 0; i < nse.inner_states.size(); i++)
+                        inner.push_back( old_state.clone() );
+                    old_state = VarState::make_Partial({ mv$(inner) });
+                }
+                auto& ose = old_state.as_Partial();
+                if( is_enum ) {
+                    for(size_t i = 0; i < ose.inner_states.size(); i ++)
+                    {
+                        merge_state(sp, builder, ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }), ose.inner_states[i], nse.inner_states[i]);
+                    }
                 }
                 else {
                     for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Field({ box$(lv.clone()), i }), ose.inner_states[i], old_state);
+                        merge_state(sp, builder, ::MIR::LValue::make_Field({ box$(lv.clone()), i }), ose.inner_states[i], nse.inner_states[i]);
                     }
                 }
-                old_state = mv$(out);
                 } return;
             }
             break;
+        // Valid <= ...
         case VarState::TAG_Valid:
             switch( new_state.tag() )
             {
             case VarState::TAGDEAD: throw "";
+            // Valid <= Invalid
             case VarState::TAG_Invalid:
                 old_state = VarState::make_Optional( builder.new_drop_flag_and_set(sp, false) );
                 return ;
+            // Valid <= Valid
             case VarState::TAG_Valid:
                 return ;
+            // Valid <= Optional
             case VarState::TAG_Optional: {
                 auto flag_idx = new_state.as_Optional();
                 // Was valid, now optional.
@@ -931,39 +976,78 @@ namespace
                 }
                 return ;
                 }
-            case VarState::TAG_Partial: {
-                const auto& nse = new_state.as_Partial();
-                bool is_box = false;
-                builder.with_val_type(sp, lv, [&](const auto& ty){ is_box = builder.is_type_owned_box(ty); });
-                if( is_box ) {
-                    ASSERT_BUG(sp, nse.inner_states.size() == 1, "");
-                }
-                if( nse.outer_flag != ~0u ) {
-                    // Set the outer flag to `true` if its default isn't true
-                    if( builder.get_drop_flag_default(sp, nse.outer_flag) != true ) {
-                        builder.push_stmt_set_dropflag_val(sp, nse.outer_flag, true);
+            // Valid <= MovedOut
+            case VarState::TAG_MovedOut: {
+                const auto& nse = new_state.as_MovedOut();
+
+                // Create a new staet that is internally valid and uses the same drop flag
+                old_state = VarState::make_MovedOut({ box$(VarState::make_Valid({})), nse.outer_flag });
+                auto& ose = old_state.as_MovedOut();
+                if( ose.outer_flag != ~0u )
+                {
+                    // If the flag's default isn't true, then create a new flag that does have such a default
+                    // - Other arm (old_state) uses default, this arm (new_state) can be manipulated
+                    if( builder.get_drop_flag_default(sp, ose.outer_flag) != true )
+                    {
+                        auto new_flag = builder.new_drop_flag(true);
+                        builder.push_stmt_set_dropflag_other(sp, new_flag, nse.outer_flag);
+                        ose.outer_flag = new_flag;
                     }
+                }
+                else
+                {
+                    // In both arms, the container is valid. No need for a drop flag
                 }
 
-                auto out = new_state.clone();
-                auto& ose = out.as_Partial();
-                if( ose.outer_flag == ~0u )
-                {
-                    ose.outer_flag = builder.new_drop_flag(true);   // In both arms, the container is valid
-                }
+                bool is_box = false;
+                builder.with_val_type(sp, lv, [&](const auto& ty){
+                        is_box = builder.is_type_owned_box(ty);
+                        });
+
                 if( is_box ) {
-                    merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), ose.inner_states[0], old_state);
+                    merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, *nse.inner_state);
                 }
                 else {
-                    for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
+                    BUG(sp, "MovedOut on non-Box");
+                }
+                return;
+                }
+            // Valid <= Partial
+            case VarState::TAG_Partial: {
+                const auto& nse = new_state.as_Partial();
+                bool is_enum = false;
+                builder.with_val_type(sp, lv, [&](const auto& ty){
+                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        });
+
+                // Create a partial filled with Valid
+                {
+                    ::std::vector<VarState> inner; inner.reserve( nse.inner_states.size() );
+                    for(size_t i = 0; i < nse.inner_states.size(); i++)
+                        inner.push_back( VarState::make_Valid({}) );
+                    old_state = VarState::make_Partial({ mv$(inner) });
+                }
+                auto& ose = old_state.as_Partial();
+                if( is_enum ) {
+                    auto ilv = ::MIR::LValue::make_Downcast({ box$(lv.clone()), 0 });
+                    for(size_t i = 0; i < ose.inner_states.size(); i ++)
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Field({ box$(lv.clone()), i }), ose.inner_states[i], old_state);
+                        merge_state(sp, builder, ilv, ose.inner_states[i], nse.inner_states[i]);
+                        ilv.as_Downcast().variant_index ++;
                     }
                 }
-                old_state = mv$(out);
+                else {
+                    auto ilv = ::MIR::LValue::make_Field({ box$(lv.clone()), 0 });
+                    for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
+                    {
+                        merge_state(sp, builder, ilv, ose.inner_states[i], nse.inner_states[i]);
+                        ilv.as_Field().field_index ++;
+                    }
+                }
                 } return;
             }
             break;
+        // Optional <= ...
         case VarState::TAG_Optional:
             switch( new_state.tag() )
             {
@@ -983,41 +1067,63 @@ namespace
                     #endif
                 }
                 return ;
-            case VarState::TAG_Partial:
-                TODO(sp, "Handle Optional->Partial in split scope");
+            case VarState::TAG_MovedOut:
+                TODO(sp, "Handle Optional->MovedOut in split scope");
+            case VarState::TAG_Partial: {
+                const auto& nse = new_state.as_Partial();
+                bool is_enum = false;
+                builder.with_val_type(sp, lv, [&](const auto& ty){
+                        assert( !builder.is_type_owned_box(ty) );
+                        is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                        });
+                // Create a Partial filled with copies of the Optional
+                {
+                    ::std::vector<VarState> inner;
+                    inner.reserve( nse.inner_states.size() );
+                    for(size_t i = 0; i < nse.inner_states.size(); i ++)
+                        inner.push_back(old_state.clone());
+                    old_state = VarState::make_Partial({ mv$(inner) });
+                }
+                auto& ose = old_state.as_Partial();
+                // Propagate to inners
+                if( is_enum ) {
+                    for(size_t i = 0; i < ose.inner_states.size(); i ++)
+                    {
+                        merge_state(sp, builder, ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }), ose.inner_states[i], nse.inner_states[i]);
+                    }
+                }
+                else {
+                    for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
+                    {
+                        merge_state(sp, builder, ::MIR::LValue::make_Field({ box$(lv.clone()), i }), ose.inner_states[i], nse.inner_states[i]);
+                    }
+                }
+                return; }
             }
+            break;
+        case VarState::TAG_MovedOut:
+            TODO(sp, "Handle MovedOut->?");
             break;
         case VarState::TAG_Partial: {
             auto& ose = old_state.as_Partial();
-            bool is_box = false;
-            builder.with_val_type(sp, lv, [&](const auto& ty){ is_box = builder.is_type_owned_box(ty); });
-            if( is_box ) {
-                ASSERT_BUG(sp, ose.inner_states.size() == 1, "");
-            }
+            bool is_enum = false;
+            builder.with_val_type(sp, lv, [&](const auto& ty){
+                    assert( !builder.is_type_owned_box(ty) );
+                    is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+                    });
             // Need to tag for conditional shallow drop? Or just do that at the end of the split?
             // - End of the split means that the only optional state is outer drop.
             switch( new_state.tag() )
             {
             case VarState::TAGDEAD: throw "";
             case VarState::TAG_Invalid:
-                if( ose.outer_flag != ~0u ) {
-                    // Set the outer flag to `false` if its default isn't false
-                    if( builder.get_drop_flag_default(sp, ose.outer_flag) != false ) {
-                        builder.push_stmt_set_dropflag_val(sp, ose.outer_flag, false);
-                    }
-                }
-                if( 0 )
-                // - Fall through
             case VarState::TAG_Valid:
-                if( ose.outer_flag != ~0u ) {
-                    // Set the outer flag to `true` if its default isn't true
-                    if( builder.get_drop_flag_default(sp, ose.outer_flag) != true ) {
-                        builder.push_stmt_set_dropflag_val(sp, ose.outer_flag, true);
+            case VarState::TAG_Optional:
+                if( is_enum ) {
+                    for(size_t i = 0; i < ose.inner_states.size(); i ++)
+                    {
+                        merge_state(sp, builder, ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }), ose.inner_states[i], new_state);
                     }
-                }
-                
-                if( is_box ) {
-                    merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), ose.inner_states[0], new_state);
                 }
                 else {
                     for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
@@ -1026,17 +1132,16 @@ namespace
                     }
                 }
                 return ;
-            case VarState::TAG_Optional: {
-                //auto flag_idx = new_state.as_Optional();
-                TODO(sp, "Handle Partial->Optional in split scope");
-                } return;
+            case VarState::TAG_MovedOut:
+                BUG(sp, "Partial->MovedOut not valid");
             case VarState::TAG_Partial: {
                 const auto& nse = new_state.as_Partial();
                 ASSERT_BUG(sp, ose.inner_states.size() == nse.inner_states.size(), "Partial->Partial with mismatched sizes - " << old_state << " <= " << new_state);
-                ASSERT_BUG(sp, ose.outer_flag == nse.outer_flag, "Partial->Partial with mismatched drop flags - " << old_state << " <= " << new_state);
-                if( is_box ) {
-                    ASSERT_BUG(sp, nse.inner_states.size() == 1, "");
-                    merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), ose.inner_states[0], nse.inner_states[0]);
+                if( is_enum ) {
+                    for(size_t i = 0; i < ose.inner_states.size(); i ++)
+                    {
+                        merge_state(sp, builder, ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }), ose.inner_states[i], nse.inner_states[i]);
+                    }
                 }
                 else {
                     for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
@@ -1406,8 +1511,11 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 // TODO: Make data variants refer to associated types (unify enum and struct handling)
                 TU_MATCHA( (variant.second), (ve),
                 (Value,
+                    DEBUG("");
+                    cb(::HIR::TypeRef::new_unit());
                     ),
                 (Unit,
+                    cb(::HIR::TypeRef::new_unit());
                     ),
                 (Tuple,
                     // HACK! Create tuple.
@@ -1442,185 +1550,369 @@ bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val) const
         DEBUG("[lvalue_is_copy] ty="<<ty);
         rv = (m_resolve.type_is_copy(sp, ty) ? 2 : 1);
         });
-    assert(rv != 0);
+    ASSERT_BUG(sp, rv != 0, "Type for " << val << " can't be determined");
     return rv == 2;
 }
 
-const VarState& MirBuilder::get_variable_state(const Span& sp, unsigned int idx, unsigned int skip_count) const
+const VarState& MirBuilder::get_slot_state(const Span& sp, VarGroup ty, unsigned int idx, unsigned int skip_count/*=0*/) const
 {
+    // 1. Find an applicable Split scope
     for( auto scope_idx : ::reverse(m_scope_stack) )
     {
         const auto& scope_def = m_scopes.at(scope_idx);
         TU_MATCH_DEF( ScopeType, (scope_def.data), (e),
         (
             ),
+        (Temporaries,
+            if( ty == VarGroup::Temporary )
+            {
+                auto it = ::std::find(e.temporaries.begin(), e.temporaries.end(), idx);
+                if( it != e.temporaries.end() ) {
+                    break ;
+                }
+            }
+            ),
         (Variables,
-            auto it = ::std::find(e.vars.begin(), e.vars.end(), idx);
-            if( it != e.vars.end() ) {
-                // If controlled by this block, exit early (won't find it elsewhere)
-                break ;
+            if( ty == VarGroup::Variable )
+            {
+                auto it = ::std::find(e.vars.begin(), e.vars.end(), idx);
+                if( it != e.vars.end() ) {
+                    // If controlled by this block, exit early (won't find it elsewhere)
+                    break ;
+                }
             }
             ),
         (Split,
             const auto& cur_arm = e.arms.back();
-            auto it = cur_arm.var_states.find(idx);
-            if( it != cur_arm.var_states.end() )
+            if( ty == VarGroup::Variable )
             {
-                if( ! skip_count -- )
+                auto it = cur_arm.var_states.find(idx);
+                if( it != cur_arm.var_states.end() )
                 {
-                    return it->second;
+                    if( ! skip_count -- )
+                    {
+                        return it->second;
+                    }
+                }
+            }
+            else if( ty == VarGroup::Temporary )
+            {
+                auto it = cur_arm.tmp_states.find(idx);
+                if( it != cur_arm.tmp_states.end() )
+                {
+                    if( ! skip_count -- )
+                    {
+                        return it->second;
+                    }
                 }
             }
             )
         )
     }
-
-    ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
-    return m_variable_states[idx];
-}
-VarState& MirBuilder::get_variable_state_mut(const Span& sp, unsigned int idx)
-{
-    VarState* ret = nullptr;
-    for( auto scope_idx : ::reverse(m_scope_stack) )
+    switch(ty)
     {
-        auto& scope_def = m_scopes.at(scope_idx);
-        if( scope_def.data.is_Variables() )
-        {
-            const auto& e = scope_def.data.as_Variables();
-            auto it = ::std::find(e.vars.begin(), e.vars.end(), idx);
-            if( it != e.vars.end() ) {
-                break ;
-            }
-        }
-        else if( scope_def.data.is_Split() )
-        {
-            if( ! ret )
-            {
-                auto& e = scope_def.data.as_Split();
-                auto& cur_arm = e.arms.back();
-                auto it = cur_arm.var_states.find(idx);
-                if( it == cur_arm.var_states.end() )
-                {
-                    DEBUG("Split new (scope " << scope_idx << ")");
-                    ret = &(cur_arm.var_states[idx] = get_variable_state(sp, idx).clone());
-                }
-                else
-                {
-                    DEBUG("Split existing (scope " << scope_idx << ")");
-                    ret = &it->second;
-                }
-            }
-        }
-        else if( scope_def.data.is_Loop() )
-        {
-            auto& e = scope_def.data.as_Loop();
-            if( e.changed_vars.count(idx) == 0 )
-            {
-                auto state = e.exit_state_valid ? get_variable_state(sp, idx).clone() : VarState::make_Valid({});
-                e.changed_vars.insert(::std::make_pair( idx, mv$(state) ));
-            }
-        }
-        else
-        {
-        }
-    }
-
-    if( !ret )
-    {
-        DEBUG("Outer");
+    case VarGroup::Return:
+        return m_return_state;
+    case VarGroup::Argument:
+        ASSERT_BUG(sp, idx < m_arg_states.size(), "Argument " << idx << " out of range for state table");
+        return m_arg_states.at(idx);
+    case VarGroup::Variable:
         ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
         return m_variable_states[idx];
-    }
-    else
-    {
-        return *ret;
-    }
-}
-const VarState& MirBuilder::get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count) const
-{
-    for( auto scope_idx : ::reverse(m_scope_stack) )
-    {
-        const auto& scope_def = m_scopes.at(scope_idx);
-        if( scope_def.data.is_Temporaries() )
-        {
-            const auto& e = scope_def.data.as_Temporaries();
-            auto it = ::std::find(e.temporaries.begin(), e.temporaries.end(), idx);
-            if( it != e.temporaries.end() ) {
-                break ;
-            }
-        }
-        else if( scope_def.data.is_Split() )
-        {
-            const auto& e = scope_def.data.as_Split();
-            const auto& cur_arm = e.arms.back();
-            auto it = cur_arm.tmp_states.find(idx);
-            if( it != cur_arm.tmp_states.end() )
-            {
-                if( ! skip_count -- )
-                {
-                    return it->second;
-                }
-            }
-        }
-    }
-
-    ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
-    return m_temporary_states[idx];
-}
-VarState& MirBuilder::get_temp_state_mut(const Span& sp, unsigned int idx)
-{
-    VarState* ret = nullptr;
-    for( auto scope_idx : ::reverse(m_scope_stack) )
-    {
-        auto& scope_def = m_scopes.at(scope_idx);
-        if( scope_def.data.is_Temporaries() )
-        {
-            const auto& e = scope_def.data.as_Temporaries();
-            auto it = ::std::find(e.temporaries.begin(), e.temporaries.end(), idx);
-            if( it != e.temporaries.end() ) {
-                break ;
-            }
-        }
-        else if( scope_def.data.is_Split() )
-        {
-            if( ! ret )
-            {
-                auto& e = scope_def.data.as_Split();
-                auto& cur_arm = e.arms.back();
-                auto it = cur_arm.tmp_states.find(idx);
-                if(it == cur_arm.tmp_states.end())
-                {
-                    ret = &(cur_arm.tmp_states[idx] = get_temp_state(sp, idx).clone());
-                }
-                else
-                {
-                    ret = &it->second;
-                }
-            }
-        }
-        else if( scope_def.data.is_Loop() )
-        {
-            auto& e = scope_def.data.as_Loop();
-            if( e.changed_tmps.count(idx) == 0 )
-            {
-                auto state = e.exit_state_valid ? get_temp_state(sp, idx).clone() : VarState::make_Valid({});
-                e.changed_tmps.insert(::std::make_pair( idx, mv$(state) ));
-            }
-        }
-        else
-        {
-        }
-    }
-
-    if( !ret )
-    {
+    case VarGroup::Temporary:
         ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
         return m_temporary_states[idx];
     }
-    else
+    BUG(sp, "Fell off the end of get_slot_state");
+}
+VarState& MirBuilder::get_slot_state_mut(const Span& sp, VarGroup ty, unsigned int idx)
+{
+    VarState* ret = nullptr;
+    for( auto scope_idx : ::reverse(m_scope_stack) )
+    {
+        auto& scope_def = m_scopes.at(scope_idx);
+        if( const auto* e = scope_def.data.opt_Variables() )
+        {
+            if( ty == VarGroup::Variable )
+            {
+                auto it = ::std::find(e->vars.begin(), e->vars.end(), idx);
+                if( it != e->vars.end() ) {
+                    break ;
+                }
+            }
+        }
+        else if( const auto* e = scope_def.data.opt_Temporaries() )
+        {
+            if( ty == VarGroup::Temporary )
+            {
+                auto it = ::std::find(e->temporaries.begin(), e->temporaries.end(), idx);
+                if( it != e->temporaries.end() ) {
+                    break ;
+                }
+            }
+        }
+        else if( scope_def.data.is_Split() )
+        {
+            auto& e = scope_def.data.as_Split();
+            auto& cur_arm = e.arms.back();
+            if( ! ret )
+            {
+                ::std::map<unsigned int, VarState>* states;
+                switch(ty)
+                {
+                case VarGroup::Return:  states = nullptr;   break;
+                case VarGroup::Argument:    BUG(sp, "Mutating state of argument");   break;
+                case VarGroup::Variable:    states = &cur_arm.var_states;   break;
+                case VarGroup::Temporary:   states = &cur_arm.tmp_states;   break;
+                }
+
+                if( states )
+                {
+                    auto it = states->find(idx);
+                    if( it == states->end() )
+                    {
+                        DEBUG("Split new (scope " << scope_idx << ")");
+                        ret = &( (*states)[idx] = get_slot_state(sp, ty, idx).clone() );
+                    }
+                    else
+                    {
+                        DEBUG("Split existing (scope " << scope_idx << ")");
+                        ret = &it->second;
+                    }
+                }
+            }
+        }
+        else if( scope_def.data.is_Loop() )
+        {
+            auto& e = scope_def.data.as_Loop();
+            ::std::map<unsigned int, VarState>* states = nullptr;
+            switch(ty)
+            {
+            case VarGroup::Return:  states = nullptr;   break;
+            case VarGroup::Argument:    BUG(sp, "Mutating state of argument");   break;
+            case VarGroup::Variable:    states = &e.changed_vars;   break;
+            case VarGroup::Temporary:   states = &e.changed_tmps;   break;
+            }
+
+            if( states )
+            {
+                if( states->count(idx) == 0 )
+                {
+                    auto state = e.exit_state_valid ? get_slot_state(sp, ty, idx).clone() : VarState::make_Valid({});
+                    states->insert(::std::make_pair( idx, mv$(state) ));
+                }
+            }
+        }
+        else
+        {
+        }
+    }
+    if( ret )
     {
         return *ret;
     }
+    else
+    {
+        switch(ty)
+        {
+        case VarGroup::Return:
+            return m_return_state;
+        case VarGroup::Argument:
+            ASSERT_BUG(sp, idx < m_arg_states.size(), "Argument " << idx << " out of range for state table");
+            return m_arg_states.at(idx);
+        case VarGroup::Variable:
+            ASSERT_BUG(sp, idx < m_variable_states.size(), "Variable " << idx << " out of range for state table");
+            return m_variable_states[idx];
+        case VarGroup::Temporary:
+            ASSERT_BUG(sp, idx < m_temporary_states.size(), "Temporary " << idx << " out of range for state table");
+            return m_temporary_states[idx];
+        }
+        BUG(sp, "Fell off the end of get_slot_state_mut");
+    }
+}
+const VarState& MirBuilder::get_variable_state(const Span& sp, unsigned int idx, unsigned int skip_count) const
+{
+    return get_slot_state(sp, VarGroup::Variable, idx, skip_count);
+}
+VarState& MirBuilder::get_variable_state_mut(const Span& sp, unsigned int idx)
+{
+    return get_slot_state_mut(sp, VarGroup::Variable, idx);
+}
+const VarState& MirBuilder::get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count) const
+{
+    return get_slot_state(sp, VarGroup::Temporary, idx, skip_count);
+}
+VarState& MirBuilder::get_temp_state_mut(const Span& sp, unsigned int idx)
+{
+    return get_slot_state_mut(sp, VarGroup::Temporary, idx);
+}
+
+const VarState& MirBuilder::get_val_state(const Span& sp, const ::MIR::LValue& lv, unsigned int skip_count)
+{
+    TODO(sp, "");
+}
+VarState& MirBuilder::get_val_state_mut(const Span& sp, const ::MIR::LValue& lv)
+{
+    TRACE_FUNCTION_F(lv);
+    TU_MATCHA( (lv), (e),
+    (Variable,
+        return get_slot_state_mut(sp, VarGroup::Variable, e);
+        ),
+    (Temporary,
+        return get_slot_state_mut(sp, VarGroup::Temporary, e.idx);
+        ),
+    (Argument,
+        return get_slot_state_mut(sp, VarGroup::Argument, e.idx);
+        ),
+    (Static,
+        BUG(sp, "Attempting to mutate state of a static");
+        ),
+    (Return,
+        BUG(sp, "Move of return value");
+        return get_slot_state_mut(sp, VarGroup::Return, 0);
+        ),
+    (Field,
+        auto& ivs = get_val_state_mut(sp, *e.val);
+        VarState    tpl;
+        TU_MATCHA( (ivs), (ivse),
+        (Invalid,
+            //BUG(sp, "Mutating inner state of an invalidated composite - " << lv);
+            tpl = VarState::make_Valid({});
+            ),
+        (MovedOut,
+            BUG(sp, "Field on value with MovedOut state - " << lv);
+            ),
+        (Partial,
+            ),
+        (Optional,
+            tpl = ivs.clone();
+            ),
+        (Valid,
+            tpl = VarState::make_Valid({});
+            )
+        )
+        if( !ivs.is_Partial() )
+        {
+            size_t n_flds = 0;
+            with_val_type(sp, *e.val, [&](const auto& ty) {
+                DEBUG("ty = " << ty);
+                if(const auto* e = ty.m_data.opt_Path()) {
+                    ASSERT_BUG(sp, e->binding.is_Struct(), "");
+                    const auto& str = *e->binding.as_Struct();
+                    TU_MATCHA( (str.m_data), (se),
+                    (Unit,
+                        BUG(sp, "Field access of unit-like struct");
+                        ),
+                    (Tuple,
+                        n_flds = se.size();
+                        ),
+                    (Named,
+                        n_flds = se.size();
+                        )
+                    )
+                }
+                else if(const auto* e = ty.m_data.opt_Tuple()) {
+                    n_flds = e->size();
+                }
+                else if(const auto* e = ty.m_data.opt_Array()) {
+                    n_flds = e->size_val;
+                }
+                else {
+                    TODO(sp, "Determine field count for " << ty);
+                }
+                });
+            ::std::vector<VarState> inner_vs; inner_vs.reserve(n_flds);
+            for(size_t i = 0; i < n_flds; i++)
+                inner_vs.push_back( tpl.clone() );
+            ivs = VarState::make_Partial({ mv$(inner_vs) });
+        }
+        return ivs.as_Partial().inner_states.at(e.field_index);
+        ),
+    (Deref,
+        // HACK: If the dereferenced type is a Box ("owned_box") then hack in move and shallow drop
+        bool is_box = false;
+        if( this->m_lang_Box )
+        {
+            with_val_type(sp, *e.val, [&](const auto& ty){
+                DEBUG("ty = " << ty);
+                is_box = this->is_type_owned_box(ty);
+                });
+        }
+
+
+        if( is_box )
+        {
+            ::MIR::LValue   inner_lv;
+            // 1. If the inner lvalue isn't a slot with move information, move out of the lvalue into a temporary (with standard temp scope)
+            TU_MATCH_DEF( ::MIR::LValue, (*e.val), (ei),
+            (
+                with_val_type(sp, *e.val, [&](const auto& ty){ inner_lv = this->new_temporary(ty); });
+                this->push_stmt_assign(sp, inner_lv.clone(), ::MIR::RValue( mv$(*e.val) ));
+                *e.val = inner_lv.clone();
+                ),
+            (Variable,
+                inner_lv = ::MIR::LValue(ei);
+                ),
+            (Temporary,
+                inner_lv = ::MIR::LValue(ei);
+                ),
+            (Argument,
+                inner_lv = ::MIR::LValue(ei);
+                )
+            )
+            // 2. Mark the slot as requiring only a shallow drop
+            ::std::vector<VarState> inner;
+            inner.push_back(VarState::make_Valid({}));
+            auto& ivs = get_val_state_mut(sp, inner_lv);
+            if( ! ivs.is_MovedOut() )
+            {
+                unsigned int drop_flag = (ivs.is_Optional() ? ivs.as_Optional() : ~0u);
+                ivs = VarState::make_MovedOut({ box$(VarState::make_Valid({})), drop_flag });
+            }
+            return *ivs.as_MovedOut().inner_state;
+        }
+        else
+        {
+            BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv << " : " << FMT_CB(ss, this->with_val_type(sp, lv, [&](const auto& ty){ss<<ty;});) );
+        }
+        ),
+    (Index,
+        BUG(sp, "Move out of index with non-Copy values - Partial move?");
+        ),
+    (Downcast,
+        // TODO: What if the inner is Copy? What if the inner is a hidden pointer?
+        auto& ivs = get_val_state_mut(sp, *e.val);
+        //static VarState ivs; ivs = VarState::make_Valid({});
+
+        if( !ivs.is_Partial() )
+        {
+            ASSERT_BUG(sp, !ivs.is_MovedOut(), "Downcast of a MovedOut value");
+
+            size_t var_count = 0;
+            with_val_type(sp, *e.val, [&](const auto& ty){
+                DEBUG("ty = " << ty);
+                ASSERT_BUG(sp, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
+                const auto& pb = ty.m_data.as_Path().binding;
+                // TODO: What about unions?
+                // - Iirc, you can't move out of them so they will never have state mutated
+                ASSERT_BUG(sp, pb.is_Enum(), "Downcast on non-Enum - " << ty);
+                const auto& enm = *pb.as_Enum();
+                var_count = enm.m_variants.size();
+                });
+
+            ::std::vector<VarState> inner;
+            for(size_t i = 0; i < var_count; i ++)
+            {
+                inner.push_back( VarState::make_Invalid(InvalidType::Uninit) );
+            }
+            inner[e.variant_index] = mv$(ivs);
+            ivs = VarState::make_Partial({ mv$(inner) });
+        }
+
+        return ivs.as_Partial().inner_states.at(e.variant_index);
+        )
+    )
+    BUG(sp, "Fell off send of get_val_state_mut");
 }
 
 void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR::LValue lv)
@@ -1631,12 +1923,41 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
     (Valid,
         push_stmt_drop(sp, mv$(lv));
         ),
+    (MovedOut,
+        bool is_box = false;
+        with_val_type(sp, lv, [&](const auto& ty){
+            is_box = this->is_type_owned_box(ty);
+            });
+        if( is_box )
+        {
+            drop_value_from_state(sp, *vse.inner_state, ::MIR::LValue::make_Deref({ box$(lv.clone()) }));
+            push_stmt_drop_shallow(sp, mv$(lv), vse.outer_flag);
+        }
+        else
+        {
+            TODO(sp, "");
+        }
+        ),
     (Partial,
-        // TODO: Actual destructuring based on the type
-        with_val_type(sp, lv, [&](const auto& ty){ ASSERT_BUG(sp, this->is_type_owned_box(ty), "TODO: Partial on non-Box"); });
-        assert( vse.inner_states.size() == 1 );
-        drop_value_from_state(sp, vse.inner_states[0], ::MIR::LValue::make_Deref({ box$(lv.clone()) }));
-        push_stmt_drop_shallow(sp, mv$(lv), vse.outer_flag);
+        bool is_enum = false;
+        with_val_type(sp, lv, [&](const auto& ty){
+            is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+            });
+        if(is_enum)
+        {
+            DEBUG("TODO: Switch based on enum value");
+            //for(size_t i = 0; i < vse.inner_states.size(); i ++)
+            //{
+            //    drop_value_from_state(sp, vse.inner_states[i], ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }));
+            //}
+        }
+        else
+        {
+            for(size_t i = 0; i < vse.inner_states.size(); i ++)
+            {
+                drop_value_from_state(sp, vse.inner_states[i], ::MIR::LValue::make_Field({ box$(lv.clone()), static_cast<unsigned int>(i) }));
+            }
+        }
         ),
     (Optional,
         push_stmt_drop(sp, mv$(lv), vse);
@@ -1672,113 +1993,13 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
     )
 }
 
+
 void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
 {
-    TRACE_FUNCTION_F(lv);
-    TU_MATCHA( (lv), (e),
-    (Variable,
-        if( !lvalue_is_copy(sp, lv) ) {
-            DEBUG("var" << e << " = MOVED");
-            get_variable_state_mut(sp, e) = VarState::make_Invalid(InvalidType::Moved);
-        }
-        ),
-    (Temporary,
-        if( !lvalue_is_copy(sp, lv) ) {
-            DEBUG("tmp" << e.idx << " = MOVED");
-            get_temp_state_mut(sp, e.idx) = VarState::make_Invalid(InvalidType::Moved);
-        }
-        ),
-    (Argument,
-        //TODO(sp, "Mark argument as moved");
-        ),
-    (Static,
-        //TODO(sp, "Static - Assert that type is Copy");
-        ),
-    (Return,
-        BUG(sp, "Read of return value");
-        ),
-    (Field,
-        if( lvalue_is_copy(sp, lv) ) {
-        }
-        else {
-            // TODO: Partial moves of fields.
-            moved_lvalue(sp, *e.val);
-        }
-        ),
-    (Deref,
-        if( lvalue_is_copy(sp, lv) ) {
-        }
-        else {
-            // HACK: If the dereferenced type is a Box ("owned_box") then hack in move and shallow drop
-            if( this->m_lang_Box )
-            {
-                bool is_box = false;
-                with_val_type(sp, *e.val, [&](const auto& ty){
-                    DEBUG("ty = " << ty);
-                    is_box = this->is_type_owned_box(ty);
-                    });
-                if( is_box )
-                {
-                    ::MIR::LValue   inner_lv;
-                    // 1. If the inner lvalue isn't a slot with move information, move out of the lvalue into a temporary (with standard temp scope)
-                    TU_MATCH_DEF( ::MIR::LValue, (*e.val), (ei),
-                    (
-                        with_val_type(sp, *e.val, [&](const auto& ty){ inner_lv = this->new_temporary(ty); });
-                        this->push_stmt_assign(sp, inner_lv.clone(), ::MIR::RValue( mv$(*e.val) ));
-                        *e.val = inner_lv.clone();
-                        ),
-                    (Variable,
-                        inner_lv = ::MIR::LValue(ei);
-                        ),
-                    (Temporary,
-                        inner_lv = ::MIR::LValue(ei);
-                        ),
-                    (Argument,
-                        inner_lv = ::MIR::LValue(ei);
-                        )
-                    )
-                    // 2. Mark the slot as requiring only a shallow drop
-                    // - TODO: Have a drop flag attached to the 
-                    ::std::vector<VarState> ivs;
-                    ivs.push_back(VarState::make_Invalid(InvalidType::Moved));
-                    TU_MATCH_DEF( ::MIR::LValue, (inner_lv), (ei),
-                    (
-                        BUG(sp, "Box move out of invalid LValue " << inner_lv << " - should have been moved");
-                        ),
-                    (Variable,
-                        DEBUG("var" << ei << " = PARTIAL");
-                        get_variable_state_mut(sp, ei) = VarState::make_Partial({ mv$(ivs) });
-                        ),
-                    (Temporary,
-                        DEBUG("tmp" << ei.idx << " = PARTIAL");
-                        get_temp_state_mut(sp, ei.idx) = VarState::make_Partial({ mv$(ivs) });
-                        ),
-                    (Argument,
-                        TODO(sp, "Mark arg " << ei.idx << " for shallow drop");
-                        )
-                    )
-                    // Early return!
-                    return ;
-                }
-            }
-            BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv << " : " << FMT_CB(ss, this->with_val_type(sp, lv, [&](const auto& ty){ss<<ty;});) );
-            moved_lvalue(sp, *e.val);
-        }
-        ),
-    (Index,
-        if( lvalue_is_copy(sp, lv) ) {
-        }
-        else {
-            BUG(sp, "Move out of index with non-Copy values - Partial move?");
-            moved_lvalue(sp, *e.val);
-        }
-        moved_lvalue(sp, *e.idx);
-        ),
-    (Downcast,
-        // TODO: What if the inner is Copy? What if the inner is a hidden pointer?
-        moved_lvalue(sp, *e.val);
-        )
-    )
+    if( !lvalue_is_copy(sp, lv) ) {
+        auto& vs = get_val_state_mut(sp, lv);
+        vs = VarState::make_Invalid(InvalidType::Moved);
+    }
 }
 
 const ::MIR::LValue& MirBuilder::get_ptr_to_dst(const Span& sp, const ::MIR::LValue& lv) const
@@ -1823,12 +2044,15 @@ VarState VarState::clone() const
     (Optional,
         return VarState(e);
         ),
+    (MovedOut,
+        return VarState::make_MovedOut({ box$(e.inner_state->clone()), e.outer_flag });
+        ),
     (Partial,
         ::std::vector<VarState> n;
         n.reserve(e.inner_states.size());
         for(const auto& a : e.inner_states)
             n.push_back( a.clone() );
-        return VarState::make_Partial({ mv$(n), e.outer_flag });
+        return VarState::make_Partial({ mv$(n) });
         )
     )
     throw "";
@@ -1847,9 +2071,12 @@ bool VarState::operator==(VarState& x) const
     (Optional,
         return te == xe;
         ),
-    (Partial,
+    (MovedOut,
         if( te.outer_flag != xe.outer_flag )
             return false;
+        return *te.inner_state == *xe.inner_state;
+        ),
+    (Partial,
         if( te.inner_states.size() != xe.inner_states.size() )
             return false;
         for(unsigned int i = 0; i < te.inner_states.size(); i ++)
@@ -1879,12 +2106,16 @@ bool VarState::operator==(VarState& x) const
     (Optional,
         os << "Optional(" << e << ")";
         ),
-    (Partial,
-        os << "Partial(";
+    (MovedOut,
+        os << "MovedOut(";
         if( e.outer_flag == ~0u )
             os << "-";
         else
             os << "df" << e.outer_flag;
+        os << " " << *e.inner_state <<")";
+        ),
+    (Partial,
+        os << "Partial(";
         os << ", [" << e.inner_states << "])";
         )
     )

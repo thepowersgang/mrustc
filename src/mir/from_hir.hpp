@@ -53,10 +53,13 @@ enum class InvalidType {
 TAGGED_UNION_EX(VarState, (), Invalid, (
     // Currently invalid
     (Invalid, InvalidType),
-    // Partially valid (Map of field states, Box is assumed to have one field)
+    // Partially valid (Map of field states)
     (Partial, struct {
         ::std::vector<VarState> inner_states;
-        unsigned int outer_flag = ~0u;   // If ~0u there's no condition on the outer
+        }),
+    (MovedOut, struct {
+        ::std::unique_ptr<VarState>   inner_state;
+        unsigned int outer_flag;
         }),
     // Optionally valid (integer indicates the drop flag index)
     (Optional, unsigned int),
@@ -104,6 +107,14 @@ TAGGED_UNION(ScopeType, Variables,
         })
     );
 
+enum class VarGroup
+{
+    Return,
+    Argument,
+    Variable,
+    Temporary,
+};
+
 /// Helper class to construct MIR
 class MirBuilder
 {
@@ -123,7 +134,8 @@ class MirBuilder
     bool    m_result_valid;
 
     // TODO: Extra information.
-    //::std::vector<VarState>   m_arg_states;
+    VarState    m_return_state;
+    ::std::vector<VarState>   m_arg_states;
     ::std::vector<VarState> m_variable_states;
     ::std::vector<VarState> m_temporary_states;
 
@@ -229,10 +241,16 @@ public:
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
     void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
+    const VarState& get_slot_state(const Span& sp, VarGroup ty, unsigned int idx, unsigned int skip_count=0) const;
+    VarState& get_slot_state_mut(const Span& sp, VarGroup ty, unsigned int idx);
+
     const VarState& get_variable_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
     VarState& get_variable_state_mut(const Span& sp, unsigned int idx);
     const VarState& get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
     VarState& get_temp_state_mut(const Span& sp, unsigned int idx);
+
+    const VarState& get_val_state(const Span& sp, const ::MIR::LValue& lv, unsigned int skip_count=0);
+    VarState& get_val_state_mut(const Span& sp, const ::MIR::LValue& lv);
 
     void terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_loop);
 
