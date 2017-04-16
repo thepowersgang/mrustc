@@ -193,6 +193,7 @@ namespace {
             ::std::stringstream cmd_ss;
             for(const auto& arg : args)
             {
+                // TODO: use a formatter specific to shell escaping
                 cmd_ss << "\"" << FmtEscaped(arg) << "\" ";
             }
             DEBUG("- " << cmd_ss.str());
@@ -1376,6 +1377,7 @@ namespace {
                         m_of << "\t__asm__ ";
                         if(is_volatile) m_of << "__volatile__";
                         // TODO: Convert format string?
+                        // TODO: Use a C-specific escaper here.
                         m_of << "(\"" << (is_intel ? ".syntax intel; " : "") << FmtEscaped(e.tpl) << (is_intel ? ".syntax att; " : "") << "\"";
                         m_of << ": ";
                         for(unsigned int i = 0; i < e.outputs.size(); i ++ )
@@ -2718,7 +2720,7 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
-                        m_of << "\\" << (unsigned int)v;
+                        m_of << "\\" << ((unsigned int)v & 0xFF);
                 }
                 m_of << "\"" << ::std::dec;
                 m_of << ";\n\t";
@@ -2924,7 +2926,7 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
-                        m_of << "\\" << (unsigned int)v;
+                        m_of << "\\" << ((unsigned int)v & 0xFF);
                 }
                 m_of << "\"" << ::std::dec;
                 ),
@@ -2934,7 +2936,7 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
-                        m_of << "\\" << (unsigned int)v;
+                        m_of << "\\" << ((unsigned int)v & 0xFF);
                 }
                 m_of << "\", " << ::std::dec << c.size() << ")";
                 ),
