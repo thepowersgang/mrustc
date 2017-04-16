@@ -22,7 +22,11 @@ class CTestHandler:
         if( crate.m_test_harness )
         {
             ::AST::TestDesc td;
-            td.name = path.nodes().back().name();
+            for(const auto& node : path.nodes())
+            {
+                td.name += "::";
+                td.name += node.name();
+            }
             td.path = ::AST::Path(path);
 
             crate.m_tests.push_back( mv$(td) );
