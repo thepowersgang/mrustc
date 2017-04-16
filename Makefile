@@ -146,14 +146,14 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
+output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN) output/libtest.hir
 	@echo "--- [MRUSTC] --test -o $@"
 	@mkdir -p output/
 	@rm -f $@
 	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
+output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN) output/libtest.hir
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
@@ -783,6 +783,11 @@ DISABLED_TESTS += run-pass/u128	# u128 not very good, unknown where error is
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass) $(call DEF_RUST_TESTS,run-pass/union))
 rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
+
+LIB_TESTS := collections collectionstest rustc_data_structures
+RUNTIME_ARGS_output/libcollectionstest-test := --test-threads 1 --skip linked_list::test_ord_nan --skip ::slice::test_box_slice_clone_panics
+rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
+
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN) output/liballoc_system.hir output/libpanic_abort.hir
@@ -807,9 +812,9 @@ output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output
 	@echo "=== TEST $(patsubst output/rust/%,%,$@)"
 	@echo "--- [MRUSTC] -o $@"
 	$V$(BIN) $< -o $@ -L output/libs -L output/test_deps --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
-output/rust/%_out.txt: output/rust/%
+output/%_out.txt: output/%
 	@echo "--- [$<]"
-	@./$< > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
+	@./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
 
 output/test_deps/librust_test_helpers.a: output/test_deps/rust_test_helpers.o
 	ar cur $@ $<
