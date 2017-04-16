@@ -1502,40 +1502,62 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 BUG(sp, "Downcast on unexpected type - " << ty);
                 ),
             (Path,
-                //ASSERT_BUG(sp, !te.binding.is_Unbound(), "Unbound path " << ty << " encountered");
-                ASSERT_BUG(sp, te.binding.is_Enum(), "Downcast on non-Enum - " << ty << " for " << val);
-                const auto& enm = *te.binding.as_Enum();
-                const auto& variants = enm.m_variants;
-                ASSERT_BUG(sp, e.variant_index < variants.size(), "Variant index out of range");
-                const auto& variant = variants[e.variant_index];
-                // TODO: Make data variants refer to associated types (unify enum and struct handling)
-                TU_MATCHA( (variant.second), (ve),
-                (Value,
-                    DEBUG("");
-                    cb(::HIR::TypeRef::new_unit());
-                    ),
-                (Unit,
-                    cb(::HIR::TypeRef::new_unit());
-                    ),
-                (Tuple,
-                    // HACK! Create tuple.
-                    ::std::vector< ::HIR::TypeRef>  tys;
-                    for(const auto& fld : ve)
-                        tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
-                    ::HIR::TypeRef  tup( mv$(tys) );
-                    m_resolve.expand_associated_types(sp, tup);
-                    cb(tup);
-                    ),
-                (Struct,
-                    // HACK! Create tuple.
-                    ::std::vector< ::HIR::TypeRef>  tys;
-                    for(const auto& fld : ve)
-                        tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
-                    ::HIR::TypeRef  tup( mv$(tys) );
-                    m_resolve.expand_associated_types(sp, tup);
-                    cb(tup);
+                // TODO: Union?
+                if( const auto* pbe = te.binding.opt_Enum() )
+                {
+                    const auto& enm = **pbe;
+                    const auto& variants = enm.m_variants;
+                    ASSERT_BUG(sp, e.variant_index < variants.size(), "Variant index out of range");
+                    const auto& variant = variants[e.variant_index];
+                    // TODO: Make data variants refer to associated types (unify enum and struct handling)
+                    TU_MATCHA( (variant.second), (ve),
+                    (Value,
+                        DEBUG("");
+                        cb(::HIR::TypeRef::new_unit());
+                        ),
+                    (Unit,
+                        cb(::HIR::TypeRef::new_unit());
+                        ),
+                    (Tuple,
+                        // HACK! Create tuple.
+                        ::std::vector< ::HIR::TypeRef>  tys;
+                        for(const auto& fld : ve)
+                            tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
+                        ::HIR::TypeRef  tup( mv$(tys) );
+                        m_resolve.expand_associated_types(sp, tup);
+                        cb(tup);
+                        ),
+                    (Struct,
+                        // HACK! Create tuple.
+                        ::std::vector< ::HIR::TypeRef>  tys;
+                        for(const auto& fld : ve)
+                            tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
+                        ::HIR::TypeRef  tup( mv$(tys) );
+                        m_resolve.expand_associated_types(sp, tup);
+                        cb(tup);
+                        )
                     )
-                )
+                }
+                else if( const auto* pbe = te.binding.opt_Union() )
+                {
+                    const auto& unm = **pbe;
+                    ASSERT_BUG(sp, e.variant_index < unm.m_variants.size(), "Variant index out of range");
+                    const auto& variant = unm.m_variants.at(e.variant_index);
+                    const auto& fld = variant.second;
+
+                    if( monomorphise_type_needed(fld.ent) ) {
+                        auto sty = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
+                        m_resolve.expand_associated_types(sp, sty);
+                        cb(sty);
+                    }
+                    else {
+                        cb(fld.ent);
+                    }
+                }
+                else
+                {
+                    BUG(sp, "Downcast on non-Enum/Union - " << ty << " for " << val);
+                }
                 )
             )
             });
@@ -1895,9 +1917,20 @@ VarState& MirBuilder::get_val_state_mut(const Span& sp, const ::MIR::LValue& lv)
                 const auto& pb = ty.m_data.as_Path().binding;
                 // TODO: What about unions?
                 // - Iirc, you can't move out of them so they will never have state mutated
-                ASSERT_BUG(sp, pb.is_Enum(), "Downcast on non-Enum - " << ty);
-                const auto& enm = *pb.as_Enum();
-                var_count = enm.m_variants.size();
+                if( pb.is_Enum() )
+                {
+                    const auto& enm = *pb.as_Enum();
+                    var_count = enm.m_variants.size();
+                }
+                else if( const auto* pbe = pb.opt_Union() )
+                {
+                    const auto& unm = **pbe;
+                    var_count = unm.m_variants.size();
+                }
+                else
+                {
+                    BUG(sp, "Downcast on non-Enum/Union - " << ty);
+                }
                 });
 
             ::std::vector<VarState> inner;
