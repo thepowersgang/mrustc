@@ -874,7 +874,7 @@ namespace
             case VarState::TAG_MovedOut: {
                 const auto& nse = new_state.as_MovedOut();
 
-                // Create a new staet that is internally valid and uses the same drop flag
+                // Create a new state that is internally valid and uses the same drop flag
                 old_state = VarState::make_MovedOut({ box$(old_state.clone()), nse.outer_flag });
                 auto& ose = old_state.as_MovedOut();
                 if( ose.outer_flag != ~0u )
@@ -890,7 +890,9 @@ namespace
                 }
                 else
                 {
-                    // In both arms, the container is valid. No need for a drop flag
+                    // In the old arm, the container isn't valid. Create a drop flag with a default of false and set it to true
+                    ose.outer_flag = builder.new_drop_flag(false);
+                    builder.push_stmt_set_dropflag_val(sp, ose.outer_flag, true);
                 }
 
                 bool is_box = false;
@@ -1101,9 +1103,69 @@ namespace
                 return; }
             }
             break;
-        case VarState::TAG_MovedOut:
-            TODO(sp, "Handle MovedOut->?");
-            break;
+        case VarState::TAG_MovedOut: {
+            auto& ose = old_state.as_MovedOut();
+            bool is_box = false;
+            builder.with_val_type(sp, lv, [&](const auto& ty){
+                    is_box = builder.is_type_owned_box(ty);
+                    });
+            if( !is_box ) {
+                BUG(sp, "MovedOut on non-Box");
+            }
+            switch( new_state.tag() )
+            {
+            case VarState::TAGDEAD: throw "";
+            case VarState::TAG_Invalid:
+            case VarState::TAG_Valid: {
+                bool is_valid = new_state.is_Valid();
+                if( ose.outer_flag == ~0u )
+                {
+                    // If not valid in new arm, then the outer state is conditional
+                    if( !is_valid )
+                    {
+                        ose.outer_flag = builder.new_drop_flag(true);
+                        builder.push_stmt_set_dropflag_val(sp, ose.outer_flag, false);
+                    }
+                }
+                else
+                {
+                    builder.push_stmt_set_dropflag_val(sp, ose.outer_flag, is_valid);
+                }
+
+                merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, new_state);
+                return ; }
+            case VarState::TAG_Optional: {
+                const auto& nse = new_state.as_Optional();
+                if( ose.outer_flag == ~0u )
+                {
+                    if( ! builder.get_drop_flag_default(sp, nse) )
+                    {
+                        // Default wasn't true, need to make a new flag that does have a default of true
+                        auto new_flag = builder.new_drop_flag(true);
+                        builder.push_stmt_set_dropflag_other(sp, new_flag, nse);
+                        ose.outer_flag = new_flag;
+                    }
+                    ose.outer_flag = nse;
+                }
+                else
+                {
+                    // In this arm, assign the outer state to this drop flag
+                    builder.push_stmt_set_dropflag_other(sp, ose.outer_flag, nse);
+                }
+                merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, new_state);
+                return; }
+            case VarState::TAG_MovedOut: {
+                const auto& nse = new_state.as_MovedOut();
+                if( ose.outer_flag != nse.outer_flag )
+                {
+                    TODO(sp, "Handle mismatched flags in MovedOut");
+                }
+                merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, *nse.inner_state);
+                return; }
+            case VarState::TAG_Partial:
+                BUG(sp, "MovedOut->Partial not valid");
+            }
+            break; }
         case VarState::TAG_Partial: {
             auto& ose = old_state.as_Partial();
             bool is_enum = false;
