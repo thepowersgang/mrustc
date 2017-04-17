@@ -509,6 +509,10 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
 {
     ::std::vector<StateSet> block_entry_states( fcn.blocks.size() );
 
+    // Determine value lifetimes (BBs in which Copy values are valid)
+    // - Used to mask out Copy value (prevents combinatorial explosion)
+    //auto lifetimes = MIR_Helper_GetLifetimes(mir_res, fcn, /*dump_debug=*/false);
+
     ValueStates state;
     state.arguments.resize( mir_res.m_args.size(), State(true) );
     state.vars.resize( fcn.named_variables.size() );

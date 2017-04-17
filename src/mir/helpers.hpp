@@ -107,4 +107,51 @@ public:
     }
 };
 
+
+// --------------------------------------------------------------------
+// MIR_Helper_GetLifetimes
+// --------------------------------------------------------------------
+class ValueLifetime
+{
+    ::std::vector<bool> statements;
+
+public:
+    ValueLifetime(::std::vector<bool> stmts):
+        statements( mv$(stmts) )
+    {}
+
+    // true if this value is used at any point
+    bool is_used() const {
+        for(auto v : statements)
+            if( v )
+                return true;
+        return false;
+    }
+    bool overlaps(const ValueLifetime& x) const {
+        assert(statements.size() == x.statements.size());
+        for(unsigned int i = 0; i < statements.size(); i ++)
+        {
+            if( statements[i] && x.statements[i] )
+                return true;
+        }
+        return false;
+    }
+    void unify(const ValueLifetime& x) {
+        assert(statements.size() == x.statements.size());
+        for(unsigned int i = 0; i < statements.size(); i ++)
+        {
+            if( x.statements[i] )
+                statements[i] = true;
+        }
+    }
+};
+
+struct ValueLifetimes
+{
+    ::std::vector<ValueLifetime> m_temporaries;
+    ::std::vector<ValueLifetime> m_variables;
+};
+
 }   // namespace MIR
+
+extern ::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool dump_debug);
