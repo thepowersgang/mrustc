@@ -637,6 +637,10 @@ namespace {
             {
                 lft = &temporary_lifetimes[e->idx];
             }
+            else if(const auto* e = lv.opt_Variable())
+            {
+                lft = &variable_lifetimes[*e];
+            }
             else
             {
                 MIR_TODO(state, "[add_lifetime] " << lv);
@@ -692,6 +696,8 @@ namespace {
             // Apply all changes in this state, just in case there was new information
             for(unsigned i = 0; i < fcn.temporaries.size(); i++)
                 add_lifetime_s( state, ::MIR::LValue::make_Temporary({i}), state.tmp_ends[i].start, state.tmp_ends[i].end );
+            for(unsigned i = 0; i < fcn.named_variables.size(); i++)
+                add_lifetime_s( state, ::MIR::LValue::make_Variable({i}), state.var_ends[i].start, state.var_ends[i].end );
             };
         auto add_to_visit = [&](unsigned int new_bb_idx, State new_state) {
             auto& bb_memory_ent = block_seen_lifetimes[new_bb_idx];
@@ -764,14 +770,26 @@ namespace {
                 // Update the last read location
                 val_state.tmp_ends.at(e->idx).end = cur_pos;
             }
+            else if(const auto* e = lv.opt_Variable())
+            {
+                val_state.var_ends.at(*e).end = cur_pos;
+            }
             };
         auto lvalue_set = [&](const ::MIR::LValue& lv) {
             if(const auto* e = lv.opt_Temporary())
             {
                 // End whatever value was originally there, and insert this new one
-                val_state.tmp_ends.at(e->idx).end = cur_pos;
-                add_lifetime(lv, val_state.tmp_ends.at(e->idx).start, val_state.tmp_ends.at(e->idx).end);
-                val_state.tmp_ends.at(e->idx).start = cur_pos;
+                auto& slot = val_state.tmp_ends.at(e->idx);
+                slot.end = cur_pos;
+                add_lifetime(lv, slot.start, slot.end);
+                slot.start = cur_pos;
+            }
+            else if(const auto* e = lv.opt_Variable())
+            {
+                auto& slot = val_state.var_ends.at(*e);
+                slot.end = cur_pos;
+                add_lifetime(lv, slot.start, slot.end);
+                slot.start = cur_pos;
             }
             };
 
