@@ -511,7 +511,8 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
 
     // Determine value lifetimes (BBs in which Copy values are valid)
     // - Used to mask out Copy value (prevents combinatorial explosion)
-    //auto lifetimes = MIR_Helper_GetLifetimes(mir_res, fcn, /*dump_debug=*/false);
+    auto lifetimes = MIR_Helper_GetLifetimes(mir_res, fcn, /*dump_debug=*/true);
+    DEBUG(lifetimes.m_block_offsets);
 
     ValueStates state;
     state.arguments.resize( mir_res.m_args.size(), State(true) );
@@ -527,6 +528,53 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
         auto state = mv$(todo_queue.back().second);
         todo_queue.pop_back();
 
+        // Mask off any values which aren't valid in the first statement of this block
+        {
+            for(unsigned i = 0; i < state.vars.size(); i ++)
+            {
+                /*if( !variables_copy[i] )
+                {
+                    // Not Copy, don't apply masking
+                }
+                else*/ if( ! state.vars[i].is_valid() )
+                {
+                    // Already invalid
+                }
+                else if( lifetimes.var_valid(i, cur_block, 0) )
+                {
+                    // Expected to be valid in this block, leave as-is
+                }
+                else
+                {
+                    // Copy value not used at/after this block, mask to false
+                    DEBUG("BB" << cur_block << " - var$" << i << " - Outside lifetime, discard");
+                    state.vars[i] = State(false);
+                }
+            }
+            for(unsigned i = 0; i < state.temporaries.size(); i ++)
+            {
+                /*if( !variables_copy[i] )
+                {
+                    // Not Copy, don't apply masking
+                }
+                else*/ if( ! state.temporaries[i].is_valid() )
+                {
+                    // Already invalid
+                }
+                else if( lifetimes.tmp_valid(i, cur_block, 0) )
+                {
+                    // Expected to be valid in this block, leave as-is
+                }
+                else
+                {
+                    // Copy value not used at/after this block, mask to false
+                    DEBUG("BB" << cur_block << " - tmp$" << i << " - Outside lifetime, discard");
+                    state.temporaries[i] = State(false);
+                }
+            }
+        }
+
+        // If this state already exists in the map, skip
         if( ! block_entry_states[cur_block].add_state(state) )
         {
             continue ;
