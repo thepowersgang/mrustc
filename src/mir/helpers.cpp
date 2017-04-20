@@ -460,8 +460,9 @@ namespace {
     }
     */
 }
-::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool dump_debug)
+::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, const ::MIR::Function& fcn, bool dump_debug)
 {
+    TRACE_FUNCTION_F(state);
     // New algorithm notes:
     // ---
     // The lifetime of a value starts when it is written, and ends the last time it is read
@@ -471,6 +472,12 @@ namespace {
     // A lifetime is a range in the call graph (with a start and end, including list of blocks)
     // - Representation: Bitmap with a bit per statement.
     // - Record the current block path in general state, along with known active lifetimes
+
+    // TODO: If a value is borrowed, assume it lives forevermore
+    // - Ideally there would be borrow tracking to determine its actual required lifetime.
+    // - NOTE: This doesn't impact the borrows themselves, just the borrowee
+
+    // TODO: Add a statement type StorageDead (or similar?) that indicates the point where a values scope ends
 
     // Scan through all possible paths in the graph (with loopback detection using a memory of the path)
     // - If a loop is detected, determine if there were changes to the lifetime set during that pass
@@ -556,6 +563,7 @@ namespace {
     ::std::vector<ValueLifetime>    variable_lifetimes( fcn.named_variables.size(), ValueLifetime(statement_count) );
 
     struct BlockSeenLifetimes {
+        bool m_has_state = false;
         const ::std::vector<size_t>& block_offsets;
         ::std::vector< ::std::vector<unsigned int> > tmp;
         ::std::vector< ::std::vector<unsigned int> > var;
@@ -568,45 +576,64 @@ namespace {
 
         bool has_state() const
         {
-            return
-                ::std::any_of(tmp.begin(), tmp.end(), [&](const auto& x){ return !x.empty(); })
-                || ::std::any_of(var.begin(), var.end(), [&](const auto& x){ return !x.empty(); });
+            return m_has_state;
         }
 
         bool try_merge(const State& val_state) const
         {
-            for(size_t i = 0; i < val_state.tmp_ends.size(); i++)
-            {
-                const auto& lft = val_state.tmp_ends[i];
-                const auto& seen = this->tmp[i];
-                if(lft.is_empty())  continue ;
+            // TODO: This logic isn't quite correct. Just becase a value's existing end is already marked as valid,
+            // doesn't mean that we have no new information.
+            auto try_merge_lft = [&](const ProtoLifetime& lft, const ::std::vector<unsigned int>& seen)->bool {
+                if(lft.is_empty())  return false;
+                // TODO: What should be done for borrow flagged values
+                if(lft.end == Position { ~0u, ~0u })    return false;
                 auto end_idx = block_offsets.at( val_state.block_path.at(lft.end.path_index) ) + lft.end.stmt_idx;
 
                 auto it = ::std::find(seen.begin(), seen.end(), end_idx);
-                if( it == seen.end() )
-                {
+                return (it == seen.end());
+                };
+            for(size_t i = 0; i < val_state.tmp_ends.size(); i++)
+            {
+                if( try_merge_lft(val_state.tmp_ends[i], this->tmp[i]) )
                     return true;
-                }
+            }
+            for(size_t i = 0; i < val_state.var_ends.size(); i++)
+            {
+                if( try_merge_lft(val_state.var_ends[i], this->var[i]) )
+                    return true;
             }
             return false;
         }
+
         bool merge(const State& val_state)
         {
             bool rv = false;
-            for(size_t i = 0; i < val_state.tmp_ends.size(); i++)
-            {
-                const auto& lft = val_state.tmp_ends[i];
-                auto& seen = this->tmp[i];
-                if(lft.is_empty())  continue ;
+            auto merge_lft = [&](const ProtoLifetime& lft, ::std::vector<unsigned int>& seen)->bool {
+                if(lft.is_empty())  return false;
+                // TODO: What should be done for borrow flagged values
+                if(lft.end == Position { ~0u, ~0u })    return false;
                 auto end_idx = block_offsets.at( val_state.block_path.at(lft.end.path_index) ) + lft.end.stmt_idx;
 
                 auto it = ::std::find(seen.begin(), seen.end(), end_idx);
                 if( it == seen.end() )
                 {
-                    rv = true;
                     seen.push_back( end_idx );
+                    return true;
                 }
+                else
+                {
+                    return false;
+                }
+                };
+            for(size_t i = 0; i < val_state.tmp_ends.size(); i++)
+            {
+                rv |= merge_lft(val_state.tmp_ends[i], this->tmp[i]);
             }
+            for(size_t i = 0; i < val_state.var_ends.size(); i++)
+            {
+                rv |= merge_lft(val_state.var_ends[i], this->var[i]);
+            }
+            m_has_state = true;
             return rv;
         }
     };
@@ -631,7 +658,7 @@ namespace {
             assert(start.path_index < end.path_index || start.stmt_idx <= end.stmt_idx);
             if(start.path_index == end.path_index && start.stmt_idx == end.stmt_idx)
                 return;
-            //DEBUG("[add_lifetime] " << lv << " (" << start.path_index << "," << start.stmt_idx << ") -- (" << end.path_index << "," << end.stmt_idx << ")");
+            DEBUG("[add_lifetime] " << lv << " (" << start.path_index << "," << start.stmt_idx << ") -- (" << end.path_index << "," << end.stmt_idx << ")");
             ValueLifetime* lft;
             if(const auto* e = lv.opt_Temporary())
             {
@@ -651,7 +678,7 @@ namespace {
             bool did_set = false;
             unsigned int j = start.stmt_idx;
             unsigned int i = start.path_index;
-            while( i <= end.path_index )
+            while( i <= end.path_index && i < val_state.block_path.size() )
             {
                 auto bb_idx = val_state.block_path.at(i);
                 const auto& bb = fcn.blocks[bb_idx];
@@ -666,7 +693,7 @@ namespace {
                     did_set = true;
                 }
 
-                if( i == end.path_index && j == end.stmt_idx )
+                if( i == end.path_index && j == (end.stmt_idx != ~0u ? end.stmt_idx : bb.statements.size()) )
                     break;
 
                 // If the current index is the terminator (one after the size)
@@ -701,12 +728,12 @@ namespace {
             };
         auto add_to_visit = [&](unsigned int new_bb_idx, State new_state) {
             auto& bb_memory_ent = block_seen_lifetimes[new_bb_idx];
-            /*if( !bb_memory_ent.has_state() )
+            if( !bb_memory_ent.has_state() )
             {
                 // No recorded state, needs to be visited
                 DEBUG(state << " " << new_state.index << " -> bb" << new_bb_idx << " (no existing state)");
             }
-            else*/ if( bb_memory_ent.try_merge(new_state) )
+            else if( bb_memory_ent.try_merge(new_state) )
             {
                 // This state has new information, needs to be visited
                 DEBUG(state << " " << new_state.index << " -> bb" << new_bb_idx << " (new info)");
@@ -725,9 +752,10 @@ namespace {
         // - Just compares the end of each proto lifetime
         {
             auto& bb_memory_ent = block_seen_lifetimes[bb_idx];
+            bool had_state = bb_memory_ent.has_state();
             bool has_new = bb_memory_ent.merge(val_state);
 
-            if( !has_new && bb_memory_ent.has_state() )
+            if( !has_new && had_state )
             {
                 DEBUG(state << " " << val_state.index << " No new entry state");
                 apply_state(val_state);
@@ -765,33 +793,59 @@ namespace {
         cur_pos.path_index = val_state.block_path.size() - 1;
         cur_pos.stmt_idx = 0;
         auto lvalue_read = [&](const ::MIR::LValue& lv) {
-            if(const auto* e = lv.opt_Temporary())
-            {
-                // Update the last read location
-                val_state.tmp_ends.at(e->idx).end = cur_pos;
+            ProtoLifetime* slot;
+            if(const auto* e = lv.opt_Temporary()) {
+                slot = &val_state.tmp_ends.at(e->idx);
             }
-            else if(const auto* e = lv.opt_Variable())
-            {
-                val_state.var_ends.at(*e).end = cur_pos;
+            else if(const auto* e = lv.opt_Variable()) {
+                slot = &val_state.var_ends.at(*e);
             }
+            else {
+                return ;
+            }
+            // Update the last read location
+            //DEBUG("Update END " << lv << " to " << cur_pos);
+            slot->end = cur_pos;
             };
         auto lvalue_set = [&](const ::MIR::LValue& lv) {
-            if(const auto* e = lv.opt_Temporary())
-            {
-                // End whatever value was originally there, and insert this new one
-                auto& slot = val_state.tmp_ends.at(e->idx);
-                slot.end = cur_pos;
-                add_lifetime(lv, slot.start, slot.end);
-                slot.start = cur_pos;
+            ProtoLifetime* slot;
+            if(const auto* e = lv.opt_Temporary()) {
+                slot = &val_state.tmp_ends.at(e->idx);
             }
-            else if(const auto* e = lv.opt_Variable())
-            {
-                auto& slot = val_state.var_ends.at(*e);
-                slot.end = cur_pos;
-                add_lifetime(lv, slot.start, slot.end);
-                slot.start = cur_pos;
+            else if(const auto* e = lv.opt_Variable()) {
+                slot = &val_state.var_ends.at(*e);
             }
+            else {
+                return ;
+            }
+            // End whatever value was originally there, and insert this new one
+            slot->end = cur_pos;
+            add_lifetime(lv, slot->start, slot->end);
+            slot->start = cur_pos;
             };
+        auto lvalue_borrow = [&](const ::MIR::LValue& lv) {
+            ProtoLifetime* slot;
+            if(const auto* e = lv.opt_Temporary()) {
+                slot = &val_state.tmp_ends.at(e->idx);
+            }
+            else if(const auto* e = lv.opt_Variable()) {
+                slot = &val_state.var_ends.at(*e);
+            }
+            else {
+                return ;
+            }
+            // TODO: Flag this value as currently being borrowed (a flag that never clears)
+            slot->end = Position { ~0u, ~0u };
+            };
+        auto visit_lval_cb = [&](const auto& lv, ValUsage vu)->bool{
+                if(vu == ValUsage::Read)
+                    lvalue_read(lv);
+                if(vu == ValUsage::Borrow)
+                    lvalue_borrow(lv);
+                if(vu == ValUsage::Write)
+                    lvalue_set(lv);
+                return false;
+                };
 
         // Run statements
         for(const auto& stmt : fcn.blocks[bb_idx].statements)
@@ -813,13 +867,7 @@ namespace {
             }
             else
             {
-                visit_mir_lvalues(stmt, [&](const auto& lv, ValUsage vu)->bool{
-                    if(vu == ValUsage::Read)
-                        lvalue_read(lv);
-                    if(vu == ValUsage::Write)
-                        lvalue_set(lv);
-                    return false;
-                    });
+                visit_mir_lvalues(stmt, visit_lval_cb);
             }
         }
         cur_pos.stmt_idx = fcn.blocks[bb_idx].statements.size();
@@ -844,14 +892,14 @@ namespace {
             // What should be done here?
             ),
         (If,
-            lvalue_read(e.cond);
+            visit_mir_lvalue(e.cond, ValUsage::Read, visit_lval_cb);
 
             // Push blocks
             add_to_visit(e.bb0, val_state.clone());
             add_to_visit(e.bb1, mv$(val_state));
             ),
         (Switch,
-            lvalue_read(e.val);
+            visit_mir_lvalue(e.val, ValUsage::Read, visit_lval_cb);
             ::std::set<unsigned int> tgts;
             for(const auto& tgt : e.targets)
                 tgts.insert(tgt);
@@ -864,10 +912,10 @@ namespace {
             ),
         (Call,
             if( const auto* f = e.fcn.opt_Value() )
-                lvalue_read(*f);
+                visit_mir_lvalue(*f, ValUsage::Read, visit_lval_cb);
             for(const auto& arg : e.args)
                 if( const auto* e = arg.opt_LValue() )
-                    lvalue_read(*e);
+                    visit_mir_lvalue(*e, ValUsage::Read, visit_lval_cb);
 
             // Push blocks (with return valid only in one)
             add_to_visit(e.panic_block, val_state.clone());
@@ -894,6 +942,7 @@ namespace {
 
     // Move lifetime bitmaps into the variable for the below code
     ::MIR::ValueLifetimes   rv;
+    rv.m_block_offsets = mv$(block_offsets);
     rv.m_temporaries.reserve( temporary_lifetimes.size() );
     for(auto& lft : temporary_lifetimes)
         rv.m_temporaries.push_back( ::MIR::ValueLifetime(mv$(lft.stmt_bitmap)) );

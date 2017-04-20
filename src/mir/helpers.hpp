@@ -120,6 +120,10 @@ public:
         statements( mv$(stmts) )
     {}
 
+    bool valid_at(size_t ofs) const {
+        return statements.at(ofs);
+    }
+
     // true if this value is used at any point
     bool is_used() const {
         for(auto v : statements)
@@ -148,10 +152,18 @@ public:
 
 struct ValueLifetimes
 {
+    ::std::vector<size_t>   m_block_offsets;
     ::std::vector<ValueLifetime> m_temporaries;
     ::std::vector<ValueLifetime> m_variables;
+
+    bool var_valid(unsigned var_idx,  unsigned bb_idx, unsigned stmt_idx) const {
+        return m_variables.at(var_idx).valid_at( m_block_offsets[bb_idx] + stmt_idx );
+    }
+    bool tmp_valid(unsigned tmp_idx,  unsigned bb_idx, unsigned stmt_idx) const {
+        return m_temporaries.at(tmp_idx).valid_at( m_block_offsets[bb_idx] + stmt_idx );
+    }
 };
 
 }   // namespace MIR
 
-extern ::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool dump_debug);
+extern ::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, const ::MIR::Function& fcn, bool dump_debug);
