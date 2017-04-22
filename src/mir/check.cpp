@@ -457,6 +457,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 // Mark destination as valid
                 val_state.mark_validity( state, stmt.as_Assign().dst, true );
                 break;
+            case ::MIR::Statement::TAG_ScopeEnd:
+                break;
             }
         }
 
@@ -851,6 +853,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     break;
                 case ::MIR::Statement::TAG_Drop:
                     // TODO: Anything need checking here?
+                    break;
+                case ::MIR::Statement::TAG_ScopeEnd:
                     break;
                 }
             }

@@ -304,7 +304,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
 
     // Drop target if populated
     mark_value_assigned(sp, dst);
-    m_output.blocks.at(m_current_block).statements.push_back( ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
+    this->push_stmt( sp, ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
 }
 void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int flag/*=~0u*/)
 {
@@ -316,9 +316,7 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int 
         return ;
     }
 
-    auto stmt = ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val), flag });
-    DEBUG(stmt);
-    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
+    this->push_stmt(sp, ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val), flag }));
 
     if( flag != ~0u )
     {
@@ -333,9 +331,7 @@ void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val, unsig
 
     // TODO: Ensure that the type is a Box?
 
-    auto stmt = ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val), flag });
-    DEBUG(stmt);
-    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
+    this->push_stmt(sp, ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val), flag }));
 
     if( flag != ~0u )
     {
@@ -352,21 +348,19 @@ void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
         mark_value_assigned(sp, v.second);
 
     // 2. Push
-    auto stmt = ::MIR::Statement::make_Asm( mv$(data) );
-    DEBUG(stmt);
-    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
+    this->push_stmt(sp, ::MIR::Statement::make_Asm( mv$(data) ));
 }
 void MirBuilder::push_stmt_set_dropflag_val(const Span& sp, unsigned int idx, bool value)
 {
-    ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    auto stmt = ::MIR::Statement::make_SetDropFlag({ idx, value });
-    DEBUG(stmt);
-    m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
+    this->push_stmt(sp, ::MIR::Statement::make_SetDropFlag({ idx, value }));
 }
 void MirBuilder::push_stmt_set_dropflag_other(const Span& sp, unsigned int idx, unsigned int other)
 {
+    this->push_stmt(sp, ::MIR::Statement::make_SetDropFlag({ idx, false, other }));
+}
+void MirBuilder::push_stmt(const Span& sp, ::MIR::Statement stmt)
+{
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    auto stmt = ::MIR::Statement::make_SetDropFlag({ idx, false, other });
     DEBUG(stmt);
     m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
 }
@@ -777,6 +771,21 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
     {
         // 2. Emit drops for all non-moved variables (share with below)
         drop_scope_values(scope_def);
+
+        // Emit ScopeEnd for all controlled values
+        ::MIR::Statement::Data_ScopeEnd se;
+        if(const auto* e = scope_def.data.opt_Variables() ) {
+            se.vars = e->vars;
+        }
+        else if(const auto* e = scope_def.data.opt_Temporaries()) {
+            se.tmps = e->temporaries;
+        }
+        else {
+        }
+        // Only push the ScopeEnd if there were variables to end
+        if( !se.vars.empty() || !se.tmps.empty() ) {
+            this->push_stmt(sp, ::MIR::Statement( mv$(se) ));
+        }
     }
 
     // 3. Pop scope (last because `drop_scope_values` uses the stack)

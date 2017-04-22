@@ -272,6 +272,10 @@ TAGGED_UNION(Statement, Assign,
         eDropKind   kind;   // NOTE: For the `box` primitive
         LValue  slot;
         unsigned int flag_idx;  // Valid if != ~0u
+        }),
+    (ScopeEnd, struct {
+        ::std::vector<unsigned> vars;
+        ::std::vector<unsigned> tmps;
         })
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Statement& x);
@@ -286,6 +290,7 @@ struct BasicBlock
 class Function
 {
 public:
+    // TODO: Unify Variables, Temporaries, and Arguments
     ::std::vector< ::HIR::TypeRef>  named_variables;
     ::std::vector< ::HIR::TypeRef>  temporaries;
     ::std::vector<bool> drop_flags;

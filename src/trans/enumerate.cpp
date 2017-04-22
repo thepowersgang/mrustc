@@ -875,6 +875,8 @@ void Trans_Enumerate_Types(EnumState& state)
                             for(const auto& v : se.inputs)
                                 H::visit_lvalue(tv,pp,fcn, v.second);
                             ),
+                        (ScopeEnd,
+                            ),
                         (Assign,
                             H::visit_lvalue(tv,pp,fcn, se.dst);
                             TU_MATCHA( (se.src), (re),
@@ -1460,6 +1462,8 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second, pp);
                 ),
             (SetDropFlag,
+                ),
+            (ScopeEnd,
                 ),
             (Drop,
                 DEBUG("- DROP " << se.slot);

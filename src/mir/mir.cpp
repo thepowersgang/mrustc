@@ -483,6 +483,14 @@ namespace MIR {
             if(e.flag_idx != ~0u)
                 os << "IF df$" << e.flag_idx;
             os << ")";
+            ),
+        (ScopeEnd,
+            os << "ScopeEnd(";
+            for(auto idx : e.vars)
+                os << "var$" << idx << ",";
+            for(auto idx : e.tmps)
+                os << "tmp$" << idx << ",";
+            os << ")";
             )
         )
         return os;

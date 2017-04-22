@@ -402,6 +402,8 @@ namespace {
         (Drop,
             // Well, it mutates...
             rv |= visit_mir_lvalue(e.slot, ValUsage::Write, cb);
+            ),
+        (ScopeEnd,
             )
         )
         return rv;

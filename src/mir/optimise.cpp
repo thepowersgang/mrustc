@@ -185,6 +185,8 @@ namespace {
         (Drop,
             // Well, it mutates...
             rv |= visit_mir_lvalue_mut(e.slot, ValUsage::Write, cb);
+            ),
+        (ScopeEnd,
             )
         )
         return rv;
@@ -686,22 +688,21 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             return rv;
         }
 
-        ::MIR::BasicBlock clone_bb(const ::MIR::BasicBlock& src) const
+        ::MIR::BasicBlock clone_bb(const ::MIR::BasicBlock& src, unsigned src_idx, unsigned new_idx) const
         {
             ::MIR::BasicBlock   rv;
             rv.statements.reserve( src.statements.size() );
             for(const auto& stmt : src.statements)
             {
+                DEBUG("BB" << src_idx << "->BB" << new_idx << "/" << rv.statements.size() << ": " << stmt);
                 TU_MATCHA( (stmt), (se),
                 (Assign,
-                    DEBUG(se.dst << " = " << se.src);
                     rv.statements.push_back( ::MIR::Statement::make_Assign({
                         this->clone_lval(se.dst),
                         this->clone_rval(se.src)
                         }) );
                     ),
                 (Asm,
-                    DEBUG("asm!");
                     rv.statements.push_back( ::MIR::Statement::make_Asm({
                         se.tpl,
                         this->clone_name_lval_vec(se.outputs),
@@ -711,7 +712,6 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         }) );
                     ),
                 (SetDropFlag,
-                    DEBUG("df" << se.idx << " = ");
                     rv.statements.push_back( ::MIR::Statement::make_SetDropFlag({
                         this->df_base + se.idx,
                         se.new_val,
@@ -719,17 +719,27 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         }) );
                     ),
                 (Drop,
-                    DEBUG("drop " << se.slot);
                     rv.statements.push_back( ::MIR::Statement::make_Drop({
                         se.kind,
                         this->clone_lval(se.slot),
                         se.flag_idx == ~0u ? ~0u : this->df_base + se.flag_idx
                         }) );
+                    ),
+                (ScopeEnd,
+                    ::MIR::Statement::Data_ScopeEnd new_se;
+                    new_se.vars.reserve(se.vars.size());
+                    for(auto idx : se.vars)
+                        new_se.vars.push_back(this->var_base + idx);
+                    new_se.tmps.reserve(se.tmps.size());
+                    for(auto idx : se.tmps)
+                        new_se.tmps.push_back(this->tmp_base + idx);
+                    rv.statements.push_back(::MIR::Statement( mv$(new_se) ));
                     )
                 )
             }
-            DEBUG(src.terminator);
+            DEBUG("BB" << src_idx << "->BB" << new_idx << "/" << rv.statements.size() << ": " << src.terminator);
             rv.terminator = this->clone_term(src.terminator);
+            DEBUG("-> " << rv.terminator);
             return rv;
         }
         ::MIR::Terminator clone_term(const ::MIR::Terminator& src) const
@@ -981,7 +991,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             new_blocks.reserve( called_mir->blocks.size() );
             for(const auto& bb : called_mir->blocks)
             {
-                new_blocks.push_back( cloner.clone_bb(bb) );
+                new_blocks.push_back( cloner.clone_bb(bb, (&bb - called_mir->blocks.data()), fcn.blocks.size() + new_blocks.size()) );
             }
             // > Append new temporaries
             for(auto& val : cloner.const_assignments)
@@ -1138,6 +1148,12 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         return false;
                     if( ae.slot != be.slot )
                         return false;
+                    ),
+                (ScopeEnd,
+                    if( ae.vars != be.vars )
+                        return false;
+                    if( ae.tmps == be.tmps )
+                        return false;
                     )
                 )
             }
@@ -1230,7 +1246,7 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     if( ! replacements.empty() )
     {
         //MIR_TODO(state, "Unify blocks - " << replacements);
-        DEBUG("Unify blocks - " << replacements);
+        DEBUG("Unify blocks (old: new) - " << replacements);
         auto patch_tgt = [&replacements](::MIR::BasicBlockId& tgt) {
             auto it = replacements.find(tgt);
             if( it != replacements.end() )
@@ -1326,8 +1342,8 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 changed = true;
             }
         }
-        // NOTE: Quick special-case for bswap<u8> (a no-op)
-        else if( tef.name == "bswap" && tef.params.m_types.at(0) == ::HIR::CoreType::U8 )
+        // NOTE: Quick special-case for bswap<u8/i8> (a no-op)
+        else if( tef.name == "bswap" && (tef.params.m_types.at(0) == ::HIR::CoreType::U8 || tef.params.m_types.at(0) == ::HIR::CoreType::I8 )
         {
             DEBUG("bswap<u8> is a no-op");
             if( auto* e = te.args.at(0).opt_LValue() )
@@ -2310,6 +2326,35 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     se->idx = df_rewrite_table[se->idx];
                     if( se->other != ~0u )
                         se->other = df_rewrite_table[se->other];
+                }
+                else if( auto* se = stmt_it->opt_ScopeEnd() )
+                {
+                    for(auto it = se->vars.begin(); it != se->vars.end(); )
+                    {
+                        if( var_rewrite_table.at(*it) == ~0u ) {
+                            it = se->vars.erase(it);
+                        }
+                        else {
+                            *it = var_rewrite_table.at(*it);
+                            ++ it;
+                        }
+                    }
+                    for(auto it = se->tmps.begin(); it != se->tmps.end(); )
+                    {
+                        if( temp_rewrite_table.at(*it) == ~0u ) {
+                            it = se->tmps.erase(it);
+                        }
+                        else {
+                            *it = temp_rewrite_table.at(*it);
+                            ++ it;
+                        }
+                    }
+
+                    if( se->vars.empty() && se->tmps.empty() ) {
+                        DEBUG("- Delete ScopeEnd (now empty)");
+                        stmt_it = it->statements.erase(stmt_it);
+                        -- stmt_it;
+                    }
                 }
             }
             state.set_cur_stmt_term(i);

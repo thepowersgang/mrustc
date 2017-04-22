@@ -99,6 +99,14 @@ namespace {
                             m_os << " IF df$" << e.flag_idx;
                         }
                         m_os << ");\n";
+                        ),
+                    (ScopeEnd,
+                        m_os << "// Scope End: ";
+                        for(auto idx : e.vars)
+                            m_os << "var$" << idx << ",";
+                        for(auto idx : e.tmps)
+                            m_os << "tmp$" << idx << ",";
+                        m_os << "\n";
                         )
                     )
                 }

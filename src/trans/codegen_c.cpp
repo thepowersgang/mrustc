@@ -1315,6 +1315,9 @@ namespace {
                     switch( stmt.tag() )
                     {
                     case ::MIR::Statement::TAGDEAD: throw "";
+                    case ::MIR::Statement::TAG_ScopeEnd:
+                        m_of << "// " << stmt << "\n";
+                        break;
                     case ::MIR::Statement::TAG_SetDropFlag: {
                         const auto& e = stmt.as_SetDropFlag();
                         m_of << "\tdf" << e.idx << " = ";
@@ -1330,7 +1333,7 @@ namespace {
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
 
                         if( e.flag_idx != ~0u )
-                            m_of << "if( df" << e.flag_idx << " ) {\n";
+                            m_of << "\tif( df" << e.flag_idx << " ) {\n";
 
                         switch( e.kind )
                         {
@@ -1353,7 +1356,7 @@ namespace {
                             break;
                         }
                         if( e.flag_idx != ~0u )
-                            m_of << "}\n";
+                            m_of << "\t}\n";
                         break; }
                     case ::MIR::Statement::TAG_Asm: {
                         const auto& e = stmt.as_Asm();
@@ -2720,7 +2723,11 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
+                    {
                         m_of << "\\" << ((unsigned int)v & 0xFF);
+                        if( isdigit( *(&v+1) ) )
+                            m_of << "\"\"";
+                    }
                 }
                 m_of << "\"" << ::std::dec;
                 m_of << ";\n\t";

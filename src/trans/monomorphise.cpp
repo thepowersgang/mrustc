@@ -150,6 +150,9 @@ namespace {
             case ::MIR::Statement::TAG_SetDropFlag:
                 statements.push_back( ::MIR::Statement( stmt.as_SetDropFlag() ) );
                 break;
+            case ::MIR::Statement::TAG_ScopeEnd:
+                statements.push_back( ::MIR::Statement( stmt.as_ScopeEnd() ) );
+                break;
             case ::MIR::Statement::TAG_Drop: {
                 const auto& e = stmt.as_Drop();
                 DEBUG("- DROP " << e.slot);

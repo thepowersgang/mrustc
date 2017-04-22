@@ -495,6 +495,11 @@ namespace {
                 m_out.write_count(e.idx);
                 m_out.write_bool(e.new_val);
                 m_out.write_count(e.other);
+                ),
+            (ScopeEnd,
+                m_out.write_tag(4);
+                serialise_vec(e.vars);
+                serialise_vec(e.tmps);
                 )
             )
         }

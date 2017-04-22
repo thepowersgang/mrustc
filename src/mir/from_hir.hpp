@@ -199,6 +199,8 @@ public:
     void push_stmt_set_dropflag_val(const Span& sp, unsigned int index, bool value);
     void push_stmt_set_dropflag_other(const Span& sp, unsigned int index, unsigned int other);
 
+    void push_stmt(const Span& sp, ::MIR::Statement stmt);
+
     // - Block management
     bool block_active() const {
         return m_block_active;

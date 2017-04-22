@@ -1008,6 +1008,11 @@ namespace {
                 m_in.read_bool(),
                 static_cast<unsigned int>(m_in.read_count())
                 });
+        case 4:
+            return ::MIR::Statement::make_ScopeEnd({
+                deserialise_vec<unsigned int>(),
+                deserialise_vec<unsigned int>()
+                });
         default:
             ::std::cerr << "Bad tag for a MIR Statement" << ::std::endl;
             throw "";

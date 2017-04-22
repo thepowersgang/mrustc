@@ -932,6 +932,8 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 ),
             (SetDropFlag,
                 ),
+            (ScopeEnd,
+                ),
             (Asm,
                 for(auto& v : se.inputs)
                     MIR_Cleanup_LValue(state, mutator,  v.second);

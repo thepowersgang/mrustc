@@ -712,6 +712,9 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                         state.move_lvalue(mir_res, se.slot);
                     }
                 }
+                ),
+            (ScopeEnd,
+                // TODO: Mark all mentioned variables as invalid
                 )
             )
         }
