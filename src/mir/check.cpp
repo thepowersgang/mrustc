@@ -458,6 +458,10 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 val_state.mark_validity( state, stmt.as_Assign().dst, true );
                 break;
             case ::MIR::Statement::TAG_ScopeEnd:
+                //for(auto idx : stmt.as_ScopeEnd().vars)
+                //    val_state.mark_validity(state, ::MIR::LValue::make_Variable(idx), false);
+                //for(auto idx : stmt.as_ScopeEnd().tmps)
+                //    val_state.mark_validity(state, ::MIR::LValue::make_Temporary({idx}), false);
                 break;
             }
         }
@@ -855,6 +859,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     // TODO: Anything need checking here?
                     break;
                 case ::MIR::Statement::TAG_ScopeEnd:
+                    // TODO: Mark listed values as descoped
                     break;
                 }
             }
