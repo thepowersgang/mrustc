@@ -159,6 +159,11 @@ class MirBuilder
     ::std::vector<ScopeDef> m_scopes;
     ::std::vector<unsigned int> m_scope_stack;
     ScopeHandle m_fcn_scope;
+
+    // LValue used only for the condition of `if`
+    // - Using a fixed temporary simplifies parts of lowering (scope related) and reduces load on
+    //   the optimiser.
+    ::MIR::LValue   m_if_cond_lval;
 public:
     MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, ::MIR::Function& output);
     ~MirBuilder();
@@ -185,6 +190,17 @@ public:
     ::MIR::LValue get_result_in_lvalue(const Span& sp, const ::HIR::TypeRef& ty, bool allow_missing_value=false);
     /// Obtains a result in a param (or a lvalue)
     ::MIR::Param get_result_in_param(const Span& sp, const ::HIR::TypeRef& ty, bool allow_missing_value=false);
+
+    ::MIR::LValue get_if_cond() const {
+        return m_if_cond_lval.clone();
+    }
+    ::MIR::LValue get_rval_in_if_cond(const Span& sp, ::MIR::RValue val) {
+        push_stmt_assign(sp, m_if_cond_lval.clone(), mv$(val));
+        return m_if_cond_lval.clone();
+    }
+    ::MIR::LValue get_result_in_if_cond(const Span& sp) {
+        return get_rval_in_if_cond(sp, get_result(sp));
+    }
 
     // - Statements
     // Push an assignment. NOTE: This also marks the rvalue as moved
@@ -215,6 +231,7 @@ public:
 
     void set_cur_block(unsigned int new_block);
     ::MIR::BasicBlockId pause_cur_block();
+
     void end_block(::MIR::Terminator term);
 
     ::MIR::BasicBlockId new_bb_linked();

@@ -750,7 +750,7 @@ namespace {
                 auto scope = m_builder.new_scope_temp( cond->span() );
                 this->visit_node_ptr(*cond_p);
                 ASSERT_BUG(cond->span(), cond->m_res_type == ::HIR::CoreType::Bool, "If condition wasn't a bool");
-                decision_val = m_builder.get_result_in_lvalue(cond->span(), ::HIR::CoreType::Bool);
+                decision_val = m_builder.get_result_in_if_cond(cond->span());
                 m_builder.terminate_scope(cond->span(), mv$(scope));
             }
 

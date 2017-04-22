@@ -32,6 +32,9 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
     m_scopes.push_back( ScopeDef { sp, ScopeType::make_Temporaries({}) } );
     m_scope_stack.push_back( 1 );
 
+
+    m_if_cond_lval = this->new_temporary(::HIR::CoreType::Bool);
+
     m_arg_states.reserve( args.size() );
     for(size_t i = 0; i < args.size(); i ++ )
         m_arg_states.push_back( VarState::make_Valid({}) );

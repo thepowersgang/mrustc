@@ -372,8 +372,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
             auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
             conv.visit_node_ptr( arm.m_cond );
-            ac.cond_lval = builder.get_result_in_lvalue(arm.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool));
-            // NOTE: Terminating the scope slightly early is safe, because the resulting boolean temp isn't invalidated.
+            ac.cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
             builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
             ac.cond_end = builder.pause_cur_block();
 
@@ -1947,8 +1946,8 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     auto succ_bb = builder.new_bb_unlinked();
 
                     auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ re.as_Uint().v, te }));
-                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
-                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                    builder.push_stmt_assign(sp, builder.get_if_cond(), ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ builder.get_if_cond(), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
                 (ValueRange,
@@ -2847,8 +2846,8 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
             ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
             const auto& re = r.as_Value();
             auto test_val = ::MIR::Param(re.clone());
-            auto cmp_lval = this->push_compare( val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) );
-            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), arm_targets[0], def_blk }) );
+            auto cmp_lval = m_builder.get_rval_in_if_cond(sp, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
+            m_builder.end_block( ::MIR::Terminator::make_If({  mv$(cmp_lval), arm_targets[0], def_blk }) );
         }
         else
         {

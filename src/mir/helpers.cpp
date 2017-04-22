@@ -502,6 +502,9 @@ namespace {
         bool is_empty() const {
             return start == end;
         }
+        bool is_borrowed() const {
+            return this->end == Position { ~0u, ~0u };
+        }
     };
     static unsigned NEXT_INDEX = 0;
     struct State
@@ -585,10 +588,11 @@ namespace {
         {
             // TODO: This logic isn't quite correct. Just becase a value's existing end is already marked as valid,
             // doesn't mean that we have no new information.
+            // - Wait, doesn't it?
             auto try_merge_lft = [&](const ProtoLifetime& lft, const ::std::vector<unsigned int>& seen)->bool {
                 if(lft.is_empty())  return false;
                 // TODO: What should be done for borrow flagged values
-                if(lft.end == Position { ~0u, ~0u })    return false;
+                if(lft.is_borrowed())   return false;
                 auto end_idx = block_offsets.at( val_state.block_path.at(lft.end.path_index) ) + lft.end.stmt_idx;
 
                 auto it = ::std::find(seen.begin(), seen.end(), end_idx);

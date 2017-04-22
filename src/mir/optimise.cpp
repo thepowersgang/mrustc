@@ -1121,6 +1121,8 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
             }
             return false;
             });
+
+        // TODO: Replace in ScopeEnd too?
     }
 
     return replacement_needed;
