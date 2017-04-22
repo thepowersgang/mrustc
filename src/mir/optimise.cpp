@@ -471,6 +471,31 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     // >> Replace targets that point to a block that is just a goto
     for(auto& block : fcn.blocks)
     {
+        // Unify sequential ScopeEnd statements
+        if( block.statements.size() > 1 )
+        {
+            for(auto it = block.statements.begin() + 1; it != block.statements.end(); )
+            {
+                if( (it-1)->is_ScopeEnd() && it->is_ScopeEnd() )
+                {
+                    auto& dst = (it-1)->as_ScopeEnd();
+                    const auto& src = it->as_ScopeEnd();
+                    DEBUG("Unify " << *(it-1) << " and " << *it);
+                    for(auto v : src.vars)
+                        dst.vars.push_back(v);
+                    for(auto v : src.tmps)
+                        dst.tmps.push_back(v);
+                    ::std::sort(dst.vars.begin(), dst.vars.end());
+                    ::std::sort(dst.tmps.begin(), dst.tmps.end());
+                    it = block.statements.erase(it);
+                }
+                else
+                {
+                    ++ it;
+                }
+            }
+        }
+
         TU_MATCHA( (block.terminator), (e),
         (Incomplete,
             ),
@@ -1343,7 +1368,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             }
         }
         // NOTE: Quick special-case for bswap<u8/i8> (a no-op)
-        else if( tef.name == "bswap" && (tef.params.m_types.at(0) == ::HIR::CoreType::U8 || tef.params.m_types.at(0) == ::HIR::CoreType::I8 )
+        else if( tef.name == "bswap" && (tef.params.m_types.at(0) == ::HIR::CoreType::U8 || tef.params.m_types.at(0) == ::HIR::CoreType::I8) )
         {
             DEBUG("bswap<u8> is a no-op");
             if( auto* e = te.args.at(0).opt_LValue() )
