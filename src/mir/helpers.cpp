@@ -737,17 +737,17 @@ namespace {
             if( !bb_memory_ent.has_state() )
             {
                 // No recorded state, needs to be visited
-                DEBUG(state << " " << new_state.index << " -> bb" << new_bb_idx << " (no existing state)");
+                DEBUG(state << " state" << new_state.index << " -> bb" << new_bb_idx << " (no existing state)");
             }
             else if( bb_memory_ent.try_merge(new_state) )
             {
                 // This state has new information, needs to be visited
-                DEBUG(state << " " << new_state.index << " -> bb" << new_bb_idx << " (new info)");
+                DEBUG(state << " state" << new_state.index << " -> bb" << new_bb_idx << " (new info)");
             }
             else
             {
                 // Skip
-                DEBUG(state << " " << new_state.index << " No new state before push (to bb" << new_bb_idx << "), applying");
+                DEBUG(state << " state" << new_state.index << " -> bb" << new_bb_idx << " - No new state, no push");
                 apply_state(new_state);
                 return ;
             }
