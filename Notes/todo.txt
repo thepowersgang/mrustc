@@ -19,5 +19,7 @@ TODO:
 - Optimise typecheck.
 
 
-- MIR: Add a Parameter type that is either LValue, Constant
- > For any place a LValue is currently used, but a constant is valid
+- MIR: Unify Variable/Argument/Temporary LValue types
+ - This should reduce the amount of code needed for validation, but will be a
+   BIG change.
+
