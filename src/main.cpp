@@ -455,6 +455,9 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Validate PO", [&]() {
             MIR_CheckCrate(*hir_crate);
             });
+        // - Exhaustive MIR validation (follows every code path and checks variable validity)
+        // > DEBUGGING ONLY
+        // > DISBALED: Excessive memory usage on complex functions
         CompilePhaseV("MIR Validate Full", [&]() {
             //MIR_CheckCrate_Full(*hir_crate);
             });
