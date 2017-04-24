@@ -278,6 +278,7 @@ const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef
 // --------------------------------------------------------------------
 namespace {
     enum class ValUsage {
+        Move,
         Read,
         Write,
         Borrow,
@@ -321,6 +322,8 @@ namespace {
     {
         if( const auto* e = p.opt_LValue() )
         {
+            if(cb(*e, ValUsage::Move))
+                return true;
             return visit_mir_lvalue(*e, u, cb);
         }
         else
@@ -334,6 +337,8 @@ namespace {
         bool rv = false;
         TU_MATCHA( (rval), (se),
         (Use,
+            if(cb(se, ValUsage::Move))
+                return true;
             rv |= visit_mir_lvalue(se, ValUsage::Read, cb);
             ),
         (Constant,
@@ -409,8 +414,7 @@ namespace {
         return rv;
     }
 
-    /*
-    void visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
+    void visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
         TU_MATCHA( (term), (e),
         (Incomplete,
@@ -424,22 +428,22 @@ namespace {
         (Panic,
             ),
         (If,
-            visit_mir_lvalue_mut(e.cond, ValUsage::Read, cb);
+            visit_mir_lvalue(e.cond, ValUsage::Read, cb);
             ),
         (Switch,
-            visit_mir_lvalue_mut(e.val, ValUsage::Read, cb);
+            visit_mir_lvalue(e.val, ValUsage::Read, cb);
             ),
         (Call,
             if( e.fcn.is_Value() ) {
-                visit_mir_lvalue_mut(e.fcn.as_Value(), ValUsage::Read, cb);
+                visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, cb);
             }
             for(auto& v : e.args)
-                visit_mir_lvalue_mut(v, ValUsage::Read, cb);
-            visit_mir_lvalue_mut(e.ret_val, ValUsage::Write, cb);
+                visit_mir_lvalue(v, ValUsage::Read, cb);
+            visit_mir_lvalue(e.ret_val, ValUsage::Write, cb);
             )
         )
     }
-
+    /*
     void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
         for(unsigned int block_idx = 0; block_idx < fcn.blocks.size(); block_idx ++)
@@ -462,6 +466,502 @@ namespace {
     }
     */
 }
+namespace
+{
+    struct ValueLifetime
+    {
+        ::std::vector<bool> stmt_bitmap;
+        ValueLifetime(size_t stmt_count):
+            stmt_bitmap(stmt_count)
+        {}
+
+        void fill(const ::std::vector<size_t>& block_offsets, size_t bb, size_t first_stmt, size_t last_stmt)
+        {
+            DEBUG("bb" << bb << " : " << first_stmt << "--" << last_stmt);
+            for(size_t stmt = first_stmt; stmt <= last_stmt; stmt++)
+            {
+                stmt_bitmap[block_offsets[bb] + stmt] = true;
+            }
+        }
+
+        void dump_debug(const char* suffix, unsigned i, const ::std::vector<size_t>& block_offsets)
+        {
+            ::std::string   name = FMT(suffix << "$" << i);
+            while(name.size() < 3+1+3)
+                name += " ";
+            DEBUG(name << " : " << FMT_CB(os,
+                for(unsigned int j = 0; j < this->stmt_bitmap.size(); j++)
+                {
+                    if(j != 0 && ::std::find(block_offsets.begin(), block_offsets.end(), j) != block_offsets.end())
+                        os << "|";
+                    os << (this->stmt_bitmap[j] ? "X" : " ");
+                }
+                ));
+        }
+    };
+}
+#if 1
+void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, const ::MIR::Function& fcn,  size_t bb_idx, size_t stmt_idx,  const ::MIR::LValue& lv, const ::std::vector<size_t>& block_offsets, ValueLifetime& vl);
+
+::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, const ::MIR::Function& fcn, bool dump_debug)
+{
+    TRACE_FUNCTION_F(state);
+
+    size_t  statement_count = 0;
+    ::std::vector<size_t>   block_offsets;
+    block_offsets.reserve( fcn.blocks.size() );
+    for(const auto& bb : fcn.blocks)
+    {
+        block_offsets.push_back(statement_count);
+        statement_count += bb.statements.size() + 1;    // +1 for the terminator
+    }
+    block_offsets.push_back(statement_count);   // Store the final limit for later code to use.
+
+    ::std::vector<ValueLifetime>    temporary_lifetimes( fcn.temporaries.size(), ValueLifetime(statement_count) );
+    ::std::vector<ValueLifetime>    variable_lifetimes( fcn.named_variables.size(), ValueLifetime(statement_count) );
+
+
+    // Enumerate direct assignments of variables (linear iteration of BB list)
+    for(size_t bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
+    {
+        auto assigned_lvalue = [&](size_t bb_idx, size_t stmt_idx, const ::MIR::LValue& lv) {
+                if( const auto* de = lv.opt_Variable() )
+                {
+                    MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, variable_lifetimes[*de]);
+                }
+                else if( const auto* de = lv.opt_Temporary() )
+                {
+                    MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, temporary_lifetimes[de->idx]);
+                }
+                else
+                {
+                    // Not a direct assignment of a slot
+                }
+            };
+
+        const auto& bb = fcn.blocks[bb_idx];
+        for(size_t stmt_idx = 0; stmt_idx < bb.statements.size(); stmt_idx ++)
+        {
+            state.set_cur_stmt(bb_idx, stmt_idx);
+            const auto& stmt = bb.statements[stmt_idx];
+            if( const auto* se = stmt.opt_Assign() )
+            {
+                // For assigned variables, determine how long that value will live
+                assigned_lvalue(bb_idx, stmt_idx+1, se->dst);
+            }
+            else if( const auto* se = stmt.opt_Asm() )
+            {
+                for(const auto& e : se->outputs)
+                {
+                    assigned_lvalue(bb_idx, stmt_idx+1, e.second);
+                }
+            }
+        }
+        state.set_cur_stmt_term(bb_idx);
+
+        // Only Call can assign a value
+        TU_IFLET(::MIR::Terminator, bb.terminator, Call, te,
+            assigned_lvalue(te.ret_block, 0, te.ret_val);
+        )
+    }
+
+    // Dump out variable lifetimes.
+    if( dump_debug )
+    {
+        for(unsigned int i = 0; i < temporary_lifetimes.size(); i ++)
+        {
+            temporary_lifetimes[i].dump_debug("tmp", i, block_offsets);
+        }
+        for(unsigned int i = 0; i < variable_lifetimes.size(); i ++)
+        {
+            variable_lifetimes[i].dump_debug("var", i, block_offsets);
+        }
+    }
+
+
+    ::MIR::ValueLifetimes   rv;
+    rv.m_block_offsets = mv$(block_offsets);
+    rv.m_temporaries.reserve( temporary_lifetimes.size() );
+    for(auto& lft : temporary_lifetimes)
+        rv.m_temporaries.push_back( ::MIR::ValueLifetime(mv$(lft.stmt_bitmap)) );
+    rv.m_variables.reserve( variable_lifetimes.size() );
+    for(auto& lft : variable_lifetimes)
+        rv.m_variables.push_back( ::MIR::ValueLifetime(mv$(lft.stmt_bitmap)) );
+    return rv;
+}
+void MIR_Helper_GetLifetimes_DetermineValueLifetime(
+        ::MIR::TypeResolve& mir_res, const ::MIR::Function& fcn,
+        size_t bb_idx, size_t stmt_idx, // First statement in which the value is valid (after the assignment)
+        const ::MIR::LValue& lv, const ::std::vector<size_t>& block_offsets, ValueLifetime& vl
+        )
+{
+    TRACE_FUNCTION_F(mir_res << " " << lv);
+    // Walk the BB tree until:
+    // - Loopback
+    // - Assignment
+    // - Drop
+
+    struct State
+    {
+        ::std::vector<unsigned int> bb_history;
+        size_t  last_read_bb;   // index into bb_history (-1, 0 = first bb)
+        size_t  last_read_ofs;  // Statement index
+
+        State():
+            last_read_bb(SIZE_MAX),
+            last_read_ofs(0)
+        {
+        }
+
+        State clone() const {
+            return *this;
+        }
+
+        // Returns true if the variable has been borrowed
+        bool is_borrowed() const {
+            return last_read_bb == SIZE_MAX && last_read_ofs == SIZE_MAX;
+        }
+        // Returns true if the variable wasn't read since the initial assigmnet
+        bool is_unread() const {
+            return last_read_bb == SIZE_MAX && last_read_ofs == 0;
+        }
+
+        void mark_borrowed(size_t /*stmt_idx*/) {
+            last_read_bb = SIZE_MAX;
+            last_read_ofs = SIZE_MAX;
+        }
+        void mark_read(size_t stmt_idx) {
+            if( !is_borrowed() ) {
+                last_read_bb = bb_history.size();
+                last_read_ofs = stmt_idx;
+            }
+        }
+        void fmt(::std::ostream& os) const {
+            os << "[" << bb_history << "], ";
+            if( is_unread() ) {
+                os << "unread";
+            }
+            else if( is_borrowed() ) {
+                os << "borrowed";
+            }
+            else {
+                os << "+" << last_read_bb << "/" << last_read_ofs;
+            }
+        }
+        void apply(const ::std::vector<size_t>& block_offsets, ValueLifetime& vl, size_t init_bb_idx, size_t init_stmt_idx, size_t cur_stmt_idx)
+        {
+            TRACE_FUNCTION_F(FMT_CB(ss, this->fmt(ss);));
+            if( is_unread() )
+            {
+                // Never read, nothing to apply
+            }
+            else if( last_read_bb == 0 )
+            {
+                DEBUG("Init BB" << init_bb_idx);
+                // Special case, All within the original block
+                // - Fill from `init_stmt_idx` to `last_read_ofs` (incl)
+                vl.fill(block_offsets, init_bb_idx,  init_stmt_idx, last_read_ofs);
+            }
+            else if( is_borrowed() && bb_history.size() == 0 )
+            {
+                DEBUG("Borrowed, init only");
+                vl.fill(block_offsets, init_bb_idx,  init_stmt_idx, cur_stmt_idx);
+            }
+            else
+            {
+                assert( !bb_history.empty() );
+
+                // - Fill from `init_stmt_idx` to end of `init_bb_idx`
+                vl.fill(block_offsets, init_bb_idx,  init_stmt_idx, block_offsets[init_bb_idx+1]-block_offsets[init_bb_idx]);
+                // - Fill all of blocks up to (not incl) `last_read_bb`
+                //  > If borrowed, last_read_bb will be SIZE_MAX, and thus the vector size will control this loop
+                for(size_t ofs = 1; ofs < last_read_bb && ofs <= bb_history.size(); ofs++)
+                {
+                    size_t bb_idx = bb_history[ofs-1];
+                    assert(bb_idx+1 < block_offsets.size());
+                    size_t limit = block_offsets[bb_idx+1]-block_offsets[bb_idx];
+                    vl.fill(block_offsets, bb_idx, 0, limit-1);
+                }
+
+                if( is_borrowed() )
+                {
+                    DEBUG("Borrowed");
+                    // Value was borrowed, fill to the current position in the final block
+                    size_t bb_idx = bb_history.back();
+                    vl.fill(block_offsets, bb_idx, 0, cur_stmt_idx);
+                }
+                else
+                {
+                    // - Fill from start of `last_read_bb` to `last_read_ofs`
+                    assert(last_read_bb <= bb_history.size());
+                    size_t bb_idx = bb_history[last_read_bb-1];
+                    vl.fill(block_offsets, bb_idx, 0, last_read_ofs);
+                }
+            }
+        }
+    };
+
+    struct Runner
+    {
+        ::MIR::TypeResolve& m_mir_res;
+        const ::MIR::Function& m_fcn;
+        size_t m_init_bb_idx;
+        size_t m_init_stmt_idx;
+        const ::MIR::LValue& m_lv;
+        const ::std::vector<size_t>& m_block_offsets;
+        ValueLifetime& m_lifetimes;
+        bool m_is_copy;
+        ::std::vector<::std::pair<size_t, State>> m_states_to_do;
+
+        Runner(::MIR::TypeResolve& mir_res, const ::MIR::Function& fcn, size_t init_bb_idx, size_t init_stmt_idx, const ::MIR::LValue& lv, const ::std::vector<size_t>& block_offsets, ValueLifetime& vl):
+            m_mir_res(mir_res),
+            m_fcn(fcn),
+            m_init_bb_idx(init_bb_idx),
+            m_init_stmt_idx(init_stmt_idx),
+            m_lv(lv),
+            m_block_offsets(block_offsets),
+            m_lifetimes(vl)
+        {
+            ::HIR::TypeRef  tmp;
+            m_is_copy = m_mir_res.m_resolve.type_is_copy(mir_res.sp, m_mir_res.get_lvalue_type(tmp, lv));
+        }
+
+        void apply_state(State& state, size_t cur_stmt_idx)
+        {
+            state.apply(m_block_offsets, m_lifetimes, m_init_bb_idx, m_init_stmt_idx, cur_stmt_idx);
+        }
+
+        void run_block(size_t bb_idx, size_t stmt_idx, State state)
+        {
+            const auto& bb = m_fcn.blocks.at(bb_idx);
+            assert(stmt_idx <= bb.statements.size());
+
+            bool was_moved = false;
+            auto visit_cb = [&](const auto& lv, auto vu) {
+                    if(lv == m_lv) {
+                        if( vu == ValUsage::Read ) {
+                            DEBUG(m_mir_res << "Used");
+                            state.mark_read(stmt_idx);
+                        }
+                        if( vu == ValUsage::Move ) {
+                            DEBUG(m_mir_res << (m_is_copy ? "Read" : "Moved"));
+                            state.mark_read(stmt_idx);
+                            was_moved = ! m_is_copy;
+                        }
+                        if( vu == ValUsage::Borrow ) {
+                            DEBUG(m_mir_res << "Borrowed");
+                            state.mark_borrowed(stmt_idx);
+                        }
+                        return true;
+                    }
+                    return false;
+                    };
+
+            for( ; stmt_idx < bb.statements.size(); stmt_idx ++)
+            {
+                m_mir_res.set_cur_stmt(bb_idx, stmt_idx);
+                const auto& stmt = bb.statements[stmt_idx];
+
+                // Visit and see if the value is read (setting the read flag or end depending on if the value is Copy)
+                visit_mir_lvalues(stmt, visit_cb);
+
+                if( was_moved )
+                {
+                    // Moved: Update read position and apply
+                    DEBUG(m_mir_res << "Moved, return");
+                    state.mark_read(stmt_idx);
+                    this->apply_state(state, stmt_idx);
+                    return ;
+                }
+
+                TU_MATCHA( (stmt), (se),
+                (Assign,
+                    if( se.dst == m_lv )
+                    {
+                        DEBUG(m_mir_res << "- Assigned to, return");
+                        // Value assigned, just apply
+                        this->apply_state(state, stmt_idx);
+                        return ;
+                    }
+                    ),
+                (Drop,
+                    visit_mir_lvalue(se.slot, ValUsage::Read, visit_cb);
+                    if( se.slot == m_lv )
+                    {
+                        // Value dropped, update read position and apply
+                        DEBUG(m_mir_res << "- Dropped, return");
+                        // - If it was borrowed, it can't still be borrowed here.
+                        // TODO: Enable this once it's known to not cause mis-optimisation. It could currently.
+                        //if( state.is_borrowed() ) {
+                        //    state.clear_borrowed();
+                        //}
+                        state.mark_read(stmt_idx);
+                        this->apply_state(state, stmt_idx);
+                        return ;
+                    }
+                    ),
+                (Asm,
+                    // 
+                    for(const auto& e : se.outputs)
+                    {
+                        if(e.second == m_lv) {
+                            // Assigned, just apply
+                            DEBUG(m_mir_res << "- Assigned (asm!), return");
+                            this->apply_state(state, stmt_idx);
+                            return ;
+                        }
+                    }
+                    ),
+                (SetDropFlag,
+                    // Ignore
+                    ),
+                (ScopeEnd,
+                    // Ignore
+                    )
+                )
+            }
+            m_mir_res.set_cur_stmt_term(bb_idx);
+
+            visit_mir_lvalues(bb.terminator, visit_cb);
+
+            if( was_moved )
+            {
+                // Moved: Update read position and apply
+                DEBUG(m_mir_res << "- Moved, return");
+                state.mark_read(stmt_idx);
+                this->apply_state(state, stmt_idx);
+                return ;
+            }
+
+            // Terminator
+            TU_MATCHA( (bb.terminator), (te),
+            (Incomplete,
+                // TODO: Isn't this a bug?
+                DEBUG(m_mir_res << "Incomplete");
+                this->apply_state(state, stmt_idx);
+                ),
+            (Return,
+                DEBUG(m_mir_res << "Return");
+                this->apply_state(state, stmt_idx);
+                ),
+            (Diverge,
+                DEBUG(m_mir_res << "Diverge");
+                this->apply_state(state, stmt_idx);
+                ),
+            (Goto,
+                m_states_to_do.push_back( ::std::make_pair(te, mv$(state)) );
+                ),
+            (Panic,
+                m_states_to_do.push_back( ::std::make_pair(te.dst, mv$(state)) );
+                ),
+            (If,
+                m_states_to_do.push_back( ::std::make_pair(te.bb0, state.clone()) );
+                m_states_to_do.push_back( ::std::make_pair(te.bb1, mv$(state)) );
+                ),
+            (Switch,
+                for(size_t i = 0; i < te.targets.size(); i ++)
+                {
+                    auto s = (i == te.targets.size()-1)
+                        ? mv$(state)
+                        : state.clone();
+                    m_states_to_do.push_back( ::std::make_pair(te.targets[i], mv$(s)) );
+                }
+                ),
+            (Call,
+                if( te.ret_val == m_lv )
+                {
+                    DEBUG(m_mir_res << "Assigned (Call), return");
+                    // Value assigned, just apply
+                    this->apply_state(state, stmt_idx);
+                    return ;
+                }
+                m_states_to_do.push_back( ::std::make_pair(te.ret_block, state.clone()) );
+                m_states_to_do.push_back( ::std::make_pair(te.panic_block, mv$(state)) );
+                )
+            )
+        }
+    };
+
+    Runner  runner(mir_res, fcn, bb_idx, stmt_idx, lv, block_offsets, vl);
+    ::std::vector< ::std::pair<size_t,State>>   post_check_list;
+
+    runner.run_block(bb_idx, stmt_idx, State());
+
+    while( ! runner.m_states_to_do.empty() )
+    {
+        auto bb_idx = runner.m_states_to_do.back().first;
+        auto state = mv$(runner.m_states_to_do.back().second);
+        runner.m_states_to_do.pop_back();
+        DEBUG("state.bb_history=[" << state.bb_history << "], -> BB" << bb_idx);
+
+        auto it = ::std::find(state.bb_history.begin(), state.bb_history.end(), bb_idx);
+        if( it != state.bb_history.end() )
+        {
+            // Loopback: Stop
+            // - If the variable was valid at the loopback point, set last read point to current position
+
+            // If the loop point is before the last recorded read, fill validity along the rest.
+            if( static_cast<size_t>(it - state.bb_history.begin()) <= state.last_read_bb )
+            {
+                state.bb_history.push_back(bb_idx);
+                state.mark_read(0);
+                DEBUG("Looped (before last read)");
+            }
+            else if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
+            {
+                state.bb_history.push_back(bb_idx);
+                state.mark_read(0);
+                DEBUG("Looped (to valid location)");
+            }
+            else
+            {
+                // TODO: Put this state elsewhere and check if the variable is known valid at that point.
+                DEBUG("Looped (after last read)");
+                runner.apply_state(state, 0);
+                post_check_list.push_back( ::std::make_pair(bb_idx, mv$(state)) );
+                continue ;
+            }
+            runner.apply_state(state, 0);
+
+            continue ;
+        }
+        state.bb_history.push_back(bb_idx);
+
+        runner.run_block(bb_idx, 0, mv$(state));
+    }
+
+    // Iterate while there are items in the post_check list
+    while( !post_check_list.empty() )
+    {
+        bool change = false;
+        for(auto it = post_check_list.begin(); it != post_check_list.end(); )
+        {
+            auto bb_idx = it->first;
+            auto& state = it->second;
+            // If the target of this loopback is valid, then the entire route to the loopback must have been valid
+            if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
+            {
+                change = true;
+                DEBUG("Looped (now valid)");
+                state.bb_history.push_back(bb_idx);
+                state.mark_read(0);
+                runner.apply_state(state, 0);
+
+                it = post_check_list.erase(it);
+            }
+            else
+            {
+                ++ it;
+            }
+        }
+        // Keep going while changes happen
+        if( !change )
+            break;
+    }
+}
+
+#else
+
 ::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, const ::MIR::Function& fcn, bool dump_debug)
 {
     TRACE_FUNCTION_F(state);
@@ -531,29 +1031,6 @@ namespace {
         }
     };
     NEXT_INDEX = 0;
-
-    struct ValueLifetime
-    {
-        ::std::vector<bool> stmt_bitmap;
-        ValueLifetime(size_t stmt_count):
-            stmt_bitmap(stmt_count)
-        {}
-
-        void dump_debug(const char* suffix, unsigned i, const ::std::vector<size_t>& block_offsets)
-        {
-            ::std::string   name = FMT(suffix << "$" << i);
-            while(name.size() < 3+1+3)
-                name += " ";
-            DEBUG(name << " : " << FMT_CB(os,
-                for(unsigned int j = 0; j < this->stmt_bitmap.size(); j++)
-                {
-                    if(j != 0 && ::std::find(block_offsets.begin(), block_offsets.end(), j) != block_offsets.end())
-                        os << "|";
-                    os << (this->stmt_bitmap[j] ? "X" : " ");
-                }
-                ));
-        }
-    };
 
     size_t  statement_count = 0;
     ::std::vector<size_t>   block_offsets;
@@ -747,7 +1224,27 @@ namespace {
             else
             {
                 // Skip
+                // TODO: Acquire from the target block the actual end of any active lifetimes, then apply them.
                 DEBUG(state << " state" << new_state.index << " -> bb" << new_bb_idx << " - No new state, no push");
+                // - For all variables currently active, check if they're valid in the first statement of the target block.
+                // - If so, mark as valid at the end of the current block
+                auto bm_idx = block_offsets[new_bb_idx];
+                Position    cur_pos;
+                cur_pos.path_index = val_state.block_path.size() - 1;
+                cur_pos.stmt_idx = fcn.blocks[bb_idx].statements.size();
+                for(unsigned i = 0; i < fcn.temporaries.size(); i++) {
+                    if( ! new_state.tmp_ends[i].is_empty() && temporary_lifetimes[i].stmt_bitmap[bm_idx] ) {
+                        DEBUG("- tmp$" << i << " - Active in target, assume active");
+                        new_state.tmp_ends[i].end = cur_pos;
+                    }
+                }
+                for(unsigned i = 0; i < fcn.named_variables.size(); i++) {
+                    if( ! new_state.var_ends[i].is_empty() && variable_lifetimes[i].stmt_bitmap[bm_idx] ) {
+                        DEBUG("- var$" << i << " - Active in target, assume active");
+                        new_state.var_ends[i].end = cur_pos;
+                    }
+                }
+                // - Apply whatever state was still active
                 apply_state(new_state);
                 return ;
             }
@@ -763,7 +1260,7 @@ namespace {
 
             if( !has_new && had_state )
             {
-                DEBUG(state << " " << val_state.index << " No new entry state");
+                DEBUG(state << " state" << val_state.index << " - No new entry state");
                 apply_state(val_state);
 
                 continue ;
@@ -958,3 +1455,4 @@ namespace {
 
     return rv;
 }
+#endif
