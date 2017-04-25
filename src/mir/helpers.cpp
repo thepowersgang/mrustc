@@ -414,8 +414,9 @@ namespace {
         return rv;
     }
 
-    void visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
+    bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
+        bool rv = true;
         TU_MATCHA( (term), (e),
         (Incomplete,
             ),
@@ -428,20 +429,21 @@ namespace {
         (Panic,
             ),
         (If,
-            visit_mir_lvalue(e.cond, ValUsage::Read, cb);
+            return visit_mir_lvalue(e.cond, ValUsage::Read, cb);
             ),
         (Switch,
-            visit_mir_lvalue(e.val, ValUsage::Read, cb);
+            return visit_mir_lvalue(e.val, ValUsage::Read, cb);
             ),
         (Call,
             if( e.fcn.is_Value() ) {
-                visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, cb);
+                rv |= visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, cb);
             }
             for(auto& v : e.args)
-                visit_mir_lvalue(v, ValUsage::Read, cb);
-            visit_mir_lvalue(e.ret_val, ValUsage::Write, cb);
+                rv |= visit_mir_lvalue(v, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue(e.ret_val, ValUsage::Write, cb);
             )
         )
+        return rv;
     }
     /*
     void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
@@ -477,7 +479,10 @@ namespace
 
         void fill(const ::std::vector<size_t>& block_offsets, size_t bb, size_t first_stmt, size_t last_stmt)
         {
+            size_t  limit = block_offsets[bb+1] - block_offsets[bb] - 1;
             DEBUG("bb" << bb << " : " << first_stmt << "--" << last_stmt);
+            assert(first_stmt <= limit);
+            assert(last_stmt <= limit);
             for(size_t stmt = first_stmt; stmt <= last_stmt; stmt++)
             {
                 stmt_bitmap[block_offsets[bb] + stmt] = true;
@@ -672,7 +677,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 assert( !bb_history.empty() );
 
                 // - Fill from `init_stmt_idx` to end of `init_bb_idx`
-                vl.fill(block_offsets, init_bb_idx,  init_stmt_idx, block_offsets[init_bb_idx+1]-block_offsets[init_bb_idx]);
+                vl.fill(block_offsets, init_bb_idx,  init_stmt_idx, block_offsets[init_bb_idx+1]-block_offsets[init_bb_idx] - 1);
                 // - Fill all of blocks up to (not incl) `last_read_bb`
                 //  > If borrowed, last_read_bb will be SIZE_MAX, and thus the vector size will control this loop
                 for(size_t ofs = 1; ofs < last_read_bb && ofs <= bb_history.size(); ofs++)
@@ -711,7 +716,14 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
         const ::std::vector<size_t>& m_block_offsets;
         ValueLifetime& m_lifetimes;
         bool m_is_copy;
+
         ::std::vector<::std::pair<size_t, State>> m_states_to_do;
+        struct BbState {
+            unsigned visit_count = 0;
+            unsigned val_unused_count = 0;
+            unsigned val_used_count = 0;
+        };
+        ::std::vector<BbState>  m_bb_counts;
 
         Runner(::MIR::TypeResolve& mir_res, const ::MIR::Function& fcn, size_t init_bb_idx, size_t init_stmt_idx, const ::MIR::LValue& lv, const ::std::vector<size_t>& block_offsets, ValueLifetime& vl):
             m_mir_res(mir_res),
@@ -720,7 +732,8 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             m_init_stmt_idx(init_stmt_idx),
             m_lv(lv),
             m_block_offsets(block_offsets),
-            m_lifetimes(vl)
+            m_lifetimes(vl),
+            m_bb_counts(fcn.blocks.size())
         {
             ::HIR::TypeRef  tmp;
             m_is_copy = m_mir_res.m_resolve.type_is_copy(mir_res.sp, m_mir_res.get_lvalue_type(tmp, lv));
@@ -728,6 +741,21 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
 
         void apply_state(State& state, size_t cur_stmt_idx)
         {
+            if(state.is_unread()) {
+            }
+            else if(state.is_borrowed()) {
+                for(size_t i = state.last_read_bb; i < state.bb_history.size(); i ++) {
+                    m_bb_counts[ state.bb_history[i] ].val_used_count ++;
+                }
+            }
+            else {
+                for(size_t i = 0; i < state.last_read_bb; i++ ) {
+                    m_bb_counts[ state.bb_history[i] ].val_used_count ++;
+                }
+                for(size_t i = state.last_read_bb; i < state.bb_history.size(); i ++) {
+                    m_bb_counts[ state.bb_history[i] ].val_unused_count ++;
+                }
+            }
             state.apply(m_block_offsets, m_lifetimes, m_init_bb_idx, m_init_stmt_idx, cur_stmt_idx);
         }
 
@@ -737,11 +765,13 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             assert(stmt_idx <= bb.statements.size());
 
             bool was_moved = false;
+            bool was_updated = false;
             auto visit_cb = [&](const auto& lv, auto vu) {
                     if(lv == m_lv) {
                         if( vu == ValUsage::Read ) {
                             DEBUG(m_mir_res << "Used");
                             state.mark_read(stmt_idx);
+                            was_updated = true;
                         }
                         if( vu == ValUsage::Move ) {
                             DEBUG(m_mir_res << (m_is_copy ? "Read" : "Moved"));
@@ -751,6 +781,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                         if( vu == ValUsage::Borrow ) {
                             DEBUG(m_mir_res << "Borrowed");
                             state.mark_borrowed(stmt_idx);
+                            was_updated = true;
                         }
                         return true;
                     }
@@ -833,6 +864,11 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 return ;
             }
 
+            //if( was_updated )
+            //{
+            //    this->apply_state(state, stmt_idx);
+            //}
+
             // Terminator
             TU_MATCHA( (bb.terminator), (te),
             (Incomplete,
@@ -875,12 +911,32 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                     this->apply_state(state, stmt_idx);
                     return ;
                 }
-                m_states_to_do.push_back( ::std::make_pair(te.ret_block, state.clone()) );
-                m_states_to_do.push_back( ::std::make_pair(te.panic_block, mv$(state)) );
+                if( m_fcn.blocks.at(te.panic_block).statements.size() == 0 && m_fcn.blocks.at(te.panic_block).terminator.is_Diverge() ) {
+                    // Shortcut: Don't create a new state if the panic target is Diverge
+                }
+                else {
+                    m_states_to_do.push_back( ::std::make_pair(te.panic_block, state.clone()) );
+                }
+                m_states_to_do.push_back( ::std::make_pair(te.ret_block, mv$(state)) );
                 )
             )
         }
     };
+
+    ::std::vector<bool> use_bitmap(vl.stmt_bitmap.size());  // Bitmap of locations where this value is used.
+    {
+        size_t  pos = 0;
+        for(const auto& bb : fcn.blocks)
+        {
+            for(const auto& stmt : bb.statements)
+            {
+                use_bitmap[pos] = visit_mir_lvalues(stmt, [&](const ::MIR::LValue& tlv, auto _){ return tlv == lv; });
+                pos ++;
+            }
+            use_bitmap[pos] = visit_mir_lvalues(bb.terminator, [&](const ::MIR::LValue& tlv, auto _){ return tlv == lv; });
+            pos ++;
+        }
+    }
 
     Runner  runner(mir_res, fcn, bb_idx, stmt_idx, lv, block_offsets, vl);
     ::std::vector< ::std::pair<size_t,State>>   post_check_list;
@@ -911,12 +967,12 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             {
                 state.bb_history.push_back(bb_idx);
                 state.mark_read(0);
-                DEBUG("Looped (to valid location)");
+                DEBUG("Looped (to already valid)");
             }
             else
             {
                 // TODO: Put this state elsewhere and check if the variable is known valid at that point.
-                DEBUG("Looped (after last read)");
+                DEBUG("Looped (after last read), push for later");
                 runner.apply_state(state, 0);
                 post_check_list.push_back( ::std::make_pair(bb_idx, mv$(state)) );
                 continue ;
@@ -925,7 +981,53 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
 
             continue ;
         }
+
+        // TODO: Have a bitmap of if a BB mentions this value. If there are no unvisited BBs that mention this value, stop early.
+        // - CATCH: The original BB contains a reference, but might not have been visited (if it was the terminating call that triggered)
+        //  - Also, we don't want to give up early (if we loop back to the start of the first block)
+        // - A per-statement bitmap would solve this. Return early if `!vl.stmt_bitmap & usage_stmt_bitmap == 0`
+        // > Requires filling the bitmap as we go (for maximum efficiency)
+
+        // Search for this block in any other state's history.
+        // - If found, put this block on the "check later" list and move on.
+        {
+            bool found = false;
+            for(const auto& other_state : runner.m_states_to_do)
+            {
+                if( other_state.first == bb_idx || ::std::find(other_state.second.bb_history.begin(), other_state.second.bb_history.end(), bb_idx) != other_state.second.bb_history.end() )
+                {
+                    DEBUG("Visited (or will visit) elsewhere");
+                    runner.apply_state(state, 0);
+                    post_check_list.push_back( ::std::make_pair(bb_idx, mv$(state)) );
+                    found = true;
+                    break;
+                }
+            }
+            if( found )
+                continue;
+        }
+
         state.bb_history.push_back(bb_idx);
+
+        if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
+        {
+            DEBUG("Already valid in BB" << bb_idx);
+            state.mark_read(0);
+            runner.apply_state(state, 0);
+            continue;
+        }
+        // TODO: Have a way of knowing if a state will never find a use (the negative of the above)
+        // - Requires knowing for sure that a BB doesn't end up using the value.
+        // - IDEA: Store a fork count and counts of Yes/No for each BB.
+        //  > If ForkCount == No, the value isn't used in that branch.
+        if( runner.m_bb_counts[bb_idx].visit_count > 0
+                && runner.m_bb_counts[bb_idx].visit_count == runner.m_bb_counts[bb_idx].val_unused_count )
+        {
+            DEBUG("Target BB known to be not valid");
+            runner.apply_state(state, 0);
+            continue ;
+        }
+        runner.m_bb_counts[bb_idx].visit_count ++;
 
         runner.run_block(bb_idx, 0, mv$(state));
     }
