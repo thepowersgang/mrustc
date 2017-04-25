@@ -405,8 +405,7 @@ namespace {
         (SetDropFlag,
             ),
         (Drop,
-            // Well, it mutates...
-            rv |= visit_mir_lvalue(e.slot, ValUsage::Write, cb);
+            rv |= visit_mir_lvalue(e.slot, ValUsage::Move, cb);
             ),
         (ScopeEnd,
             )
@@ -416,7 +415,7 @@ namespace {
 
     bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        bool rv = true;
+        bool rv = false;
         TU_MATCHA( (term), (e),
         (Incomplete,
             ),
@@ -429,10 +428,10 @@ namespace {
         (Panic,
             ),
         (If,
-            return visit_mir_lvalue(e.cond, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue(e.cond, ValUsage::Read, cb);
             ),
         (Switch,
-            return visit_mir_lvalue(e.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue(e.val, ValUsage::Read, cb);
             ),
         (Call,
             if( e.fcn.is_Value() ) {
@@ -930,10 +929,10 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
         {
             for(const auto& stmt : bb.statements)
             {
-                use_bitmap[pos] = visit_mir_lvalues(stmt, [&](const ::MIR::LValue& tlv, auto _){ return tlv == lv; });
+                use_bitmap[pos] = visit_mir_lvalues(stmt, [&](const ::MIR::LValue& tlv, auto vu){ return tlv == lv && vu != ValUsage::Write; });
                 pos ++;
             }
-            use_bitmap[pos] = visit_mir_lvalues(bb.terminator, [&](const ::MIR::LValue& tlv, auto _){ return tlv == lv; });
+            use_bitmap[pos] = visit_mir_lvalues(bb.terminator, [&](const ::MIR::LValue& tlv, auto vu){ return tlv == lv && vu != ValUsage::Write; });
             pos ++;
         }
     }
@@ -959,14 +958,10 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             // If the loop point is before the last recorded read, fill validity along the rest.
             if( static_cast<size_t>(it - state.bb_history.begin()) <= state.last_read_bb )
             {
-                state.bb_history.push_back(bb_idx);
-                state.mark_read(0);
                 DEBUG("Looped (before last read)");
             }
             else if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
             {
-                state.bb_history.push_back(bb_idx);
-                state.mark_read(0);
                 DEBUG("Looped (to already valid)");
             }
             else
@@ -977,6 +972,8 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 post_check_list.push_back( ::std::make_pair(bb_idx, mv$(state)) );
                 continue ;
             }
+            state.bb_history.push_back(bb_idx);
+            state.mark_read(0);
             runner.apply_state(state, 0);
 
             continue ;
@@ -987,6 +984,34 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
         //  - Also, we don't want to give up early (if we loop back to the start of the first block)
         // - A per-statement bitmap would solve this. Return early if `!vl.stmt_bitmap & usage_stmt_bitmap == 0`
         // > Requires filling the bitmap as we go (for maximum efficiency)
+        {
+            bool found_non_visited = false;
+            for(size_t i = 0; i < use_bitmap.size(); i ++)
+            {
+                // If a place where the value is used is not present in the output bitmap
+                if( !vl.stmt_bitmap[i] && use_bitmap[i] )
+                {
+                    DEBUG("- Still used at +" << i);
+                    found_non_visited = true;
+                }
+            }
+            // If there were no uses of the variable that aren't covered by the lifetime bitmap
+            if( ! found_non_visited )
+            {
+                // Terminate early
+                DEBUG("Early terminate - All possible lifetimes covered");
+                if(state.is_borrowed())
+                    state.bb_history.push_back(bb_idx);
+                runner.apply_state(state, 0);
+                for(auto& s : runner.m_states_to_do)
+                {
+                    if(s.second.is_borrowed())
+                        s.second.bb_history.push_back(bb_idx);
+                    runner.apply_state(s.second, 0);
+                }
+                return ;
+            }
+        }
 
         // Search for this block in any other state's history.
         // - If found, put this block on the "check later" list and move on.
