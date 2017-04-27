@@ -607,101 +607,113 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
 
     struct State
     {
-        ::std::vector<unsigned int> bb_history;
-        size_t  last_read_bb;   // index into bb_history (-1, 0 = first bb)
-        size_t  last_read_ofs;  // Statement index
+        const ::std::vector<size_t>&  m_block_offsets;
+        ValueLifetime&  m_out_vl;
 
-        State():
-            last_read_bb(SIZE_MAX),
-            last_read_ofs(0)
+        ::std::vector<unsigned int> bb_history;
+        size_t  last_read_ofs;  // Statement index
+        bool    m_is_borrowed;
+
+        State(const ::std::vector<size_t>& block_offsets, ValueLifetime& vl, size_t init_bb_idx, size_t init_stmt_idx):
+            m_block_offsets(block_offsets),
+            m_out_vl(vl),
+            bb_history(),
+            last_read_ofs(init_stmt_idx),
+            m_is_borrowed(false)
         {
+            bb_history.push_back(init_bb_idx);
+        }
+        State(State&& x):
+            m_block_offsets(x.m_block_offsets),
+            m_out_vl(x.m_out_vl),
+            bb_history( mv$(x.bb_history) ),
+            last_read_ofs( x.last_read_ofs ),
+            m_is_borrowed( x.m_is_borrowed )
+        {
+        }
+        State& operator=(State&& x) {
+            this->bb_history = mv$(x.bb_history);
+            this->last_read_ofs = x.last_read_ofs;
+            this->m_is_borrowed = x.m_is_borrowed;
+            return *this;
         }
 
         State clone() const {
-            return *this;
+            State   rv { m_block_offsets, m_out_vl, 0, last_read_ofs };
+            rv.bb_history = bb_history;
+            rv.m_is_borrowed = m_is_borrowed;
+            return rv;
         }
 
         // Returns true if the variable has been borrowed
         bool is_borrowed() const {
-            return last_read_bb == SIZE_MAX && last_read_ofs == SIZE_MAX;
-        }
-        // Returns true if the variable wasn't read since the initial assigmnet
-        bool is_unread() const {
-            return last_read_bb == SIZE_MAX && last_read_ofs == 0;
+            return this->m_is_borrowed;
         }
 
-        void mark_borrowed(size_t /*stmt_idx*/) {
-            last_read_bb = SIZE_MAX;
-            last_read_ofs = SIZE_MAX;
+        void mark_borrowed(size_t stmt_idx) {
+            if( ! m_is_borrowed )
+            {
+                m_is_borrowed = false;
+                this->fill_to(stmt_idx);
+            }
+            m_is_borrowed = true;
         }
         void mark_read(size_t stmt_idx) {
-            if( !is_borrowed() ) {
-                last_read_bb = bb_history.size();
-                last_read_ofs = stmt_idx;
+            if( !m_is_borrowed )
+            {
+                this->fill_to(stmt_idx);
             }
         }
         void fmt(::std::ostream& os) const {
-            os << "[" << bb_history << "], ";
-            if( is_unread() ) {
-                os << "unread";
-            }
-            else if( is_borrowed() ) {
-                os << "borrowed";
-            }
-            else {
-                os << "+" << last_read_bb << "/" << last_read_ofs;
+            os << "BB" << bb_history.front() << "/" << last_read_ofs << "--";
+            os << "[" << bb_history << "]";
+        }
+        void finalise(size_t stmt_idx)
+        {
+            if( m_is_borrowed )
+            {
+                m_is_borrowed = false;
+                this->fill_to(stmt_idx);
+                m_is_borrowed = true;
             }
         }
-        void apply(const ::std::vector<size_t>& block_offsets, ValueLifetime& vl, size_t init_bb_idx, size_t init_stmt_idx, size_t cur_stmt_idx)
+    private:
+        void fill_to(size_t stmt_idx)
         {
             TRACE_FUNCTION_F(FMT_CB(ss, this->fmt(ss);));
-            if( is_unread() )
+            assert( !m_is_borrowed );
+            assert(bb_history.size() > 0);
+            if( bb_history.size() == 1 )
             {
-                // Never read, nothing to apply
-            }
-            else if( last_read_bb == 0 )
-            {
-                DEBUG("Init BB" << init_bb_idx);
-                // Special case, All within the original block
-                // - Fill from `init_stmt_idx` to `last_read_ofs` (incl)
-                vl.fill(block_offsets, init_bb_idx,  init_stmt_idx, last_read_ofs);
-            }
-            else if( is_borrowed() && bb_history.size() == 0 )
-            {
-                DEBUG("Borrowed, init only");
-                vl.fill(block_offsets, init_bb_idx,  init_stmt_idx, cur_stmt_idx);
+                // only one block
+                m_out_vl.fill(m_block_offsets, bb_history[0],  last_read_ofs, stmt_idx);
             }
             else
             {
-                assert( !bb_history.empty() );
+                // First block.
+                auto init_bb_idx = bb_history[0];
+                auto limit_0 = m_block_offsets[init_bb_idx+1] - m_block_offsets[init_bb_idx] - 1;
+                m_out_vl.fill(m_block_offsets, init_bb_idx,  last_read_ofs, limit_0);
 
-                // - Fill from `init_stmt_idx` to end of `init_bb_idx`
-                vl.fill(block_offsets, init_bb_idx,  init_stmt_idx, block_offsets[init_bb_idx+1]-block_offsets[init_bb_idx] - 1);
-                // - Fill all of blocks up to (not incl) `last_read_bb`
-                //  > If borrowed, last_read_bb will be SIZE_MAX, and thus the vector size will control this loop
-                for(size_t ofs = 1; ofs < last_read_bb && ofs <= bb_history.size(); ofs++)
+                // Middle blocks
+                for(size_t i = 1; i < bb_history.size()-1; i++)
                 {
-                    size_t bb_idx = bb_history[ofs-1];
-                    assert(bb_idx+1 < block_offsets.size());
-                    size_t limit = block_offsets[bb_idx+1]-block_offsets[bb_idx];
-                    vl.fill(block_offsets, bb_idx, 0, limit-1);
+                    size_t bb_idx = bb_history[i];
+                    assert(bb_idx+1 < m_block_offsets.size());
+                    size_t limit = m_block_offsets[bb_idx+1] - m_block_offsets[bb_idx] - 1;
+                    m_out_vl.fill(m_block_offsets, bb_idx, 0, limit);
                 }
 
-                if( is_borrowed() )
-                {
-                    DEBUG("Borrowed");
-                    // Value was borrowed, fill to the current position in the final block
-                    size_t bb_idx = bb_history.back();
-                    vl.fill(block_offsets, bb_idx, 0, cur_stmt_idx);
-                }
-                else
-                {
-                    // - Fill from start of `last_read_bb` to `last_read_ofs`
-                    assert(last_read_bb <= bb_history.size());
-                    size_t bb_idx = bb_history[last_read_bb-1];
-                    vl.fill(block_offsets, bb_idx, 0, last_read_ofs);
-                }
+                // Last block
+                auto bb_idx = bb_history.back();
+                m_out_vl.fill(m_block_offsets, bb_idx,  0, stmt_idx);
             }
+
+            last_read_ofs = stmt_idx;
+
+            auto cur = this->bb_history.back();
+            this->bb_history.clear();
+            this->bb_history.push_back(cur);
         }
     };
 
@@ -716,13 +728,9 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
         ValueLifetime& m_lifetimes;
         bool m_is_copy;
 
+        ::std::vector<bool> m_visited_statements;
+
         ::std::vector<::std::pair<size_t, State>> m_states_to_do;
-        struct BbState {
-            unsigned visit_count = 0;
-            unsigned val_unused_count = 0;
-            unsigned val_used_count = 0;
-        };
-        ::std::vector<BbState>  m_bb_counts;
 
         Runner(::MIR::TypeResolve& mir_res, const ::MIR::Function& fcn, size_t init_bb_idx, size_t init_stmt_idx, const ::MIR::LValue& lv, const ::std::vector<size_t>& block_offsets, ValueLifetime& vl):
             m_mir_res(mir_res),
@@ -732,30 +740,11 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             m_lv(lv),
             m_block_offsets(block_offsets),
             m_lifetimes(vl),
-            m_bb_counts(fcn.blocks.size())
+
+            m_visited_statements( m_lifetimes.stmt_bitmap.size() )
         {
             ::HIR::TypeRef  tmp;
             m_is_copy = m_mir_res.m_resolve.type_is_copy(mir_res.sp, m_mir_res.get_lvalue_type(tmp, lv));
-        }
-
-        void apply_state(State& state, size_t cur_stmt_idx)
-        {
-            if(state.is_unread()) {
-            }
-            else if(state.is_borrowed()) {
-                for(size_t i = state.last_read_bb; i < state.bb_history.size(); i ++) {
-                    m_bb_counts[ state.bb_history[i] ].val_used_count ++;
-                }
-            }
-            else {
-                for(size_t i = 0; i < state.last_read_bb; i++ ) {
-                    m_bb_counts[ state.bb_history[i] ].val_used_count ++;
-                }
-                for(size_t i = state.last_read_bb; i < state.bb_history.size(); i ++) {
-                    m_bb_counts[ state.bb_history[i] ].val_unused_count ++;
-                }
-            }
-            state.apply(m_block_offsets, m_lifetimes, m_init_bb_idx, m_init_stmt_idx, cur_stmt_idx);
         }
 
         void run_block(size_t bb_idx, size_t stmt_idx, State state)
@@ -789,8 +778,9 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
 
             for( ; stmt_idx < bb.statements.size(); stmt_idx ++)
             {
-                m_mir_res.set_cur_stmt(bb_idx, stmt_idx);
                 const auto& stmt = bb.statements[stmt_idx];
+                m_mir_res.set_cur_stmt(bb_idx, stmt_idx);
+                m_visited_statements[ m_block_offsets.at(bb_idx) + stmt_idx ] = true;
 
                 // Visit and see if the value is read (setting the read flag or end depending on if the value is Copy)
                 visit_mir_lvalues(stmt, visit_cb);
@@ -800,7 +790,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                     // Moved: Update read position and apply
                     DEBUG(m_mir_res << "Moved, return");
                     state.mark_read(stmt_idx);
-                    this->apply_state(state, stmt_idx);
+                    state.finalise(stmt_idx);
                     return ;
                 }
 
@@ -810,7 +800,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                     {
                         DEBUG(m_mir_res << "- Assigned to, return");
                         // Value assigned, just apply
-                        this->apply_state(state, stmt_idx);
+                        state.finalise(stmt_idx);
                         return ;
                     }
                     ),
@@ -826,7 +816,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                         //    state.clear_borrowed();
                         //}
                         state.mark_read(stmt_idx);
-                        this->apply_state(state, stmt_idx);
+                        state.finalise(stmt_idx);
                         return ;
                     }
                     ),
@@ -837,7 +827,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                         if(e.second == m_lv) {
                             // Assigned, just apply
                             DEBUG(m_mir_res << "- Assigned (asm!), return");
-                            this->apply_state(state, stmt_idx);
+                            state.finalise(stmt_idx);
                             return ;
                         }
                     }
@@ -851,6 +841,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 )
             }
             m_mir_res.set_cur_stmt_term(bb_idx);
+            m_visited_statements[ m_block_offsets.at(bb_idx) + stmt_idx ] = true;
 
             visit_mir_lvalues(bb.terminator, visit_cb);
 
@@ -859,29 +850,24 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 // Moved: Update read position and apply
                 DEBUG(m_mir_res << "- Moved, return");
                 state.mark_read(stmt_idx);
-                this->apply_state(state, stmt_idx);
+                state.finalise(stmt_idx);
                 return ;
             }
-
-            //if( was_updated )
-            //{
-            //    this->apply_state(state, stmt_idx);
-            //}
 
             // Terminator
             TU_MATCHA( (bb.terminator), (te),
             (Incomplete,
                 // TODO: Isn't this a bug?
                 DEBUG(m_mir_res << "Incomplete");
-                this->apply_state(state, stmt_idx);
+                state.finalise(stmt_idx);
                 ),
             (Return,
                 DEBUG(m_mir_res << "Return");
-                this->apply_state(state, stmt_idx);
+                state.finalise(stmt_idx);
                 ),
             (Diverge,
                 DEBUG(m_mir_res << "Diverge");
-                this->apply_state(state, stmt_idx);
+                state.finalise(stmt_idx);
                 ),
             (Goto,
                 m_states_to_do.push_back( ::std::make_pair(te, mv$(state)) );
@@ -907,7 +893,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 {
                     DEBUG(m_mir_res << "Assigned (Call), return");
                     // Value assigned, just apply
-                    this->apply_state(state, stmt_idx);
+                    state.finalise(stmt_idx);
                     return ;
                 }
                 if( m_fcn.blocks.at(te.panic_block).statements.size() == 0 && m_fcn.blocks.at(te.panic_block).terminator.is_Diverge() ) {
@@ -940,43 +926,36 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
     Runner  runner(mir_res, fcn, bb_idx, stmt_idx, lv, block_offsets, vl);
     ::std::vector< ::std::pair<size_t,State>>   post_check_list;
 
-    runner.run_block(bb_idx, stmt_idx, State());
+    // TODO: Have a bitmap of visited statements. If a visted statement is hit, stop the current state
+    // - Use the same rules as loopback.
+
+    runner.run_block(bb_idx, stmt_idx, State(block_offsets, vl, bb_idx, stmt_idx));
 
     while( ! runner.m_states_to_do.empty() )
     {
         auto bb_idx = runner.m_states_to_do.back().first;
         auto state = mv$(runner.m_states_to_do.back().second);
         runner.m_states_to_do.pop_back();
+
         DEBUG("state.bb_history=[" << state.bb_history << "], -> BB" << bb_idx);
+        state.bb_history.push_back(bb_idx);
 
-        auto it = ::std::find(state.bb_history.begin(), state.bb_history.end(), bb_idx);
-        if( it != state.bb_history.end() )
+        if( runner.m_visited_statements.at( block_offsets.at(bb_idx) + 0 ) )
         {
-            // Loopback: Stop
-            // - If the variable was valid at the loopback point, set last read point to current position
-
-            // If the loop point is before the last recorded read, fill validity along the rest.
-            if( static_cast<size_t>(it - state.bb_history.begin()) <= state.last_read_bb )
-            {
-                DEBUG("Looped (before last read)");
-            }
-            else if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
+            if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
             {
                 DEBUG("Looped (to already valid)");
+                state.mark_read(0);
+                state.finalise(0);
+                continue ;
             }
             else
             {
-                // TODO: Put this state elsewhere and check if the variable is known valid at that point.
+                // Put this state elsewhere and check if the variable is known valid at that point.
                 DEBUG("Looped (after last read), push for later");
-                runner.apply_state(state, 0);
                 post_check_list.push_back( ::std::make_pair(bb_idx, mv$(state)) );
                 continue ;
             }
-            state.bb_history.push_back(bb_idx);
-            state.mark_read(0);
-            runner.apply_state(state, 0);
-
-            continue ;
         }
 
         // TODO: Have a bitmap of if a BB mentions this value. If there are no unvisited BBs that mention this value, stop early.
@@ -1000,47 +979,25 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             {
                 // Terminate early
                 DEBUG("Early terminate - All possible lifetimes covered");
-                if(state.is_borrowed())
-                    state.bb_history.push_back(bb_idx);
-                runner.apply_state(state, 0);
+                state.finalise(0);
                 for(auto& s : runner.m_states_to_do)
                 {
-                    if(s.second.is_borrowed())
-                        s.second.bb_history.push_back(bb_idx);
-                    runner.apply_state(s.second, 0);
+                    s.second.bb_history.push_back(bb_idx);
+                    s.second.finalise(0);
                 }
                 return ;
             }
         }
 
-        // Search for this block in any other state's history.
-        // - If found, put this block on the "check later" list and move on.
-        {
-            bool found = false;
-            for(const auto& other_state : runner.m_states_to_do)
-            {
-                if( other_state.first == bb_idx || ::std::find(other_state.second.bb_history.begin(), other_state.second.bb_history.end(), bb_idx) != other_state.second.bb_history.end() )
-                {
-                    DEBUG("Visited (or will visit) elsewhere");
-                    runner.apply_state(state, 0);
-                    post_check_list.push_back( ::std::make_pair(bb_idx, mv$(state)) );
-                    found = true;
-                    break;
-                }
-            }
-            if( found )
-                continue;
-        }
-
-        state.bb_history.push_back(bb_idx);
-
+        // Special case for when doing multiple runs on the same output
         if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
         {
             DEBUG("Already valid in BB" << bb_idx);
             state.mark_read(0);
-            runner.apply_state(state, 0);
+            state.finalise(0);
             continue;
         }
+#if 0
         // TODO: Have a way of knowing if a state will never find a use (the negative of the above)
         // - Requires knowing for sure that a BB doesn't end up using the value.
         // - IDEA: Store a fork count and counts of Yes/No for each BB.
@@ -1053,6 +1010,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             continue ;
         }
         runner.m_bb_counts[bb_idx].visit_count ++;
+#endif
 
         runner.run_block(bb_idx, 0, mv$(state));
     }
@@ -1070,9 +1028,8 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             {
                 change = true;
                 DEBUG("Looped (now valid)");
-                state.bb_history.push_back(bb_idx);
                 state.mark_read(0);
-                runner.apply_state(state, 0);
+                state.finalise(0);
 
                 it = post_check_list.erase(it);
             }
