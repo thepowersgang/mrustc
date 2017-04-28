@@ -529,13 +529,16 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
     for(size_t bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
     {
         auto assigned_lvalue = [&](size_t bb_idx, size_t stmt_idx, const ::MIR::LValue& lv) {
+                // NOTE: Fills the first statement after running, just to ensure that any assigned value has _a_ lifetime
                 if( const auto* de = lv.opt_Variable() )
                 {
                     MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, variable_lifetimes[*de]);
+                    variable_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
                 }
                 else if( const auto* de = lv.opt_Temporary() )
                 {
                     MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, temporary_lifetimes[de->idx]);
+                    temporary_lifetimes[de->idx].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
                 }
                 else
                 {
@@ -935,6 +938,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
     // TODO: Have a bitmap of visited statements. If a visted statement is hit, stop the current state
     // - Use the same rules as loopback.
 
+    // Fill the first statement, to ensure that there is at least one bit set.
     runner.run_block(bb_idx, stmt_idx, State(block_offsets, vl, bb_idx, stmt_idx));
 
     while( ! runner.m_states_to_do.empty() )
@@ -951,6 +955,13 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
             {
                 DEBUG("Looped (to already valid)");
+                state.mark_read(0);
+                state.finalise(0);
+                continue ;
+            }
+            else if( state.is_borrowed() )
+            {
+                DEBUG("Looped (borrowed)");
                 state.mark_read(0);
                 state.finalise(0);
                 continue ;
