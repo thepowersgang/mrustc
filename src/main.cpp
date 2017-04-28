@@ -444,6 +444,12 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Cleanup", [&]() {
             MIR_CleanupCrate(*hir_crate);
             });
+        if( getenv("MRUSTC_FULL_VALIDATE_PREOPT") )
+        {
+            CompilePhaseV("MIR Validate Full", [&]() {
+                MIR_CheckCrate_Full(*hir_crate);
+                });
+        }
 
         // Optimise the MIR
         CompilePhaseV("MIR Optimise", [&]() {
@@ -459,7 +465,6 @@ int main(int argc, char *argv[])
             });
         // - Exhaustive MIR validation (follows every code path and checks variable validity)
         // > DEBUGGING ONLY
-        // > DISBALED: Excessive memory usage on complex functions
         CompilePhaseV("MIR Validate Full", [&]() {
             if( getenv("MRUSTC_FULL_VALIDATE") )
                 MIR_CheckCrate_Full(*hir_crate);
