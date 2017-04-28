@@ -361,6 +361,10 @@ void MirBuilder::push_stmt_set_dropflag_other(const Span& sp, unsigned int idx, 
 {
     this->push_stmt(sp, ::MIR::Statement::make_SetDropFlag({ idx, false, other }));
 }
+void MirBuilder::push_stmt_set_dropflag_default(const Span& sp, unsigned int idx)
+{
+    this->push_stmt(sp, ::MIR::Statement::make_SetDropFlag({ idx, this->get_drop_flag_default(sp, idx) }));
+}
 void MirBuilder::push_stmt(const Span& sp, ::MIR::Statement stmt)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
@@ -872,6 +876,7 @@ namespace
                     #if 1
                     auto new_flag = builder.new_drop_flag(false);
                     builder.push_stmt_set_dropflag_other(sp, new_flag, flag_idx);
+                    builder.push_stmt_set_dropflag_default(sp, flag_idx);
                     old_state = VarState::make_Optional( new_flag );
                     #else
                     // TODO: Rewrite history. I.e. visit all previous branches and set this drop flag to `false` in all of them
@@ -897,6 +902,7 @@ namespace
                     {
                         auto new_flag = builder.new_drop_flag(false);
                         builder.push_stmt_set_dropflag_other(sp, new_flag, nse.outer_flag);
+                        builder.push_stmt_set_dropflag_default(sp, nse.outer_flag);
                         ose.outer_flag = new_flag;
                     }
                 }
@@ -972,6 +978,7 @@ namespace
                     #if 1
                     auto new_flag = builder.new_drop_flag(true);
                     builder.push_stmt_set_dropflag_other(sp, new_flag, flag_idx);
+                    builder.push_stmt_set_dropflag_default(sp, flag_idx);
                     old_state = VarState::make_Optional( new_flag );
                     #else
                     // OR: Push an assign of this flag to every other completed arm
@@ -1005,6 +1012,7 @@ namespace
                     {
                         auto new_flag = builder.new_drop_flag(true);
                         builder.push_stmt_set_dropflag_other(sp, new_flag, nse.outer_flag);
+                        builder.push_stmt_set_dropflag_default(sp, nse.outer_flag);
                         ose.outer_flag = new_flag;
                     }
                 }
@@ -1076,6 +1084,7 @@ namespace
                 if( old_state.as_Optional() != new_state.as_Optional() ) {
                     #if 1
                     builder.push_stmt_set_dropflag_other(sp, old_state.as_Optional(), new_state.as_Optional());
+                    builder.push_stmt_set_dropflag_default(sp, new_state.as_Optional());
                     #else
                     // TODO: Rewrite history replacing one flag with another (if they have the same default)
                     #endif
@@ -1155,14 +1164,19 @@ namespace
                         // Default wasn't true, need to make a new flag that does have a default of true
                         auto new_flag = builder.new_drop_flag(true);
                         builder.push_stmt_set_dropflag_other(sp, new_flag, nse);
+                        builder.push_stmt_set_dropflag_default(sp, nse);
                         ose.outer_flag = new_flag;
                     }
-                    ose.outer_flag = nse;
+                    else
+                    {
+                        ose.outer_flag = nse;
+                    }
                 }
                 else
                 {
                     // In this arm, assign the outer state to this drop flag
                     builder.push_stmt_set_dropflag_other(sp, ose.outer_flag, nse);
+                    builder.push_stmt_set_dropflag_default(sp, nse);
                 }
                 merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, new_state);
                 return; }
