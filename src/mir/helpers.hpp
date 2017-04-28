@@ -23,6 +23,10 @@ class Function;
 class LValue;
 class Constant;
 class BasicBlock;
+class Terminator;
+class Statement;
+class RValue;
+class Param;
 
 typedef unsigned int    BasicBlockId;
 
@@ -163,6 +167,21 @@ struct ValueLifetimes
         return m_temporaries.at(tmp_idx).valid_at( m_block_offsets[bb_idx] + stmt_idx );
     }
 };
+
+namespace visit {
+    enum class ValUsage {
+        Move,
+        Read,
+        Write,
+        Borrow,
+    };
+
+    extern bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+    extern bool visit_mir_lvalue(const ::MIR::Param& p, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+    extern bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+    extern bool visit_mir_lvalues(const ::MIR::Statement& stmt, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+    extern bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+}   // namespace visit
 
 }   // namespace MIR
 

@@ -273,17 +273,13 @@ const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef
     return m_resolve.is_type_owned_box(ty);
 }
 
+using namespace MIR::visit;
+
 // --------------------------------------------------------------------
 // MIR_Helper_GetLifetimes
 // --------------------------------------------------------------------
-namespace {
-    enum class ValUsage {
-        Move,
-        Read,
-        Write,
-        Borrow,
-    };
-
+namespace MIR {
+namespace visit {
     bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
         if( cb(lv, u) )
@@ -466,7 +462,8 @@ namespace {
         visit_mir_lvalues_mut(state, const_cast<::MIR::Function&>(fcn), [&](auto& lv, auto im){ return cb(lv, im); });
     }
     */
-}
+}   // namespace visit
+}   // namespace MIR
 namespace
 {
     struct ValueLifetime
