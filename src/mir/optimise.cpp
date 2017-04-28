@@ -17,6 +17,13 @@
 #include <iomanip>
 #include <trans/target.hpp>
 
+#define DUMP_BEFORE_ALL 1
+#define DUMP_BEFORE_CONSTPROPAGATE 0
+#define CHECK_AFTER_PASS    0
+
+#define DUMP_AFTER_DONE     1
+#define CHECK_AFTER_DONE    1
+
 namespace {
     ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
     {
@@ -438,26 +445,32 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
-        #if 0
         if( change_happened )
         {
-            //MIR_Dump_Fcn(::std::cout, fcn);
+            #if DUMP_AFTER_PASS
+            if( debug_enabled() ) {
+                MIR_Dump_Fcn(::std::cout, fcn);
+            }
+            #endif
+            #if CHECK_AFTER_PASS
             MIR_Validate(resolve, path, fcn, args, ret_type);
+            #endif
         }
-        #endif
 
         MIR_Optimise_GarbageCollect_Partial(state, fcn);
         pass_num += 1;
     } while( change_happened );
 
 
-    #if 1
+    #if DUMP_AFTER_DONE
     if( debug_enabled() ) {
         MIR_Dump_Fcn(::std::cout, fcn);
     }
     #endif
+    #if CHECK_AFTER_DONE
     // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
     MIR_Validate(resolve, path, fcn, args, ret_type);
+    #endif
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.
     MIR_Optimise_GarbageCollect(state, fcn);
@@ -616,7 +629,7 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     TRACE_FUNCTION;
-    
+
     struct H
     {
         static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn)
@@ -1072,7 +1085,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
             return false;
     }
 
-    auto lifetimes = MIR_Helper_GetLifetimes(state, fcn, /*dump_debug=*/false);
+    auto lifetimes = MIR_Helper_GetLifetimes(state, fcn, /*dump_debug=*/true);
     //::std::vector<::MIR::ValueLifetime>  var_lifetimes = mv$(lifetimes.m_variables);
     ::std::vector<::MIR::ValueLifetime>  tmp_lifetimes = mv$(lifetimes.m_temporaries);
 
@@ -1335,6 +1348,9 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 // --------------------------------------------------------------------
 bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
+#if DUMP_BEFORE_ALL || DUMP_BEFORE_CONSTPROPAGATE
+    if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
+#endif
     bool changed = false;
     TRACE_FUNCTION_FR("", changed);
 
@@ -1410,6 +1426,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 auto it = known_values.find(*pe);
                 if( it != known_values.end() )
                 {
+                    DEBUG(state << "Value " << *pe << " known to be " << it->second);
                     p = it->second.clone();
                 }
             }
@@ -1430,6 +1447,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     auto it = known_values.find(se);
                     if( it != known_values.end() )
                     {
+                        DEBUG(state << "Value " << se << " known to be" << it->second);
                         e->src = it->second.clone();
                     }
                     ),
@@ -1449,7 +1467,41 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
                     if( se.val_l.is_Constant() && se.val_r.is_Constant() )
                     {
-                        // TODO: Evaluate BinOp
+                        const auto& val_l = se.val_l.as_Constant();
+                        const auto& val_r = se.val_r.as_Constant();
+
+                        ::MIR::Constant new_value;
+                        bool replace = false;
+                        switch(se.op)
+                        {
+                        case ::MIR::eBinOp::EQ:
+                            if( val_l.is_Const() )
+                                ;
+                            else
+                            {
+                                replace = true;
+                                new_value = ::MIR::Constant::make_Bool({val_l == val_r});
+                            }
+                            break;
+                        case ::MIR::eBinOp::NE:
+                            if( val_l.is_Const() )
+                                ;
+                            else
+                            {
+                                replace = true;
+                                new_value = ::MIR::Constant::make_Bool({val_l != val_r});
+                            }
+                            break;
+                        // TODO: Other binary operations
+                        default:
+                            break;
+                        }
+
+                        if( replace )
+                        {
+                            DEBUG(state << " " << e->src << " = " << new_value);
+                            e->src = mv$(new_value);
+                        }
                     }
                     ),
                 (UniOp,
@@ -1457,6 +1509,8 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     if( it != known_values.end() )
                     {
                         const auto& val = it->second;
+                        ::MIR::Constant new_value;
+                        bool replace = false;
                         // TODO: Evaluate UniOp
                         switch( se.op )
                         {
@@ -1483,7 +1537,8 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                                     // Invalid type for Uint literal
                                     break;
                                 }
-                                e->src = ::MIR::Constant::make_Uint({ val, ve.t });
+                                new_value = ::MIR::Constant::make_Uint({ val, ve.t });
+                                replace = true;
                                 ),
                             (Int,
                                 // Is ! valid on Int?
@@ -1492,7 +1547,8 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                                 // Not valid?
                                 ),
                             (Bool,
-                                e->src = ::MIR::Constant::make_Bool({ !ve.v });
+                                new_value = ::MIR::Constant::make_Bool({ !ve.v });
+                                replace = true;
                                 ),
                             (Bytes, ),
                             (StaticString, ),
@@ -1509,10 +1565,12 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                                 // Not valid?
                                 ),
                             (Int,
-                                e->src = ::MIR::Constant::make_Int({ -ve.v, ve.t });
+                                new_value = ::MIR::Constant::make_Int({ -ve.v, ve.t });
+                                replace = true;
                                 ),
                             (Float,
-                                e->src = ::MIR::Constant::make_Float({ -ve.v, ve.t });
+                                new_value = ::MIR::Constant::make_Float({ -ve.v, ve.t });
+                                replace = true;
                                 ),
                             (Bool,
                                 // Not valid?
@@ -1526,6 +1584,11 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                                 )
                             )
                             break;
+                        }
+                        if( replace )
+                        {
+                            DEBUG(state << " " << e->src << " = " << new_value);
+                            e->src = mv$(new_value);
                         }
                     }
                     ),
@@ -1557,18 +1620,19 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // - If a known temporary is borrowed mutably or mutated somehow, clear its knowledge
             visit_mir_lvalues(stmt, [&known_values](const ::MIR::LValue& lv, ValUsage vu)->bool {
                 if( vu == ValUsage::Write ) {
-                    auto it = known_values.find(lv);
-                    if(it != known_values.end())
-                        known_values.erase(it);
+                    known_values.erase(lv);
                 }
                 return false;
                 });
             // - Locate `temp = SOME_CONST` and record value
             if( const auto* e = stmt.opt_Assign() )
             {
-                if( e->dst.is_Temporary() && e->src.is_Constant() )
+                if( e->dst.is_Temporary() || e->dst.is_Variable() )
                 {
-                    known_values.insert(::std::make_pair( e->dst.clone(), e->src.as_Constant().clone() ));
+                    if( const auto* ce = e->src.opt_Constant() )
+                    {
+                        known_values.insert(::std::make_pair( e->dst.clone(), ce->clone() ));
+                    }
                 }
             }
         }
@@ -1609,12 +1673,15 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
                 if( se.dst != te.cond )
                     continue;
-                if( !se.src.is_Constant() )
-                    continue;
-                if( !se.src.as_Constant().is_Bool() )
-                    continue;
-                val_known = true;
-                known_val = se.src.as_Constant().as_Bool().v;
+                if( se.src.is_Constant() && se.src.as_Constant().is_Bool() )
+                {
+                    val_known = true;
+                    known_val = se.src.as_Constant().as_Bool().v;
+                }
+                else
+                {
+                    val_known = false;
+                }
                 break;
             }
             else
@@ -2282,6 +2349,9 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             DEBUG("GC Temporary(" << i << ")");
             fcn.temporaries.erase(fcn.temporaries.begin() + j);
         }
+        else {
+            DEBUG("tmp$" << i << " => tmp$" << j);
+        }
         temp_rewrite_table.push_back( used_temps[i] ? j ++ : ~0u );
     }
     ::std::vector<unsigned int> var_rewrite_table;
@@ -2292,6 +2362,9 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         {
             DEBUG("GC Variable(" << i << ")");
             fcn.named_variables.erase(fcn.named_variables.begin() + j);
+        }
+        else {
+            DEBUG("var$" << i << " => var$" << j);
         }
         var_rewrite_table.push_back( used_vars[i] ? j ++ : ~0u );
     }
