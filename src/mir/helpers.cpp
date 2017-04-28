@@ -663,6 +663,12 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             {
                 this->fill_to(stmt_idx);
             }
+            else
+            {
+                m_is_borrowed = false;
+                this->fill_to(stmt_idx);
+                m_is_borrowed = true;
+            }
         }
         void fmt(::std::ostream& os) const {
             os << "BB" << bb_history.front() << "/" << last_read_ofs << "--";
@@ -958,6 +964,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
             }
         }
 
+#if 0
         // TODO: Have a bitmap of if a BB mentions this value. If there are no unvisited BBs that mention this value, stop early.
         // - CATCH: The original BB contains a reference, but might not have been visited (if it was the terminating call that triggered)
         //  - Also, we don't want to give up early (if we loop back to the start of the first block)
@@ -988,6 +995,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                 return ;
             }
         }
+#endif
 
         // Special case for when doing multiple runs on the same output
         if( vl.stmt_bitmap.at( block_offsets.at(bb_idx) + 0) )
