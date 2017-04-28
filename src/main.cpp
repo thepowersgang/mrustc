@@ -68,6 +68,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "MIR Cleanup" );
     g_debug_disable_map.insert( "MIR Optimise" );
     g_debug_disable_map.insert( "MIR Validate PO" );
+    g_debug_disable_map.insert( "MIR Validate Full" );
 
     g_debug_disable_map.insert( "HIR Serialise" );
     g_debug_disable_map.insert( "Trans Enumerate" );
@@ -443,6 +444,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Cleanup", [&]() {
             MIR_CleanupCrate(*hir_crate);
             });
+
         // Optimise the MIR
         CompilePhaseV("MIR Optimise", [&]() {
             MIR_OptimiseCrate(*hir_crate);
@@ -459,7 +461,8 @@ int main(int argc, char *argv[])
         // > DEBUGGING ONLY
         // > DISBALED: Excessive memory usage on complex functions
         CompilePhaseV("MIR Validate Full", [&]() {
-            //MIR_CheckCrate_Full(*hir_crate);
+            if( getenv("MRUSTC_FULL_VALIDATE") )
+                MIR_CheckCrate_Full(*hir_crate);
             });
 
         if( params.last_stage == ProgramParams::STAGE_MIR ) {
