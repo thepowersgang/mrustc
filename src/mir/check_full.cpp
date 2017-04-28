@@ -12,7 +12,8 @@
 #include <mir/helpers.hpp>
 #include <mir/visit_crate_mir.hpp>
 
-#define ENABLE_LEAK_DETECTOR    1
+// DISABLED: Unsizing intentionally leaks
+#define ENABLE_LEAK_DETECTOR    0
 
 namespace
 {
@@ -151,6 +152,134 @@ namespace
             ensure_valid(mir_res, lv, vs, path);
         }
     private:
+        struct InvalidReason {
+            enum  {
+                Unwritten,
+                Moved,
+                Invalidated,
+            }   ty;
+            size_t  bb;
+            size_t  stmt;
+
+            void fmt(::std::ostream& os) const {
+                switch(this->ty)
+                {
+                case Unwritten: os << "Not Written";    break;
+                case Moved: os << "Moved at BB" << bb << "/" << stmt;   break;
+                case Invalidated:   os << "Invalidated at BB" << bb << "/" << stmt;   break;
+                }
+            }
+        };
+        InvalidReason find_invalid_reason(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& root_lv) const
+        {
+            using ::MIR::visit::ValUsage;
+            using ::MIR::visit::visit_mir_lvalues;
+
+            ::HIR::TypeRef  tmp;
+            bool is_copy = mir_res.m_resolve.type_is_copy( mir_res.sp, mir_res.get_lvalue_type(tmp, root_lv) );
+
+            size_t cur_stmt = mir_res.get_cur_stmt_ofs();
+            if( !is_copy )
+            {
+                // Walk backwards through the BBs and find where it's used by value
+                assert(this->bb_path.size() > 0);
+                size_t bb_idx;
+                size_t stmt_idx;
+
+                bool was_moved = false;
+                size_t  moved_bb, moved_stmt;
+                auto visit_cb = [&](const auto& lv, auto vu) {
+                    if(lv == root_lv && vu == ValUsage::Move) {
+                        was_moved = true;
+                        moved_bb = bb_idx;
+                        moved_stmt = stmt_idx;
+                        return false;
+                    }
+                    return false;
+                    };
+                // Most recent block (incomplete)
+                {
+                    bb_idx = this->bb_path.back();
+                    const auto& bb = mir_res.m_fcn.blocks.at(bb_idx);
+                    for(stmt_idx = cur_stmt; stmt_idx -- && !was_moved; )
+                    {
+                        visit_mir_lvalues(bb.statements[stmt_idx], visit_cb);
+                    }
+                }
+                for(size_t i = this->bb_path.size()-1; i -- && !was_moved; )
+                {
+                    bb_idx = this->bb_path[i];
+                    const auto& bb = mir_res.m_fcn.blocks.at(bb_idx);
+                    stmt_idx = bb.statements.size();
+
+                    visit_mir_lvalues(bb.terminator, visit_cb);
+
+                    for(stmt_idx = bb.statements.size(); stmt_idx -- && !was_moved; )
+                    {
+                        visit_mir_lvalues(bb.statements[stmt_idx], visit_cb);
+                    }
+                }
+
+                if( was_moved )
+                {
+                    // Reason found, the value was moved
+                    DEBUG("- Moved in BB" << moved_bb << "/" << moved_stmt);
+                    return InvalidReason { InvalidReason::Moved, moved_bb, moved_stmt };
+                }
+            }
+            else
+            {
+                // Walk backwards to find assignment (if none, it's never initialized)
+                assert(this->bb_path.size() > 0);
+                size_t bb_idx;
+                size_t stmt_idx;
+
+                bool assigned = false;
+                auto visit_cb = [&](const auto& lv, auto vu) {
+                    if(lv == root_lv && vu == ValUsage::Write) {
+                        assigned = true;
+                        //assigned_bb = this->bb_path[i];
+                        //assigned_stmt = j;
+                        return true;
+                    }
+                    return false;
+                    };
+
+                // Most recent block (incomplete)
+                {
+                    bb_idx = this->bb_path.back();
+                    const auto& bb = mir_res.m_fcn.blocks.at(bb_idx);
+                    for(stmt_idx = cur_stmt; stmt_idx -- && !assigned; )
+                    {
+                        visit_mir_lvalues(bb.statements[stmt_idx], visit_cb);
+                    }
+                }
+                for(size_t i = this->bb_path.size()-1; i -- && !assigned; )
+                {
+                    bb_idx = this->bb_path[i];
+                    const auto& bb = mir_res.m_fcn.blocks.at(bb_idx);
+                    stmt_idx = bb.statements.size();
+
+                    visit_mir_lvalues(bb.terminator, visit_cb);
+
+                    for(stmt_idx = bb.statements.size(); stmt_idx -- && !assigned; )
+                    {
+                        visit_mir_lvalues(bb.statements[stmt_idx], visit_cb);
+                    }
+                }
+
+                if( !assigned )
+                {
+                    // Value wasn't ever assigned, that's why it's not valid.
+                    DEBUG("- Not assigned");
+                    return InvalidReason { InvalidReason::Unwritten, 0, 0 };
+                }
+            }
+            // If neither of the above return a reason, check for blocks that don't have the value valid.
+            // TODO: This requires access to the lifetime bitmaps to know where it was invalidated
+            DEBUG("- (assume) lifetime invalidated [is_copy=" << is_copy << "]");
+            return InvalidReason { InvalidReason::Invalidated, 0, 0 };
+        }
         void ensure_valid(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& root_lv, const State& vs, ::std::vector<unsigned int>& path) const
         {
             if( vs.is_composite() )
@@ -168,7 +297,9 @@ namespace
             }
             else if( !vs.is_valid() )
             {
-                MIR_BUG(mir_res, "Accessing invalidated lvalue - " << root_lv << " - field path=[" << path << "], BBs=[" << this->bb_path << "]");
+                // Locate where it was invalidated.
+                auto reason = find_invalid_reason(mir_res, root_lv);
+                MIR_BUG(mir_res, "Accessing invalidated lvalue - " << root_lv << " - " << FMT_CB(s,reason.fmt(s);) << " - field path=[" << path << "], BBs=[" << this->bb_path << "]");
             }
             else
             {
@@ -577,6 +708,7 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
         // If this state already exists in the map, skip
         if( ! block_entry_states[cur_block].add_state(state) )
         {
+            DEBUG("BB" << cur_block << " - Nothing new");
             continue ;
         }
         DEBUG("BB" << cur_block << " - " << state);

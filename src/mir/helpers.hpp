@@ -82,6 +82,7 @@ public:
         this->bb_idx = bb_idx;
         this->stmt_idx = stmt_idx;
     }
+    unsigned int get_cur_stmt_ofs() const;
     void set_cur_stmt_term(unsigned int bb_idx) {
         this->bb_idx = bb_idx;
         this->stmt_idx = STMT_TERM;

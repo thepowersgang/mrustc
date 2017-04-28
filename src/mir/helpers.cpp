@@ -34,6 +34,13 @@ void ::MIR::TypeResolve::print_msg(const char* tag, ::std::function<void(::std::
     //throw CheckFailure {};
 }
 
+unsigned int ::MIR::TypeResolve::get_cur_stmt_ofs() const
+{
+    if( this->stmt_idx == STMT_TERM )
+        return m_fcn.blocks.at(this->bb_idx).statements.size();
+    else
+        return this->stmt_idx;
+}
 const ::MIR::BasicBlock& ::MIR::TypeResolve::get_block(::MIR::BasicBlockId id) const
 {
     MIR_ASSERT(*this, id < m_fcn.blocks.size(), "Block ID " << id << " out of range");
