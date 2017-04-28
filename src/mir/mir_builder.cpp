@@ -285,7 +285,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         // Doesn't move
         ),
     (MakeDst,
-        // Doesn't move ptr_val
+        moved_param(e.ptr_val);
         moved_param(e.meta_val);
         ),
     (Tuple,
