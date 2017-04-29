@@ -1378,6 +1378,151 @@ bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty)
     throw "";
 }
 
+bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    // If `T: Copy`, then it can't need drop glue
+    if( type_is_copy(sp, ty) )
+        return false;
+
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Generic,
+        return true;
+        ),
+    (Path,
+        if( e.binding.is_Opaque() )
+            return true;
+
+        auto pp = ::HIR::PathParams();
+        bool has_direct_drop = this->find_impl(sp, m_lang_Drop, &pp, ty, [&](auto , bool){ return true; }, true);
+        if( has_direct_drop )
+            return true;
+
+        ::HIR::TypeRef  tmp_ty;
+        const auto& pe = e.path.m_data.as_Generic();
+        auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &pe.m_params, nullptr, nullptr);
+        auto monomorph = [&](const auto& tpl)->const ::HIR::TypeRef& {
+            if( monomorphise_type_needed(tpl) ) {
+                tmp_ty = monomorphise_type_with(sp, tpl, monomorph_cb, false);
+                this->expand_associated_types(sp, tmp_ty);
+                return tmp_ty;
+            }
+            else {
+                return tpl;
+            }
+            };
+        TU_MATCHA( (e.binding), (pbe),
+        (Unbound,
+            BUG(sp, "Unbound path");
+            ),
+        (Opaque,
+            // Technically a bug, checked above
+            return true;
+            ),
+        (Struct,
+            TU_MATCHA( (pbe->m_data), (se),
+            (Unit,
+                ),
+            (Tuple,
+                for(const auto& e : se)
+                {
+                    if( type_needs_drop_glue(sp, monomorph(e.ent)) )
+                        return true;
+                }
+                ),
+            (Named,
+                for(const auto& e : se)
+                {
+                    if( type_needs_drop_glue(sp, monomorph(e.second.ent)) )
+                        return true;
+                }
+                )
+            )
+            return false;
+            ),
+        (Enum,
+            for(const auto& e : pbe->m_variants)
+            {
+                TU_MATCHA( (e.second), (ve),
+                (Unit,
+                    ),
+                (Value,
+                    ),
+                (Tuple,
+                    for(const auto& e : ve)
+                    {
+                        if( type_needs_drop_glue(sp, monomorph(e.ent)) )
+                            return true;
+                    }
+                    ),
+                (Struct,
+                    for(const auto& e : ve)
+                    {
+                        if( type_needs_drop_glue(sp, monomorph(e.second.ent)) )
+                            return true;
+                    }
+                    )
+                )
+            }
+            return false;
+            ),
+        (Union,
+            // Unions don't have drop glue unless they impl Drop
+            return false;
+            )
+        )
+        ),
+    (Diverge,
+        return false;
+        ),
+    (Closure,
+        // TODO: Destructure?
+        return true;
+        ),
+    (Infer,
+        BUG(sp, "type_needs_drop_glue on _");
+        return false;
+        ),
+    (Borrow,
+        // &-ptrs don't have drop glue
+        if( e.type != ::HIR::BorrowType::Owned )
+            return false;
+        return type_needs_drop_glue(sp, *e.inner);
+        ),
+    (Pointer,
+        return false;
+        ),
+    (Function,
+        return false;
+        ),
+    (Primitive,
+        return false;
+        ),
+    (Array,
+        return type_needs_drop_glue(sp, *e.inner);
+        ),
+    (Slice,
+        return type_needs_drop_glue(sp, *e.inner);
+        ),
+    (TraitObject,
+        return true;
+        ),
+    (ErasedType,
+        // Is this an error?
+        return true;
+        ),
+    (Tuple,
+        for(const auto& ty : e)
+        {
+            if( !type_needs_drop_glue(sp, ty) )
+                return true;
+        }
+        return false;
+        )
+    )
+    assert(!"Fell off the end of type_needs_drop_glue");
+    throw "";
+}
+
 const ::HIR::TypeRef* StaticTraitResolve::is_type_owned_box(const ::HIR::TypeRef& ty) const
 {
     if( ! ty.m_data.is_Path() ) {

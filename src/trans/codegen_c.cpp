@@ -2116,15 +2116,15 @@ namespace {
             else if( name == "needs_drop" ) {
                 // Returns `true` if the actual type given as `T` requires drop glue;
                 // returns `false` if the actual type provided for `T` implements `Copy`. (Either otherwise)
+                // NOTE: libarena assumes that this returns `true` iff T doesn't require drop glue.
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val);
                 m_of << " = ";
-                if( m_resolve.type_is_copy(Span(), ty) ) {
-                    m_of << "false";
-                }
-                // If T: !Copy, return true
-                else {
+                if( m_resolve.type_needs_drop_glue(mir_res.sp, ty) ) {
                     m_of << "true";
+                }
+                else {
+                    m_of << "false";
                 }
             }
             else if( name == "uninit" ) {

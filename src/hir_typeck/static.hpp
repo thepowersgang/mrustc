@@ -178,6 +178,9 @@ public:
     bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
 
+    /// Returns `true` if the passed type either implements Drop, or contains a type that implements Drop
+    bool type_needs_drop_glue(const Span& sp, const ::HIR::TypeRef& ty) const;
+
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
     const ::HIR::TypeRef* is_type_phantom_data(const ::HIR::TypeRef& ty) const;
 
