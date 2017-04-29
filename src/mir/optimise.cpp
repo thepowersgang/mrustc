@@ -17,11 +17,11 @@
 #include <iomanip>
 #include <trans/target.hpp>
 
-#define DUMP_BEFORE_ALL 1
+#define DUMP_BEFORE_ALL 0
 #define DUMP_BEFORE_CONSTPROPAGATE 0
 #define CHECK_AFTER_PASS    0
 
-#define DUMP_AFTER_DONE     1
+#define DUMP_AFTER_DONE     0
 #define CHECK_AFTER_DONE    1
 
 namespace {
