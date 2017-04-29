@@ -1,9 +1,10 @@
 --- rustc-nightly/src/libcore/intrinsics.rs
 +++ rustc-nightly/src/libcore/intrinsics.rs
-@@ -643,5 +643,8 @@
+@@ -643,5 +643,9 @@
      pub fn drop_in_place<T: ?Sized>(to_drop: *mut T);
  
 +    /// Obtain the length of a slice pointer
++    #[cfg(rust_compiler="mrustc")]
 +    pub fn mrustc_slice_len<T>(pointer: *const [T]) -> usize;
 +
      /// Gets a static string slice containing the name of a type.
