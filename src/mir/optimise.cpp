@@ -1396,12 +1396,14 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
             changed = true;
         }
-        //else if( tef.name == "get_dst_meta_slice" )
-        //{
-        //    MIR_ASSERT(state, te.args.at(0).is_LValue(), "Argument to `get_dst_meta` must be a lvalue");
-        //    auto& e = te.args.at(0).as_LValue();
-        //    bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::RValue::make_DstMeta({ mv$(*e) }) }));
-        //}
+        else if( tef.name == "mrustc_slice_len" )
+        {
+            MIR_ASSERT(state, te.args.at(0).is_LValue(), "Argument to `get_dst_meta` must be a lvalue");
+            auto& e = te.args.at(0).as_LValue();
+            bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::RValue::make_DstMeta({ mv$(e) }) }));
+            bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+            changed = true;
+        }
         else
         {
             // Ignore any other intrinsics

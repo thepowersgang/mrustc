@@ -173,6 +173,7 @@ int main(int argc, char *argv[])
     ProgramParams   params(argc, argv);
 
     // Set up cfg values
+    Cfg_SetValue("rust_compiler", "mrustc");
     // TODO: Target spec
     Cfg_SetFlag("unix");
     Cfg_SetFlag("linux");

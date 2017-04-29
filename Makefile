@@ -297,7 +297,7 @@ output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc_driver.hir output/ru
 .PHONY: RUSTCSRC
 RUSTCSRC: $(RUSTCSRC)
 
-$(RUSTCSRC): rust-nightly-date
+$(RUSTCSRC): rust-nightly-date rust_src.patch
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
 	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
 	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
@@ -306,6 +306,7 @@ $(RUSTCSRC): rust-nightly-date
 		rm -rf rustc-nightly; \
 		curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz; \
 		tar -xf rustc-nightly-src.tar.gz --transform 's~^rustc-nightly-src~rustc-nightly~'; \
+		patch -p0 < rust_src.patch; \
 		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
 	fi
 
