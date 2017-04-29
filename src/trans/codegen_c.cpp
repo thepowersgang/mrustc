@@ -123,7 +123,6 @@ namespace {
                             << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
                             << ");\n";
                 }
-                // TODO: Test framework?
                 else
                 {
                     m_of << "\t" << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
