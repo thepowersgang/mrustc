@@ -25,19 +25,20 @@ Current Features
 
 Short-Term Plans
 ===
-- Parse and Typecheck all run-pass tests
-- Compile a running rustc
+- Fix FFI (requires some rather extensive changes to enum handling)
 
 Medium-Term Goals
 ===
 - Extensive MIR optimisations
 - Propagate lifetime annotations so that MIR can include a borrow checker
+- Get all run-pass tests compiling
+  - Many fail due to type inferrence problems.
 
 
 Progress
 ===
 - Compiles the standard library into loadable MIR
 - Compiles the "hello, world" test into compilable and running C code
-- Compiles `rustc`
-  - Generated code is likely not correct
+- Compiles a running `rustc`
+  - Fails to compile libcore due to incorrect FFI
 
