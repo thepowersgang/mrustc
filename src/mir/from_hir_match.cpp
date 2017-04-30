@@ -39,7 +39,7 @@ TAGGED_UNION_EX(PatternRule, (), Any,(
     (Slice, struct { unsigned int len; ::std::vector<PatternRule> sub_rules; }),
     // SplitSlice
     // TODO: How can the negative offsets in the `trailing` be handled correctly? (both here and in the destructure)
-    (SplitSlice, struct { unsigned int min_len; ::std::vector<PatternRule> leading, trailing; }),
+    (SplitSlice, struct { unsigned int min_len; unsigned int trailing_len; ::std::vector<PatternRule> leading, trailing; }),
     // Boolean (different to Constant because of how restricted it is)
     (Bool, bool),
     // General value
@@ -809,6 +809,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
 
             PatternRulesetBuilder   sub_builder { this->m_resolve };
             sub_builder.m_field_path = m_field_path;
+            sub_builder.m_field_path.push_back(var_idx);
             sub_builder.m_field_path.push_back(0);
 
             TU_MATCH( ::HIR::Enum::Variant, (var_def.second), (fields_def),
@@ -1248,6 +1249,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 const auto& fields_def = var_def.second.as_Tuple();
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
+                sub_builder.m_field_path.push_back(pe.binding_idx);
                 sub_builder.m_field_path.push_back(0);
                 for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
                 {
@@ -1281,6 +1283,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 // 2. Iterate this list and recurse on the patterns
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
+                sub_builder.m_field_path.push_back(pe.binding_idx);
                 sub_builder.m_field_path.push_back(0);
                 for( unsigned int i = 0; i < tmp.size(); i ++ )
                 {
@@ -1393,6 +1396,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
 
             this->push_rule( PatternRule::make_SplitSlice({
                 static_cast<unsigned int>(pe.leading.size() + pe.trailing.size()),
+                static_cast<unsigned int>(pe.trailing.size()),
                 mv$(leading), mv$(trailing)
                 }) );
             )
@@ -1692,7 +1696,7 @@ namespace {
         ASSERT_BUG(sp, field_path_ofs <= field_path.size(), "Field path offset " << field_path_ofs << " is larger than the path [" << field_path << "]");
         for(unsigned int i = field_path_ofs; i < field_path.size(); i ++ )
         {
-            auto idx = field_path.data[i];
+            unsigned idx = field_path.data[i];
 
             TU_MATCHA( (cur_ty->m_data), (e),
             (Infer,   BUG(sp, "Ivar for in match type"); ),
@@ -1774,7 +1778,43 @@ namespace {
                     lval = ::MIR::LValue::make_Downcast({ box$(lval), idx });
                     ),
                 (Enum,
-                    BUG(sp, "Destructuring an enum - " << *cur_ty);
+                    auto monomorph_to_ptr = [&](const auto& ty)->const auto* {
+                        if( monomorphise_type_needed(ty) ) {
+                            auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                            resolve.expand_associated_types(sp, rv);
+                            tmp_ty = mv$(rv);
+                            return &tmp_ty;
+                        }
+                        else {
+                            return &ty;
+                        }
+                        };
+                    ASSERT_BUG(sp, idx < pbe->m_variants.size(), "Variant index (" << idx << ") out of range (" << pbe->m_variants.size() <<  ") for enum " << *cur_ty);
+                    const auto& var = pbe->m_variants[idx];
+
+                    i++;
+                    assert(i < field_path.data.size());
+                    unsigned fld_idx = field_path.data[i];
+
+                    TU_MATCHA( (var.second), (e),
+                    (Unit,
+                        BUG(sp, "Unit variant being destructured");
+                        ),
+                    (Value,
+                        BUG(sp, "Value variant being destructured");
+                        ),
+                    (Tuple,
+                        ASSERT_BUG(sp, fld_idx < e.size(), "Variant field index (" << fld_idx << ") out of range (" << e.size() <<  ") for enum " << *cur_ty << "::" << var.first);
+                        cur_ty = monomorph_to_ptr(e[fld_idx].ent);
+                        ),
+                    (Struct,
+                        ASSERT_BUG(sp, fld_idx < e.size(), "Variant field index (" << fld_idx << ") out of range (" << e.size() <<  ") for enum " << *cur_ty << "::" << var.first);
+                        cur_ty = monomorph_to_ptr(e[fld_idx].second.ent);
+                        )
+                    )
+                    DEBUG("*cur_ty = " << *cur_ty);
+                    lval = ::MIR::LValue::make_Downcast({ box$(lval), idx });
+                    lval = ::MIR::LValue::make_Field({ box$(lval), fld_idx });
                     )
                 )
                 ),
@@ -1798,12 +1838,15 @@ namespace {
                 ),
             (Borrow,
                 ASSERT_BUG(sp, idx == FIELD_DEREF, "Destructure of borrow doesn't correspond to a deref in the path");
+                DEBUG(i << " " << *cur_ty << " - " << cur_ty << " " << &tmp_ty);
                 if( cur_ty == &tmp_ty ) {
-                    tmp_ty = mv$(*tmp_ty.m_data.as_Borrow().inner);
+                    auto ip = mv$(tmp_ty.m_data.as_Borrow().inner);
+                    tmp_ty = mv$(*ip);
                 }
                 else {
                     cur_ty = &*e.inner;
                 }
+                DEBUG(i << " " << *cur_ty);
                 lval = ::MIR::LValue::make_Deref({ box$(lval) });
                 ),
             (Pointer,
@@ -2160,7 +2203,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                         // Recurse with the new ruleset
                         MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
                             re.sub_rules.data(), re.sub_rules.size(),
-                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size(),
+                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size()+1,
                             fail_bb
                             );
                         ),
@@ -2177,7 +2220,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                         // Recurse with the new ruleset
                         MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
                             re.sub_rules.data(), re.sub_rules.size(),
-                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size(),
+                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size()+1,
                             fail_bb
                             );
                         )
@@ -2441,12 +2484,77 @@ public:
     }
 };
 
+namespace {
+    void push_flat_rules(::std::vector<PatternRule>& out_rules, PatternRule rule)
+    {
+        TU_MATCHA( (rule), (e),
+        (Variant,
+            auto sub_rules = mv$(e.sub_rules);
+            out_rules.push_back( mv$(rule) );
+            for(auto& sr : sub_rules)
+                push_flat_rules(out_rules, mv$(sr));
+            ),
+        (Slice,
+            auto sub_rules = mv$(e.sub_rules);
+            out_rules.push_back( mv$(rule) );
+            for(auto& sr : sub_rules)
+                push_flat_rules(out_rules, mv$(sr));
+            ),
+        (SplitSlice,
+            auto leading = mv$(e.leading);
+            auto trailing = mv$(e.trailing);
+            out_rules.push_back( mv$(rule) );
+            for(auto& sr : leading)
+                push_flat_rules(out_rules, mv$(sr));
+            // TODO: the trailing rules need a special path format.
+            ASSERT_BUG(Span(), trailing.size() == 0, "TODO: Handle SplitSlice with trailing");
+            for(auto& sr : trailing)
+                push_flat_rules(out_rules, mv$(sr));
+            ),
+        (Bool,
+            out_rules.push_back( mv$(rule) );
+            ),
+        (Value,
+            out_rules.push_back( mv$(rule) );
+            ),
+        (ValueRange,
+            out_rules.push_back( mv$(rule) );
+            ),
+        (Any,
+            out_rules.push_back( mv$(rule) );
+            )
+        )
+    }
+    t_arm_rules flatten_rules(t_arm_rules rules)
+    {
+        t_arm_rules rv;
+        rv.reserve(rules.size());
+        for(auto& ruleset : rules)
+        {
+            ::std::vector<PatternRule>  pattern_rules;
+            for( auto& r : ruleset.m_rules )
+            {
+                push_flat_rules(pattern_rules, mv$(r));
+            }
+            rv.push_back(PatternRuleset { ruleset.arm_idx, ruleset.pat_idx, mv$(pattern_rules) });
+        }
+        return rv;
+    }
+}
+
 void MIR_LowerHIR_Match_Grouped(
         MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val,
         t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block
         )
 {
+    // TEMPORARY HACK: Grouped fails in complex matches (e.g. librustc_const_math Int::infer)
+    //MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arms_code), first_cmp_block );
+    //return;
+
     TRACE_FUNCTION_F("");
+
+    // Flatten ruleset completely (remove grouping of enum/slice rules)
+    arm_rules = flatten_rules( mv$(arm_rules) );
 
     // - Create a "slice" of the passed rules, suitable for passing to the recursive part of the algo
     t_rules_subset  rules { arm_rules.size(), /*is_arm_indexes=*/true };
@@ -2470,7 +2578,7 @@ void MIR_LowerHIR_Match_Grouped(
 }
 void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR::BasicBlockId default_arm)
 {
-    TRACE_FUNCTION_F("arm_rules=" << arm_rules << ", ofs="<<ofs);
+    TRACE_FUNCTION_F("arm_rules=" << arm_rules << ", ofs="<<ofs << ", default_arm=" << default_arm);
     ASSERT_BUG(sp, arm_rules.size() > 0, "");
 
     // Quick hack: Skip any layers entirely made up of PatternRule::Any
@@ -2615,37 +2723,17 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
             // > Get type of match, generate dispatch list.
             for(size_t i = 0; i < slices.size(); i ++)
             {
-                // If rules are actually different, split here. (handles Enum and Slice)
                 auto cur_block = m_builder.new_bb_unlinked();
                 m_builder.set_cur_block(cur_block);
-                auto cur_start = 0;
+
                 for(size_t j = 0; j < slices[i].size(); j ++)
                 {
-                    if(slices[i][j][ofs] != slices[i][cur_start][ofs])
-                    {
-                        DEBUG("- Equal range : " << cur_start << "+" << (j - cur_start));
-                        // Package up previous rules and generate dispatch code
-                        auto ns = slices[i].sub_slice(cur_start, j - cur_start);
-                        this->gen_for_slice(mv$(ns), ofs+1, next);
-
-                        cur_block = m_builder.new_bb_unlinked();
-                        m_builder.set_cur_block(cur_block);
-
-                        cur_start = j;
-                    }
+                    if(j > 0)
+                        ASSERT_BUG(sp, slices[i][0][ofs] == slices[i][j][ofs], "Mismatched rules - " << slices[i][0][ofs] << " and " << slices[i][j][ofs]);
                     arm_blocks.push_back(cur_block);
                 }
 
-                if( cur_start != 0 )
-                {
-                    DEBUG("- Equal range : " << cur_start << "+" << (slices[i].size() - cur_start));
-                    auto ns = slices[i].sub_slice(cur_start, slices[i].size() - cur_start);
-                    this->gen_for_slice( mv$(ns), ofs+1, next);
-                }
-                else
-                {
-                    this->gen_for_slice(slices[i], ofs+1, next);
-                }
+                this->gen_for_slice(slices[i], ofs+1, next);
             }
 
             m_builder.set_cur_block(cur_blk);
@@ -2981,70 +3069,24 @@ void MatchGenGrouped::gen_dispatch__enum(::HIR::TypeRef ty, ::MIR::LValue val, c
 
     auto decison_arm = m_builder.pause_cur_block();
 
-    auto monomorph = [&](const auto& ty) {
-        auto rv = monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty);
-        m_builder.resolve().expand_associated_types(sp, rv);
-        return rv;
-        };
     auto var_count = pbe->m_variants.size();
-    size_t  arm_idx = 0;
     ::std::vector< ::MIR::BasicBlockId> arms(var_count, def_blk);
+    size_t  arm_idx = 0;
     for(size_t i = 0; i < rules.size(); i ++)
     {
         ASSERT_BUG(sp, rules[i][0][ofs].is_Variant(), "Rule for enum isn't Any or Variant - " << rules[i][0][ofs].tag_str());
         const auto& re = rules[i][0][ofs].as_Variant();
         unsigned int var_idx = re.idx;
-        arms[var_idx] = m_builder.new_bb_unlinked();
         DEBUG("Variant " << var_idx);
 
-        // Create new rule collection based on the variants
-        t_rules_subset  inner_set { rules[i].size(), /*is_arm_indexes=*/false };
+        ASSERT_BUG(sp, re.sub_rules.size() == 0, "Sub-rules in MatchGenGrouped");
+
+        arms[var_idx] = arm_targets[arm_idx];
         for(size_t j = 0; j < rules[i].size(); j ++)
         {
-            const auto& r = rules[i][j];
-            inner_set.push_bb(r[ofs].as_Variant().sub_rules, arm_targets[arm_idx]);
+            assert(arms[var_idx] == arm_targets[arm_idx]);
             arm_idx ++;
         }
-        ::HIR::TypeRef  fake_tup;
-
-        const auto& var_data = pbe->m_variants.at(re.idx).second;
-        TU_MATCHA( (var_data), (ve),
-        (Unit,
-            // Nothing to recurse
-            ),
-        (Value,
-            // Nothing to recurse
-            ),
-        (Tuple,
-            // Create a dummy tuple to contain the inner types.
-            ::std::vector< ::HIR::TypeRef>  fake_ty_ents;
-            fake_ty_ents.reserve( ve.size() );
-            for(unsigned int i = 0; i < ve.size(); i ++)
-            {
-                fake_ty_ents.push_back( monomorph(ve[i].ent) );
-            }
-            fake_tup = ::HIR::TypeRef( mv$(fake_ty_ents) );
-            ),
-        (Struct,
-            // Create a dummy tuple to contain the inner types.
-            ::std::vector< ::HIR::TypeRef>  fake_ty_ents;
-            fake_ty_ents.reserve( ve.size() );
-            for(unsigned int i = 0; i < ve.size(); i ++)
-            {
-                fake_ty_ents.push_back( monomorph(ve[i].second.ent) );
-            }
-            fake_tup = ::HIR::TypeRef( mv$(fake_ty_ents) );
-            )
-        )
-
-        m_builder.set_cur_block(arms[var_idx]);
-        // Recurse with the new ruleset
-        // - On success, these should jump to targets[i]
-
-        auto new_lval = ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx });
-        auto inst = MatchGenGrouped { m_builder, sp, fake_tup, new_lval, {}, rules[0][0][ofs].field_path.size() };
-        inst.gen_for_slice(inner_set, 0, def_blk);
-        ASSERT_BUG(sp, ! m_builder.block_active(), "Block still active after enum match generation");
     }
 
     m_builder.set_cur_block(decison_arm);
@@ -3061,13 +3103,14 @@ void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, 
     size_t tgt_ofs = 0;
     for(size_t i = 0; i < rules.size(); i++)
     {
-        //for(size_t j = 1; j < rules[i].size(); j ++)
-        //    ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Slice match");
-
         const auto& r = rules[i][0][ofs];
         if(const auto* re = r.opt_Slice())
         {
+            ASSERT_BUG(sp, re->sub_rules.size() == 0, "Sub-rules in MatchGenGrouped");
             auto val_tst = ::MIR::Constant::make_Uint({ re->len, ::HIR::CoreType::Usize });
+
+            for(size_t j = 0; j < rules[i].size(); j ++)
+                assert(arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j]);
 
             // IF v < tst : target
             if( re->len > 0 )
@@ -3080,22 +3123,9 @@ void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, 
 
             // IF v == tst : target
             {
-                auto succ_blk = m_builder.new_bb_unlinked();
                 auto next_cmp_blk = m_builder.new_bb_unlinked();
                 auto cmp_lval_eq = this->push_compare( val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_tst) );
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), succ_blk, next_cmp_blk }) );
-                m_builder.set_cur_block(succ_blk);
-
-                // 
-                t_rules_subset  inner_set { rules[i].size(), /*is_arm_indexes=*/false };
-                for(size_t j = 0; j < rules[i].size(); j ++)
-                {
-                    const auto& r = rules[i][j];
-                    inner_set.push_bb(r[ofs].as_Slice().sub_rules, arm_targets[tgt_ofs + j]);
-                }
-                auto inst = MatchGenGrouped { m_builder, sp, ty, val, {}, rules[0][0][ofs].field_path.size() };
-                inst.gen_for_slice(inner_set, 0, def_blk);
-
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
                 m_builder.set_cur_block(next_cmp_blk);
             }
         }
@@ -3233,6 +3263,8 @@ void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, co
     get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
     DEBUG("ty = " << ty << ", val = " << val);
 
+    ASSERT_BUG(sp, e.leading.size() == 0, "Sub-rules in MatchGenGrouped");
+    ASSERT_BUG(sp, e.trailing.size() == 0, "Sub-rules in MatchGenGrouped");
     ASSERT_BUG(sp, ty.m_data.is_Slice(), "SplitSlice pattern on non-slice - " << ty);
 
     // Obtain slice length
@@ -3248,7 +3280,7 @@ void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, co
     }
 
     // 2. Recurse into leading patterns.
-    if( !e.leading.empty() )
+    if( e.min_len > e.trailing_len )
     {
         auto next = m_builder.new_bb_unlinked();
         auto inner_set = t_rules_subset { 1, /*is_arm_indexes=*/false };
@@ -3259,7 +3291,7 @@ void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, co
         m_builder.set_cur_block(next);
     }
 
-    if( !e.trailing.empty() )
+    if( e.trailing_len != 0 )
     {
         TODO(sp, "Handle trailing rules in SplitSlice - " << e.trailing);
     }
