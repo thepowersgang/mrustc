@@ -987,10 +987,10 @@ namespace {
                         m_of << "}";
                     }
                 }
-                else if( enm.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(enm.m_variants.begin(), enm.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
+                else if( enm.is_value() )
                 {
                     MIR_ASSERT(*m_mir_res, e.vals.empty(), "Value-only enum with fields");
-                    m_of << "{" << e.idx << "}";
+                    m_of << "{" << enm.get_value(e.idx) << "}";
                 }
                 else
                 {
@@ -1675,43 +1675,65 @@ namespace {
                             }
                             ),
                         (Variant,
-                            if( m_crate.get_typeitem_by_path(sp, ve.path.m_path).is_Union() )
+                            const auto& tyi = m_crate.get_typeitem_by_path(sp, ve.path.m_path);
+                            if( tyi.is_Union() )
                             {
                                 emit_lvalue(e.dst);
+                                m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                            }
+                            else if( const auto* enm_p = tyi.opt_Enum() )
+                            {
+                                MIR_TODO(mir_res, "Construct enum with RValue::Variant");
+                                if( enm_p->is_value() )
+                                {
+                                    emit_lvalue(e.dst); m_of << ".TAG = " << enm_p->get_value(ve.index) << "";
+                                }
+                                else
+                                {
+                                    emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
+                                    emit_lvalue(e.dst); m_of << ".DATA";
+                                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                                }
                             }
                             else
                             {
-                                MIR_TODO(mir_res, "Construct enum with RValue::Variant");
-                                emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA";
+                                BUG(mir_res.sp, "Unexpected type in Variant");
                             }
-                            m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
                             ),
                         (Struct,
-                            if(ve.variant_idx != ~0u) {
+                            if(ve.variant_idx != ~0u)
+                            {
                                 ::HIR::TypeRef  tmp;
                                 const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
-                                if( ty.m_data.as_Path().binding.is_Enum() ) {
-                                    auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                                    if( it != m_enum_repr_cache.end() )
-                                    {
-                                        if( ve.variant_idx == 0 ) {
-                                            // TODO: Use nonzero_path
-                                            m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
-                                        }
-                                        else if( ve.variant_idx == 1 ) {
-                                            emit_lvalue(e.dst);
-                                            m_of << "._0 = ";
-                                            emit_param(ve.vals[0]);
-                                        }
-                                        else {
-                                        }
-                                        break;
-                                    }
-                                }
+                                const auto* enm_p = ty.m_data.as_Path().binding.as_Enum();
 
-                                emit_lvalue(e.dst);
-                                m_of << ".TAG = " << ve.variant_idx;
+                                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
+                                if( it != m_enum_repr_cache.end() )
+                                {
+                                    if( ve.variant_idx == 0 ) {
+                                        // TODO: Use nonzero_path
+                                        m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
+                                    }
+                                    else if( ve.variant_idx == 1 ) {
+                                        emit_lvalue(e.dst);
+                                        m_of << "._0 = ";
+                                        emit_param(ve.vals[0]);
+                                    }
+                                    else {
+                                    }
+                                    break;
+                                }
+                                else if( enm_p->is_value() )
+                                {
+                                    emit_lvalue(e.dst);
+                                    m_of << ".TAG = " << enm_p->get_value(ve.variant_idx);
+                                    assert(ve.vals.size() == 0);
+                                }
+                                else
+                                {
+                                    emit_lvalue(e.dst);
+                                    m_of << ".TAG = " << ve.variant_idx;
+                                }
                                 if(ve.vals.size() > 0)
                                     m_of << ";\n\t";
                             }
@@ -1765,6 +1787,7 @@ namespace {
                     const auto& ty = mir_res.get_lvalue_type(tmp, e.val);
                     MIR_ASSERT(mir_res, ty.m_data.is_Path(), "");
                     MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                    const auto* enm = ty.m_data.as_Path().binding.as_Enum();
                     auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
                     if( it != m_enum_repr_cache.end() )
                     {
@@ -1773,6 +1796,16 @@ namespace {
                         m_of << "\t\tgoto bb" << e.targets[1] << ";\n";
                         m_of << "\telse\n";
                         m_of << "\t\tgoto bb" << e.targets[0] << ";\n";
+                    }
+                    else if( enm->is_value() )
+                    {
+                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ".TAG) {\n";
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                        {
+                            m_of << "\t\tcase " << enm->get_value(j) << ": goto bb" << e.targets[j] << ";\n";
+                        }
+                        m_of << "\t\tdefault: abort();\n";
+                        m_of << "\t}\n";
                     }
                     else
                     {
@@ -2659,10 +2692,10 @@ namespace {
                         assign_from_literal([&](){ emit_dst(); m_of << "._0"; }, get_inner_type(e.idx, 0), e.vals[0]);
                     }
                 }
-                else if( enm.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(enm.m_variants.begin(), enm.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
+                else if( enm.is_value() )
                 {
                     MIR_ASSERT(*m_mir_res, e.vals.empty(), "Value-only enum with fields");
-                    emit_dst(); m_of << ".TAG = " << e.idx;
+                    emit_dst(); m_of << ".TAG = " << enm.get_value(e.idx);
                 }
                 else
                 {

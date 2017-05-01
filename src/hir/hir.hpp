@@ -218,6 +218,11 @@ public:
     TraitMarkings   m_markings;
 
     const Variant* get_variant(const ::std::string& ) const;
+
+    /// Returns true if this enum is a C-like enum (has values only)
+    bool is_value() const;
+    /// Returns the value for the given variant
+    uint32_t get_value(size_t variant) const;
 };
 class Struct
 {

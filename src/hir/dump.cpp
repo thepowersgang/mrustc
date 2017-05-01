@@ -165,7 +165,13 @@ namespace {
                 (Unit,
                     ),
                 (Value,
-                    m_os << " = ?";// <<
+                    m_os << " = ";
+                    if( e.val.is_Invalid() ) {
+                        m_os << "?";
+                    }
+                    else {
+                        m_os << e.val;
+                    }
                     ),
                 (Tuple,
                     m_os << "(";
