@@ -406,6 +406,12 @@ struct CExpandExpr:
 
     void visit(::AST::ExprNode_Block& node) override {
         unsigned int mod_item_count = 0;
+
+        auto prev_modstack = this->modstack;
+        if( node.m_local_mod ) {
+            this->modstack = LList<const ::AST::Module*>(&prev_modstack, node.m_local_mod.get());
+        }
+
         // TODO: macro_rules! invocations within the expression list influence this.
         // > Solution: Defer creation of the local module until during expand.
         if( node.m_local_mod ) {
@@ -455,6 +461,8 @@ struct CExpandExpr:
         if( node.m_local_mod ) {
             Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod, mod_item_count);
         }
+
+        this->modstack = mv$(prev_modstack);
     }
     void visit(::AST::ExprNode_Asm& node) override {
         for(auto& v : node.m_output)
