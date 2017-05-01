@@ -12,7 +12,7 @@
 class CTestHandler:
     public ExpandDecorator
 {
-    AttrStage   stage() const override { return AttrStage::Pre; }
+    AttrStage   stage() const override { return AttrStage::Post; }
 
     void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         if( ! i.is_Function() ) {
