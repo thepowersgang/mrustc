@@ -722,22 +722,23 @@ DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
 DISABLED_TESTS += run-pass/issue-23968-const-not-overflow	# !0 / 2 incorrect value
 # - BUG: Incorrect ordering of read in binops
 DISABLED_TESTS += run-pass/issue-27054-primitive-binary-ops
-# - BUG: Enum variants not getting correct integer values
+# - BUG: Enum variants not getting correct integer values (negatives)
 DISABLED_TESTS += run-pass/discriminant_value
-DISABLED_TESTS += run-pass/const-nullary-univariant-enum
 DISABLED_TESTS += run-pass/enum-discr
 DISABLED_TESTS += run-pass/enum-disr-val-pretty
-DISABLED_TESTS += run-pass/enum-univariant-repr
 DISABLED_TESTS += run-pass/issue-15523-big
+DISABLED_TESTS += run-pass/issue-9837
+DISABLED_TESTS += run-pass/signed-shift-const-eval
+DISABLED_TESTS += run-pass/tag-variant-disr-val
+# - BUG: repr(size) not working
+DISABLED_TESTS += run-pass/enum-univariant-repr
 DISABLED_TESTS += run-pass/issue-15523
+# - ConstEval: Handling of enum variant casts
 DISABLED_TESTS += run-pass/issue-23304-1
 DISABLED_TESTS += run-pass/issue-23304-2
-DISABLED_TESTS += run-pass/issue-2428
-DISABLED_TESTS += run-pass/issue-9837
-DISABLED_TESTS += run-pass/resolve-issue-2428
-DISABLED_TESTS += run-pass/signed-shift-const-eval
-DISABLED_TESTS += run-pass/small-enum-range-edge
-DISABLED_TESTS += run-pass/tag-variant-disr-val
+#DISABLED_TESTS += run-pass/issue-2428
+#DISABLED_TESTS += run-pass/resolve-issue-2428
+#DISABLED_TESTS += run-pass/small-enum-range-edge
 # - BUG: Null pointer opt not fully correct
 DISABLED_TESTS += run-pass/enum-null-pointer-opt
 DISABLED_TESTS += run-pass/nonzero-enum
@@ -761,6 +762,7 @@ DISABLED_TESTS += run-pass/intrinsics-math
 DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to union field
 DISABLED_TESTS += run-pass/issue-4734	# Destructor on unused rvalue
 DISABLED_TESTS += run-pass/issue-8860	# No drop of un-moved arguments
+DISABLED_TESTS += run-pass/issue-15080	# Inifinte loop from incorrect match generation
 # - BUG: Codegen
 DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
 DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior
