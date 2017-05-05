@@ -2372,10 +2372,10 @@ namespace {
             }
             // --- Volatile Load/Store
             else if( name == "volatile_load" ) {
-                emit_lvalue(e.ret_val); m_of << " = *(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0));
+                emit_lvalue(e.ret_val); m_of << " = *(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0));
             }
             else if( name == "volatile_store" ) {
-                m_of << "*(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_lvalue(e.args.at(0)); m_of << " = "; emit_lvalue(e.args.at(1));
+                m_of << "*(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
             }
             // --- Atomics!
             // > Single-ordering atomics
