@@ -864,6 +864,7 @@ namespace {
             m_out.write_tag( static_cast<unsigned int>(m.dst_type) );
             m_out.write_count( m.coerce_unsized_index );
             m_out.write_count( m.unsized_field );
+            m_out.write_count( m.unsized_param );
             // TODO: auto_impls
         }
 

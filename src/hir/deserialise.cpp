@@ -586,6 +586,7 @@ namespace {
             m.dst_type = static_cast< ::HIR::TraitMarkings::DstType>( m_in.read_tag() );
             m.coerce_unsized_index = m_in.read_count( );
             m.unsized_field = m_in.read_count( );
+            m.unsized_param = m_in.read_count();
             // TODO: auto_impls
             return m;
         }

@@ -4415,14 +4415,11 @@ namespace {
         // Search for Unsize
         // - If `right`: ::core::marker::Unsize<`left`>
         {
-            const auto& lang_Unsize = context.m_crate.get_lang_item_path(sp, "unsize");
-            ::HIR::PathParams   pp;
-            pp.m_types.push_back( ty_dst.clone() );
-            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, ty_src, [&](auto impl, auto cmp) {
-                // TODO: Allow fuzzy match if only match
-                return cmp == ::HIR::Compare::Equal;
+            auto cmp = context.m_resolve.can_unsize(sp, ty_dst, ty_src, [&](auto new_dst) {
+                // Equate these two types
                 });
-            if( found ) {
+            if(cmp == ::HIR::Compare::Equal)
+            {
                 DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
                 auto ty_dst_b = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone());
                 auto ty_dst_b2 = ty_dst_b.clone();
@@ -4431,18 +4428,27 @@ namespace {
 
                 return true;
             }
-        }
-
-        if( ty_dst.m_data.is_Path() && ty_dst.m_data.as_Path().binding.is_Unbound() )
-        {
-        }
-        else if( ty_src.m_data.is_Path() && ty_src.m_data.as_Path().binding.is_Unbound() )
-        {
-        }
-        else if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
-        {
-            context.equate_types(sp, ty_dst,  ty_src);
-            return true;
+            if(cmp == ::HIR::Compare::Unequal)
+            {
+                // No unsize possible, equate types
+                // - Only if they're not already fixed as unequal (that gets handled elsewhere)
+                if( ty_dst.m_data.is_Path() && ty_dst.m_data.as_Path().binding.is_Unbound() )
+                {
+                }
+                else if( ty_src.m_data.is_Path() && ty_src.m_data.as_Path().binding.is_Unbound() )
+                {
+                }
+                else if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
+                {
+                    context.equate_types(sp, ty_dst,  ty_src);
+                    return true;
+                }
+            }
+            if(cmp == ::HIR::Compare::Fuzzy)
+            {
+                // Not sure yet
+                return false;
+            }
         }
 
         // Keep trying

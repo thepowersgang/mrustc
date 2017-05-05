@@ -177,6 +177,7 @@ struct TraitMarkings
         TraitObject,    // (Trait)
     }   dst_type;
     unsigned int unsized_field = ~0u;
+    unsigned int unsized_param = ~0u;
 
     /// `true` if there is a Copy impl
     bool    is_copy = false;
