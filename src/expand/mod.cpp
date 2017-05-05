@@ -690,11 +690,13 @@ struct CExpandExpr:
 
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node)
 {
+    TRACE_FUNCTION_F("unique_ptr");
     auto visitor = CExpandExpr(crate, modstack);
     visitor.visit(node);
 }
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node)
 {
+    TRACE_FUNCTION_F("shared_ptr");
     auto visitor = CExpandExpr(crate, modstack);
     node->visit(visitor);
     if( visitor.replacement ) {
@@ -703,6 +705,7 @@ void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std:
 }
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node)
 {
+    TRACE_FUNCTION_F("AST::Expr");
     auto visitor = CExpandExpr(crate, modstack);
     node.visit_nodes(visitor);
     if( visitor.replacement ) {
@@ -829,7 +832,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     {
         auto& i = mod.items()[idx];
 
-        DEBUG("- " << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.data.attrs);
+        DEBUG("- " << modpath << "::" << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.data.attrs);
         ::AST::Path path = modpath + i.name;
 
         auto attrs = mv$(i.data.attrs);

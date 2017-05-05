@@ -119,6 +119,16 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         Parse_Mod_Item(lex, *local_mod, mv$(item_attrs));
         return ExprNodeP();
     }
+
+    if( tok.type() == TOK_MACRO && tok.str() == "macro_rules" )
+    {
+        // Special case - create a local module if macro_rules! is seen
+        // - Allows correct scoping of defined macros
+        if( !local_mod ) {
+            local_mod = lex.parse_state().get_current_mod().add_anon();
+        }
+    }
+
     switch(tok.type())
     {
     // Items:
