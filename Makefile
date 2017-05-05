@@ -789,6 +789,7 @@ rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 
 LIB_TESTS := collections collectionstest rustc_data_structures
 RUNTIME_ARGS_output/libcollectionstest-test := --test-threads 1 --skip linked_list::test_ord_nan --skip ::slice::test_box_slice_clone_panics
+RUNTIME_ARGS_output/libstd-test := --test-threads 1
 rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
 
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)

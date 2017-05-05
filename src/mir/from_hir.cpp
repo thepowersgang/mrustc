@@ -1312,8 +1312,9 @@ namespace {
                     }
                     else
                     {
-                        // Probably an error.
-                        TODO(node.span(), "MIR _Unsize to " << ty_out);
+                        // Probably an error?
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
+                        //TODO(node.span(), "MIR _Unsize to " << ty_out);
                     }
                     ),
                 (Slice,
