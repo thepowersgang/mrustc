@@ -1020,6 +1020,41 @@ bool TraitResolution::iterate_bounds( ::std::function<bool(const ::HIR::GenericB
     }
     return false;
 }
+bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const
+{
+    const auto& trait_ref = m_crate.get_trait_by_path(sp, pe.trait.m_path);
+    ASSERT_BUG(sp, trait_ref.m_types.count( pe.item ) != 0, "Trait " << pe.trait.m_path << " doesn't contain an associated type " << pe.item);
+    const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
+
+    for(const auto& bound : aty_def.m_trait_bounds)
+    {
+        if( cb(bound) )
+            return true;
+    }
+    // Search `<Self as Trait>::Name` bounds on the trait itself
+    for(const auto& bound : trait_ref.m_params.m_bounds)
+    {
+        if( ! bound.is_TraitBound() ) continue ;
+        const auto& be = bound.as_TraitBound();
+
+        if( ! be.type.m_data.is_Path() )   continue ;
+        if( ! be.type.m_data.as_Path().binding.is_Opaque() )   continue ;
+
+        const auto& be_type_pe = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
+        if( *be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
+            continue ;
+        if( be_type_pe.trait.m_path != pe.trait.m_path )
+            continue ;
+        if( be_type_pe.item != pe.item )
+            continue ;
+
+        if( cb(be.trait) )
+            return true;
+    }
+
+    return false;
+}
+
 bool TraitResolution::find_trait_impls(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
         const ::HIR::TypeRef& ty,
@@ -1343,15 +1378,9 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             ASSERT_BUG(sp, e.path.m_data.is_UfcsKnown(), "Opaque bound type wasn't UfcsKnown - " << type);
             const auto& pe = e.path.m_data.as_UfcsKnown();
 
-            // If this associated type has a bound of the desired trait, return it.
-            const auto& trait_ref = m_crate.get_trait_by_path(sp, pe.trait.m_path);
-            ASSERT_BUG(sp, trait_ref.m_types.count( pe.item ) != 0, "Trait " << pe.trait.m_path << " doesn't contain an associated type " << pe.item);
-            const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
-
             auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
 
-            for(const auto& bound : aty_def.m_trait_bounds)
-            {
+            auto rv = this->iterate_aty_bounds(sp, pe, [&](const auto& bound) {
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
@@ -1382,58 +1411,14 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         return cmp != ::HIR::Compare::Unequal && callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
                     });
                 if( ret )
-                    return true;
-            }
-            // TODO: Search `<Self as Trait>::Name` bounds on the trait itself
-            for(const auto& bound : trait_ref.m_params.m_bounds)
-            {
-                if( ! bound.is_TraitBound() ) continue ;
-                const auto& be = bound.as_TraitBound();
-
-                if( ! be.type.m_data.is_Path() )   continue ;
-                if( ! be.type.m_data.as_Path().binding.is_Opaque() )   continue ;
-
-                const auto& be_type_pe = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
-                if( *be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
-                    continue ;
-                if( be_type_pe.trait.m_path != pe.trait.m_path )
-                    continue ;
-                if( be_type_pe.item != pe.item )
-                    continue ;
-
-                // TODO: Merge the below code with the code from the above loop.
-                const auto& b_params = be.trait.m_path.m_params;
-                ::HIR::PathParams   params_mono_o;
-                const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
-
-                if( be.trait.m_path.m_path == trait )
                 {
-                    auto cmp = this->compare_pp(sp, b_params_mono, params);
-                    if( cmp != ::HIR::Compare::Unequal )
-                    {
-                        if( &b_params_mono == &params_mono_o )
-                        {
-                            if( callback( ImplRef(type.clone(), mv$(params_mono_o), {}), cmp ) )
-                                return true;
-                            params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
-                        }
-                        else
-                        {
-                            if( callback( ImplRef(&type, &b_params, &null_assoc), cmp ) )
-                                return true;
-                        }
-                    }
-                }
-
-                bool ret = this->find_named_trait_in_trait(sp,  trait, params,  *be.trait.m_trait_ptr,  be.trait.m_path.m_path, b_params_mono, type,
-                    [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
-                        auto cmp = this->compare_pp(sp, i_params, params);
-                        DEBUG("cmp=" << cmp << ", impl " << trait << i_params << " for " << i_ty << " -- desired " << trait << params);
-                        return cmp != ::HIR::Compare::Unequal && callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
-                    });
-                if( ret )
+                    // NOTE: Callback called in closure's return statement
                     return true;
-            }
+                }
+                return false;
+                });
+            if( rv )
+                return true;
         }
     )
 
@@ -3078,6 +3063,35 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         if( found_bound )
         {
             return ::HIR::Compare::Equal;
+        }
+    }
+
+    // Associated types, check the bounds in the trait.
+    if( src_ty.m_data.is_Path() && src_ty.m_data.as_Path().path.m_data.is_UfcsKnown() )
+    {
+        ::HIR::Compare  rv = ::HIR::Compare::Equal;
+        const auto& pe = src_ty.m_data.as_Path().path.m_data.as_UfcsKnown();
+        auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
+        auto found_bound = this->iterate_aty_bounds(sp, pe, [&](const ::HIR::TraitPath& bound) {
+            if( bound.m_path.m_path != lang_Unsize )
+                return false;
+            const auto& be_dst_tpl = bound.m_path.m_params.m_types.at(0);
+            ::HIR::TypeRef  tmp_ty;
+            const auto& be_dst = (monomorphise_type_needed(be_dst_tpl) ? tmp_ty = monomorphise_type_with(sp, be_dst_tpl, monomorph_cb) : be_dst_tpl);
+
+            auto cmp = dst_ty.compare_with_placeholders(sp, be_dst, m_ivars.callback_resolve_infer());
+            if(cmp == ::HIR::Compare::Unequal)  return false;
+
+            if( cmp != ::HIR::Compare::Equal )
+            {
+                DEBUG("> Found bound (fuzzy) " << dst_ty << "=" << be_dst << " <- " << src_ty);
+                rv = ::HIR::Compare::Fuzzy;
+            }
+            return true;
+            });
+        if( found_bound )
+        {
+            return rv;
         }
     }
 

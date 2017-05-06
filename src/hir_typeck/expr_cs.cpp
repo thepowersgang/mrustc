@@ -4263,6 +4263,7 @@ namespace {
 
         // Deref coercions
         // - If right can be dereferenced to left
+        DEBUG("-- Deref coercions");
         {
             ::HIR::TypeRef  tmp_ty;
             const ::HIR::TypeRef*   out_ty = &ty_src;
@@ -4414,6 +4415,7 @@ namespace {
 
         // Search for Unsize
         // - If `right`: ::core::marker::Unsize<`left`>
+        DEBUG("-- Unsize trait");
         {
             auto cmp = context.m_resolve.can_unsize(sp, ty_dst, ty_src, [&](auto new_dst) {
                 // Equate these two types
