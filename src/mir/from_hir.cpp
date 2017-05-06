@@ -549,6 +549,8 @@ namespace {
             auto loop_block = m_builder.new_bb_linked();
             auto loop_next = m_builder.new_bb_unlinked();
 
+            auto loop_tmp_scope = m_builder.new_scope_temp(node.span());
+
             m_loop_stack.push_back( LoopDesc { mv$(loop_body_scope), node.m_label, loop_block, loop_next } );
             this->visit_node_ptr(node.m_code);
             auto loop_scope = mv$(m_loop_stack.back().scope);
@@ -566,12 +568,14 @@ namespace {
             {
                 DEBUG("- Reached end, loop back");
                 // Insert drop of all scopes within the current scope
+                m_builder.terminate_scope( node.span(), mv$(loop_tmp_scope) );
                 m_builder.terminate_scope( node.span(), mv$(loop_scope) );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(loop_block) );
             }
             else
             {
                 // Terminate scope without emitting cleanup (cleanup was handled by `break`)
+                m_builder.terminate_scope( node.span(), mv$(loop_tmp_scope), false );
                 m_builder.terminate_scope( node.span(), mv$(loop_scope), false );
             }
 
