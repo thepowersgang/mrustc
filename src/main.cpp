@@ -314,6 +314,10 @@ int main(int argc, char *argv[])
             // - `mrustc-main` lang item default
             crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
         }
+        if( params.test_harness )
+        {
+            crate.load_extern_crate(Span(), "test");
+        }
 
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         // - This does name checking on types and free functions.
