@@ -59,9 +59,10 @@ namespace {
             {
                 n->visit(*this);
             }
-            if( node.m_nodes.size() > 0 && node.m_yields_final )
+            if( node.m_value_node )
             {
-                check_types_equal(node.span(), node.m_res_type, node.m_nodes.back()->m_res_type);
+                node.m_value_node->visit(*this);
+                check_types_equal(node.span(), node.m_res_type, node.m_value_node->m_res_type);
             }
         }
         void visit(::HIR::ExprNode_Asm& node) override

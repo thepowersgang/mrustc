@@ -515,6 +515,30 @@ namespace {
                 m_os << indent() << "  ;\n";
             }
         }
+        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
+        {
+            m_os << indent();
+            m_os << "const ";
+            if( m_short_item_name )
+                m_os << p.get_name();
+            else
+                m_os << p;
+            m_os << ": " << item.m_type;
+            if( item.m_value )
+            {
+                inc_indent();
+                m_os << " = {\n";
+                inc_indent();
+                dump_mir(m_os, m_indent_level, *item.m_value.m_mir);
+                dec_indent();
+                m_os << indent() << "} /* = " << item.m_value_res << "*/;\n";
+                dec_indent();
+            }
+            else
+            {
+                m_os << ";\n";
+            }
+        }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
         {
             m_os << indent();
@@ -527,7 +551,7 @@ namespace {
             if( item.m_value )
             {
                 inc_indent();
-                m_os << "= {\n";
+                m_os << " = {\n";
                 inc_indent();
                 dump_mir(m_os, m_indent_level, *item.m_value.m_mir);
                 dec_indent();

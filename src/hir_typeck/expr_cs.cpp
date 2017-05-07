@@ -543,13 +543,12 @@ namespace {
                 return ty.m_data.is_Diverge();// || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
                 };
 
+            bool diverges = false;
+            this->push_traits( node.m_traits );
             if( node.m_nodes.size() > 0 )
             {
-                bool diverges = false;
-                this->push_traits( node.m_traits );
-
                 this->push_inner_coerce(false);
-                for( unsigned int i = 0; i < node.m_nodes.size()-1; i ++ )
+                for( unsigned int i = 0; i < node.m_nodes.size(); i ++ )
                 {
                     auto& snp = node.m_nodes[i];
                     this->context.add_ivars( snp->m_res_type );
@@ -561,62 +560,56 @@ namespace {
                     }
                 }
                 this->pop_inner_coerce();
+            }
 
-                if( node.m_yields_final )
+            if( node.m_value_node )
+            {
+                auto& snp = node.m_value_node;
+                DEBUG("Block yields final value");
+                this->context.add_ivars( snp->m_res_type );
+                this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
+                snp->visit(*this);
+            }
+            else if( node.m_nodes.size() > 0 )
+            {
+                // NOTE: If the final statement in the block diverges, mark this as diverging
+                const auto& snp = node.m_nodes.back();
+                bool defer = false;
+                if( !diverges )
                 {
-                    auto& snp = node.m_nodes.back();
-                    DEBUG("Block yields final value");
-                    this->context.add_ivars( snp->m_res_type );
-                    this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
-                    snp->visit(*this);
-                }
-                else
-                {
-                    auto& snp = node.m_nodes.back();
-                    this->context.add_ivars( snp->m_res_type );
-                    // - Not yielded - so don't equate the return
-                    snp->visit(*this);
-
-                    // NOTE: If the final statement in the block diverges, mark this as diverging
-                    bool defer = false;
-                    if( !diverges )
-                    {
-                        TU_IFLET(::HIR::TypeRef::Data, this->context.get_type(snp->m_res_type).m_data, Infer, e,
-                            switch(e.ty_class)
-                            {
-                            case ::HIR::InferClass::Integer:
-                            case ::HIR::InferClass::Float:
-                                diverges = false;
-                                break;
-                            default:
-                                defer = true;
-                                break;
-                            }
-                        )
-                        else if( is_diverge(snp->m_res_type) ) {
-                            diverges = true;
-                        }
-                        else {
+                    TU_IFLET(::HIR::TypeRef::Data, this->context.get_type(snp->m_res_type).m_data, Infer, e,
+                        switch(e.ty_class)
+                        {
+                        case ::HIR::InferClass::Integer:
+                        case ::HIR::InferClass::Float:
                             diverges = false;
+                            break;
+                        default:
+                            defer = true;
+                            break;
                         }
-                    }
-
-                    // If a statement in this block diverges
-                    if( defer ) {
-                        DEBUG("Block final node returns _, derfer diverge check");
-                        this->context.add_revisit(node);
-                    }
-                    else if( diverges ) {
-                        DEBUG("Block diverges, yield !");
-                        this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+                    )
+                    else if( is_diverge(snp->m_res_type) ) {
+                        diverges = true;
                     }
                     else {
-                        DEBUG("Block doesn't diverge but doesn't yield a value, yield ()");
-                        this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+                        diverges = false;
                     }
                 }
 
-                this->pop_traits( node.m_traits );
+                // If a statement in this block diverges
+                if( defer ) {
+                    DEBUG("Block final node returns _, derfer diverge check");
+                    this->context.add_revisit(node);
+                }
+                else if( diverges ) {
+                    DEBUG("Block diverges, yield !");
+                    this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+                }
+                else {
+                    DEBUG("Block doesn't diverge but doesn't yield a value, yield ()");
+                    this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+                }
             }
             else
             {
@@ -624,6 +617,7 @@ namespace {
                 DEBUG("Block is empty, yield ()");
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
+            this->pop_traits( node.m_traits );
         }
         void visit(::HIR::ExprNode_Asm& node) override
         {
@@ -1953,6 +1947,7 @@ namespace {
                 return ty.m_data.is_Diverge();// || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
                 };
 
+            assert( !node.m_nodes.empty() );
             const auto& last_ty = this->context.get_type( node.m_nodes.back()->m_res_type );
             DEBUG("_Block: last_ty = " << last_ty);
 
@@ -4133,11 +4128,12 @@ namespace {
         while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**node_ptr_ptr) )
         {
             DEBUG("- Moving into block");
-            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_nodes.back()->m_res_type),
-                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_nodes.back()->m_res_type));
+            assert( p->m_value_node );
+            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
+                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
             // - Override the the result type to the desired result
             p->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
-            node_ptr_ptr = &p->m_nodes.back();
+            node_ptr_ptr = &p->m_value_node;
         }
         #endif
         auto& node_ptr = *node_ptr_ptr;
@@ -4721,13 +4717,13 @@ namespace {
                     while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
                     {
                         DEBUG("- Propagate to the last node of a _Block");
-                        ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_nodes.back()->m_res_type),
-                            "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_nodes.back()->m_res_type));
+                        ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
+                            "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
                         ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, ty_src),
                             "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(ty_src)
                             );
                         p->m_res_type = new_type.clone();
-                        npp = &p->m_nodes.back();
+                        npp = &p->m_value_node;
                     }
                     ::HIR::ExprNodeP& node_ptr = *npp;
                     #endif

@@ -405,86 +405,79 @@ namespace {
         {
             TRACE_FUNCTION_F("_Block");
             // NOTE: This doesn't create a BB, as BBs are not needed for scoping
-            if( node.m_nodes.size() > 0 )
+            bool diverged = false;
+
+            auto res_val = (node.m_value_node ? m_builder.new_temporary(node.m_res_type) : ::MIR::LValue());
+            auto scope = m_builder.new_scope_var(node.span());
+            auto tmp_scope = m_builder.new_scope_temp(node.span());
+            auto _block_tmp_scope = save_and_edit(m_block_tmp_scope, &tmp_scope);
+
+            for(unsigned int i = 0; i < node.m_nodes.size(); i ++)
             {
-                bool diverged = false;
+                auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+                auto& subnode = node.m_nodes[i];
+                const Span& sp = subnode->span();
 
-                auto res_val = (node.m_yields_final ? m_builder.new_temporary(node.m_res_type) : ::MIR::LValue());
-                auto scope = m_builder.new_scope_var(node.span());
-                auto tmp_scope = m_builder.new_scope_temp(node.span());
-                auto _block_tmp_scope = save_and_edit(m_block_tmp_scope, &tmp_scope);
+                auto stmt_scope = m_builder.new_scope_temp(sp);
+                this->visit_node_ptr(subnode);
 
-                for(unsigned int i = 0; i < node.m_nodes.size() - (node.m_yields_final ? 1 : 0); i ++)
-                {
-                    auto _ = save_and_edit(m_borrow_raise_target, nullptr);
-                    auto& subnode = node.m_nodes[i];
-                    const Span& sp = subnode->span();
-
-                    auto stmt_scope = m_builder.new_scope_temp(sp);
-                    this->visit_node_ptr(subnode);
-
-                    if( m_builder.block_active() || m_builder.has_result() ) {
-                        // TODO: Emit a drop
-                        m_builder.get_result(sp);
-                        m_builder.terminate_scope(sp, mv$(stmt_scope));
-                    }
-                    else {
-                        m_builder.terminate_scope(sp, mv$(stmt_scope), false);
-
-                        m_builder.set_cur_block( m_builder.new_bb_unlinked() );
-                        diverged = true;
-                    }
+                if( m_builder.block_active() || m_builder.has_result() ) {
+                    // TODO: Emit a drop
+                    m_builder.get_result(sp);
+                    m_builder.terminate_scope(sp, mv$(stmt_scope));
                 }
+                else {
+                    m_builder.terminate_scope(sp, mv$(stmt_scope), false);
 
-                // For the last node, specially handle.
-                if( node.m_yields_final )
+                    m_builder.set_cur_block( m_builder.new_bb_unlinked() );
+                    diverged = true;
+                }
+            }
+
+            // For the last node, specially handle.
+            if( node.m_value_node )
+            {
+                auto& subnode = node.m_value_node;
+                const Span& sp = subnode->span();
+
+                auto stmt_scope = m_builder.new_scope_temp(sp);
+                this->visit_node_ptr(subnode);
+                if( m_builder.has_result() || m_builder.block_active() )
                 {
-                    auto& subnode = node.m_nodes.back();
-                    const Span& sp = subnode->span();
+                    ASSERT_BUG(sp, m_builder.block_active(), "Result yielded, but no active block");
+                    ASSERT_BUG(sp, m_builder.has_result(), "Active block but no result yeilded");
+                    // PROBLEM: This can drop the result before we want to use it.
 
-                    auto stmt_scope = m_builder.new_scope_temp(sp);
-                    this->visit_node_ptr(subnode);
-                    if( m_builder.has_result() || m_builder.block_active() )
-                    {
-                        ASSERT_BUG(sp, m_builder.block_active(), "Result yielded, but no active block");
-                        ASSERT_BUG(sp, m_builder.has_result(), "Active block but no result yeilded");
-                        // PROBLEM: This can drop the result before we want to use it.
+                    m_builder.push_stmt_assign(sp, res_val.clone(), m_builder.get_result(sp));
 
-                        m_builder.push_stmt_assign(sp, res_val.clone(), m_builder.get_result(sp));
-
-                        m_builder.terminate_scope(sp, mv$(stmt_scope));
-                        m_builder.terminate_scope(node.span(), mv$(tmp_scope) );
-                        m_builder.terminate_scope(node.span(), mv$(scope) );
-                        m_builder.set_result( node.span(), mv$(res_val) );
-                    }
-                    else
-                    {
-                        m_builder.terminate_scope( sp, mv$(stmt_scope), false );
-                        m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
-                        m_builder.terminate_scope( node.span(), mv$(scope), false );
-                        // Block diverged in final node.
-                    }
+                    m_builder.terminate_scope(sp, mv$(stmt_scope));
+                    m_builder.terminate_scope(node.span(), mv$(tmp_scope) );
+                    m_builder.terminate_scope(node.span(), mv$(scope) );
+                    m_builder.set_result( node.span(), mv$(res_val) );
                 }
                 else
                 {
-                    if( diverged )
-                    {
-                        m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
-                        m_builder.terminate_scope( node.span(), mv$(scope), false );
-                        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
-                        // Don't set a result if there's no block.
-                    }
-                    else
-                    {
-                        m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
-                        m_builder.terminate_scope( node.span(), mv$(scope) );
-                        m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
-                    }
+                    m_builder.terminate_scope( sp, mv$(stmt_scope), false );
+                    m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
+                    m_builder.terminate_scope( node.span(), mv$(scope), false );
+                    // Block diverged in final node.
                 }
             }
             else
             {
-                m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
+                if( diverged )
+                {
+                    m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
+                    m_builder.terminate_scope( node.span(), mv$(scope), false );
+                    m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+                    // Don't set a result if there's no block.
+                }
+                else
+                {
+                    m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
+                    m_builder.terminate_scope( node.span(), mv$(scope) );
+                    m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
+                }
             }
         }
         void visit(::HIR::ExprNode_Asm& node) override

@@ -84,6 +84,8 @@ namespace {
             for( auto& subnode : node.m_nodes ) {
                 this->visit_node_ptr(subnode);
             }
+            if( node.m_value_node )
+                this->visit_node_ptr(node.m_value_node);
         }
 
         void visit(::HIR::ExprNode_Asm& node) override

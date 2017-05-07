@@ -276,6 +276,10 @@ namespace {
                 {
                     e->visit(*this);
                 }
+                if( node.m_value_node )
+                    node.m_value_node->visit(*this);
+                else
+                    ;
             }
             void visit(::HIR::ExprNode_Asm& node) override {
                 badnode(node);

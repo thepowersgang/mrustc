@@ -33,7 +33,11 @@ struct LowerHIR_ExprNode_Visitor:
             ASSERT_BUG(v.get_pos(), n, "NULL node encountered in block");
             rv->m_nodes.push_back( LowerHIR_ExprNode_Inner( *n ) );
         }
-        rv->m_yields_final = v.m_yields_final_value;
+        if( v.m_yields_final_value && ! rv->m_nodes.empty() )
+        {
+            rv->m_value_node = mv$(rv->m_nodes.back());
+            rv->m_nodes.pop_back();
+        }
 
         if( v.m_local_mod )
         {
@@ -328,7 +332,7 @@ struct LowerHIR_ExprNode_Visitor:
 
             m_rv.reset( new ::HIR::ExprNode_Loop( v.span(),
                 v.m_label,
-                ::HIR::ExprNodeP(new ::HIR::ExprNode_Block( v.span(), false, mv$(code)))
+                ::HIR::ExprNodeP(new ::HIR::ExprNode_Block( v.span(), false, mv$(code), {} ))
                 ) );
             break; }
         case ::AST::ExprNode_Loop::WHILELET: {
