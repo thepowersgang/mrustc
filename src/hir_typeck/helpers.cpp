@@ -3285,7 +3285,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
     const auto& ty = this->m_ivars.get_type(ty_in);
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
         DEBUG("Deref " << ty << " into " << *e.inner);
-        return &*e.inner;
+        return &this->m_ivars.get_type(*e.inner);
     )
     // TODO: Just doing `*[1,2,3]` doesn't work, but this is needed to allow `[1,2,3].iter()` to work
     else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,

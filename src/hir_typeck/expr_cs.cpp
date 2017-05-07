@@ -4266,36 +4266,37 @@ namespace {
         DEBUG("-- Deref coercions");
         {
             ::HIR::TypeRef  tmp_ty;
-            const ::HIR::TypeRef*   out_ty = &ty_src;
+            const ::HIR::TypeRef*   out_ty_p = &ty_src;
             unsigned int count = 0;
             ::std::vector< ::HIR::TypeRef>  types;
-            while( (out_ty = context.m_resolve.autoderef(sp, *out_ty, tmp_ty)) )
+            while( (out_ty_p = context.m_resolve.autoderef(sp, *out_ty_p, tmp_ty)) )
             {
+                const auto& out_ty = context.m_ivars.get_type(*out_ty_p);
                 count += 1;
 
-                if( out_ty->m_data.is_Infer() && out_ty->m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
+                if( out_ty.m_data.is_Infer() && out_ty.m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
                     // Hit a _, so can't keep going
                     break;
                 }
 
-                types.push_back( out_ty->clone() );
+                types.push_back( out_ty.clone() );
 
-                if( context.m_ivars.types_equal(ty_dst, *out_ty) == false ) {
+                if( context.m_ivars.types_equal(ty_dst, out_ty) == false ) {
                     // Check equivalence
 
-                    if( ty_dst.m_data.tag() == out_ty->m_data.tag() ) {
-                        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_dst.m_data, out_ty->m_data), (d_e, s_e),
+                    if( ty_dst.m_data.tag() == out_ty.m_data.tag() ) {
+                        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_dst.m_data, out_ty.m_data), (d_e, s_e),
                         (
-                            if( ty_dst .compare_with_placeholders(sp, *out_ty, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal ) {
+                            if( ty_dst .compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal ) {
                                 DEBUG("Same tag, but not fuzzy match");
                                 continue ;
                             }
-                            DEBUG("Same tag and fuzzy match - assuming " << ty_dst << " == " << *out_ty);
-                            context.equate_types(sp, ty_dst,  *out_ty);
+                            DEBUG("Same tag and fuzzy match - assuming " << ty_dst << " == " << out_ty);
+                            context.equate_types(sp, ty_dst, out_ty);
                             ),
                         (Slice,
                             // Equate!
-                            context.equate_types(sp, ty_dst, *out_ty);
+                            context.equate_types(sp, ty_dst, out_ty);
                             // - Fall through
                             )
                         )
@@ -4958,10 +4959,16 @@ namespace {
             // - If either is an ivar, add the other as a possibility
             TU_IFLET( ::HIR::TypeRef::Data, src_ty.m_data, Infer, se,
                 // TODO: Update for InferClass::Diverge ?
-                if( se.ty_class != ::HIR::InferClass::None ) {
-                    context.equate_types(sp, dst_ty,  src_ty);
-                }
-                else {
+                switch(se.ty_class)
+                {
+                case ::HIR::InferClass::Integer:
+                case ::HIR::InferClass::Float:
+                    if( dst_ty.m_data.is_Primitive() ) {
+                        context.equate_types(sp, dst_ty,  src_ty);
+                    }
+                    break;
+                case ::HIR::InferClass::None:
+                case ::HIR::InferClass::Diverge:
                     TU_IFLET(::HIR::TypeRef::Data, dst_ty.m_data, Infer, de,
                         context.possible_equate_type_unsize_to(se.index, dst_ty);
                         context.possible_equate_type_unsize_from(de.index, src_ty);
@@ -4984,6 +4991,7 @@ namespace {
                 // No equivalence added
             }
             // - Fall through and search for the impl
+            DEBUG("- Unsize, no ivar equivalence");
         }
         if( v.trait == context.m_crate.get_lang_item_path(sp, "coerce_unsized") )
         {
