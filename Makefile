@@ -342,7 +342,7 @@ output/local_test/%_out.txt: output/local_test/%
 	./$< > $@
 output/local_test/%: samples/test/%.rs $(BIN)
 	mkdir -p $(dir $@)
-	$(BIN) -L output/libs -g $< -o $@ $(PIPECMD)
+	$(BIN) -L output/libs -g $< -o $@ --test $(PIPECMD)
 
 # 
 # RUSTC TESTS
@@ -379,7 +379,7 @@ DISABLED_TESTS += run-pass/empty-struct-braces	# Empty struct support
 DISABLED_TESTS += run-pass/explicit-self-generic	# Tries to use HashMap as an iterator
 DISABLED_TESTS += run-pass/extern-compare-with-return-type	# Specialisation with function pointers
 DISABLED_TESTS += run-pass/issue-14399	# Inferrence ran though a coercion point.
-DISABLED_TESTS += run-pass/issue-26709	# ^
+#DISABLED_TESTS += run-pass/issue-26709	# ^
 DISABLED_TESTS += run-pass/issue-20797	# Failed to find impl with associated type, possible incorrect coerce?
 DISABLED_TESTS += run-pass/issue-21245	# IntoIterator on core::slice::Iterator ?
 DISABLED_TESTS += run-pass/issue-21486	# Type mismatch
