@@ -334,10 +334,20 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 		$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
 
 
+# MRUSTC-specific tests
+.PHONY: local_tests
+local_tests: $(patsubst samples/test/%.rs,output/local_test/%_out.txt,$(wildcard samples/test/*.rs))
+
+output/local_test/%_out.txt: output/local_test/%
+	./$< > $@
+output/local_test/%: samples/test/%.rs $(BIN)
+	mkdir -p $(dir $@)
+	$(BIN) -L output/libs -g $< -o $@ $(PIPECMD)
+
 # 
 # RUSTC TESTS
 # 
-.PHONY: rust_tests
+.PHONY: rust_tests local_tests
 RUST_TESTS_DIR := $(RUSTCSRC)src/test/
 rust_tests: rust_tests-run-pass
 # rust_tests-run-fail
@@ -416,38 +426,29 @@ DISABLED_TESTS += run-pass/match-vec-alternatives
 DISABLED_TESTS += run-pass/pure-sum 
 DISABLED_TESTS += run-pass/struct-aliases
 # - Lazy (Typecheck - Leftover rules)
-DISABLED_TESTS += run-pass/coerce-overloaded-autoderef
-DISABLED_TESTS += run-pass/dst-field-align
-DISABLED_TESTS += run-pass/dst-irrefutable-bind
-DISABLED_TESTS += run-pass/issue-25549-multiple-drop
-DISABLED_TESTS += run-pass/issue-33387
-DISABLED_TESTS += run-pass/issue-35815
-DISABLED_TESTS += run-pass/mir_fat_ptr
-DISABLED_TESTS += run-pass/regions-infer-borrow-scope-addr-of
-DISABLED_TESTS += run-pass/slice_binary_search
-DISABLED_TESTS += run-pass/swap-2
+DISABLED_TESTS += run-pass/regions-infer-borrow-scope-addr-of	# Didn't unify literal ivar
+DISABLED_TESTS += run-pass/swap-2	# ^
+DISABLED_TESTS += run-pass/slice_binary_search	# Didn't detect infer possiblity (&str, &String)
 # - Lazy (Typecheck - Array unsize)
-DISABLED_TESTS += run-pass/byte-literals
-DISABLED_TESTS += run-pass/cast-rfc0401-vtable-kinds
-DISABLED_TESTS += run-pass/cast-rfc0401
-DISABLED_TESTS += run-pass/dst-struct-sole
-DISABLED_TESTS += run-pass/dst-struct
-DISABLED_TESTS += run-pass/issue-21562
-DISABLED_TESTS += run-pass/issue-23261
-DISABLED_TESTS += run-pass/issue-23491
-DISABLED_TESTS += run-pass/issue-36278-prefix-nesting
-DISABLED_TESTS += run-pass/issue-9382
-DISABLED_TESTS += run-pass/match-byte-array-patterns
-DISABLED_TESTS += run-pass/mir_raw_fat_ptr
-DISABLED_TESTS += run-pass/overloaded-autoderef-indexing
-DISABLED_TESTS += run-pass/raw-fat-ptr
-DISABLED_TESTS += run-pass/fat-ptr-cast
-# - Lazy (Typecheck + Trait unsize)
-DISABLED_TESTS += run-pass/issue-27105
-DISABLED_TESTS += run-pass/dst-coerce-rc
-DISABLED_TESTS += run-pass/dst-coercions
-DISABLED_TESTS += run-pass/dst-raw
-DISABLED_TESTS += run-pass/dst-trait
+DISABLED_TESTS += run-pass/byte-literals	# Over-eager inferrence
+DISABLED_TESTS += run-pass/cast-rfc0401-vtable-kinds	# Spare rules
+DISABLED_TESTS += run-pass/cast-rfc0401	# Skipped coerce unsized
+DISABLED_TESTS += run-pass/dst-struct-sole	# Spare rules
+DISABLED_TESTS += run-pass/dst-struct	# Spare rules
+DISABLED_TESTS += run-pass/issue-23261	# Spare rules
+DISABLED_TESTS += run-pass/fat-ptr-cast	# Skiped coerce unsized
+DISABLED_TESTS += run-pass/issue-21562	# ERROR - Borrow->Pointer and Unsize in one
+DISABLED_TESTS += run-pass/raw-fat-ptr	# ^
+DISABLED_TESTS += run-pass/issue-9382	# Missing coercion point (struct field)
+DISABLED_TESTS += run-pass/overloaded-autoderef-indexing	# Missing coercion point (struct field)
+DISABLED_TESTS += run-pass/match-byte-array-patterns	# Byte string match
+DISABLED_TESTS += run-pass/mir_raw_fat_ptr	# Byte string match
+## - Lazy (Typecheck + Trait unsize)
+#DISABLED_TESTS += run-pass/issue-27105
+#DISABLED_TESTS += run-pass/dst-coerce-rc
+DISABLED_TESTS += run-pass/dst-coercions	# Skipped CoerceUnsize
+DISABLED_TESTS += run-pass/dst-raw	# Skipped CoerceUnsize
+#DISABLED_TESTS += run-pass/dst-trait
 # - Lazy (MIR)
 DISABLED_TESTS += run-pass/if-ret	# If condition wasn't a bool
 DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
@@ -478,12 +479,14 @@ DISABLED_TESTS += run-pass/const-enum-vec-index	# This is valid code?
 # - Lazy (trans)
 DISABLED_TESTS += run-pass/issue-21058	# Empty trait object vtable
 DISABLED_TESTS += run-pass/issue-25515	# ^
+DISABLED_TESTS += run-pass/issue-35815	# ^
 DISABLED_TESTS += run-pass/issue-29663	# Missing volatile_(load|store) intrinsic
 DISABLED_TESTS += run-pass/intrinsic-alignment	# Missing pref_align_of intrinsic
 DISABLED_TESTS += run-pass/volatile-fat-ptr	# ^
 DISABLED_TESTS += run-pass/newtype	# Can't handle mutally recursive definitions
 DISABLED_TESTS += run-pass/transmute-specialization	# Opaque type hit?
 DISABLED_TESTS += run-pass/unit-fallback	# ! didn't default to ()
+DISABLED_TESTS += run-pass/issue-33387	# Missing vtable for array
 # - HIR resolve
 DISABLED_TESTS += run-pass/union/union-generic	# Can't find associated type on type param
 # - Lazy (misc)
@@ -766,6 +769,7 @@ DISABLED_TESTS += run-pass/issue-15080	# Inifinte loop from incorrect match gene
 # - BUG: Codegen
 DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
 DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior
+DISABLED_TESTS += run-pass/dst-field-align	# DST Fields aren't aligned correctly
 # - BUG: Codegen - No handling of repr()
 DISABLED_TESTS += run-pass/packed-struct-generic-layout
 DISABLED_TESTS += run-pass/packed-struct-generic-size
@@ -789,7 +793,8 @@ rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
 
 LIB_TESTS := collections collectionstest rustc_data_structures
 RUNTIME_ARGS_output/libcollectionstest-test := --test-threads 1 --skip linked_list::test_ord_nan --skip ::slice::test_box_slice_clone_panics
-RUNTIME_ARGS_output/libstd-test := --test-threads 1
+RUNTIME_ARGS_output/libstd-test := --test-threads 1 --skip :collections::hash::map::test_map::test_index_nonexistent
+RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
 rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
 
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
