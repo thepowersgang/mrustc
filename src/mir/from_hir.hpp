@@ -247,9 +247,16 @@ public:
     ScopeHandle new_scope_temp(const Span& sp);
     ScopeHandle new_scope_split(const Span& sp);
     ScopeHandle new_scope_loop(const Span& sp);
+
+    /// Raises every variable defined in the source scope into the target scope
+    void raise_all(const Span& sp, ScopeHandle src, const ScopeHandle& target);
+    /// Drop all defined values in the scope (emits the drops if `cleanup` is set)
     void terminate_scope(const Span& sp, ScopeHandle , bool cleanup=true);
+    /// Terminates a scope early (e.g. via return/break/...)
     void terminate_scope_early(const Span& sp, const ScopeHandle& , bool loop_exit=false);
+    /// Marks the end of a split arm (end match arm, if body, ...)
     void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable);
+    /// Terminates the current split early (TODO: What does this mean?)
     void end_split_arm_early(const Span& sp);
 
     const ScopeHandle& fcn_scope() const {

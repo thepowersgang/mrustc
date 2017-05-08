@@ -446,6 +446,7 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
     )
     ASSERT_BUG(sp, val.is_Variable() || val.is_Temporary(), "Hit value raising code with non-variable value - " << val);
 
+    // Find controlling scope
     auto scope_it = m_scope_stack.rbegin();
     while( scope_it != m_scope_stack.rend() )
     {
@@ -502,9 +503,10 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
         return ;
     }
 
+    // If the definition scope was the target scope
+    bool target_seen = false;
     if( *scope_it == scope.idx )
     {
-        // Already hit the specified scope
         if( to_above ) {
             // Want to shift to any above (but not including) it
             ++ scope_it;
@@ -512,45 +514,48 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
         else {
             // Want to shift to it or above.
         }
+
+        target_seen = true;
     }
     else
     {
+        // Don't bother searching the original definition scope
         ++scope_it;
-
-        while( scope_it != m_scope_stack.rend() )
-        {
-            if( *scope_it == scope.idx )
-            {
-                break ;
-            }
-            ++ scope_it;
-        }
-    }
-    if( scope_it == m_scope_stack.rend() )
-    {
-        // Temporary wasn't defined in a visible scope?
-        BUG(sp, "Scope " << scope << " isn't on the stack");
-        return ;
     }
 
-    while( scope_it != m_scope_stack.rend() )
+    // Iterate stack until:
+    // - The target scope is seen
+    // - AND a scope was found for it
+    for( ; scope_it != m_scope_stack.rend(); ++ scope_it )
     {
         auto& scope_def = m_scopes.at(*scope_it);
+        DEBUG("> Cross " << *scope_it << " - " << scope_def.data.tag_str());
+
+        if( *scope_it == scope.idx )
+        {
+            target_seen = true;
+        }
 
         TU_IFLET( ScopeType, scope_def.data, Variables, e,
-            if( const auto* ve = val.opt_Variable() )
+            if( target_seen )
             {
-                e.vars.push_back( *ve );
-                DEBUG("- to " << *scope_it);
-                return ;
+                if( const auto* ve = val.opt_Variable() )
+                {
+                    e.vars.push_back( *ve );
+                    DEBUG("- to " << *scope_it);
+                    return ;
+                }
             }
         )
         else TU_IFLET( ScopeType, scope_def.data, Temporaries, e,
-            if( const auto* ve = val.opt_Temporary() )
+            if( target_seen )
             {
-                e.temporaries.push_back( ve->idx );
-                DEBUG("- to " << *scope_it);
-                return ;
+                if( const auto* ve = val.opt_Temporary() )
+                {
+                    e.temporaries.push_back( ve->idx );
+                    DEBUG("- to " << *scope_it);
+                    return ;
+                }
             }
         )
         else if( auto* sd_loop = scope_def.data.opt_Loop() )
@@ -580,24 +585,50 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
                 DEBUG("Crossing loop with no existing exit state");
             }
         }
-        else if( scope_def.data.is_Split() )
+        else if( auto* sd_split = scope_def.data.opt_Split() )
         {
-            auto& sd_split = scope_def.data.as_Split();
             // If the split has already registered an exit state, ensure that
             // this variable is present in it. (as invalid)
-            if( sd_split.end_state_valid )
+            if( sd_split->end_state_valid )
             {
-                TODO(sp, "Raising " << val << " to outside of a split");
+                DEBUG("Adding " << val << " as unset to loop exit state");
+                if( const auto* ve = val.opt_Variable() )
+                {
+                    auto v = sd_split->end_state.var_states.insert( ::std::make_pair(*ve, VarState(InvalidType::Uninit)) );
+                    ASSERT_BUG(sp, v.second, "Raising " << val << " which already had a state entry");
+                }
+                else if( const auto* ve = val.opt_Temporary() )
+                {
+                    auto v = sd_split->end_state.tmp_states.insert( ::std::make_pair(ve->idx, VarState(InvalidType::Uninit)) );
+                    ASSERT_BUG(sp, v.second, "Raising " << val << " which already had a state entry");
+                }
+                else {
+                    BUG(sp, "Impossible raise value");
+                }
             }
             else
             {
                 DEBUG("Crossing split with no existing end state");
             }
+
+            auto& arm = sd_split->arms.back();
+            if( const auto* ve = val.opt_Variable() )
+            {
+                arm.var_states.insert(::std::make_pair( *ve, get_variable_state(sp, *ve).clone() ));
+            }
+            else if( const auto* ve = val.opt_Temporary() )
+            {
+                arm.tmp_states.insert(::std::make_pair( ve->idx, get_temp_state(sp, ve->idx).clone() ));
+            }
+            else
+            {
+                BUG(sp, "Impossible raise value");
+            }
         }
         else
         {
+            BUG(sp, "Crossing unknown scope type - " << scope_def.data.tag_str());
         }
-        ++scope_it;
     }
     BUG(sp, "Couldn't find a scope to raise " << val << " into");
 }
@@ -799,6 +830,104 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
     m_scope_stack.pop_back();
 
     complete_scope(scope_def);
+}
+void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle& target)
+{
+    TRACE_FUNCTION_F("scope " << source.idx << " => " << target.idx);
+
+    // 1. Check that this is the current scope (at the top of the stack)
+    if( m_scope_stack.empty() || m_scope_stack.back() != source.idx )
+    {
+        DEBUG("- m_scope_stack = [" << m_scope_stack << "]");
+        auto it = ::std::find( m_scope_stack.begin(), m_scope_stack.end(), source.idx );
+        if( it == m_scope_stack.end() )
+            BUG(sp, "Terminating scope not on the stack - scope " << source.idx);
+        BUG(sp, "Terminating scope " << source.idx << " when not at top of stack, " << (m_scope_stack.end() - it - 1) << " scopes in the way");
+    }
+    auto& src_scope_def = m_scopes.at(source.idx);
+
+#if 1
+    ASSERT_BUG(sp, src_scope_def.data.is_Temporaries(), "Rasising scopes can only be done on temporaries (source)");
+    auto& src_list = src_scope_def.data.as_Temporaries().temporaries;
+    for(auto idx : src_list)
+    {
+        DEBUG("> Raising " << ::MIR::LValue::make_Temporary({ idx }));
+    }
+
+    // Seek up stack until the target scope is seen
+    auto it = m_scope_stack.rbegin() + 1;
+    for( ; it != m_scope_stack.rend() && *it != target.idx; ++it)
+    {
+        auto& scope_def = m_scopes.at(*it);
+
+        if(auto* sd_loop = scope_def.data.opt_Loop())
+        {
+            if(sd_loop->exit_state_valid)
+            {
+                DEBUG("Crossing loop with existing end state");
+                // Insert these values as Invalid
+                for(auto idx : src_list)
+                {
+                    auto v = sd_loop->exit_state.tmp_states.insert(::std::make_pair( idx, VarState(InvalidType::Uninit) ));
+                    ASSERT_BUG(sp, v.second, "");
+
+                    auto v2 = sd_loop->changed_tmps.insert(::std::make_pair( idx, VarState(InvalidType::Uninit) ));
+                    ASSERT_BUG(sp, v2.second, "");
+                }
+            }
+            else
+            {
+                DEBUG("Crossing loop with no end state");
+            }
+        }
+        else if(auto* sd_split = scope_def.data.opt_Split())
+        {
+            if(sd_split->end_state_valid)
+            {
+                DEBUG("Crossing split with existing end state");
+                // Insert these indexes as Invalid
+                for(auto idx : src_list)
+                {
+                    auto v = sd_split->end_state.tmp_states.insert(::std::make_pair( idx, VarState(InvalidType::Uninit) ));
+                    ASSERT_BUG(sp, v.second, "");
+                }
+            }
+            else
+            {
+                DEBUG("Crossing split with no end state");
+            }
+
+            // TODO: Insert current state in the current arm
+            assert(!sd_split->arms.empty());
+            auto& arm = sd_split->arms.back();
+            for(auto idx : src_list)
+            {
+                arm.tmp_states.insert(::std::make_pair( idx, mv$(m_temporary_states.at(idx)) ));
+                m_temporary_states.at(idx) = VarState(InvalidType::Uninit);
+            }
+        }
+    }
+    if(it == m_scope_stack.rend())
+    {
+        BUG(sp, "Moving values to a scope not on the stack - scope " << target.idx);
+    }
+    auto& tgt_scope_def = m_scopes.at(target.idx);
+    ASSERT_BUG(sp, tgt_scope_def.data.is_Temporaries(), "Rasising scopes can only be done on temporaries (target)");
+
+    // Move all defined variables from one to the other
+    auto& tgt_list = tgt_scope_def.data.as_Temporaries().temporaries;
+    tgt_list.insert( tgt_list.end(), src_list.begin(), src_list.end() );
+#else
+    auto list = src_scope_def.data.as_Temporaries().temporaries;
+    for(auto idx : list)
+    {
+        this->raise_variables(sp, ::MIR::LValue::make_Temporary({ idx }), target);
+    }
+#endif
+
+    // Scope completed
+    m_scope_stack.pop_back();
+    src_scope_def.complete = true;
 }
 
 void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope, bool loop_exit/*=false*/)

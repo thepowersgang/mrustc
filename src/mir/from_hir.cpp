@@ -58,6 +58,7 @@ namespace {
 
         const ScopeHandle*  m_block_tmp_scope = nullptr;
         const ScopeHandle*  m_borrow_raise_target = nullptr;
+        const ScopeHandle*  m_stmt_scope = nullptr;
         bool m_in_borrow = false;
 
     public:
@@ -419,6 +420,7 @@ namespace {
                 const Span& sp = subnode->span();
 
                 auto stmt_scope = m_builder.new_scope_temp(sp);
+                auto _stmt_scope_push = save_and_edit(m_stmt_scope, &stmt_scope);
                 this->visit_node_ptr(subnode);
 
                 if( m_builder.block_active() || m_builder.has_result() ) {
@@ -435,6 +437,7 @@ namespace {
             }
 
             // For the last node, specially handle.
+            // TODO: Any temporaries defined within this node must be elevated into the parent scope
             if( node.m_value_node )
             {
                 auto& subnode = node.m_value_node;
@@ -450,18 +453,25 @@ namespace {
 
                     m_builder.push_stmt_assign(sp, res_val.clone(), m_builder.get_result(sp));
 
-                    m_builder.terminate_scope(sp, mv$(stmt_scope));
-                    m_builder.terminate_scope(node.span(), mv$(tmp_scope) );
-                    m_builder.terminate_scope(node.span(), mv$(scope) );
+                    // If this block is part of a statement, raise all temporaries from this final scope to the enclosing scope
+                    if( m_stmt_scope )
+                    {
+                        m_builder.raise_all(sp, mv$(stmt_scope), *m_stmt_scope);
+                        //m_builder.terminate_scope(sp, mv$(stmt_scope));
+                    }
+                    else
+                    {
+                        m_builder.terminate_scope(sp, mv$(stmt_scope));
+                    }
                     m_builder.set_result( node.span(), mv$(res_val) );
                 }
                 else
                 {
                     m_builder.terminate_scope( sp, mv$(stmt_scope), false );
-                    m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
-                    m_builder.terminate_scope( node.span(), mv$(scope), false );
                     // Block diverged in final node.
                 }
+                m_builder.terminate_scope( node.span(), mv$(tmp_scope), m_builder.block_active() );
+                m_builder.terminate_scope( node.span(), mv$(scope), m_builder.block_active() );
             }
             else
             {
@@ -621,8 +631,8 @@ namespace {
         {
             TRACE_FUNCTION_FR("_Match", "_Match");
             auto _ = save_and_edit(m_borrow_raise_target, nullptr);
-            this->visit_node_ptr(node.m_value);
             auto stmt_scope = m_builder.new_scope_temp(node.span());
+            this->visit_node_ptr(node.m_value);
             auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
 
             if( node.m_arms.size() == 0 ) {
