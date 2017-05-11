@@ -379,7 +379,7 @@ DISABLED_TESTS += run-pass/empty-struct-braces	# Empty struct support
 DISABLED_TESTS += run-pass/explicit-self-generic	# Tries to use HashMap as an iterator
 DISABLED_TESTS += run-pass/extern-compare-with-return-type	# Specialisation with function pointers
 DISABLED_TESTS += run-pass/issue-14399	# Inferrence ran though a coercion point.
-#DISABLED_TESTS += run-pass/issue-26709	# ^
+DISABLED_TESTS += run-pass/issue-26709	# ^ (integer literal)
 DISABLED_TESTS += run-pass/issue-20797	# Failed to find impl with associated type, possible incorrect coerce?
 DISABLED_TESTS += run-pass/issue-21245	# IntoIterator on core::slice::Iterator ?
 DISABLED_TESTS += run-pass/issue-21486	# Type mismatch
@@ -423,7 +423,7 @@ DISABLED_TESTS += run-pass/coerce-unify-return
 DISABLED_TESTS += run-pass/issue-23485
 DISABLED_TESTS += run-pass/issue-26805
 DISABLED_TESTS += run-pass/match-vec-alternatives
-DISABLED_TESTS += run-pass/pure-sum 
+DISABLED_TESTS += run-pass/pure-sum
 DISABLED_TESTS += run-pass/struct-aliases
 # - Lazy (Typecheck - Leftover rules)
 DISABLED_TESTS += run-pass/regions-infer-borrow-scope-addr-of	# Didn't unify literal ivar
@@ -443,11 +443,13 @@ DISABLED_TESTS += run-pass/issue-9382	# Missing coercion point (struct field)
 DISABLED_TESTS += run-pass/overloaded-autoderef-indexing	# Missing coercion point (struct field)
 DISABLED_TESTS += run-pass/match-byte-array-patterns	# Byte string match
 DISABLED_TESTS += run-pass/mir_raw_fat_ptr	# Byte string match
+DISABLED_TESTS += run-pass/never_coercions	# Missed coerce
 ## - Lazy (Typecheck + Trait unsize)
 #DISABLED_TESTS += run-pass/issue-27105
 #DISABLED_TESTS += run-pass/dst-coerce-rc
 DISABLED_TESTS += run-pass/dst-coercions	# Skipped CoerceUnsize
 DISABLED_TESTS += run-pass/dst-raw	# Skipped CoerceUnsize
+DISABLED_TESTS += run-pass/issue-11677	# Skipped
 #DISABLED_TESTS += run-pass/dst-trait
 # - Lazy (MIR)
 DISABLED_TESTS += run-pass/if-ret	# If condition wasn't a bool
