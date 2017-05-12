@@ -1,6 +1,7 @@
 set expandtab
 set sts=4 ts=4 sw=4
 set list
+set listchars=eol:$,tab:>-
 
 highlight ExtraWhitespace ctermbg=darkgreen guibg=darkgreen
 autocmd Syntax * syn match ExtraWhitespace /\s\+$\| \+\ze\t/
