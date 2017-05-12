@@ -1,0 +1,7 @@
+- On borrow, calculate lifetime of asignment (using existing lifetime code)
+  - Ignore reborrows?
+- Visit all statements in that lifetime and locate places where the borrow is propagated/stored
+  - Requires lifetime parameters on functions/&-ptrs to be present
+- Assignment of the source value during the lifetime of the borrow is an error
+- Dropping of the source value is an error
+- Returning the borrow is an error

@@ -1,0 +1,9 @@
+
+Requirements:
+- Know full state (and linked states) for each path through the function.
+
+
+Idea:
+- Lifetime calculations (existing code)
+ - Mask out known invalid values at loopback.
+
