@@ -8,37 +8,34 @@ This project is an attempt at creating a simple rust compiler in C++, with the u
 
 The short-term goal is to compile pre-borrowchecked rust code into some intermediate form (e.g. LLVM IR, x86-64 assembly, or C code). Thankfully, (from what I have seen), the borrow checker is not needed to compile rust code (just to ensure that it's valid)
 
+
+Building Requirements
+=====================
+- C++14-compatible compiler (tested with gcc 5.4 and gcc 6)
+- C11 compatible C compiler (for output, see above)
+- `curl` (for downloading the rust source)
+- `cmake` (at least 3.4.3, required for building llvm in rustc)
+
 Current Features
 ===
-- Attribute and macro expansion
-- Resolves all paths to absolute forms
-- Converts name-resolved AST into a more compact "HIR" (simplified module and expression tree)
-- Hackily evaluates constants
-  - Constant evaluation is done by using duck-typing, which is then validated by the Type Check pass
-  - This is how rustc did (or still does?) const eval before MIR
-- Type inference and checking
-- Closure and operator desugaring
-- MIR generation (with partial validation pass)
-- HIR/MIR (de)serialisation, allowing for `extern crate` handling
-- C-based code generation
-- Basic MIR optimisations (including inlining)
+- Full compilation chain including HIR and MIR stages (outputting to C)
+- Supports just x86-64 linux
+- MIR optimisations
+- Optionally-enablable exhaustive MIR validation (set the `MRUSTC_FULL_VALIDATE` environment variable)
 
 Short-Term Plans
 ===
-- Fix FFI (requires some rather extensive changes to enum handling)
+- Fix currently-failing tests (mostly in type inferrence)
+- Fix all known TODOs in MIR generation (still some possible leaks)
 
 Medium-Term Goals
 ===
-- Extensive MIR optimisations
 - Propagate lifetime annotations so that MIR can include a borrow checker
-- Get all run-pass tests compiling
-  - Many fail due to type inferrence problems.
 
 
 Progress
 ===
-- Compiles the standard library into loadable MIR
-- Compiles the "hello, world" test into compilable and running C code
-- Compiles a running `rustc`
-  - Fails to compile libcore due to incorrect FFI
+- Compiles static libraries into loadable HIR tree and MIR code
+- Generates working executables (most of the test suite)
+- Compiles `rustc` that can compile the standard library and "hello, world"
 
