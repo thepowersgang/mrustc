@@ -553,7 +553,9 @@ namespace {
             auto loop_next = m_builder.new_bb_unlinked();
 
             auto loop_tmp_scope = m_builder.new_scope_temp(node.span());
+            auto _ = save_and_edit(m_stmt_scope, &loop_tmp_scope);
 
+            // TODO: `continue` in a loop should jump to the cleanup, not the top
             m_loop_stack.push_back( LoopDesc { mv$(loop_body_scope), node.m_label, loop_block, loop_next } );
             this->visit_node_ptr(node.m_code);
             auto loop_scope = mv$(m_loop_stack.back().scope);
@@ -562,7 +564,7 @@ namespace {
             // If there's a stray result, drop it
             if( m_builder.has_result() ) {
                 assert( m_builder.block_active() );
-                // TODO: Properly drop this? Or just discard it?
+                // TODO: Properly drop this? Or just discard it? It should be ()
                 m_builder.get_result(node.span());
             }
             // Terminate block with a jump back to the start
