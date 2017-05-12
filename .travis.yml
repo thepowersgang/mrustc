@@ -21,6 +21,7 @@ script:
 # libstd and hello_world
  - CC=gcc-6 make test TAIL_COUNT=2
 # rustc
- - CC=gcc-6 make output/rustc TAIL_COUNT=15
+# - CC=gcc-6 make output/rustc TAIL_COUNT=15
 # Tests
-# - CC=gcc-6 make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=expand -k
+ - CC=gcc-6 make local_tests -k
+ - CC=gcc-6 make rust_tests -k
