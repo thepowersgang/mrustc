@@ -474,6 +474,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     // GC pass on blocks and variables
     // - Find unused blocks, then delete and rewrite all references.
     MIR_Optimise_GarbageCollect(state, fcn);
+
+    //MIR_Validate(resolve, path, fcn, args, ret_type);
+    //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
 }
 
 // --------------------------------------------------------------------
@@ -1422,6 +1425,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         auto bbidx = &bb - &fcn.blocks.front();
 
         ::std::map< ::MIR::LValue, ::MIR::Constant >    known_values;
+        ::std::map< unsigned, bool >    known_drop_flags;
 
         auto check_param = [&](::MIR::Param& p) {
             if(const auto* pe = p.opt_LValue()) {
@@ -1618,6 +1622,38 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         check_param(p);
                     )
                 )
+            }
+            else if( const auto* se = stmt.opt_SetDropFlag() )
+            {
+                if( se->other == ~0u )
+                {
+                    known_drop_flags.insert(::std::make_pair( se->idx, se->new_val ));
+                }
+                else
+                {
+                    auto it = known_drop_flags.find(se->other);
+                    if( it != known_drop_flags.end() )
+                    {
+                        known_drop_flags.insert(::std::make_pair( se->idx, se->new_val ^ it->second ));
+                    }
+                }
+            }
+            else if( auto* se = stmt.opt_Drop() )
+            {
+                if( se->flag_idx != ~0u )
+                {
+                    auto it = known_drop_flags.find(se->flag_idx);
+                    if( it != known_drop_flags.end() )
+                    {
+                        if( it->second ) {
+                            se->flag_idx = ~0u;
+                        }
+                        else {
+                            // TODO: Delete drop
+                            stmt = ::MIR::Statement::make_ScopeEnd({ });
+                        }
+                    }
+                }
             }
             // - If a known temporary is borrowed mutably or mutated somehow, clear its knowledge
             visit_mir_lvalues(stmt, [&known_values](const ::MIR::LValue& lv, ValUsage vu)->bool {
@@ -2285,11 +2321,11 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             TU_IFLET( ::MIR::Statement, stmt, Assign, e,
                 assigned_lval(e.dst);
             )
-            else if( const auto* e = stmt.opt_Drop() )
-            {
-                if( e->flag_idx != ~0u )
-                    used_dfs.at(e->flag_idx) = true;
-            }
+            //else if( const auto* e = stmt.opt_Drop() )
+            //{
+            //    //if( e->flag_idx != ~0u )
+            //    //    used_dfs.at(e->flag_idx) = true;
+            //}
             else if( const auto* e = stmt.opt_Asm() )
             {
                 for(const auto& val : e->outputs)
@@ -2299,6 +2335,7 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             {
                 if( e->other != ~0u )
                     used_dfs.at(e->other) = true;
+                used_dfs.at(e->idx) = true;
             }
         }
 
@@ -2348,7 +2385,6 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
     {
         if( !used_temps[i] )
         {
-            DEBUG("GC Temporary(" << i << ")");
             fcn.temporaries.erase(fcn.temporaries.begin() + j);
         }
         else {
@@ -2356,6 +2392,15 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         }
         temp_rewrite_table.push_back( used_temps[i] ? j ++ : ~0u );
     }
+    DEBUG("Deleted Temporaries:" << FMT_CB(ss,
+                for(auto run : runs(used_temps))
+                    if( !used_temps[run.first] )
+                    {
+                        ss << " " << run.first;
+                        if(run.second != run.first)
+                            ss << "-" << run.second;
+                    }
+                ));
     ::std::vector<unsigned int> var_rewrite_table;
     unsigned int n_var = fcn.named_variables.size();
     for(unsigned int i = 0, j = 0; i < n_var; i ++)
@@ -2377,7 +2422,7 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         if( !used_dfs[i] )
         {
             DEBUG("GC df" << i);
-            fcn.drop_flags.erase(fcn.drop_flags.begin() + j);
+            // NOTE: Not erased until after rewriting
         }
         df_rewrite_table.push_back( used_dfs[i] ? j ++ : ~0u );
     }
@@ -2408,28 +2453,47 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 }
                 return false;
                 };
-            for(auto stmt_it = it->statements.begin(); stmt_it != it->statements.end(); ++ stmt_it)
+            ::std::vector<bool> to_remove_statements(it->statements.size());
+            for(auto& stmt : it->statements)
             {
-                state.set_cur_stmt(i, stmt_it - it->statements.begin());
-                visit_mir_lvalues_mut(*stmt_it, lvalue_cb);
-                if( auto* se = stmt_it->opt_Drop() )
+                auto stmt_idx = &stmt - &it->statements.front();
+                state.set_cur_stmt(i, stmt_idx);
+                if( auto* se = stmt.opt_Drop() )
+                {
+                    // If the drop flag was unset, either remove the drop or remove the drop flag reference
+                    if( se->flag_idx != ~0u && df_rewrite_table[se->flag_idx] == ~0u)
+                    {
+                        if( fcn.drop_flags.at(se->flag_idx) ) {
+                            DEBUG(state << "Remove flag from " << stmt);
+                            se->flag_idx = ~0u;
+                        }
+                        else {
+                            DEBUG(state << "Remove " << stmt);
+                            to_remove_statements[stmt_idx] = true;
+                            continue ;
+                        }
+                    }
+                }
+
+                visit_mir_lvalues_mut(stmt, lvalue_cb);
+                if( auto* se = stmt.opt_Drop() )
                 {
                     // Rewrite drop flag indexes
                     if( se->flag_idx != ~0u )
                         se->flag_idx = df_rewrite_table[se->flag_idx];
                 }
-                else if( auto* se = stmt_it->opt_SetDropFlag() )
+                else if( auto* se = stmt.opt_SetDropFlag() )
                 {
                     // Rewrite drop flag indexes OR delete
                     if( df_rewrite_table[se->idx] == ~0u ) {
-                        stmt_it = it->statements.erase(stmt_it)-1;
+                        to_remove_statements[stmt_idx] = true;
                         continue ;
                     }
                     se->idx = df_rewrite_table[se->idx];
                     if( se->other != ~0u )
                         se->other = df_rewrite_table[se->other];
                 }
-                else if( auto* se = stmt_it->opt_ScopeEnd() )
+                else if( auto* se = stmt.opt_ScopeEnd() )
                 {
                     for(auto it = se->vars.begin(); it != se->vars.end(); )
                     {
@@ -2453,9 +2517,9 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     }
 
                     if( se->vars.empty() && se->tmps.empty() ) {
-                        DEBUG("- Delete ScopeEnd (now empty)");
-                        stmt_it = it->statements.erase(stmt_it);
-                        -- stmt_it;
+                        DEBUG(state << "Delete ScopeEnd (now empty)");
+                        to_remove_statements[stmt_idx] = true;
+                        continue ;
                     }
                 }
             }
@@ -2495,7 +2559,31 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 )
             )
 
+            // Delete all statements flagged in a bitmap for deletion
+            auto stmt_it = it->statements.begin();
+            for(auto flag : to_remove_statements)
+            {
+                if(flag) {
+                    stmt_it = it->statements.erase(stmt_it);
+                }
+                else {
+                    ++ stmt_it;
+                }
+            }
+
             ++it;
+        }
+    }
+
+    for(unsigned int i = 0, j = 0; i < n_df; i ++)
+    {
+        if( !used_dfs[i] )
+        {
+            fcn.drop_flags.erase(fcn.drop_flags.begin() + j);
+        }
+        else
+        {
+            j ++;
         }
     }
 

@@ -177,8 +177,33 @@ namespace
 
             ::HIR::TypeRef  tmp;
             bool is_copy = mir_res.m_resolve.type_is_copy( mir_res.sp, mir_res.get_lvalue_type(tmp, root_lv) );
-
             size_t cur_stmt = mir_res.get_cur_stmt_ofs();
+
+            // Dump all statements
+            if(true)
+            {
+                for(size_t i = 0; i < this->bb_path.size()-1; i++)
+                {
+                    size_t bb_idx = this->bb_path[i];
+                    const auto& bb = mir_res.m_fcn.blocks.at(bb_idx);
+
+                    for(size_t stmt_idx = 0; stmt_idx < bb.statements.size(); stmt_idx++)
+                    {
+                        DEBUG("BB" << bb_idx << "/" << stmt_idx << " - " << bb.statements[stmt_idx]);
+                    }
+                    DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
+                }
+
+                {
+                    size_t bb_idx = this->bb_path.back();
+                    const auto& bb = mir_res.m_fcn.blocks.at(bb_idx);
+                    for(size_t stmt_idx = 0; stmt_idx < cur_stmt; stmt_idx ++)
+                    {
+                        DEBUG("BB" << bb_idx << "/" << stmt_idx << " - " << bb.statements[stmt_idx]);
+                    }
+                }
+            }
+
             if( !is_copy )
             {
                 // Walk backwards through the BBs and find where it's used by value
@@ -629,6 +654,9 @@ namespace std {
             print_val(FMT_CB(ss, ss << ",_" << i;), x.vars[i]);
         for(unsigned int i = 0; i < x.temporaries.size(); i ++)
             print_val(FMT_CB(ss, ss << ",t" << i;), x.temporaries[i]);
+        for(unsigned int i = 0; i < x.drop_flags.size(); i++)
+            if(x.drop_flags[i])
+                os << ",df" << i;
         os << ")";
         return os;
     }
@@ -638,6 +666,9 @@ namespace std {
 // "Executes" the function, keeping track of drop flags and variable validities
 void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Function& fcn)
 {
+    // TODO: Use a timer to check elapsed CPU time in this function, and check on each iteration
+    // - If more than `n` (10?) seconds passes on one function, warn and abort
+    //ElapsedTimeCounter    timer;
     ::std::vector<StateSet> block_entry_states( fcn.blocks.size() );
 
     // Determine value lifetimes (BBs in which Copy values are valid)
@@ -719,9 +750,10 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
         {
             mir_res.set_cur_stmt(cur_block, i);
 
+            DEBUG(mir_res << blk.statements[i]);
+
             TU_MATCHA( (blk.statements[i]), (se),
             (Assign,
-                DEBUG(mir_res << " " << se.dst << " = " << se.src);
                 TU_MATCHA( (se.src), (ve),
                 (Use,
                     state.move_lvalue(mir_res, ve);

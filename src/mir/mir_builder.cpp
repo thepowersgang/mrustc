@@ -611,14 +611,17 @@ void MirBuilder::raise_variables(const Span& sp, const ::MIR::LValue& val, const
                 DEBUG("Crossing split with no existing end state");
             }
 
+            // TODO: This should update the outer state to unset.
             auto& arm = sd_split->arms.back();
             if( const auto* ve = val.opt_Variable() )
             {
                 arm.var_states.insert(::std::make_pair( *ve, get_variable_state(sp, *ve).clone() ));
+                m_variable_states.at(*ve) = VarState(InvalidType::Uninit);
             }
             else if( const auto* ve = val.opt_Temporary() )
             {
                 arm.tmp_states.insert(::std::make_pair( ve->idx, get_temp_state(sp, ve->idx).clone() ));
+                m_temporary_states.at(ve->idx) = VarState(InvalidType::Uninit);
             }
             else
             {
@@ -865,19 +868,22 @@ void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle
             if(sd_loop->exit_state_valid)
             {
                 DEBUG("Crossing loop with existing end state");
-                // Insert these values as Invalid
+                // Insert these values as Invalid, both in the existing exit state, and in the changed list
                 for(auto idx : src_list)
                 {
                     auto v = sd_loop->exit_state.tmp_states.insert(::std::make_pair( idx, VarState(InvalidType::Uninit) ));
                     ASSERT_BUG(sp, v.second, "");
-
-                    auto v2 = sd_loop->changed_tmps.insert(::std::make_pair( idx, VarState(InvalidType::Uninit) ));
-                    ASSERT_BUG(sp, v2.second, "");
                 }
             }
             else
             {
                 DEBUG("Crossing loop with no end state");
+            }
+
+            for(auto idx : src_list)
+            {
+                auto v2 = sd_loop->changed_tmps.insert(::std::make_pair( idx, VarState(InvalidType::Uninit) ));
+                ASSERT_BUG(sp, v2.second, "");
             }
         }
         else if(auto* sd_split = scope_def.data.opt_Split())

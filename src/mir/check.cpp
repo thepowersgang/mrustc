@@ -84,53 +84,6 @@ namespace {
     }
 }
 
-namespace {
-    template<typename T>
-    struct RunIterable {
-        const ::std::vector<T>& list;
-        unsigned int ofs;
-        ::std::pair<size_t,size_t> cur;
-        RunIterable(const ::std::vector<T>& list):
-            list(list), ofs(0)
-        {
-            advance();
-        }
-        void advance() {
-            if( ofs < list.size() )
-            {
-                auto start = ofs;
-                while(ofs < list.size() && list[ofs] == list[start])
-                    ofs ++;
-                cur = ::std::make_pair(start, ofs-1);
-            }
-            else
-            {
-                ofs = list.size()+1;
-            }
-        }
-        RunIterable<T> begin() { return *this; }
-        RunIterable<T> end() { auto rv = *this; rv.ofs = list.size()+1; return rv; }
-        bool operator==(const RunIterable<T>& x) {
-            return x.ofs == ofs;
-        }
-        bool operator!=(const RunIterable<T>& x) {
-            return !(*this == x);
-        }
-        void operator++() {
-            advance();
-        }
-        const ::std::pair<size_t,size_t>& operator*() const {
-            return this->cur;
-        }
-        const ::std::pair<size_t,size_t>* operator->() const {
-            return &this->cur;
-        }
-    };
-    template<typename T>
-    RunIterable<T> runs(const ::std::vector<T>& x) {
-        return RunIterable<T>(x);
-    }
-}
 //template<typename T>
 //::std::ostream& operator<<(::std::ostream& os, const T& v) {
 //    v.fmt(os);

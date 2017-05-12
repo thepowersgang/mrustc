@@ -631,7 +631,7 @@ namespace {
         {
             TRACE_FUNCTION_FR("_Match", "_Match");
             auto _ = save_and_edit(m_borrow_raise_target, nullptr);
-            auto stmt_scope = m_builder.new_scope_temp(node.span());
+            //auto stmt_scope = m_builder.new_scope_temp(node.span());
             this->visit_node_ptr(node.m_value);
             auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
 
@@ -680,13 +680,13 @@ namespace {
                 const auto& sp = node.span();
 
                 auto res = m_builder.get_result(sp);
-                m_builder.raise_variables(sp, res, stmt_scope, /*to_above=*/true);
+                //m_builder.raise_variables(sp, res, stmt_scope, /*to_above=*/true);
                 m_builder.set_result(sp, mv$(res));
 
-                m_builder.terminate_scope( node.span(), mv$(stmt_scope) );
+                //m_builder.terminate_scope( node.span(), mv$(stmt_scope) );
             }
             else {
-                m_builder.terminate_scope( node.span(), mv$(stmt_scope), false );
+                //m_builder.terminate_scope( node.span(), mv$(stmt_scope), false );
             }
         } // ExprNode_Match
 
