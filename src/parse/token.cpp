@@ -305,7 +305,6 @@ struct EscapedString {
     case TOK_INTERPOLATED_IDENT: return "/*:ident*/";
     // Value tokens
     case TOK_IDENT:     return m_data.as_String();
-    case TOK_MACRO:     return m_data.as_String() + "!";
     case TOK_LIFETIME:  return "'" + m_data.as_String();
     case TOK_INTEGER:   return FMT(m_data.as_Integer().m_intval);    // TODO: suffix for type
     case TOK_CHAR:      return FMT("'\\u{"<< ::std::hex << m_data.as_Integer().m_intval << "}");
@@ -521,7 +520,6 @@ SERIALISE_TYPE(Token::, "Token", {
     case TOK_STRING:
     case TOK_BYTESTRING:
     case TOK_IDENT:
-    case TOK_MACRO:
     case TOK_LIFETIME:
         if( tok.m_data.is_String() )
             os << "\"" << EscapedString(tok.str()) << "\"";

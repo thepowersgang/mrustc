@@ -37,8 +37,6 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     {
     case TOK_INTERPOLATED_TYPE:
         return mv$(tok.frag_type());
-    case TOK_MACRO:
-        return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, mv$(tok.str()), lex));
     // '!' - Only ever used as part of function prototypes, but is kinda a type... not allowed here though
     case TOK_EXCLAM:
         return TypeRef( Span(tok.get_pos()), TypeData::make_Bang({}) );
@@ -81,6 +79,12 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         }
     // <ident> - Either a primitive, or a path
     case TOK_IDENT:
+        if( lex.lookahead(0) == TOK_EXCLAM )
+        {
+            lex.getToken();
+            // TODO: path macros
+            return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, mv$(tok.str()), lex));
+        }
         // or a primitive
         //if( auto ct = coretype_fromstring(tok.str()) )
         //{

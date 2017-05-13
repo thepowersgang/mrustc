@@ -744,20 +744,13 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
         ch = this->getc();
     }
 
-    if( ch == '!' )
+    this->ungetc();
+    for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
     {
-        return Token(TOK_MACRO, str);
+        if( str < RWORDS[i].chars ) break;
+        if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
     }
-    else
-    {
-        this->ungetc();
-        for( unsigned int i = 0; i < LEN(RWORDS); i ++ )
-        {
-            if( str < RWORDS[i].chars ) break;
-            if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
-        }
-        return Token(TOK_IDENT, mv$(str));
-    }
+    return Token(TOK_IDENT, mv$(str));
 }
 
 // Takes the VERY lazy way of reading the float into a string then passing to strtod

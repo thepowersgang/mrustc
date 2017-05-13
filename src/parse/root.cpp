@@ -42,6 +42,7 @@ Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
 
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs);
+bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv);
 
 //::AST::Path Parse_Publicity(TokenStream& lex)
 bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
@@ -657,14 +658,15 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
         SET_ATTRS(lex, item_attrs);
 
         auto ps = lex.start_span();
-        if( tok.type() == TOK_MACRO ) {
-            auto inv = Parse_MacroInvocation( ps, mv$(tok.str()), lex );
-            // - Silently consume ';' after the macro
-            if( GET_TOK(tok, lex) != TOK_SEMICOLON )
-                PUTBACK(tok, lex);
-
-            trait.items().push_back( AST::Named<AST::Item>("", AST::Item(mv$(inv)), false) );
-            continue ;
+        {
+            ::AST::MacroInvocation  inv;
+            PUTBACK(tok, lex);
+            if( Parse_MacroInvocation_Opt(lex, inv) )
+            {
+                trait.items().push_back( AST::Named<AST::Item>("", AST::Item(mv$(inv)), false) );
+                continue ;
+            }
+            GET_TOK(tok, lex);
         }
 
         bool is_specialisable = false;
@@ -1075,22 +1077,20 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     AST::Impl   impl( AST::ImplDef( lex.end_span(ps), mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ) );
 
     // A sequence of method implementations
-    while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
+    while( lex.lookahead(0) != TOK_BRACE_CLOSE )
     {
         auto ps = lex.start_span();
-        if( tok.type() == TOK_MACRO )
+        ::AST::MacroInvocation  inv;
+        if( Parse_MacroInvocation_Opt(lex,  inv) )
         {
-            impl.add_macro_invocation( Parse_MacroInvocation( ps, mv$(tok.str()), lex ) );
-            // - Silently consume ';' after the macro
-            if( GET_TOK(tok, lex) != TOK_SEMICOLON )
-                PUTBACK(tok, lex);
+            impl.add_macro_invocation( mv$(inv) );
         }
         else
         {
-            PUTBACK(tok, lex);
             Parse_Impl_Item(lex, impl);
         }
     }
+    GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
     return ::AST::Item::make_Impl( mv$(impl) );
 }
@@ -1409,6 +1409,34 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     return ::AST::MacroInvocation( lex.end_span(span_start), mv$(name), mv$(ident), mv$(tt));
 }
 
+bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
+{
+    Token   tok;
+    if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_EXCLAM )
+    {
+        // Good
+    }
+    else
+    {
+        return false;
+    }
+
+    auto ps = lex.start_span();
+    GET_CHECK_TOK(tok, lex, TOK_IDENT);
+    auto name = tok.str();
+    GET_CHECK_TOK(tok, lex, TOK_EXCLAM);
+
+    bool is_braced = (lex.lookahead(0) == TOK_BRACE_OPEN || (lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_BRACE_OPEN));
+
+    out_inv = Parse_MacroInvocation(ps, name, lex);
+
+    if(!is_braced )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+    }
+    return true;
+}
+
 ::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, AST::MetaItems meta_items)
 {
     TRACE_FUNCTION_F("mod_path="<<mod_path<<", meta_items="<<meta_items);
@@ -1436,22 +1464,16 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     ::std::string   item_name;
     ::AST::Item item_data;
 
-    if( LOOK_AHEAD(lex) == TOK_MACRO ) {
-        GET_TOK(tok, lex);
+    {
+        ::AST::MacroInvocation  inv;
+        if( Parse_MacroInvocation_Opt(lex, inv) )
+        {
+            item_data = ::AST::Item( mv$(inv) );
+            item_data.attrs = mv$(meta_items);
+            item_data.span = lex.end_span(ps);
 
-        ::std::string   name = mv$(tok.str());
-        bool is_braced = (LOOK_AHEAD(lex) == TOK_BRACE_OPEN || LOOKAHEAD2(lex, TOK_IDENT, TOK_BRACE_OPEN));
-        item_data = ::AST::Item( Parse_MacroInvocation( ps, mv$(name), lex ) );
-
-        if( !is_braced ) {
-            // - Consume the ';' after the macro
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            return ::AST::Named< ::AST::Item> { "", mv$(item_data), false };
         }
-
-        item_data.attrs = mv$(meta_items);
-        item_data.span = lex.end_span(ps);
-
-        return ::AST::Named< ::AST::Item> { "", mv$(item_data), false };
     }
 
     bool    is_public = Parse_Publicity(lex);

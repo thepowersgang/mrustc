@@ -33,6 +33,7 @@ Token TokenStream::getToken()
 {
     if( m_cache_valid )
     {
+        //DEBUG("<<< " << m_cache << " (cache)");
         m_cache_valid = false;
         return mv$(m_cache);
     }
@@ -41,6 +42,7 @@ Token TokenStream::getToken()
         Token ret = mv$( m_lookahead.front().first );
         m_hygiene = m_lookahead.front().second;
         m_lookahead.erase(m_lookahead.begin());
+        //DEBUG("<<< " << ret << " (lookahead)");
         if( DEBUG_PRINT_TOKENS ) {
             ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret.get_pos() << "-" << ret << ::std::endl;
         }
@@ -50,6 +52,7 @@ Token TokenStream::getToken()
     {
         Token ret = this->innerGetToken();
         m_hygiene = this->realGetHygiene();
+        //DEBUG("<<< " << ret << " (new)");
         if( DEBUG_PRINT_TOKENS ) {
             ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret.get_pos() << "-" << ret << ::std::endl;
         }
@@ -65,6 +68,7 @@ void TokenStream::putback(Token tok)
     }
     else
     {
+        //DEBUG(">>> " << tok);
         m_cache_valid = true;
         m_cache = mv$(tok);
     }
