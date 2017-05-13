@@ -2149,7 +2149,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 if( !e.ret_val.is_Temporary() )
                     continue ;
                 const auto& vu = val_uses.tmp_uses[e.ret_val.as_Temporary().idx];
-                if( !( vu.read == 1 && vu.write == 1 ) )
+                if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
                     continue ;
 
                 // Iterate the target block, looking for where this value is used.
