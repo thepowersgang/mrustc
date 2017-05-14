@@ -6,6 +6,7 @@
  * - Target-specific information
  */
 #include "target.hpp"
+#include <algorithm>
 
 // TODO: Replace with target selection
 #define POINTER_SIZE_BYTES  8

@@ -212,7 +212,7 @@ void MirBuilder::define_variable(unsigned int idx)
     {
         auto temp = new_temporary(ty);
         push_stmt_assign( sp, ::MIR::LValue(temp.clone()), mv$(rv) );
-        return temp;
+        return ::MIR::Param( mv$(temp) );
     }
 }
 void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)

@@ -2240,22 +2240,6 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             ),
         (Array,
             TODO(sp, "Match directly on array?");
-            #if 0
-            unsigned int total = 0;
-            for( unsigned int i = 0; i < te.size_val; i ++ ) {
-                unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
-                    builder, sp,
-                    rules, num_rules, *te.inner,
-                    ::MIR::LValue::make_Field({ box$(match_val.clone()), i }),
-                    fail_bb
-                    );
-                total += cnt;
-                rules += cnt;
-                num_rules -= cnt;
-                if( num_rules == 0 )
-                    return total;
-            }
-            #endif
             ),
         (Slice,
             ASSERT_BUG(sp, rule.is_Slice() || rule.is_SplitSlice() || (rule.is_Value() && rule.as_Value().is_Bytes()), "Can only match slice with Bytes or Slice rules - " << rule);

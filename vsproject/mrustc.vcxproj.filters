@@ -341,6 +341,33 @@
     <ClCompile Include="..\src\ident.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\expand\test.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\expand\asm.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\expand\crate_tags.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\expand\env.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\expand\include.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\expand\rustc_diagnostics.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\expand\test_harness.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\trans\target.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\mir\check_full.cpp">
+      <Filter>Source Files\mir</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\common.hpp">

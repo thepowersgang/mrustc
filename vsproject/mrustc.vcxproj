@@ -136,16 +136,23 @@
     <ClCompile Include="..\src\ast\pattern.cpp" />
     <ClCompile Include="..\src\ast\types.cpp" />
     <ClCompile Include="..\src\debug.cpp" />
+    <ClCompile Include="..\src\expand\asm.cpp" />
     <ClCompile Include="..\src\expand\cfg.cpp" />
     <ClCompile Include="..\src\expand\concat.cpp" />
+    <ClCompile Include="..\src\expand\crate_tags.cpp" />
     <ClCompile Include="..\src\expand\derive.cpp" />
+    <ClCompile Include="..\src\expand\env.cpp" />
     <ClCompile Include="..\src\expand\file_line.cpp" />
     <ClCompile Include="..\src\expand\format_args.cpp" />
+    <ClCompile Include="..\src\expand\include.cpp" />
     <ClCompile Include="..\src\expand\lang_item.cpp" />
     <ClCompile Include="..\src\expand\macro_rules.cpp" />
     <ClCompile Include="..\src\expand\mod.cpp" />
+    <ClCompile Include="..\src\expand\rustc_diagnostics.cpp" />
     <ClCompile Include="..\src\expand\std_prelude.cpp" />
     <ClCompile Include="..\src\expand\stringify.cpp" />
+    <ClCompile Include="..\src\expand\test.cpp" />
+    <ClCompile Include="..\src\expand\test_harness.cpp" />
     <ClCompile Include="..\src\hir\crate_post_load.cpp" />
     <ClCompile Include="..\src\hir\crate_ptr.cpp" />
     <ClCompile Include="..\src\hir\deserialise.cpp" />
@@ -188,6 +195,7 @@
     <ClCompile Include="..\src\macro_rules\parse.cpp" />
     <ClCompile Include="..\src\main.cpp" />
     <ClCompile Include="..\src\mir\check.cpp" />
+    <ClCompile Include="..\src\mir\check_full.cpp" />
     <ClCompile Include="..\src\mir\cleanup.cpp" />
     <ClCompile Include="..\src\mir\dump.cpp" />
     <ClCompile Include="..\src\mir\from_hir.cpp" />
@@ -221,6 +229,7 @@
     <ClCompile Include="..\src\trans\enumerate.cpp" />
     <ClCompile Include="..\src\trans\mangling.cpp" />
     <ClCompile Include="..\src\trans\monomorphise.cpp" />
+    <ClCompile Include="..\src\trans\target.cpp" />
     <ClCompile Include="..\src\trans\trans_list.cpp" />
   </ItemGroup>
   <ItemGroup>
