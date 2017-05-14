@@ -110,7 +110,8 @@ public:
         else if( x.trait ) {
             os << "<* as " << *x.trait << ">";
         }
-        else {
+        else if( x.crate_name ) {
+            os << "\"" << x.crate_name << "\"";
         }
         return os;
     }

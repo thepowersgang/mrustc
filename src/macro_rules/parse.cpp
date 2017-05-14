@@ -48,8 +48,9 @@ public:
         case TOK_DOLLAR:
             switch( GET_TOK(tok, lex) )
             {
+            case TOK_RWORD_TYPE:
             case TOK_IDENT: {
-                ::std::string   name = mv$(tok.str());
+                ::std::string   name = tok.type() == TOK_IDENT ? mv$(tok.str()) : FMT(tok);
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 ::std::string   type = mv$(tok.str());
@@ -199,10 +200,10 @@ public:
                 }
 
             }
-            else if( tok.type() == TOK_IDENT )
+            else if( tok.type() == TOK_IDENT || tok.type() == TOK_RWORD_TYPE )
             {
                 // Look up the named parameter in the list of param names for this arm
-                const auto& name = tok.str();
+                auto name = tok.type() == TOK_IDENT ? tok.str() : FMT(tok);
                 unsigned int idx = ::std::find(var_names.begin(), var_names.end(), name) - var_names.begin();
                 if( idx == var_names.size() )
                     ERROR(lex.getPosition(), E0000, "Macro variable $" << name << " not found");

@@ -43,8 +43,9 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     Token   tok;
     tok = lex.getToken();
 
-    if( tok.type() == TOK_MACRO )
+    if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_EXCLAM )
     {
+        lex.getToken();
         return AST::Pattern( AST::Pattern::TagMacro(), box$(Parse_MacroInvocation(ps, tok.str(), lex)));
     }
     if( tok.type() == TOK_INTERPOLATED_PATTERN )

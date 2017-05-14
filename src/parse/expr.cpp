@@ -35,7 +35,7 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime);
 ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime);
 ExprNodeP Parse_Expr_Match(TokenStream& lex);
 ExprNodeP Parse_Expr1(TokenStream& lex);
-ExprNodeP Parse_ExprMacro(TokenStream& lex, Token tok);
+ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path tok);
 
 AST::Expr Parse_Expr(TokenStream& lex)
 {
@@ -120,7 +120,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         return ExprNodeP();
     }
 
-    if( tok.type() == TOK_MACRO && tok.str() == "macro_rules" )
+    if( tok.type() == TOK_IDENT && tok.str() == "macro_rules" && lex.lookahead(0) == TOK_EXCLAM )
     {
         // Special case - create a local module if macro_rules! is seen
         // - Allows correct scoping of defined macros
@@ -285,10 +285,14 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
             return ret;
             }
 
-        case TOK_MACRO:
-            // If a braced macro invocation is the first part of a statement, don't expect a semicolon
-            if( LOOK_AHEAD(lex) == TOK_BRACE_OPEN || (lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_BRACE_OPEN) ) {
-                return Parse_ExprMacro(lex, tok);
+        case TOK_IDENT:
+            if( lex.lookahead(0) == TOK_EXCLAM )
+            {
+                // If a braced macro invocation is the first part of a statement, don't expect a semicolon
+                if( lex.lookahead(1) == TOK_BRACE_OPEN || (lex.lookahead(1) == TOK_IDENT && lex.lookahead(2) == TOK_BRACE_OPEN) ) {
+                    lex.getToken();
+                    return Parse_ExprMacro(lex, tok.str());
+                }
             }
         // Fall through to the statement code
         default:
@@ -681,8 +685,6 @@ bool Parse_IsTokValue(eTokenType tok_type)
 
     case TOK_INTERPOLATED_PATH:
     case TOK_INTERPOLATED_EXPR:
-
-    case TOK_MACRO:
 
     case TOK_PIPE:
     case TOK_EXCLAM:
@@ -1138,9 +1140,12 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         if(0)
     case TOK_DOUBLE_COLON:
         path = Parse_Path(lex, true, PATH_GENERIC_EXPR);
+        DEBUG("path = " << path << ", lookahead=" << Token::typestr(lex.lookahead(0)));
         // SKIP TARGET
         switch( GET_TOK(tok, lex) )
         {
+        case TOK_EXCLAM:
+            return Parse_ExprMacro(lex, mv$(path));
         case TOK_PAREN_OPEN:
             // Function call
             PUTBACK(tok, lex);
@@ -1244,15 +1249,15 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             }
         }
         throw ParseError::BugCheck(lex, "Array literal fell");
-    case TOK_MACRO:
-        return Parse_ExprMacro(lex, mv$(tok));
     default:
         throw ParseError::Unexpected(lex, tok);
     }
 }
-ExprNodeP Parse_ExprMacro(TokenStream& lex, Token tok)
+ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
 {
-    ::std::string name = tok.str();
+    Token   tok;
+    ASSERT_BUG(lex.getPosition(), path.is_trivial(), "TODO: Support path macros - " << path);
+    ::std::string name = path.m_class.is_Local() ? path.m_class.as_Local().name : path.nodes()[0].name();
     ::std::string ident;
     if( GET_TOK(tok, lex) == TOK_IDENT ) {
         ident = mv$(tok.str());

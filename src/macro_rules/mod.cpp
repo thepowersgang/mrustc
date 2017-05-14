@@ -76,7 +76,6 @@ bool is_token_expr(eTokenType tt) {
     case TOK_EXCLAM:    // Invert
     case TOK_RWORD_BOX: // Box
     // Composite values
-    case TOK_MACRO:
     case TOK_PAREN_OPEN:    // Parenthesised
     case TOK_SQUARE_OPEN:   // Array
 
