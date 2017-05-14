@@ -6,20 +6,22 @@ addons:
  apt:
   sources:
     - ubuntu-toolchain-r-test
+    - george-edison55-precise-backports
   packages:
     - g++-6
     - zlib1g-dev
+    - cmake cmake-data
 
 install:
  # Build mrustc
  - make RUSTCSRC
  - CC=gcc-6 CXX=g++-6 make
 
-# Tests! (check that they parse, and keep going)
 script:
-# libstd
+# libstd and hello_world
  - CC=gcc-6 make test TAIL_COUNT=2
-# rustc (not the actual binary, because that doesn't emit a file yet)
- - CC=gcc-6 make output/librustc_driver.hir TAIL_COUNT=15
+# rustc
+# - CC=gcc-6 make output/rustc TAIL_COUNT=15
 # Tests
-# - CC=gcc-6 make rust_tests-run-pass RUST_TESTS_FINAL_STAGE=expand -k
+ - CC=gcc-6 make local_tests -k
+ - CC=gcc-6 make rust_tests -k

@@ -1020,6 +1020,41 @@ bool TraitResolution::iterate_bounds( ::std::function<bool(const ::HIR::GenericB
     }
     return false;
 }
+bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const
+{
+    const auto& trait_ref = m_crate.get_trait_by_path(sp, pe.trait.m_path);
+    ASSERT_BUG(sp, trait_ref.m_types.count( pe.item ) != 0, "Trait " << pe.trait.m_path << " doesn't contain an associated type " << pe.item);
+    const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
+
+    for(const auto& bound : aty_def.m_trait_bounds)
+    {
+        if( cb(bound) )
+            return true;
+    }
+    // Search `<Self as Trait>::Name` bounds on the trait itself
+    for(const auto& bound : trait_ref.m_params.m_bounds)
+    {
+        if( ! bound.is_TraitBound() ) continue ;
+        const auto& be = bound.as_TraitBound();
+
+        if( ! be.type.m_data.is_Path() )   continue ;
+        if( ! be.type.m_data.as_Path().binding.is_Opaque() )   continue ;
+
+        const auto& be_type_pe = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
+        if( *be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
+            continue ;
+        if( be_type_pe.trait.m_path != pe.trait.m_path )
+            continue ;
+        if( be_type_pe.item != pe.item )
+            continue ;
+
+        if( cb(be.trait) )
+            return true;
+    }
+
+    return false;
+}
+
 bool TraitResolution::find_trait_impls(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
         const ::HIR::TypeRef& ty,
@@ -1075,66 +1110,26 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     }
 
     // Magic Unsize impls to trait objects
-    if( trait == lang_Unsize ) {
+    if( trait == lang_Unsize )
+    {
         ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
         const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
-        TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, TraitObject, e,
-            // Magic impl if T: ThisTrait
-            bool good;
 
-            ::HIR::TypeRef::Data::Data_TraitObject  tmp_e;
-            tmp_e.m_trait.m_path = e.m_trait.m_path.m_path;
+        if( find_trait_impls_bound(sp, trait, params, type, callback) )
+            return true;
 
-            ::HIR::Compare  total_cmp = ::HIR::Compare::Equal;
-            if( e.m_trait.m_path.m_path == ::HIR::SimplePath() ) {
-                ASSERT_BUG(sp, e.m_markers.size() > 0, "TraitObject with no traits - " << dst_ty);
-                good = true;
-            }
-            else {
-                good = find_trait_impls(sp, e.m_trait.m_path.m_path, e.m_trait.m_path.m_params, ty,
-                    [&](const auto impl, auto cmp){
-                        if( cmp == ::HIR::Compare::Unequal )
-                            return false;
-                        total_cmp &= cmp;
-                        tmp_e.m_trait.m_path.m_params = impl.get_trait_params();
-                        for(const auto& aty : e.m_trait.m_type_bounds) {
-                            auto atyv = impl.get_type(aty.first.c_str());
-                            if( atyv == ::HIR::TypeRef() )
-                            {
-                                // Get the trait from which this associated type comes.
-                                // Insert a UfcsKnown path for that
-                                auto p = ::HIR::Path( ty.clone(), e.m_trait.m_path.clone(), aty.first );
-                                // Run EAT
-                                atyv = this->expand_associated_types( sp, ::HIR::TypeRef::new_path( mv$(p), {} ) );
-                            }
-                            tmp_e.m_trait.m_type_bounds[aty.first] = mv$(atyv);
-                        }
-                        return true;
-                    });
-            }
-            auto cb = [&](const auto impl, auto cmp){
-                if( cmp == ::HIR::Compare::Unequal )
-                    return false;
-                total_cmp &= cmp;
-                tmp_e.m_markers.back().m_params = impl.get_trait_params();
-                return true;
-                };
-            for(const auto& marker : e.m_markers)
-            {
-                if(!good)   break;
-                tmp_e.m_markers.push_back( marker.m_path );
-                good &= find_trait_impls(sp, marker.m_path, marker.m_params, ty, cb);
-            }
-            if( good ) {
-                ::HIR::PathParams   real_params { ::HIR::TypeRef( ::HIR::TypeRef::Data(mv$(tmp_e)) ) };
-                return callback( ImplRef(type.clone(), mv$(real_params), {}), total_cmp );
-            }
-            else {
-                return false;
-            }
-        )
-
-        // [T;N] -> [T] is handled down with array indexing
+        bool rv = false;
+        auto cb = [&](auto new_dst) {
+            ::HIR::PathParams   real_params { mv$(new_dst) };
+            rv = callback( ImplRef(type.clone(), mv$(real_params), {}), ::HIR::Compare::Fuzzy );
+            };
+        auto cmp = this->can_unsize(sp, dst_ty, type, cb);
+        if( cmp == ::HIR::Compare::Equal )
+        {
+            assert(!rv);
+            rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Equal );
+        }
+        return rv;
     }
 
     // Magical CoerceUnsized impls for various types
@@ -1278,23 +1273,6 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             */
             return false;
         }
-
-        // Unsize impl for arrays
-        if( trait == lang_Unsize )
-        {
-            ASSERT_BUG(sp, params.m_types.size() == 1, "");
-            const auto& dst_ty = m_ivars.get_type( params.m_types[0] );
-
-            TU_IFLET(::HIR::TypeRef::Data, dst_ty.m_data, Slice, e2,
-                auto cmp = e.inner->compare_with_placeholders(sp, *e2.inner, m_ivars.callback_resolve_infer());
-                if( cmp != ::HIR::Compare::Unequal ) {
-                    ::HIR::PathParams   pp;
-                    // - <[`array_inner`]> so it can be matched with the param by the caller
-                    pp.m_types.push_back( ::HIR::TypeRef::new_slice(e.inner->clone()) );
-                    return callback( ImplRef(type.clone(), mv$(pp), {}), cmp );
-                }
-            )
-        }
     )
 
 
@@ -1344,44 +1322,6 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             return rv;
         }
 
-        // Trait objects can unsize to a subset of their traits.
-        if( trait == lang_Unsize )
-        {
-            ASSERT_BUG(sp, params.m_types.size() == 1, "");
-            const auto& dst_ty = m_ivars.get_type( params.m_types[0] );
-            if( ! dst_ty.m_data.is_TraitObject() ) {
-                // If the destination isn't a trait object, don't even bother
-                return false;
-            }
-            const auto& e2 = dst_ty.m_data.as_TraitObject();
-
-            auto cmp = ::HIR::Compare::Equal;
-
-            // TODO: Fuzzy compare
-            if( e2.m_trait != e.m_trait ) {
-                return false;
-            }
-            // The destination must have a strict subset of marker traits.
-            const auto& src_markers = e.m_markers;
-            const auto& dst_markers = e2.m_markers;
-            for(const auto& mt : dst_markers)
-            {
-                // TODO: Fuzzy match
-                bool found = false;
-                for(const auto& omt : src_markers) {
-                    if( omt == mt ) {
-                        found = true;
-                        break;
-                    }
-                }
-                if( !found ) {
-                    // Return early.
-                    return false;
-                }
-            }
-
-            return callback( ImplRef(&type, &e.m_trait.m_path.m_params, &e.m_trait.m_type_bounds), cmp );
-        }
     )
 
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, ErasedType, e,
@@ -1438,15 +1378,9 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             ASSERT_BUG(sp, e.path.m_data.is_UfcsKnown(), "Opaque bound type wasn't UfcsKnown - " << type);
             const auto& pe = e.path.m_data.as_UfcsKnown();
 
-            // If this associated type has a bound of the desired trait, return it.
-            const auto& trait_ref = m_crate.get_trait_by_path(sp, pe.trait.m_path);
-            ASSERT_BUG(sp, trait_ref.m_types.count( pe.item ) != 0, "Trait " << pe.trait.m_path << " doesn't contain an associated type " << pe.item);
-            const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
-
             auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
 
-            for(const auto& bound : aty_def.m_trait_bounds)
-            {
+            auto rv = this->iterate_aty_bounds(sp, pe, [&](const auto& bound) {
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
@@ -1477,58 +1411,14 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                         return cmp != ::HIR::Compare::Unequal && callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
                     });
                 if( ret )
-                    return true;
-            }
-            // TODO: Search `<Self as Trait>::Name` bounds on the trait itself
-            for(const auto& bound : trait_ref.m_params.m_bounds)
-            {
-                if( ! bound.is_TraitBound() ) continue ;
-                const auto& be = bound.as_TraitBound();
-
-                if( ! be.type.m_data.is_Path() )   continue ;
-                if( ! be.type.m_data.as_Path().binding.is_Opaque() )   continue ;
-
-                const auto& be_type_pe = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
-                if( *be_type_pe.type != ::HIR::TypeRef("Self", 0xFFFF) )
-                    continue ;
-                if( be_type_pe.trait.m_path != pe.trait.m_path )
-                    continue ;
-                if( be_type_pe.item != pe.item )
-                    continue ;
-
-                // TODO: Merge the below code with the code from the above loop.
-                const auto& b_params = be.trait.m_path.m_params;
-                ::HIR::PathParams   params_mono_o;
-                const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
-
-                if( be.trait.m_path.m_path == trait )
                 {
-                    auto cmp = this->compare_pp(sp, b_params_mono, params);
-                    if( cmp != ::HIR::Compare::Unequal )
-                    {
-                        if( &b_params_mono == &params_mono_o )
-                        {
-                            if( callback( ImplRef(type.clone(), mv$(params_mono_o), {}), cmp ) )
-                                return true;
-                            params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
-                        }
-                        else
-                        {
-                            if( callback( ImplRef(&type, &b_params, &null_assoc), cmp ) )
-                                return true;
-                        }
-                    }
-                }
-
-                bool ret = this->find_named_trait_in_trait(sp,  trait, params,  *be.trait.m_trait_ptr,  be.trait.m_path.m_path, b_params_mono, type,
-                    [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
-                        auto cmp = this->compare_pp(sp, i_params, params);
-                        DEBUG("cmp=" << cmp << ", impl " << trait << i_params << " for " << i_ty << " -- desired " << trait << params);
-                        return cmp != ::HIR::Compare::Unequal && callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
-                    });
-                if( ret )
+                    // NOTE: Callback called in closure's return statement
                     return true;
-            }
+                }
+                return false;
+                });
+            if( rv )
+                return true;
         }
     )
 
@@ -2406,7 +2296,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         // NOTE: Expected behavior is for Ivars to return false
         // TODO: Should they return Compare::Fuzzy instead?
         if( type.m_data.is_Infer() ) {
-            return false;
+            return callback( ImplRef(&type, params_ptr, &null_assoc), ::HIR::Compare::Fuzzy );
         }
 
         const ::HIR::TraitMarkings* markings = nullptr;
@@ -3096,6 +2986,270 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         )
     )
 }
+// Checks if a type can unsize to another
+// - Returns Compare::Equal if the unsize is possible and fully known
+// - Returns Compare::Fuzzy if the unsize is possible, but still unknown.
+// - Returns Compare::Unequal if the unsize is impossibe (for any reason)
+//
+// Closure is called `get_new_type` is true, and the unsize is possible
+//
+// usecases:
+// - Checking for an impl as part of impl selection (return True/False/Maybe with required match for Maybe)
+// - Checking for an impl as part of typeck (return True/False/Maybe with unsize possibility OR required equality)
+::HIR::Compare TraitResolution::can_unsize(
+        const Span& sp, const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty,
+        ::std::function<void(::HIR::TypeRef new_dst)>* new_type_callback,
+        ::std::function<void(const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src)>* infer_callback
+        ) const
+{
+    TRACE_FUNCTION_F(dst_ty << " <- " << src_ty);
+    const auto& lang_Unsize = this->m_crate.get_lang_item_path(sp, "unsize");
+
+    // 1. Test for type equality
+    {
+        auto cmp = dst_ty.compare_with_placeholders(sp, src_ty, m_ivars.callback_resolve_infer());
+        if( cmp == ::HIR::Compare::Equal )
+        {
+            return ::HIR::Compare::Unequal;
+        }
+    }
+
+    // 2. If either side is an ivar, fuzzy.
+    if( dst_ty.m_data.is_Infer() || src_ty.m_data.is_Infer() )
+    {
+        // Inform the caller that these two types could unsize to each other
+        // - This allows the coercions code to move the coercion rule up
+        if( infer_callback )
+        {
+            (*infer_callback)(dst_ty, src_ty);
+        }
+        return ::HIR::Compare::Fuzzy;
+    }
+
+    {
+        bool found_bound = this->iterate_bounds([&](const auto& gb){
+            if(!gb.is_TraitBound())
+                return false;
+            const auto& be = gb.as_TraitBound();
+            if(be.trait.m_path.m_path != lang_Unsize)
+                return false;
+            const auto& be_dst = be.trait.m_path.m_params.m_types.at(0);
+
+            auto cmp = src_ty.compare_with_placeholders(sp, be.type, m_ivars.callback_resolve_infer());
+            if(cmp == ::HIR::Compare::Unequal)  return false;
+
+            cmp &= dst_ty.compare_with_placeholders(sp, be_dst, m_ivars.callback_resolve_infer());
+            if(cmp == ::HIR::Compare::Unequal)  return false;
+
+            if( cmp != ::HIR::Compare::Equal )
+            {
+                TODO(sp, "Found bound " << dst_ty << "=" << be_dst << " <- " << src_ty << "=" << be.type);
+            }
+            return true;
+            });
+        if( found_bound )
+        {
+            return ::HIR::Compare::Equal;
+        }
+    }
+
+    // Associated types, check the bounds in the trait.
+    if( src_ty.m_data.is_Path() && src_ty.m_data.as_Path().path.m_data.is_UfcsKnown() )
+    {
+        ::HIR::Compare  rv = ::HIR::Compare::Equal;
+        const auto& pe = src_ty.m_data.as_Path().path.m_data.as_UfcsKnown();
+        auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
+        auto found_bound = this->iterate_aty_bounds(sp, pe, [&](const ::HIR::TraitPath& bound) {
+            if( bound.m_path.m_path != lang_Unsize )
+                return false;
+            const auto& be_dst_tpl = bound.m_path.m_params.m_types.at(0);
+            ::HIR::TypeRef  tmp_ty;
+            const auto& be_dst = (monomorphise_type_needed(be_dst_tpl) ? tmp_ty = monomorphise_type_with(sp, be_dst_tpl, monomorph_cb) : be_dst_tpl);
+
+            auto cmp = dst_ty.compare_with_placeholders(sp, be_dst, m_ivars.callback_resolve_infer());
+            if(cmp == ::HIR::Compare::Unequal)  return false;
+
+            if( cmp != ::HIR::Compare::Equal )
+            {
+                DEBUG("> Found bound (fuzzy) " << dst_ty << "=" << be_dst << " <- " << src_ty);
+                rv = ::HIR::Compare::Fuzzy;
+            }
+            return true;
+            });
+        if( found_bound )
+        {
+            return rv;
+        }
+    }
+
+    // Struct<..., T, ...>: Unsize<Struct<..., U, ...>>
+    if( dst_ty.m_data.is_Path() && src_ty.m_data.is_Path() )
+    {
+        bool dst_is_unsizable = dst_ty.m_data.as_Path().binding.is_Struct() && dst_ty.m_data.as_Path().binding.as_Struct()->m_markings.can_unsize;
+        bool src_is_unsizable = src_ty.m_data.as_Path().binding.is_Struct() && src_ty.m_data.as_Path().binding.as_Struct()->m_markings.can_unsize;
+        if( dst_is_unsizable || src_is_unsizable )
+        {
+            DEBUG("Struct unsize? " << dst_ty << " <- " << src_ty);
+            const auto& str = *dst_ty.m_data.as_Path().binding.as_Struct();
+            const auto& dst_gp = dst_ty.m_data.as_Path().path.m_data.as_Generic();
+            const auto& src_gp = src_ty.m_data.as_Path().path.m_data.as_Generic();
+
+            if( dst_gp == src_gp )
+            {
+                DEBUG("Can't Unsize, destination and source are identical");
+                return ::HIR::Compare::Unequal;
+            }
+            else if( dst_gp.m_path == src_gp.m_path )
+            {
+                DEBUG("Checking for Unsize " << dst_gp << " <- " << src_gp);
+                // Structures are equal, add the requirement that the ?Sized parameter also impl Unsize
+                const auto& dst_inner = m_ivars.get_type( dst_gp.m_params.m_types.at(str.m_markings.unsized_param) );
+                const auto& src_inner = m_ivars.get_type( src_gp.m_params.m_types.at(str.m_markings.unsized_param) );
+
+                auto cb = [&](auto d){
+                    assert(new_type_callback);
+
+                    // Re-create structure with s/d
+                    auto dst_gp_new = dst_gp.clone();
+                    dst_gp_new.m_params.m_types.at(str.m_markings.unsized_param) = mv$(d);
+                    (*new_type_callback)( ::HIR::TypeRef::new_path(mv$(dst_gp_new), &str) );
+                    };
+                if( new_type_callback )
+                {
+                    ::std::function<void(::HIR::TypeRef)>   cb_p = cb;
+                    return this->can_unsize(sp, dst_inner, src_inner, &cb_p, infer_callback);
+                }
+                else
+                {
+                    return this->can_unsize(sp, dst_inner, src_inner, nullptr, infer_callback);
+                }
+            }
+            else
+            {
+                DEBUG("Can't Unsize, destination and source are different structs");
+                return ::HIR::Compare::Unequal;
+            }
+        }
+    }
+
+    // (Trait) <- Foo
+    if( const auto* de = dst_ty.m_data.opt_TraitObject() )
+    {
+        // TODO: Check if src_ty is !Sized
+        // - Only allowed if the source is a trait object with the same data trait and lesser bounds
+
+        DEBUG("TraitObject unsize? " << dst_ty << " <- " << src_ty);
+
+        // (Trait) <- (Trait+Foo)
+        if( const auto* se = src_ty.m_data.opt_TraitObject() )
+        {
+            auto rv = ::HIR::Compare::Equal;
+            // 1. Data trait must be the same (TODO: Fuzzy)
+            if( de->m_trait != se->m_trait )
+            {
+                return ::HIR::Compare::Unequal;
+            }
+
+            // 2. Destination markers must be a strict subset
+            for(const auto& mt : de->m_markers)
+            {
+                // TODO: Fuzzy match
+                bool found = false;
+                for(const auto& omt : se->m_markers) {
+                    if( omt == mt ) {
+                        found = true;
+                        break;
+                    }
+                }
+                if( !found ) {
+                    // Return early.
+                    return ::HIR::Compare::Unequal;
+                }
+            }
+
+            if( rv == ::HIR::Compare::Fuzzy && new_type_callback )
+            {
+                // TODO: Inner type
+            }
+            return ::HIR::Compare::Equal;
+        }
+
+        bool good;
+        ::HIR::Compare  total_cmp = ::HIR::Compare::Equal;
+
+        ::HIR::TypeRef::Data::Data_TraitObject  tmp_e;
+        tmp_e.m_trait.m_path = de->m_trait.m_path.m_path;
+
+        // Check data trait first.
+        if( de->m_trait.m_path.m_path == ::HIR::SimplePath() ) {
+            ASSERT_BUG(sp, de->m_markers.size() > 0, "TraitObject with no traits - " << dst_ty);
+            good = true;
+        }
+        else {
+            good = find_trait_impls(sp, de->m_trait.m_path.m_path, de->m_trait.m_path.m_params, src_ty,
+                [&](const auto impl, auto cmp) {
+                    if( cmp == ::HIR::Compare::Unequal )
+                        return false;
+                    total_cmp &= cmp;
+                    tmp_e.m_trait.m_path.m_params = impl.get_trait_params();
+                    for(const auto& aty : de->m_trait.m_type_bounds) {
+                        auto atyv = impl.get_type(aty.first.c_str());
+                        if( atyv == ::HIR::TypeRef() )
+                        {
+                            // Get the trait from which this associated type comes.
+                            // Insert a UfcsKnown path for that
+                            auto p = ::HIR::Path( src_ty.clone(), de->m_trait.m_path.clone(), aty.first );
+                            // Run EAT
+                            atyv = this->expand_associated_types( sp, ::HIR::TypeRef::new_path( mv$(p), {} ) );
+                        }
+                        tmp_e.m_trait.m_type_bounds[aty.first] = mv$(atyv);
+                    }
+                    return true;
+                });
+        }
+
+        // Then markers
+        auto cb = [&](const auto impl, auto cmp){
+            if( cmp == ::HIR::Compare::Unequal )
+                return false;
+            total_cmp &= cmp;
+            tmp_e.m_markers.back().m_params = impl.get_trait_params();
+            return true;
+            };
+        for(const auto& marker : de->m_markers)
+        {
+            if(!good)   break;
+            tmp_e.m_markers.push_back( marker.m_path );
+            good &= find_trait_impls(sp, marker.m_path, marker.m_params, src_ty, cb);
+        }
+
+        if( good && total_cmp == ::HIR::Compare::Fuzzy && new_type_callback )
+        {
+            (*new_type_callback)( ::HIR::TypeRef(mv$(tmp_e)) );
+        }
+        return total_cmp;
+    }
+
+    // [T] <- [T; n]
+    if( const auto* de = dst_ty.m_data.opt_Slice() )
+    {
+        if( const auto* se = src_ty.m_data.opt_Array() )
+        {
+            DEBUG("Array unsize? " << *de->inner << " <- " << *se->inner);
+            auto cmp = de->inner->compare_with_placeholders(sp, *se->inner, m_ivars.callback_resolve_infer());
+            // TODO: Indicate to caller that for this to be true, these two must be the same.
+            // - I.E. if true, equate these types
+            if(cmp == ::HIR::Compare::Fuzzy && new_type_callback)
+            {
+                (*new_type_callback)( ::HIR::TypeRef::new_slice( se->inner->clone() ) );
+            }
+            return cmp;
+        }
+    }
+
+    DEBUG("Can't unsize, no rules matched");
+    return ::HIR::Compare::Unequal;
+}
 const ::HIR::TypeRef* TraitResolution::type_is_owned_box(const Span& sp, const ::HIR::TypeRef& ty) const
 {
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
@@ -3118,7 +3272,7 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
     const auto& ty = this->m_ivars.get_type(ty_in);
     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Borrow, e,
         DEBUG("Deref " << ty << " into " << *e.inner);
-        return &*e.inner;
+        return &this->m_ivars.get_type(*e.inner);
     )
     // TODO: Just doing `*[1,2,3]` doesn't work, but this is needed to allow `[1,2,3].iter()` to work
     else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,

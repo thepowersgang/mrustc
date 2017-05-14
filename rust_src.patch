@@ -1,0 +1,26 @@
+--- rustc-nightly/src/libcore/intrinsics.rs
++++ rustc-nightly/src/libcore/intrinsics.rs
+@@ -643,5 +643,9 @@
+     pub fn drop_in_place<T: ?Sized>(to_drop: *mut T);
+ 
++    /// Obtain the length of a slice pointer
++    #[cfg(rust_compiler="mrustc")]
++    pub fn mrustc_slice_len<T>(pointer: *const [T]) -> usize;
++
+     /// Gets a static string slice containing the name of a type.
+     pub fn type_name<T: ?Sized>() -> &'static str;
+
+--- rustc-nightly/src/libcore/slice.rs
++++ rustc-nightly/src/libcore/slice.rs
+@@ -340,6 +340,8 @@
+     #[inline]
+     fn len(&self) -> usize {
+-        unsafe {
+-            mem::transmute::<&[T], Repr<T>>(self).len
+-        }
++        #[cfg(not(rust_compiler="mrustc"))]
++        let rv = unsafe { mem::transmute::<&[T], Repr<T>>(self).len };
++        #[cfg(rust_compiler="mrustc")]
++        let rv = unsafe { ::intrinsics::mrustc_slice_len(self) };
++        rv
+     }

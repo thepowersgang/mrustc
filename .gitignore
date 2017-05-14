@@ -25,6 +25,8 @@
 /vsproject/*.depend
 /vsproject/*.opendb
 
+/run_rustc/output
+
 /gitstats
 
 /bnf/*.o

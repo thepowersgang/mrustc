@@ -23,6 +23,7 @@ struct TransOptions
 };
 
 extern TransList Trans_Enumerate_Main(const ::HIR::Crate& crate);
+extern TransList Trans_Enumerate_Test(const ::HIR::Crate& crate);
 // NOTE: This also sets the saveout flags
 extern TransList Trans_Enumerate_Public(::HIR::Crate& crate);
 

@@ -289,16 +289,16 @@ struct EscapedString {
     case TOK_NEWLINE:    return "\n";
     case TOK_WHITESPACE: return " ";
     case TOK_COMMENT:    return "/*" + m_data.as_String() + "*/";
-    case TOK_INTERPOLATED_TYPE: return "/*:ty*/";
-    case TOK_INTERPOLATED_PATH: return "/*:path*/";
-    case TOK_INTERPOLATED_PATTERN: return "/*:pat*/";
+    case TOK_INTERPOLATED_TYPE: return FMT( *reinterpret_cast<const ::TypeRef*>(m_data.as_Fragment()) );
+    case TOK_INTERPOLATED_PATH: return FMT( *reinterpret_cast<const ::AST::Path*>(m_data.as_Fragment()) );
+    case TOK_INTERPOLATED_PATTERN: return FMT( *reinterpret_cast<const ::AST::Pattern*>(m_data.as_Fragment()) );
+    case TOK_INTERPOLATED_STMT:
+    case TOK_INTERPOLATED_BLOCK:
     case TOK_INTERPOLATED_EXPR: {
         ::std::stringstream ss;
         reinterpret_cast<const ::AST::ExprNode*>(m_data.as_Fragment())->print(ss);
         return ss.str();
         }
-    case TOK_INTERPOLATED_STMT: return "/*:stmt*/";
-    case TOK_INTERPOLATED_BLOCK: return "/*:block*/";
     case TOK_INTERPOLATED_META: return "/*:meta*/";
     case TOK_INTERPOLATED_ITEM: return "/*:item*/";
     case TOK_INTERPOLATED_IDENT: return "/*:ident*/";

@@ -606,7 +606,26 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return Compare::Unequal;
     }
     TU_MATCH(::HIR::TypeRef::Data, (v.m_data, x.m_data), (te, xe),
-    (Infer, throw "";),
+    (Infer,
+        // Both sides are infer
+        switch(te.ty_class)
+        {
+        case ::HIR::InferClass::None:
+        case ::HIR::InferClass::Diverge:
+            return Compare::Fuzzy;
+        default:
+            switch(xe.ty_class)
+            {
+            case ::HIR::InferClass::None:
+            case ::HIR::InferClass::Diverge:
+                return Compare::Fuzzy;
+            default:
+                if( te.ty_class != xe.ty_class )
+                    return Compare::Unequal;
+                return Compare::Fuzzy;
+            }
+        }
+        ),
     (Generic, throw "";),
     (Primitive,
         return (te == xe ? Compare::Equal : Compare::Unequal);

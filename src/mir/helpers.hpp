@@ -23,6 +23,10 @@ class Function;
 class LValue;
 class Constant;
 struct BasicBlock;
+class Terminator;
+class Statement;
+class RValue;
+class Param;
 
 typedef unsigned int    BasicBlockId;
 
@@ -78,6 +82,7 @@ public:
         this->bb_idx = bb_idx;
         this->stmt_idx = stmt_idx;
     }
+    unsigned int get_cur_stmt_ofs() const;
     void set_cur_stmt_term(unsigned int bb_idx) {
         this->bb_idx = bb_idx;
         this->stmt_idx = STMT_TERM;
@@ -107,4 +112,78 @@ public:
     }
 };
 
+
+// --------------------------------------------------------------------
+// MIR_Helper_GetLifetimes
+// --------------------------------------------------------------------
+class ValueLifetime
+{
+    ::std::vector<bool> statements;
+
+public:
+    ValueLifetime(::std::vector<bool> stmts):
+        statements( mv$(stmts) )
+    {}
+
+    bool valid_at(size_t ofs) const {
+        return statements.at(ofs);
+    }
+
+    // true if this value is used at any point
+    bool is_used() const {
+        for(auto v : statements)
+            if( v )
+                return true;
+        return false;
+    }
+    bool overlaps(const ValueLifetime& x) const {
+        assert(statements.size() == x.statements.size());
+        for(unsigned int i = 0; i < statements.size(); i ++)
+        {
+            if( statements[i] && x.statements[i] )
+                return true;
+        }
+        return false;
+    }
+    void unify(const ValueLifetime& x) {
+        assert(statements.size() == x.statements.size());
+        for(unsigned int i = 0; i < statements.size(); i ++)
+        {
+            if( x.statements[i] )
+                statements[i] = true;
+        }
+    }
+};
+
+struct ValueLifetimes
+{
+    ::std::vector<size_t>   m_block_offsets;
+    ::std::vector<ValueLifetime> m_temporaries;
+    ::std::vector<ValueLifetime> m_variables;
+
+    bool var_valid(unsigned var_idx,  unsigned bb_idx, unsigned stmt_idx) const {
+        return m_variables.at(var_idx).valid_at( m_block_offsets[bb_idx] + stmt_idx );
+    }
+    bool tmp_valid(unsigned tmp_idx,  unsigned bb_idx, unsigned stmt_idx) const {
+        return m_temporaries.at(tmp_idx).valid_at( m_block_offsets[bb_idx] + stmt_idx );
+    }
+};
+
+namespace visit {
+    enum class ValUsage {
+        Move,
+        Read,
+        Write,
+        Borrow,
+    };
+
+    extern bool visit_mir_lvalue(const ::MIR::LValue& lv, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+    extern bool visit_mir_lvalue(const ::MIR::Param& p, ValUsage u, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+    extern bool visit_mir_lvalues(const ::MIR::RValue& rval, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+    extern bool visit_mir_lvalues(const ::MIR::Statement& stmt, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+    extern bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb);
+}   // namespace visit
+
 }   // namespace MIR
+
+extern ::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, const ::MIR::Function& fcn, bool dump_debug);

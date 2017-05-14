@@ -515,6 +515,7 @@ namespace {
                     // Ensure that the data trait's vtable is present
                     const auto& trait = *te.m_trait.m_trait_ptr;
 
+                    ASSERT_BUG(Span(), ! te.m_trait.m_path.m_path.m_components.empty(), "TODO: Data trait is empty, what can be done?");
                     auto vtable_ty_spath = te.m_trait.m_path.m_path;
                     vtable_ty_spath.m_components.back() += "#vtable";
                     const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
@@ -874,6 +875,8 @@ void Trans_Enumerate_Types(EnumState& state)
                             for(const auto& v : se.inputs)
                                 H::visit_lvalue(tv,pp,fcn, v.second);
                             ),
+                        (ScopeEnd,
+                            ),
                         (Assign,
                             H::visit_lvalue(tv,pp,fcn, se.dst);
                             TU_MATCHA( (se.src), (re),
@@ -989,6 +992,7 @@ void Trans_Enumerate_Types(EnumState& state)
                 tv.m_resolve.expand_associated_types( sp, vtable_params.m_types[idx] );
             }
 
+            tv.visit_type( *ent.first.m_data.as_UfcsKnown().type );
             tv.visit_type( ::HIR::TypeRef( ::HIR::GenericPath(vtable_ty_spath, mv$(vtable_params)), &vtable_ref ) );
         }
 
@@ -1150,7 +1154,7 @@ namespace {
             ::std::vector<::HIR::TypeRef>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
             resolve.find_impl(sp, e.trait.m_path, e.trait.m_params, *e.type, [&](auto impl_ref, auto is_fuzz) {
-                DEBUG("Found " << impl_ref);
+                DEBUG("[get_ent_fullpath] Found " << impl_ref);
                 //ASSERT_BUG(sp, !is_fuzz, "Fuzzy match not allowed here");
                 if( ! impl_ref.m_data.is_TraitImpl() ) {
                     DEBUG("Trans impl search found an invalid impl type");
@@ -1201,6 +1205,8 @@ namespace {
                         else
                             BUG(sp, "Parameter " << i << " unset");
                     }
+                    if( is_spec )
+                        DEBUG("- Specialisable");
                     return !is_spec;
                 }
                 return false;
@@ -1456,6 +1462,8 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
                     Trans_Enumerate_FillFrom_MIR_LValue(state, v.second, pp);
                 ),
             (SetDropFlag,
+                ),
+            (ScopeEnd,
                 ),
             (Drop,
                 DEBUG("- DROP " << se.slot);

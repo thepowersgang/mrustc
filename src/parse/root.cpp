@@ -44,13 +44,13 @@ AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs);
 
 //::AST::Path Parse_Publicity(TokenStream& lex)
-bool Parse_Publicity(TokenStream& lex)
+bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
 {
     Token   tok;
     if( LOOK_AHEAD(lex) == TOK_RWORD_PUB )
     {
         GET_TOK(tok, lex);
-        if( LOOK_AHEAD(lex) == TOK_PAREN_OPEN )
+        if( allow_restricted && LOOK_AHEAD(lex) == TOK_PAREN_OPEN )
         {
             auto    path = AST::Path("", {});
             // Restricted publicity.
@@ -541,7 +541,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
             SET_ATTRS(lex, item_attrs);
 
             PUTBACK(tok, lex);
-            bool    is_pub = Parse_Publicity(lex);
+            bool    is_pub = Parse_Publicity(lex, /*allow_restricted=*/false);  // HACK: Disable `pub(restricted)` syntax in tuple structs, due to ambiguity
 
             refs.push_back( AST::TupleItem( mv$(item_attrs), is_pub, Parse_Type(lex) ) );
             if( GET_TOK(tok, lex) != TOK_COMMA )
@@ -1336,7 +1336,6 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         {
             GET_CHECK_TOK(tok, lex, TOK_STRING);
             path = ::AST::Path(tok.str(), {});
-            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
         }
         else {
             PUTBACK(tok, lex);
@@ -1387,7 +1386,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     else
     {
         PUTBACK(tok, lex);
-        assert(path.nodes().size() > 0);
+        ASSERT_BUG(lex.getPosition(), path.nodes().size() > 0, "`use` with no path");
         name = path.nodes().back().name();
     }
 

@@ -237,12 +237,11 @@ bool StaticTraitResolve::find_impl(
 
             auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
 
-            for(const auto& bound : aty_def.m_trait_bounds)
-            {
+            auto check_bound = [&](const ::HIR::TraitPath& bound) {
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
-                DEBUG(": " << bound.m_path.m_path << b_params_mono);
+                DEBUG("[find_impl] : " << bound.m_path.m_path << b_params_mono);
 
                 if( bound.m_path.m_path == trait_path )
                 {
@@ -279,9 +278,40 @@ bool StaticTraitResolve::find_impl(
                         DEBUG("impl " << trait_path << i_params << " for " << type << " -- desired " << trait_path << *trait_params);
                         return found_cb( ImplRef(type.clone(), i_params.clone(), {}), false );
                     });
-                if( ret )
+                return ret;
+                };
+
+            for(const auto& bound : aty_def.m_trait_bounds)
+            {
+                if( check_bound(bound) )
                     return true;
             }
+
+            // Check `where` clauses on the trait too
+            for(const auto& bound : trait_ref.m_params.m_bounds)
+            {
+                if( !bound.is_TraitBound() )   continue;
+                const auto& be = bound.as_TraitBound();
+
+                DEBUG("be.type = " << be.type);
+                if( !be.type.m_data.is_Path() )
+                    continue;
+                if( !be.type.m_data.as_Path().path.m_data.is_UfcsKnown() )
+                    continue ;
+                {
+                    const auto& pe2 = be.type.m_data.as_Path().path.m_data.as_UfcsKnown();
+                    if( *pe2.type != ::HIR::TypeRef("Self",GENERIC_Self) )
+                        continue ;
+                    if( pe2.trait.m_path != pe.trait.m_path )
+                        continue ;
+                    if( pe2.item != pe.item )
+                        continue ;
+                }
+
+                if( check_bound(be.trait) )
+                    return true;
+            }
+
             DEBUG("- No bounds matched");
         }
     )
@@ -564,7 +594,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
 		{
 			const auto& e = *ep;
 
-            DEBUG("[find_impl] Trait bound " << e.type << " : " << e.trait);
+            DEBUG("Trait bound " << e.type << " : " << e.trait);
             auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
             this->expand_associated_types(sp, b_ty_mono);
             auto b_tp_mono = monomorphise_traitpath_with(sp, e.trait, cb_monomorph, false);
@@ -575,14 +605,15 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                 // TODO: These should be tagged with the source trait and that source trait used for expansion.
                 this->expand_associated_types(sp, assoc_bound.second);
             }
-            DEBUG("[find_impl] - b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
+            DEBUG("- b_ty_mono = " << b_ty_mono << ", b_tp_mono = " << b_tp_mono);
             // HACK: If the type is '_', assume the bound passes
             if( b_ty_mono.m_data.is_Infer() ) {
                 continue ;
             }
 
             // TODO: This is extrememly inefficient (looks up the trait impl 1+N times)
-            if( b_tp_mono.m_type_bounds.size() > 0 ) {
+            if( b_tp_mono.m_type_bounds.size() > 0 )
+            {
                 //
                 for(const auto& assoc_bound : b_tp_mono.m_type_bounds) {
                     const auto& aty_name = assoc_bound.first;
@@ -603,7 +634,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
 
                             //auto cmp = have .match_test_generics_fuzz(sp, exp, cb_ident, cb_match);
                             auto cmp = exp .match_test_generics_fuzz(sp, have, cb_ident, cb_match);
-                            ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
+                            ASSERT_BUG(sp, cmp != ::HIR::Compare::Unequal, "Assoc ty " << aty_name << " mismatch, " << have << " != des " << exp);
                             return true;
                             });
                     }
@@ -613,10 +644,13 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     }
                 }
             }
-            else
+
+            // TODO: Detect if the associated type bound above is from directly the bounded trait, and skip this if it's the case
+            //else
             {
                 bool rv = false;
                 if( b_ty_mono.m_data.is_Generic() && (b_ty_mono.m_data.as_Generic().binding >> 8) == 2 ) {
+                    DEBUG("- Placeholder param " << b_ty_mono << ", magic success");
                     rv = true;
                 }
                 else {
@@ -1401,6 +1435,151 @@ bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty)
     throw "";
 }
 
+bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    // If `T: Copy`, then it can't need drop glue
+    if( type_is_copy(sp, ty) )
+        return false;
+
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Generic,
+        return true;
+        ),
+    (Path,
+        if( e.binding.is_Opaque() )
+            return true;
+
+        auto pp = ::HIR::PathParams();
+        bool has_direct_drop = this->find_impl(sp, m_lang_Drop, &pp, ty, [&](auto , bool){ return true; }, true);
+        if( has_direct_drop )
+            return true;
+
+        ::HIR::TypeRef  tmp_ty;
+        const auto& pe = e.path.m_data.as_Generic();
+        auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &pe.m_params, nullptr, nullptr);
+        auto monomorph = [&](const auto& tpl)->const ::HIR::TypeRef& {
+            if( monomorphise_type_needed(tpl) ) {
+                tmp_ty = monomorphise_type_with(sp, tpl, monomorph_cb, false);
+                this->expand_associated_types(sp, tmp_ty);
+                return tmp_ty;
+            }
+            else {
+                return tpl;
+            }
+            };
+        TU_MATCHA( (e.binding), (pbe),
+        (Unbound,
+            BUG(sp, "Unbound path");
+            ),
+        (Opaque,
+            // Technically a bug, checked above
+            return true;
+            ),
+        (Struct,
+            TU_MATCHA( (pbe->m_data), (se),
+            (Unit,
+                ),
+            (Tuple,
+                for(const auto& e : se)
+                {
+                    if( type_needs_drop_glue(sp, monomorph(e.ent)) )
+                        return true;
+                }
+                ),
+            (Named,
+                for(const auto& e : se)
+                {
+                    if( type_needs_drop_glue(sp, monomorph(e.second.ent)) )
+                        return true;
+                }
+                )
+            )
+            return false;
+            ),
+        (Enum,
+            for(const auto& e : pbe->m_variants)
+            {
+                TU_MATCHA( (e.second), (ve),
+                (Unit,
+                    ),
+                (Value,
+                    ),
+                (Tuple,
+                    for(const auto& e : ve)
+                    {
+                        if( type_needs_drop_glue(sp, monomorph(e.ent)) )
+                            return true;
+                    }
+                    ),
+                (Struct,
+                    for(const auto& e : ve)
+                    {
+                        if( type_needs_drop_glue(sp, monomorph(e.second.ent)) )
+                            return true;
+                    }
+                    )
+                )
+            }
+            return false;
+            ),
+        (Union,
+            // Unions don't have drop glue unless they impl Drop
+            return false;
+            )
+        )
+        ),
+    (Diverge,
+        return false;
+        ),
+    (Closure,
+        // TODO: Destructure?
+        return true;
+        ),
+    (Infer,
+        BUG(sp, "type_needs_drop_glue on _");
+        return false;
+        ),
+    (Borrow,
+        // &-ptrs don't have drop glue
+        if( e.type != ::HIR::BorrowType::Owned )
+            return false;
+        return type_needs_drop_glue(sp, *e.inner);
+        ),
+    (Pointer,
+        return false;
+        ),
+    (Function,
+        return false;
+        ),
+    (Primitive,
+        return false;
+        ),
+    (Array,
+        return type_needs_drop_glue(sp, *e.inner);
+        ),
+    (Slice,
+        return type_needs_drop_glue(sp, *e.inner);
+        ),
+    (TraitObject,
+        return true;
+        ),
+    (ErasedType,
+        // Is this an error?
+        return true;
+        ),
+    (Tuple,
+        for(const auto& ty : e)
+        {
+            if( !type_needs_drop_glue(sp, ty) )
+                return true;
+        }
+        return false;
+        )
+    )
+    assert(!"Fell off the end of type_needs_drop_glue");
+    throw "";
+}
+
 const ::HIR::TypeRef* StaticTraitResolve::is_type_owned_box(const ::HIR::TypeRef& ty) const
 {
     if( ! ty.m_data.is_Path() ) {
@@ -1482,7 +1661,44 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         }
         else
         {
-            TODO(sp, "Search for trait impl");
+            ImplRef best_impl;
+            this->find_impl(sp, pe.trait.m_path, &pe.trait.m_params, *pe.type, [&](auto impl, bool is_fuzz)->bool{
+                if( ! impl.m_data.is_TraitImpl() )
+                    return false;
+                const auto& ti = *impl.m_data.as_TraitImpl().impl;
+                auto it = ti.m_constants.find(pe.item);
+                if(it == ti.m_constants.end())
+                    return false;
+
+                if( impl.more_specific_than(best_impl) )
+                {
+                    best_impl = mv$(impl);
+                    // If this value is specialisable, keep searching (return false)
+                    return !it->second.is_specialisable;
+                }
+                // Keep searching
+                return false;
+                });
+            if( !best_impl.is_valid() )
+            {
+                TODO(sp, "What should be done when an impl can't be found? " << p);
+            }
+
+            if( ! best_impl.m_data.is_TraitImpl() )
+                TODO(sp, "Use bounded constant values for " << p);
+            auto& ie = best_impl.m_data.as_TraitImpl();
+            out_params.pp_impl = &out_params.pp_impl_data;
+            for(auto ptr : ie.params)
+            {
+                // TODO: Avoid cloning when the params are in the placeholder array
+                out_params.pp_impl_data.m_types.push_back( ptr->clone() );
+            }
+
+            const auto& ti = *ie.impl;
+            const auto& c = ti.m_constants.at(pe.item);
+
+            // TODO: What if the type requires monomorphisation? Leave it up to the caller
+            return &c.data;
         }
         throw "";
         ),
@@ -1494,6 +1710,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         m_crate.find_type_impls(*pe.type, [](const auto&x)->const ::HIR::TypeRef& { return x; }, [&](const auto& impl) {
             DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             // TODO: Populate pp_impl
+            // TODO: Specialisation
             {
                 auto fit = impl.m_methods.find(pe.item);
                 if( fit != impl.m_methods.end() )

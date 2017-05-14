@@ -369,43 +369,56 @@ public:
                 pat_a = AST::Pattern(AST::Pattern::TagValue(), AST::Pattern::Value::make_Named(base_path + v.m_name));
                 ),
             (Tuple,
-                // TODO: Complete this.
                 ::std::vector<AST::Pattern>    pats_a;
-                //::std::vector<AST::ExprNodeP>   nodes;
+                AST::ExprNodeP  node;
+
+                node = NEWNODE(NamedValue, AST::Path("f"));
+                node = NEWNODE(CallMethod,
+                    mv$(node), AST::PathNode("debug_tuple",{}),
+                    vec$( NEWNODE(String, v.m_name) )
+                    );
 
                 for( unsigned int idx = 0; idx < e.m_sub_types.size(); idx ++ )
                 {
                     auto name_a = FMT("a" << idx);
                     pats_a.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF) );
-                    //nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
+
+                    node = NEWNODE(CallMethod,
+                        mv$(node), AST::PathNode("field",{}),
+                        vec$(
+                            NEWNODE(NamedValue, AST::Path(name_a))
+                            )
+                        );
                 }
 
-                //code = NEWNODE(Block, mv$(nodes));
-                code = NEWNODE(CallMethod,
-                    NEWNODE(NamedValue, AST::Path("f")),
-                    AST::PathNode("write_str",{}),
-                    vec$( NEWNODE(String, v.m_name + "(...)") )
-                    );
-
+                code = NEWNODE(CallMethod, mv$(node), AST::PathNode("finish",{}), {});
                 pat_a = AST::Pattern(AST::Pattern::TagNamedTuple(), base_path + v.m_name, mv$(pats_a));
                 ),
             (Struct,
                 ::std::vector< ::std::pair<std::string, AST::Pattern> > pats_a;
-                //::std::vector<AST::ExprNodeP>   nodes;
+                AST::ExprNodeP  node;
+
+                node = NEWNODE(NamedValue, AST::Path("f"));
+                node = NEWNODE(CallMethod,
+                    mv$(node), AST::PathNode("debug_struct",{}),
+                    vec$( NEWNODE(String, v.m_name) )
+                    );
 
                 for( const auto& fld : e.m_fields )
                 {
                     auto name_a = FMT("a" << fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
-                    //nodes.push_back( this->assert_is_eq(assert_method_path, NEWNODE(NamedValue, AST::Path(name_a))) );
+
+                    node = NEWNODE(CallMethod,
+                        mv$(node), AST::PathNode("field",{}),
+                        vec$(
+                            NEWNODE(String, fld.m_name),
+                            NEWNODE(NamedValue, AST::Path(name_a))
+                        )
+                        );
                 }
 
-                //code = NEWNODE(Block, mv$(nodes) );
-                code = NEWNODE(CallMethod,
-                    NEWNODE(NamedValue, AST::Path("f")),
-                    AST::PathNode("write_str",{}),
-                    vec$( NEWNODE(String, v.m_name + "{...}") )
-                    );
+                code = NEWNODE(CallMethod, mv$(node), AST::PathNode("finish",{}), {});
                 pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
                 )
             )

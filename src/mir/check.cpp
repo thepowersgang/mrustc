@@ -84,53 +84,6 @@ namespace {
     }
 }
 
-namespace {
-    template<typename T>
-    struct RunIterable {
-        const ::std::vector<T>& list;
-        unsigned int ofs;
-        ::std::pair<size_t,size_t> cur;
-        RunIterable(const ::std::vector<T>& list):
-            list(list), ofs(0)
-        {
-            advance();
-        }
-        void advance() {
-            if( ofs < list.size() )
-            {
-                auto start = ofs;
-                while(ofs < list.size() && list[ofs] == list[start])
-                    ofs ++;
-                cur = ::std::make_pair(start, ofs-1);
-            }
-            else
-            {
-                ofs = list.size()+1;
-            }
-        }
-        RunIterable<T> begin() { return *this; }
-        RunIterable<T> end() { auto rv = *this; rv.ofs = list.size()+1; return rv; }
-        bool operator==(const RunIterable<T>& x) {
-            return x.ofs == ofs;
-        }
-        bool operator!=(const RunIterable<T>& x) {
-            return !(*this == x);
-        }
-        void operator++() {
-            advance();
-        }
-        const ::std::pair<size_t,size_t>& operator*() const {
-            return this->cur;
-        }
-        const ::std::pair<size_t,size_t>* operator->() const {
-            return &this->cur;
-        }
-    };
-    template<typename T>
-    RunIterable<T> runs(const ::std::vector<T>& x) {
-        return RunIterable<T>(x);
-    }
-}
 //template<typename T>
 //::std::ostream& operator<<(::std::ostream& os, const T& v) {
 //    v.fmt(os);
@@ -209,9 +162,9 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             return arguments.empty() && temporaries.empty() && variables.empty();
         }
 
-        bool merge(ValStates& other)
+        bool merge(unsigned bb_idx, ValStates& other)
         {
-            DEBUG("this=" << FMT_CB(ss,this->fmt(ss);) << ", other=" << FMT_CB(ss,other.fmt(ss);));
+            DEBUG("bb" << bb_idx << " this=" << FMT_CB(ss,this->fmt(ss);) << ", other=" << FMT_CB(ss,other.fmt(ss);));
             if( this->empty() )
             {
                 *this = other;
@@ -242,14 +195,17 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 ),
             (Argument,
                 MIR_ASSERT(state, e.idx < this->arguments.size(), "");
+                DEBUG("arg" << e.idx << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->arguments[e.idx] = is_valid ? State::Valid : State::Invalid;
                 ),
             (Variable,
                 MIR_ASSERT(state, e < this->variables.size(), "");
+                DEBUG("var" << e << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->variables[e] = is_valid ? State::Valid : State::Invalid;
                 ),
             (Temporary,
                 MIR_ASSERT(state, e.idx < this->temporaries.size(), "");
+                DEBUG("tmp" << e.idx << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->temporaries[e.idx] = is_valid ? State::Valid : State::Invalid;
                 )
             )
@@ -364,7 +320,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
 
         // 1. Apply current state to `block_start_states` (merging if needed)
         // - If no change happened, skip.
-        if( ! block_start_states.at(block).merge( val_state ) ) {
+        if( ! block_start_states.at(block).merge(block, val_state) ) {
             continue ;
         }
         DEBUG("BB" << block << " via [" << path << "]");
@@ -376,6 +332,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             const auto& stmt = bb.statements[stmt_idx];
             state.set_cur_stmt(block, stmt_idx);
 
+            DEBUG(state << stmt);
             switch( stmt.tag() )
             {
             case ::MIR::Statement::TAGDEAD:
@@ -453,11 +410,18 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 // Mark destination as valid
                 val_state.mark_validity( state, stmt.as_Assign().dst, true );
                 break;
+            case ::MIR::Statement::TAG_ScopeEnd:
+                //for(auto idx : stmt.as_ScopeEnd().vars)
+                //    val_state.mark_validity(state, ::MIR::LValue::make_Variable(idx), false);
+                //for(auto idx : stmt.as_ScopeEnd().tmps)
+                //    val_state.mark_validity(state, ::MIR::LValue::make_Temporary({idx}), false);
+                break;
             }
         }
 
         // 3. Pass new state on to destination blocks
         state.set_cur_stmt_term(block);
+        DEBUG(state << bb.terminator);
         TU_MATCH(::MIR::Terminator, (bb.terminator), (e),
         (Incomplete,
             // Should be impossible here.
@@ -849,6 +813,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     break;
                 case ::MIR::Statement::TAG_Drop:
                     // TODO: Anything need checking here?
+                    break;
+                case ::MIR::Statement::TAG_ScopeEnd:
+                    // TODO: Mark listed values as descoped
                     break;
                 }
             }

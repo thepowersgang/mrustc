@@ -10,6 +10,23 @@ namespace AST {
 
 class ExternCrate;
 
+class TestDesc
+{
+public:
+    ::AST::Path path;
+    ::std::string   name;
+    bool    ignore = false;
+    bool    is_benchmark = false;
+
+    enum class ShouldPanic {
+        No,
+        Yes,
+        YesWithMessage,
+    } panic_type = ShouldPanic::No;
+
+    ::std::string   expected_panic_message;
+};
+
 class Crate
 {
 public:
@@ -21,6 +38,10 @@ public:
     ::std::map< ::std::string, ExternCrate> m_extern_crates;
     // Mapping filled by searching for (?visible) macros with is_pub=true
     ::std::map< ::std::string, const MacroRules*> m_exported_macros;
+
+    // List of tests (populated in expand if --test is passed)
+    bool    m_test_harness = false;
+    ::std::vector<TestDesc>   m_tests;
 
     enum class Type {
         Unknown,

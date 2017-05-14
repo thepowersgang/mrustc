@@ -84,6 +84,8 @@ namespace {
             for( auto& subnode : node.m_nodes ) {
                 this->visit_node_ptr(subnode);
             }
+            if( node.m_value_node )
+                this->visit_node_ptr(node.m_value_node);
         }
 
         void visit(::HIR::ExprNode_Asm& node) override
@@ -463,6 +465,7 @@ namespace {
                 return get_usage_for_pattern(sp, *pe.sub, *ty.m_data.as_Borrow().inner);
                 ),
             (Tuple,
+                ASSERT_BUG(sp, ty.m_data.is_Tuple(), "Tuple pattern with non-tuple type - " << ty);
                 const auto& subtys = ty.m_data.as_Tuple();
                 assert(pe.sub_patterns.size() == subtys.size());
                 auto rv = ::HIR::ValueUsage::Borrow;
@@ -471,6 +474,7 @@ namespace {
                 return rv;
                 ),
             (SplitTuple,
+                ASSERT_BUG(sp, ty.m_data.is_Tuple(), "SplitTuple pattern with non-tuple type - " << ty);
                 const auto& subtys = ty.m_data.as_Tuple();
                 assert(pe.leading.size() + pe.trailing.size() < subtys.size());
                 auto rv = ::HIR::ValueUsage::Borrow;
@@ -486,6 +490,7 @@ namespace {
             (StructTuple,
                 // TODO: Avoid monomorphising all the time.
                 const auto& str = *pe.binding;
+                ASSERT_BUG(sp, str.m_data.is_Tuple(), "StructTuple pattern with non-tuple struct - " << str.m_data.tag_str());
                 const auto& flds = str.m_data.as_Tuple();
                 assert(pe.sub_patterns.size() == flds.size());
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);

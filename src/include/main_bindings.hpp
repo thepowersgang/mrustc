@@ -16,6 +16,7 @@ extern AST::Crate Parse_Crate(::std::string mainfile);
 
 
 extern void Expand(::AST::Crate& crate);
+extern void Expand_TestHarness(::AST::Crate& crate);
 
 /// Process #[] decorators
 extern void Process_Decorators(AST::Crate& crate);

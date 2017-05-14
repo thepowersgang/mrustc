@@ -586,6 +586,7 @@ namespace {
             m.dst_type = static_cast< ::HIR::TraitMarkings::DstType>( m_in.read_tag() );
             m.coerce_unsized_index = m_in.read_count( );
             m.unsized_field = m_in.read_count( );
+            m.unsized_param = m_in.read_count();
             // TODO: auto_impls
             return m;
         }
@@ -1009,6 +1010,11 @@ namespace {
 			sdf.other = static_cast<unsigned int>(m_in.read_count());
 			return ::MIR::Statement::make_SetDropFlag(sdf);
 			}
+        case 4:
+            return ::MIR::Statement::make_ScopeEnd({
+                deserialise_vec<unsigned int>(),
+                deserialise_vec<unsigned int>()
+                });
         default:
             ::std::cerr << "Bad tag for a MIR Statement" << ::std::endl;
             throw "";

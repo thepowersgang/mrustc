@@ -93,6 +93,30 @@ const ::HIR::Enum::Variant* ::HIR::Enum::get_variant(const ::std::string& name) 
         return nullptr;
     return &it->second;
 }
+bool HIR::Enum::is_value() const
+{
+    return this->m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(m_variants.begin(), m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();});
+}
+uint32_t HIR::Enum::get_value(size_t idx) const
+{
+    assert(idx < m_variants.size());
+
+    if( const auto* e = m_variants[idx].second.opt_Value() )
+    {
+        return e->val.as_Integer();
+    }
+
+    uint32_t    val = 0;
+    for(size_t i = 0; i < idx; i ++)
+    {
+        if( const auto* e = m_variants[i].second.opt_Value() )
+        {
+            val = e->val.as_Integer();
+        }
+        val ++;
+    }
+    return val;
+}
 
 namespace {
     bool matches_genericpath(const ::HIR::GenericParams& params, const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic);

@@ -201,6 +201,7 @@ public:
 
     /// Iterate over in-scope bounds (function then top)
     bool iterate_bounds( ::std::function<bool(const ::HIR::GenericBound&)> cb) const;
+    bool iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const;
 
     typedef ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::PathParams&, const ::std::map< ::std::string,::HIR::TypeRef>&)> t_cb_trait_impl;
     typedef ::std::function<bool(ImplRef, ::HIR::Compare)> t_cb_trait_impl_r;
@@ -265,6 +266,13 @@ public:
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
 
     ::HIR::Compare type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+    // If `new_type_callback` is populated, it will be called with the actual/possible dst_type
+    // If `infer_callback` is populated, it will be called when either side is an ivar
+    ::HIR::Compare can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty, ::std::function<void(::HIR::TypeRef new_dst)> new_type_callback) const {
+        return can_unsize(sp, dst_ty, src_ty, &new_type_callback);
+    }
+    ::HIR::Compare can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty, ::std::function<void(::HIR::TypeRef new_dst)>* new_type_callback, ::std::function<void(const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src)>* infer_callback=nullptr) const;
+
     const ::HIR::TypeRef* type_is_owned_box(const Span& sp, const ::HIR::TypeRef& ty) const;
 
 private:

@@ -33,24 +33,35 @@ struct field_path_t
 };
 
 TAGGED_UNION_EX(PatternRule, (), Any,(
-    // _ pattern
-    (Any, struct {}),
     // Enum variant
     (Variant, struct { unsigned int idx; ::std::vector<PatternRule> sub_rules; }),
     // Slice (includes desired length)
     (Slice, struct { unsigned int len; ::std::vector<PatternRule> sub_rules; }),
     // SplitSlice
     // TODO: How can the negative offsets in the `trailing` be handled correctly? (both here and in the destructure)
-    (SplitSlice, struct { unsigned int min_len; ::std::vector<PatternRule> leading, trailing; }),
+    (SplitSlice, struct { unsigned int min_len; unsigned int trailing_len; ::std::vector<PatternRule> leading, trailing; }),
     // Boolean (different to Constant because of how restricted it is)
     (Bool, bool),
     // General value
     (Value, ::MIR::Constant),
-    (ValueRange, struct { ::MIR::Constant first, last; })
+    (ValueRange, struct { ::MIR::Constant first, last; }),
+    // _ pattern
+    (Any, struct {})
     ),
     ( , field_path(mv$(x.field_path)) ), (field_path = mv$(x.field_path);),
     (
         field_path_t    field_path;
+
+        bool operator<(const PatternRule& x) const {
+            return this->ord(x) == OrdLess;
+        }
+        bool operator==(const PatternRule& x) const {
+            return this->ord(x) == OrdEqual;
+        }
+        bool operator!=(const PatternRule& x) const {
+            return this->ord(x) != OrdEqual;
+        }
+        Ordering ord(const PatternRule& x) const;
     )
     );
 ::std::ostream& operator<<(::std::ostream& os, const PatternRule& x);
@@ -74,11 +85,14 @@ struct ArmCode {
     ::MIR::BasicBlockId   cond_end;
     ::MIR::LValue   cond_lval;
     ::std::vector< ::MIR::BasicBlockId> destructures;   // NOTE: Incomplete
+
+    mutable ::MIR::BasicBlockId cond_fail_tgt = 0;
 };
 
 typedef ::std::vector<PatternRuleset>  t_arm_rules;
 
 void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code, ::MIR::BasicBlockId first_cmp_block);
+void MIR_LowerHIR_Match_Grouped( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block );
 void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arm_code , ::MIR::BasicBlockId first_cmp_block);
 /// Helper to construct rules from a passed pattern
 struct PatternRulesetBuilder
@@ -102,6 +116,82 @@ struct PatternRulesetBuilder
     void append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty);
     void push_rule(PatternRule r);
 };
+
+class RulesetRef
+{
+    ::std::vector<PatternRuleset>*  m_rules_vec = nullptr;
+    RulesetRef* m_parent = nullptr;
+    size_t  m_parent_ofs=0; // If len == 0, this is the innner index, else it's the base
+    size_t  m_parent_len=0;
+public:
+    RulesetRef(::std::vector<PatternRuleset>& rules):
+        m_rules_vec(&rules)
+    {
+    }
+    RulesetRef(RulesetRef& parent, size_t start, size_t n):
+        m_parent(&parent),
+        m_parent_ofs(start),
+        m_parent_len(n)
+    {
+    }
+    RulesetRef(RulesetRef& parent, size_t idx):
+        m_parent(&parent),
+        m_parent_ofs(idx)
+    {
+    }
+
+    size_t size() const {
+        if( m_rules_vec ) {
+            return m_rules_vec->size();
+        }
+        else if( m_parent_len ) {
+            return m_parent_len;
+        }
+        else {
+            return m_parent->size();
+        }
+    }
+    RulesetRef slice(size_t s, size_t n) {
+        return RulesetRef(*this, s, n);
+    }
+
+    const ::std::vector<PatternRule>& operator[](size_t i) const {
+        if( m_rules_vec ) {
+            return (*m_rules_vec)[i].m_rules;
+        }
+        else if( m_parent_len ) {
+            return (*m_parent)[m_parent_ofs + i];
+        }
+        else {
+            // Fun part - Indexes into inner patterns
+            const auto& parent_rule = (*m_parent)[i][m_parent_ofs];
+            if(const auto* re = parent_rule.opt_Variant()) {
+                return re->sub_rules;
+            }
+            else {
+                throw "TODO";
+            }
+        }
+    }
+    void swap(size_t a, size_t b) {
+        TRACE_FUNCTION_F(a << ", " << b);
+        if( m_rules_vec ) {
+            ::std::swap( (*m_rules_vec)[a], (*m_rules_vec)[b] );
+        }
+        else {
+            assert(m_parent);
+            if( m_parent_len ) {
+                m_parent->swap(m_parent_ofs + a, m_parent_ofs + b);
+            }
+            else {
+                m_parent->swap(a, b);
+            }
+        }
+    }
+};
+
+void sort_rulesets(RulesetRef rulesets, size_t idx=0);
+void sort_rulesets_inner(RulesetRef rulesets, size_t idx);
 
 // --------------------------------------------------------------------
 // CODE
@@ -282,8 +372,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
             auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
             conv.visit_node_ptr( arm.m_cond );
-            ac.cond_lval = builder.get_result_in_lvalue(arm.m_cond->span(), ::HIR::TypeRef(::HIR::CoreType::Bool));
-            // NOTE: Terminating the scope slightly early is safe, because the resulting boolean temp isn't invalidated.
+            ac.cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
             builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
             ac.cond_end = builder.pause_cur_block();
 
@@ -366,20 +455,55 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
     for(const auto& arm_rule : arm_rules)
     {
-        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules);
+        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules
+                << (arm_code[arm_rule.arm_idx].has_condition ? " (cond)" : ""));
+    }
+
+    // TODO: Remove columns that are all `_`?
+    // - Ideally, only accessible structures would be fully destructured like this, making this check redundant
+
+    // Sort rules using the following restrictions:
+    // - A rule cannot be reordered across an item that has an overlapping match set
+    //  > e.g. nothing can cross _
+    //  > equal rules cannot be reordered
+    //  > Values cannot cross ranges that contain the value
+    //  > This will have to be a bubble sort to ensure that it's correctly stable.
+    sort_rulesets(arm_rules);
+    DEBUG("Post-sort");
+    for(const auto& arm_rule : arm_rules)
+    {
+        DEBUG("> (" << arm_rule.arm_idx << ", " << arm_rule.pat_idx << ") - " << arm_rule.m_rules
+                << (arm_code[arm_rule.arm_idx].has_condition ? " (cond)" : ""));
+    }
+    // De-duplicate arms (emitting a warning when it happens)
+    // - This allows later code to assume that duplicate arms are a codegen bug.
+    if( ! arm_rules.empty() )
+    {
+        for(auto it = arm_rules.begin()+1; it != arm_rules.end(); )
+        {
+            // If duplicate rule, (and neither is conditional)
+            if( (it-1)->m_rules == it->m_rules && !arm_code[it->arm_idx].has_condition && !arm_code[(it-1)->arm_idx].has_condition )
+            {
+                // Remove
+                it = arm_rules.erase(it);
+                WARNING(node.m_arms[it->arm_idx].m_code->span(), W0000, "Duplicate match pattern, unreachable code");
+            }
+            else
+            {
+                ++ it;
+            }
+        }
     }
 
     // TODO: Don't generate inner code until decisions are generated (keeps MIR flow nice)
-
-    // TODO: Detect if a rule is ordering-dependent. In this case we currently have to fall back on the simple match code
-    // - A way would be to search for `_` rules with non _ rules following. Would false-positive in some cases, but shouldn't false negative
-    // TODO: Merge equal rulesets if there's one with no condition.
+    // - Challenging, as the decision code needs somewhere to jump to.
+    // - Allocating a BB and then rewriting references to it is a possibility.
 
     if( fall_back_on_simple ) {
         MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
     }
     else {
-        MIR_LowerHIR_Match_DecisionTree( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
+        MIR_LowerHIR_Match_Grouped( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arm_code), first_cmp_block );
     }
 
     builder.set_cur_block( next_block );
@@ -424,6 +548,56 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
     return os;
 }
 
+::Ordering PatternRule::ord(const PatternRule& x) const
+{
+    if(tag() != x.tag())
+    {
+        return tag() < x.tag() ? ::OrdLess : ::OrdGreater;
+    }
+    TU_MATCHA( (*this, x), (te, xe),
+    (Any, return OrdEqual;),
+    (Variant,
+        if(te.idx != xe.idx)    return ::ord(te.idx, xe.idx);
+        assert( te.sub_rules.size() == xe.sub_rules.size() );
+        for(unsigned int i = 0; i < te.sub_rules.size(); i ++)
+        {
+            auto cmp = te.sub_rules[i].ord( xe.sub_rules[i] );
+            if( cmp != ::OrdEqual )
+                return cmp;
+        }
+        return ::OrdEqual;
+        ),
+    (Slice,
+        if(te.len != xe.len)    return ::ord(te.len, xe.len);
+        // Wait? Why would the rule count be the same?
+        assert( te.sub_rules.size() == xe.sub_rules.size() );
+        for(unsigned int i = 0; i < te.sub_rules.size(); i ++)
+        {
+            auto cmp = te.sub_rules[i].ord( xe.sub_rules[i] );
+            if( cmp != ::OrdEqual )
+                return cmp;
+        }
+        return ::OrdEqual;
+        ),
+    (SplitSlice,
+        auto rv = ::ord( te.leading, xe.leading );
+        if(rv != OrdEqual)  return rv;
+        return ::ord(te.trailing, xe.trailing);
+        ),
+    (Bool,
+        return ::ord( te, xe );
+        ),
+    (Value,
+        return ::ord( te, xe );
+        ),
+    (ValueRange,
+        if( te.first != xe.first )
+            return ::ord(te.first, xe.first);
+        return ::ord(te.last, xe.last);
+        )
+    )
+    throw "";
+}
 ::Ordering PatternRuleset::rule_is_before(const PatternRule& l, const PatternRule& r)
 {
     if( l.tag() != r.tag() ) {
@@ -635,6 +809,7 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
 
             PatternRulesetBuilder   sub_builder { this->m_resolve };
             sub_builder.m_field_path = m_field_path;
+            sub_builder.m_field_path.push_back(var_idx);
             sub_builder.m_field_path.push_back(0);
 
             TU_MATCH( ::HIR::Enum::Variant, (var_def.second), (fields_def),
@@ -1074,6 +1249,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 const auto& fields_def = var_def.second.as_Tuple();
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
+                sub_builder.m_field_path.push_back(pe.binding_idx);
                 sub_builder.m_field_path.push_back(0);
                 for( unsigned int i = 0; i < pe.sub_patterns.size(); i ++ )
                 {
@@ -1107,6 +1283,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 // 2. Iterate this list and recurse on the patterns
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
+                sub_builder.m_field_path.push_back(pe.binding_idx);
                 sub_builder.m_field_path.push_back(0);
                 for( unsigned int i = 0; i < tmp.size(); i ++ )
                 {
@@ -1212,12 +1389,14 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             sub_builder.m_field_path.back() = 0;
             if( pe.trailing.size() )
             {
+                // Needs a way of encoding the negative offset in the field path
                 TODO(sp, "SplitSlice on [T] with trailing - " << pat);
             }
             auto trailing = mv$(sub_builder.m_rules);
 
             this->push_rule( PatternRule::make_SplitSlice({
                 static_cast<unsigned int>(pe.leading.size() + pe.trailing.size()),
+                static_cast<unsigned int>(pe.trailing.size()),
                 mv$(leading), mv$(trailing)
                 }) );
             )
@@ -1281,6 +1460,227 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
 }
 
 namespace {
+    // Order rules ignoring inner rules
+    Ordering ord_rule_compatible(const PatternRule& a, const PatternRule& b)
+    {
+        if(a.tag() != b.tag())
+            return ::ord( (unsigned)a.tag(), b.tag() );
+
+        TU_MATCHA( (a, b), (ae, be),
+        (Any,
+            return OrdEqual;
+            ),
+        (Variant,
+            return ::ord(ae.idx, be.idx);
+            ),
+        (Slice,
+            return ::ord(ae.len, be.len);
+            ),
+        (SplitSlice,
+            auto v = ::ord(ae.leading.size(), be.leading.size());
+            if(v != OrdEqual)   return v;
+            v = ::ord(ae.trailing.size(), be.trailing.size());
+            if(v != OrdEqual)   return v;
+            return OrdEqual;
+            ),
+        (Bool,
+            return ::ord(ae, be);
+            ),
+        (Value,
+            return ::ord(ae, be);
+            ),
+        (ValueRange,
+            auto v = ::ord(ae.first, be.first);
+            if(v != OrdEqual)   return v;
+            return ::ord(ae.last, be.last);
+            )
+        )
+        throw "";
+    }
+    bool rule_compatible(const PatternRule& a, const PatternRule& b)
+    {
+        return ord_rule_compatible(a,b) == OrdEqual;
+    }
+
+    bool rules_overlap(const PatternRule& a, const PatternRule& b)
+    {
+        if( a.is_Any() || b.is_Any() )
+            return true;
+
+        // Defensive: If a constant is encountered, assume it overlaps with anything
+        if(const auto* ae = a.opt_Value()) {
+            if(ae->is_Const())
+                return true;
+        }
+        if(const auto* be = b.opt_Value()) {
+            if(be->is_Const())
+                return true;
+        }
+
+        // Value Range: Overlaps with contained values.
+        if(const auto* ae = a.opt_ValueRange() )
+        {
+            if(const auto* be = b.opt_Value() )
+            {
+                return ( ae->first <= *be && *be <= ae->last );
+            }
+            else if( const auto* be = b.opt_ValueRange() )
+            {
+                // Start of B within A
+                if( ae->first <= be->first && be->first <= ae->last )
+                    return true;
+                // End of B within A
+                if( ae->first <= be->last && be->last <= ae->last )
+                    return true;
+                // Start of A within B
+                if( be->first <= ae->first && ae->first <= be->last )
+                    return true;
+                // End of A within B
+                if( be->first <= ae->last && ae->last <= be->last )
+                    return true;
+
+                // Disjoint
+                return false;
+            }
+            else
+            {
+                TODO(Span(), "Check overlap of " << a << " and " << b);
+            }
+        }
+        if(const auto* be = b.opt_ValueRange())
+        {
+            if(const auto* ae = a.opt_Value() )
+            {
+                return (be->first <= *ae && *ae <= be->last);
+            }
+            // Note: A can't be ValueRange
+            else
+            {
+                TODO(Span(), "Check overlap of " << a << " and " << b);
+            }
+        }
+
+        // SplitSlice patterns overlap with other SplitSlice patterns and larger slices
+        if(const auto* ae = a.opt_SplitSlice())
+        {
+            if( b.is_SplitSlice() )
+            {
+                return true;
+            }
+            else if( const auto* be = b.opt_Slice() )
+            {
+                return be->len >= ae->min_len;
+            }
+            else
+            {
+                TODO(Span(), "Check overlap of " << a << " and " << b);
+            }
+        }
+        if(const auto* be = b.opt_SplitSlice())
+        {
+            if( const auto* ae = a.opt_Slice() )
+            {
+                return ae->len >= be->min_len;
+            }
+            else
+            {
+                TODO(Span(), "Check overlap of " << a << " and " << b);
+            }
+        }
+
+        // Otherwise, If rules are approximately equal, they overlap
+        return ( ord_rule_compatible(a, b) == OrdEqual );
+    }
+}
+void sort_rulesets(RulesetRef rulesets, size_t idx)
+{
+    if(rulesets.size() < 2)
+        return ;
+
+    bool found_non_any = false;
+    for(size_t i = 0; i < rulesets.size(); i ++)
+        if( !rulesets[i][idx].is_Any() )
+            found_non_any = true;
+    if( found_non_any )
+    {
+        TRACE_FUNCTION_F(idx);
+        for(size_t i = 0; i < rulesets.size(); i ++)
+            DEBUG("- " << i << ": " << rulesets[i]);
+
+        bool action_taken;
+        do
+        {
+            action_taken = false;
+            for(size_t i = 0; i < rulesets.size()-1; i ++)
+            {
+                if( rules_overlap(rulesets[i][idx], rulesets[i+1][idx]) )
+                {
+                    // Don't move
+                }
+                else if( ord_rule_compatible(rulesets[i][idx], rulesets[i+1][idx]) == OrdGreater )
+                {
+                    rulesets.swap(i, i+1);
+                    action_taken = true;
+                }
+                else
+                {
+                }
+            }
+        } while(action_taken);
+        for(size_t i = 0; i < rulesets.size(); i ++)
+            DEBUG("- " << i << ": " << rulesets[i]);
+
+        // TODO: Print sorted ruleset
+
+        // Where compatible, sort insides
+        size_t  start = 0;
+        for(size_t i = 1; i < rulesets.size(); i++)
+        {
+            if( ord_rule_compatible(rulesets[i][idx], rulesets[start][idx]) != OrdEqual )
+            {
+                sort_rulesets_inner(rulesets.slice(start, i-start), idx);
+                start = i;
+            }
+        }
+        sort_rulesets_inner(rulesets.slice(start, rulesets.size()-start), idx);
+
+        // Iterate onwards where rules are equal
+        if( idx + 1 < rulesets[0].size() )
+        {
+            size_t  start = 0;
+            for(size_t i = 1; i < rulesets.size(); i++)
+            {
+                if( rulesets[i][idx] != rulesets[start][idx] )
+                {
+                    sort_rulesets(rulesets.slice(start, i-start), idx+1);
+                    start = i;
+                }
+            }
+            sort_rulesets(rulesets.slice(start, rulesets.size()-start), idx+1);
+        }
+    }
+    else
+    {
+        if( idx + 1 < rulesets[0].size() )
+        {
+            sort_rulesets(rulesets, idx + 1);
+        }
+    }
+}
+void sort_rulesets_inner(RulesetRef rulesets, size_t idx)
+{
+    TRACE_FUNCTION_F(idx << " - " << rulesets[0][idx].tag_str());
+    if( const auto* re = rulesets[0][idx].opt_Variant() )
+    {
+        // Sort rules based on contents of enum
+        if( re->sub_rules.size() > 0 )
+        {
+            sort_rulesets(RulesetRef(rulesets, idx), 0);
+        }
+    }
+}
+
+namespace {
     void get_ty_and_val(
         const Span& sp, const StaticTraitResolve& resolve,
         const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
@@ -1296,7 +1696,7 @@ namespace {
         ASSERT_BUG(sp, field_path_ofs <= field_path.size(), "Field path offset " << field_path_ofs << " is larger than the path [" << field_path << "]");
         for(unsigned int i = field_path_ofs; i < field_path.size(); i ++ )
         {
-            auto idx = field_path.data[i];
+            unsigned idx = field_path.data[i];
 
             TU_MATCHA( (cur_ty->m_data), (e),
             (Infer,   BUG(sp, "Ivar for in match type"); ),
@@ -1378,7 +1778,43 @@ namespace {
                     lval = ::MIR::LValue::make_Downcast({ box$(lval), idx });
                     ),
                 (Enum,
-                    BUG(sp, "Destructuring an enum - " << *cur_ty);
+                    auto monomorph_to_ptr = [&](const auto& ty)->const auto* {
+                        if( monomorphise_type_needed(ty) ) {
+                            auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
+                            resolve.expand_associated_types(sp, rv);
+                            tmp_ty = mv$(rv);
+                            return &tmp_ty;
+                        }
+                        else {
+                            return &ty;
+                        }
+                        };
+                    ASSERT_BUG(sp, idx < pbe->m_variants.size(), "Variant index (" << idx << ") out of range (" << pbe->m_variants.size() <<  ") for enum " << *cur_ty);
+                    const auto& var = pbe->m_variants[idx];
+
+                    i++;
+                    assert(i < field_path.data.size());
+                    unsigned fld_idx = field_path.data[i];
+
+                    TU_MATCHA( (var.second), (e),
+                    (Unit,
+                        BUG(sp, "Unit variant being destructured");
+                        ),
+                    (Value,
+                        BUG(sp, "Value variant being destructured");
+                        ),
+                    (Tuple,
+                        ASSERT_BUG(sp, fld_idx < e.size(), "Variant field index (" << fld_idx << ") out of range (" << e.size() <<  ") for enum " << *cur_ty << "::" << var.first);
+                        cur_ty = monomorph_to_ptr(e[fld_idx].ent);
+                        ),
+                    (Struct,
+                        ASSERT_BUG(sp, fld_idx < e.size(), "Variant field index (" << fld_idx << ") out of range (" << e.size() <<  ") for enum " << *cur_ty << "::" << var.first);
+                        cur_ty = monomorph_to_ptr(e[fld_idx].second.ent);
+                        )
+                    )
+                    DEBUG("*cur_ty = " << *cur_ty);
+                    lval = ::MIR::LValue::make_Downcast({ box$(lval), idx });
+                    lval = ::MIR::LValue::make_Field({ box$(lval), fld_idx });
                     )
                 )
                 ),
@@ -1402,12 +1838,15 @@ namespace {
                 ),
             (Borrow,
                 ASSERT_BUG(sp, idx == FIELD_DEREF, "Destructure of borrow doesn't correspond to a deref in the path");
+                DEBUG(i << " " << *cur_ty << " - " << cur_ty << " " << &tmp_ty);
                 if( cur_ty == &tmp_ty ) {
-                    tmp_ty = mv$(*tmp_ty.m_data.as_Borrow().inner);
+                    auto ip = mv$(tmp_ty.m_data.as_Borrow().inner);
+                    tmp_ty = mv$(*ip);
                 }
                 else {
                     cur_ty = &*e.inner;
                 }
+                DEBUG(i << " " << *cur_ty);
                 lval = ::MIR::LValue::make_Deref({ box$(lval) });
                 ),
             (Pointer,
@@ -1437,7 +1876,6 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
     TRACE_FUNCTION;
 
     // 1. Generate pattern matches
-    unsigned int rule_idx = 0;
     builder.set_cur_block( first_cmp_block );
     for( unsigned int arm_idx = 0; arm_idx < node.m_arms.size(); arm_idx ++ )
     {
@@ -1451,6 +1889,10 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             if( arm_code.destructures[i] == 0 )
                 continue ;
 
+            size_t rule_idx = 0;
+            for(; rule_idx < arm_rules.size(); rule_idx++)
+                if( arm_rules[rule_idx].arm_idx == arm_idx && arm_rules[rule_idx].pat_idx == i )
+                    break;
             const auto& pat_rule = arm_rules[rule_idx];
             bool is_last_pat = (i+1 == arm.m_patterns.size());
             auto next_pattern_bb = (!is_last_pat ? builder.new_bb_unlinked() : next_arm_bb);
@@ -1478,8 +1920,6 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
             {
                 builder.set_cur_block( next_pattern_bb );
             }
-
-            rule_idx ++;
         }
         if( arm_code.has_condition )
         {
@@ -1549,12 +1989,28 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     auto succ_bb = builder.new_bb_unlinked();
 
                     auto test_val = ::MIR::Param( ::MIR::Constant::make_Uint({ re.as_Uint().v, te }));
-                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
-                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                    builder.push_stmt_assign(sp, builder.get_if_cond(), ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ builder.get_if_cond(), succ_bb, fail_bb }) );
                     builder.set_cur_block(succ_bb);
                     ),
                 (ValueRange,
-                    TODO(sp, "Simple match over primitive - " << ty << " - ValueRange");
+                    auto succ_bb = builder.new_bb_unlinked();
+                    auto test_bb_2 = builder.new_bb_unlinked();
+
+                    auto test_lt_val = ::MIR::Param(::MIR::Constant::make_Uint({ re.first.as_Uint().v, te }));
+                    auto test_gt_val = ::MIR::Param(::MIR::Constant::make_Uint({ re.last.as_Uint().v, te }));
+
+                    // IF `val` < `first` : fail_bb
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, mv$(test_lt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
+
+                    builder.set_cur_block(test_bb_2);
+
+                    // IF `val` > `last` : fail_bb
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
+
+                    builder.set_cur_block(succ_bb);
                     )
                 )
                 break;
@@ -1577,7 +2033,23 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                     builder.set_cur_block(succ_bb);
                     ),
                 (ValueRange,
-                    TODO(sp, "Simple match over primitive - " << ty << " - ValueRange");
+                    auto succ_bb = builder.new_bb_unlinked();
+                    auto test_bb_2 = builder.new_bb_unlinked();
+
+                    auto test_lt_val = ::MIR::Param(::MIR::Constant::make_Int({ re.first.as_Int().v, te }));
+                    auto test_gt_val = ::MIR::Param(::MIR::Constant::make_Int({ re.last.as_Int().v, te }));
+
+                    // IF `val` < `first` : fail_bb
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, mv$(test_lt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
+
+                    builder.set_cur_block(test_bb_2);
+
+                    // IF `val` > `last` : fail_bb
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
+
+                    builder.set_cur_block(succ_bb);
                     )
                 )
                 break;
@@ -1617,7 +2089,38 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 break;
             case ::HIR::CoreType::F32:
             case ::HIR::CoreType::F64:
-                TODO(sp, "Simple match over float - " << ty);
+                TU_MATCH_DEF( PatternRule, (rule), (re),
+                (
+                    BUG(sp, "PatternRule for float is not Value or ValueRange");
+                    ),
+                (Value,
+                    auto succ_bb = builder.new_bb_unlinked();
+
+                    auto test_val = ::MIR::Param(::MIR::Constant::make_Float({ re.as_Float().v, te }));
+                    auto cmp_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval), succ_bb, fail_bb }) );
+                    builder.set_cur_block(succ_bb);
+                    ),
+                (ValueRange,
+                    auto succ_bb = builder.new_bb_unlinked();
+                    auto test_bb_2 = builder.new_bb_unlinked();
+
+                    auto test_lt_val = ::MIR::Param(::MIR::Constant::make_Float({ re.first.as_Float().v, te }));
+                    auto test_gt_val = ::MIR::Param(::MIR::Constant::make_Float({ re.last.as_Float().v, te }));
+
+                    // IF `val` < `first` : fail_bb
+                    auto cmp_lt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, mv$(test_lt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), fail_bb, test_bb_2 }) );
+
+                    builder.set_cur_block(test_bb_2);
+
+                    // IF `val` > `last` : fail_bb
+                    auto cmp_gt_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, mv$(test_gt_val) }));
+                    builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), fail_bb, succ_bb }) );
+
+                    builder.set_cur_block(succ_bb);
+                    )
+                )
                 break;
             case ::HIR::CoreType::Str: {
                 ASSERT_BUG(sp, rule.is_Value() && rule.as_Value().is_StaticString(), "");
@@ -1658,7 +2161,11 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 TODO(sp, "Match over Union");
                 ),
             (Enum,
-                auto monomorph = [&](const auto& ty) { return monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty); };
+                auto monomorph = [&](const auto& ty) {
+                    auto rv = monomorphise_type(sp, pbe->m_params, te.path.m_data.as_Generic().m_params, ty);
+                    builder.resolve().expand_associated_types(sp, rv);
+                    return rv;
+                    };
                 ASSERT_BUG(sp, rule.is_Variant(), "Rule for enum isn't Any or Variant");
                 const auto& re = rule.as_Variant();
                 unsigned int var_idx = re.idx;
@@ -1696,7 +2203,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                         // Recurse with the new ruleset
                         MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
                             re.sub_rules.data(), re.sub_rules.size(),
-                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size(),
+                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size()+1,
                             fail_bb
                             );
                         ),
@@ -1713,7 +2220,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                         // Recurse with the new ruleset
                         MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
                             re.sub_rules.data(), re.sub_rules.size(),
-                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size(),
+                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size()+1,
                             fail_bb
                             );
                         )
@@ -1733,7 +2240,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
             ),
         (Array,
             TODO(sp, "Match directly on array?");
-            /*
+            #if 0
             unsigned int total = 0;
             for( unsigned int i = 0; i < te.size_val; i ++ ) {
                 unsigned int cnt = MIR_LowerHIR_Match_Simple__GeneratePattern(
@@ -1748,7 +2255,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 if( num_rules == 0 )
                     return total;
             }
-            */
+            #endif
             ),
         (Slice,
             ASSERT_BUG(sp, rule.is_Slice() || rule.is_SplitSlice() || (rule.is_Value() && rule.as_Value().is_Bytes()), "Can only match slice with Bytes or Slice rules - " << rule);
@@ -1833,1335 +2340,863 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
     return 0;
 }
 
-// --------------------------------------------------------------------
-// Decision Tree
-// --------------------------------------------------------------------
+// --
+// Match v2 Algo - Grouped rules
+// --
 
-// ## Create descision tree in-memory based off the ruleset
-// > Tree contains an lvalue and a set of possibilities (PatternRule) connected to another tree or to a branch index
-struct DecisionTreeNode
+
+class t_rules_subset
 {
-    TAGGED_UNION( Branch, Unset,
-        (Unset, struct{}),
-        (Subtree, ::std::unique_ptr<DecisionTreeNode>),
-        (Terminal, unsigned int)
-        );
-
-    template<typename T>
-    struct Range
+    ::std::vector<const ::std::vector<PatternRule>*>    rule_sets;
+    bool is_arm_indexes;
+    ::std::vector<size_t>   arm_idxes;
+public:
+    t_rules_subset(size_t exp, bool is_arm_indexes):
+        is_arm_indexes(is_arm_indexes)
     {
-        T   start;
-        T   end;
-
-        // `x` starts after this range ends
-        bool operator<(const Range<T>& x) const {
-            return (end < x.start);
-        }
-        // `x` falls above the end of this range
-        bool operator<(const T& x) const {
-            return (end < x);
-        }
-
-        // `x` ends before this starts, or overlaps
-        bool operator>=(const Range<T>& x) const {
-            return start > x.end || ovelaps(x);
-        }
-        // `x` is before or within this range
-        bool operator>=(const T& x) const {
-            return start > x || contains(x);
-        }
-
-        bool operator>(const Range<T>& x) const {
-            return (start > x.end);
-        }
-        bool operator>(const T& x) const {
-            return (start > x);
-        }
-
-        bool operator==(const Range<T>& x) const {
-            return start == x.start && end == x.end;
-        }
-        bool operator!=(const Range<T>& x) const {
-            return start != x.start || end != x.end;
-        }
-
-        bool contains(const T& x) const {
-            return (start <= x && x <= end);
-        }
-        bool overlaps(const Range<T>& x) const {
-            return (x.start <= start && start <= x.end) || (x.start <= end && end <= x.end);
-        }
-
-        friend ::std::ostream& operator<<(::std::ostream& os, const Range<T>& x) {
-            if( x.start == x.end ) {
-                return os << x.start;
-            }
-            else {
-                return os << x.start << " ... " << x.end;
-            }
-        }
-    };
-
-    TAGGED_UNION( Values, Unset,
-        (Unset, struct {}),
-        (Bool, struct { Branch false_branch, true_branch; }),
-        (Variant, ::std::vector< ::std::pair<unsigned int, Branch> >),
-        (Unsigned, ::std::vector< ::std::pair< Range<uint64_t>, Branch> >),
-        (Signed, ::std::vector< ::std::pair< Range<int64_t>, Branch> >),
-        (Float, ::std::vector< ::std::pair< Range<double>, Branch> >),
-        (String, ::std::vector< ::std::pair< ::std::string, Branch> >),
-        (Slice, struct {
-            ::std::vector< ::std::pair< unsigned int, Branch> > fixed_arms;
-            //::std::vector< ::std::pair< unsigned int, Branch> > variable_arms;
-            })
-        );
-
-    // TODO: Arm specialisation?
-    field_path_t   m_field_path;
-    Values  m_branches;
-    Branch  m_default;
-
-    DecisionTreeNode( field_path_t field_path ):
-        // TODO: This is commented out fo a reason, but I don't know why.
-        //m_field_path( mv$(field_path) ),
-        m_branches(),
-        m_default()
-    {}
-
-    static Branch clone(const Branch& b);
-    static Values clone(const Values& x);
-    DecisionTreeNode clone() const;
-
-    void populate_tree_from_rule(const Span& sp, unsigned int arm_index, const PatternRule* first_rule, unsigned int rule_count) {
-        populate_tree_from_rule(sp, first_rule, rule_count, [sp,arm_index](Branch& branch){
-            TU_MATCHA( (branch), (e),
-            (Unset,
-                // Good
-                ),
-            (Subtree,
-                if( e->m_branches.is_Unset() && e->m_default.is_Unset() ) {
-                    // Good.
-                }
-                else {
-                    BUG(sp, "Duplicate terminal - branch="<<branch);
-                }
-                ),
-            (Terminal,
-                // TODO: This is ok if it's due to overlapping rules (e.g. ranges)
-                //BUG(sp, "Duplicate terminal - Existing goes to arm " << e << ", new goes to arm " << arm_index );
-                )
-            )
-            branch = Branch::make_Terminal(arm_index);
-            });
-    }
-    // `and_then` - Closure called after processing the final rule
-    void populate_tree_from_rule(const Span& sp, const PatternRule* first_rule, unsigned int rule_count, ::std::function<void(Branch&)> and_then);
-
-    /// Simplifies the tree by eliminating nodes that don't make a decision
-    void simplify();
-    /// Propagate the m_default arm's contents to value arms, and vice-versa
-    void propagate_default();
-    /// HELPER: Unfies the rules from the provided branch with this node
-    void unify_from(const Branch& b);
-
-    ::MIR::LValue get_field(const ::MIR::LValue& base, unsigned int base_depth) const {
-        ::MIR::LValue   cur = base.clone();
-        for(unsigned int i = base_depth; i < m_field_path.size(); i ++ ) {
-            const auto idx = m_field_path.data[i];
-            if( idx == FIELD_DEREF ) {
-                cur = ::MIR::LValue::make_Deref({ box$(cur) });
-            }
-            else {
-                cur = ::MIR::LValue::make_Field({ box$(cur), idx });
-            }
-        }
-        return cur;
+        rule_sets.reserve(exp);
+        arm_idxes.reserve(exp);
     }
 
-    friend ::std::ostream& operator<<(::std::ostream& os, const Branch& x);
-    friend ::std::ostream& operator<<(::std::ostream& os, const DecisionTreeNode& x);
-};
-
-struct DecisionTreeGen
-{
-    MirBuilder& m_builder;
-    const ::std::vector< ::MIR::BasicBlockId>&  m_rule_blocks;
-
-    DecisionTreeGen(MirBuilder& builder, const ::std::vector< ::MIR::BasicBlockId >& rule_blocks):
-        m_builder( builder ),
-        m_rule_blocks( rule_blocks )
-    {}
-
-    ::MIR::BasicBlockId get_block_for_rule(unsigned int rule_index) {
-        return m_rule_blocks.at( rule_index );
+    size_t size() const {
+        return rule_sets.size();
+    }
+    const ::std::vector<PatternRule>& operator[](size_t n) const {
+        return *rule_sets[n];
+    }
+    bool is_arm() const { return is_arm_indexes; }
+    ::std::pair<size_t,size_t> arm_idx(size_t n) const {
+        assert(is_arm_indexes);
+        auto v = arm_idxes.at(n);
+        return ::std::make_pair(v & 0xFFF, v >> 12);
+    }
+    ::MIR::BasicBlockId bb_idx(size_t n) const {
+        assert(!is_arm_indexes);
+        return arm_idxes.at(n);
     }
 
-    void generate_tree_code(const Span& sp, const DecisionTreeNode& node, const ::HIR::TypeRef& ty, const ::MIR::LValue& val) {
-        generate_tree_code(sp, node, ty, 0, val, [&](const auto& n){
-            DEBUG("node = " << n);
-            // - Recurse on this method
-            this->generate_tree_code(sp, n, ty, val);
-            });
-    }
-    void generate_tree_code(
-        const Span& sp,
-        const DecisionTreeNode& node,
-        const ::HIR::TypeRef& ty, unsigned int path_ofs, const ::MIR::LValue& base_val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-
-    void generate_branch(const DecisionTreeNode::Branch& branch, ::std::function<void(const DecisionTreeNode&)> cb);
-
-    // HELPER
-    ::MIR::LValue push_compare(const Span& sp, ::MIR::LValue left, ::MIR::eBinOp op, ::MIR::Param right);
-
-    void generate_branches_Signed(
-        const Span& sp,
-        const DecisionTreeNode::Branch& default_branch,
-        const DecisionTreeNode::Values::Data_Signed& branches,
-        const ::HIR::TypeRef& ty, ::MIR::LValue val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-    void generate_branches_Unsigned(
-        const Span& sp,
-        const DecisionTreeNode::Branch& default_branch,
-        const DecisionTreeNode::Values::Data_Unsigned& branches,
-        const ::HIR::TypeRef& ty, ::MIR::LValue val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-    void generate_branches_Float(
-        const Span& sp,
-        const DecisionTreeNode::Branch& default_branch,
-        const DecisionTreeNode::Values::Data_Float& branches,
-        const ::HIR::TypeRef& ty, ::MIR::LValue val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-    void generate_branches_Char(
-        const Span& sp,
-        const DecisionTreeNode::Branch& default_branch,
-        const DecisionTreeNode::Values::Data_Unsigned& branches,
-        const ::HIR::TypeRef& ty, ::MIR::LValue val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-    void generate_branches_Bool(
-        const Span& sp,
-        const DecisionTreeNode::Branch& default_branch,
-        const DecisionTreeNode::Values::Data_Bool& branches,
-        const ::HIR::TypeRef& ty, ::MIR::LValue val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-    void generate_branches_Borrow_str(
-        const Span& sp,
-        const DecisionTreeNode::Branch& default_branch,
-        const DecisionTreeNode::Values::Data_String& branches,
-        const ::HIR::TypeRef& ty, ::MIR::LValue val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-
-    void generate_branches_Enum(
-        const Span& sp,
-        const DecisionTreeNode::Branch& default_branch,
-        const DecisionTreeNode::Values::Data_Variant& branches,
-        const field_path_t& field_path,   // used to know when to stop handling sub-nodes
-        const ::HIR::TypeRef& ty, ::MIR::LValue val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-    void generate_branches_Slice(
-        const Span& sp,
-        const DecisionTreeNode::Branch& default_branch,
-        const DecisionTreeNode::Values::Data_Slice& branches,
-        const field_path_t& field_path,
-        const ::HIR::TypeRef& ty, ::MIR::LValue val,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-    void generate_tree_code__enum(
-        const Span& sp,
-        const DecisionTreeNode& node, const ::HIR::TypeRef& fake_ty, const ::MIR::LValue& val,
-        const field_path_t& path_prefix,
-        ::std::function<void(const DecisionTreeNode&)> and_then
-        );
-};
-
-void MIR_LowerHIR_Match_DecisionTree( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val, t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block )
-{
-    TRACE_FUNCTION;
-
-    // XXX XXX XXX: The current codegen (below) will generate incorrect code if ordering matters.
-    // ```
-    // match ("foo", "bar")
-    // {
-    // (_, "bar") => {},    // Expected
-    // ("foo", _) => {},    // Actual
-    // _ => {},
-    // }
-    // ```
-
-    // TODO: Sort the columns in `arm_rules` to ensure that the most specific rule is parsed first.
-    // - Ordering within a pattern doesn't matter, only the order of arms matters.
-    // - This sort could be designed such that the above case would match correctly?
-
-    DEBUG("- Generating rule bindings");
-    ::std::vector< ::MIR::BasicBlockId> rule_blocks;
-    for(const auto& rule : arm_rules)
+    void sub_sort(size_t ofs, size_t start, size_t n)
     {
-        const auto& arm_code = arms_code[rule.arm_idx];
-        ASSERT_BUG(node.span(), !arm_code.has_condition, "Decision tree doesn't (yet) support conditionals");
+        ::std::vector<size_t>   v;
+        for(size_t i = 0; i < n; i++)
+            v.push_back(start + i);
+        // Sort rules based on just the value (ignore inner rules)
+        ::std::stable_sort( v.begin(), v.end(), [&](auto a, auto b){ return ord_rule_compatible( (*rule_sets[a])[ofs], (*rule_sets[b])[ofs]) == OrdLess; } );
 
-        assert( rule.pat_idx < arm_code.destructures.size() );
-        // Set the target for when a rule succeeds to the destructuring code for this rule
-        rule_blocks.push_back( arm_code.destructures[rule.pat_idx] );
-        // - Tie the end of that block to the code block for this arm
-        builder.set_cur_block( rule_blocks.back() );
-        builder.end_block( ::MIR::Terminator::make_Goto(arm_code.code) );
+        // Reorder contents to above sorting
+        {
+            decltype(this->rule_sets)   tmp;
+            for(auto i : v)
+                tmp.push_back(rule_sets[i]);
+            ::std::copy( tmp.begin(), tmp.end(), rule_sets.begin() + start );
+        }
+        {
+            decltype(this->arm_idxes)   tmp;
+            for(auto i : v)
+                tmp.push_back(arm_idxes[i]);
+            ::std::copy( tmp.begin(), tmp.end(), arm_idxes.begin() + start );
+        }
     }
 
-
-    // - Build tree by running each arm's pattern across it
-    DEBUG("- Building decision tree");
-    DecisionTreeNode    root_node({});
-    unsigned int rule_idx = 0;
-    for( const auto& arm_rule : arm_rules )
+    t_rules_subset sub_slice(size_t ofs, size_t n)
     {
-        auto arm_idx = arm_rule.arm_idx;
-        DEBUG("(" << arm_idx << ", " << arm_rule.pat_idx << "): " << arm_rule.m_rules);
-        root_node.populate_tree_from_rule( node.m_arms[arm_idx].m_code->span(), rule_idx, arm_rule.m_rules.data(), arm_rule.m_rules.size() );
-        rule_idx += 1;
+        t_rules_subset  rv { n, this->is_arm_indexes };
+        rv.rule_sets.reserve(n);
+        for(size_t i = 0; i < n; i++)
+        {
+            rv.rule_sets.push_back( this->rule_sets[ofs+i] );
+            rv.arm_idxes.push_back( this->arm_idxes[ofs+i] );
+        }
+        return rv;
     }
-    DEBUG("root_node = " << root_node);
-    root_node.simplify();
-    DEBUG("root_node = " << root_node);
-    root_node.propagate_default();
-    DEBUG("root_node = " << root_node);
-    // TODO: Pretty print `root_node`
-
-    // - Convert the above decision tree into MIR
-    DEBUG("- Emitting decision tree");
-    DecisionTreeGen gen { builder, rule_blocks };
-    builder.set_cur_block( first_cmp_block );
-    gen.generate_tree_code( node.span(), root_node, node.m_value->m_res_type, mv$(match_val) );
-    ASSERT_BUG(node.span(), !builder.block_active(), "Decision tree didn't terminate the final block");
-}
-
-#if 0
-DecisionTreeNode MIR_LowerHIR_Match_DecisionTree__MakeTree(const Span& sp, t_arm_rules& arm_rules)
-{
-    ::std::vector<unsigned int> indexes;
-    ::std::vector< slice<PatternRule> > rules;
-    for(unsigned i = 0; i < arm_rules.size(); i ++)
+    void push_arm(const ::std::vector<PatternRule>& x, size_t arm_idx, size_t pat_idx)
     {
-        rules.push_back( arm_rules[i].m_rules );
-        indexes.push_back(i);
+        assert(is_arm_indexes);
+        rule_sets.push_back(&x);
+        assert(arm_idx <= 0xFFF);
+        assert(pat_idx <= 0xFFF);
+        arm_idxes.push_back(arm_idx | (pat_idx << 12));
     }
-
-    return MIR_LowerHIR_Match_DecisionTree__MakeTree_Node(sp, indexes, rules);
-}
-DecisionTreeNode MIR_LowerHIR_Match_DecisionTree__MakeTree_Node(const Span& sp, slice<unsigned int> arm_indexes, slice< slice<PaternRule>> arm_rules)
-{
-    assert( arm_indexes.size() == arm_rules.size() );
-    assert( arm_rules.size() > 1 );
-    assert( arm_rules[0].size() > 0 );
-
-    // 1. Sort list (should it already be sorted?)
-    for(const auto& rules : arm_rules)
+    void push_bb(const ::std::vector<PatternRule>& x, ::MIR::BasicBlockId bb)
     {
-        ASSERT_BUG(sp, rules.size() != arm_rules[0].size(), "");
+        assert(!is_arm_indexes);
+        rule_sets.push_back(&x);
+        arm_idxes.push_back(bb);
     }
 
-    // 2. Detect all arms being `_` and move on to the next condition
-    while( ::std::all_of(arm_rules.begin(), arm_rules.end(), [](const auto& r){ return r.m_rules[0].is_Any(); }) )
-    {
-        // Delete first rule from all and continue.
-        if( arm_rules[0].size() == 1 ) {
-            // No rules left?
-            BUG(sp, "Duplicate match arms");
-        }
-
-        for(auto& rules : arm_rules)
+    friend ::std::ostream& operator<<(::std::ostream& os, const t_rules_subset& x) {
+        os << "t_rules_subset{";
+        for(size_t i = 0; i < x.rule_sets.size(); i ++)
         {
-            rules = rules.subslice_from(1);
-        }
-    }
-
-    // We have a codition.
-    for(const auto& rules : arm_rules)
-    {
-        ASSERT_BUG(sp, rules[0].is_Any() || rules[0].tag() == arm_rules[0][0].tag(), "Mismatched rules in match");
-    }
-
-    bool has_any = arm_rules.back()[0].is_Any();
-
-    // All rules must either be _ or the same type, and can't all be _
-    switch( arm_rules[0][0].tag() )
-    {
-    case PatternRule::TAGDEAD:  throw "";
-    case PatternRule::TAG_Any:  throw "";
-
-    case PatternRule::TAG_Variant:
-        break;
-    // TODO: Value and ValueRange can appear together.
-    // - They also overlap in non-trivial ways.
-    }
-}
-#endif
-
-// ----------------------------
-// DecisionTreeNode
-// ----------------------------
-DecisionTreeNode::Branch DecisionTreeNode::clone(const DecisionTreeNode::Branch& b) {
-    TU_MATCHA( (b), (e),
-    (Unset, return Branch(e); ),
-    (Subtree, return Branch(box$( e->clone() )); ),
-    (Terminal, return Branch(e); )
-    )
-    throw "";
-}
-DecisionTreeNode::Values DecisionTreeNode::clone(const DecisionTreeNode::Values& x) {
-    TU_MATCHA( (x), (e),
-    (Unset, return Values(e); ),
-    (Bool,
-        return Values::make_Bool({ clone(e.false_branch),  clone(e.true_branch) });
-        ),
-    (Variant,
-        Values::Data_Variant rv;
-        rv.reserve(e.size());
-        for(const auto& v : e)
-            rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
-        return Values( mv$(rv) );
-        ),
-    (Unsigned,
-        Values::Data_Unsigned rv;
-        rv.reserve(e.size());
-        for(const auto& v : e)
-            rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
-        return Values( mv$(rv) );
-        ),
-    (Signed,
-        Values::Data_Signed rv;
-        rv.reserve(e.size());
-        for(const auto& v : e)
-            rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
-        return Values( mv$(rv) );
-        ),
-    (Float,
-        Values::Data_Float rv;
-        rv.reserve(e.size());
-        for(const auto& v : e)
-            rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
-        return Values( mv$(rv) );
-        ),
-    (String,
-        Values::Data_String rv;
-        rv.reserve(e.size());
-        for(const auto& v : e)
-            rv.push_back( ::std::make_pair(v.first, clone(v.second)) );
-        return Values( mv$(rv) );
-        ),
-    (Slice,
-        Values::Data_Slice rv;
-        rv.fixed_arms.reserve(e.fixed_arms.size());
-        for(const auto& v : e.fixed_arms)
-            rv.fixed_arms.push_back( ::std::make_pair(v.first, clone(v.second)) );
-        return Values( mv$(rv) );
-        )
-    )
-    throw "";
-}
-DecisionTreeNode DecisionTreeNode::clone() const {
-    DecisionTreeNode    rv(m_field_path);
-    rv.m_field_path = m_field_path;
-    rv.m_branches = clone(m_branches);
-    rv.m_default = clone(m_default);
-    return rv;
-}
-
-// Helpers for `populate_tree_from_rule`
-namespace
-{
-    DecisionTreeNode::Branch new_branch_subtree(field_path_t path)
-    {
-        return DecisionTreeNode::Branch( box$(DecisionTreeNode( mv$(path) )) );
-    }
-
-    // Common code for numerics (Int, Uint, and Float)
-    template<typename T>
-    static void from_rule_value(
-        const Span& sp,
-        ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve,
-        const char* name, const field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
-        )
-    {
-        auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve; });
-        if( it == be.end() || it->first.start > ve ) {
-            it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve,ve }, new_branch_subtree(field_path) ) );
-        }
-        else if( it->first.start == ve && it->first.end == ve ) {
-            // Equal, continue and add sub-pat
-        }
-        else {
-            // Collide or overlap!
-            TODO(sp, "Value patterns - " << name << " - Overlapping - " << it->first.start << " <= " << ve << " <= " << it->first.end);
-        }
-        and_then( it->second );
-    }
-
-    template<typename T>
-    static void from_rule_valuerange(
-        const Span& sp,
-        ::std::vector< ::std::pair< DecisionTreeNode::Range<T>, DecisionTreeNode::Branch> >& be, T ve_start, T ve_end,
-        const char* name, const field_path_t& field_path, ::std::function<void(DecisionTreeNode::Branch&)> and_then
-        )
-    {
-        TRACE_FUNCTION_F("be=[" << FMT_CB(os, for(const auto& i:be) os << i.first <<" , ";) << "], new=" << ve_start << "..." << ve_end);
-        ASSERT_BUG(sp, ve_start <= ve_end, "Range pattern with a start after the end - " << ve_start << "..." << ve_end);
-
-        if( ve_start == ve_end ) {
-            from_rule_value(sp, be, ve_start, name, field_path, and_then);
-            return ;
-        }
-        // - Find the first entry that ends after the new one starts.
-        auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first.end >= ve_start; });
-        while(ve_start < ve_end)
-        {
-            if( it == be.end() ) {
-            DEBUG("new = (" << ve_start << "..." << ve_end << "), exist=END");
-                it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start,ve_end }, new_branch_subtree(field_path) ) );
-                and_then(it->second);
-                return ;
-            }
-            DEBUG("new = (" << ve_start << "..." << ve_end << "), exist=" << it->first);
-            // If the located entry starts after the end of this range
-            if( it->first.start >= ve_end ) {
-                DEBUG("- New free");
-                it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start,ve_end }, new_branch_subtree(field_path) ) );
-                and_then(it->second);
-                return ;
-            }
-            // If this range is equal to the existing, just recurse into it
-            else if( it->first.start == ve_start && it->first.end == ve_end ) {
-                DEBUG("- Equal");
-                and_then(it->second);
-                return ;
-            }
-            // If the new range starts before the start of this range, add a new entry before the existing one
-            else if( it->first.start > ve_start ) {
-                DEBUG("- New head, continue");
-                it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start,it->first.start-1 }, new_branch_subtree(field_path) ) );
-                and_then(it->second);
-                ++ it;
-                ve_start = it->first.start;
-            }
-            // If the new range ends before the end of this range, split the existing range and recurse into the first
-            else if( it->first.end > ve_end ) {
-                DEBUG("- Inner");
-                assert(ve_start == it->first.start);
-                it = be.insert( it, ::std::make_pair( DecisionTreeNode::Range<T> { ve_start, ve_end }, DecisionTreeNode::clone(it->second) ) );
-                and_then(it->second);
-                (it+1)->first.start = ve_end+1;
-                return ;
-            }
-            // (else) if the new range ends after the end of this range, apply to the rest of this range and advance
-            else {
-                DEBUG("- Shared head, continue");
-                //assert(it->first.start == ve_start);
-                assert((it->first.end) < ve_end);
-
-                if( it->first.start != it->first.end )
-                    and_then(it->second);
-                ve_start = it->first.end + 1;
-                ++ it;
-            }
-        }
-    }
-}
-void DecisionTreeNode::populate_tree_from_rule(const Span& sp, const PatternRule* first_rule, unsigned int rule_count, ::std::function<void(Branch&)> and_then)
-{
-    assert( rule_count > 0 );
-    const auto& rule = *first_rule;
-
-    if( m_field_path.size() == 0 ) {
-        m_field_path = rule.field_path;
-    }
-    else {
-        ASSERT_BUG(sp, m_field_path == rule.field_path, "Patterns with mismatched field paths - " << m_field_path << " != " << rule.field_path);
-    }
-
-	struct GET_BRANCHES_H {
-		static void unexpected_type(const Span& sp, const char* exp, const char* have) {
-			BUG(sp, "Mismatched rules - have " << exp << ", but have seen " << have);
-		}
-	};
-	#define GET_BRANCHES(fld, var)	(fld.is_Unset()\
-		? (fld = Values::make_##var({})).as_##var() \
-		: (fld.is_##var() \
-			? fld.as_##var() : (GET_BRANCHES_H::unexpected_type(sp, #var, fld.tag_str()), fld.as_##var()) \
-			)\
-		)
-
-
-    TU_MATCHA( (rule), (e),
-    (Any, {
-        if( rule_count == 1 )
-        {
-            ASSERT_BUG(sp, !m_default.is_Terminal(), "Duplicate terminal rule");
-            and_then(m_default);
-        }
-        else
-        {
-            if( m_default.is_Unset() ) {
-                m_default = new_branch_subtree(rule.field_path);
-                m_default.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-            }
-            else TU_IFLET( Branch, m_default, Subtree, be,
-                be->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-            )
-            else {
-                // NOTE: All lists processed as part of the same tree should be the same length
-                BUG(sp, "Duplicate terminal rule");
-            }
-        }
-        // TODO: Should this also recurse into branches?
-        }),
-    (Variant, {
-        auto& be = GET_BRANCHES(m_branches, Variant);
-
-        auto it = ::std::find_if( be.begin(), be.end(), [&](const auto& x){ return x.first >= e.idx; });
-        // If this variant isn't yet processed, add a new subtree for it
-        if( it == be.end() || it->first != e.idx ) {
-            it = be.insert(it, ::std::make_pair(e.idx, new_branch_subtree(rule.field_path)));
-            assert( it->second.is_Subtree() );
-        }
-        else {
-            if( it->second.is_Terminal() ) {
-                BUG(sp, "Duplicate terminal rule - " << it->second.as_Terminal());
-            }
-            assert( !it->second.is_Unset() );
-            assert( it->second.is_Subtree() );
-        }
-        auto& subtree = *it->second.as_Subtree();
-
-        if( e.sub_rules.size() > 0 && rule_count > 1 )
-        {
-            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](Branch& branch){
-                TU_MATCH_DEF(Branch, (branch), (be),
-                (
-                    BUG(sp, "Duplicate terminator");
-                    ),
-                (Unset,
-                    branch = new_branch_subtree(rule.field_path);
-                    ),
-                (Subtree,
-                    )
-                )
-                branch.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                });
-        }
-        else if( e.sub_rules.size() > 0)
-        {
-            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), and_then);
-        }
-        else if( rule_count > 1 )
-        {
-            subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-        }
-        else
-        {
-            and_then(it->second);
-        }
-        }),
-    (Slice,
-        auto& be = GET_BRANCHES(m_branches, Slice);
-
-        auto it = ::std::find_if( be.fixed_arms.begin(), be.fixed_arms.end(), [&](const auto& x){ return x.first >= e.len; } );
-        if( it == be.fixed_arms.end() || it->first != e.len ) {
-            it = be.fixed_arms.insert(it, ::std::make_pair(e.len, new_branch_subtree(rule.field_path)));
-        }
-        else {
-            if( it->second.is_Terminal() ) {
-                BUG(sp, "Duplicate terminal rule - " << it->second.as_Terminal());
-            }
-            assert( !it->second.is_Unset() );
-        }
-        assert( it->second.is_Subtree() );
-        auto& subtree = *it->second.as_Subtree();
-
-        if( e.sub_rules.size() > 0 && rule_count > 1 )
-        {
-            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), [&](Branch& branch){
-                TU_MATCH_DEF(Branch, (branch), (be),
-                (
-                    BUG(sp, "Duplicate terminator");
-                    ),
-                (Unset,
-                    branch = new_branch_subtree(rule.field_path);
-                    ),
-                (Subtree,
-                    )
-                )
-                branch.as_Subtree()->populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                });
-        }
-        else if( e.sub_rules.size() > 0)
-        {
-            subtree.populate_tree_from_rule(sp, e.sub_rules.data(), e.sub_rules.size(), and_then);
-        }
-        else if( rule_count > 1 )
-        {
-            subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-        }
-        else
-        {
-            and_then(it->second);
-        }
-        ),
-    (SplitSlice,
-        //auto& be = GET_BRANCHES(m_branches, Slice);
-        TODO(sp, "SplitSlice in DTN - " << rule);
-        ),
-    (Bool,
-        auto& be = GET_BRANCHES(m_branches, Bool);
-
-        auto& branch = (e ? be.true_branch : be.false_branch);
-        if( branch.is_Unset() ) {
-            branch = new_branch_subtree( rule.field_path );
-        }
-        else if( branch.is_Terminal() ) {
-            BUG(sp, "Duplicate terminal rule - " << branch.as_Terminal());
-        }
-        else {
-            // Good.
-        }
-        if( rule_count > 1 )
-        {
-            auto& subtree = *branch.as_Subtree();
-            subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-        }
-        else
-        {
-            and_then(branch);
-        }
-        ),
-    (Value,
-        TU_MATCHA( (e), (ve),
-        (Int,
-            auto& be = GET_BRANCHES(m_branches, Signed);
-
-            from_rule_value(sp, be, ve.v, "Signed", rule.field_path,
-                [&](auto& branch) {
-                    if( rule_count > 1 ) {
-                        assert( branch.as_Subtree() );
-                        auto& subtree = *branch.as_Subtree();
-                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                    }
-                    else
-                    {
-                        and_then(branch);
-                    }
-                });
-            ),
-        (Uint,
-            auto& be = GET_BRANCHES(m_branches, Unsigned);
-
-            from_rule_value(sp, be, ve.v, "Unsigned", rule.field_path,
-                [&](auto& branch) {
-                    if( rule_count > 1 ) {
-                        assert( branch.as_Subtree() );
-                        auto& subtree = *branch.as_Subtree();
-                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                    }
-                    else
-                    {
-                        and_then(branch);
-                    }
-                });
-            ),
-        (Float,
-            auto& be = GET_BRANCHES(m_branches, Float);
-
-            from_rule_value(sp, be, ve.v, "Float", rule.field_path,
-                [&](auto& branch) {
-                    if( rule_count > 1 ) {
-                        assert( branch.as_Subtree() );
-                        auto& subtree = *branch.as_Subtree();
-                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                    }
-                    else {
-                        and_then(branch);
-                    }
-                });
-            ),
-        (Bool,
-            BUG(sp, "Hit Bool in PatternRule::Value - " << e);
-            ),
-        (Bytes,
-            TODO(sp, "Value patterns - Bytes");
-            ),
-        (StaticString,
-            auto& be = GET_BRANCHES(m_branches, String);
-
-            auto it = ::std::find_if(be.begin(), be.end(), [&](const auto& v){ return v.first >= ve; });
-            if( it == be.end() || it->first != ve ) {
-                it = be.insert( it, ::std::make_pair(ve, new_branch_subtree(rule.field_path) ) );
-            }
-            auto& branch = it->second;
-            if( rule_count > 1 )
+            if(i != 0)
+                os << ", ";
+            os << "[";
+            if(x.is_arm_indexes)
             {
-                assert( branch.as_Subtree() );
-                auto& subtree = *branch.as_Subtree();
-                subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
+                os << (x.arm_idxes[i] & 0xFFF) << "," << (x.arm_idxes[i] >> 12);
             }
             else
             {
-                and_then(branch);
+                os << "bb" << x.arm_idxes[i];
             }
-            ),
-        (Const,
-            BUG(sp, "Hit Const in PatternRule::Value - " << e);
-            ),
-        (ItemAddr,
-            BUG(sp, "Hit ItemAddr in PatternRule::Value - " << e);
-            )
-        )
-        ),
-    (ValueRange,
+            os << "]";
+            os << ": " << *x.rule_sets[i];
+        }
+        os << "}";
+        return os;
+    }
+};
 
-        ASSERT_BUG(sp, e.first.tag() == e.last.tag(), "Constant type mismatch in ValueRange - " << e.first << " and " << e.last);
-        TU_MATCHA( (e.first, e.last), (ve_start, ve_end),
-        (Int,
-            auto& be = GET_BRANCHES(m_branches, Signed);
-            from_rule_valuerange(sp, be, ve_start.v, ve_end.v, "Signed", rule.field_path,
-                [&](auto& branch) {
-                    if( rule_count > 1 )
-                    {
-                        assert( branch.as_Subtree() );
-                        auto& subtree = *branch.as_Subtree();
-                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                    }
-                    else
-                    {
-                        and_then(branch);
-                    }
-                });
-            ),
-        (Uint,
-            // TODO: Share code between the three numeric groups
-            auto& be = GET_BRANCHES(m_branches, Unsigned);
-            from_rule_valuerange(sp, be, ve_start.v, ve_end.v, "Unsigned", rule.field_path,
-                [&](auto& branch) {
-                    if( rule_count > 1 )
-                    {
-                        assert( branch.as_Subtree() );
-                        auto& subtree = *branch.as_Subtree();
-                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                    }
-                    else
-                    {
-                        and_then(branch);
-                    }
-                });
-            ),
-        (Float,
-            auto& be = GET_BRANCHES(m_branches, Float);
-            from_rule_valuerange(sp, be, ve_start.v, ve_end.v, "Float", rule.field_path,
-                [&](auto& branch) {
-                    if( rule_count > 1 )
-                    {
-                        assert( branch.as_Subtree() );
-                        auto& subtree = *branch.as_Subtree();
-                        subtree.populate_tree_from_rule(sp, first_rule+1, rule_count-1, and_then);
-                    }
-                    else
-                    {
-                        and_then(branch);
-                    }
-                });
-            ),
-        (Bool,
-            BUG(sp, "Hit Bool in PatternRule::ValueRange - " << e.first);
-            ),
-        (Bytes,
-            TODO(sp, "ValueRange patterns - Bytes");
-            ),
-        (StaticString,
-            ERROR(sp, E0000, "Use of string in value range patter");
-            ),
-        (Const,
-            BUG(sp, "Hit Const in PatternRule::ValueRange - " << e.first);
-            ),
-        (ItemAddr,
-            BUG(sp, "Hit ItemAddr in PatternRule::ValueRange - " << e.first);
-            )
-        )
-        )
-    )
-}
-
-void DecisionTreeNode::simplify()
+class MatchGenGrouped
 {
-    struct H {
-        static void simplify_branch(Branch& b)
-        {
-            TU_IFLET(Branch, b, Subtree, be,
-                be->simplify();
-                if( be->m_branches.is_Unset() ) {
-                    auto v = mv$( be->m_default );
-                    b = mv$(v);
-                }
-            )
-        }
-    };
+    const Span& sp;
+    MirBuilder& m_builder;
+    const ::HIR::TypeRef& m_top_ty;
+    const ::MIR::LValue& m_top_val;
+    const ::std::vector<ArmCode>& m_arms_code;
 
-    TU_MATCHA( (m_branches), (e),
-    (Unset,
-        H::simplify_branch(m_default);
-        // Replace `this` with `m_default` if `m_default` is a subtree
-        // - Fixes the edge case for the top of the tree
-        if( m_default.is_Subtree() )
-        {
-            *this = mv$(*m_default.as_Subtree());
-        }
-        return ;
-        ),
-    (Bool,
-        H::simplify_branch(e.false_branch);
-        H::simplify_branch(e.true_branch);
-        ),
-    (Variant,
-        for(auto& branch : e) {
-            H::simplify_branch(branch.second);
-        }
-        ),
-    (Unsigned,
-        for(auto& branch : e) {
-            H::simplify_branch(branch.second);
-        }
-        ),
-    (Signed,
-        for(auto& branch : e) {
-            H::simplify_branch(branch.second);
-        }
-        ),
-    (Float,
-        for(auto& branch : e) {
-            H::simplify_branch(branch.second);
-        }
-        ),
-    (String,
-        for(auto& branch : e) {
-            H::simplify_branch(branch.second);
-        }
-        ),
-    (Slice,
-        for(auto& branch : e.fixed_arms) {
-            H::simplify_branch(branch.second);
-        }
-        )
-    )
+    size_t m_field_path_ofs;
+public:
+    MatchGenGrouped(MirBuilder& builder, const Span& sp, const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val, const ::std::vector<ArmCode>& arms_code, size_t field_path_ofs):
+        sp(sp),
+        m_builder(builder),
+        m_top_ty(top_ty),
+        m_top_val(top_val),
+        m_arms_code(arms_code),
+        m_field_path_ofs(field_path_ofs)
+    {
+    }
 
-    H::simplify_branch(m_default);
-}
+    void gen_for_slice(t_rules_subset rules, size_t ofs, ::MIR::BasicBlockId default_arm);
+    void gen_dispatch(const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch__enum(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk);
 
-void DecisionTreeNode::propagate_default()
-{
-    TRACE_FUNCTION_FR(*this, *this);
-    struct H {
-        static void handle_branch(Branch& b, const Branch& def) {
-            TU_IFLET(Branch, b, Subtree, be,
-                be->propagate_default();
-                if( !def.is_Unset() )
-                {
-                    DEBUG("Unify " << *be << " with " << def);
-                    be->unify_from(def);
-                    be->propagate_default();
-                }
-            )
-        }
-    };
+    void gen_dispatch_range(const field_path_t& field_path, const ::MIR::Constant& first, const ::MIR::Constant& last, ::MIR::BasicBlockId def_blk);
+    void gen_dispatch_splitslice(const field_path_t& field_path, const PatternRule::Data_SplitSlice& e, ::MIR::BasicBlockId def_blk);
 
-    TU_MATCHA( (m_branches), (e),
-    (Unset,
-        ),
-    (Bool,
-        DEBUG("- false");
-        H::handle_branch(e.false_branch, m_default);
-        DEBUG("- true");
-        H::handle_branch(e.true_branch, m_default);
-        ),
-    (Variant,
-        for(auto& branch : e) {
-            DEBUG("- V " << branch.first);
-            H::handle_branch(branch.second, m_default);
-        }
-        ),
-    (Unsigned,
-        for(auto& branch : e) {
-            DEBUG("- U " << branch.first);
-            H::handle_branch(branch.second, m_default);
-        }
-        ),
-    (Signed,
-        for(auto& branch : e) {
-            DEBUG("- S " << branch.first);
-            H::handle_branch(branch.second, m_default);
-        }
-        ),
-    (Float,
-        for(auto& branch : e) {
-            DEBUG("- " << branch.first);
-            H::handle_branch(branch.second, m_default);
-        }
-        ),
-    (String,
-        for(auto& branch : e) {
-            DEBUG("- '" << branch.first << "'");
-            H::handle_branch(branch.second, m_default);
-        }
-        ),
-    (Slice,
-        for(auto& branch : e.fixed_arms) {
-            DEBUG("- [_;" << branch.first << "]");
-            H::handle_branch(branch.second, m_default);
-        }
-        )
-    )
-    DEBUG("- default");
-    TU_IFLET(Branch, m_default, Subtree, be,
-        be->propagate_default();
-
-        if( be->m_default.is_Unset() ) {
-            // Propagate default from value branches
-            TU_MATCHA( (m_branches), (e),
-            (Unset,
-                ),
-            (Bool,
-                be->unify_from(e.false_branch);
-                be->unify_from(e.true_branch);
-                ),
-            (Variant,
-                for(auto& branch : e) {
-                    be->unify_from(branch.second);
-                }
-                ),
-            (Unsigned,
-                for(auto& branch : e) {
-                    be->unify_from(branch.second);
-                }
-                ),
-            (Signed,
-                for(auto& branch : e) {
-                    be->unify_from(branch.second);
-                }
-                ),
-            (Float,
-                for(auto& branch : e) {
-                    be->unify_from(branch.second);
-                }
-                ),
-            (String,
-                for(auto& branch : e) {
-                    be->unify_from(branch.second);
-                }
-                ),
-            (Slice,
-                for(auto& branch : e.fixed_arms) {
-                    be->unify_from(branch.second);
-                }
-                )
-            )
-        }
-    )
-}
+    ::MIR::LValue push_compare(::MIR::LValue left, ::MIR::eBinOp op, ::MIR::Param right)
+    {
+        return m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool,
+                ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) })
+                );
+    }
+};
 
 namespace {
-    static void unify_branch(DecisionTreeNode::Branch& dst, const DecisionTreeNode::Branch& src) {
-        if( dst.is_Unset() ) {
-            dst = DecisionTreeNode::clone(src);
-        }
-        else if( dst.is_Subtree() ) {
-            dst.as_Subtree()->unify_from(src);
-        }
-        else {
-            // Terminal, no unify
-        }
-    }
-
-    template<typename T>
-    void unify_from_vals_range(::std::vector< ::std::pair<T, DecisionTreeNode::Branch>>& dst, const ::std::vector< ::std::pair<T, DecisionTreeNode::Branch>>& src)
+    void push_flat_rules(::std::vector<PatternRule>& out_rules, PatternRule rule)
     {
-        for(const auto& srcv : src)
-        {
-            // Find the first entry with an end greater than or equal to the start of this entry
-            auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first.end >= srcv.first.start; });
-            // Not found? Insert a new branch
-            if( it == dst.end() ) {
-                it = dst.insert(it, ::std::make_pair(srcv.first, DecisionTreeNode::clone(srcv.second)));
-            }
-            // If the found entry doesn't overlap (the start of `*it` is after the end of `srcv`)
-            else if( it->first.start > srcv.first.end ) {
-                it = dst.insert(it, ::std::make_pair(srcv.first, DecisionTreeNode::clone(srcv.second)));
-            }
-            else if( it->first == srcv.first ) {
-                unify_branch( it->second, srcv.second );
-            }
-            else {
-                // NOTE: Overlapping doesn't get handled here
-            }
-        }
+        TU_MATCHA( (rule), (e),
+        (Variant,
+            auto sub_rules = mv$(e.sub_rules);
+            out_rules.push_back( mv$(rule) );
+            for(auto& sr : sub_rules)
+                push_flat_rules(out_rules, mv$(sr));
+            ),
+        (Slice,
+            auto sub_rules = mv$(e.sub_rules);
+            out_rules.push_back( mv$(rule) );
+            for(auto& sr : sub_rules)
+                push_flat_rules(out_rules, mv$(sr));
+            ),
+        (SplitSlice,
+            auto leading = mv$(e.leading);
+            auto trailing = mv$(e.trailing);
+            out_rules.push_back( mv$(rule) );
+            for(auto& sr : leading)
+                push_flat_rules(out_rules, mv$(sr));
+            // TODO: the trailing rules need a special path format.
+            ASSERT_BUG(Span(), trailing.size() == 0, "TODO: Handle SplitSlice with trailing");
+            for(auto& sr : trailing)
+                push_flat_rules(out_rules, mv$(sr));
+            ),
+        (Bool,
+            out_rules.push_back( mv$(rule) );
+            ),
+        (Value,
+            out_rules.push_back( mv$(rule) );
+            ),
+        (ValueRange,
+            out_rules.push_back( mv$(rule) );
+            ),
+        (Any,
+            out_rules.push_back( mv$(rule) );
+            )
+        )
     }
-
-    template<typename T>
-    void unify_from_vals_pt(::std::vector< ::std::pair<T, DecisionTreeNode::Branch>>& dst, const ::std::vector< ::std::pair<T, DecisionTreeNode::Branch>>& src)
+    t_arm_rules flatten_rules(t_arm_rules rules)
     {
-        // Insert items not already present, merge present items
-        for(const auto& srcv : src)
+        t_arm_rules rv;
+        rv.reserve(rules.size());
+        for(auto& ruleset : rules)
         {
-            auto it = ::std::find_if( dst.begin(), dst.end(), [&](const auto& x){ return x.first >= srcv.first; });
-            // Not found? Insert a new branch
-            if( it == dst.end() || it->first != srcv.first ) {
-                it = dst.insert(it, ::std::make_pair(srcv.first, DecisionTreeNode::clone(srcv.second)));
+            ::std::vector<PatternRule>  pattern_rules;
+            for( auto& r : ruleset.m_rules )
+            {
+                push_flat_rules(pattern_rules, mv$(r));
             }
-            else {
-                unify_branch( it->second, srcv.second );
-            }
+            rv.push_back(PatternRuleset { ruleset.arm_idx, ruleset.pat_idx, mv$(pattern_rules) });
         }
+        return rv;
     }
 }
 
-void DecisionTreeNode::unify_from(const Branch& b)
+void MIR_LowerHIR_Match_Grouped(
+        MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val,
+        t_arm_rules arm_rules, ::std::vector<ArmCode> arms_code, ::MIR::BasicBlockId first_cmp_block
+        )
 {
-    TRACE_FUNCTION_FR(*this << " with " << b, *this);
+    // TEMPORARY HACK: Grouped fails in complex matches (e.g. librustc_const_math Int::infer)
+    //MIR_LowerHIR_Match_Simple( builder, conv, node, mv$(match_val), mv$(arm_rules), mv$(arms_code), first_cmp_block );
+    //return;
 
-    assert( b.is_Terminal() || b.is_Subtree() );
+    TRACE_FUNCTION_F("");
 
-    if( m_default.is_Unset() ) {
-        if( b.is_Terminal() ) {
-            m_default = clone(b);
-        }
-        else {
-            m_default = clone(b.as_Subtree()->m_default);
-        }
+    // Flatten ruleset completely (remove grouping of enum/slice rules)
+    arm_rules = flatten_rules( mv$(arm_rules) );
+
+    // - Create a "slice" of the passed rules, suitable for passing to the recursive part of the algo
+    t_rules_subset  rules { arm_rules.size(), /*is_arm_indexes=*/true };
+    for(const auto& r : arm_rules)
+    {
+        rules.push_arm( r.m_rules, r.arm_idx, r.pat_idx );
     }
 
-    if( b.is_Subtree() && b.as_Subtree()->m_branches.tag() != m_branches.tag() ) {
-        // Is this a bug, or expected (and don't unify in?)
-        DEBUG("TODO - Unify mismatched arms? - " << b.as_Subtree()->m_branches.tag_str() << " and " << m_branches.tag_str());
-        return ;
-    }
-    bool should_unify_subtree = b.is_Subtree() && this->m_field_path == b.as_Subtree()->m_field_path;
-    //if( b.is_Subtree() ) {
-    //    ASSERT_BUG(Span(), this->m_field_path == b.as_Subtree()->m_field_path, "Unifiying DTNs with mismatched paths - " << this->m_field_path << " != " << b.as_Subtree()->m_field_path);
-    //}
+    auto inst = MatchGenGrouped { builder, node.span(), node.m_value->m_res_type, match_val, arms_code, 0 };
 
-    TU_MATCHA( (m_branches), (dst),
-    (Unset,
-        if( b.is_Subtree() ) {
-            assert( b.as_Subtree()->m_branches.is_Unset() );
-        }
-        else {
-            // Huh? Terminal matching against an unset branch?
-        }
-        ),
-    (Bool,
-        auto* src = (b.is_Subtree() ? &b.as_Subtree()->m_branches.as_Bool() : nullptr);
+    // NOTE: This block should never be used
+    auto default_arm = builder.new_bb_unlinked();
 
-        unify_branch( dst.false_branch, (src ? src->false_branch : b) );
-        unify_branch( dst.true_branch , (src ? src->true_branch : b) );
-        ),
-    (Variant,
-        if( should_unify_subtree ) {
-            auto& sb = b.as_Subtree()->m_branches;
-            ASSERT_BUG(Span(), sb.is_Variant(), "Unifying Variant with " << sb.tag_str());
-            unify_from_vals_pt(dst, sb.as_Variant());
-        }
-        else {
-            // Unify all with terminal branch
-            for(auto& dstv : dst)
-            {
-                unify_branch(dstv.second, b);
-            }
-        }
-        ),
-    (Unsigned,
-        if( should_unify_subtree ) {
-            auto& sb = b.as_Subtree()->m_branches;
-            ASSERT_BUG(Span(), sb.is_Unsigned(), "Unifying Unsigned with " << sb.tag_str());
-            unify_from_vals_range(dst, sb.as_Unsigned());
-        }
-        else {
-            for(auto& dstv : dst)
-            {
-                unify_branch(dstv.second, b);
-            }
-        }
-        ),
-    (Signed,
-        if( should_unify_subtree ) {
-            auto& sb = b.as_Subtree()->m_branches;
-            ASSERT_BUG(Span(), sb.is_Signed(), "Unifying Signed with " << sb.tag_str());
-            unify_from_vals_range(dst, sb.as_Signed());
-        }
-        else {
-            for(auto& dstv : dst)
-            {
-                unify_branch(dstv.second, b);
-            }
-        }
-        ),
-    (Float,
-        if( should_unify_subtree ) {
-            auto& sb = b.as_Subtree()->m_branches;
-            ASSERT_BUG(Span(), sb.is_Float(), "Unifying Float with " << sb.tag_str());
-            unify_from_vals_range(dst, sb.as_Float());
-        }
-        else {
-            for(auto& dstv : dst) {
-                unify_branch(dstv.second, b);
-            }
-        }
-    ),
-    (String,
-        if( should_unify_subtree ) {
-            auto& sb = b.as_Subtree()->m_branches;
-            ASSERT_BUG(Span(), sb.is_String(), "Unifying String with " << sb.tag_str());
-            unify_from_vals_pt(dst, sb.as_String());
-        }
-        else {
-            for(auto& dstv : dst) {
-                unify_branch( dstv.second, b );
-            }
-        }
-        ),
-    (Slice,
-        if( should_unify_subtree ) {
-            auto& sb = b.as_Subtree()->m_branches;
-            ASSERT_BUG(Span(), sb.is_Slice(), "Unifying Slice with " << sb.tag_str());
+    builder.set_cur_block( first_cmp_block );
+    inst.gen_for_slice( mv$(rules), 0, default_arm );
 
-            const auto& src = sb.as_Slice();
-            unify_from_vals_pt(dst.fixed_arms, src.fixed_arms);
-        }
-        else {
-            for(auto& dstv : dst.fixed_arms) {
-                unify_branch( dstv.second, b );
-            }
-        }
-        )
-    )
+    // Make the default infinite loop.
+    // - Preferably, it'd abort.
+    builder.set_cur_block(default_arm);
+    builder.end_block( ::MIR::Terminator::make_Goto(default_arm) );
 }
-
-::std::ostream& operator<<(::std::ostream& os, const DecisionTreeNode::Branch& x) {
-    TU_MATCHA( (x), (be),
-    (Unset,
-        os << "!";
-        ),
-    (Terminal,
-        os << "ARM " << be;
-        ),
-    (Subtree,
-        os << *be;
-        )
-    )
-    return os;
-}
-::std::ostream& operator<<(::std::ostream& os, const DecisionTreeNode& x) {
-    os << "DTN [" << x.m_field_path << "] { ";
-    TU_MATCHA( (x.m_branches), (e),
-    (Unset,
-        os << "!, ";
-        ),
-    (Bool,
-        os << "false = " << e.false_branch << ", true = " << e.true_branch << ", ";
-        ),
-    (Variant,
-        os << "V ";
-        for(const auto& branch : e) {
-            os << branch.first << " = " << branch.second << ", ";
-        }
-        ),
-    (Unsigned,
-        os << "U ";
-        for(const auto& branch : e) {
-            const auto& range = branch.first;
-            if( range.start == range.end ) {
-                os << range.start;
-            }
-            else {
-                os << range.start << "..." << range.end;
-            }
-            os << " = " << branch.second << ", ";
-        }
-        ),
-    (Signed,
-        os << "S ";
-        for(const auto& branch : e) {
-            const auto& range = branch.first;
-            if( range.start == range.end ) {
-                os << range.start;
-            }
-            else {
-                os << range.start << "..." << range.end;
-            }
-            os << " = " << branch.second << ", ";
-        }
-        ),
-    (Float,
-        os << "F ";
-        for(const auto& branch : e) {
-            const auto& range = branch.first;
-            if( range.start == range.end ) {
-                os << range.start;
-            }
-            else {
-                os << range.start << "..." << range.end;
-            }
-            os << " = " << branch.second << ", ";
-        }
-        ),
-    (String,
-        for(const auto& branch : e) {
-            os << "\"" << branch.first << "\"" << " = " << branch.second << ", ";
-        }
-        ),
-    (Slice,
-        os << "len ";
-        for(const auto& branch : e.fixed_arms) {
-            os << "=" << branch.first << " = " << branch.second << ", ";
-        }
-        )
-    )
-
-    os << "* = " << x.m_default;
-    os << " }";
-    return os;
-}
-
-
-// ----------------------------
-// DecisionTreeGen
-// ----------------------------
-
-void DecisionTreeGen::generate_tree_code(
-    const Span& sp,
-    const DecisionTreeNode& node,
-    const ::HIR::TypeRef& top_ty, unsigned int field_path_ofs, const ::MIR::LValue& top_val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
+void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR::BasicBlockId default_arm)
 {
-    TRACE_FUNCTION_F("top_ty=" << top_ty << ", field_path_ofs=" << field_path_ofs << ", top_val=" << top_val << ", node=" << node);
+    TRACE_FUNCTION_F("arm_rules=" << arm_rules << ", ofs="<<ofs << ", default_arm=" << default_arm);
+    ASSERT_BUG(sp, arm_rules.size() > 0, "");
+
+    // Quick hack: Skip any layers entirely made up of PatternRule::Any
+    for(;;)
+    {
+        bool is_all_any = true;
+        for(size_t i = 0; i < arm_rules.size() && is_all_any; i ++)
+        {
+            if( arm_rules[i].size() <= ofs )
+                is_all_any = false;
+            else if( ! arm_rules[i][ofs].is_Any() )
+                is_all_any = false;
+        }
+        if( ! is_all_any )
+        {
+            break ;
+        }
+        ofs ++;
+        DEBUG("Skip to ofs=" << ofs);
+    }
+
+    // Split current set of rules into groups based on _ patterns
+    for(size_t idx = 0; idx < arm_rules.size(); )
+    {
+        // Completed arms
+        while( idx < arm_rules.size() && arm_rules[idx].size() <= ofs )
+        {
+            auto next = idx+1 == arm_rules.size() ? default_arm : m_builder.new_bb_unlinked();
+            ASSERT_BUG(sp, arm_rules[idx].size() == ofs, "Offset too large for rule - ofs=" << ofs << ", rules=" << arm_rules[idx]);
+            DEBUG(idx << ": Complete");
+            // Emit jump to either arm code, or arm condition
+            if( arm_rules.is_arm() )
+            {
+                auto ai = arm_rules.arm_idx(idx);
+                ASSERT_BUG(sp, m_arms_code.size() > 0, "Bottom-level ruleset with no arm code information");
+                const auto& ac = m_arms_code[ai.first];
+
+                m_builder.end_block( ::MIR::Terminator::make_Goto(ac.destructures[ai.second]) );
+                m_builder.set_cur_block( ac.destructures[ai.second] );
+
+                if( ac.has_condition )
+                {
+                    TODO(sp, "Handle conditionals in Grouped");
+                    // TODO: If the condition fails, this should re-try the match on other rules that could have worked.
+                    // - For now, conditionals are disabled.
+
+                    // TODO: What if there's multiple patterns on this condition?
+                    // - For now, only the first pattern gets edited.
+                    // - Maybe clone the blocks used for the condition?
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(ac.cond_start) );
+
+                    // Check for marking in `ac` that the block has already been terminated, assert that target is `next`
+                    if( ai.second == 0 )
+                    {
+                        if( ac.cond_fail_tgt != 0)
+                        {
+                            ASSERT_BUG(sp, ac.cond_fail_tgt == next, "Condition fail target already set with mismatching arm, set to bb" << ac.cond_fail_tgt << " cur is bb" << next);
+                        }
+                        else
+                        {
+                            ac.cond_fail_tgt = next;
+
+                            m_builder.set_cur_block( ac.cond_end );
+                            m_builder.end_block( ::MIR::Terminator::make_If({ ac.cond_lval.clone(), ac.code, next }) );
+                        }
+                    }
+
+                    if( next != default_arm )
+                        m_builder.set_cur_block(next);
+                }
+                else
+                {
+                    m_builder.end_block( ::MIR::Terminator::make_Goto(ac.code) );
+                    ASSERT_BUG(sp, idx+1 == arm_rules.size(), "Ended arm with other arms present");
+                }
+            }
+            else
+            {
+                auto bb = arm_rules.bb_idx(idx);
+                m_builder.end_block( ::MIR::Terminator::make_Goto(bb) );
+                while( idx+1 < arm_rules.size() && bb == arm_rules.bb_idx(idx) && arm_rules[idx].size() == ofs )
+                    idx ++;
+                ASSERT_BUG(sp, idx+1 == arm_rules.size(), "Ended arm (inner) with other arms present");
+            }
+            idx ++;
+        }
+
+        // - Value arms
+        auto start = idx;
+        for(; idx < arm_rules.size() ; idx ++)
+        {
+            if( arm_rules[idx].size() <= ofs )
+                break;
+            if( arm_rules[idx][ofs].is_Any() )
+                break;
+            if( arm_rules[idx][ofs].is_SplitSlice() )
+                break;
+            // TODO: It would be nice if ValueRange could be combined with Value (if there's no overlap)
+            if( arm_rules[idx][ofs].is_ValueRange() )
+                break;
+        }
+        auto first_any = idx;
+
+        // Generate dispatch based on the above list
+        // - If there's value ranges they need special handling
+        // - Can sort arms within this group (ordering doesn't matter, as long as ranges are handled)
+        // - Sort must be stable.
+
+        if( start < first_any )
+        {
+            DEBUG(start << "+" << (first_any-start) << ": Values");
+            bool has_default = (first_any < arm_rules.size());
+            auto next = (has_default ? m_builder.new_bb_unlinked() : default_arm);
+
+            // Sort rules before getting compatible runs
+            // TODO: Is this a valid operation?
+            arm_rules.sub_sort(ofs,  start, first_any - start);
+
+            // Create list of compatible arm slices (runs with the same selector value)
+            ::std::vector<t_rules_subset>   slices;
+            auto cur_test = start;
+            for(auto i = start; i < first_any; i ++)
+            {
+                // Just check if the decision value differs (don't check nested rules)
+                if( ! rule_compatible(arm_rules[i][ofs], arm_rules[cur_test][ofs]) )
+                {
+                    slices.push_back( arm_rules.sub_slice(cur_test, i - cur_test) );
+                    cur_test = i;
+                }
+            }
+            slices.push_back( arm_rules.sub_slice(cur_test, first_any - cur_test) );
+            DEBUG("- " << slices.size() << " groupings");
+            ::std::vector<::MIR::BasicBlockId>  arm_blocks;
+            arm_blocks.reserve( slices.size() );
+
+            auto cur_blk = m_builder.pause_cur_block();
+            // > Stable sort list
+            ::std::sort( slices.begin(), slices.end(), [&](const auto& a, const auto& b){ return a[0][ofs] < b[0][ofs]; } );
+            // TODO: Should this do a stable sort of inner patterns too?
+            // - A sort of inner patterns such that `_` (and range?) patterns don't change position.
+
+            // > Get type of match, generate dispatch list.
+            for(size_t i = 0; i < slices.size(); i ++)
+            {
+                auto cur_block = m_builder.new_bb_unlinked();
+                m_builder.set_cur_block(cur_block);
+
+                for(size_t j = 0; j < slices[i].size(); j ++)
+                {
+                    if(j > 0)
+                        ASSERT_BUG(sp, slices[i][0][ofs] == slices[i][j][ofs], "Mismatched rules - " << slices[i][0][ofs] << " and " << slices[i][j][ofs]);
+                    arm_blocks.push_back(cur_block);
+                }
+
+                this->gen_for_slice(slices[i], ofs+1, next);
+            }
+
+            m_builder.set_cur_block(cur_blk);
+
+            // Generate decision code
+            this->gen_dispatch(slices, ofs, arm_blocks, next);
+
+            if(has_default)
+            {
+                m_builder.set_cur_block(next);
+            }
+        }
+
+        // Collate matching blocks at `first_any`
+        assert(first_any == idx);
+        if( first_any < arm_rules.size() && arm_rules[idx].size() > ofs )
+        {
+            // Collate all equal rules
+            while(idx < arm_rules.size() && arm_rules[idx][ofs] == arm_rules[first_any][ofs])
+                idx ++;
+            DEBUG(first_any << "-" << idx << ": Multi-match");
+
+            bool has_next = idx < arm_rules.size();
+            auto next = (has_next ? m_builder.new_bb_unlinked() : default_arm);
+
+            const auto& rule = arm_rules[first_any][ofs];
+            if(const auto* e = rule.opt_ValueRange())
+            {
+                // Generate branch based on range
+                this->gen_dispatch_range(arm_rules[first_any][ofs].field_path, e->first, e->last, next);
+            }
+            else if(const auto* e = rule.opt_SplitSlice())
+            {
+                // Generate branch based on slice length being at least required.
+                this->gen_dispatch_splitslice(rule.field_path, *e, next);
+            }
+            else
+            {
+                ASSERT_BUG(sp, rule.is_Any(), "Didn't expect non-Any rule here, got " << rule.tag_str() << " " << rule);
+            }
+
+            // Step deeper into these arms
+            auto slice = arm_rules.sub_slice(first_any, idx - first_any);
+            this->gen_for_slice(mv$(slice), ofs+1, next);
+
+            if(has_next)
+            {
+                m_builder.set_cur_block(next);
+            }
+        }
+    }
+
+    ASSERT_BUG(sp, ! m_builder.block_active(), "Block left active after match group");
+}
+
+void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
+{
+    const auto& field_path = rules[0][0][ofs].field_path;
+    TRACE_FUNCTION_F("rules=["<<rules <<"], ofs=" << ofs <<", field_path=" << field_path);
+
+    {
+        size_t n = 0;
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            for(size_t j = 0; j < rules[i].size(); j++)
+            {
+                ASSERT_BUG(sp, rules[i][j][ofs].field_path == field_path, "Field path mismatch, " << rules[i][j][ofs].field_path << " != " << field_path);
+                n ++;
+            }
+        }
+        ASSERT_BUG(sp, arm_targets.size() == n, "Arm target count mismatch - " << n << " != " << arm_targets.size());
+    }
 
     ::MIR::LValue   val;
     ::HIR::TypeRef  ty;
-
-    get_ty_and_val(sp, m_builder.resolve(), top_ty, top_val,  node.m_field_path, field_path_ofs,  ty, val);
+    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
     DEBUG("ty = " << ty << ", val = " << val);
 
-    TU_MATCHA( (ty.m_data), (e),
-    (Infer,   BUG(sp, "Ivar for in match type"); ),
-    (Diverge, BUG(sp, "Diverge in match type");  ),
+    TU_MATCHA( (ty.m_data), (te),
+    (Infer,
+        BUG(sp, "Hit _ in type - " << ty);
+        ),
+    (Diverge,
+        BUG(sp, "Matching over !");
+        ),
     (Primitive,
-        switch(e)
+        this->gen_dispatch__primitive(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
+        ),
+    (Path,
+        // Matching over a path can only happen with an enum.
+        // TODO: What about `box` destructures?
+        // - They're handled via hidden derefs
+        if( !te.binding.is_Enum() ) {
+            TU_MATCHA( (te.binding), (pbe),
+            (Unbound,
+                BUG(sp, "Encounterd unbound path - " << te.path);
+                ),
+            (Opaque,
+                BUG(sp, "Attempting to match over opaque type - " << ty);
+                ),
+            (Struct,
+                const auto& str_data = pbe->m_data;
+                TU_MATCHA( (str_data), (sd),
+                (Unit,
+                    BUG(sp, "Attempting to match over unit type - " << ty);
+                    ),
+                (Tuple,
+                    TODO(sp, "Matching on tuple-like struct?");
+                    ),
+                (Named,
+                    TODO(sp, "Matching on struct?");
+                    )
+                )
+                ),
+            (Union,
+                TODO(sp, "Match over Union");
+                ),
+            (Enum,
+                )
+            )
+        }
+
+        this->gen_dispatch__enum(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
+        ),
+    (Generic,
+        BUG(sp, "Attempting to match a generic");
+        ),
+    (TraitObject,
+        BUG(sp, "Attempting to match a trait object");
+        ),
+    (ErasedType,
+        BUG(sp, "Attempting to match an erased type");
+        ),
+    (Array,
+        BUG(sp, "Attempting to match on an Array (should have been destructured)");
+        ),
+    (Slice,
+        // TODO: Slice size matches!
+        this->gen_dispatch__slice(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
+        ),
+    (Tuple,
+        BUG(sp, "Match directly on tuple");
+        ),
+    (Borrow,
+        BUG(sp, "Match directly on borrow");
+        ),
+    (Pointer,
+        // TODO: Could this actually be valid?
+        BUG(sp, "Attempting to match a pointer - " << ty);
+        ),
+    (Function,
+        // TODO: Could this actually be valid?
+        BUG(sp, "Attempting to match a function pointer - " << ty);
+        ),
+    (Closure,
+        BUG(sp, "Attempting to match a closure");
+        )
+    )
+}
+
+void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
+{
+    auto te = ty.m_data.as_Primitive();
+    switch(te)
+    {
+    case ::HIR::CoreType::Bool: {
+        ASSERT_BUG(sp, rules.size() <= 2, "More than 2 rules for boolean");
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            ASSERT_BUG(sp, rules[i][0][ofs].is_Bool(), "PatternRule for bool isn't _Bool");
+        }
+
+        // False sorts before true.
+        auto fail_bb = rules.size() == 2 ? arm_targets[              0] : (rules[0][0][ofs].as_Bool() ? def_blk : arm_targets[0]);
+        auto succ_bb = rules.size() == 2 ? arm_targets[rules[0].size()] : (rules[0][0][ofs].as_Bool() ? arm_targets[0] : def_blk);
+
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val), succ_bb, fail_bb }) );
+        } break;
+    case ::HIR::CoreType::U8:
+    case ::HIR::CoreType::U16:
+    case ::HIR::CoreType::U32:
+    case ::HIR::CoreType::U64:
+    case ::HIR::CoreType::U128:
+    case ::HIR::CoreType::Usize:
+
+    case ::HIR::CoreType::I8:
+    case ::HIR::CoreType::I16:
+    case ::HIR::CoreType::I32:
+    case ::HIR::CoreType::I64:
+    case ::HIR::CoreType::I128:
+    case ::HIR::CoreType::Isize:
+
+    case ::HIR::CoreType::Char:
+        if( rules.size() == 1 )
+        {
+            // Special case, single option, equality only
+            const auto& r = rules[0][0][ofs];
+            ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+            const auto& re = r.as_Value();
+            auto test_val = ::MIR::Param(re.clone());
+            auto cmp_lval = m_builder.get_rval_in_if_cond(sp, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
+            m_builder.end_block( ::MIR::Terminator::make_If({  mv$(cmp_lval), arm_targets[0], def_blk }) );
+        }
+        else
+        {
+            // TODO: Add a SwitchInt terminator for use with this. (Or just a SwitchVal terminator?)
+
+            // NOTE: Rules are currently sorted
+            // TODO: If there are Constant::Const values in the list, they need to come first! (with equality checks)
+
+            // Does a sorted linear search. Binary search would be nicer but is harder to implement.
+            size_t tgt_ofs = 0;
+            for(size_t i = 0; i < rules.size(); i++)
+            {
+                for(size_t j = 1; j < rules[i].size(); j ++)
+                    ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Value match");
+
+                const auto& r = rules[i][0][ofs];
+                ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+                const auto& re = r.as_Value();
+                if(re.is_Const())
+                    TODO(sp, "Handle Constant::Const in match");
+
+                // IF v < tst : def_blk
+                // Skip if the previous value was the imediat predecesor
+                bool is_succ = i != 0 && (re.is_Uint()
+                    ? re.as_Uint().v == rules[i-1][0][ofs].as_Value().as_Uint().v + 1
+                    : re.as_Int().v == rules[i-1][0][ofs].as_Value().as_Int().v + 1
+                    );
+                if( !is_succ )
+                {
+                    auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                    auto cmp_lval_lt = this->push_compare(val.clone(), ::MIR::eBinOp::LT, ::MIR::Param(re.clone()));
+                    m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                    m_builder.set_cur_block(cmp_eq_blk);
+                }
+
+                // IF v == tst : target
+                {
+                    auto next_cmp_blk = m_builder.new_bb_unlinked();
+                    auto cmp_lval_eq = this->push_compare( val.clone(), ::MIR::eBinOp::EQ, ::MIR::Param(re.clone()) );
+                    m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
+                    m_builder.set_cur_block(next_cmp_blk);
+                }
+
+                tgt_ofs += rules[i].size();
+            }
+            m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+        }
+        break;
+    case ::HIR::CoreType::F32:
+    case ::HIR::CoreType::F64: {
+        // NOTE: Rules are currently sorted
+        // TODO: If there are Constant::Const values in the list, they need to come first!
+        size_t tgt_ofs = 0;
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            for(size_t j = 1; j < rules[i].size(); j ++)
+                ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Value match");
+
+            const auto& r = rules[i][0][ofs];
+            ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+            const auto& re = r.as_Value();
+            if(re.is_Const())
+                TODO(sp, "Handle Constant::Const in match");
+
+            // IF v < tst : def_blk
+            {
+                auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_lt = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::LT, ::MIR::Param(re.clone()) }));
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                m_builder.set_cur_block(cmp_eq_blk);
+            }
+
+            // IF v == tst : target
+            {
+                auto next_cmp_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_eq = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, ::MIR::Param(re.clone()) }));
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
+                m_builder.set_cur_block(next_cmp_blk);
+            }
+
+            tgt_ofs += rules[i].size();
+        }
+        m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+        } break;
+    case ::HIR::CoreType::Str:
+        // Remove the deref on the &str
+        auto oval = mv$(val);
+        auto val = mv$(*oval.as_Deref().val);
+        // NOTE: Rules are currently sorted
+        // TODO: If there are Constant::Const values in the list, they need to come first!
+        size_t tgt_ofs = 0;
+        for(size_t i = 0; i < rules.size(); i++)
+        {
+            for(size_t j = 1; j < rules[i].size(); j ++)
+                ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Value match");
+
+            const auto& r = rules[i][0][ofs];
+            ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+            const auto& re = r.as_Value();
+            if(re.is_Const())
+                TODO(sp, "Handle Constant::Const in match");
+
+            // IF v < tst : def_blk
+            {
+                auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_lt = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::LT, ::MIR::Param(re.clone()) }));
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                m_builder.set_cur_block(cmp_eq_blk);
+            }
+
+            // IF v == tst : target
+            {
+                auto next_cmp_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_eq = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, ::MIR::Param(re.clone()) }));
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
+                m_builder.set_cur_block(next_cmp_blk);
+            }
+
+            tgt_ofs += rules[i].size();
+        }
+        m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+        break;
+    }
+}
+
+void MatchGenGrouped::gen_dispatch__enum(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
+{
+    TRACE_FUNCTION;
+    auto& te = ty.m_data.as_Path();
+    const auto& pbe = te.binding.as_Enum();
+
+    auto decison_arm = m_builder.pause_cur_block();
+
+    auto var_count = pbe->m_variants.size();
+    ::std::vector< ::MIR::BasicBlockId> arms(var_count, def_blk);
+    size_t  arm_idx = 0;
+    for(size_t i = 0; i < rules.size(); i ++)
+    {
+        ASSERT_BUG(sp, rules[i][0][ofs].is_Variant(), "Rule for enum isn't Any or Variant - " << rules[i][0][ofs].tag_str());
+        const auto& re = rules[i][0][ofs].as_Variant();
+        unsigned int var_idx = re.idx;
+        DEBUG("Variant " << var_idx);
+
+        ASSERT_BUG(sp, re.sub_rules.size() == 0, "Sub-rules in MatchGenGrouped");
+
+        arms[var_idx] = arm_targets[arm_idx];
+        for(size_t j = 0; j < rules[i].size(); j ++)
+        {
+            assert(arms[var_idx] == arm_targets[arm_idx]);
+            arm_idx ++;
+        }
+    }
+
+    m_builder.set_cur_block(decison_arm);
+    m_builder.end_block( ::MIR::Terminator::make_Switch({ mv$(val), mv$(arms) }) );
+}
+
+void MatchGenGrouped::gen_dispatch__slice(::HIR::TypeRef ty, ::MIR::LValue val, const ::std::vector<t_rules_subset>& rules, size_t ofs, const ::std::vector<::MIR::BasicBlockId>& arm_targets, ::MIR::BasicBlockId def_blk)
+{
+    auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val).clone() }));
+
+    // TODO: Re-sort the rules list to interleve Constant::Bytes and Slice
+
+    // Just needs to check the lengths, then dispatch.
+    size_t tgt_ofs = 0;
+    for(size_t i = 0; i < rules.size(); i++)
+    {
+        const auto& r = rules[i][0][ofs];
+        if(const auto* re = r.opt_Slice())
+        {
+            ASSERT_BUG(sp, re->sub_rules.size() == 0, "Sub-rules in MatchGenGrouped");
+            auto val_tst = ::MIR::Constant::make_Uint({ re->len, ::HIR::CoreType::Usize });
+
+            for(size_t j = 0; j < rules[i].size(); j ++)
+                assert(arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j]);
+
+            // IF v < tst : target
+            if( re->len > 0 )
+            {
+                auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_lt = this->push_compare( val_len.clone(), ::MIR::eBinOp::LT, val_tst.clone() );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                m_builder.set_cur_block(cmp_eq_blk);
+            }
+
+            // IF v == tst : target
+            {
+                auto next_cmp_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_eq = this->push_compare( val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_tst) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
+                m_builder.set_cur_block(next_cmp_blk);
+            }
+        }
+        else if(const auto* re = r.opt_Value())
+        {
+            ASSERT_BUG(sp, re->is_Bytes(), "Slice with non-Bytes value - " << *re);
+            const auto& b = re->as_Bytes();
+
+            auto val_tst = ::MIR::Constant::make_Uint({ b.size(), ::HIR::CoreType::Usize });
+            auto cmp_slice_val = m_builder.lvalue_or_temp(sp,
+                    ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8) ),
+                    ::MIR::RValue::make_MakeDst({ ::MIR::Param(re->clone()), val_tst.clone() })
+                    );
+
+            if( b.size() > 0 )
+            {
+                auto cmp_eq_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_lt = this->push_compare( val_len.clone(), ::MIR::eBinOp::LT, val_tst.clone() );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
+                m_builder.set_cur_block(cmp_eq_blk);
+            }
+
+            // IF v == tst : target
+            {
+                auto succ_blk = m_builder.new_bb_unlinked();
+                auto next_cmp_blk = m_builder.new_bb_unlinked();
+                auto cmp_lval_eq = this->push_compare( val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_tst) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), succ_blk, next_cmp_blk }) );
+                m_builder.set_cur_block(succ_blk);
+
+                // TODO: What if `val` isn't a Deref?
+                ASSERT_BUG(sp, val.is_Deref(), "TODO: Handle non-Deref matches of byte strings");
+                cmp_lval_eq = this->push_compare( val.as_Deref().val->clone(), ::MIR::eBinOp::EQ, mv$(cmp_slice_val) );
+                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], def_blk }) );
+
+                m_builder.set_cur_block(next_cmp_blk);
+            }
+        }
+        else
+        {
+            BUG(sp, "Matching without _Slice pattern - " << r.tag_str() << " - " << r);
+        }
+
+        tgt_ofs += rules[i].size();
+    }
+    m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+}
+
+
+void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const ::MIR::Constant& first, const ::MIR::Constant& last, ::MIR::BasicBlockId def_blk)
+{
+    TRACE_FUNCTION_F("field_path="<<field_path<<", " << first << " ... " << last);
+    ::MIR::LValue   val;
+    ::HIR::TypeRef  ty;
+    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
+    DEBUG("ty = " << ty << ", val = " << val);
+
+    if( const auto* tep = ty.m_data.opt_Primitive() )
+    {
+        auto te = *tep;
+
+        bool lower_possible = true;
+        bool upper_possible = true;
+
+        switch(te)
         {
         case ::HIR::CoreType::Bool:
-            ASSERT_BUG(sp, node.m_branches.is_Bool(), "Tree for bool isn't a _Bool - node="<<node);
-            this->generate_branches_Bool(sp, node.m_default, node.m_branches.as_Bool(), ty, mv$(val), mv$(and_then));
+            BUG(sp, "Range match over Bool");
+            break;
+        case ::HIR::CoreType::Str:
+            BUG(sp, "Range match over Str - is this valid?");
             break;
         case ::HIR::CoreType::U8:
         case ::HIR::CoreType::U16:
@@ -3169,8 +3204,10 @@ void DecisionTreeGen::generate_tree_code(
         case ::HIR::CoreType::U64:
         case ::HIR::CoreType::U128:
         case ::HIR::CoreType::Usize:
-            ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for unsigned isn't a _Unsigned - node="<<node);
-            this->generate_branches_Unsigned(sp, node.m_default, node.m_branches.as_Unsigned(), ty, mv$(val), mv$(and_then));
+            lower_possible = (first.as_Uint().v > 0);
+            // TODO: Should this also check for the end being the max value of the type?
+            // - Can just leave that to the optimiser
+            upper_possible = true;
             break;
         case ::HIR::CoreType::I8:
         case ::HIR::CoreType::I16:
@@ -3178,618 +3215,85 @@ void DecisionTreeGen::generate_tree_code(
         case ::HIR::CoreType::I64:
         case ::HIR::CoreType::I128:
         case ::HIR::CoreType::Isize:
-            ASSERT_BUG(sp, node.m_branches.is_Signed(), "Tree for unsigned isn't a _Signed - node="<<node);
-            this->generate_branches_Signed(sp, node.m_default, node.m_branches.as_Signed(), ty, mv$(val), mv$(and_then));
+            lower_possible = true;
+            upper_possible = true;
             break;
         case ::HIR::CoreType::Char:
-            ASSERT_BUG(sp, node.m_branches.is_Unsigned(), "Tree for char isn't a _Unsigned - node="<<node);
-            this->generate_branches_Char(sp, node.m_default, node.m_branches.as_Unsigned(), ty, mv$(val), mv$(and_then));
-            break;
-        case ::HIR::CoreType::Str:
-            ASSERT_BUG(sp, node.m_branches.is_String(), "Tree for &str isn't a _String - node="<<node);
-            this->generate_branches_Borrow_str(sp, node.m_default, node.m_branches.as_String(), ty, mv$(val), mv$(and_then));
+            lower_possible = (first.as_Uint().v > 0);
+            upper_possible = (first.as_Uint().v <= 0x10FFFF);
             break;
         case ::HIR::CoreType::F32:
         case ::HIR::CoreType::F64:
-            ASSERT_BUG(sp, node.m_branches.is_Float(), "Tree for float isn't a _Float - node="<<node);
-            this->generate_branches_Float(sp, node.m_default, node.m_branches.as_Float(), ty, mv$(val), mv$(and_then));
-            break;
-        default:
-            TODO(sp, "Primitive - " << ty);
+            // NOTE: No upper or lower limits
             break;
         }
-        ),
-    (Tuple,
-        BUG(sp, "Decision node on tuple - node=" << node);
-        ),
-    (Path,
-        // This is either a struct destructure or an enum
-        TU_MATCHA( (e.binding), (pbe),
-        (Unbound,
-            BUG(sp, "Encounterd unbound path - " << e.path);
-            ),
-        (Opaque,
-            and_then(node);
-            ),
-        (Struct,
-            assert(pbe);
-            TU_MATCHA( (pbe->m_data), (fields),
-            (Unit,
-                and_then(node);
-                ),
-            (Tuple,
-                BUG(sp, "Decision node on tuple struct");
-                ),
-            (Named,
-                BUG(sp, "Decision node on struct");
-                )
-            )
-            ),
-        (Union,
-            TODO(sp, "Decision node on Union");
-            ),
-        (Enum,
-            ASSERT_BUG(sp, node.m_branches.is_Variant(), "Tree for enum isn't a Variant - node="<<node);
-            assert(pbe);
-            this->generate_branches_Enum(sp, node.m_default, node.m_branches.as_Variant(), node.m_field_path, ty, mv$(val),  mv$(and_then));
-            )
-        )
-        ),
-    (Generic,
-        and_then(node);
-        ),
-    (TraitObject,
-        ERROR(sp, E0000, "Attempting to match over a trait object");
-        ),
-    (ErasedType,
-        ERROR(sp, E0000, "Attempting to match over an erased type");
-        ),
-    (Array,
-        // TODO: Slice patterns, sequential comparison/sub-match
-        TODO(sp, "Match over array");
-        ),
-    (Slice,
-        ASSERT_BUG(sp, node.m_branches.is_Slice(), "Tree for [T] isn't a _Slice - node="<<node);
-        this->generate_branches_Slice(sp, node.m_default, node.m_branches.as_Slice(), node.m_field_path, ty, mv$(val), mv$(and_then));
-        ),
-    (Borrow,
-        if( *e.inner == ::HIR::CoreType::Str ) {
-            TODO(sp, "Match over &str");
-        }
-        else {
-            BUG(sp, "Decision node on non-str/[T] borrow - " << ty);
-        }
-        ),
-    (Pointer,
-        ERROR(sp, E0000, "Attempting to match over a pointer");
-        ),
-    (Function,
-        ERROR(sp, E0000, "Attempting to match over a functon pointer");
-        ),
-    (Closure,
-        ERROR(sp, E0000, "Attempting to match over a closure");
-        )
-    )
-}
 
-void DecisionTreeGen::generate_branch(const DecisionTreeNode::Branch& branch, ::std::function<void(const DecisionTreeNode&)> cb)
-{
-    assert( !branch.is_Unset() );
-    if( branch.is_Terminal() ) {
-        this->m_builder.end_block( ::MIR::Terminator::make_Goto( this->get_block_for_rule( branch.as_Terminal() ) ) );
-    }
-    else {
-        assert( branch.is_Subtree() );
-        const auto& subnode = *branch.as_Subtree();
-
-        cb(subnode);
-    }
-}
-
-::MIR::LValue DecisionTreeGen::push_compare(const Span& sp, ::MIR::LValue left, ::MIR::eBinOp op, ::MIR::Param right)
-{
-    return m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool,
-            ::MIR::RValue::make_BinOp({ mv$(left), op, mv$(right) })
-            );
-}
-
-// TODO: Unify logic for these two, and support simpler checks for sequential values
-void DecisionTreeGen::generate_branches_Signed(
-    const Span& sp,
-    const DecisionTreeNode::Branch& default_branch,
-    const DecisionTreeNode::Values::Data_Signed& branches,
-    const ::HIR::TypeRef& ty, ::MIR::LValue val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
-{
-    auto ity = ty.m_data.as_Primitive();
-    auto default_block = m_builder.new_bb_unlinked();
-
-    // TODO: Convert into an integer switch w/ offset instead of chained comparisons
-
-    for( const auto& branch : branches )
-    {
-        auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
-
-        auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = push_compare(sp,  val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Int({ branch.first.start, ity }));
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
-        m_builder.set_cur_block( cmp_gt_block );
-
-        auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = push_compare(sp,  val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant::make_Int({ branch.first.end, ity }));
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
-
-        m_builder.set_cur_block( success_block );
-        this->generate_branch(branch.second, and_then);
-
-        m_builder.set_cur_block( next_block );
-    }
-    assert( m_builder.block_active() );
-
-    if( default_branch.is_Unset() ) {
-        // TODO: Emit error if non-exhaustive
-        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
-    }
-    else {
-        this->generate_branch(default_branch, and_then);
-    }
-}
-
-void DecisionTreeGen::generate_branches_Unsigned(
-    const Span& sp,
-    const DecisionTreeNode::Branch& default_branch,
-    const DecisionTreeNode::Values::Data_Unsigned& branches,
-    const ::HIR::TypeRef& ty, ::MIR::LValue val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
-{
-    auto ity = ty.m_data.as_Primitive();
-    auto default_block = m_builder.new_bb_unlinked();
-
-    // TODO: Convert into an integer switch w/ offset instead of chained comparisons
-
-    for( const auto& branch : branches )
-    {
-        auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
-
-        auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = push_compare(sp,  val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Uint({ branch.first.start, ity }));
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
-        m_builder.set_cur_block( cmp_gt_block );
-
-        auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = push_compare(sp,  val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant::make_Uint({ branch.first.end, ity }));
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
-
-        m_builder.set_cur_block( success_block );
-        this->generate_branch(branch.second, and_then);
-
-        m_builder.set_cur_block( next_block );
-    }
-    assert( m_builder.block_active() );
-
-    if( default_branch.is_Unset() ) {
-        // TODO: Emit error if non-exhaustive
-        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
-    }
-    else {
-        this->generate_branch(default_branch, and_then);
-    }
-}
-
-void DecisionTreeGen::generate_branches_Float(
-    const Span& sp,
-    const DecisionTreeNode::Branch& default_branch,
-    const DecisionTreeNode::Values::Data_Float& branches,
-    const ::HIR::TypeRef& ty, ::MIR::LValue val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
-{
-    auto ity = ty.m_data.as_Primitive();
-    auto default_block = m_builder.new_bb_unlinked();
-
-    for( const auto& branch : branches )
-    {
-        auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
-
-        auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = push_compare(sp,  val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Float({ branch.first.start, ity }));
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
-        m_builder.set_cur_block( cmp_gt_block );
-
-        auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = push_compare(sp,  val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant::make_Float({ branch.first.end, ity }));
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
-
-        m_builder.set_cur_block( success_block );
-        this->generate_branch(branch.second, and_then);
-
-        m_builder.set_cur_block( next_block );
-    }
-    assert( m_builder.block_active() );
-
-    if( default_branch.is_Unset() ) {
-        ERROR(sp, E0000, "Match over floating point with no `_` arm");
-    }
-    else {
-        this->generate_branch(default_branch, and_then);
-    }
-}
-
-void DecisionTreeGen::generate_branches_Char(
-    const Span& sp,
-    const DecisionTreeNode::Branch& default_branch,
-    const DecisionTreeNode::Values::Data_Unsigned& branches,
-    const ::HIR::TypeRef& ty, ::MIR::LValue val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
-{
-    auto default_block = m_builder.new_bb_unlinked();
-
-    // TODO: Convert into an integer switch w/ offset instead of chained comparisons
-
-    for( const auto& branch : branches )
-    {
-        auto next_block = (&branch == &branches.back() ? default_block : m_builder.new_bb_unlinked());
-
-        auto cmp_gt_block = m_builder.new_bb_unlinked();
-        auto val_cmp_lt = push_compare(sp,  val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Uint({ branch.first.start, ::HIR::CoreType::Char }));
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), default_block, cmp_gt_block }) );
-        m_builder.set_cur_block( cmp_gt_block );
-
-        auto success_block = m_builder.new_bb_unlinked();
-        auto val_cmp_gt = push_compare(sp,  val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant::make_Uint({ branch.first.end, ::HIR::CoreType::Char }));
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
-
-        m_builder.set_cur_block( success_block );
-        this->generate_branch(branch.second, and_then);
-
-        m_builder.set_cur_block( next_block );
-    }
-    assert( m_builder.block_active() );
-
-    if( default_branch.is_Unset() ) {
-        // TODO: Error if not exhaustive.
-        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
-    }
-    else {
-        this->generate_branch(default_branch, and_then);
-    }
-}
-void DecisionTreeGen::generate_branches_Bool(
-    const Span& sp,
-    const DecisionTreeNode::Branch& default_branch,
-    const DecisionTreeNode::Values::Data_Bool& branches,
-    const ::HIR::TypeRef& ty, ::MIR::LValue val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
-{
-    //assert( ty.m_data.is_Boolean() );
-
-    if( default_branch.is_Unset() )
-    {
-        if( branches.false_branch.is_Unset() || branches.true_branch.is_Unset() ) {
-            // Non-exhaustive match - ERROR
-        }
-    }
-    else
-    {
-        if( branches.false_branch.is_Unset() && branches.true_branch.is_Unset() ) {
-            // Unreachable default (NOTE: Not an error here)
-        }
-    }
-
-    // Emit an if based on the route taken
-    auto bb_false = m_builder.new_bb_unlinked();
-    auto bb_true  = m_builder.new_bb_unlinked();
-    m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val), bb_true, bb_false }) );
-
-    // Recurse into sub-patterns
-    const auto& branch_false = ( !branches.false_branch.is_Unset() ? branches.false_branch : default_branch );
-    const auto& branch_true  = ( !branches. true_branch.is_Unset() ? branches. true_branch : default_branch );
-
-    m_builder.set_cur_block(bb_true );
-    this->generate_branch(branch_true , and_then);
-    m_builder.set_cur_block(bb_false);
-    this->generate_branch(branch_false, and_then);
-}
-
-void DecisionTreeGen::generate_branches_Borrow_str(
-    const Span& sp,
-    const DecisionTreeNode::Branch& default_branch,
-    const DecisionTreeNode::Values::Data_String& branches,
-    const ::HIR::TypeRef& ty, ::MIR::LValue val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
-{
-    // TODO: Chained comparisons with ordering.
-    // - Would this just emit a eBinOp? That implies deep codegen support for strings.
-    // - rustc emits calls to PartialEq::eq for this and for slices. mrustc could use PartialOrd and fall back to PartialEq if unavaliable?
-    //  > Requires crate access here! - A memcmp call is probably better, probably via a binop
-    // NOTE: The below implementation gets the final codegen to call memcmp on the strings by emitting eBinOp::{LT,GT}
-
-    // - Remove the wrapping Deref (which must be there)
-    ASSERT_BUG(sp, val.is_Deref(), "Match over str without a deref - " << val);
-    auto tmp = mv$( *val.as_Deref().val );
-    val = mv$(tmp);
-
-    auto default_bb = m_builder.new_bb_unlinked();
-
-    // TODO: Binary search? Perfect-Hash-Function?
-    assert( !branches.empty() );
-    for(const auto& branch : branches)
-    {
-        auto next_bb = (&branch == &branches.back() ? default_bb : m_builder.new_bb_unlinked());
-
-        auto cmp_gt_bb = m_builder.new_bb_unlinked();
-
-        auto lt_val = push_compare(sp, val.clone(), ::MIR::eBinOp::LT, ::MIR::Constant(branch.first) );
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(lt_val), default_bb, cmp_gt_bb }) );
-        m_builder.set_cur_block(cmp_gt_bb);
-
-        auto eq_bb = m_builder.new_bb_unlinked();
-        auto gt_val = push_compare(sp, val.clone(), ::MIR::eBinOp::GT, ::MIR::Constant(branch.first) );
-        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(gt_val), next_bb, eq_bb }) );
-        m_builder.set_cur_block(eq_bb);
-
-        this->generate_branch(branch.second, and_then);
-
-        m_builder.set_cur_block(next_bb);
-    }
-    this->generate_branch(default_branch, and_then);
-}
-
-void DecisionTreeGen::generate_branches_Enum(
-    const Span& sp,
-    const DecisionTreeNode::Branch& default_branch,
-    const DecisionTreeNode::Values::Data_Variant& branches,
-    const field_path_t& field_path,
-    const ::HIR::TypeRef& ty, ::MIR::LValue val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
-{
-    const auto& enum_ref = *ty.m_data.as_Path().binding.as_Enum();
-    const auto& enum_path = ty.m_data.as_Path().path.m_data.as_Generic();
-    const auto& variants = enum_ref.m_variants;
-    auto variant_count = variants.size();
-    bool has_any = ! default_branch.is_Unset();
-
-    if( branches.size() < variant_count && ! has_any ) {
-        ERROR(sp, E0000, "Non-exhaustive match over " << ty << " - " << branches.size() << " out of " << variant_count << " present");
-    }
-    // DISABLED: Some complex matches don't directly use some defaults
-    //if( branches.size() == variant_count && has_any ) {
-    //    ERROR(sp, E0000, "Unreachable _ arm - " << branches.size() << " variants in " << enum_path);
-    //}
-
-    auto any_block = (has_any ? m_builder.new_bb_unlinked() : 0);
-
-    // Emit a switch over the variant
-    ::std::vector< ::MIR::BasicBlockId> variant_blocks;
-    variant_blocks.reserve( variant_count );
-    for( const auto& branch : branches )
-    {
-        if( variant_blocks.size() != branch.first ) {
-            assert( variant_blocks.size() < branch.first );
-            assert( has_any );
-            variant_blocks.resize( branch.first, any_block );
-        }
-        variant_blocks.push_back( m_builder.new_bb_unlinked() );
-    }
-    if( variant_blocks.size() != variant_count )
-    {
-        ASSERT_BUG(sp, variant_blocks.size() < variant_count, "Branch count (" << variant_blocks.size() << ") > variant count (" << variant_count << ") in match of " << ty);
-        ASSERT_BUG(sp, has_any, "Non-exhaustive match and no any arm");
-        variant_blocks.resize( variant_count, any_block );
-    }
-    bool any_arm_used = ::std::any_of( variant_blocks.begin(), variant_blocks.end(), [any_block](const auto& blk){ return blk == any_block; } );
-
-    m_builder.end_block( ::MIR::Terminator::make_Switch({
-        val.clone(), variant_blocks // NOTE: Copies the list, so it can be used lower down
-        }) );
-
-    // Emit sub-patterns, looping over variants
-    for( const auto& branch : branches )
-    {
-        auto bb = variant_blocks[branch.first];
-        const auto& var = variants[branch.first];
-        DEBUG(branch.first << " " << var.first << " = " << branch.second);
-
-        auto var_lval = ::MIR::LValue::make_Downcast({ box$(val.clone()), branch.first });
-
-        ::HIR::TypeRef  fake_ty;
-
-        TU_MATCHA( (var.second), (e),
-        (Unit,
-            DEBUG("- Unit");
-            ),
-        (Value,
-            DEBUG("- Value");
-            ),
-        (Tuple,
-            // Make a fake tuple
-            ::std::vector< ::HIR::TypeRef>  ents;
-            for( const auto& fld : e )
-            {
-                ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.ent) );
-            }
-            fake_ty = ::HIR::TypeRef( mv$(ents) );
-            m_builder.resolve().expand_associated_types(sp, fake_ty);
-            DEBUG("- Tuple - " << fake_ty);
-            ),
-        (Struct,
-            ::std::vector< ::HIR::TypeRef>  ents;
-            for( const auto& fld : e )
-            {
-                ents.push_back( monomorphise_type(sp,  enum_ref.m_params, enum_path.m_params,  fld.second.ent) );
-            }
-            fake_ty = ::HIR::TypeRef( mv$(ents) );
-            m_builder.resolve().expand_associated_types(sp, fake_ty);
-            DEBUG("- Struct - " << fake_ty);
-            )
-        )
-
-        m_builder.set_cur_block( bb );
-        if( fake_ty == ::HIR::TypeRef() || fake_ty.m_data.as_Tuple().size() == 0 ) {
-            this->generate_branch(branch.second, and_then);
-        }
-        else {
-            this->generate_branch(branch.second, [&](auto& subnode) {
-                // Call special handler to determine when the enum is over
-                this->generate_tree_code__enum(sp, subnode, fake_ty, var_lval, field_path, and_then);
-                });
-        }
-    }
-
-    if( any_arm_used )
-    {
-        DEBUG("_ = " << default_branch);
-        if( !default_branch.is_Unset() )
+        if( lower_possible )
         {
-            m_builder.set_cur_block(any_block);
-            this->generate_branch(default_branch, and_then);
+            auto test_bb_2 = m_builder.new_bb_unlinked();
+            // IF `val` < `first` : fail_bb
+            auto cmp_lt_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::LT, ::MIR::Param(first.clone()) }));
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lt_lval), def_blk, test_bb_2 }) );
+
+            m_builder.set_cur_block(test_bb_2);
+        }
+
+
+        if( upper_possible )
+        {
+            auto succ_bb = m_builder.new_bb_unlinked();
+
+            // IF `val` > `last` : fail_bb
+            auto cmp_gt_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ ::MIR::Param(val.clone()), ::MIR::eBinOp::GT, ::MIR::Param(last.clone()) }));
+            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_gt_lval), def_blk, succ_bb }) );
+
+            m_builder.set_cur_block(succ_bb);
         }
     }
     else
     {
-        DEBUG("_ = UNUSED - " << default_branch);
+        TODO(sp, "ValueRange on " << ty);
     }
 }
-
-void DecisionTreeGen::generate_branches_Slice(
-    const Span& sp,
-    const DecisionTreeNode::Branch& default_branch,
-    const DecisionTreeNode::Values::Data_Slice& branches,
-    const field_path_t& field_path,
-    const ::HIR::TypeRef& ty, ::MIR::LValue val,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
+void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, const PatternRule::Data_SplitSlice& e, ::MIR::BasicBlockId def_blk)
 {
-    if( default_branch.is_Unset() ) {
-        ERROR(sp, E0000, "Non-exhaustive match over " << ty);
-    }
+    TRACE_FUNCTION_F("field_path="<<field_path<<", [" << e.leading << ", .., " << e.trailing << "]");
+    ::MIR::LValue   val;
+    ::HIR::TypeRef  ty;
+    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
+    DEBUG("ty = " << ty << ", val = " << val);
 
+    ASSERT_BUG(sp, e.leading.size() == 0, "Sub-rules in MatchGenGrouped");
+    ASSERT_BUG(sp, e.trailing.size() == 0, "Sub-rules in MatchGenGrouped");
+    ASSERT_BUG(sp, ty.m_data.is_Slice(), "SplitSlice pattern on non-slice - " << ty);
+
+    // Obtain slice length
     auto val_len = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, val).clone() }));
 
-    // NOTE: Un-deref the slice
-    ASSERT_BUG(sp, val.is_Deref(), "slice matches must be passed a deref");
-    auto tmp = mv$( *val.as_Deref().val );
-    val = mv$(tmp);
-
-    auto any_block = m_builder.new_bb_unlinked();
-
-    // TODO: Select one of three ways of picking the arm:
-    // - Integer switch (unimplemented)
-    // - Binary search
-    // - Sequential comparisons
-
-    // TODO: Binary search instead?
-    for( const auto& branch : branches.fixed_arms )
+    // 1. Check that length is sufficient for the pattern to be used
+    // `IF len < min_len : def_blk, next
     {
-        auto val_des = ::MIR::Constant::make_Uint({ static_cast<uint64_t>(branch.first), ::HIR::CoreType::Usize });
-
-        // Special case - final just does equality
-        if( &branch == &branches.fixed_arms.back() )
-        {
-            auto val_cmp_eq = push_compare(sp,  val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_des));
-
-            auto success_block = m_builder.new_bb_unlinked();
-            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_eq), success_block, any_block }) );
-
-            m_builder.set_cur_block( success_block );
-            this->generate_branch(branch.second, and_then);
-
-            m_builder.set_cur_block( any_block );
-        }
-        // Special case for zero (which can't have a LT)
-        else if( branch.first == 0 )
-        {
-            auto next_block = m_builder.new_bb_unlinked();
-            auto val_cmp_eq = push_compare(sp,  val_len.clone(), ::MIR::eBinOp::EQ, mv$(val_des));
-
-            auto success_block = m_builder.new_bb_unlinked();
-            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_eq), success_block, next_block }) );
-
-            m_builder.set_cur_block( success_block );
-            this->generate_branch(branch.second, and_then);
-
-            m_builder.set_cur_block( next_block );
-        }
-        // General case, with two comparisons
-        else
-        {
-            auto next_block = m_builder.new_bb_unlinked();
-
-            auto cmp_gt_block = m_builder.new_bb_unlinked();
-            auto val_cmp_lt = push_compare(sp,  val_len.clone(), ::MIR::eBinOp::LT, val_des.clone());
-            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_lt), any_block, cmp_gt_block }) );
-            m_builder.set_cur_block( cmp_gt_block );
-
-            auto success_block = m_builder.new_bb_unlinked();
-            auto val_cmp_gt = push_compare(sp,  val_len.clone(), ::MIR::eBinOp::GT, mv$(val_des));
-            m_builder.end_block( ::MIR::Terminator::make_If({ mv$(val_cmp_gt), next_block, success_block }) );
-
-            m_builder.set_cur_block( success_block );
-            this->generate_branch(branch.second, and_then);
-
-            m_builder.set_cur_block( next_block );
-        }
+        auto next = m_builder.new_bb_unlinked();
+        auto cmp_val = this->push_compare(val_len.clone(), ::MIR::eBinOp::LT, ::MIR::Constant::make_Uint({ e.min_len, ::HIR::CoreType::Usize }));
+        m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_val), def_blk, next }) );
+        m_builder.set_cur_block(next);
     }
-    assert( m_builder.block_active() );
 
-    if( default_branch.is_Unset() ) {
-        // TODO: Emit error if non-exhaustive
-        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
-    }
-    else {
-        this->generate_branch(default_branch, and_then);
-    }
-}
-
-namespace {
-    bool path_starts_with(const field_path_t& test, const field_path_t& prefix)
+    // 2. Recurse into leading patterns.
+    if( e.min_len > e.trailing_len )
     {
-        //DEBUG("test="<<test<<", prefix="<<prefix);
-        if( test.size() < prefix.size() )
-        {
-            return false;
-        }
-        else if( ! ::std::equal(prefix.data.begin(), prefix.data.end(), test.data.begin()) )
-        {
-            return false;
-        }
-        else
-        {
-            return true;
-        }
-    }
-}
+        auto next = m_builder.new_bb_unlinked();
+        auto inner_set = t_rules_subset { 1, /*is_arm_indexes=*/false };
+        inner_set.push_bb( e.leading, next );
+        auto inst = MatchGenGrouped { m_builder, sp, ty, val, {}, field_path.size() };
+        inst.gen_for_slice(inner_set, 0, def_blk);
 
-void DecisionTreeGen::generate_tree_code__enum(
-    const Span& sp,
-    const DecisionTreeNode& node, const ::HIR::TypeRef& fake_ty, const ::MIR::LValue& val,
-    const field_path_t& path_prefix,
-    ::std::function<void(const DecisionTreeNode&)> and_then
-    )
-{
-    if( ! path_starts_with(node.m_field_path, path_prefix) )
-    {
-        and_then(node);
+        m_builder.set_cur_block(next);
     }
-    else
+
+    if( e.trailing_len != 0 )
     {
-        this->generate_tree_code(sp, node, fake_ty, path_prefix.size(), val,
-            [&](const auto& next_node) {
-                if( ! path_starts_with(next_node.m_field_path, path_prefix) )
-                {
-                    and_then(next_node);
-                }
-                else
-                {
-                    this->generate_tree_code__enum(sp, next_node, fake_ty, val, path_prefix, and_then);
-                }
-            });
+        TODO(sp, "Handle trailing rules in SplitSlice - " << e.trailing);
     }
 }
 

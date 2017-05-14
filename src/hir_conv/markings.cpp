@@ -43,6 +43,33 @@ public:
         {
             str.m_markings.unsized_field = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().size()-1 : str.m_data.as_Named().size()-1);
         }
+
+        // Rules:
+        // - A type parameter must be ?Sized
+        // - That type parameter must only be used as part of the last field, and only once
+        // - If the final field isn't the parameter, it must also impl Unsize
+
+        // HACK: Just determine what ?Sized parameter is controlling the sized-ness
+        if( str.m_markings.dst_type == ::HIR::TraitMarkings::DstType::Possible )
+        {
+            auto& last_field_ty = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().back().ent : str.m_data.as_Named().back().second.ent);
+            auto    ty = ::HIR::TypeRef("", 0);
+            for(size_t i = 0; i < str.m_params.m_types.size(); i++)
+            {
+                const auto& param = str.m_params.m_types[i];
+                auto ty = ::HIR::TypeRef(param.m_name, i);
+                if( !param.m_is_sized )
+                {
+                    if( visit_ty_with(last_field_ty, [&](const auto& t){ return t == ty; }) )
+                    {
+                        assert(str.m_markings.unsized_param == ~0u);
+                        str.m_markings.unsized_param = i;
+                    }
+                }
+            }
+            ASSERT_BUG(Span(), str.m_markings.unsized_param != ~0u, "No unsized param for type " << ip);
+            str.m_markings.can_unsize = true;
+        }
     }
 
     void visit_trait(::HIR::ItemPath ip, ::HIR::Trait& tr) override
@@ -212,6 +239,7 @@ public:
 
     ::HIR::TraitMarkings::DstType get_field_dst_type(const ::HIR::TypeRef& ty, const ::HIR::GenericParams& inner_def, const ::HIR::GenericParams& params_def, const ::HIR::PathParams* params)
     {
+        TRACE_FUNCTION_F("ty=" << ty);
         // If the type is generic, and the pointed-to parameters is ?Sized, record as needing unsize
         if( const auto* te = ty.m_data.opt_Generic() )
         {
@@ -242,7 +270,7 @@ public:
             // If the type is a struct, check it (recursively)
             if( ! te->path.m_data.is_Generic() ) {
                 // Associated type, TODO: Check this better.
-                return ::HIR::TraitMarkings::DstType::Possible;
+                return ::HIR::TraitMarkings::DstType::None;
             }
             else if( te->binding.is_Struct() ) {
                 const auto& params_tpl = te->path.m_data.as_Generic().m_params;

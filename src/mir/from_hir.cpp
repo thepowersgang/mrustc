@@ -21,6 +21,26 @@
 
 namespace {
 
+    template<typename T>
+    struct SaveAndEditVal {
+        T&  m_dst;
+        T   m_saved;
+        SaveAndEditVal(T& dst, T newval):
+            m_dst(dst),
+            m_saved(dst)
+        {
+            m_dst = mv$(newval);
+        }
+        ~SaveAndEditVal()
+        {
+            this->m_dst = this->m_saved;
+        }
+    };
+    template<typename T>
+    SaveAndEditVal<T> save_and_edit(T& dst, typename ::std::remove_reference<T&>::type newval) {
+        return SaveAndEditVal<T> { dst, mv$(newval) };
+    }
+
     class ExprVisitor_Conv:
         public MirConverter
     {
@@ -35,6 +55,11 @@ namespace {
             unsigned int    next;
         };
         ::std::vector<LoopDesc> m_loop_stack;
+
+        const ScopeHandle*  m_block_tmp_scope = nullptr;
+        const ScopeHandle*  m_borrow_raise_target = nullptr;
+        const ScopeHandle*  m_stmt_scope = nullptr;
+        bool m_in_borrow = false;
 
     public:
         ExprVisitor_Conv(MirBuilder& builder, const ::std::vector< ::HIR::TypeRef>& var_types):
@@ -153,11 +178,22 @@ namespace {
                     m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
                     break;
                 case ::HIR::PatternBinding::Type::Ref:
+                    if(m_borrow_raise_target)
+                    {
+                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
+                        m_builder.raise_variables(sp, lval, *m_borrow_raise_target);
+                    }
+
                     m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
                         0, ::HIR::BorrowType::Shared, mv$(lval)
                         }) );
                     break;
                 case ::HIR::PatternBinding::Type::MutRef:
+                    if(m_borrow_raise_target)
+                    {
+                        DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
+                        m_builder.raise_variables(sp, lval, *m_borrow_raise_target);
+                    }
                     m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
                         0, ::HIR::BorrowType::Unique, mv$(lval)
                         }) );
@@ -331,7 +367,7 @@ namespace {
                     if( e.extra_bind.is_valid() )
                     {
                         // 1. Obtain remaining length
-                        auto sub_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::Constant::make_Uint({ e.leading.size() + e.trailing.size(), ::HIR::CoreType::Usize }));
+                        auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ e.leading.size() + e.trailing.size(), ::HIR::CoreType::Usize }));
                         ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
 
                         // 2. Obtain pointer to element
@@ -370,79 +406,88 @@ namespace {
         {
             TRACE_FUNCTION_F("_Block");
             // NOTE: This doesn't create a BB, as BBs are not needed for scoping
-            if( node.m_nodes.size() > 0 )
+            bool diverged = false;
+
+            auto res_val = (node.m_value_node ? m_builder.new_temporary(node.m_res_type) : ::MIR::LValue());
+            auto scope = m_builder.new_scope_var(node.span());
+            auto tmp_scope = m_builder.new_scope_temp(node.span());
+            auto _block_tmp_scope = save_and_edit(m_block_tmp_scope, &tmp_scope);
+
+            for(unsigned int i = 0; i < node.m_nodes.size(); i ++)
             {
-                bool diverged = false;
+                auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+                auto& subnode = node.m_nodes[i];
+                const Span& sp = subnode->span();
 
-                auto scope = m_builder.new_scope_var(node.span());
+                auto stmt_scope = m_builder.new_scope_temp(sp);
+                auto _stmt_scope_push = save_and_edit(m_stmt_scope, &stmt_scope);
+                this->visit_node_ptr(subnode);
 
-                for(unsigned int i = 0; i < node.m_nodes.size() - (node.m_yields_final ? 1 : 0); i ++)
-                {
-                    auto& subnode = node.m_nodes[i];
-                    const Span& sp = subnode->span();
-
-                    auto stmt_scope = m_builder.new_scope_temp(sp);
-                    this->visit_node_ptr(subnode);
-
-                    if( m_builder.block_active() || m_builder.has_result() ) {
-                        // TODO: Emit a drop
-                        m_builder.get_result(sp);
-                        m_builder.terminate_scope(sp, mv$(stmt_scope));
-                    }
-                    else {
-                        m_builder.terminate_scope(sp, mv$(stmt_scope), false);
-
-                        m_builder.set_cur_block( m_builder.new_bb_unlinked() );
-                        diverged = true;
-                    }
+                if( m_builder.block_active() || m_builder.has_result() ) {
+                    // TODO: Emit a drop
+                    m_builder.get_result(sp);
+                    m_builder.terminate_scope(sp, mv$(stmt_scope));
                 }
+                else {
+                    m_builder.terminate_scope(sp, mv$(stmt_scope), false);
 
-                // For the last node, specially handle.
-                if( node.m_yields_final )
+                    m_builder.set_cur_block( m_builder.new_bb_unlinked() );
+                    diverged = true;
+                }
+            }
+
+            // For the last node, specially handle.
+            // TODO: Any temporaries defined within this node must be elevated into the parent scope
+            if( node.m_value_node )
+            {
+                auto& subnode = node.m_value_node;
+                const Span& sp = subnode->span();
+
+                auto stmt_scope = m_builder.new_scope_temp(sp);
+                this->visit_node_ptr(subnode);
+                if( m_builder.has_result() || m_builder.block_active() )
                 {
-                    auto& subnode = node.m_nodes.back();
-                    const Span& sp = subnode->span();
+                    ASSERT_BUG(sp, m_builder.block_active(), "Result yielded, but no active block");
+                    ASSERT_BUG(sp, m_builder.has_result(), "Active block but no result yeilded");
+                    // PROBLEM: This can drop the result before we want to use it.
 
-                    auto res_val = m_builder.new_temporary(node.m_res_type);
-                    auto stmt_scope = m_builder.new_scope_temp(sp);
-                    this->visit_node_ptr(subnode);
-                    if( m_builder.has_result() || m_builder.block_active() )
+                    m_builder.push_stmt_assign(sp, res_val.clone(), m_builder.get_result(sp));
+
+                    // If this block is part of a statement, raise all temporaries from this final scope to the enclosing scope
+                    if( m_stmt_scope )
                     {
-                        ASSERT_BUG(sp, m_builder.block_active(), "Result yielded, but no active block");
-                        ASSERT_BUG(sp, m_builder.has_result(), "Active block but no result yeilded");
-                        // PROBLEM: This can drop the result before we want to use it.
-
-                        m_builder.push_stmt_assign(sp, res_val.clone(), m_builder.get_result(sp));
-
-                        m_builder.terminate_scope(sp, mv$(stmt_scope));
-                        m_builder.terminate_scope( node.span(), mv$(scope) );
-                        m_builder.set_result( node.span(), mv$(res_val) );
+                        m_builder.raise_all(sp, mv$(stmt_scope), *m_stmt_scope);
+                        //m_builder.terminate_scope(sp, mv$(stmt_scope));
                     }
                     else
                     {
-                        m_builder.terminate_scope( node.span(), mv$(stmt_scope), false );
-                        m_builder.terminate_scope( node.span(), mv$(scope), false );
-                        // Block diverged in final node.
+                        m_builder.terminate_scope(sp, mv$(stmt_scope));
                     }
+                    m_builder.set_result( node.span(), mv$(res_val) );
                 }
                 else
                 {
-                    if( diverged )
-                    {
-                        m_builder.terminate_scope( node.span(), mv$(scope), false );
-                        m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
-                        // Don't set a result if there's no block.
-                    }
-                    else
-                    {
-                        m_builder.terminate_scope( node.span(), mv$(scope) );
-                        m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
-                    }
+                    m_builder.terminate_scope( sp, mv$(stmt_scope), false );
+                    // Block diverged in final node.
                 }
+                m_builder.terminate_scope( node.span(), mv$(tmp_scope), m_builder.block_active() );
+                m_builder.terminate_scope( node.span(), mv$(scope), m_builder.block_active() );
             }
             else
             {
-                m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
+                if( diverged )
+                {
+                    m_builder.terminate_scope( node.span(), mv$(tmp_scope), false );
+                    m_builder.terminate_scope( node.span(), mv$(scope), false );
+                    m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
+                    // Don't set a result if there's no block.
+                }
+                else
+                {
+                    m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
+                    m_builder.terminate_scope( node.span(), mv$(scope) );
+                    m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
+                }
             }
         }
         void visit(::HIR::ExprNode_Asm& node) override
@@ -477,23 +522,25 @@ namespace {
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
-            TRACE_FUNCTION_F("_Let");
+            TRACE_FUNCTION_F("_Let " << node.m_pattern);
             this->define_vars_from(node.span(), node.m_pattern);
             if( node.m_value )
             {
+                auto _ = save_and_edit(m_borrow_raise_target, m_block_tmp_scope);
                 this->visit_node_ptr(node.m_value);
 
                 if( ! m_builder.block_active() ) {
                     return ;
                 }
+                auto res = m_builder.get_result(node.span());
 
                 if( node.m_pattern.m_binding.is_valid() && node.m_pattern.m_data.is_Any() && node.m_pattern.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
                 {
-                    m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Variable(node.m_pattern.m_binding.m_slot),  m_builder.get_result(node.span()) );
+                    m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Variable(node.m_pattern.m_binding.m_slot),  mv$(res) );
                 }
                 else
                 {
-                    this->destructure_from(node.span(), node.m_pattern, m_builder.get_result_in_lvalue(node.m_value->span(), node.m_type));
+                    this->destructure_from(node.span(), node.m_pattern, m_builder.lvalue_or_temp(node.m_value->span(), node.m_type, mv$(res)));
                 }
             }
             m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({}));
@@ -505,6 +552,10 @@ namespace {
             auto loop_block = m_builder.new_bb_linked();
             auto loop_next = m_builder.new_bb_unlinked();
 
+            auto loop_tmp_scope = m_builder.new_scope_temp(node.span());
+            auto _ = save_and_edit(m_stmt_scope, &loop_tmp_scope);
+
+            // TODO: `continue` in a loop should jump to the cleanup, not the top
             m_loop_stack.push_back( LoopDesc { mv$(loop_body_scope), node.m_label, loop_block, loop_next } );
             this->visit_node_ptr(node.m_code);
             auto loop_scope = mv$(m_loop_stack.back().scope);
@@ -513,7 +564,7 @@ namespace {
             // If there's a stray result, drop it
             if( m_builder.has_result() ) {
                 assert( m_builder.block_active() );
-                // TODO: Properly drop this? Or just discard it?
+                // TODO: Properly drop this? Or just discard it? It should be ()
                 m_builder.get_result(node.span());
             }
             // Terminate block with a jump back to the start
@@ -522,12 +573,14 @@ namespace {
             {
                 DEBUG("- Reached end, loop back");
                 // Insert drop of all scopes within the current scope
+                m_builder.terminate_scope( node.span(), mv$(loop_tmp_scope) );
                 m_builder.terminate_scope( node.span(), mv$(loop_scope) );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(loop_block) );
             }
             else
             {
                 // Terminate scope without emitting cleanup (cleanup was handled by `break`)
+                m_builder.terminate_scope( node.span(), mv$(loop_tmp_scope), false );
                 m_builder.terminate_scope( node.span(), mv$(loop_scope), false );
             }
 
@@ -579,6 +632,8 @@ namespace {
         void visit(::HIR::ExprNode_Match& node) override
         {
             TRACE_FUNCTION_FR("_Match", "_Match");
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
+            //auto stmt_scope = m_builder.new_scope_temp(node.span());
             this->visit_node_ptr(node.m_value);
             auto match_val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
 
@@ -608,7 +663,7 @@ namespace {
 
                 if( m_builder.block_active() ) {
                     auto res = m_builder.get_result(arm.m_code->span());
-                    m_builder.raise_variables( arm.m_code->span(), res, scope );
+                    m_builder.raise_variables( arm.m_code->span(), res, scope, /*to_above=*/true);
                     m_builder.set_result(arm.m_code->span(), mv$(res));
 
                     m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
@@ -621,6 +676,19 @@ namespace {
             }
             else {
                 MIR_LowerHIR_Match(m_builder, *this, node, mv$(match_val));
+            }
+
+            if( m_builder.block_active() ) {
+                const auto& sp = node.span();
+
+                auto res = m_builder.get_result(sp);
+                //m_builder.raise_variables(sp, res, stmt_scope, /*to_above=*/true);
+                m_builder.set_result(sp, mv$(res));
+
+                //m_builder.terminate_scope( node.span(), mv$(stmt_scope) );
+            }
+            else {
+                //m_builder.terminate_scope( node.span(), mv$(stmt_scope), false );
             }
         } // ExprNode_Match
 
@@ -691,7 +759,7 @@ namespace {
                 auto scope = m_builder.new_scope_temp( cond->span() );
                 this->visit_node_ptr(*cond_p);
                 ASSERT_BUG(cond->span(), cond->m_res_type == ::HIR::CoreType::Bool, "If condition wasn't a bool");
-                decision_val = m_builder.get_result_in_lvalue(cond->span(), ::HIR::CoreType::Bool);
+                decision_val = m_builder.get_result_in_if_cond(cond->span());
                 m_builder.terminate_scope(cond->span(), mv$(scope));
             }
 
@@ -760,7 +828,7 @@ namespace {
             m_builder.set_result( node.span(), mv$(result_val) );
         }
 
-        void generate_checked_binop(const Span& sp, ::MIR::LValue res_slot, ::MIR::eBinOp op, ::MIR::LValue val_l, const ::HIR::TypeRef& ty_l, ::MIR::LValue val_r, const ::HIR::TypeRef& ty_r)
+        void generate_checked_binop(const Span& sp, ::MIR::LValue res_slot, ::MIR::eBinOp op, ::MIR::Param val_l, const ::HIR::TypeRef& ty_l, ::MIR::Param val_r, const ::HIR::TypeRef& ty_r)
         {
             switch(op)
             {
@@ -870,7 +938,16 @@ namespace {
             if( node.m_op != ::HIR::ExprNode_Assign::Op::None )
             {
                 auto dst_clone = dst.clone();
-                auto val_lv = m_builder.lvalue_or_temp( node.span(), ty_val, mv$(val) );
+                ::MIR::Param    val_p;
+                if( auto* e = val.opt_Use() ) {
+                    val_p = mv$(*e);
+                }
+                else if( auto* e = val.opt_Constant() ) {
+                    val_p = mv$(*e);
+                }
+                else {
+                    val_p = m_builder.lvalue_or_temp( node.span(), ty_val, mv$(val) );
+                }
 
                 ASSERT_BUG(sp, ty_slot.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_slot="<<ty_slot);
                 ASSERT_BUG(sp, ty_val.m_data.is_Primitive(), "Assignment operator overloads are only valid on primitives - ty_val="<<ty_val);
@@ -885,16 +962,16 @@ namespace {
                 case _(Mul): op = ::MIR::eBinOp::MUL; if(0)
                 case _(Div): op = ::MIR::eBinOp::DIV; if(0)
                 case _(Mod): op = ::MIR::eBinOp::MOD;
-                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_p), ty_val);
                     break;
                 case _(Xor): op = ::MIR::eBinOp::BIT_XOR; if(0)
                 case _(Or ): op = ::MIR::eBinOp::BIT_OR ; if(0)
                 case _(And): op = ::MIR::eBinOp::BIT_AND;
-                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_p), ty_val);
                     break;
                 case _(Shl): op = ::MIR::eBinOp::BIT_SHL; if(0)
                 case _(Shr): op = ::MIR::eBinOp::BIT_SHR;
-                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_lv), ty_val);
+                    this->generate_checked_binop(sp, mv$(dst), op, mv$(dst_clone), ty_slot,  mv$(val_p), ty_val);
                     break;
                 }
                 #undef _
@@ -916,12 +993,12 @@ namespace {
             const auto& ty_r = node.m_right->m_res_type;
             auto res = m_builder.new_temporary(node.m_res_type);
 
-            this->visit_node_ptr(node.m_left);
-            auto left = m_builder.get_result_in_lvalue(node.m_left->span(), ty_l);
-
             // Short-circuiting boolean operations
             if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
             {
+                this->visit_node_ptr(node.m_left);
+                auto left = m_builder.get_result_in_lvalue(node.m_left->span(), ty_l);
+
                 auto bb_next = m_builder.new_bb_unlinked();
                 auto bb_true = m_builder.new_bb_unlinked();
                 auto bb_false = m_builder.new_bb_unlinked();
@@ -963,8 +1040,10 @@ namespace {
             {
             }
 
+            this->visit_node_ptr(node.m_left);
+            auto left = m_builder.get_result_in_param(node.m_left->span(), ty_l);
             this->visit_node_ptr(node.m_right);
-            auto right = m_builder.get_result_in_lvalue(node.m_right->span(), ty_r);
+            auto right = m_builder.get_result_in_param(node.m_right->span(), ty_r);
 
             ::MIR::eBinOp   op;
             switch(node.m_op)
@@ -1069,13 +1148,19 @@ namespace {
         {
             TRACE_FUNCTION_F("_Borrow");
 
+            auto _ = save_and_edit(m_in_borrow, true);
+
             const auto& ty_val = node.m_value->m_res_type;
             this->visit_node_ptr(node.m_value);
             auto val = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
 
-            auto res = m_builder.new_temporary(node.m_res_type);
-            m_builder.push_stmt_assign( node.span(), res.as_Temporary(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }));
-            m_builder.set_result( node.span(), mv$(res) );
+            if( m_borrow_raise_target )
+            {
+                DEBUG("- Raising borrow to scope " << *m_borrow_raise_target);
+                m_builder.raise_variables(node.span(), val, *m_borrow_raise_target);
+            }
+
+            m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }) );
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
@@ -1233,8 +1318,9 @@ namespace {
                     }
                     else
                     {
-                        // Probably an error.
-                        TODO(node.span(), "MIR _Unsize to " << ty_out);
+                        // Probably an error?
+                        m_builder.set_result( node.span(), ::MIR::RValue::make_Cast({ mv$(ptr_lval), node.m_res_type.clone() }) );
+                        //TODO(node.span(), "MIR _Unsize to " << ty_out);
                     }
                     ),
                 (Slice,
@@ -1345,10 +1431,63 @@ namespace {
                 if( m_builder.is_type_owned_box( ty_val ) )
                 {
                     // Box magically derefs.
-                    // HACK: Break out of the switch used for TU_MATCH_DEF
-                    break;
                 }
-                BUG(sp, "Deref on unsupported type - " << ty_val);
+                else
+                {
+                    // TODO: Do operator replacement here after handling scope-raising for _Borrow
+                    if( m_borrow_raise_target && m_in_borrow )
+                    {
+                        DEBUG("- Raising deref in borrow to scope " << *m_borrow_raise_target);
+                        m_builder.raise_variables(node.span(), val, *m_borrow_raise_target);
+                    }
+
+
+                    const char* langitem = nullptr;
+                    const char* method = nullptr;
+                    ::HIR::BorrowType   bt;
+                    // - Uses the value's usage beacuse for T: Copy node.m_value->m_usage is Borrow, but node.m_usage is Move
+                    switch( node.m_value->m_usage )
+                    {
+                    case ::HIR::ValueUsage::Unknown:
+                        BUG(sp, "Unknown usage type of deref value");
+                        break;
+                    case ::HIR::ValueUsage::Borrow:
+                        bt = ::HIR::BorrowType::Shared;
+                        langitem = method = "deref";
+                        break;
+                    case ::HIR::ValueUsage::Mutate:
+                        bt = ::HIR::BorrowType::Unique;
+                        langitem = method = "deref_mut";
+                        break;
+                    case ::HIR::ValueUsage::Move:
+                        TODO(sp, "ValueUsage::Move for desugared Deref of " << node.m_value->m_res_type);
+                        break;
+                    }
+                    // Needs replacement, continue
+                    assert(langitem);
+                    assert(method);
+
+                    // - Construct trait path - Index*<IdxTy>
+                    auto method_path = ::HIR::Path(ty_val.clone(), ::HIR::GenericPath(m_builder.resolve().m_crate.get_lang_item_path(node.span(), langitem), {}), method);
+
+                    // Store a borrow of the input value
+                    ::std::vector<::MIR::Param>    args;
+                    args.push_back( m_builder.lvalue_or_temp(sp,
+                                ::HIR::TypeRef::new_borrow(bt, node.m_value->m_res_type.clone()),
+                                ::MIR::RValue::make_Borrow({0, bt, mv$(val)})
+                                ) );
+                    m_builder.moved_lvalue(node.span(), args[0].as_LValue());
+                    val = m_builder.new_temporary(::HIR::TypeRef::new_borrow(bt, node.m_res_type.clone()));
+                    // Call the above trait method
+                    // Store result of that call in `val` (which will be derefed below)
+                    auto ok_block = m_builder.new_bb_unlinked();
+                    auto panic_block = m_builder.new_bb_unlinked();
+                    m_builder.end_block(::MIR::Terminator::make_Call({ ok_block, panic_block, val.clone(), mv$(method_path), mv$(args) }));
+                    m_builder.set_cur_block(panic_block);
+                    m_builder.end_block(::MIR::Terminator::make_Diverge({}));
+
+                    m_builder.set_cur_block(ok_block);
+                }
                 ),
             (Pointer,
                 // Deref on a pointer - TODO: Requires unsafe
@@ -1413,6 +1552,7 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(place__panic);
+            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             // TODO: Drop `place`
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             m_builder.set_cur_block(place__ok);
@@ -1437,6 +1577,7 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(place_raw__panic);
+            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             // TODO: Drop `place`
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             m_builder.set_cur_block(place_raw__ok);
@@ -1473,11 +1614,13 @@ namespace {
 
             // TODO: Proper panic handling, including scope destruction
             m_builder.set_cur_block(res__panic);
+            //m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             // TODO: Should this drop the value written to the rawptr?
             // - No, becuase it's likely invalid now. Goodbye!
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
             m_builder.set_cur_block(res__ok);
 
+            m_builder.mark_value_assigned(node.span(), res);
             m_builder.set_result( node.span(), mv$(res) );
         }
 
@@ -1521,20 +1664,29 @@ namespace {
             for(auto& arg : args)
             {
                 this->visit_node_ptr(arg);
-
-                if( args.size() == 1 )
+                if( !m_builder.block_active() )
+                {
+                    auto tmp = m_builder.new_temporary(arg->m_res_type);
+                    values.push_back( mv$(tmp) );
+                }
+                else if( args.size() == 1 )
                 {
                     values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type, /*allow_missing_value=*/true) );
                 }
                 else
                 {
-                    // NOTE: Have to allocate a new temporary because ordering matters
-                    auto tmp = m_builder.new_temporary(arg->m_res_type);
-                    if( m_builder.block_active() )
+                    auto res = m_builder.get_result(arg->span());
+                    if( auto* e = res.opt_Constant() )
                     {
-                        m_builder.push_stmt_assign( arg->span(), tmp.clone(), m_builder.get_result(arg->span()) );
+                        values.push_back( mv$(*e) );
                     }
-                    values.push_back( mv$(tmp) );
+                    else
+                    {
+                        // NOTE: Have to allocate a new temporary because ordering matters
+                        auto tmp = m_builder.new_temporary(arg->m_res_type);
+                        m_builder.push_stmt_assign( arg->span(), tmp.clone(), mv$(res) );
+                        values.push_back( mv$(tmp) );
+                    }
                 }
 
                 if(const auto* e = values.back().opt_LValue() )
@@ -1548,6 +1700,7 @@ namespace {
         void visit(::HIR::ExprNode_CallPath& node) override
         {
             TRACE_FUNCTION_F("_CallPath " << node.m_path);
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
             auto values = get_args(node.m_args);
 
             auto panic_block = m_builder.new_bb_unlinked();
@@ -1615,6 +1768,7 @@ namespace {
         void visit(::HIR::ExprNode_CallValue& node) override
         {
             TRACE_FUNCTION_F("_CallValue " << node.m_value->m_res_type);
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
             // _CallValue is ONLY valid on function pointers (all others must be desugared)
             ASSERT_BUG(node.span(), node.m_value->m_res_type.m_data.is_Function(), "Leftover _CallValue on a non-fn()");
@@ -1638,6 +1792,8 @@ namespace {
             m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );
 
             m_builder.set_cur_block( next_block );
+            // TODO: Support diverging value calls
+            m_builder.mark_value_assigned(node.span(), res);
             m_builder.set_result( node.span(), mv$(res) );
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
@@ -1897,6 +2053,7 @@ namespace {
             ::MIR::LValue   base_val;
             if( node.m_base_value )
             {
+                DEBUG("_StructLiteral - base");
                 this->visit_node_ptr(node.m_base_value);
                 base_val = m_builder.get_result_in_lvalue(node.m_base_value->span(), node.m_base_value->m_res_type);
             }
@@ -1935,6 +2092,7 @@ namespace {
                 auto idx = ::std::find_if(fields.begin(), fields.end(), [&](const auto&x){ return x.first == ent.first; }) - fields.begin();
                 assert( !values_set[idx] );
                 values_set[idx] = true;
+                DEBUG("_StructLiteral - fld '" << ent.first << "' (idx " << idx << ")");
                 this->visit_node_ptr(valnode);
 
                 auto res = m_builder.get_result(valnode->span());
@@ -2035,6 +2193,7 @@ namespace {
         void visit(::HIR::ExprNode_Closure& node) override
         {
             TRACE_FUNCTION_F("_Closure - " << node.m_obj_path);
+            auto _ = save_and_edit(m_borrow_raise_target, nullptr);
 
             ::std::vector< ::MIR::Param>   vals;
             vals.reserve( node.m_captures.size() );
@@ -2081,6 +2240,8 @@ namespace {
         ::HIR::ExprNode& root_node = const_cast<::HIR::ExprNode&>(*ptr);
         root_node.visit( ev );
     }
+
+    MIR_Validate(resolve, path, fcn, args, ptr->m_res_type);
 
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
 }

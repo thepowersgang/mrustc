@@ -36,6 +36,11 @@ public:
     ScopeHandle& operator=(const ScopeHandle& x) = delete;
     ScopeHandle& operator=(ScopeHandle&& x) = delete;
     ~ScopeHandle();
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const ScopeHandle& x) {
+        os << x.idx;
+        return os;
+    }
 };
 
 // - Needs to handle future DerefMove (which can't use the Box hack)
@@ -48,10 +53,14 @@ enum class InvalidType {
 TAGGED_UNION_EX(VarState, (), Invalid, (
     // Currently invalid
     (Invalid, InvalidType),
-    // Partially valid (Map of field states, Box is assumed to have one field)
+    // Partially valid (Map of field states)
     (Partial, struct {
         ::std::vector<VarState> inner_states;
         unsigned int outer_flag;   // If ~0u there's no condition on the outer
+        }),
+    (MovedOut, struct {
+        ::std::unique_ptr<VarState>   inner_state;
+        unsigned int outer_flag;
         }),
     // Optionally valid (integer indicates the drop flag index)
     (Optional, unsigned int),
@@ -99,6 +108,14 @@ TAGGED_UNION(ScopeType, Variables,
         })
     );
 
+enum class VarGroup
+{
+    Return,
+    Argument,
+    Variable,
+    Temporary,
+};
+
 /// Helper class to construct MIR
 class MirBuilder
 {
@@ -118,7 +135,8 @@ class MirBuilder
     bool    m_result_valid;
 
     // TODO: Extra information.
-    //::std::vector<VarState>   m_arg_states;
+    VarState    m_return_state;
+    ::std::vector<VarState>   m_arg_states;
     ::std::vector<VarState> m_variable_states;
     ::std::vector<VarState> m_temporary_states;
 
@@ -142,6 +160,11 @@ class MirBuilder
     ::std::vector<ScopeDef> m_scopes;
     ::std::vector<unsigned int> m_scope_stack;
     ScopeHandle m_fcn_scope;
+
+    // LValue used only for the condition of `if`
+    // - Using a fixed temporary simplifies parts of lowering (scope related) and reduces load on
+    //   the optimiser.
+    ::MIR::LValue   m_if_cond_lval;
 public:
     MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, ::MIR::Function& output);
     ~MirBuilder();
@@ -169,6 +192,17 @@ public:
     /// Obtains a result in a param (or a lvalue)
     ::MIR::Param get_result_in_param(const Span& sp, const ::HIR::TypeRef& ty, bool allow_missing_value=false);
 
+    ::MIR::LValue get_if_cond() const {
+        return m_if_cond_lval.clone();
+    }
+    ::MIR::LValue get_rval_in_if_cond(const Span& sp, ::MIR::RValue val) {
+        push_stmt_assign(sp, m_if_cond_lval.clone(), mv$(val));
+        return m_if_cond_lval.clone();
+    }
+    ::MIR::LValue get_result_in_if_cond(const Span& sp) {
+        return get_rval_in_if_cond(sp, get_result(sp));
+    }
+
     // - Statements
     // Push an assignment. NOTE: This also marks the rvalue as moved
     void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val);
@@ -181,6 +215,9 @@ public:
     // Push a setting/clearing of a drop flag
     void push_stmt_set_dropflag_val(const Span& sp, unsigned int index, bool value);
     void push_stmt_set_dropflag_other(const Span& sp, unsigned int index, unsigned int other);
+    void push_stmt_set_dropflag_default(const Span& sp, unsigned int index);
+
+    void push_stmt(const Span& sp, ::MIR::Statement stmt);
 
     // - Block management
     bool block_active() const {
@@ -190,12 +227,13 @@ public:
     // Mark a value as initialised (used for Call, because it has to be done after the panic block is populated)
     void mark_value_assigned(const Span& sp, const ::MIR::LValue& val);
 
-    // Moves control of temporaries up to the next scope
-    void raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope);
-    void raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope);
+    // Moves control of temporaries up to the specified scope (or to above it)
+    void raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope, bool to_above=false);
+    void raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope, bool to_above=false);
 
     void set_cur_block(unsigned int new_block);
     ::MIR::BasicBlockId pause_cur_block();
+
     void end_block(::MIR::Terminator term);
 
     ::MIR::BasicBlockId new_bb_linked();
@@ -210,9 +248,16 @@ public:
     ScopeHandle new_scope_temp(const Span& sp);
     ScopeHandle new_scope_split(const Span& sp);
     ScopeHandle new_scope_loop(const Span& sp);
+
+    /// Raises every variable defined in the source scope into the target scope
+    void raise_all(const Span& sp, ScopeHandle src, const ScopeHandle& target);
+    /// Drop all defined values in the scope (emits the drops if `cleanup` is set)
     void terminate_scope(const Span& sp, ScopeHandle , bool cleanup=true);
+    /// Terminates a scope early (e.g. via return/break/...)
     void terminate_scope_early(const Span& sp, const ScopeHandle& , bool loop_exit=false);
+    /// Marks the end of a split arm (end match arm, if body, ...)
     void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable);
+    /// Terminates the current split early (TODO: What does this mean?)
     void end_split_arm_early(const Span& sp);
 
     const ScopeHandle& fcn_scope() const {
@@ -224,10 +269,16 @@ public:
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
     void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
+    const VarState& get_slot_state(const Span& sp, VarGroup ty, unsigned int idx, unsigned int skip_count=0) const;
+    VarState& get_slot_state_mut(const Span& sp, VarGroup ty, unsigned int idx);
+
     const VarState& get_variable_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
     VarState& get_variable_state_mut(const Span& sp, unsigned int idx);
     const VarState& get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
     VarState& get_temp_state_mut(const Span& sp, unsigned int idx);
+
+    const VarState& get_val_state(const Span& sp, const ::MIR::LValue& lv, unsigned int skip_count=0);
+    VarState& get_val_state_mut(const Span& sp, const ::MIR::LValue& lv);
 
     void terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_loop);
 

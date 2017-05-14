@@ -112,10 +112,13 @@ TAGGED_UNION_EX(Constant, (), Int, (
     (ItemAddr, ::HIR::Path) // address of a value
     ), (), (), (
         friend ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
-        bool operator==(const Constant& b) const;
-        inline bool operator!=(const Constant& b) const {
-            return !(*this == b);
-        }
+        ::Ordering ord(const Constant& b) const;
+        inline bool operator==(const Constant& b) const { return ord(b) == ::OrdEqual; }
+        inline bool operator!=(const Constant& b) const { return ord(b) != ::OrdEqual; }
+        inline bool operator<(const Constant& b) const { return ord(b) == ::OrdLess; }
+        inline bool operator<=(const Constant& b) const { return ord(b) != ::OrdGreater; }
+        inline bool operator>(const Constant& b) const { return ord(b) == ::OrdGreater; }
+        inline bool operator>=(const Constant& b) const { return ord(b) != ::OrdLess; }
         Constant clone() const;
     )
 );
@@ -269,8 +272,13 @@ TAGGED_UNION(Statement, Assign,
         eDropKind   kind;   // NOTE: For the `box` primitive
         LValue  slot;
         unsigned int flag_idx;  // Valid if != ~0u
+        }),
+    (ScopeEnd, struct {
+        ::std::vector<unsigned> vars;
+        ::std::vector<unsigned> tmps;
         })
     );
+extern ::std::ostream& operator<<(::std::ostream& os, const Statement& x);
 
 struct BasicBlock
 {
@@ -282,6 +290,7 @@ struct BasicBlock
 class Function
 {
 public:
+    // TODO: Unify Variables, Temporaries, and Arguments
     ::std::vector< ::HIR::TypeRef>  named_variables;
     ::std::vector< ::HIR::TypeRef>  temporaries;
     ::std::vector<bool> drop_flags;

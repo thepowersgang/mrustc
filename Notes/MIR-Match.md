@@ -20,3 +20,22 @@ For each index in the rule (all rules must be the same length)
  - Ranges sort after?
 
 
+
+Alternative Generator 2
+=======================
+
+Maintains match ordering
+
+1. Calculate branch rulesets (as existing)
+1. While rules to process:
+ 1. Group based on shared values.
+ 1. Generate dispatch arm for each group
+ 1. Recurse into group, passing local _ as fallback (or parent _ if none)
+
+```
+
+for 
+
+```
+
+

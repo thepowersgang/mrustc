@@ -65,7 +65,7 @@ namespace {
                 << "typedef struct { } tTYPEID;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
-                << "typedef struct { size_t size; size_t align; } VTABLE_HDR;\n"
+                << "typedef struct { size_t size; size_t align; void (*drop)(void*); } VTABLE_HDR;\n"
                 << "\n"
                 << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                 << "\n"
@@ -84,7 +84,7 @@ namespace {
                 << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
                 << "}\n"
                 << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
-                << "\treturn (v&0xFFFFFFFF == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
+                << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
                 << "}\n"
                 << "static inline unsigned __int128 __builtin_bswap128(unsigned __int128 v) {\n"
                 << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
@@ -95,8 +95,10 @@ namespace {
                 << "\treturn (v >> 64 != 0 ? __builtin_clz64(v>>64) : 64 + __builtin_clz64(v));\n"
                 << "}\n"
                 << "static inline unsigned __int128 __builtin_ctz128(unsigned __int128 v) {\n"
-                << "\treturn (v&0xFFFFFFFFFFFFFFFF == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
+                << "\treturn ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
                 << "}\n"
+                << "\n"
+                << "static inline void noop_drop(void *p) {}\n"
                 << "\n"
                 ;
         }
@@ -134,6 +136,7 @@ namespace {
             ::std::vector<::std::string>    tmp;
             ::std::vector<const char*>  args;
             args.push_back( getenv("CC") ? getenv("CC") : "gcc" );
+            args.push_back("-ffunction-sections");
             args.push_back("-pthread");
             switch(opt.opt_level)
             {
@@ -189,6 +192,7 @@ namespace {
             ::std::stringstream cmd_ss;
             for(const auto& arg : args)
             {
+                // TODO: use a formatter specific to shell escaping
                 cmd_ss << "\"" << FmtEscaped(arg) << "\" ";
             }
             DEBUG("- " << cmd_ss.str());
@@ -310,6 +314,21 @@ namespace {
                     }
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
                 }
+
+                auto drop_glue_path = ::HIR::Path(ty.clone(), "#drop_glue");
+                auto args = ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> >();
+                auto ty_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ty.clone());
+                ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), ty_ptr, args, *(::MIR::Function*)nullptr };
+                m_mir_res = &mir_res;
+                m_of << "void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {";
+                auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+                auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                for(const auto& ity : te)
+                {
+                    emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false);
+                    fld_lv.as_Field().field_index ++;
+                }
+                m_of << "}\n";
             )
             else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Function, te,
                 emit_type_fn(ty);
@@ -406,7 +425,7 @@ namespace {
 
             ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
             if( item.m_markings.has_drop_impl ) {
-                m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(struct s_" << Trans_Mangle(p) << "*rv);\n";
+                m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
             }
             else if( m_resolve.is_type_owned_box(struct_ty) )
             {
@@ -968,10 +987,10 @@ namespace {
                         m_of << "}";
                     }
                 }
-                else if( enm.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(enm.m_variants.begin(), enm.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
+                else if( enm.is_value() )
                 {
                     MIR_ASSERT(*m_mir_res, e.vals.empty(), "Value-only enum with fields");
-                    m_of << "{" << e.idx << "}";
+                    m_of << "{" << enm.get_value(e.idx) << "}";
                 }
                 else
                 {
@@ -1178,7 +1197,14 @@ namespace {
             m_of << "\t{ ";
             m_of << "sizeof("; emit_ctype(type); m_of << "),";
             m_of << "__alignof__("; emit_ctype(type); m_of << "),";
-            // TODO: Drop glue pointer
+            if( type.m_data.is_Borrow() || m_resolve.type_is_copy(sp, type) )
+            {
+                m_of << "noop_drop,";
+            }
+            else
+            {
+                m_of << "(void*)" << Trans_Mangle(::HIR::Path(type.clone(), "#drop_glue")) << ",";
+            }
             m_of << "}";    // No newline, added below
 
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
@@ -1288,6 +1314,9 @@ namespace {
                     switch( stmt.tag() )
                     {
                     case ::MIR::Statement::TAGDEAD: throw "";
+                    case ::MIR::Statement::TAG_ScopeEnd:
+                        m_of << "// " << stmt << "\n";
+                        break;
                     case ::MIR::Statement::TAG_SetDropFlag: {
                         const auto& e = stmt.as_SetDropFlag();
                         m_of << "\tdf" << e.idx << " = ";
@@ -1303,7 +1332,7 @@ namespace {
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
 
                         if( e.flag_idx != ~0u )
-                            m_of << "if( df" << e.flag_idx << " ) {\n";
+                            m_of << "\tif( df" << e.flag_idx << " ) {\n";
 
                         switch( e.kind )
                         {
@@ -1326,7 +1355,7 @@ namespace {
                             break;
                         }
                         if( e.flag_idx != ~0u )
-                            m_of << "}\n";
+                            m_of << "\t}\n";
                         break; }
                     case ::MIR::Statement::TAG_Asm: {
                         const auto& e = stmt.as_Asm();
@@ -1350,6 +1379,7 @@ namespace {
                         m_of << "\t__asm__ ";
                         if(is_volatile) m_of << "__volatile__";
                         // TODO: Convert format string?
+                        // TODO: Use a C-specific escaper here.
                         m_of << "(\"" << (is_intel ? ".syntax intel; " : "") << FmtEscaped(e.tpl) << (is_intel ? ".syntax att; " : "") << "\"";
                         m_of << ": ";
                         for(unsigned int i = 0; i < e.outputs.size(); i ++ )
@@ -1498,9 +1528,8 @@ namespace {
                         (BinOp,
                             emit_lvalue(e.dst);
                             m_of << " = ";
-                            MIR_ASSERT(mir_res, ve.val_l.is_LValue() || ve.val_r.is_LValue(), "");
                             ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val_l.is_LValue() ? ve.val_l.as_LValue() : ve.val_r.as_LValue());
+                            const auto& ty = ve.val_l.is_LValue() ? mir_res.get_lvalue_type(tmp, ve.val_l.as_LValue()) : tmp = mir_res.get_const_type(ve.val_l.as_Constant());
                             if( ty.m_data.is_Borrow() ) {
                                 m_of << "(slice_cmp("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
                                 switch(ve.op)
@@ -1646,43 +1675,65 @@ namespace {
                             }
                             ),
                         (Variant,
-                            if( m_crate.get_typeitem_by_path(sp, ve.path.m_path).is_Union() )
+                            const auto& tyi = m_crate.get_typeitem_by_path(sp, ve.path.m_path);
+                            if( tyi.is_Union() )
                             {
                                 emit_lvalue(e.dst);
+                                m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                            }
+                            else if( const auto* enm_p = tyi.opt_Enum() )
+                            {
+                                MIR_TODO(mir_res, "Construct enum with RValue::Variant");
+                                if( enm_p->is_value() )
+                                {
+                                    emit_lvalue(e.dst); m_of << ".TAG = " << enm_p->get_value(ve.index) << "";
+                                }
+                                else
+                                {
+                                    emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
+                                    emit_lvalue(e.dst); m_of << ".DATA";
+                                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                                }
                             }
                             else
                             {
-                                MIR_TODO(mir_res, "Construct enum with RValue::Variant");
-                                emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA";
+                                BUG(mir_res.sp, "Unexpected type in Variant");
                             }
-                            m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
                             ),
                         (Struct,
-                            if(ve.variant_idx != ~0u) {
+                            if(ve.variant_idx != ~0u)
+                            {
                                 ::HIR::TypeRef  tmp;
                                 const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
-                                if( ty.m_data.as_Path().binding.is_Enum() ) {
-                                    auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                                    if( it != m_enum_repr_cache.end() )
-                                    {
-                                        if( ve.variant_idx == 0 ) {
-                                            // TODO: Use nonzero_path
-                                            m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
-                                        }
-                                        else if( ve.variant_idx == 1 ) {
-                                            emit_lvalue(e.dst);
-                                            m_of << "._0 = ";
-                                            emit_param(ve.vals[0]);
-                                        }
-                                        else {
-                                        }
-                                        break;
-                                    }
-                                }
+                                const auto* enm_p = ty.m_data.as_Path().binding.as_Enum();
 
-                                emit_lvalue(e.dst);
-                                m_of << ".TAG = " << ve.variant_idx;
+                                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
+                                if( it != m_enum_repr_cache.end() )
+                                {
+                                    if( ve.variant_idx == 0 ) {
+                                        // TODO: Use nonzero_path
+                                        m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
+                                    }
+                                    else if( ve.variant_idx == 1 ) {
+                                        emit_lvalue(e.dst);
+                                        m_of << "._0 = ";
+                                        emit_param(ve.vals[0]);
+                                    }
+                                    else {
+                                    }
+                                    break;
+                                }
+                                else if( enm_p->is_value() )
+                                {
+                                    emit_lvalue(e.dst);
+                                    m_of << ".TAG = " << enm_p->get_value(ve.variant_idx);
+                                    assert(ve.vals.size() == 0);
+                                }
+                                else
+                                {
+                                    emit_lvalue(e.dst);
+                                    m_of << ".TAG = " << ve.variant_idx;
+                                }
                                 if(ve.vals.size() > 0)
                                     m_of << ";\n\t";
                             }
@@ -1736,6 +1787,7 @@ namespace {
                     const auto& ty = mir_res.get_lvalue_type(tmp, e.val);
                     MIR_ASSERT(mir_res, ty.m_data.is_Path(), "");
                     MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                    const auto* enm = ty.m_data.as_Path().binding.as_Enum();
                     auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
                     if( it != m_enum_repr_cache.end() )
                     {
@@ -1744,6 +1796,16 @@ namespace {
                         m_of << "\t\tgoto bb" << e.targets[1] << ";\n";
                         m_of << "\telse\n";
                         m_of << "\t\tgoto bb" << e.targets[0] << ";\n";
+                    }
+                    else if( enm->is_value() )
+                    {
+                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ".TAG) {\n";
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                        {
+                            m_of << "\t\tcase " << enm->get_value(j) << ": goto bb" << e.targets[j] << ";\n";
+                        }
+                        m_of << "\t\tdefault: abort();\n";
+                        m_of << "\t}\n";
                     }
                     else
                     {
@@ -2046,7 +2108,16 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
             }
             else if( name == "transmute" ) {
-                m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_param(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
+                if( e.args.at(0).is_Constant() )
+                {
+                    m_of << "{ "; emit_ctype(params.m_types.at(1), FMT_CB(s, s << "v";)); m_of << " = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &v, sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")); ";
+                    m_of << "}";
+                }
+                else
+                {
+                    m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_param(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
+                }
             }
             else if( name == "copy_nonoverlapping" || name == "copy" ) {
                 if( name == "copy" ) {
@@ -2077,15 +2148,15 @@ namespace {
             else if( name == "needs_drop" ) {
                 // Returns `true` if the actual type given as `T` requires drop glue;
                 // returns `false` if the actual type provided for `T` implements `Copy`. (Either otherwise)
+                // NOTE: libarena assumes that this returns `true` iff T doesn't require drop glue.
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val);
                 m_of << " = ";
-                if( m_resolve.type_is_copy(Span(), ty) ) {
-                    m_of << "false";
-                }
-                // If T: !Copy, return true
-                else {
+                if( m_resolve.type_needs_drop_glue(mir_res.sp, ty) ) {
                     m_of << "true";
+                }
+                else {
+                    m_of << "false";
                 }
             }
             else if( name == "uninit" ) {
@@ -2299,6 +2370,13 @@ namespace {
             else if( name == "fmaf32" || name == "fmaf64" ) {
                 emit_lvalue(e.ret_val); m_of << " = fma" << (name.back()=='2'?"f":"") << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
             }
+            // --- Volatile Load/Store
+            else if( name == "volatile_load" ) {
+                emit_lvalue(e.ret_val); m_of << " = *(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0));
+            }
+            else if( name == "volatile_store" ) {
+                m_of << "*(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
+            }
             // --- Atomics!
             // > Single-ordering atomics
             else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
@@ -2362,9 +2440,20 @@ namespace {
                 auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+10+4);
                 emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering, true);
             }
-            else if( name == "atomic_cxchgweak" || name.compare(0, 7+9+1, "atomic_cxchgweak_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+9+1);
-                emit_atomic_cxchg(e, ordering, ordering, true);
+            else if( name == "atomic_cxchgweak" ) {
+                emit_atomic_cxchg(e, "memory_order_seq_cst", "memory_order_seq_cst", true);
+            }
+            else if( name == "atomic_cxchgweak_acq" ) {
+                emit_atomic_cxchg(e, "memory_order_acquire", "memory_order_acquire", true);
+            }
+            else if( name == "atomic_cxchgweak_rel" ) {
+                emit_atomic_cxchg(e, "memory_order_release", "memory_order_relaxed", true);
+            }
+            else if( name == "atomic_cxchgweak_acqrel" ) {
+                emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_acquire", true);
+            }
+            else if( name == "atomic_cxchgweak_relaxed" ) {
+                emit_atomic_cxchg(e, "memory_order_relaxed", "memory_order_relaxed", true);
             }
             else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
@@ -2419,7 +2508,17 @@ namespace {
                     make_fcn = "make_sliceptr"; if(0)
                 case MetadataType::TraitObject:
                     make_fcn = "make_traitobjptr";
-                    m_of << "\t" << Trans_Mangle(p) << "( " << make_fcn << "(&"; emit_lvalue(slot); m_of << ", ";
+                    m_of << "\t" << Trans_Mangle(p) << "( " << make_fcn << "(";
+                    if( slot.is_Deref() )
+                    {
+                        emit_lvalue(*slot.as_Deref().val);
+                        m_of << ".PTR";
+                    }
+                    else
+                    {
+                        m_of << "&"; emit_lvalue(slot);
+                    }
+                    m_of << ", ";
                     const auto* lvp = &slot;
                     while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
                     MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
@@ -2454,13 +2553,31 @@ namespace {
                 ),
             (TraitObject,
                 MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping TraitObject without a pointer");
-                //MIR_ASSERT(*m_mir_res, slot.is_Deref(), "Dropping a TraitObject through a non-Deref");
                 // Call destructor in vtable
+                const auto* lvp = &slot;
+                while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
+                MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
+                m_of << "((VTABLE_HDR*)"; emit_lvalue(*lvp->as_Deref().val); m_of << ".META)->drop(";
+                if( const auto* ve = slot.opt_Deref() )
+                {
+                    emit_lvalue(*ve->val); m_of << ".PTR";
+                }
+                else
+                {
+                    m_of << "&"; emit_lvalue(slot);
+                }
+                m_of << ");";
                 ),
             (Slice,
                 MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping Slice without a pointer");
-                //MIR_ASSERT(*m_mir_res, slot.is_Deref(), "Dropping a slice through a non-Deref");
+                const auto* lvp = &slot;
+                while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
+                MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
                 // Call destructor on all entries
+                m_of << "for(unsigned i = 0; i < "; emit_lvalue(*lvp->as_Deref().val); m_of << ".META; i++) {";
+                m_of << "\t\t";
+                emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Temporary({~0u})) }), *te.inner, false);
+                m_of << "\n\t}";
                 )
             )
         }
@@ -2582,10 +2699,10 @@ namespace {
                         assign_from_literal([&](){ emit_dst(); m_of << "._0"; }, get_inner_type(e.idx, 0), e.vals[0]);
                     }
                 }
-                else if( enm.m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(enm.m_variants.begin(), enm.m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();}) )
+                else if( enm.is_value() )
                 {
                     MIR_ASSERT(*m_mir_res, e.vals.empty(), "Value-only enum with fields");
-                    emit_dst(); m_of << ".TAG = " << e.idx;
+                    emit_dst(); m_of << ".TAG = " << enm.get_value(e.idx);
                 }
                 else
                 {
@@ -2645,7 +2762,11 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
-                        m_of << "\\" << (unsigned int)v;
+                    {
+                        m_of << "\\" << ((unsigned int)v & 0xFF);
+                        if( isdigit( *(&v+1) ) )
+                            m_of << "\"\"";
+                    }
                 }
                 m_of << "\"" << ::std::dec;
                 m_of << ";\n\t";
@@ -2660,7 +2781,10 @@ namespace {
                 m_of << "var" << e;
                 ),
             (Temporary,
-                m_of << "tmp" << e.idx;
+                if( e.idx == ~0u )
+                    m_of << "i";
+                else
+                    m_of << "tmp" << e.idx;
                 ),
             (Argument,
                 m_of << "arg" << e.idx;
@@ -2713,11 +2837,11 @@ namespace {
                 ::HIR::TypeRef  tmp;
                 const auto& ty = m_mir_res->get_lvalue_type(tmp, val);
                 auto dst_type = metadata_type(ty);
-                if( dst_type != MetadataType:: None )
+                if( dst_type != MetadataType::None )
                 {
                     m_of << "(*("; emit_ctype(ty); m_of << "*)";
                     emit_lvalue(*e.val);
-                    m_of << ")";
+                    m_of << ".PTR)";
                 }
                 else
                 {
@@ -2783,7 +2907,18 @@ namespace {
                 if( c.v == INT64_MIN )
                     m_of << "INT64_MIN";
                 else
+                {
                     m_of << c.v;
+                    switch(c.t)
+                    {
+                    case ::HIR::CoreType::I64:
+                    case ::HIR::CoreType::I128:
+                    case ::HIR::CoreType::Isize:
+                        m_of << "ll";
+                    default:
+                        break;
+                    }
+                }
                 ),
             (Uint,
                 switch(c.t)
@@ -2800,7 +2935,7 @@ namespace {
                 case ::HIR::CoreType::U64:
                 case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Usize:
-                    m_of << ::std::hex << "0x" << c.v << ::std::dec;
+                    m_of << ::std::hex << "0x" << c.v << "ull" << ::std::dec;
                     break;
                 case ::HIR::CoreType::Char:
                     assert(0 <= c.v && c.v <= 0x10FFFF);
@@ -2837,7 +2972,7 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
-                        m_of << "\\" << (unsigned int)v;
+                        m_of << "\\" << ((unsigned int)v & 0xFF);
                 }
                 m_of << "\"" << ::std::dec;
                 ),
@@ -2847,7 +2982,7 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
-                        m_of << "\\" << (unsigned int)v;
+                        m_of << "\\" << ((unsigned int)v & 0xFF);
                 }
                 m_of << "\", " << ::std::dec << c.size() << ")";
                 ),

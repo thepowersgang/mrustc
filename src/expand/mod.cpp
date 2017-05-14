@@ -67,7 +67,7 @@ void Expand_Attrs(/*const */::AST::MetaItems& attrs, AttrStage stage,  ::std::fu
 }
 void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
 {
-    Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, path, mod, item); });
+    Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ if(!item.is_None()) d.handle(sp, a, crate, path, mod, item); });
 }
 void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
 {
@@ -109,7 +109,8 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
                 return e;
             }
         }
-        // TODO: Shouldn't this use the _last_ located macro? Allowing later (local) defininitions to override it?
+        // Find the last macro of this name (allows later #[macro_use] definitions to override)
+        const MacroRules* last_mac = nullptr;
         for( const auto& mri : mac_mod.macro_imports_res() )
         {
             //DEBUG("- " << mri.name);
@@ -118,9 +119,13 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
-                auto e = Macro_Invoke(name.c_str(), *mri.data, mv$(input_tt), mod);
-                return e;
+                last_mac = mri.data;
             }
+        }
+        if( last_mac )
+        {
+            auto e = Macro_Invoke(name.c_str(), *last_mac, mv$(input_tt), mod);
+            return e;
         }
     }
 
@@ -307,11 +312,9 @@ struct CExpandExpr:
         assert( ! this->replacement );
     }
     void visit_vector(::std::vector< ::std::unique_ptr<AST::ExprNode> >& cnodes) {
-        for( auto& child : cnodes ) {
-            this->visit(child);
-        }
-        // Delete null children
         for( auto it = cnodes.begin(); it != cnodes.end(); ) {
+            assert( it->get() );
+            this->visit(*it);
             if( it->get() == nullptr ) {
                 it = cnodes.erase( it );
             }
@@ -321,6 +324,64 @@ struct CExpandExpr:
         }
     }
 
+    ::AST::ExprNodeP visit_macro(::AST::ExprNode_Macro& node, ::std::vector< ::AST::ExprNodeP>* nodes_out)
+    {
+        TRACE_FUNCTION_F(node.m_name << "!");
+        if( node.m_name == "" ) {
+            return ::AST::ExprNodeP();
+        }
+
+        ::AST::ExprNodeP    rv;
+        auto& mod = this->cur_mod();
+        auto ttl = Expand_Macro( crate, modstack, mod,  Span(node.get_pos()),  node.m_name, node.m_ident, node.m_tokens );
+        if( !ttl.get() )
+        {
+            // No expansion
+        }
+        else
+        {
+            while( ttl->lookahead(0) != TOK_EOF )
+            {
+                SET_MODULE( (*ttl), mod );
+
+                // Reparse as expression / item
+                bool    add_silence_if_end = false;
+                ::std::shared_ptr< AST::Module> tmp_local_mod;
+                auto& local_mod_ptr = (this->current_block ? this->current_block->m_local_mod : tmp_local_mod);
+                DEBUG("-- Parsing as expression line");
+                auto newexpr = Parse_ExprBlockLine_WithItems(*ttl, local_mod_ptr, add_silence_if_end);
+
+                if( tmp_local_mod )
+                    TODO(node.get_pos(), "Handle edge case where a macro expansion outside of a _Block creates an item");
+
+                if( newexpr )
+                {
+                    if( nodes_out ) {
+                        nodes_out->push_back( mv$(newexpr) );
+                    }
+                    else {
+                        assert( !rv );
+                        rv = mv$(newexpr);
+                    }
+                }
+                else
+                {
+                    // Expansion line just added a new item
+                }
+
+                if( ttl->lookahead(0) != TOK_EOF )
+                {
+                    if( !nodes_out ) {
+                        ERROR(node.get_pos(), E0000, "Unused tokens at the end of macro expansion - " << ttl->getToken());
+                    }
+                }
+            }
+        }
+
+        node.m_name = "";
+        return mv$(rv);
+    }
+
     void visit(::AST::ExprNode_Macro& node) override
     {
         TRACE_FUNCTION_F("ExprNode_Macro - name = " << node.m_name);
@@ -328,46 +389,29 @@ struct CExpandExpr:
             return ;
         }
 
-        auto& mod = this->cur_mod();
-        auto ttl = Expand_Macro(
-            crate, modstack, mod,
-            Span(node.get_pos()),
-            node.m_name, node.m_ident, node.m_tokens
-            );
-        if( ttl.get() != nullptr )
-        {
-            if( ttl->lookahead(0) != TOK_EOF )
-            {
-                SET_MODULE( (*ttl), mod );
-                // Reparse as expression / item
-                bool    add_silence_if_end = false;
-                ::std::shared_ptr< AST::Module> tmp_local_mod;
-                auto& local_mod_ptr = (this->current_block ? this->current_block->m_local_mod : tmp_local_mod);
-                DEBUG("-- Parsing as expression line (legacy)");
-                auto newexpr = Parse_ExprBlockLine_WithItems(*ttl, local_mod_ptr, add_silence_if_end);
-                if( newexpr )
-                {
-                    // TODO: use add_silence_if_end - Applies if this node is the last node in the block.
+        replacement = this->visit_macro(node, nullptr);
 
-                    // Then call visit on it again
-                    DEBUG("--- Visiting new node");
-                    this->visit(newexpr);
-                    // And schedule it to replace the previous
-                    replacement = mv$(newexpr);
-                }
-                else
-                {
-                    // TODO: Delete this node somehow? Or just leave it for later.
-                }
-                ASSERT_BUG(node.get_pos(), !tmp_local_mod, "TODO: Handle edge case where a macro expansion outside of a _Block creates an item");
+        if( this->replacement )
+        {
+            DEBUG("--- Visiting new node");
+            auto n = mv$(this->replacement);
+            this->visit(n);
+            if( n )
+            {
+                assert( !this->replacement );
+                this->replacement = mv$(n);
             }
-            DEBUG("ExprNode_Macro - replacement = " << replacement.get());
-            node.m_name = "";
         }
     }
 
     void visit(::AST::ExprNode_Block& node) override {
         unsigned int mod_item_count = 0;
+
+        auto prev_modstack = this->modstack;
+        if( node.m_local_mod ) {
+            this->modstack = LList<const ::AST::Module*>(&prev_modstack, node.m_local_mod.get());
+        }
+
         // TODO: macro_rules! invocations within the expression list influence this.
         // > Solution: Defer creation of the local module until during expand.
         if( node.m_local_mod ) {
@@ -377,13 +421,48 @@ struct CExpandExpr:
 
         auto saved = this->current_block;
         this->current_block = &node;
-        this->visit_vector(node.m_nodes);
+
+        for( auto it = node.m_nodes.begin(); it != node.m_nodes.end(); )
+        {
+            assert( it->get() );
+
+            if( auto* node_mac = dynamic_cast<::AST::ExprNode_Macro*>(it->get()) )
+            {
+                Expand_Attrs((*it)->attrs(), AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, *it); });
+                if( !it->get() ) {
+                    it = node.m_nodes.erase( it );
+                    continue ;
+                }
+
+                assert(it->get() == node_mac);
+
+                ::std::vector< ::AST::ExprNodeP>    new_nodes;
+                this->visit_macro(*node_mac, &new_nodes);
+
+                it = node.m_nodes.erase(it);
+                it = node.m_nodes.insert(it, ::std::make_move_iterator(new_nodes.begin()), ::std::make_move_iterator(new_nodes.end()));
+                // NOTE: Doesn't advance the iterator above, we want to re-visit the new node
+            }
+            else
+            {
+                this->visit(*it);
+                if( it->get() == nullptr ) {
+                    it = node.m_nodes.erase( it );
+                }
+                else {
+                    ++ it;
+                }
+            }
+        }
+
         this->current_block = saved;
 
         // HACK! Run Expand_Mod twice on local modules.
         if( node.m_local_mod ) {
             Expand_Mod(crate, modstack, node.m_local_mod->path(), *node.m_local_mod, mod_item_count);
         }
+
+        this->modstack = mv$(prev_modstack);
     }
     void visit(::AST::ExprNode_Asm& node) override {
         for(auto& v : node.m_output)
@@ -611,11 +690,13 @@ struct CExpandExpr:
 
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::unique_ptr<AST::ExprNode>& node)
 {
+    TRACE_FUNCTION_F("unique_ptr");
     auto visitor = CExpandExpr(crate, modstack);
     visitor.visit(node);
 }
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node)
 {
+    TRACE_FUNCTION_F("shared_ptr");
     auto visitor = CExpandExpr(crate, modstack);
     node->visit(visitor);
     if( visitor.replacement ) {
@@ -624,6 +705,7 @@ void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std:
 }
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node)
 {
+    TRACE_FUNCTION_F("AST::Expr");
     auto visitor = CExpandExpr(crate, modstack);
     node.visit_nodes(visitor);
     if( visitor.replacement ) {
@@ -750,7 +832,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     {
         auto& i = mod.items()[idx];
 
-        DEBUG("- " << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.data.attrs);
+        DEBUG("- " << modpath << "::" << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.data.attrs);
         ::AST::Path path = modpath + i.name;
 
         auto attrs = mv$(i.data.attrs);

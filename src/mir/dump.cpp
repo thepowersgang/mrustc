@@ -9,6 +9,7 @@
 #include <hir/visitor.hpp>
 #include "mir.hpp"
 #include "operations.hpp"
+#include <iomanip>
 
 namespace {
 
@@ -98,6 +99,14 @@ namespace {
                             m_os << " IF df$" << e.flag_idx;
                         }
                         m_os << ");\n";
+                        ),
+                    (ScopeEnd,
+                        m_os << "// Scope End: ";
+                        for(auto idx : e.vars)
+                            m_os << "var$" << idx << ",";
+                        for(auto idx : e.tmps)
+                            m_os << "tmp$" << idx << ",";
+                        m_os << "\n";
                         )
                     )
                 }
@@ -208,7 +217,19 @@ namespace {
                 os << (ce.v ? "true" : "false");
                 ),
             (Bytes,
-                os << "b\"" << ce << "\"";
+                os << ::std::hex << "b\"";
+                for(auto b : ce)
+                {
+                    if( b == '\\' )
+                        os << "\\\\";
+                    else if( b == '"' )
+                        os << "\\\"";
+                    else if( ' ' <= b && b < 0x7F )
+                        os << b;
+                    else
+                        os << "\\x" << ::std::setw(2) << ::std::setfill('0') << (int)b;
+                }
+                os << ::std::dec << "\"";
                 ),
             (StaticString,
                 os << "\"" << ce << "\"";
@@ -494,6 +515,30 @@ namespace {
                 m_os << indent() << "  ;\n";
             }
         }
+        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
+        {
+            m_os << indent();
+            m_os << "const ";
+            if( m_short_item_name )
+                m_os << p.get_name();
+            else
+                m_os << p;
+            m_os << ": " << item.m_type;
+            if( item.m_value )
+            {
+                inc_indent();
+                m_os << " = {\n";
+                inc_indent();
+                dump_mir(m_os, m_indent_level, *item.m_value.m_mir);
+                dec_indent();
+                m_os << indent() << "} /* = " << item.m_value_res << "*/;\n";
+                dec_indent();
+            }
+            else
+            {
+                m_os << ";\n";
+            }
+        }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
         {
             m_os << indent();
@@ -506,7 +551,7 @@ namespace {
             if( item.m_value )
             {
                 inc_indent();
-                m_os << "= {\n";
+                m_os << " = {\n";
                 inc_indent();
                 dump_mir(m_os, m_indent_level, *item.m_value.m_mir);
                 dec_indent();

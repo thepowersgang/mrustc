@@ -68,6 +68,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "MIR Cleanup" );
     g_debug_disable_map.insert( "MIR Optimise" );
     g_debug_disable_map.insert( "MIR Validate PO" );
+    g_debug_disable_map.insert( "MIR Validate Full" );
 
     g_debug_disable_map.insert( "HIR Serialise" );
     g_debug_disable_map.insert( "Trans Enumerate" );
@@ -131,6 +132,11 @@ struct ProgramParams
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
     ::std::string   crate_name;
 
+    unsigned opt_level = 0;
+    bool emit_debug_info = false;
+
+    bool test_harness = false;
+
     ::std::vector<const char*> lib_search_dirs;
     ::std::vector<const char*> libraries;
 
@@ -167,10 +173,12 @@ int main(int argc, char *argv[])
     ProgramParams   params(argc, argv);
 
     // Set up cfg values
+    Cfg_SetValue("rust_compiler", "mrustc");
     // TODO: Target spec
     Cfg_SetFlag("unix");
     Cfg_SetFlag("linux");
     Cfg_SetValue("target_os", "linux");
+    Cfg_SetValue("target_family", "unix");
     Cfg_SetValue("target_pointer_width", "64");
     Cfg_SetValue("target_endian", "little");
     Cfg_SetValue("target_arch", "x86_64");
@@ -188,6 +196,11 @@ int main(int argc, char *argv[])
         });
 
 
+    if( params.test_harness )
+    {
+        Cfg_SetFlag("test");
+    }
+
 
     try
     {
@@ -195,6 +208,7 @@ int main(int argc, char *argv[])
         AST::Crate crate = CompilePhase<AST::Crate>("Parse", [&]() {
             return Parse_Crate(params.infile);
             });
+        crate.m_test_harness = params.test_harness;
 
         if( params.last_stage == ProgramParams::STAGE_PARSE ) {
             return 0;
@@ -209,6 +223,11 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand", [&]() {
             Expand(crate);
             });
+
+        if( params.test_harness )
+        {
+            Expand_TestHarness(crate);
+        }
 
         // Extract the crate type and name from the crate attributes
         auto crate_type = params.crate_type;
@@ -254,6 +273,10 @@ int main(int argc, char *argv[])
             }
         }
         crate.m_crate_name = crate_name;
+        if( params.test_harness )
+        {
+            crate.m_crate_name += "$test";
+        }
 
         if( params.outfile == "" ) {
             switch( crate.m_crate_type )
@@ -281,7 +304,7 @@ int main(int argc, char *argv[])
         }
 
         // Allocator and panic strategies
-        if( crate.m_crate_type == ::AST::Crate::Type::Executable )
+        if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness )
         {
             // TODO: Detect if an allocator crate is already present.
             crate.load_extern_crate(Span(), "alloc_system");
@@ -289,6 +312,10 @@ int main(int argc, char *argv[])
 
             // - `mrustc-main` lang item default
             crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
+        }
+        if( params.test_harness )
+        {
+            crate.load_extern_crate(Span(), "test");
         }
 
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
@@ -421,6 +448,13 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Cleanup", [&]() {
             MIR_CleanupCrate(*hir_crate);
             });
+        if( getenv("MRUSTC_FULL_VALIDATE_PREOPT") )
+        {
+            CompilePhaseV("MIR Validate Full", [&]() {
+                MIR_CheckCrate_Full(*hir_crate);
+                });
+        }
+
         // Optimise the MIR
         CompilePhaseV("MIR Optimise", [&]() {
             MIR_OptimiseCrate(*hir_crate);
@@ -432,6 +466,12 @@ int main(int argc, char *argv[])
             });
         CompilePhaseV("MIR Validate PO", [&]() {
             MIR_CheckCrate(*hir_crate);
+            });
+        // - Exhaustive MIR validation (follows every code path and checks variable validity)
+        // > DEBUGGING ONLY
+        CompilePhaseV("MIR Validate Full", [&]() {
+            if( getenv("MRUSTC_FULL_VALIDATE") )
+                MIR_CheckCrate_Full(*hir_crate);
             });
 
         if( params.last_stage == ProgramParams::STAGE_MIR ) {
@@ -449,8 +489,14 @@ int main(int argc, char *argv[])
         for(const char* libdir : params.libraries ) {
             trans_opt.libraries.push_back( libdir );
         }
+        trans_opt.emit_debug_info = params.emit_debug_info;
 
         // Generate code for non-generic public items (if requested)
+        if( params.test_harness )
+        {
+            // If the test harness is enabled, override crate type to "Executable"
+            crate_type = ::AST::Crate::Type::Executable;
+        }
         switch( crate_type )
         {
         case ::AST::Crate::Type::Unknown:
@@ -580,6 +626,12 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     }
                     this->outfile = argv[++i];
                     break;
+                case 'O':
+                    this->opt_level = 2;
+                    break;
+                case 'g':
+                    this->emit_debug_info = true;
+                    break;
                 default:
                     exit(1);
                 }
@@ -672,11 +724,65 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     exit(1);
                 }
             }
+            else if( strcmp(arg, "--test") == 0 ) {
+                this->test_harness = true;
+            }
             else {
                 ::std::cerr << "Unknown option '" << arg << "'" << ::std::endl;
                 exit(1);
             }
         }
     }
+}
+
+
+::std::ostream& operator<<(::std::ostream& os, const FmtEscaped& x)
+{
+    os << ::std::hex;
+    for(auto s = x.s; *s != '\0'; s ++)
+    {
+        switch(*s)
+        {
+        case '\0':  os << "\\0";    break;
+        case '\n':  os << "\\n";    break;
+        case '\\':  os << "\\\\";   break;
+        case '"':   os << "\\\"";   break;
+        default:
+            uint8_t v = *s;
+            if( v < 0x80 )
+            {
+                if( v < ' ' || v > 0x7F )
+                    os << "\\u{" << ::std::hex << (unsigned int)v << "}";
+                else
+                    os << v;
+            }
+            else if( v < 0xC0 )
+                ;
+            else if( v < 0xE0 )
+            {
+                uint32_t    val = (uint32_t)(v & 0x1F) << 6;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
+                os << "\\u{" << ::std::hex << val << "}";
+            }
+            else if( v < 0xF0 )
+            {
+                uint32_t    val = (uint32_t)(v & 0x0F) << 12;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 12;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
+                os << "\\u{" << ::std::hex << val << "}";
+            }
+            else if( v < 0xF8 )
+            {
+                uint32_t    val = (uint32_t)(v & 0x07) << 18;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 18;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 12;
+                v = (uint8_t)*++s; if( (v & 0xC0) != 0x80 ) { s--; continue ; } val |= (uint32_t)v << 6;
+                os << "\\u{" << ::std::hex << val << "}";
+            }
+            break;
+        }
+    }
+    os << ::std::dec;
+    return os;
 }
 

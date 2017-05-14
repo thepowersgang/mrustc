@@ -165,7 +165,13 @@ namespace {
                 (Unit,
                     ),
                 (Value,
-                    m_os << " = ?";// <<
+                    m_os << " = ";
+                    if( e.val.is_Invalid() ) {
+                        m_os << "?";
+                    }
+                    else {
+                        m_os << e.val;
+                    }
                     ),
                 (Tuple,
                     m_os << "(";
@@ -296,28 +302,28 @@ namespace {
         void visit(::HIR::ExprNode_Block& node) override
         {
             if( node.m_nodes.size() == 0 ) {
-                m_os << "{ }";
+                m_os << "{";
+                if( node.m_value_node )
+                {
+                    m_os << " ";
+                    this->visit_node_ptr(node.m_value_node);
+                }
+                m_os << " }";
             }
-            //else if( node.m_nodes.size() == 1) {
-            //    m_os << "{ ";
-            //    this->visit_node_ptr(node.m_nodes.front());
-            //    m_os << " }";
-            //}
             else {
                 m_os << "{\n";
                 inc_indent();
                 for(auto& sn : node.m_nodes) {
+                    m_os << "\n";
                     m_os << indent();
                     this->visit_node_ptr(sn);
-                    if( &sn != &node.m_nodes.back() ) {
-                        m_os << ";\n";
-                    }
-                    else if( !node.m_yields_final ) {
-                        m_os << ";\n";
-                    }
-                    else {
-                        m_os << "\n";
-                    }
+                    m_os << ";\n";
+                }
+                if( node.m_value_node )
+                {
+                    m_os << indent();
+                    this->visit_node_ptr(node.m_value_node);
+                    m_os << "\n";
                 }
                 dec_indent();
                 m_os << indent() << "}";
@@ -418,7 +424,7 @@ namespace {
         void visit(::HIR::ExprNode_Assign& node) override
         {
             this->visit_node_ptr(node.m_slot);
-            m_os << " = ";
+            m_os << " " << ::HIR::ExprNode_Assign::opname(node.m_op) << "= ";
             this->visit_node_ptr(node.m_value);
         }
         void visit(::HIR::ExprNode_BinOp& node) override

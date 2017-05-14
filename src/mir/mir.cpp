@@ -24,22 +24,22 @@ namespace MIR {
             os << (e.v ? "true" : "false");
             ),
         (Bytes,
-            os << "[";
+            os << "b\"";
             os << ::std::hex;
             for(auto v : e)
-                os << static_cast<unsigned int>(v) << " ";
-            os << ::std::dec;
-            os << "]";
-            ),
-        (StaticString,
-            os << "\"";
-            for(auto v : e) {
+            {
                 if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                     os << v;
+                else if( v < 16 )
+                    os << "\\x0" << (unsigned int)v;
                 else
-                    os << "\\u{" << FMT(::std::hex << (unsigned int)v) << "}";
+                    os << "\\x" << ((unsigned int)v & 0xFF);
             }
             os << "\"";
+            os << ::std::dec;
+            ),
+        (StaticString,
+            os << "\"" << FmtEscaped(e) << "\"";
             ),
         (Const,
             os << e.p;
@@ -50,34 +50,40 @@ namespace MIR {
         )
         return os;
     }
-    bool Constant::operator==(const Constant& b) const
+    ::Ordering Constant::ord(const Constant& b) const
     {
         if( this->tag() != b.tag() )
-            return false;
+            return ::ord( static_cast<unsigned int>(this->tag()), b.tag() );
         TU_MATCHA( (*this,b), (ae,be),
         (Int,
-            return ae.v == be.v && ae.t == be.t;
+            if( ae.v != be.v )
+                return ::ord(ae.v, be.v);
+            return ::ord((unsigned)ae.t, (unsigned)be.t);
             ),
         (Uint,
-            return ae.v == be.v && ae.t == be.t;
+            if( ae.v != be.v )
+                return ::ord(ae.v, be.v);
+            return ::ord((unsigned)ae.t, (unsigned)be.t);
             ),
         (Float,
-            return ae.v == be.v && ae.t == be.t;
+            if( ae.v != be.v )
+                return ::ord(ae.v, be.v);
+            return ::ord((unsigned)ae.t, (unsigned)be.t);
             ),
         (Bool,
-            return ae.v == be.v;
+            return ::ord(ae.v, be.v);
             ),
         (Bytes,
-            return ae == be;
+            return ::ord(ae, be);
             ),
         (StaticString,
-            return ae == be;
+            return ::ord(ae, be);
             ),
         (Const,
-            return ae.p == be.p;
+            return ::ord(ae.p, be.p);
             ),
         (ItemAddr,
-            return ae == be;
+            return ::ord(ae, be);
             )
         )
         throw "";
@@ -442,6 +448,51 @@ namespace MIR {
             )
         )
 
+        return os;
+    }
+    ::std::ostream& operator<<(::std::ostream& os, const Statement& x)
+    {
+        TU_MATCHA( (x), (e),
+        (Assign,
+            os << e.dst << " = " << e.src;
+            ),
+        (Asm,
+            os << "(";
+            for(const auto& spec : e.outputs)
+                os << "\"" << spec.first << "\" : " << spec.second << ", ";
+            os << ") = asm!(\"\", input=( ";
+            for(const auto& spec : e.inputs)
+                os << "\"" << spec.first << "\" : " << spec.second << ", ";
+            os << "), clobbers=[" << e.clobbers << "], flags=[" << e.flags << "])";
+            ),
+        (SetDropFlag,
+            os << "df$" << e.idx << " = ";
+            if( e.other == ~0u )
+            {
+                os << e.new_val;
+            }
+            else
+            {
+                os << (e.new_val ? "!" : "") << "df$" << e.other;
+            }
+            ),
+        (Drop,
+            os << "drop(" << e.slot;
+            if(e.kind == ::MIR::eDropKind::SHALLOW)
+                os << " SHALLOW";
+            if(e.flag_idx != ~0u)
+                os << "IF df$" << e.flag_idx;
+            os << ")";
+            ),
+        (ScopeEnd,
+            os << "ScopeEnd(";
+            for(auto idx : e.vars)
+                os << "var$" << idx << ",";
+            for(auto idx : e.tmps)
+                os << "tmp$" << idx << ",";
+            os << ")";
+            )
+        )
         return os;
     }
 }

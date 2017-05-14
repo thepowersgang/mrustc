@@ -543,13 +543,12 @@ namespace {
                 return ty.m_data.is_Diverge();// || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
                 };
 
+            bool diverges = false;
+            this->push_traits( node.m_traits );
             if( node.m_nodes.size() > 0 )
             {
-                bool diverges = false;
-                this->push_traits( node.m_traits );
-
                 this->push_inner_coerce(false);
-                for( unsigned int i = 0; i < node.m_nodes.size()-1; i ++ )
+                for( unsigned int i = 0; i < node.m_nodes.size(); i ++ )
                 {
                     auto& snp = node.m_nodes[i];
                     this->context.add_ivars( snp->m_res_type );
@@ -561,62 +560,56 @@ namespace {
                     }
                 }
                 this->pop_inner_coerce();
+            }
 
-                if( node.m_yields_final )
+            if( node.m_value_node )
+            {
+                auto& snp = node.m_value_node;
+                DEBUG("Block yields final value");
+                this->context.add_ivars( snp->m_res_type );
+                this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
+                snp->visit(*this);
+            }
+            else if( node.m_nodes.size() > 0 )
+            {
+                // NOTE: If the final statement in the block diverges, mark this as diverging
+                const auto& snp = node.m_nodes.back();
+                bool defer = false;
+                if( !diverges )
                 {
-                    auto& snp = node.m_nodes.back();
-                    DEBUG("Block yields final value");
-                    this->context.add_ivars( snp->m_res_type );
-                    this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
-                    snp->visit(*this);
-                }
-                else
-                {
-                    auto& snp = node.m_nodes.back();
-                    this->context.add_ivars( snp->m_res_type );
-                    // - Not yielded - so don't equate the return
-                    snp->visit(*this);
-
-                    // NOTE: If the final statement in the block diverges, mark this as diverging
-                    bool defer = false;
-                    if( !diverges )
-                    {
-                        TU_IFLET(::HIR::TypeRef::Data, this->context.get_type(snp->m_res_type).m_data, Infer, e,
-                            switch(e.ty_class)
-                            {
-                            case ::HIR::InferClass::Integer:
-                            case ::HIR::InferClass::Float:
-                                diverges = false;
-                                break;
-                            default:
-                                defer = true;
-                                break;
-                            }
-                        )
-                        else if( is_diverge(snp->m_res_type) ) {
-                            diverges = true;
-                        }
-                        else {
+                    TU_IFLET(::HIR::TypeRef::Data, this->context.get_type(snp->m_res_type).m_data, Infer, e,
+                        switch(e.ty_class)
+                        {
+                        case ::HIR::InferClass::Integer:
+                        case ::HIR::InferClass::Float:
                             diverges = false;
+                            break;
+                        default:
+                            defer = true;
+                            break;
                         }
-                    }
-
-                    // If a statement in this block diverges
-                    if( defer ) {
-                        DEBUG("Block final node returns _, derfer diverge check");
-                        this->context.add_revisit(node);
-                    }
-                    else if( diverges ) {
-                        DEBUG("Block diverges, yield !");
-                        this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+                    )
+                    else if( is_diverge(snp->m_res_type) ) {
+                        diverges = true;
                     }
                     else {
-                        DEBUG("Block doesn't diverge but doesn't yield a value, yield ()");
-                        this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+                        diverges = false;
                     }
                 }
 
-                this->pop_traits( node.m_traits );
+                // If a statement in this block diverges
+                if( defer ) {
+                    DEBUG("Block final node returns _, derfer diverge check");
+                    this->context.add_revisit(node);
+                }
+                else if( diverges ) {
+                    DEBUG("Block diverges, yield !");
+                    this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+                }
+                else {
+                    DEBUG("Block doesn't diverge but doesn't yield a value, yield ()");
+                    this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+                }
             }
             else
             {
@@ -624,6 +617,7 @@ namespace {
                 DEBUG("Block is empty, yield ()");
                 this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
+            this->pop_traits( node.m_traits );
         }
         void visit(::HIR::ExprNode_Asm& node) override
         {
@@ -1199,7 +1193,7 @@ namespace {
             {
                 const auto& name = val.first;
                 auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
-                assert(it != fields.end());
+                ASSERT_BUG(node.span(), it != fields.end(), "Field '" << name << "' not found in struct " << node.m_path);
                 const auto& des_ty_r = it->second.ent;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
@@ -1899,6 +1893,7 @@ namespace {
                 return ty.m_data.is_Diverge();// || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
                 };
 
+            assert( !node.m_nodes.empty() );
             const auto& last_ty = this->context.get_type( node.m_nodes.back()->m_res_type );
             DEBUG("_Block: last_ty = " << last_ty);
 
@@ -2915,11 +2910,11 @@ namespace {
         void visit(::HIR::ExprNode_Literal& node) override {
             TU_MATCH(::HIR::ExprNode_Literal::Data, (node.m_data), (e),
             (Integer,
-                ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Float Literal didn't return primitive");
+                ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Integer _Literal didn't return primitive - " << node.m_res_type);
                 e.m_type = node.m_res_type.m_data.as_Primitive();
                 ),
             (Float,
-                ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Float Literal didn't return primitive");
+                ASSERT_BUG(node.span(), node.m_res_type.m_data.is_Primitive(), "Float Literal didn't return primitive - " << node.m_res_type);
                 e.m_type = node.m_res_type.m_data.as_Primitive();
                 ),
             (Boolean,
@@ -4057,11 +4052,12 @@ namespace {
         while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**node_ptr_ptr) )
         {
             DEBUG("- Moving into block");
-            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_nodes.back()->m_res_type),
-                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_nodes.back()->m_res_type));
+            assert( p->m_value_node );
+            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
+                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
             // - Override the the result type to the desired result
             p->m_res_type = ::HIR::TypeRef::new_borrow(borrow_type, des_borrow_inner.clone());
-            node_ptr_ptr = &p->m_nodes.back();
+            node_ptr_ptr = &p->m_value_node;
         }
         #endif
         auto& node_ptr = *node_ptr_ptr;
@@ -4187,38 +4183,40 @@ namespace {
 
         // Deref coercions
         // - If right can be dereferenced to left
+        DEBUG("-- Deref coercions");
         {
             ::HIR::TypeRef  tmp_ty;
-            const ::HIR::TypeRef*   out_ty = &ty_src;
+            const ::HIR::TypeRef*   out_ty_p = &ty_src;
             unsigned int count = 0;
             ::std::vector< ::HIR::TypeRef>  types;
-            while( (out_ty = context.m_resolve.autoderef(sp, *out_ty, tmp_ty)) )
+            while( (out_ty_p = context.m_resolve.autoderef(sp, *out_ty_p, tmp_ty)) )
             {
+                const auto& out_ty = context.m_ivars.get_type(*out_ty_p);
                 count += 1;
 
-                if( out_ty->m_data.is_Infer() && out_ty->m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
+                if( out_ty.m_data.is_Infer() && out_ty.m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
                     // Hit a _, so can't keep going
                     break;
                 }
 
-                types.push_back( out_ty->clone() );
+                types.push_back( out_ty.clone() );
 
-                if( context.m_ivars.types_equal(ty_dst, *out_ty) == false ) {
+                if( context.m_ivars.types_equal(ty_dst, out_ty) == false ) {
                     // Check equivalence
 
-                    if( ty_dst.m_data.tag() == out_ty->m_data.tag() ) {
-                        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_dst.m_data, out_ty->m_data), (d_e, s_e),
+                    if( ty_dst.m_data.tag() == out_ty.m_data.tag() ) {
+                        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_dst.m_data, out_ty.m_data), (d_e, s_e),
                         (
-                            if( ty_dst .compare_with_placeholders(sp, *out_ty, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal ) {
+                            if( ty_dst .compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal ) {
                                 DEBUG("Same tag, but not fuzzy match");
                                 continue ;
                             }
-                            DEBUG("Same tag and fuzzy match - assuming " << ty_dst << " == " << *out_ty);
-                            context.equate_types(sp, ty_dst,  *out_ty);
+                            DEBUG("Same tag and fuzzy match - assuming " << ty_dst << " == " << out_ty);
+                            context.equate_types(sp, ty_dst, out_ty);
                             ),
                         (Slice,
                             // Equate!
-                            context.equate_types(sp, ty_dst, *out_ty);
+                            context.equate_types(sp, ty_dst, out_ty);
                             // - Fall through
                             )
                         )
@@ -4338,15 +4336,13 @@ namespace {
 
         // Search for Unsize
         // - If `right`: ::core::marker::Unsize<`left`>
+        DEBUG("-- Unsize trait");
         {
-            const auto& lang_Unsize = context.m_crate.get_lang_item_path(sp, "unsize");
-            ::HIR::PathParams   pp;
-            pp.m_types.push_back( ty_dst.clone() );
-            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, ty_src, [&](auto impl, auto cmp) {
-                // TODO: Allow fuzzy match if only match
-                return cmp == ::HIR::Compare::Equal;
+            auto cmp = context.m_resolve.can_unsize(sp, ty_dst, ty_src, [&](auto new_dst) {
+                // Equate these two types
                 });
-            if( found ) {
+            if(cmp == ::HIR::Compare::Equal)
+            {
                 DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
                 auto ty_dst_b = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone());
                 auto ty_dst_b2 = ty_dst_b.clone();
@@ -4355,18 +4351,27 @@ namespace {
 
                 return true;
             }
-        }
-
-        if( ty_dst.m_data.is_Path() && ty_dst.m_data.as_Path().binding.is_Unbound() )
-        {
-        }
-        else if( ty_src.m_data.is_Path() && ty_src.m_data.as_Path().binding.is_Unbound() )
-        {
-        }
-        else if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
-        {
-            context.equate_types(sp, ty_dst,  ty_src);
-            return true;
+            if(cmp == ::HIR::Compare::Unequal)
+            {
+                // No unsize possible, equate types
+                // - Only if they're not already fixed as unequal (that gets handled elsewhere)
+                if( ty_dst.m_data.is_Path() && ty_dst.m_data.as_Path().binding.is_Unbound() )
+                {
+                }
+                else if( ty_src.m_data.is_Path() && ty_src.m_data.as_Path().binding.is_Unbound() )
+                {
+                }
+                else if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
+                {
+                    context.equate_types(sp, ty_dst,  ty_src);
+                    return true;
+                }
+            }
+            if(cmp == ::HIR::Compare::Fuzzy)
+            {
+                // Not sure yet
+                return false;
+            }
         }
 
         // Keep trying
@@ -4635,13 +4640,13 @@ namespace {
                     while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
                     {
                         DEBUG("- Propagate to the last node of a _Block");
-                        ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_nodes.back()->m_res_type),
-                            "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_nodes.back()->m_res_type));
+                        ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
+                            "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
                         ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, ty_src),
                             "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(ty_src)
                             );
                         p->m_res_type = new_type.clone();
-                        npp = &p->m_nodes.back();
+                        npp = &p->m_value_node;
                     }
                     ::HIR::ExprNodeP& node_ptr = *npp;
 
@@ -4872,10 +4877,16 @@ namespace {
             // - If either is an ivar, add the other as a possibility
             TU_IFLET( ::HIR::TypeRef::Data, src_ty.m_data, Infer, se,
                 // TODO: Update for InferClass::Diverge ?
-                if( se.ty_class != ::HIR::InferClass::None ) {
-                    context.equate_types(sp, dst_ty,  src_ty);
-                }
-                else {
+                switch(se.ty_class)
+                {
+                case ::HIR::InferClass::Integer:
+                case ::HIR::InferClass::Float:
+                    if( dst_ty.m_data.is_Primitive() ) {
+                        context.equate_types(sp, dst_ty,  src_ty);
+                    }
+                    break;
+                case ::HIR::InferClass::None:
+                case ::HIR::InferClass::Diverge:
                     TU_IFLET(::HIR::TypeRef::Data, dst_ty.m_data, Infer, de,
                         context.possible_equate_type_unsize_to(se.index, dst_ty);
                         context.possible_equate_type_unsize_from(de.index, src_ty);
@@ -4898,6 +4909,7 @@ namespace {
                 // No equivalence added
             }
             // - Fall through and search for the impl
+            DEBUG("- Unsize, no ivar equivalence");
         }
         if( v.trait == context.m_crate.get_lang_item_path(sp, "coerce_unsized") )
         {
