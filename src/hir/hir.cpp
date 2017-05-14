@@ -339,6 +339,11 @@ bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_res
 }
 
 namespace {
+
+    struct TypeOrdSpecific_MixedOrdering
+    {
+    };
+
     ::Ordering typelist_ord_specific(const Span& sp, const ::std::vector<::HIR::TypeRef>& left, const ::std::vector<::HIR::TypeRef>& right);
 
     ::Ordering type_ord_specific(const Span& sp, const ::HIR::TypeRef& left, const ::HIR::TypeRef& right)
@@ -464,11 +469,15 @@ namespace {
     ::Ordering typelist_ord_specific(const Span& sp, const ::std::vector<::HIR::TypeRef>& le, const ::std::vector<::HIR::TypeRef>& re)
     {
         auto rv = ::OrdEqual;
+        assert(le.size() == re.size());
         for(unsigned int i = 0; i < le.size(); i ++) {
             auto a = type_ord_specific(sp, le[i], re[i]);
             if( a != ::OrdEqual ) {
                 if( rv != ::OrdEqual && a != rv )
-                    BUG(sp, "Inconsistent ordering between type lists");
+                {
+                    DEBUG("Inconsistent ordering between type lists - i=" << i << " [" << le << "] vs [" << re << "]");
+                    throw TypeOrdSpecific_MixedOrdering {};
+                }
                 rv = a;
             }
         }
@@ -525,20 +534,35 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 {
     static const Span   _sp;
     const Span& sp = _sp;
+    TRACE_FUNCTION;
+    //DEBUG("this  = " << *this);
+    //DEBUG("other = " << other);
 
     // >> https://github.com/rust-lang/rfcs/blob/master/text/1210-impl-specialization.md#defining-the-precedence-rules
     // 1. If this->m_type is less specific than other.m_type: return false
-    if( type_ord_specific(sp, this->m_type, other.m_type) == ::OrdLess ) {
-        return false;
+    try
+    {
+        auto ord = type_ord_specific(sp, this->m_type, other.m_type);
+        if( ord != ::OrdEqual ) {
+            DEBUG("- Type " << (ord == ::OrdLess ? "less" : "more") << " specific - " << this->m_type << " AND " << other.m_type);
+            return ord == ::OrdLess;
+        }
+        // 2. If any in te.impl->m_params is less specific than oe.impl->m_params: return false
+        ord = typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types);
+        if( ord != ::OrdEqual ) {
+            DEBUG("- Trait arguments " << (ord == ::OrdLess ? "less" : "more") << "  specific");
+            return ord == ::OrdLess;
+        }
     }
-    // 2. If any in te.impl->m_params is less specific than oe.impl->m_params: return false
-    if( typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types) == ::OrdLess ) {
-        return false;
+    catch(const TypeOrdSpecific_MixedOrdering& e)
+    {
+        BUG(sp, "Mixed ordering in more_specific_than");
     }
 
-    if( other.m_params.m_bounds.size() == 0 ) {
-        return m_params.m_bounds.size() > 0;
-    }
+    //if( other.m_params.m_bounds.size() == 0 ) {
+    //    DEBUG("- Params (none in other, some in this)");
+    //    return m_params.m_bounds.size() > 0;
+    //}
     // 3. Compare bound set, if there is a rule in oe that is missing from te; return false
     // TODO: Cache these lists (calculate after outer typecheck?)
     auto bounds_t = flatten_bounds(m_params.m_bounds);
@@ -549,7 +573,10 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 
     // If there are less bounds in this impl, it can't be more specific.
     if( bounds_t.size() < bounds_o.size() )
+    {
+        DEBUG("Bound count");
         return false;
+    }
 
     auto it_t = bounds_t.begin();
     auto it_o = bounds_o.begin();
@@ -627,6 +654,7 @@ bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
         static bool types_overlap(const ::HIR::TypeRef& a, const ::HIR::TypeRef& b)
         {
             static Span sp;
+            //DEBUG("(" << a << "," << b << ")");
             if( a.m_data.is_Generic() || b.m_data.is_Generic() )
                 return true;
             // TODO: Unbound/Opaque paths?
@@ -717,16 +745,89 @@ bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
         }
     };
 
+    // Quick Check: If the types are equal, they do overlap
+    if(this->m_type == other.m_type && this->m_trait_args == other.m_trait_args)
+    {
+        return true;
+    }
+
     // 1. Are the impl types of the same form (or is one generic)
     if( ! H::types_overlap(this->m_type, other.m_type) )
         return false;
     if( ! H::types_overlap(this->m_trait_args, other.m_trait_args) )
         return false;
 
-    return this->m_type == other.m_type && this->m_trait_args == other.m_trait_args;
+    DEBUG("TODO: Handle potential overlap (when not exactly equal)");
+    //return this->m_type == other.m_type && this->m_trait_args == other.m_trait_args;
+    Span    sp;
+
+    // TODO: Use `type_ord_specific` but treat any case of mixed ordering as this returning `false`
+    try
+    {
+        type_ord_specific(sp, this->m_type, other.m_type);
+        typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types);
+    }
+    catch(const TypeOrdSpecific_MixedOrdering& /*e*/)
+    {
+        return false;
+    }
 
     // TODO: Detect `impl<T> Foo<T> for Bar<T>` vs `impl<T> Foo<&T> for Bar<T>`
     // > Create values for impl params from the type, then check if the trait params are compatible
+    // > Requires two lists, and telling which one to use by the end
+    auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
+    ::std::vector<const ::HIR::TypeRef*>    impl_tys;
+    auto cb_match = [&](unsigned int idx, const ::HIR::TypeRef& x)->::HIR::Compare {
+        assert(idx < impl_tys.size());
+        if( impl_tys.at(idx) )
+        {
+            DEBUG("Compare " << x << " and " << *impl_tys.at(idx));
+            return (x == *impl_tys.at(idx) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
+        }
+        else
+        {
+            impl_tys.at(idx) = &x;
+            return ::HIR::Compare::Equal;
+        }
+        };
+    impl_tys.resize( this->m_params.m_types.size() );
+    if( ! this->m_type.match_test_generics(sp, other.m_type, cb_ident, cb_match) )
+    {
+        DEBUG("- Type mismatch, try other ordering");
+        impl_tys.clear(); impl_tys.resize( other.m_params.m_types.size() );
+        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, cb_match) )
+        {
+            DEBUG("- Type mismatch in both orderings");
+            return false;
+        }
+        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+        {
+            DEBUG("- Params mismatch");
+            return false;
+        }
+        // Matched with second ording
+    }
+    else if( this->m_trait_args.match_test_generics_fuzz(sp, other.m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+    {
+        DEBUG("- Param mismatch, try other ordering");
+        impl_tys.clear(); impl_tys.resize( other.m_params.m_types.size() );
+        if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, cb_match) )
+        {
+            DEBUG("- Type mismatch in alt ordering");
+            return false;
+        }
+        if( other.m_trait_args.match_test_generics_fuzz(sp, this->m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
+        {
+            DEBUG("- Params mismatch in alt ordering");
+            return false;
+        }
+        // Matched with second ordering
+    }
+    else
+    {
+        // Matched with first ordering
+    }
+
     return true;
 }
 

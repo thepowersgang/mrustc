@@ -4986,8 +4986,28 @@ namespace {
             else {
                 // No equivalence added
             }
-            // - Fall through and search for the impl
-            DEBUG("- Unsize, no ivar equivalence");
+
+            // TODO: If this was a compiler-inserted bound (from a coercion rule), then do deref checks
+#if 0
+            {
+                ::HIR::TypeRef  tmp_ty;
+                const ::HIR::TypeRef* ty_ptr = &src_ty;
+                while( (ty_ptr = context.m_resolve.autoderef(sp, *ty_ptr, tmp_ty)) )
+                {
+                    const auto& cur_ty = context.m_ivars.get_type(*ty_ptr);
+                    if( cur_ty.m_data.is_Infer() ) {
+                        break;
+                    }
+                    auto cmp = dst_ty.compare_with_placeholders(sp, cur_ty, context.m_ivars.callback_resolve_infer());
+                    if( cmp != ::HIR::Compare::Unequal )
+                    {
+                        // TODO: This is a deref coercion, so what can actually be done?
+                        TODO(sp, "Handle Unsize with deref - " << src_ty << " -> " << dst_ty);
+                    }
+                }
+            }
+#endif
+            DEBUG("- Unsize, no deref or ivar");
         }
         if( v.trait == context.m_crate.get_lang_item_path(sp, "coerce_unsized") )
         {
@@ -5052,7 +5072,7 @@ namespace {
                     //  > This makes `let v: usize = !0;` work without special cases
                     auto cmp2 = v.left_ty.compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer());
                     if( cmp2 == ::HIR::Compare::Unequal ) {
-                        DEBUG("- (fail) known result can't match (" << context.m_ivars.fmt_type(v.left_ty) << " and " << context.m_ivars.fmt_type(out_ty) << ")");
+                        DEBUG("[check_associated] - (fail) known result can't match (" << context.m_ivars.fmt_type(v.left_ty) << " and " << context.m_ivars.fmt_type(out_ty) << ")");
                         return false;
                     }
                     // if solid or fuzzy, leave as-is
@@ -5071,9 +5091,10 @@ namespace {
                 }
                 else {
                     count += 1;
-                    DEBUG("- (possible) " << impl);
+                    DEBUG("[check_associated] - (possible) " << impl);
 
                     if( possible_impl_ty == ::HIR::TypeRef() ) {
+                        DEBUG("[check_associated] First - " << impl);
                         possible_impl_ty = impl.get_impl_type();
                         possible_params = impl.get_trait_params();
                         best_impl = mv$(impl);
@@ -5084,27 +5105,33 @@ namespace {
                     // NOTE: `overlaps_with` (should be) reflective
                     else if( impl.overlaps_with(best_impl) )
                     {
-                        DEBUG("- overlaps with " << best_impl);
+                        DEBUG("[check_associated] - Overlaps with existing - " << best_impl);
+                        // if not more specific than the existing best, ignore.
                         if( ! impl.more_specific_than(best_impl) )
                         {
+                            // Ignore
+                            DEBUG("[check_associated] - Less specific than existing");
+                            count -= 1;
+                        }
+                        // If the existing best is not more specific than the new one, use the new one
+                        else if( ! best_impl.more_specific_than(impl) )
+                        {
+                            DEBUG("[check_associated] - More specific than existing - " << impl);
                             possible_impl_ty = impl.get_impl_type();
                             possible_params = impl.get_trait_params();
                             best_impl = mv$(impl);
                             count -= 1;
                         }
-                        else if( ! best_impl.more_specific_than(impl) )
-                        {
-                            // Ignore
-                            count -= 1;
-                        }
                         else
                         {
-                            DEBUG("> Neither is more specific. Error?");
+                            // Supposedly, `more_specific_than` should be reflexive...
+                            DEBUG("[check_associated] > Neither is more specific. Error?");
                         }
                     }
                     else
                     {
                         // Disjoint impls.
+                        DEBUG("[check_associated] Disjoint impl -" << impl);
                     }
                     #endif
 
@@ -5679,6 +5706,31 @@ namespace {
                                 continue ;
 
                             // TODO: Monomorphise this type replacing mentions of the current ivar with the replacement?
+
+#if 0   // NOTE: The following shouldn't happen
+                            if( bound.trait == context.m_crate.get_lang_item_path(sp, "unsize") /* && bound.is_from_coerce*/ )
+                            {
+                                bool possible = false;
+
+                                ::HIR::TypeRef  tmp_ty;
+                                const ::HIR::TypeRef* ty_ptr = &new_ty;
+                                while( (ty_ptr = context.m_resolve.autoderef(sp, *ty_ptr, tmp_ty)) )
+                                {
+                                    const auto& cur_ty = context.get_type(*ty_ptr);
+                                    if( cur_ty.m_data.is_Infer() ) {
+                                        break;
+                                    }
+                                    auto cmp = ty_l.compare_with_placeholders(sp, cur_ty, context.m_ivars.callback_resolve_infer());
+                                    if( cmp != ::HIR::Compare::Unequal )
+                                    {
+                                        possible = true;
+                                        break;
+                                    }
+                                }
+                                if( possible )
+                                    continue ;
+                            }
+#endif
 
                             // Search for any trait impl that could match this,
                             bool has = context.m_resolve.find_trait_impls(sp, bound.trait, bound.params, new_ty, [&](const auto , auto){return true;});
