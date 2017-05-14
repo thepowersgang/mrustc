@@ -340,7 +340,7 @@ local_tests: $(patsubst samples/test/%.rs,output/local_test/%_out.txt,$(wildcard
 
 output/local_test/%_out.txt: output/local_test/%
 	./$< > $@
-output/local_test/%: samples/test/%.rs $(BIN)
+output/local_test/%: samples/test/%.rs $(BIN) output/libtest.hir output/libpanic_abort.hir output/liballoc_system.hir
 	mkdir -p $(dir $@)
 	$(BIN) -L output/libs -g $< -o $@ --test $(PIPECMD)
 
@@ -828,8 +828,10 @@ output/%_out.txt: output/%
 	@./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
 
 output/test_deps/librust_test_helpers.a: output/test_deps/rust_test_helpers.o
+	@mkdir -p $(dir $@)
 	ar cur $@ $<
 output/test_deps/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
+	@mkdir -p $(dir $@)
 	$(CC) -c $< -o $@
 
 output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
