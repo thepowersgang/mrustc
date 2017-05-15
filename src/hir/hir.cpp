@@ -402,7 +402,22 @@ namespace {
             TODO(sp, "Path - " << le.path << " and " << right);
             ),
         (TraitObject,
-            TODO(sp, "TraitObject - " << left);
+            ASSERT_BUG(sp, right.m_data.is_TraitObject(), "Mismatched types - "<< left << " vs " << right);
+            const auto& re = right.m_data.as_TraitObject();
+            ASSERT_BUG(sp, le.m_trait.m_path.m_path == re.m_trait.m_path.m_path, "Mismatched types - "<< left << " vs " << right);
+            ASSERT_BUG(sp, le.m_markers.size() == re.m_markers.size(), "Mismatched types - "<< left << " vs " << right);
+
+            auto ord = typelist_ord_specific(sp, le.m_trait.m_path.m_params.m_types, re.m_trait.m_path.m_params.m_types);
+            if( ord != ::OrdEqual )
+                return ord;
+            for(size_t i = 0; i < le.m_markers.size(); i ++)
+            {
+                ASSERT_BUG(sp, le.m_markers[i].m_path == re.m_markers[i].m_path, "Mismatched types - " << left << " vs " << right);
+                ord = typelist_ord_specific(sp, le.m_markers[i].m_params.m_types, re.m_markers[i].m_params.m_types);
+                if(ord != ::OrdEqual)
+                    return ord;
+            }
+            return ::OrdEqual;
             ),
         (ErasedType,
             TODO(sp, "ErasedType - " << left);
@@ -693,9 +708,21 @@ bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
                 TODO(sp, "Path - " << ae.path << " and " << be.path);
                 ),
             (TraitObject,
-                if( ae.m_trait.m_path != be.m_trait.m_path )
+                if( ae.m_trait.m_path.m_path != be.m_trait.m_path.m_path )
                     return false;
-                TODO(sp, "TraitObject - " << a << " and " << b);
+                if( !H::types_overlap(ae.m_trait.m_path.m_params, be.m_trait.m_path.m_params) )
+                    return false;
+                // Marker traits only overlap if the lists are the same (with overlap)
+                if( ae.m_markers.size() != be.m_markers.size() )
+                    return false;
+                for(size_t i = 0; i < ae.m_markers.size(); i++)
+                {
+                    if( ae.m_markers[i].m_path != be.m_markers[i].m_path )
+                        return false;
+                    if( !H::types_overlap(ae.m_markers[i].m_params, be.m_markers[i].m_params) )
+                        return false;
+                }
+                return true;
                 ),
             (ErasedType,
                 TODO(sp, "ErasedType - " << a);
