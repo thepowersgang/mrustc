@@ -1062,7 +1062,15 @@ namespace {
                 }
                 ),
             (Float,
-                m_of << e;
+                if( ::std::isnan(e) ) {
+                    m_of << "NAN";
+                }
+                else if( ::std::isinf(e) ) {
+                    m_of << "INFINITY";
+                }
+                else {
+                    m_of << e;
+                }
                 ),
             (BorrowOf,
                 TU_MATCHA( (e.m_data), (pe),
@@ -2273,6 +2281,12 @@ namespace {
             else if( name == "unchecked_rem" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " % "; emit_param(e.args.at(1));
             }
+            else if( name == "unchecked_shl" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " << "; emit_param(e.args.at(1));
+            }
+            else if( name == "unchecked_shr" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " >> "; emit_param(e.args.at(1));
+            }
             // Bit Twiddling
             // - CounT Leading Zeroes
             // - CounT Trailing Zeroes
@@ -2462,6 +2476,9 @@ namespace {
             else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
                 m_of << "atomic_thread_fence(" << ordering << ")";
+            }
+            else if( name == "atomic_singlethreadfence" || name.compare(0, 7+18, "atomic_singlethreadfence_") == 0 ) {
+                // TODO: Does this matter?
             }
             else {
                 MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");
@@ -2718,7 +2735,8 @@ namespace {
                 emit_literal(ty, lit, {});
                 ),
             (Float,
-                emit_dst(); m_of << " = " << e;
+                emit_dst(); m_of << " = ";
+                emit_literal(ty, lit, {});
                 ),
             (BorrowOf,
                 if( ty.m_data.is_Function() )
