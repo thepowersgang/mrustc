@@ -1726,6 +1726,16 @@ namespace {
                         }));
                 }
 
+                // rustc has drop_in_place as a lang item, mrustc uses an intrinsic
+                if( gpath.m_path == m_builder.crate().get_lang_item_path_opt("drop_in_place") )
+                {
+                    m_builder.end_block(::MIR::Terminator::make_Call({
+                        next_block, panic_block,
+                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ "drop_in_place", gpath.m_params.clone() }),
+                        mv$(values)
+                        }));
+                }
+
                 if( fcn.m_return.m_data.is_Diverge() )
                 {
                     unconditional_diverge = true;
@@ -1817,18 +1827,21 @@ namespace {
                 ::std::stringstream(node.m_field) >> idx;
                 m_builder.set_result( node.span(), ::MIR::LValue::make_Field({ box$(val), idx }) );
             }
-            else if( val_ty.m_data.as_Path().binding.is_Struct() ) {
-                const auto& str = *node.m_value->m_res_type.m_data.as_Path().binding.as_Struct();
+            else if( const auto* bep = val_ty.m_data.as_Path().binding.opt_Struct() ) {
+                const auto& str = **bep;
                 const auto& fields = str.m_data.as_Named();
                 idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
                 m_builder.set_result( node.span(), ::MIR::LValue::make_Field({ box$(val), idx }) );
             }
-            else {
-                const auto& unm = *node.m_value->m_res_type.m_data.as_Path().binding.as_Union();
+            else if( const auto* bep = val_ty.m_data.as_Path().binding.opt_Union() ) {
+                const auto& unm = **bep;
                 const auto& fields = unm.m_variants;
                 idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
 
                 m_builder.set_result( node.span(), ::MIR::LValue::make_Downcast({ box$(val), idx }) );
+            }
+            else {
+                BUG(node.span(), "Field access on non-union/struct - " << val_ty);
             }
         }
         void visit(::HIR::ExprNode_Literal& node) override
