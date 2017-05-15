@@ -999,9 +999,18 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     while( GET_TOK(tok, lex) == TOK_IDENT )
     {
         auto name = mv$(tok.str());
-        GET_CHECK_TOK(tok, lex, TOK_COLON);
-        ExprNodeP   val = Parse_Stmt(lex);
-        items.push_back( ::std::make_pair(::std::move(name), ::std::move(val)) );
+
+        if( lex.lookahead(0) != TOK_COLON )
+        {
+            ExprNodeP   val = NEWNODE( AST::ExprNode_NamedValue, ::AST::Path(name) );
+            items.push_back( ::std::make_pair(::std::move(name), ::std::move(val)) );
+        }
+        else
+        {
+            GET_CHECK_TOK(tok, lex, TOK_COLON);
+            ExprNodeP   val = Parse_Stmt(lex);
+            items.push_back( ::std::make_pair(::std::move(name), ::std::move(val)) );
+        }
 
         if( GET_TOK(tok,lex) == TOK_BRACE_CLOSE )
             break;
