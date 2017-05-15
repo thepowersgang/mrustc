@@ -5109,17 +5109,17 @@ namespace {
                         // if not more specific than the existing best, ignore.
                         if( ! impl.more_specific_than(best_impl) )
                         {
-                            // Ignore
                             DEBUG("[check_associated] - Less specific than existing");
+                            // NOTE: This picks the _least_ specific impl
+                            possible_impl_ty = impl.get_impl_type();
+                            possible_params = impl.get_trait_params();
+                            best_impl = mv$(impl);
                             count -= 1;
                         }
                         // If the existing best is not more specific than the new one, use the new one
                         else if( ! best_impl.more_specific_than(impl) )
                         {
                             DEBUG("[check_associated] - More specific than existing - " << impl);
-                            possible_impl_ty = impl.get_impl_type();
-                            possible_params = impl.get_trait_params();
-                            best_impl = mv$(impl);
                             count -= 1;
                         }
                         else
