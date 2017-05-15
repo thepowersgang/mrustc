@@ -1638,39 +1638,58 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 cb( *te.inner );
                 ),
             (Path,
-                ASSERT_BUG(sp, te.binding.is_Struct(), "Field on non-Struct - " << ty);
-                const auto& str = *te.binding.as_Struct();
-                TU_MATCHA( (str.m_data), (se),
-                (Unit,
-                    BUG(sp, "Field on unit-like struct - " << ty);
-                    ),
-                (Tuple,
-                    ASSERT_BUG(sp, e.field_index < se.size(),
-                        "Field index out of range in tuple-struct " << ty << " - " << e.field_index << " > " << se.size());
-                    const auto& fld = se[e.field_index];
-                    if( monomorphise_type_needed(fld.ent) ) {
-                        auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
-                        m_resolve.expand_associated_types(sp, sty);
-                        cb(sty);
-                    }
-                    else {
-                        cb(fld.ent);
-                    }
-                    ),
-                (Named,
-                    ASSERT_BUG(sp, e.field_index < se.size(),
-                        "Field index out of range in struct " << ty << " - " << e.field_index << " > " << se.size());
-                    const auto& fld = se[e.field_index].second;
-                    if( monomorphise_type_needed(fld.ent) ) {
-                        auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
-                        m_resolve.expand_associated_types(sp, sty);
-                        cb(sty);
-                    }
-                    else {
-                        cb(fld.ent);
-                    }
+                ::HIR::TypeRef  tmp;
+                if( const auto* tep = te.binding.opt_Struct() )
+                {
+                    const auto& str = **tep;
+                    auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
+                        if( monomorphise_type_needed(t) ) {
+                            tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, t);
+                            m_resolve.expand_associated_types(sp, tmp);
+                            return tmp;
+                        }
+                        else {
+                            return t;
+                        }
+                        };
+                    TU_MATCHA( (str.m_data), (se),
+                    (Unit,
+                        BUG(sp, "Field on unit-like struct - " << ty);
+                        ),
+                    (Tuple,
+                        ASSERT_BUG(sp, e.field_index < se.size(),
+                            "Field index out of range in tuple-struct " << ty << " - " << e.field_index << " > " << se.size());
+                        const auto& fld = se[e.field_index];
+                        cb( maybe_monomorph(fld.ent) );
+                        ),
+                    (Named,
+                        ASSERT_BUG(sp, e.field_index < se.size(),
+                            "Field index out of range in struct " << ty << " - " << e.field_index << " > " << se.size());
+                        const auto& fld = se[e.field_index].second;
+                        cb( maybe_monomorph(fld.ent) );
+                        )
                     )
-                )
+                }
+                else if( const auto* tep = te.binding.opt_Union() )
+                {
+                    const auto& unm = **tep;
+                    auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
+                        if( monomorphise_type_needed(t) ) {
+                            tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, t);
+                            m_resolve.expand_associated_types(sp, tmp);
+                            return tmp;
+                        }
+                        else {
+                            return t;
+                        }
+                        };
+                    ASSERT_BUG(sp, e.field_index < unm.m_variants.size(), "Field index out of range for union");
+                    cb( maybe_monomorph(unm.m_variants.at(e.field_index).second.ent) );
+                }
+                else
+                {
+                    BUG(sp, "Field acess on unexpected type - " << ty);
+                }
                 ),
             (Tuple,
                 ASSERT_BUG(sp, e.field_index < te.size(), "Field index out of range in tuple " << e.field_index << " >= " << te.size());
