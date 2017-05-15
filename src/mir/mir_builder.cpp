@@ -1672,6 +1672,7 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 }
                 else if( const auto* tep = te.binding.opt_Union() )
                 {
+                    BUG(sp, "Field access on a union isn't valid, use Downcast instead - " << ty);
                     const auto& unm = **tep;
                     auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
                         if( monomorphise_type_needed(t) ) {
@@ -2215,8 +2216,10 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
         ),
     (Partial,
         bool is_enum = false;
+        bool is_union = false;
         with_val_type(sp, lv, [&](const auto& ty){
             is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+            is_union = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Union();
             });
         if(is_enum)
         {
@@ -2225,6 +2228,10 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
             //{
             //    drop_value_from_state(sp, vse.inner_states[i], ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }));
             //}
+        }
+        else if( is_union )
+        {
+            // NOTE: Unions don't drop inner items.
         }
         else
         {
