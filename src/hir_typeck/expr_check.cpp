@@ -748,6 +748,9 @@ namespace {
             cache.m_monomorph_cb = mv$(monomorph_cb);
 
             // Bounds
+            for(size_t i = 0; i < cache.m_fcn_params->m_types.size(); i ++)
+            {
+            }
             for(const auto& bound : cache.m_fcn_params->m_bounds)
             {
                 TU_MATCH(::HIR::GenericBound, (bound), (be),
