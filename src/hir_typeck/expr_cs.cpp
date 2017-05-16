@@ -1208,7 +1208,7 @@ namespace {
                     }
                     des_ty = &des_ty_cache;
                 }
-                this->equate_types_inner_coerce(node.span(), *des_ty,  val.second);
+                this->context.equate_types_coerce(node.span(), *des_ty,  val.second);
             }
 
             // Convert bounds on the type into rules
@@ -3466,7 +3466,8 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
                 context.equate_types(sp, type, ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) ));
                 ),
             (ByteString,
-                context.equate_types(sp, type, ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8) ));
+                // NOTE: Matches both &[u8] and &[u8; N], so doesn't provide type information
+                // TODO: Check the type.
                 ),
             (Named,
                 // TODO: Get type of the value and equate it
