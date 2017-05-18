@@ -223,6 +223,7 @@ output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, 
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ -L output/libs $(RUST_FLAGS) $(PIPECMD)
 
+ARGS_output/libstd.hir := --cfg feature=backtrace
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86 --cfg cargobuild
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
 
@@ -431,19 +432,16 @@ DISABLED_TESTS += run-pass/swap-2	# ^
 DISABLED_TESTS += run-pass/slice_binary_search	# Didn't detect infer possiblity (&str, &String)
 # - Lazy (Typecheck - Array unsize)
 DISABLED_TESTS += run-pass/byte-literals	# Over-eager inferrence
-DISABLED_TESTS += run-pass/cast-rfc0401-vtable-kinds	# Spare rules
+DISABLED_TESTS += run-pass/never_coercions	# Over-eager inferrence (ran through coercion)
+DISABLED_TESTS += run-pass/cast-rfc0401-vtable-kinds # Spare rules (struct Unsize)
+DISABLED_TESTS += run-pass/dst-struct-sole           # ^
+DISABLED_TESTS += run-pass/dst-struct                # ^
+DISABLED_TESTS += run-pass/issue-23261               # ^
 DISABLED_TESTS += run-pass/cast-rfc0401	# Skipped coerce unsized
-DISABLED_TESTS += run-pass/dst-struct-sole	# Spare rules
-DISABLED_TESTS += run-pass/dst-struct	# Spare rules
-DISABLED_TESTS += run-pass/issue-23261	# Spare rules
-DISABLED_TESTS += run-pass/fat-ptr-cast	# Skiped coerce unsized
-DISABLED_TESTS += run-pass/issue-21562	# ERROR - Borrow->Pointer and Unsize in one
-DISABLED_TESTS += run-pass/raw-fat-ptr	# ^
-DISABLED_TESTS += run-pass/issue-9382	# Missing coercion point (struct field)
-DISABLED_TESTS += run-pass/overloaded-autoderef-indexing	# Missing coercion point (struct field)
-DISABLED_TESTS += run-pass/match-byte-array-patterns	# Byte string match
-DISABLED_TESTS += run-pass/mir_raw_fat_ptr	# Byte string match
-DISABLED_TESTS += run-pass/never_coercions	# Missed coerce
+DISABLED_TESTS += run-pass/fat-ptr-cast	# Skipped coerce unsized
+DISABLED_TESTS += run-pass/issue-21562     # Skipped coerce unsized - ERROR - Borrow->Pointer and Unsize in one
+DISABLED_TESTS += run-pass/mir_raw_fat_ptr # ^
+DISABLED_TESTS += run-pass/raw-fat-ptr     # ^
 ## - Lazy (Typecheck + Trait unsize)
 #DISABLED_TESTS += run-pass/issue-27105
 #DISABLED_TESTS += run-pass/dst-coerce-rc
@@ -456,28 +454,28 @@ DISABLED_TESTS += run-pass/if-ret	# If condition wasn't a bool
 DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
 DISABLED_TESTS += run-pass/issue-11940	# todo: Match literal Borrow
 DISABLED_TESTS += run-pass/mir_build_match_comparisons	# - ^
-DISABLED_TESTS += run-pass/issue-13620	# - Todo in cleanup
+DISABLED_TESTS += run-pass/issue-18352	# - ^
+DISABLED_TESTS += run-pass/issue-13620	# - Todo in cleanup of dependency
 DISABLED_TESTS += run-pass/vec-matching-fold	# todo: Match SplitSlice with tailing (rule gen)
 DISABLED_TESTS += run-pass/issue-17877	# - SplitSlice + array
 DISABLED_TESTS += run-pass/vec-matching-fixed	# ^
 DISABLED_TESTS += run-pass/vec-tail-matching	# SplitSlice destructure array
 DISABLED_TESTS += run-pass/zero_sized_subslice_match	# ^
-DISABLED_TESTS += run-pass/issue-18352	# - Match+const
 DISABLED_TESTS += run-pass/issue-28839	# - Move &mut ?
 DISABLED_TESTS += run-pass/union/union-inherent-method	# ^ ?
 DISABLED_TESTS += run-pass/issue-21306	# ^
 DISABLED_TESTS += run-pass/issue-28950	# - Stack overflow in vec!
 DISABLED_TESTS += run-pass/mir_heavy_promoted	# Stack overflow in array constant
 DISABLED_TESTS += run-pass/issue-29227	# - Excessive time in MIR lowering
-DISABLED_TESTS += run-pass/issue-15763	# No value avaliable
-DISABLED_TESTS += run-pass/issue-18110	# ^
+DISABLED_TESTS += run-pass/issue-15763	# No value avaliable (return in _StructLiteral)
+DISABLED_TESTS += run-pass/issue-18110	# ^ (return in _Tuple)
 DISABLED_TESTS += run-pass/issue-30018-nopanic	# ^
 DISABLED_TESTS += run-pass/match-bot-2	# ^
 DISABLED_TESTS += run-pass/unreachable-code	# ^
-DISABLED_TESTS += run-pass/issue-36936	# - Cast removed
 DISABLED_TESTS += run-pass/struct-order-of-eval-1	# Struct init order (fails validation)
 DISABLED_TESTS += run-pass/struct-order-of-eval-3	# ^
 DISABLED_TESTS += run-pass/const-enum-vec-index	# This is valid code?
+DISABLED_TESTS += run-pass/match-byte-array-patterns	# Byte string match (match gen assertion)
 # - Lazy (trans)
 DISABLED_TESTS += run-pass/issue-21058	# Empty trait object vtable
 DISABLED_TESTS += run-pass/issue-25515	# ^
@@ -721,6 +719,7 @@ DISABLED_TESTS += run-pass/dynamic-drop
 # - Misc
 DISABLED_TESTS += run-pass/issue-16671	# Blocks forever
 DISABLED_TESTS += run-pass/issue-13027	# Infinite loop (match?)
+DISABLED_TESTS += run-pass/issue-36936	# assert_eq failing on equal values
 # - BUG: Incorrect drop order of ?
 DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
 # - BUG: Incorrect consteval
