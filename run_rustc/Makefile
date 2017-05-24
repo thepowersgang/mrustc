@@ -1,31 +1,47 @@
+# Makefile that builds libstd using the mrustc-built rustc
+
 RUSTC := ../output/rustc
 RUST_SRC := ../rustc-nightly/src/
 
-all: output/libstd.rlib output/hello_world
+BINDIR := $(BINDIR)
+LIBDIR := $(LIBDIR)
+
+V ?= @
+
+
+all: $(LIBDIR)libstd.rlib $(BINDIR)hello_world
 
 RUSTFLAGS_output/liblibc.rlib := --cfg stdbuild
 
 $(RUSTC):
 	make -C ../ output/rustc -j 3
 
-output/%.rlib: $(RUST_SRC)%/lib.rs $(RUSTC)
-	mkdir -p $(dir $@)
-	time $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
-output/%.rlib: $(RUST_SRC)%/src/lib.rs $(RUSTC)
-	mkdir -p $(dir $@)
-	time $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+$(BINDIR)rustc: $(RUSTC)
+	@mkdir -p $(dir $@)
+	$Vcp $@ $<
 
-output/hello_world: $(RUST_SRC)test/run-pass/hello.rs output/libstd.rlib $(RUSTC) 
+$(LIBDIR)%.rlib: $(RUST_SRC)%/lib.rs $(RUSTC)
+	@mkdir -p $(dir $@)
+	@echo "[RUSTC] -o $@"
 	time $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+$(LIBDIR)%.rlib: $(RUST_SRC)%/src/lib.rs $(RUSTC)
+	@mkdir -p $(dir $@)
+	@echo "[RUSTC] -o $@"
+	$Vtime $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
 
-fcn_extcrate = $(patsubst %,output/lib%.rlib,$(1))
+$(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(RUSTC) 
+	$Vmkdir -p $(dir $@)
+	@echo "[RUSTC] -o $@"
+	$Vtime $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
 
-output/libarena.rlib: output/libstd.rlib
-output/liballoc.rlib: output/libcore.rlib
-output/libstd_unicode.rlib: output/libcore.rlib
-output/libcollections.rlib: output/libcore.rlib output/liballoc.rlib output/libstd_unicode.rlib
-output/librand.rlib: output/libcore.rlib
-output/liblibc.rlib: output/libcore.rlib
-output/libcompiler_builtins.rlib: output/libcore.rlib
-output/libstd.rlib: $(call fcn_extcrate, core collections rand libc unwind compiler_builtins alloc_system panic_unwind)
-output/libunwind.rlib: $(call fcn_extcrate, core libc)
+fcn_extcrate = $(patsubst %,$(LIBDIR)lib%.rlib,$(1))
+
+$(LIBDIR)libarena.rlib: $(call fcn_extcrate, std)
+$(LIBDIR)liballoc.rlib: $(call fcn_extcrate, core)
+$(LIBDIR)libstd_unicode.rlib: $(call fcn_extcrate, core)
+$(LIBDIR)libcollections.rlib: $(call fcn_extcrate, core alloc std_unicode)
+$(LIBDIR)librand.rlib: $(call fcn_extcrate, core)
+$(LIBDIR)liblibc.rlib: $(call fcn_extcrate, core)
+$(LIBDIR)libcompiler_builtins.rlib: $(call fcn_extcrate, core)
+$(LIBDIR)libstd.rlib: $(call fcn_extcrate, core collections rand libc unwind compiler_builtins alloc_system panic_unwind)
+$(LIBDIR)libunwind.rlib: $(call fcn_extcrate, core libc)
