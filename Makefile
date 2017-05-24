@@ -48,6 +48,7 @@ CXXFLAGS += -Wno-misleading-indentation
 # - Flags to pass to all mrustc invocations
 RUST_FLAGS := --cfg debug_assertions
 RUST_FLAGS += -g
+RUST_FLAGS += -O
 
 SHELL = bash
 
