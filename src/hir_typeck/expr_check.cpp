@@ -473,6 +473,14 @@ namespace {
                 TODO(sp, "Union in StructLiteral");
                 ),
             (Struct,
+                if( e->m_data.is_Unit() )
+                {
+                    ASSERT_BUG(node.span(), node.m_values.size() == 0, "Values provided for unit-like struct");
+                    ASSERT_BUG(node.span(), ! node.m_base_value, "Values provided for unit-like struct");
+                    return ;
+                }
+
+                ASSERT_BUG(node.span(), e->m_data.is_Named(), "StructLiteral not pointing to a braced struct, instead " << e->m_data.tag_str() << " - " << ty);
                 fields_ptr = &e->m_data.as_Named();
                 )
             )

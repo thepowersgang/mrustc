@@ -1162,6 +1162,14 @@ namespace {
                 TODO(node.span(), "StructLiteral of a union - " << ty);
                 ),
             (Struct,
+                if( e->m_data.is_Unit() )
+                {
+                    ASSERT_BUG(node.span(), node.m_values.size() == 0, "Values provided for unit-like struct");
+                    ASSERT_BUG(node.span(), ! node.m_base_value, "Values provided for unit-like struct");
+                    return ;
+                }
+
+                ASSERT_BUG(node.span(), e->m_data.is_Named(), "StructLiteral not pointing to a braced struct, instead " << e->m_data.tag_str() << " - " << ty);
                 fields_ptr = &e->m_data.as_Named();
                 generics = &e->m_params;
                 )
@@ -4200,7 +4208,7 @@ namespace {
             //}
             context.possible_equate_type_unsize_to(r_e.index, ty_dst);
             context.possible_equate_type_unsize_from(l_e.index, ty_src);
-            DEBUG("- Infer, add possibility");
+            DEBUG("- Both infer, add possibility");
             return false;
         }
 
@@ -4232,8 +4240,16 @@ namespace {
                 return true;
             }
 
+            // If the source can't unsize, equate
+            if( const auto* te = ty_src.m_data.opt_Slice() )
+            {
+                (void)te;
+                context.equate_types(sp, ty_dst, ty_src);
+                return true;
+            }
+
             context.possible_equate_type_unsize_from(l_e.index, ty_src);
-            DEBUG("- Infer, add possibility");
+            DEBUG("- Dest infer, add possibility");
             return false;
         )
 
@@ -4781,11 +4797,14 @@ namespace {
                 }
 
                 // TODO: Can this can unsize as well as convert to raw?
+                // - It _can_ unsize, TODO:
                 context.equate_types(sp, *l_e.inner, *s_e.inner);
                 // Add downcast
                 auto span = node_ptr->span();
                 node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst.clone() ));
                 node_ptr->m_res_type = ty_dst.clone();
+
+                // TODO: Add a coerce of src->&dst_inner
 
                 context.m_ivars.mark_change();
                 return true;

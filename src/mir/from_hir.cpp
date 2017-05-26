@@ -2091,6 +2091,14 @@ namespace {
                 BUG(node.span(), "_StructLiteral Union");
                 ),
             (Struct,
+                if(e->m_data.is_Unit()) {
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
+                        node.m_path.clone(),
+                        variant_index,
+                        {}
+                        }) );
+                    return ;
+                }
                 fields_ptr = &e->m_data.as_Named();
                 )
             )
