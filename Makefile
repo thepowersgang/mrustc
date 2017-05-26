@@ -372,8 +372,6 @@ DISABLED_TESTS += run-pass/out-of-stack
 # - Requires jemalloc
 DISABLED_TESTS += run-pass/allocator-default
 DISABLED_TESTS += run-pass/allocator-override
-# - Bug in inferrence order.
-DISABLED_TESTS += run-pass/associated-types-conditional-dispatch
 # - Lazy.
 DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause	# Not normalizing bounds
 DISABLED_TESTS += run-pass/cast	# Disallows cast from char to i32
@@ -431,27 +429,24 @@ DISABLED_TESTS += run-pass/regions-infer-borrow-scope-addr-of	# Didn't unify lit
 DISABLED_TESTS += run-pass/swap-2	# ^
 DISABLED_TESTS += run-pass/slice_binary_search	# Didn't detect infer possiblity (&str, &String)
 # - Lazy (Typecheck - Array unsize)
+DISABLED_TESTS += run-pass/associated-types-conditional-dispatch	# Ran through coercion point
 DISABLED_TESTS += run-pass/byte-literals	# Over-eager inferrence
 DISABLED_TESTS += run-pass/never_coercions	# Over-eager inferrence (ran through coercion)
 DISABLED_TESTS += run-pass/cast-rfc0401-vtable-kinds # Spare rules (struct Unsize)
 DISABLED_TESTS += run-pass/dst-struct-sole           # ^
 DISABLED_TESTS += run-pass/dst-struct                # ^
 DISABLED_TESTS += run-pass/issue-23261               # ^
-DISABLED_TESTS += run-pass/cast-rfc0401	# Skipped coerce unsized
-DISABLED_TESTS += run-pass/fat-ptr-cast	# Skipped coerce unsized
-DISABLED_TESTS += run-pass/issue-21562     # Skipped coerce unsized - ERROR - Borrow->Pointer and Unsize in one
+DISABLED_TESTS += run-pass/cast-rfc0401	# Skipped coerce unsized - Cast to raw pointer causing unsize
+DISABLED_TESTS += run-pass/fat-ptr-cast    # Skipped coerce unsized - ERROR - coerce Borrow->Pointer and Unsize in one
+DISABLED_TESTS += run-pass/issue-21562     # ^
 DISABLED_TESTS += run-pass/mir_raw_fat_ptr # ^
 DISABLED_TESTS += run-pass/raw-fat-ptr     # ^
-## - Lazy (Typecheck + Trait unsize)
-#DISABLED_TESTS += run-pass/issue-27105
-#DISABLED_TESTS += run-pass/dst-coerce-rc
+## - Lazy (Typecheck - Trait unsize)
 DISABLED_TESTS += run-pass/dst-coercions	# Skipped CoerceUnsize
 DISABLED_TESTS += run-pass/dst-raw	# Skipped CoerceUnsize
 DISABLED_TESTS += run-pass/issue-11677	# Skipped
-#DISABLED_TESTS += run-pass/dst-trait
 # - Lazy (MIR)
 DISABLED_TESTS += run-pass/if-ret	# If condition wasn't a bool
-DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
 DISABLED_TESTS += run-pass/issue-11940	# todo: Match literal Borrow
 DISABLED_TESTS += run-pass/mir_build_match_comparisons	# - ^
 DISABLED_TESTS += run-pass/issue-18352	# - ^

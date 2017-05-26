@@ -195,7 +195,8 @@ namespace {
                 // TODO: use a formatter specific to shell escaping
                 cmd_ss << "\"" << FmtEscaped(arg) << "\" ";
             }
-            DEBUG("- " << cmd_ss.str());
+            //DEBUG("- " << cmd_ss.str());
+            ::std::cout << "Running comamnd - " << cmd_ss.str() << ::std::endl;
             if( system(cmd_ss.str().c_str()) )
             {
                 abort();
@@ -2194,18 +2195,23 @@ namespace {
                 switch( ty.m_data.as_Primitive() )
                 {
                 case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::I8:
                     emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0));
                     break;
                 case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I16:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap16("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I32:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap32("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::I64:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap64("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U128:
+                case ::HIR::CoreType::I128:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap128("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 default:
