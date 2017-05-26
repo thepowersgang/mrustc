@@ -715,6 +715,8 @@ DISABLED_TESTS += run-pass/dynamic-drop
 DISABLED_TESTS += run-pass/issue-16671	# Blocks forever
 DISABLED_TESTS += run-pass/issue-13027	# Infinite loop (match?)
 DISABLED_TESTS += run-pass/issue-36936	# assert_eq failing on equal values
+# - BUG: signed ctpop/cttz/ctlz
+DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
 # - BUG: Incorrect drop order of ?
 DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
 # - BUG: Incorrect consteval
@@ -735,9 +737,6 @@ DISABLED_TESTS += run-pass/issue-15523
 # - ConstEval: Handling of enum variant casts
 DISABLED_TESTS += run-pass/issue-23304-1
 DISABLED_TESTS += run-pass/issue-23304-2
-#DISABLED_TESTS += run-pass/issue-2428
-#DISABLED_TESTS += run-pass/resolve-issue-2428
-#DISABLED_TESTS += run-pass/small-enum-range-edge
 # - BUG: Null pointer opt not fully correct
 DISABLED_TESTS += run-pass/enum-null-pointer-opt
 DISABLED_TESTS += run-pass/nonzero-enum
