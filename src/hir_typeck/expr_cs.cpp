@@ -4214,16 +4214,29 @@ namespace {
 
         // If the source is '_', we can't know yet
         TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
-            // TODO: If the source is a literal, and the destination isn't a TraitObject, equate.
 
-            // - Except if it's known to be a primitive
-            //if( r_e.ty_class != ::HIR::InferClass::None ) {
-            //    context.equate_types(sp, ty_dst, ty_src);
-            //    return true;
-            //}
-            context.possible_equate_type_unsize_to(r_e.index, ty_dst);
-            DEBUG("- Infer, add possibility");
-            return false;
+            // No avaliable information, add a possible unsize
+            if( r_e.ty_class == ::HIR::InferClass::None || r_e.ty_class == ::HIR::InferClass::Diverge )
+            {
+                // Possibility
+                context.possible_equate_type_unsize_to(r_e.index, ty_dst);
+                DEBUG("- Infer, add possibility");
+                return false;
+            }
+            // Destination is infer, fall through to next TU_IFLET
+            else if( ty_dst.m_data.is_Infer() )
+            {
+            }
+            // Destination is a TraitObject, fall through to doing an impl search
+            else if( ty_dst.m_data.is_TraitObject() )
+            {
+            }
+            // Otherwise, they have to be equal
+            else
+            {
+                context.equate_types(sp, ty_dst, ty_src);
+                return true;
+            }
         )
 
         TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, l_e,
