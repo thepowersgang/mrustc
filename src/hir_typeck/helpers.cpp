@@ -468,6 +468,8 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
     (TraitObject,
         // Iterate all paths
         this->add_ivars_params(e.m_trait.m_path.m_params);
+        for(auto& aty : e.m_trait.m_type_bounds)
+            this->add_ivars(aty.second);
         for(auto& marker : e.m_markers)
             this->add_ivars_params(marker.m_params);
         ),
@@ -2142,7 +2144,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
 
             if( e.trait.m_path.m_path == trait ) {
                 // Check against `params`
-                DEBUG("Checking " << params << " vs " << b_params);
+                DEBUG("[find_trait_impls_bound] Checking params " << params << " vs " << b_params);
                 auto ord = cmp;
                 ord &= this->compare_pp(sp, b_params, params);
                 if( ord == ::HIR::Compare::Unequal )
@@ -2150,6 +2152,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 if( ord == ::HIR::Compare::Fuzzy ) {
                     DEBUG("Fuzzy match");
                 }
+                DEBUG("[find_trait_impls_bound] Match " << b);
                 // Hand off to the closure, and return true if it does
                 // TODO: The type bounds are only the types that are specified.
                 if( callback( ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds), ord) ) {
@@ -3361,6 +3364,12 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
     else {
         bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](auto impls, auto match) {
             tmp_type = impls.get_type("Target");
+            if( tmp_type == ::HIR::TypeRef() )
+            {
+                tmp_type = ::HIR::Path( ty.clone(), this->m_crate.get_lang_item_path(sp, "deref"), "Target" );
+                tmp_type.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+            }
+            DEBUG("Deref " << ty << " into " << tmp_type);
             return true;
             });
         if( succ ) {

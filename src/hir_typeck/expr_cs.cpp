@@ -1061,6 +1061,7 @@ namespace {
             for( auto& val : node.m_args ) {
                 this->context.add_ivars( val->m_res_type );
             }
+            this->context.m_ivars.add_ivars_params(node.m_path.m_params);
 
             // - Create ivars in path, and set result type
             const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
@@ -1131,6 +1132,7 @@ namespace {
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
             TRACE_FUNCTION_F(&node << " " << node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
+            this->add_ivars_generic_path(node.span(), node.m_path);
             for( auto& val : node.m_values ) {
                 this->context.add_ivars( val.second->m_res_type );
             }

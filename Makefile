@@ -413,14 +413,8 @@ DISABLED_TESTS += run-pass/variadic-ffi	# variadics not supported
 DISABLED_TESTS += run-pass/weird-exprs	# Line 17, let _ = return; result type
 DISABLED_TESTS += run-pass/where-for-self	# Failed deref coercion?
 DISABLED_TESTS += run-pass/union/union-backcomp	# ? discarded value?
-# - Typecheck - `_` type with no ivar index assigned
-DISABLED_TESTS += run-pass/coerce-expect-unsized
-DISABLED_TESTS += run-pass/coerce-unify-return
-DISABLED_TESTS += run-pass/issue-23485
-DISABLED_TESTS += run-pass/issue-26805
-DISABLED_TESTS += run-pass/match-vec-alternatives
-DISABLED_TESTS += run-pass/pure-sum
-DISABLED_TESTS += run-pass/struct-aliases
+DISABLED_TESTS += run-pass/coerce-expect-unsized	 # Can't infer ivar in associated
+DISABLED_TESTS += run-pass/issue-26805	# ^
 # - Lazy (Typecheck - Leftover rules)
 DISABLED_TESTS += run-pass/regions-infer-borrow-scope-addr-of	# Didn't unify literal ivar
 DISABLED_TESTS += run-pass/swap-2	# ^
@@ -449,6 +443,7 @@ DISABLED_TESTS += run-pass/mir_build_match_comparisons	# - ^
 DISABLED_TESTS += run-pass/issue-18352	# - ^
 DISABLED_TESTS += run-pass/issue-13620	# - Todo in cleanup of dependency
 DISABLED_TESTS += run-pass/vec-matching-fold	# todo: Match SplitSlice with tailing (rule gen)
+DISABLED_TESTS += run-pass/match-vec-alternatives	# &
 DISABLED_TESTS += run-pass/issue-17877	# - SplitSlice + array
 DISABLED_TESTS += run-pass/vec-matching-fixed	# ^
 DISABLED_TESTS += run-pass/vec-tail-matching	# SplitSlice destructure array
