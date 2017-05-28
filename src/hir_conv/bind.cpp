@@ -247,9 +247,12 @@ namespace {
                 ),
             (Struct,
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                TU_IFLET(::HIR::Struct::Data, str.m_data, Named, _,
+                if(str.m_data.is_Named() ) {
                     e.binding = &str;
-                )
+                }
+                else if( str.m_data.is_Unit() && e.sub_patterns.size() == 0 ) {
+                    e.binding = &str;
+                }
                 else {
                     ERROR(sp, E0000, "Struct pattern on field-less struct " << e.path);
                 }

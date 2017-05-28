@@ -149,7 +149,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
         (Struct,
             p.bind( ::AST::PathBinding::make_Struct({&e}) );
             // - If the struct is a tuple-like struct (or unit-like), it presents in the value namespace
-            if( e.m_data.is_Tuple() ) {
+            if( ! e.m_data.is_Struct() ) {
                 _add_item_value(i.data.span, mod, i.name, i.is_pub,  p);
             }
             _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
@@ -209,15 +209,9 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                         _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
                         // - If the struct is a tuple-like struct, it presents in the value namespace
                         assert(e.struct_ || e.hir);
-                        if( e.struct_ ) {
-                            if( e.struct_->m_data.is_Tuple() ) {
-                                _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
-                            }
-                        }
-                        else {
-                            if( ! e.hir->m_data.is_Named() ) {
-                                _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
-                            }
+                        if( !(e.struct_ ? e.struct_->m_data.is_Struct() : e.hir->m_data.is_Named()) )
+                        {
+                            _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
                         }
                         ),
                     (Static  , _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide); ),

@@ -1020,7 +1020,7 @@ namespace {
             }
             break;
         }
-        ERROR(sp, E0000, "Couldn't find path component '" << path_abs.nodes.back().name() << "' of " << path);
+        ERROR(sp, E0000, "Couldn't find " << Context::lookup_mode_msg(mode) << " '" << path_abs.nodes.back().name() << "' of " << path);
     }
 }
 
@@ -1946,6 +1946,8 @@ void Resolve_Absolute_Struct(Context& item_context, ::AST::Struct& e)
     Resolve_Absolute_Generic(item_context,  e.params());
 
     TU_MATCH(::AST::StructData, (e.m_data), (s),
+    (Unit,
+        ),
     (Tuple,
         for(auto& field : s.ents) {
             Resolve_Absolute_Type(item_context,  field.m_type);

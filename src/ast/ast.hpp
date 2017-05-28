@@ -319,6 +319,7 @@ public:
 
 TAGGED_UNION_EX(StructData, (), Struct,
     (
+    (Unit, struct {}),
     (Tuple, struct {
         ::std::vector<TupleItem>    ents;
         }),
@@ -339,6 +340,11 @@ public:
     StructData  m_data;
 
     Struct() {}
+    Struct(GenericParams params):
+        m_params( mv$(params) ),
+        m_data( StructData::make_Unit({}) )
+    {
+    }
     Struct( GenericParams params, ::std::vector<StructItem> fields ):
         m_params( move(params) ),
         m_data( StructData::make_Struct({mv$(fields)}) )

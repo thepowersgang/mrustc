@@ -563,7 +563,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
     else if(tok.type() == TOK_SEMICOLON)
     {
         // Unit-like struct
-        return AST::Struct(mv$(params), ::std::vector<AST::TupleItem>());
+        return AST::Struct(mv$(params));
     }
     else if(tok.type() == TOK_BRACE_OPEN)
     {
@@ -594,7 +594,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
         }
         //if( items.size() == 0 )
         //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Nam { };' ... ning-nong");
-        return AST::Struct(::std::move(params), ::std::move(items));
+        return AST::Struct(mv$(params), mv$(items));
     }
     else
     {

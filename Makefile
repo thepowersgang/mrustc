@@ -375,7 +375,7 @@ DISABLED_TESTS += run-pass/allocator-override
 # - Lazy.
 DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause	# Not normalizing bounds
 DISABLED_TESTS += run-pass/cast	# Disallows cast from char to i32
-DISABLED_TESTS += run-pass/empty-struct-braces	# Empty struct support
+DISABLED_TESTS += run-pass/empty-struct-braces	# HIR Gen - Empty struct support
 DISABLED_TESTS += run-pass/explicit-self-generic	# Method Selection: Picks ExactSizeIterator::len instead of Self::len
 DISABLED_TESTS += run-pass/extern-compare-with-return-type	# TODO Specialisation with function pointers
 DISABLED_TESTS += run-pass/issue-14399	# Inferrence ran though a coercion point.

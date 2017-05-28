@@ -818,18 +818,16 @@ namespace {
     ::HIR::Struct::Data data;
 
     TU_MATCH(::AST::StructData, (ent.m_data), (e),
+    (Unit,
+        data = ::HIR::Struct::Data::make_Unit({});
+        ),
     (Tuple,
-        if( e.ents.size() == 0 ) {
-            data = ::HIR::Struct::Data::make_Unit({});
-        }
-        else {
-            ::HIR::Struct::Data::Data_Tuple fields;
+        ::HIR::Struct::Data::Data_Tuple fields;
 
-            for(const auto& field : e.ents)
-                fields.push_back( { field.m_is_public, LowerHIR_Type(field.m_type) } );
+        for(const auto& field : e.ents)
+            fields.push_back( { field.m_is_public, LowerHIR_Type(field.m_type) } );
 
-            data = ::HIR::Struct::Data::make_Tuple( mv$(fields) );
-        }
+        data = ::HIR::Struct::Data::make_Tuple( mv$(fields) );
         ),
     (Struct,
         ::HIR::Struct::Data::Data_Named fields;
@@ -1217,12 +1215,14 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             ),
         (Struct,
             /// Add value reference
-            TU_IFLET( ::AST::StructData, e.m_data, Tuple, e2,
-                if( e2.ents.size() == 0 )
-                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstant({item_path.get_simple_path()}) );
-                else
-                    _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstructor({item_path.get_simple_path()}) );
-            )
+            if( e.m_data.is_Unit() ) {
+                _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstant({item_path.get_simple_path()}) );
+            }
+            else if( e.m_data.is_Tuple() ) {
+                _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstructor({item_path.get_simple_path()}) );
+            }
+            else {
+            }
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(item_path, e) );
             ),
         (Enum,

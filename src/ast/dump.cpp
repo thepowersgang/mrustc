@@ -991,22 +991,18 @@ void RustPrinter::handle_struct(const AST::Struct& s)
     print_params(s.params());
 
     TU_MATCH(AST::StructData, (s.m_data), (e),
+    (Unit,
+        m_os << " /* unit-like */\n";
+        print_bounds(s.params());
+        m_os << indent() << ";\n";
+        ),
     (Tuple,
-        if( e.ents.size() == 0 )
-        {
-            m_os << " /* unit-like */\n";
-            print_bounds(s.params());
-            m_os << indent() << ";\n";
-        }
-        else
-        {
-            m_os << "(";
-            for( const auto& i : e.ents )
-                m_os << i.m_type << ", ";
-            m_os << ")\n";
-            print_bounds(s.params());
-            m_os << indent() << ";\n";
-        }
+        m_os << "(";
+        for( const auto& i : e.ents )
+            m_os << i.m_type << ", ";
+        m_os << ")\n";
+        print_bounds(s.params());
+        m_os << indent() << ";\n";
         ),
     (Struct,
         m_os << "\n";
