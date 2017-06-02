@@ -1157,6 +1157,12 @@ namespace {
                 const auto& enm = *e;
                 auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
                 assert(it != enm.m_variants.end());
+                if( it->second.is_Unit() || it->second.is_Value() || it->second.is_Tuple() ) {
+                    ASSERT_BUG(node.span(), node.m_values.size() == 0, "Values provided for unit-like variant");
+                    ASSERT_BUG(node.span(), ! node.m_base_value, "Values provided for unit-like variant");
+                    return ;
+                }
+                ASSERT_BUG(node.span(), it->second.is_Struct(), "_StructLiteral for non-struct variant - " << node.m_path);
                 fields_ptr = &it->second.as_Struct();
                 generics = &enm.m_params;
                 ),
@@ -1164,10 +1170,14 @@ namespace {
                 TODO(node.span(), "StructLiteral of a union - " << ty);
                 ),
             (Struct,
-                if( e->m_data.is_Unit() )
+                if( e->m_data.is_Unit() || e->m_data.is_Tuple() )
                 {
                     ASSERT_BUG(node.span(), node.m_values.size() == 0, "Values provided for unit-like struct");
-                    ASSERT_BUG(node.span(), ! node.m_base_value, "Values provided for unit-like struct");
+
+                    if( node.m_base_value ) {
+                        auto _ = this->push_inner_coerce_scoped(false);
+                        node.m_base_value->visit( *this );
+                    }
                     return ;
                 }
 
@@ -3817,10 +3827,14 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         this->add_ivars_params( e.path.m_params );
         this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
 
+        if( e.sub_patterns.empty() )
+            return ;
+
         assert(e.binding);
         const auto& str = *e.binding;
+
         // - assert check from earlier pass
-        assert( str.m_data.is_Named() );
+        ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct");
         const auto& sd = str.m_data.as_Named();
         const auto& params = e.path.m_params;
 
@@ -3892,6 +3906,9 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
 
             this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
         }
+
+        if( e.sub_patterns.empty() )
+            return ;
 
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
