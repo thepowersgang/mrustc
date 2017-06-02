@@ -390,6 +390,58 @@ namespace {
         )
         return nullptr;
     }
+
+
+    void visit_blocks_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<void(::MIR::BasicBlockId, ::MIR::BasicBlock&)> cb)
+    {
+        ::std::vector<bool> visited( fcn.blocks.size() );
+        ::std::vector< ::MIR::BasicBlockId> to_visit;
+        to_visit.push_back( 0 );
+        while( to_visit.size() > 0 )
+        {
+            auto bb = to_visit.back(); to_visit.pop_back();
+            if( visited[bb] )   continue;
+            visited[bb] = true;
+            auto& block = fcn.blocks[bb];
+
+            cb(bb, block);
+
+            TU_MATCHA( (block.terminator), (e),
+            (Incomplete,
+                ),
+            (Return,
+                ),
+            (Diverge,
+                ),
+            (Goto,
+                if( !visited[e] )
+                    to_visit.push_back(e);
+                ),
+            (Panic,
+                ),
+            (If,
+                if( !visited[e.bb0] )
+                    to_visit.push_back(e.bb0);
+                if( !visited[e.bb1] )
+                    to_visit.push_back(e.bb1);
+                ),
+            (Switch,
+                for(auto& target : e.targets)
+                    if( !visited[target] )
+                        to_visit.push_back(target);
+                ),
+            (Call,
+                if( !visited[e.ret_block] )
+                    to_visit.push_back(e.ret_block);
+                if( !visited[e.panic_block] )
+                    to_visit.push_back(e.panic_block);
+                )
+            )
+        }
+    }
+    void visit_blocks(::MIR::TypeResolve& state, const ::MIR::Function& fcn, ::std::function<void(::MIR::BasicBlockId, const ::MIR::BasicBlock&)> cb) {
+        visit_blocks_mut(state, const_cast<::MIR::Function&>(fcn), [cb](auto id, auto& blk){ cb(id, blk); });
+    }
 }
 
 bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn);
@@ -398,6 +450,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
@@ -445,6 +498,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
+        // >> Remove assignments of unsed drop flags
+        change_happened |= MIR_Optimise_DeadDropFlags(state, fcn);
+
         if( change_happened )
         {
             #if DUMP_AFTER_PASS
@@ -2231,6 +2287,45 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
     return replacement_happend;
 }
 
+// ----------------------------------------
+// Clear all drop flags that are never read
+// ----------------------------------------
+bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    ::std::vector<bool> read_drop_flags( fcn.drop_flags.size() );
+    visit_blocks(state, fcn, [&read_drop_flags](auto , const ::MIR::BasicBlock& block) {
+            for(const auto& stmt : block.statements)
+            {
+                if( const auto* e = stmt.opt_SetDropFlag() )
+                {
+                    if(e->other != ~0u) {
+                        read_drop_flags[e->other] = true;
+                    }
+                }
+                else if( const auto* e = stmt.opt_Drop() )
+                {
+                    if(e->flag_idx != ~0u) {
+                        read_drop_flags[e->flag_idx] = true;
+                    }
+                }
+            }
+            });
+    bool removed_statement = false;
+    visit_blocks_mut(state, fcn, [&read_drop_flags,&removed_statement](auto _id, auto& block) {
+            for(auto it = block.statements.begin(); it != block.statements.end(); )
+            {
+                if(it->is_SetDropFlag() && ! read_drop_flags[it->as_SetDropFlag().idx] ) {
+                    removed_statement = true;
+                    it = block.statements.erase(it);
+                }
+                else {
+                    ++ it;
+                }
+            }
+            });
+    return removed_statement;
+}
+
 
 // --------------------------------------------------------------------
 // Clear all unused blocks
@@ -2238,47 +2333,10 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     ::std::vector<bool> visited( fcn.blocks.size() );
-    ::std::vector< ::MIR::BasicBlockId> to_visit;
-    to_visit.push_back( 0 );
-    while( to_visit.size() > 0 )
-    {
-        auto bb = to_visit.back(); to_visit.pop_back();
-        if( visited[bb] )   continue;
-        visited[bb] = true;
-        const auto& block = fcn.blocks[bb];
-
-        TU_MATCHA( (block.terminator), (e),
-        (Incomplete,
-            ),
-        (Return,
-            ),
-        (Diverge,
-            ),
-        (Goto,
-            if( !visited[e] )
-                to_visit.push_back(e);
-            ),
-        (Panic,
-            ),
-        (If,
-            if( !visited[e.bb0] )
-                to_visit.push_back(e.bb0);
-            if( !visited[e.bb1] )
-                to_visit.push_back(e.bb1);
-            ),
-        (Switch,
-            for(auto& target : e.targets)
-                if( !visited[target] )
-                    to_visit.push_back(target);
-            ),
-        (Call,
-            if( !visited[e.ret_block] )
-                to_visit.push_back(e.ret_block);
-            if( !visited[e.panic_block] )
-                to_visit.push_back(e.panic_block);
-            )
-        )
-    }
+    visit_blocks(state, fcn, [&visited](auto bb, const auto& _blokc) {
+            assert( !visited[bb] );
+            visited[bb] = true;
+            });
     bool rv = false;
     for(unsigned int i = 0; i < visited.size(); i ++)
     {
@@ -2301,13 +2359,9 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
     ::std::vector<bool> used_vars( fcn.named_variables.size() );
     ::std::vector<bool> used_dfs( fcn.drop_flags.size() );
     ::std::vector<bool> visited( fcn.blocks.size() );
-    ::std::vector< ::MIR::BasicBlockId> to_visit;
-    to_visit.push_back( 0 );
-    while( to_visit.size() > 0 )
-    {
-        auto bb = to_visit.back(); to_visit.pop_back();
+
+    visit_blocks(state, fcn, [&](auto bb, const auto& block) {
         visited[bb] = true;
-        const auto& block = fcn.blocks[bb];
 
         auto assigned_lval = [&](const ::MIR::LValue& lv) {
             if(const auto* le = lv.opt_Temporary() )
@@ -2339,40 +2393,11 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             }
         }
 
-        TU_MATCHA( (block.terminator), (e),
-        (Incomplete,
-            ),
-        (Return,
-            ),
-        (Diverge,
-            ),
-        (Goto,
-            if( !visited[e] )
-                to_visit.push_back(e);
-            ),
-        (Panic,
-            ),
-        (If,
-            if( !visited[e.bb0] )
-                to_visit.push_back(e.bb0);
-            if( !visited[e.bb1] )
-                to_visit.push_back(e.bb1);
-            ),
-        (Switch,
-            for(auto& target : e.targets)
-                if( !visited[target] )
-                    to_visit.push_back(target);
-            ),
-        (Call,
-            if( !visited[e.ret_block] )
-                to_visit.push_back(e.ret_block);
-            if( !visited[e.panic_block] )
-                to_visit.push_back(e.panic_block);
-
-            assigned_lval(e.ret_val);
-            )
-        )
-    }
+        if( const auto* te = block.terminator.opt_Call() )
+        {
+            assigned_lval(te->ret_val);
+        }
+        });
 
     ::std::vector<unsigned int> block_rewrite_table;
     for(unsigned int i = 0, j = 0; i < fcn.blocks.size(); i ++)
