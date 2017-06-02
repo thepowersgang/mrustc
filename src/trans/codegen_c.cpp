@@ -119,13 +119,13 @@ namespace {
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");
                 if( c_start_path == ::HIR::SimplePath() )
                 {
-                    m_of << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
+                    m_of << "\treturn " << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
                             << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
                             << ");\n";
                 }
                 else
                 {
-                    m_of << "\t" << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
+                    m_of << "\treturn " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
                 }
                 m_of << "}\n";
             }
