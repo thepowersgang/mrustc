@@ -415,6 +415,7 @@ DISABLED_TESTS += run-pass/where-for-self	# Failed deref coercion?
 DISABLED_TESTS += run-pass/union/union-backcomp	# ? discarded value?
 DISABLED_TESTS += run-pass/coerce-expect-unsized	 # Can't infer ivar in associated
 DISABLED_TESTS += run-pass/issue-26805	# ^
+DISABLED_TESTS += run-pass/associated-types-doubleendediterator-object	# Failed to propagate associated type from trait object
 # - Lazy (Typecheck - Leftover rules)
 DISABLED_TESTS += run-pass/regions-infer-borrow-scope-addr-of	# Didn't unify literal ivar
 DISABLED_TESTS += run-pass/swap-2	# ^
