@@ -22,12 +22,15 @@ namespace {
         const ::HIR::TypeRef&   ret_type;
         ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
 
+        ::HIR::SimplePath   m_lang_Index;
+
     public:
         ExprVisitor_Validate(const StaticTraitResolve& res, const t_args& args, const ::HIR::TypeRef& ret_type):
             m_resolve(res),
             //m_args(args),
             ret_type(ret_type)
         {
+            m_lang_Index = m_resolve.m_crate.get_lang_item_path_opt("index");
         }
 
         void visit_root(::HIR::ExprPtr& node_ptr)
@@ -255,8 +258,7 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " ... [ ... ]");
             check_associated_type(node.span(),
-                node.m_res_type,
-                this->get_lang_item_path(node.span(), "index"), { node.m_index->m_res_type.clone() }, node.m_value->m_res_type, "Target"
+                node.m_res_type, m_lang_Index, { node.m_index->m_res_type.clone() }, node.m_value->m_res_type, "Target"
                 );
 
             node.m_value->visit( *this );
@@ -333,7 +335,10 @@ namespace {
             const auto& src_ty = node.m_value->m_res_type;
             const auto& dst_ty = node.m_res_type;
 
-            if( src_ty.m_data.is_Borrow() && dst_ty.m_data.is_Borrow() )
+            if( src_ty == dst_ty )
+            {
+            }
+            else if( src_ty.m_data.is_Borrow() && dst_ty.m_data.is_Borrow() )
             {
                 const auto& se = src_ty.m_data.as_Borrow();
                 const auto& de = dst_ty.m_data.as_Borrow();
@@ -363,10 +368,20 @@ namespace {
         void visit(::HIR::ExprNode_Deref& node) override
         {
             TRACE_FUNCTION_F(&node << " *...");
-            check_associated_type(node.span(),
-                node.m_res_type,
-                this->get_lang_item_path(node.span(), "deref"), {}, node.m_value->m_res_type, "Target"
-                );
+            const auto& ty = node.m_value->m_res_type;
+
+            if( ty.m_data.is_Pointer() ) {
+                check_types_equal(node.span(), node.m_res_type, *ty.m_data.as_Pointer().inner);
+            }
+            else if( ty.m_data.is_Borrow() ) {
+                check_types_equal(node.span(), node.m_res_type, *ty.m_data.as_Borrow().inner);
+            }
+            else {
+                check_associated_type(node.span(),
+                    node.m_res_type,
+                    this->get_lang_item_path(node.span(), "deref"), {}, node.m_value->m_res_type, "Target"
+                    );
+            }
 
             node.m_value->visit( *this );
         }
@@ -768,7 +783,10 @@ namespace {
                     ),
                 (TraitBound,
                     auto real_type = monomorphise_type_with(sp, be.type, cache.m_monomorph_cb);
+                    m_resolve.expand_associated_types(sp, real_type);
                     auto real_trait = monomorphise_genericpath_with(sp, be.trait.m_path, cache.m_monomorph_cb, false);
+                    for(auto& t : real_trait.m_params.m_types)
+                        m_resolve.expand_associated_types(sp, t);
                     DEBUG("Bound " << be.type << ":  " << be.trait);
                     DEBUG("= (" << real_type << ": " << real_trait << ")");
                     const auto& trait_params = real_trait.m_params;
@@ -783,6 +801,7 @@ namespace {
                         ASSERT_BUG(sp, has_ty, "Type " << assoc.first << " not found in chain of " << real_trait);
 
                         auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
+                        m_resolve.expand_associated_types(sp, other_ty);
 
                         check_associated_type(sp, other_ty,  type_trait_path.m_path, type_trait_path.m_params, real_type, assoc.first.c_str());
                     }
@@ -1047,10 +1066,29 @@ namespace {
                 const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& ity, const char* name
             ) const
         {
-            // TODO: Actually check.
-            #if 0
-            bool found = m_resolve.find_impl(sp, trait, &params, ity, [&](auto impl, bool fuzzy){
-
+            if( trait == m_lang_Index && ity.m_data.is_Array() ) {
+                if(name)
+                {
+                    if( res != *ity.m_data.as_Array().inner ) {
+                        ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << *ity.m_data.as_Array().inner);
+                    }
+                }
+                return ;
+            }
+            bool found = m_resolve.find_impl(sp, trait, &params, ity, [&](auto impl, bool fuzzy) {
+                if( name )
+                {
+                    auto atyv = impl.get_type(name);
+                    m_resolve.expand_associated_types(sp, atyv);
+                    if( atyv == ::HIR::TypeRef() )
+                    {
+                        // TODO: Check that `res` is <ity as trait>::name
+                    }
+                    else if( res != atyv )
+                    {
+                        ERROR(sp, E0000, "Associated type on " << trait << params << " for " << ity << " doesn't match - " << res << " != " << atyv);
+                    }
+                }
 
                 return true;
                 });
@@ -1058,7 +1096,6 @@ namespace {
             {
                 ERROR(sp, E0000, "Cannot find an impl of " << trait << params << " for " << ity);
             }
-            #endif
         }
 
         const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const

@@ -814,6 +814,7 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
         drop_scope_values(scope_def);
 
         // Emit ScopeEnd for all controlled values
+        #if 0
         ::MIR::Statement::Data_ScopeEnd se;
         if(const auto* e = scope_def.data.opt_Variables() ) {
             se.vars = e->vars;
@@ -827,6 +828,7 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
         if( !se.vars.empty() || !se.tmps.empty() ) {
             this->push_stmt(sp, ::MIR::Statement( mv$(se) ));
         }
+        #endif
     }
 
     // 3. Pop scope (last because `drop_scope_values` uses the stack)
