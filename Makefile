@@ -344,7 +344,7 @@ output/local_test/%_out.txt: output/local_test/%
 	./$< > $@
 output/local_test/%: samples/test/%.rs $(BIN) output/libtest.hir output/libpanic_abort.hir output/liballoc_system.hir
 	mkdir -p $(dir $@)
-	$(BIN) -L output/libs -g $< -o $@ --test $(PIPECMD)
+	$(BIN) -L output/libs -g $< -o $@ $(RUST_FLAGS) --test $(PIPECMD)
 
 # 
 # RUSTC TESTS
@@ -808,7 +808,7 @@ output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output
 	@mkdir -p $(dir $@)
 	@echo "=== TEST $(patsubst output/rust/%,%,$@)"
 	@echo "--- [MRUSTC] -o $@"
-	$V$(BIN) $< -o $@ -L output/libs -L output/test_deps --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
+	$V$(BIN) $< -o $@ -L output/libs -L output/test_deps $(RUST_FLAGS) --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
 output/%_out.txt: output/%
 	@echo "--- [$<]"
 	@./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
@@ -826,15 +826,15 @@ output/rust/run-pass/anon-extern-mod-cross-crate-2.o: output/test_deps/libanonex
 output/test_deps/libsvh_b.hir: output/test_deps/libsvh_a_base.hir
 
 output/test_deps/libanonexternmod.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon-extern-mod-cross-crate-1.rs
-	$(BIN) $< --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
+	$(BIN) $< $(RUST_FLAGS) --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
 output/test_deps/libunion.hir: $(RUST_TESTS_DIR)run-pass/union/auxiliary/union.rs
 	mkdir -p $(dir $@)
-	$(BIN) $< --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
+	$(BIN) $< $(RUST_FLAGS) --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
 
 test_deps_run-pass.mk: Makefile $(wildcard $(RUST_TESTS_DIR)run_pass/*.rs)
 	@echo "--- Generating test dependencies: $@"
 	@grep 'aux-build:' rustc-nightly/src/test/run-pass/{*.rs,union/*.rs} | awk -F : '{a=gensub(/.+run-pass\/(.*)\.rs$$/, "\\1", "g", $$1); b=gensub(/(.*)\.rs/,"\\1","g",$$3); gsub(/-/,"_",b); print "output/rust/run-pass/" a ": " "output/test_deps/lib" b ".hir" }' > $@.tmp
-	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{ print $$3 }' | sort | uniq | awk '{ b=gensub(/(.*)\.rs/,"\\1","g",$$1); gsub(/-/,"_",b); print "output/test_deps/lib" b ".hir: $$(RUST_TESTS_DIR)run-pass/auxiliary/" $$1 " output/libstd.hir" ; print "\t@mkdir -p $$(dir $$@)" ; print "\t@echo \"--- [MRUSTC] $$@\"" ; print "\t@$$(DBG) $$(BIN) $$< --crate-type rlib --out-dir output/test_deps > $$@.txt 2>&1" ; print "\t@touch $$@" }' >> $@.tmp
+	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{ print $$3 }' | sort | uniq | awk '{ b=gensub(/(.*)\.rs/,"\\1","g",$$1); gsub(/-/,"_",b); print "output/test_deps/lib" b ".hir: $$(RUST_TESTS_DIR)run-pass/auxiliary/" $$1 " output/libstd.hir" ; print "\t@mkdir -p $$(dir $$@)" ; print "\t@echo \"--- [MRUSTC] $$@\"" ; print "\t@$$(DBG) $$(BIN) $$(RUST_FLAGS) $$< --crate-type rlib --out-dir output/test_deps > $$@.txt 2>&1" ; print "\t@touch $$@" }' >> $@.tmp
 	@mv $@.tmp $@
 
 
@@ -859,10 +859,10 @@ RUSTOS_ENV += TK_BUILD="mrustc:0"
 
 output/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output/libcore.hir output/libstack_dst.hir $(BIN)
 	@mkdir -p $(dir $@)
-	export $(RUSTOS_ENV) ; $(DBG) $(BIN) $< -o $@ --cfg arch=amd64 $(PIPECMD)
+	export $(RUSTOS_ENV) ; $(DBG) $(BIN) $(RUST_FLAGS) $< -o $@ --cfg arch=amd64 $(PIPECMD)
 output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
 	@mkdir -p $(dir $@)
-	$(DBG) $(BIN) $< -o $@ --cfg feature=no_std $(PIPECMD)
+	$(DBG) $(BIN) $(RUST_FLAGS) $< -o $@ --cfg feature=no_std $(PIPECMD)
 
 
 # -------------------------------
