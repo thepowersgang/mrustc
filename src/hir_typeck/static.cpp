@@ -1583,7 +1583,7 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
             good = false;
             find_impl(sp, de->m_trait.m_path.m_path, de->m_trait.m_path.m_params, src_ty,
                 [&](const auto impl, auto fuzz) {
-                    assert( !fuzz );
+                    //ASSERT_BUG(sp, !fuzz, "Fuzzy match in can_unsize - " << dst_ty << " <- " << src_ty << " - " << impl);
                     good = true;
                     for(const auto& aty : de->m_trait.m_type_bounds) {
                         auto atyv = impl.get_type(aty.first.c_str());
