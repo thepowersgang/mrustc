@@ -119,13 +119,13 @@ namespace {
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");
                 if( c_start_path == ::HIR::SimplePath() )
                 {
-                    m_of << "\t" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
+                    m_of << "\treturn " << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
                             << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
                             << ");\n";
                 }
                 else
                 {
-                    m_of << "\t" << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
+                    m_of << "\treturn " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
                 }
                 m_of << "}\n";
             }
@@ -195,7 +195,8 @@ namespace {
                 // TODO: use a formatter specific to shell escaping
                 cmd_ss << "\"" << FmtEscaped(arg) << "\" ";
             }
-            DEBUG("- " << cmd_ss.str());
+            //DEBUG("- " << cmd_ss.str());
+            ::std::cout << "Running comamnd - " << cmd_ss.str() << ::std::endl;
             if( system(cmd_ss.str().c_str()) )
             {
                 abort();
@@ -425,6 +426,8 @@ namespace {
 
             ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
             if( item.m_markings.has_drop_impl ) {
+                if( p.m_path.m_crate_name != m_crate.m_crate_name )
+                    m_of << "static ";
                 m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
             }
             else if( m_resolve.is_type_owned_box(struct_ty) )
@@ -1062,7 +1065,15 @@ namespace {
                 }
                 ),
             (Float,
-                m_of << e;
+                if( ::std::isnan(e) ) {
+                    m_of << "NAN";
+                }
+                else if( ::std::isinf(e) ) {
+                    m_of << "INFINITY";
+                }
+                else {
+                    m_of << e;
+                }
                 ),
             (BorrowOf,
                 TU_MATCHA( (e.m_data), (pe),
@@ -1246,7 +1257,7 @@ namespace {
 
             m_mir_res = nullptr;
         }
-        void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
+        void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def) override
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "/*proto*/ fn " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
             m_mir_res = &top_mir_res;
@@ -1256,12 +1267,16 @@ namespace {
             {
                 m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
             }
+            if( is_extern_def )
+            {
+                m_of << "static ";
+            }
             emit_function_header(p, item, params);
             m_of << ";\n";
 
             m_mir_res = nullptr;
         }
-        void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, const ::MIR::FunctionPointer& code) override
+        void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) override
         {
             TRACE_FUNCTION_F(p);
 
@@ -1276,6 +1291,9 @@ namespace {
             m_mir_res = &mir_res;
 
             m_of << "// " << p << "\n";
+            if( is_extern_def ) {
+                m_of << "static ";
+            }
             emit_function_header(p, item, params);
             m_of << "\n";
             m_of << "{\n";
@@ -2186,18 +2204,23 @@ namespace {
                 switch( ty.m_data.as_Primitive() )
                 {
                 case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::I8:
                     emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0));
                     break;
                 case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I16:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap16("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I32:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap32("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::I64:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap64("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 case ::HIR::CoreType::U128:
+                case ::HIR::CoreType::I128:
                     emit_lvalue(e.ret_val); m_of << " = __builtin_bswap128("; emit_param(e.args.at(0)); m_of << ")";
                     break;
                 default:
@@ -2272,6 +2295,12 @@ namespace {
             }
             else if( name == "unchecked_rem" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " % "; emit_param(e.args.at(1));
+            }
+            else if( name == "unchecked_shl" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " << "; emit_param(e.args.at(1));
+            }
+            else if( name == "unchecked_shr" ) {
+                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " >> "; emit_param(e.args.at(1));
             }
             // Bit Twiddling
             // - CounT Leading Zeroes
@@ -2462,6 +2491,9 @@ namespace {
             else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
                 auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
                 m_of << "atomic_thread_fence(" << ordering << ")";
+            }
+            else if( name == "atomic_singlethreadfence" || name.compare(0, 7+18, "atomic_singlethreadfence_") == 0 ) {
+                // TODO: Does this matter?
             }
             else {
                 MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");
@@ -2718,7 +2750,8 @@ namespace {
                 emit_literal(ty, lit, {});
                 ),
             (Float,
-                emit_dst(); m_of << " = " << e;
+                emit_dst(); m_of << " = ";
+                emit_literal(ty, lit, {});
                 ),
             (BorrowOf,
                 if( ty.m_data.is_Function() )

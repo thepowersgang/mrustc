@@ -102,6 +102,8 @@ struct Deriver
     {
         ::std::vector<TypeRef>  ret;
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            ),
         (Struct,
             for( const auto& fld : e.ents )
             {
@@ -299,6 +301,13 @@ public:
         // Generate code for Debug
         AST::ExprNodeP  node;
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            node = NEWNODE(NamedValue, AST::Path("f"));
+            node = NEWNODE(CallMethod,
+                mv$(node), AST::PathNode("write_str",{}),
+                vec$( NEWNODE(String, name) )
+                );
+            ),
         (Struct,
             node = NEWNODE(NamedValue, AST::Path("f"));
             node = NEWNODE(CallMethod,
@@ -480,6 +489,8 @@ public:
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            ),
         (Struct,
             for( const auto& fld : e.ents )
             {
@@ -685,6 +696,8 @@ public:
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            ),
         (Struct,
             for( const auto& fld : e.ents )
             {
@@ -896,6 +909,8 @@ public:
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            ),
         (Struct,
             for( const auto& fld : e.ents )
             {
@@ -1049,6 +1064,8 @@ public:
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            ),
         (Struct,
             for( const auto& fld : e.ents )
             {
@@ -1265,6 +1282,9 @@ public:
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            nodes.push_back( NEWNODE(NamedValue, AST::Path(ty_path)) );
+            ),
         (Struct,
             ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP> >    vals;
             for( const auto& fld : e.ents )
@@ -1274,19 +1294,12 @@ public:
             nodes.push_back( NEWNODE(StructLiteral, ty_path, nullptr, mv$(vals)) );
             ),
         (Tuple,
-            if( e.ents.size() == 0 )
+            ::std::vector<AST::ExprNodeP>   vals;
+            for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                nodes.push_back( NEWNODE(NamedValue, AST::Path(ty_path)) );
+                vals.push_back( this->clone_val_ref(core_name, this->field(FMT(idx))) );
             }
-            else
-            {
-                ::std::vector<AST::ExprNodeP>   vals;
-                for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
-                {
-                    vals.push_back( this->clone_val_ref(core_name, this->field(FMT(idx))) );
-                }
-                nodes.push_back( NEWNODE(CallPath, AST::Path(ty_path), mv$(vals)) );
-            }
+            nodes.push_back( NEWNODE(CallPath, AST::Path(ty_path), mv$(vals)) );
             )
         )
 
@@ -1428,6 +1441,9 @@ public:
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            nodes.push_back( NEWNODE(NamedValue, AST::Path(ty_path)) );
+            ),
         (Struct,
             ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP> >    vals;
             for( const auto& fld : e.ents )
@@ -1437,19 +1453,12 @@ public:
             nodes.push_back( NEWNODE(StructLiteral, ty_path, nullptr, mv$(vals)) );
             ),
         (Tuple,
-            if( e.ents.size() == 0 )
+            ::std::vector<AST::ExprNodeP>   vals;
+            for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
             {
-                nodes.push_back( NEWNODE(NamedValue, AST::Path(ty_path)) );
+                vals.push_back( this->default_call(core_name) );
             }
-            else
-            {
-                ::std::vector<AST::ExprNodeP>   vals;
-                for( unsigned int idx = 0; idx < e.ents.size(); idx ++ )
-                {
-                    vals.push_back( this->default_call(core_name) );
-                }
-                nodes.push_back( NEWNODE(CallPath, AST::Path(ty_path), mv$(vals)) );
-            }
+            nodes.push_back( NEWNODE(CallPath, AST::Path(ty_path), mv$(vals)) );
             )
         )
 
@@ -1522,6 +1531,8 @@ public:
         ::std::vector<AST::ExprNodeP>   nodes;
 
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            ),
         (Struct,
             for( const auto& fld : e.ents )
             {
@@ -1680,6 +1691,8 @@ public:
 
         ::std::vector<AST::ExprNodeP>   nodes;
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            ),
         (Struct,
             unsigned int idx = 0;
             for( const auto& fld : e.ents )
@@ -1707,6 +1720,9 @@ public:
 
         ::AST::ExprNodeP    node;
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            node = get_val_ok(core_name);
+            ),
         (Struct,
             node = NEWNODE(CallPath,
                 this->get_trait_path_Encoder() + "emit_struct",
@@ -1917,6 +1933,8 @@ public:
 
         AST::ExprNodeP  node_v;
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            ),
         (Struct,
             ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP > >   vals;
             unsigned int idx = 0;
@@ -1949,6 +1967,9 @@ public:
 
         ::AST::ExprNodeP    node;
         TU_MATCH(AST::StructData, (str.m_data), (e),
+        (Unit,
+            node = NEWNODE(NamedValue, mv$(base_path));
+            ),
         (Struct,
             assert( !args[2] );
             args[2] = NEWNODE(Integer, e.ents.size(), CORETYPE_UINT);

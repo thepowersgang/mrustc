@@ -175,6 +175,9 @@ Enum Enum::clone() const
 Struct Struct::clone() const
 {
     TU_MATCHA( (m_data), (e),
+    (Unit,
+        return Struct(m_params.clone());
+        ),
     (Tuple,
         decltype(e.ents)    new_fields;
         for(const auto& f : e.ents)

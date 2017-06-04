@@ -466,11 +466,13 @@ Token Lexer::getTokenInt()
                     else if(suffix == "i16") num_type = CORETYPE_I16;
                     else if(suffix == "i32") num_type = CORETYPE_I32;
                     else if(suffix == "i64") num_type = CORETYPE_I64;
+                    else if(suffix == "i128") num_type = CORETYPE_I128;
                     else if(suffix == "isize") num_type = CORETYPE_INT;
                     else if(suffix == "u8")  num_type = CORETYPE_U8;
                     else if(suffix == "u16") num_type = CORETYPE_U16;
                     else if(suffix == "u32") num_type = CORETYPE_U32;
                     else if(suffix == "u64") num_type = CORETYPE_U64;
+                    else if(suffix == "u128") num_type = CORETYPE_U128;
                     else if(suffix == "usize") num_type = CORETYPE_UINT;
                     else if(suffix == "f32") num_type = CORETYPE_F32;
                     else if(suffix == "f64") num_type = CORETYPE_F64;

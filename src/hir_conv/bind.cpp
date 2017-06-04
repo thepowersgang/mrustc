@@ -247,35 +247,42 @@ namespace {
                 ),
             (Struct,
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
-                TU_IFLET(::HIR::Struct::Data, str.m_data, Named, _,
-                    e.binding = &str;
-                )
-                else {
-                    ERROR(sp, E0000, "Struct pattern on field-less struct " << e.path);
+                if(str.m_data.is_Named() ) {
                 }
+                else if( str.m_data.is_Unit() && e.sub_patterns.size() == 0 ) {
+                }
+                else if( str.m_data.is_Tuple() && str.m_data.as_Tuple().empty() && e.sub_patterns.size() == 0 ) {
+                }
+                else {
+                    ERROR(sp, E0000, "Struct pattern `" << pat << "` on field-less struct " << e.path);
+                }
+                e.binding = &str;
                 ),
             (EnumTuple,
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 const auto& var = p.first->m_variants[p.second].second;
-                TU_IFLET(::HIR::Enum::Variant, var, Tuple, _,
-                    e.binding_ptr = p.first;
-                    e.binding_idx = p.second;
-                )
+                if( var.is_Tuple() ) {
+                }
                 else {
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 }
+                e.binding_ptr = p.first;
+                e.binding_idx = p.second;
                 ),
             (EnumStruct,
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 const auto& var = p.first->m_variants[p.second].second;
-                TU_IFLET(::HIR::Enum::Variant, var, Struct, _,
-                    // All good
-                    e.binding_ptr = p.first;
-                    e.binding_idx = p.second;
-                )
-                else {
-                    ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
+                if( var.is_Struct() ) {
                 }
+                else if( var.is_Unit() && e.sub_patterns.empty() ) {
+                }
+                else if( var.is_Tuple() && var.as_Tuple().empty() && e.sub_patterns.empty() ) {
+                }
+                else {
+                    ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
+                }
+                e.binding_ptr = p.first;
+                e.binding_idx = p.second;
                 )
             )
         }

@@ -483,6 +483,7 @@ int main(int argc, char *argv[])
         // - MIR Exportable (public generic, #[inline], or used by a either of those)
         // - Require codegen (public or used by an exported function)
         TransOptions    trans_opt;
+        trans_opt.opt_level = params.opt_level;
         for(const char* libdir : params.lib_search_dirs ) {
             trans_opt.library_search_dirs.push_back( libdir );
         }

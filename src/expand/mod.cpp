@@ -906,6 +906,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
 
         (Struct,
             TU_MATCH(AST::StructData, (e.m_data), (sd),
+            (Unit,
+                ),
             (Struct,
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;

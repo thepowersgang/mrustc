@@ -126,16 +126,16 @@ namespace HIR {
             os << "]";
             ),
         (SplitSlice,
-            os << "[";
+            os << "[ ";
             for(const auto& s : e.leading)
                 os << s << ", ";
             if( e.extra_bind.is_valid() ) {
                 os << e.extra_bind;
             }
-            os << ".. ";
+            os << "..";
             for(const auto& s : e.trailing)
-                os << s << ", ";
-            os << "]";
+                os << ", " << s;
+            os << " ]";
             )
         )
         return os;

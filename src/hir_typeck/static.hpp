@@ -170,6 +170,7 @@ public:
             ) const;
     ///
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
+    bool iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const;
 
 
     // --------------
@@ -177,6 +178,7 @@ public:
     // -------------
     bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
+    bool can_unsize(const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) const;
 
     /// Returns `true` if the passed type either implements Drop, or contains a type that implements Drop
     bool type_needs_drop_glue(const Span& sp, const ::HIR::TypeRef& ty) const;

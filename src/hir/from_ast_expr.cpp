@@ -627,7 +627,7 @@ struct LowerHIR_ExprNode_Visitor:
                     if( e.struct_->m_data.is_Struct() ) {
                         ERROR(v.span(), E0000, "Named value referring to a struct that isn't tuple-like or unit-like - " << v.m_path);
                     }
-                    is_tuple_constructor = e.struct_->m_data.as_Tuple().ents.size() > 0;
+                    is_tuple_constructor = e.struct_->m_data.is_Tuple();
                 }
                 else
                 {

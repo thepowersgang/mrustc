@@ -87,16 +87,18 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
     {
         DEBUG("FUNCTION " << ent.first);
         assert( ent.second->ptr );
-        if( ent.second->ptr->m_code.m_mir ) {
-            codegen->emit_function_proto(ent.first, *ent.second->ptr, ent.second->pp);
+        const auto& fcn = *ent.second->ptr;
+        bool is_extern = ! static_cast<bool>(fcn.m_code);
+        if( fcn.m_code.m_mir ) {
+            codegen->emit_function_proto(ent.first, fcn, ent.second->pp, is_extern);
         }
         else {
             // TODO: Why would an intrinsic be in the queue?
             // - If it's exported it does.
-            if( ent.second->ptr->m_abi == "rust-intrinsic" ) {
+            if( fcn.m_abi == "rust-intrinsic" ) {
             }
             else {
-                codegen->emit_function_ext(ent.first, *ent.second->ptr, ent.second->pp);
+                codegen->emit_function_ext(ent.first, fcn, ent.second->pp);
             }
         }
     }
@@ -148,7 +150,8 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
             const auto& pp = ent.second->pp;
             TRACE_FUNCTION_F(path);
             DEBUG("FUNCTION CODE " << path);
-            // TODO: If this is a provided trait method, it needs to be monomorphised too.
+            bool is_extern = ! static_cast<bool>(fcn.m_code);
+            // If this is a provided trait method, it needs to be monomorphised too.
             bool is_method = ( fcn.m_args.size() > 0 && visit_ty_with(fcn.m_args[0].second, [&](const auto& x){return x == ::HIR::TypeRef("Self",0xFFFF);}) );
             if( pp.has_types() || is_method )
             {
@@ -164,11 +167,14 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
                 MIR_Cleanup(resolve, ip, *mir, args, ret_type);
                 MIR_Optimise(resolve, ip, *mir, args, ret_type);
                 MIR_Validate(resolve, ip, *mir, args, ret_type);
-                codegen->emit_function_code(path, fcn, ent.second->pp,  mir);
+                // TODO: Flag that this should be a weak (or weak-er) symbol?
+                // - If it's from an external crate, it should be weak
+                codegen->emit_function_code(path, fcn, ent.second->pp, is_extern,  mir);
             }
             // TODO: Detect if the function was a #[inline] function from another crate, and don't emit if that is the case?
+            // - Emiting is nice, but it should be emitted as a weak symbol
             else {
-                codegen->emit_function_code(path, fcn, pp,  fcn.m_code.m_mir);
+                codegen->emit_function_code(path, fcn, pp, is_extern,  fcn.m_code.m_mir);
             }
         }
     }

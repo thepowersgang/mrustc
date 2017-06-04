@@ -814,6 +814,7 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
         drop_scope_values(scope_def);
 
         // Emit ScopeEnd for all controlled values
+        #if 0
         ::MIR::Statement::Data_ScopeEnd se;
         if(const auto* e = scope_def.data.opt_Variables() ) {
             se.vars = e->vars;
@@ -827,6 +828,7 @@ void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cl
         if( !se.vars.empty() || !se.tmps.empty() ) {
             this->push_stmt(sp, ::MIR::Statement( mv$(se) ));
         }
+        #endif
     }
 
     // 3. Pop scope (last because `drop_scope_values` uses the stack)
@@ -1638,39 +1640,59 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 cb( *te.inner );
                 ),
             (Path,
-                ASSERT_BUG(sp, te.binding.is_Struct(), "Field on non-Struct - " << ty);
-                const auto& str = *te.binding.as_Struct();
-                TU_MATCHA( (str.m_data), (se),
-                (Unit,
-                    BUG(sp, "Field on unit-like struct - " << ty);
-                    ),
-                (Tuple,
-                    ASSERT_BUG(sp, e.field_index < se.size(),
-                        "Field index out of range in tuple-struct " << ty << " - " << e.field_index << " > " << se.size());
-                    const auto& fld = se[e.field_index];
-                    if( monomorphise_type_needed(fld.ent) ) {
-                        auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
-                        m_resolve.expand_associated_types(sp, sty);
-                        cb(sty);
-                    }
-                    else {
-                        cb(fld.ent);
-                    }
-                    ),
-                (Named,
-                    ASSERT_BUG(sp, e.field_index < se.size(),
-                        "Field index out of range in struct " << ty << " - " << e.field_index << " > " << se.size());
-                    const auto& fld = se[e.field_index].second;
-                    if( monomorphise_type_needed(fld.ent) ) {
-                        auto sty = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
-                        m_resolve.expand_associated_types(sp, sty);
-                        cb(sty);
-                    }
-                    else {
-                        cb(fld.ent);
-                    }
+                ::HIR::TypeRef  tmp;
+                if( const auto* tep = te.binding.opt_Struct() )
+                {
+                    const auto& str = **tep;
+                    auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
+                        if( monomorphise_type_needed(t) ) {
+                            tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, t);
+                            m_resolve.expand_associated_types(sp, tmp);
+                            return tmp;
+                        }
+                        else {
+                            return t;
+                        }
+                        };
+                    TU_MATCHA( (str.m_data), (se),
+                    (Unit,
+                        BUG(sp, "Field on unit-like struct - " << ty);
+                        ),
+                    (Tuple,
+                        ASSERT_BUG(sp, e.field_index < se.size(),
+                            "Field index out of range in tuple-struct " << ty << " - " << e.field_index << " > " << se.size());
+                        const auto& fld = se[e.field_index];
+                        cb( maybe_monomorph(fld.ent) );
+                        ),
+                    (Named,
+                        ASSERT_BUG(sp, e.field_index < se.size(),
+                            "Field index out of range in struct " << ty << " - " << e.field_index << " > " << se.size());
+                        const auto& fld = se[e.field_index].second;
+                        cb( maybe_monomorph(fld.ent) );
+                        )
                     )
-                )
+                }
+                else if( const auto* tep = te.binding.opt_Union() )
+                {
+                    BUG(sp, "Field access on a union isn't valid, use Downcast instead - " << ty);
+                    const auto& unm = **tep;
+                    auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
+                        if( monomorphise_type_needed(t) ) {
+                            tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, t);
+                            m_resolve.expand_associated_types(sp, tmp);
+                            return tmp;
+                        }
+                        else {
+                            return t;
+                        }
+                        };
+                    ASSERT_BUG(sp, e.field_index < unm.m_variants.size(), "Field index out of range for union");
+                    cb( maybe_monomorph(unm.m_variants.at(e.field_index).second.ent) );
+                }
+                else
+                {
+                    BUG(sp, "Field acess on unexpected type - " << ty);
+                }
                 ),
             (Tuple,
                 ASSERT_BUG(sp, e.field_index < te.size(), "Field index out of range in tuple " << e.field_index << " >= " << te.size());
@@ -2196,8 +2218,10 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
         ),
     (Partial,
         bool is_enum = false;
+        bool is_union = false;
         with_val_type(sp, lv, [&](const auto& ty){
             is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
+            is_union = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Union();
             });
         if(is_enum)
         {
@@ -2206,6 +2230,10 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
             //{
             //    drop_value_from_state(sp, vse.inner_states[i], ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }));
             //}
+        }
+        else if( is_union )
+        {
+            // NOTE: Unions don't drop inner items.
         }
         else
         {

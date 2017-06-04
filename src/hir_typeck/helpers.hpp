@@ -265,7 +265,9 @@ public:
     bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, AllowedReceivers ar,  ::HIR::GenericPath& out_path) const;
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
 
+    ::HIR::Compare type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
     ::HIR::Compare type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+
     // If `new_type_callback` is populated, it will be called with the actual/possible dst_type
     // If `infer_callback` is populated, it will be called when either side is an ivar
     ::HIR::Compare can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty, const ::HIR::TypeRef& src_ty, ::std::function<void(::HIR::TypeRef new_dst)> new_type_callback) const {

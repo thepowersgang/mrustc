@@ -70,6 +70,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "freeze" ) { DEBUG("Bind '"<<name<<"' to " << path); }
 
     else if( name == "iterator" ) { /* mrustc just desugars? */ }
 
@@ -91,6 +92,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
 
     }
     else if( name == "str_eq" ) { }
+    else if( name == "drop_in_place" ) { }
     // - builtin `box` support
     else if( name == "exchange_malloc" ) { }
     else if( name == "exchange_free" ) { }

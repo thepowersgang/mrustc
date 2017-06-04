@@ -563,7 +563,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
     else if(tok.type() == TOK_SEMICOLON)
     {
         // Unit-like struct
-        return AST::Struct(mv$(params), ::std::vector<AST::TupleItem>());
+        return AST::Struct(mv$(params));
     }
     else if(tok.type() == TOK_BRACE_OPEN)
     {
@@ -594,7 +594,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
         }
         //if( items.size() == 0 )
         //    WARNING( , W000, "Use 'struct Name;' instead of 'struct Nam { };' ... ning-nong");
-        return AST::Struct(::std::move(params), ::std::move(items));
+        return AST::Struct(mv$(params), mv$(items));
     }
     else
     {
@@ -824,6 +824,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
 
         CHECK_TOK(tok, TOK_IDENT);
         ::std::string   name = mv$(tok.str());
+        // Tuple-like variants
         if( GET_TOK(tok, lex) == TOK_PAREN_OPEN )
         {
             ::std::vector<TypeRef>  types;
@@ -850,6 +851,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
             GET_TOK(tok, lex);
             variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(types)) );
         }
+        // Struct-like variants
         else if( tok.type() == TOK_BRACE_OPEN )
         {
             ::std::vector<::AST::StructItem>   fields;
@@ -880,12 +882,14 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
 
             variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(fields)) );
         }
+        // Value variants
         else if( tok.type() == TOK_EQUAL )
         {
             auto node = Parse_Expr(lex);
             variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), mv$(node)) );
             GET_TOK(tok, lex);
         }
+        // Unit variants
         else
         {
             variants.push_back( AST::EnumVariant(mv$(item_attrs), mv$(name), ::AST::Expr()) );

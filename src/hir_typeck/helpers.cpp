@@ -469,6 +469,8 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
     (TraitObject,
         // Iterate all paths
         this->add_ivars_params(e.m_trait.m_path.m_params);
+        for(auto& aty : e.m_trait.m_type_bounds)
+            this->add_ivars(aty.second);
         for(auto& marker : e.m_markers)
             this->add_ivars_params(marker.m_params);
         ),
@@ -1079,25 +1081,13 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
 
     if( trait == lang_Sized ) {
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
-        (
-            // Any unknown - it's sized
-            ),
-        (Primitive,
-            if( e == ::HIR::CoreType::Str )
-                return false;
-            ),
-        (Slice,
+        auto cmp = type_is_sized(sp, type);
+        if( cmp != ::HIR::Compare::Unequal ) {
+            return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+        }
+        else {
             return false;
-            ),
-        (Path,
-            // ... TODO (Search the innards or bounds)
-            ),
-        (TraitObject,
-            return false;
-            )
-        )
-        return callback( ImplRef(&type, &null_params, &null_assoc), ::HIR::Compare::Equal );
+        }
     }
 
     if( trait == lang_Copy ) {
@@ -2155,7 +2145,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
 
             if( e.trait.m_path.m_path == trait ) {
                 // Check against `params`
-                DEBUG("Checking " << params << " vs " << b_params);
+                DEBUG("[find_trait_impls_bound] Checking params " << params << " vs " << b_params);
                 auto ord = cmp;
                 ord &= this->compare_pp(sp, b_params, params);
                 if( ord == ::HIR::Compare::Unequal )
@@ -2163,6 +2153,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 if( ord == ::HIR::Compare::Fuzzy ) {
                     DEBUG("Fuzzy match");
                 }
+                DEBUG("[find_trait_impls_bound] Match " << b);
                 // Hand off to the closure, and return true if it does
                 // TODO: The type bounds are only the types that are specified.
                 if( callback( ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds), ord) ) {
@@ -2814,6 +2805,23 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         )
     }
 
+    for(size_t i = 0; i < impl_params_def.m_types.size(); i ++)
+    {
+        if( impl_params_def.m_types.at(i).m_is_sized )
+        {
+            if( impl_params[i] ) {
+                auto cmp = type_is_sized(sp, *impl_params[i]);
+                if( cmp == ::HIR::Compare::Unequal )
+                {
+                    return ::HIR::Compare::Unequal;
+                }
+            }
+            else {
+                // TODO: Set match to fuzzy?
+            }
+        }
+    }
+
     return match;
 }
 
@@ -2897,6 +2905,66 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     return false;
 }
 
+::HIR::Compare TraitResolution::type_is_sized(const Span& sp, const ::HIR::TypeRef& type) const
+{
+    TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
+    (
+        // Any unknown - it's sized
+        ),
+    (Infer,
+        switch(e.ty_class)
+        {
+        case ::HIR::InferClass::Integer:
+        case ::HIR::InferClass::Float:
+            return ::HIR::Compare::Equal;
+        default:
+            return ::HIR::Compare::Fuzzy;
+        }
+        ),
+    (Primitive,
+        if( e == ::HIR::CoreType::Str )
+            return ::HIR::Compare::Unequal;
+        ),
+    (Slice,
+        return ::HIR::Compare::Unequal;
+        ),
+    (Path,
+        // ... TODO (Search the innards or bounds)
+        TU_MATCHA( (e.binding), (pb),
+        (Unbound,
+            //
+            ),
+        (Opaque,
+            // TODO: Check bounds
+            ),
+        (Enum,
+            // HAS to be Sized
+            ),
+        (Union,
+            // Pretty sure unions are Sized
+            ),
+        (Struct,
+            // Possibly not sized
+            switch( pb->m_markings.dst_type )
+            {
+            case ::HIR::TraitMarkings::DstType::None:
+                break;
+            case ::HIR::TraitMarkings::DstType::Possible:
+                // TODO: Check sized-ness of the unsized param/field
+                break;
+            case ::HIR::TraitMarkings::DstType::Slice:
+            case ::HIR::TraitMarkings::DstType::TraitObject:
+                return ::HIR::Compare::Unequal;
+            }
+            )
+        )
+        ),
+    (TraitObject,
+        return ::HIR::Compare::Unequal;
+        )
+    )
+    return ::HIR::Compare::Equal;
+}
 ::HIR::Compare TraitResolution::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const
 {
     const auto& type = this->m_ivars.get_type(ty);
@@ -3284,6 +3352,12 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
     else {
         bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](auto impls, auto match) {
             tmp_type = impls.get_type("Target");
+            if( tmp_type == ::HIR::TypeRef() )
+            {
+                tmp_type = ::HIR::Path( ty.clone(), this->m_crate.get_lang_item_path(sp, "deref"), "Target" );
+                tmp_type.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+            }
+            DEBUG("Deref " << ty << " into " << tmp_type);
             return true;
             });
         if( succ ) {

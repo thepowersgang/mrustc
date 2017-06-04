@@ -151,6 +151,7 @@ namespace {
                     if( binding_it->second != ::HIR::ValueUsage::Move ) {
                         auto bt = (binding_it->second == ::HIR::ValueUsage::Mutate ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
 
+                        visit_type(m_replacement->m_res_type);
                         m_replacement->m_res_type = ::HIR::TypeRef::new_borrow( bt, mv$(m_replacement->m_res_type) );
                         m_replacement = NEWNODE(node.m_res_type.clone(), Deref, node.span(),  mv$(m_replacement));
                     }
