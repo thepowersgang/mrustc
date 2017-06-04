@@ -3,8 +3,9 @@
 RUSTC := ../output/rustc
 RUST_SRC := ../rustc-nightly/src/
 
-BINDIR := $(BINDIR)
-LIBDIR := $(LIBDIR)
+PREFIX := prefix/
+BINDIR := $(PREFIX)bin
+LIBDIR := $(PREFIX)lib
 
 V ?= @
 
