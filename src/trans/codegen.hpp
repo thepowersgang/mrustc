@@ -50,8 +50,8 @@ public:
     virtual void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) {}
 
     virtual void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) {}
-    virtual void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) {}
-    virtual void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, const ::MIR::FunctionPointer& code) {}
+    virtual void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def) {}
+    virtual void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) {}
 };
 
 

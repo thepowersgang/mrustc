@@ -426,6 +426,8 @@ namespace {
 
             ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
             if( item.m_markings.has_drop_impl ) {
+                if( p.m_path.m_crate_name != m_crate.m_crate_name )
+                    m_of << "static ";
                 m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
             }
             else if( m_resolve.is_type_owned_box(struct_ty) )
@@ -1255,7 +1257,7 @@ namespace {
 
             m_mir_res = nullptr;
         }
-        void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
+        void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def) override
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "/*proto*/ fn " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
             m_mir_res = &top_mir_res;
@@ -1265,12 +1267,16 @@ namespace {
             {
                 m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
             }
+            if( is_extern_def )
+            {
+                m_of << "static ";
+            }
             emit_function_header(p, item, params);
             m_of << ";\n";
 
             m_mir_res = nullptr;
         }
-        void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, const ::MIR::FunctionPointer& code) override
+        void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) override
         {
             TRACE_FUNCTION_F(p);
 
@@ -1285,6 +1291,9 @@ namespace {
             m_mir_res = &mir_res;
 
             m_of << "// " << p << "\n";
+            if( is_extern_def ) {
+                m_of << "static ";
+            }
             emit_function_header(p, item, params);
             m_of << "\n";
             m_of << "{\n";

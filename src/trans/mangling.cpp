@@ -148,7 +148,7 @@ namespace {
         ),
     (Tuple,
         return FMT_CB(ss,
-            ss << "$T";
+            ss << "$T" << te.size();
             for(const auto& t : te)
                 ss << "_" << Trans_Mangle(t);
             );
