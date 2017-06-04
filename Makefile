@@ -416,6 +416,10 @@ DISABLED_TESTS += run-pass/union/union-backcomp	# ? discarded value?
 DISABLED_TESTS += run-pass/coerce-expect-unsized	 # Can't infer ivar in associated
 DISABLED_TESTS += run-pass/issue-26805	# ^
 DISABLED_TESTS += run-pass/associated-types-doubleendediterator-object	# Failed to propagate associated type from trait object
+DISABLED_TESTS += run-pass/issue-26905	# ^
+DISABLED_TESTS += run-pass/last-use-in-cap-clause	# ^
+DISABLED_TESTS += run-pass/last-use-is-capture	# TODO: Unsize of closure to FnMut
+DISABLED_TESTS += run-pass/overloaded-calls-object-zero-args
 # - Lazy (Typecheck - Leftover rules)
 DISABLED_TESTS += run-pass/regions-infer-borrow-scope-addr-of	# Didn't unify literal ivar
 DISABLED_TESTS += run-pass/swap-2	# ^
