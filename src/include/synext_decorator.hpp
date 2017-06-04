@@ -57,14 +57,25 @@ public:
     virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const { unexpected(sp, mi, "match arm"); }
 };
 
-#define STATIC_DECORATOR(ident, _handler_class) \
-    struct register_##_handler_class##_c {\
-        register_##_handler_class##_c() {\
-            Register_Synext_Decorator( ident, ::std::unique_ptr<ExpandDecorator>(new _handler_class()) ); \
-        } \
-    } s_register_##_handler_class;
-
+struct DecoratorDef;
 extern void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler);
+extern void Register_Synext_Decorator_Static(DecoratorDef* def);
+
+struct DecoratorDef
+{
+	DecoratorDef*	prev;
+	::std::string	name;
+	::std::unique_ptr<ExpandDecorator>	def;
+	DecoratorDef(::std::string name, ::std::unique_ptr<ExpandDecorator> def):
+		name(::std::move(name)),
+		def(::std::move(def)),
+		prev(nullptr)
+	{
+		Register_Synext_Decorator_Static(this);
+	}
+};
+
+#define STATIC_DECORATOR(ident, _handler_class)	static DecoratorDef s_register_##_handler_class ( ident, ::std::unique_ptr<ExpandDecorator>(new _handler_class()) );
 
 #endif
 

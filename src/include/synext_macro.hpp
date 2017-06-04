@@ -25,14 +25,25 @@ public:
     virtual ::std::unique_ptr<TokenStream>  expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
 };
 
-#define STATIC_MACRO(ident, _handler_class) \
-    struct register_##_handler_class##_c {\
-        register_##_handler_class##_c() {\
-            Register_Synext_Macro( ident, ::std::unique_ptr<ExpandProcMacro>(new _handler_class()) ); \
-        } \
-    } s_register_##_handler_class;
-
+struct MacroDef;
 extern void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro> handler);
+extern void Register_Synext_Macro_Static(MacroDef* def);
+
+struct MacroDef
+{
+	MacroDef*	prev;
+	::std::string	name;
+	::std::unique_ptr<ExpandProcMacro>	def;
+	MacroDef(::std::string name, ::std::unique_ptr<ExpandProcMacro> def) :
+		name(::std::move(name)),
+		def(::std::move(def)),
+		prev(nullptr)
+	{
+		Register_Synext_Macro_Static(this);
+	}
+};
+
+#define STATIC_MACRO(ident, _handler_class)	static MacroDef s_register_##_handler_class(ident, ::std::unique_ptr<ExpandProcMacro>(new _handler_class()));
 
 #endif
 

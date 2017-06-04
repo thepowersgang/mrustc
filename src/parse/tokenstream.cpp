@@ -24,7 +24,7 @@ TokenStream::~TokenStream()
 Token TokenStream::innerGetToken()
 {
     Token ret = this->realGetToken();
-    if( ret.get_pos().filename == "" )
+    if( ret != TOK_EOF && ret.get_pos().filename == "" )
         ret.set_pos( this->getPosition() );
     //DEBUG("ret.get_pos() = " << ret.get_pos());
     return ret;

@@ -564,7 +564,7 @@ public:
     const MacroExpansionEnt* next_ent();
 
     const ::std::vector<unsigned int>   iterations() const { return m_iterations; }
-    unsigned int top_pos() const { return m_offsets[0].read_pos; }
+    unsigned int top_pos() const { if(m_offsets.empty()) return 0; return m_offsets[0].read_pos; }
 
 private:
     const MacroExpansionEnt& getCurLayerEnt() const;

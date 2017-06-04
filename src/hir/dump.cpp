@@ -261,7 +261,14 @@ namespace {
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
-            m_os << indent() << "const " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res << ";\n";
+            m_os << indent() << "const " << p.get_name() << ": " << item.m_type << " = " << item.m_value_res;
+			if( item.m_value )
+			{
+				m_os << " /*= ";
+				item.m_value->visit(*this);
+				m_os << "*/";
+			}
+			m_os << ";\n";
         }
 
         // - Misc
@@ -523,6 +530,7 @@ namespace {
                 m_os << ", ";
             }
             m_os << ")";
+			m_os << "/* : " << node.m_res_type << " */";
         }
         void visit(::HIR::ExprNode_CallValue& node) override
         {

@@ -385,8 +385,10 @@ namespace {
                 auto ty_r_ref = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ty_r.clone() );
 
                 ::std::vector< ::HIR::ExprNodeP>    args;
-                args.push_back(NEWNODE(ty_l_ref.clone(), Borrow, node.m_left ->span(),  ::HIR::BorrowType::Shared, mv$(node.m_left ) ));
-                args.push_back(NEWNODE(ty_r_ref.clone(), Borrow, node.m_right->span(),  ::HIR::BorrowType::Shared, mv$(node.m_right) ));
+				auto sp_left  = node.m_left ->span();
+				auto sp_right = node.m_right->span();
+                args.push_back(NEWNODE(ty_l_ref.clone(), Borrow, sp_left ,  ::HIR::BorrowType::Shared, mv$(node.m_left ) ));
+                args.push_back(NEWNODE(ty_r_ref.clone(), Borrow, sp_right,  ::HIR::BorrowType::Shared, mv$(node.m_right) ));
 
                 m_replacement = NEWNODE(mv$(node.m_res_type), CallPath, sp,
                     ::HIR::Path(ty_l.clone(), mv$(trait), method),

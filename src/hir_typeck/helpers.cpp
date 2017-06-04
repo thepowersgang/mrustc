@@ -436,6 +436,7 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
             e.index = this->new_ivar();
             this->get_type(type).m_data.as_Infer().ty_class = e.ty_class;
             this->mark_change();
+			DEBUG("New ivar " << type);
         }
         ),
     (Diverge,

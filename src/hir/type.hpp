@@ -123,7 +123,7 @@ public:
     )
     );
 
-    TAGGED_UNION(Data, Infer,
+    TAGGED_UNION(Data, Diverge,
     (Infer, struct {
         unsigned int index;
         InferClass  ty_class;
@@ -177,7 +177,9 @@ public:
 
     Data   m_data;
 
-    TypeRef() {}
+    TypeRef():
+		m_data(Data::make_Infer({ ~0u, InferClass::None }))
+	{}
     TypeRef(TypeRef&& ) = default;
     TypeRef(const TypeRef& ) = delete;
     TypeRef& operator=(TypeRef&& ) = default;
