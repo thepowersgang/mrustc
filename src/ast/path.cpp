@@ -198,10 +198,10 @@ void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std
 	unsigned int idx = it - ent.variants().begin();
 
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
-	::AST::PathBinding::Data_EnumVar	tmp;
+	::AST::PathBinding::Data_EnumVar tmp = {};
 	tmp.enum_ = &ent;
 	tmp.idx = idx;
-    m_binding = PathBinding::make_EnumVar(tmp);
+    m_binding = PathBinding::make_EnumVar( mv$(tmp) );
 }
 
 Path& Path::operator+=(const Path& other)

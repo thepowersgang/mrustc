@@ -67,9 +67,9 @@ struct DecoratorDef
 	::std::string	name;
 	::std::unique_ptr<ExpandDecorator>	def;
 	DecoratorDef(::std::string name, ::std::unique_ptr<ExpandDecorator> def):
+		prev(nullptr),
 		name(::std::move(name)),
-		def(::std::move(def)),
-		prev(nullptr)
+		def(::std::move(def))
 	{
 		Register_Synext_Decorator_Static(this);
 	}

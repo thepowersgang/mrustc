@@ -16,6 +16,8 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
     const ::HIR::Function*  fcn_ptr = nullptr;
 	switch(origin_path.m_data.tag())
 	{
+    case ::HIR::Path::Data::TAGDEAD:
+        BUG(Span(), "DEAD in ErasedType - " << origin_path);
 	case ::HIR::Path::Data::TAG_UfcsUnknown:
 		BUG(Span(), "UfcsUnknown in ErasedType - " << origin_path);
 	case ::HIR::Path::Data::TAG_Generic: {

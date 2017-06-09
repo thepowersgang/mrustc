@@ -35,9 +35,9 @@ struct MacroDef
 	::std::string	name;
 	::std::unique_ptr<ExpandProcMacro>	def;
 	MacroDef(::std::string name, ::std::unique_ptr<ExpandProcMacro> def) :
+		prev(nullptr),
 		name(::std::move(name)),
-		def(::std::move(def)),
-		prev(nullptr)
+		def(::std::move(def))
 	{
 		Register_Synext_Macro_Static(this);
 	}

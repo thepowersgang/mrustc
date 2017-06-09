@@ -30,6 +30,7 @@ struct ProtoSpan
 };
 struct Span
 {
+    //::std::unique_ptr<Span>   outer_span; // Expansion target for macros
     RcString    filename;
 
     unsigned int start_line;

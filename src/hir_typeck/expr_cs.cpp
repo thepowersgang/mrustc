@@ -1643,9 +1643,7 @@ namespace {
                 (Function,
                     fix_param_count(sp, this->context, *e.type, false, node.m_path, ie.m_params,  e.params);
 
-                    const auto& fcn_params = e.params;
-                    const auto& trait_params = e.trait.m_params;
-					auto monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &e.trait.m_params, &e.params);
+                    auto monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &e.trait.m_params, &e.params);
                     ::HIR::FunctionType ft {
                         ie.m_unsafe, ie.m_abi,
                         box$( monomorphise_type_with(sp, ie.m_return,  monomorph_cb) ),
