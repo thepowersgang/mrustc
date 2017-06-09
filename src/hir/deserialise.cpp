@@ -505,10 +505,10 @@ namespace {
 
         ::HIR::Linkage deserialise_linkage()
         {
-			::HIR::Linkage	l;
-			l.type = ::HIR::Linkage::Type::Auto;
-			l.name = m_in.read_string();
-			return l;
+            ::HIR::Linkage  l;
+            l.type = ::HIR::Linkage::Type::Auto;
+            l.name = m_in.read_string();
+            return l;
         }
 
         // - Value items
@@ -1004,12 +1004,12 @@ namespace {
                 deserialise_vec< ::std::string>()
                 });
         case 3: {
-			::MIR::Statement::Data_SetDropFlag	sdf;
-			sdf.idx = static_cast<unsigned int>(m_in.read_count());
-			sdf.new_val = m_in.read_bool();
-			sdf.other = static_cast<unsigned int>(m_in.read_count());
-			return ::MIR::Statement::make_SetDropFlag(sdf);
-			}
+            ::MIR::Statement::Data_SetDropFlag  sdf;
+            sdf.idx = static_cast<unsigned int>(m_in.read_count());
+            sdf.new_val = m_in.read_bool();
+            sdf.other = static_cast<unsigned int>(m_in.read_count());
+            return ::MIR::Statement::make_SetDropFlag(sdf);
+            }
         case 4:
             return ::MIR::Statement::make_ScopeEnd({
                 deserialise_vec<unsigned int>(),

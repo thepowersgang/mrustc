@@ -331,39 +331,39 @@ bool StaticTraitResolve::find_impl(
 
     if( m_crate.get_trait_by_path(sp, trait_path).m_is_marker )
     {
-		struct H {
-			static bool find_impl__auto_trait_check(const StaticTraitResolve& self,
-					const Span& sp, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params, const ::HIR::TypeRef& type,
-					t_cb_find_impl found_cb,
-					const ::HIR::MarkerImpl& impl, bool& out_rv
-				)
-			{
-				DEBUG("- Auto " << (impl.is_positive ? "Pos" : "Neg")
-					<< " impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
-				if (impl.is_positive)
-				{
-					return self.find_impl__check_crate_raw(sp, trait_path, trait_params, type, impl.m_params, impl.m_trait_args, impl.m_type,
-						[&](auto impl_params, auto placeholders, auto cmp)->bool {
-							//rv = found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)), (cmp == ::HIR::Compare::Fuzzy) );
-							out_rv = found_cb(ImplRef(&type, trait_params, &null_assoc), cmp == ::HIR::Compare::Fuzzy);
-							return out_rv;
-						});
-				}
-				else
-				{
-					return self.find_impl__check_crate_raw(sp, trait_path, trait_params, type, impl.m_params, impl.m_trait_args, impl.m_type,
-						[&](auto impl_params, auto placeholders, auto cmp)->bool {
-							out_rv = false;
-							return true;
-						});
-				}
-			}
-		};
+        struct H {
+            static bool find_impl__auto_trait_check(const StaticTraitResolve& self,
+                    const Span& sp, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams* trait_params, const ::HIR::TypeRef& type,
+                    t_cb_find_impl found_cb,
+                    const ::HIR::MarkerImpl& impl, bool& out_rv
+                )
+            {
+                DEBUG("- Auto " << (impl.is_positive ? "Pos" : "Neg")
+                    << " impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " " << impl.m_params.fmt_bounds());
+                if (impl.is_positive)
+                {
+                    return self.find_impl__check_crate_raw(sp, trait_path, trait_params, type, impl.m_params, impl.m_trait_args, impl.m_type,
+                        [&](auto impl_params, auto placeholders, auto cmp)->bool {
+                            //rv = found_cb( ImplRef(impl_params, trait_path, impl, mv$(placeholders)), (cmp == ::HIR::Compare::Fuzzy) );
+                            out_rv = found_cb(ImplRef(&type, trait_params, &null_assoc), cmp == ::HIR::Compare::Fuzzy);
+                            return out_rv;
+                        });
+                }
+                else
+                {
+                    return self.find_impl__check_crate_raw(sp, trait_path, trait_params, type, impl.m_params, impl.m_trait_args, impl.m_type,
+                        [&](auto impl_params, auto placeholders, auto cmp)->bool {
+                            out_rv = false;
+                            return true;
+                        });
+                }
+            }
+        };
 
         // Positive/negative impls
         bool rv = false;
         ret = this->m_crate.find_auto_trait_impls(trait_path, type, cb_ident, [&](const auto& impl)->bool {
-			return H::find_impl__auto_trait_check(*this, sp, trait_path, trait_params, type, found_cb, impl, rv);
+            return H::find_impl__auto_trait_check(*this, sp, trait_path, trait_params, type, found_cb, impl, rv);
             });
         if(ret)
             return rv;
@@ -592,9 +592,9 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
 
     // Bounds
     for(const auto& bound : impl_params_def.m_bounds) {
-		if( const auto* ep = bound.opt_TraitBound() )
-		{
-			const auto& e = *ep;
+        if( const auto* ep = bound.opt_TraitBound() )
+        {
+            const auto& e = *ep;
 
             DEBUG("Trait bound " << e.type << " : " << e.trait);
             auto b_ty_mono = monomorphise_type_with(sp, e.type, cb_monomorph);
@@ -665,11 +665,11 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     return false;
                 }
             }
-		}
-		else  // bound.opt_TraitBound()
-		{
-			// Ignore
-		}
+        }
+        else  // bound.opt_TraitBound()
+        {
+            // Ignore
+        }
     }
 
     return found_cb( mv$(impl_params), mv$(placeholders), match );
@@ -705,9 +705,9 @@ bool StaticTraitResolve::find_impl__check_crate(
         };
 
     // - If the type is a path (struct/enum/...), search for impls for all contained types.
-	if( const auto* ep = type.m_data.opt_Path() )
-	{
-		const auto& e = *ep;
+    if( const auto* ep = type.m_data.opt_Path() )
+    {
+        const auto& e = *ep;
         ::HIR::Compare  res = ::HIR::Compare::Equal;
         TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
         (Generic,
@@ -828,9 +828,9 @@ bool StaticTraitResolve::find_impl__check_crate(
             )
         )
         return res;
-	}
-	else if( const auto* ep = type.m_data.opt_Tuple() )
-	{
+    }
+    else if( const auto* ep = type.m_data.opt_Tuple() )
+    {
         ::HIR::Compare  res = ::HIR::Compare::Equal;
         for(const auto& sty : *ep)
         {
@@ -839,11 +839,11 @@ bool StaticTraitResolve::find_impl__check_crate(
                 return ::HIR::Compare::Unequal;
         }
         return res;
-	}
+    }
     else if( const auto* e = type.m_data.opt_Array() )
-	{
+    {
         return type_impls_trait(*e->inner);
-	}
+    }
     // Otherwise, there's no negative so it must be positive
     else {
         return ::HIR::Compare::Equal;
@@ -986,9 +986,9 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
     bool rv;
     bool assume_opaque = true;
     rv = this->iterate_bounds([&](const auto& b)->bool {
-		if( const auto* bep = b.opt_TraitBound() )
-		{
-			const auto& be = *bep;
+        if( const auto* bep = b.opt_TraitBound() )
+        {
+            const auto& be = *bep;
             DEBUG("Trait bound - " << be.type << " : " << be.trait);
             // 1. Check if the type matches
             //  - TODO: This should be a fuzzier match?
@@ -1040,20 +1040,20 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             }
 
             // - Didn't match
-		}
-		else if( const auto* bep = b.opt_TypeEquality() )
-		{
-			const auto& be = *bep;
+        }
+        else if( const auto* bep = b.opt_TypeEquality() )
+        {
+            const auto& be = *bep;
             DEBUG("Equality - " << be.type << " = " << be.other_type);
             if( input == be.type ) {
                 input = be.other_type.clone();
                 return true;
             }
-		}
-		else
-		{
-			// Nothing.
-		}
+        }
+        else
+        {
+            // Nothing.
+        }
         return false;
         });
     if( rv ) {

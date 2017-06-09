@@ -223,8 +223,8 @@ signed int Lexer::getSymbol()
 
 bool issym(Codepoint ch)
 {
-	if('0' <= ch.v && ch.v <= '9')
-		return true;
+    if('0' <= ch.v && ch.v <= '9')
+        return true;
     if( ::std::isalpha(ch.v) )
         return true;
     if( ch == '_' )
@@ -668,7 +668,7 @@ Token Lexer::getTokenInt()
     {
         return Token(TOK_EOF);
     }
-	throw "Fell off the end of getTokenInt";
+    throw "Fell off the end of getTokenInt";
 }
 
 Token Lexer::getTokenInt_RawString(bool is_byte)
@@ -983,7 +983,7 @@ bool Codepoint::isspace() const {
     case ' ':
     case 0xC:   // ^L
     case 0x85:
-	case 0x200E: case 0x200F: // LTR / RTL markers
+    case 0x200E: case 0x200F: // LTR / RTL markers
     case 0x2028:    // Line Separator
     case 0x2029:    // Paragrah Separator
         return true;

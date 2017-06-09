@@ -13,13 +13,13 @@
 #include <string>
 
 #define TU_FIRST(a, ...)    a
-#define TU_EXP1(x)	x
+#define TU_EXP1(x)  x
 #define TU_EXP(...)  __VA_ARGS__
 
-#define TU_CASE_ITEM(src, mod, var, name)	mod auto& name = src.as_##var(); (void)&name;
-#define TU_CASE_BODY(class,var, ...)	case class::var: { __VA_ARGS__ } break;
-#define TU_CASE(mod, class, var,  name,src, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(src,mod,var,name) __VA_ARGS__)
-#define TU_CASE2(mod, class, var,  n1,s1, n2,s2, ...)	TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(s1,mod,var,n1) TU_CASE_ITEM(s2,mod,var,n2) __VA_ARGS__)
+#define TU_CASE_ITEM(src, mod, var, name)   mod auto& name = src.as_##var(); (void)&name;
+#define TU_CASE_BODY(class,var, ...)    case class::var: { __VA_ARGS__ } break;
+#define TU_CASE(mod, class, var,  name,src, ...)    TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(src,mod,var,name) __VA_ARGS__)
+#define TU_CASE2(mod, class, var,  n1,s1, n2,s2, ...)   TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(s1,mod,var,n1) TU_CASE_ITEM(s2,mod,var,n2) __VA_ARGS__)
 
 
 // Argument iteration
@@ -31,7 +31,7 @@
 #define TU_DISP5(n, a1,a2,a3, b1,b2   )   TU_DISP3(n, a1,a2,a3) TU_DISP2(n, b1,b2)
 #define TU_DISP6(n, a1,a2,a3, b1,b2,b3)   TU_DISP3(n, a1,a2,a3) TU_DISP3(n, b1,b2,b3)
 #define TU_DISP7(n, a1,a2,a3,a4, b1,b2,b3   )   TU_DISP4(n, a1,a2,a3,a4) TU_DISP3(n, b1,b2,b3)
-#define TU_DISP8(n, a1,a2,a3,a4, b1,b2,b3,b4)	TU_DISP4(n, a1,a2,a3,a4) TU_DISP4(n, b1,b2,b3,b4)
+#define TU_DISP8(n, a1,a2,a3,a4, b1,b2,b3,b4)   TU_DISP4(n, a1,a2,a3,a4) TU_DISP4(n, b1,b2,b3,b4)
 #define TU_DISP9(n, a1,a2,a3,a4, b1,b2,b3,b4, c1          )   TU_DISP4(n, a1,a2,a3,a4) TU_DISP3(n, b1,b2,b3   ) TU_DISP2(n, b4,c1)
 #define TU_DISP10(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2      )   TU_DISP4(n, a1,a2,a3,a4) TU_DISP4(n, b1,b2,b3,b4) TU_DISP2(n, c1,c2)
 #define TU_DISP11(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2,c3   )   TU_DISP4(n, a1,a2,a3,a4) TU_DISP4(n, b1,b2,b3,b4) TU_DISP3(n, c1,c2,c3)
@@ -48,7 +48,7 @@
 #define TU_DISPO4(n, v, v2, v3, v4)   n(v) n(v2) n(v3) n(v4)
 #define TU_DISPO5(n, a1,a2,a3, b1,b2   )   TU_DISPO3(n, a1,a2,a3) TU_DISPO2(n, b1,b2)
 #define TU_DISPO6(n, a1,a2,a3, b1,b2,b3)   TU_DISPO3(n, a1,a2,a3) TU_DISPO3(n, b1,b2,b3)
-#define TU_DISPO7(n, a1,a2,a3,a4, b1,b2,b3   )	TU_DISPO4(n, a1,a2,a3,a4) TU_DISPO3(n, b1,b2,b3)
+#define TU_DISPO7(n, a1,a2,a3,a4, b1,b2,b3   )  TU_DISPO4(n, a1,a2,a3,a4) TU_DISPO3(n, b1,b2,b3)
 #define TU_DISPO8(n, a1,a2,a3,a4, b1,b2,b3,b4)  TU_DISPO4(n, a1,a2,a3,a4) TU_DISPO4(n, b1,b2,b3,b4)
 #define TU_DISPO9(n, a1,a2,a3,a4, b1,b2,b3,b4, c1)   TU_DISPO4(n, a1,a2,a3,a4) TU_DISPO3(n, b1,b2,b3)  TU_DISPO2(n, b4,c1)
 #define TU_DISPO10(n, a1,a2,a3,a4, b1,b2,b3,b4, c1,c2)   TU_DISPO4(n, a1,a2,a3,a4) TU_DISPO4(n, b1,b2,b3,b4) TU_DISPO2(n, c1,c2)
@@ -61,8 +61,8 @@
 
 #define TU_DISPA(n, a)   n a
 #define TU_DISPA1(n, a, _1)   TU_DISPA(n, (TU_EXP a, TU_EXP _1))
-#define TU_DISPA2(n, a, _1, _2)		TU_DISPA(n, (TU_EXP a, TU_EXP _1)) TU_DISPA(n, (TU_EXP a, TU_EXP _2))
-#define TU_DISPA3(n, a, _1, _2, _3)	TU_DISPA(n, (TU_EXP a, TU_EXP _1)) TU_DISPA(n, (TU_EXP a, TU_EXP _2)) TU_DISPA(n, (TU_EXP a, TU_EXP _3))
+#define TU_DISPA2(n, a, _1, _2)     TU_DISPA(n, (TU_EXP a, TU_EXP _1)) TU_DISPA(n, (TU_EXP a, TU_EXP _2))
+#define TU_DISPA3(n, a, _1, _2, _3) TU_DISPA(n, (TU_EXP a, TU_EXP _1)) TU_DISPA(n, (TU_EXP a, TU_EXP _2)) TU_DISPA(n, (TU_EXP a, TU_EXP _3))
 #define TU_DISPA4(n, a, a1,a2, b1,b2)     TU_DISPA2(n,a, a1,a2)    TU_DISPA2(n,a, b1,b2)
 #define TU_DISPA5(n, a, a1,a2,a3, b1,b2)    TU_DISPA3(n,a, a1,a2,a3) TU_DISPA2(n,a, b1,b2)
 #define TU_DISPA6(n, a, a1,a2,a3, b1,b2,b3) TU_DISPA3(n,a, a1,a2,a3) TU_DISPA3(n,a, b1,b2,b3)

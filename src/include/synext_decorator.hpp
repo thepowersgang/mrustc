@@ -63,19 +63,19 @@ extern void Register_Synext_Decorator_Static(DecoratorDef* def);
 
 struct DecoratorDef
 {
-	DecoratorDef*	prev;
-	::std::string	name;
-	::std::unique_ptr<ExpandDecorator>	def;
-	DecoratorDef(::std::string name, ::std::unique_ptr<ExpandDecorator> def):
-		prev(nullptr),
-		name(::std::move(name)),
-		def(::std::move(def))
-	{
-		Register_Synext_Decorator_Static(this);
-	}
+    DecoratorDef*   prev;
+    ::std::string   name;
+    ::std::unique_ptr<ExpandDecorator>  def;
+    DecoratorDef(::std::string name, ::std::unique_ptr<ExpandDecorator> def):
+        prev(nullptr),
+        name(::std::move(name)),
+        def(::std::move(def))
+    {
+        Register_Synext_Decorator_Static(this);
+    }
 };
 
-#define STATIC_DECORATOR(ident, _handler_class)	static DecoratorDef s_register_##_handler_class ( ident, ::std::unique_ptr<ExpandDecorator>(new _handler_class()) );
+#define STATIC_DECORATOR(ident, _handler_class) static DecoratorDef s_register_##_handler_class ( ident, ::std::unique_ptr<ExpandDecorator>(new _handler_class()) );
 
 #endif
 

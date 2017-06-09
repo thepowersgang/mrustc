@@ -755,9 +755,9 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
             TU_MATCHA( (blk.statements[i]), (se),
             (Assign,
                 if( ENABLE_LEAK_DETECTOR )
-				{
-					// TODO: Check if the target isn't valid. Allow if either invaid, or too complex to know.
-				}
+                {
+                    // TODO: Check if the target isn't valid. Allow if either invaid, or too complex to know.
+                }
                 TU_MATCHA( (se.src), (ve),
                 (Use,
                     state.move_lvalue(mir_res, ve);

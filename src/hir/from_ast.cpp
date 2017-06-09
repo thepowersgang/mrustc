@@ -702,7 +702,7 @@
             {
                 if( ptr->m_datatype == CORETYPE_UINT || ptr->m_datatype == CORETYPE_ANY )
                 {
-					// TODO: Limit check.
+                    // TODO: Limit check.
                     auto size_val = static_cast<unsigned int>( ptr->m_value );
                     return ::HIR::TypeRef::new_array( mv$(inner), size_val );
                 }

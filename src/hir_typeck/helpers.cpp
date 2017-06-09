@@ -436,7 +436,7 @@ void HMTypeInferrence::add_ivars(::HIR::TypeRef& type)
             e.index = this->new_ivar();
             this->get_type(type).m_data.as_Infer().ty_class = e.ty_class;
             this->mark_change();
-			DEBUG("New ivar " << type);
+            DEBUG("New ivar " << type);
         }
         ),
     (Diverge,
@@ -2020,7 +2020,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                     ERROR(sp, E0000, "Couldn't find assocated type " << pe.item << " in " << pe.trait);
 
                 if( impl.has_magic_params() ) {
-				}
+                }
 
                 // TODO: What if there's multiple impls?
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << ty);

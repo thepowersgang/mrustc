@@ -190,17 +190,17 @@ void Path::bind_variable(unsigned int slot)
 }
 void Path::bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& /*args*/)
 {
-	auto it = ::std::find_if(ent.variants().begin(), ent.variants().end(), [&](const auto& x) { return x.m_name == name; });
-	if( it == ent.variants().end() )
-	{
-		throw ParseError::Generic("Enum variant not found");
-	}
-	unsigned int idx = it - ent.variants().begin();
+    auto it = ::std::find_if(ent.variants().begin(), ent.variants().end(), [&](const auto& x) { return x.m_name == name; });
+    if( it == ent.variants().end() )
+    {
+        throw ParseError::Generic("Enum variant not found");
+    }
+    unsigned int idx = it - ent.variants().begin();
 
     DEBUG("Bound to enum variant '" << name << "' (#" << idx << ")");
-	::AST::PathBinding::Data_EnumVar tmp = {};
-	tmp.enum_ = &ent;
-	tmp.idx = idx;
+    ::AST::PathBinding::Data_EnumVar tmp = {};
+    tmp.enum_ = &ent;
+    tmp.idx = idx;
     m_binding = PathBinding::make_EnumVar( mv$(tmp) );
 }
 

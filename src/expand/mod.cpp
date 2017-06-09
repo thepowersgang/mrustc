@@ -15,8 +15,8 @@
 #include <ast/expr.hpp>
 #include "cfg.hpp"
 
-DecoratorDef*	g_decorators_list = nullptr;
-MacroDef*	g_macros_list = nullptr;
+DecoratorDef*   g_decorators_list = nullptr;
+MacroDef*   g_macros_list = nullptr;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
@@ -26,18 +26,18 @@ void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::E
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
 
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
-	g_decorators.insert(::std::make_pair( mv$(name), mv$(handler) )); 
+    g_decorators.insert(::std::make_pair( mv$(name), mv$(handler) )); 
 }
 void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro> handler) {
-	g_macros.insert(::std::make_pair( mv$(name), mv$(handler) ));
+    g_macros.insert(::std::make_pair( mv$(name), mv$(handler) ));
 }
 void Register_Synext_Decorator_Static(DecoratorDef* def) {
-	def->prev = g_decorators_list;
-	g_decorators_list = def;
+    def->prev = g_decorators_list;
+    g_decorators_list = def;
 }
 void Register_Synext_Macro_Static(MacroDef* def) {
-	def->prev = g_macros_list;
-	g_macros_list = def;
+    def->prev = g_macros_list;
+    g_macros_list = def;
 }
 
 
@@ -1074,17 +1074,17 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
 }
 void Expand(::AST::Crate& crate)
 {
-	// Fill macro/decorator map from init list
-	while(g_decorators_list)
-	{
-		g_decorators.insert(::std::make_pair( mv$(g_decorators_list->name), mv$(g_decorators_list->def) ));
-		g_decorators_list = g_decorators_list->prev;
-	}
-	while (g_macros_list)
-	{
-		g_macros.insert(::std::make_pair(mv$(g_macros_list->name), mv$(g_macros_list->def)));
-		g_macros_list = g_macros_list->prev;
-	}
+    // Fill macro/decorator map from init list
+    while(g_decorators_list)
+    {
+        g_decorators.insert(::std::make_pair( mv$(g_decorators_list->name), mv$(g_decorators_list->def) ));
+        g_decorators_list = g_decorators_list->prev;
+    }
+    while (g_macros_list)
+    {
+        g_macros.insert(::std::make_pair(mv$(g_macros_list->name), mv$(g_macros_list->def)));
+        g_macros_list = g_macros_list->prev;
+    }
 
     auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
 

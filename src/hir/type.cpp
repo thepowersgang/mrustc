@@ -781,7 +781,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     (Enum  , return ::HIR::TypeRef::TypePathBinding(e); )
     )
     assert(!"Fell off end of clone_binding");
-	throw "";
+    throw "";
 }
 
 

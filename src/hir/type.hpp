@@ -178,8 +178,8 @@ public:
     Data   m_data;
 
     TypeRef():
-		m_data(Data::make_Infer({ ~0u, InferClass::None }))
-	{}
+        m_data(Data::make_Infer({ ~0u, InferClass::None }))
+    {}
     TypeRef(TypeRef&& ) = default;
     TypeRef(const TypeRef& ) = delete;
     TypeRef& operator=(TypeRef&& ) = default;
@@ -212,9 +212,9 @@ public:
     static TypeRef new_diverge() {
         return TypeRef(Data::make_Diverge({}));
     }
-	static TypeRef new_infer(unsigned int idx = ~0u, InferClass ty_class = InferClass::None) {
-		return TypeRef(Data::make_Infer({idx, ty_class}));
-	}
+    static TypeRef new_infer(unsigned int idx = ~0u, InferClass ty_class = InferClass::None) {
+        return TypeRef(Data::make_Infer({idx, ty_class}));
+    }
     static TypeRef new_borrow(BorrowType bt, TypeRef inner) {
         return TypeRef(Data::make_Borrow({bt, box$(mv$(inner))}));
     }

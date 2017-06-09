@@ -640,7 +640,7 @@ namespace {
 
                 fcn_ptr = &fcn;
 
-				monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &trait_params, &path_params);
+                monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &trait_params, &path_params);
                 ),
             (UfcsUnknown,
                 TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
@@ -672,7 +672,7 @@ namespace {
 
                 // Create monomorphise callback
                 const auto& fcn_params = e.params;
-				monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &impl_params, &fcn_params);
+                monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &impl_params, &fcn_params);
                 )
             )
 

@@ -12,7 +12,7 @@
 #include <memory>
 
 #ifdef _MSC_VER
-#define __attribute__(x)	
+#define __attribute__(x)    /* no-op */
 #endif
 
 #define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
@@ -22,7 +22,7 @@
 #define rc_new$(...) ::make_shared_ptr(::std::move(__VA_ARGS__))
 
 #include "include/debug.hpp"
-#include "include/rustic.hpp"	// slice and option
+#include "include/rustic.hpp"   // slice and option
 #include "include/compile_error.hpp"
 
 template<typename T>

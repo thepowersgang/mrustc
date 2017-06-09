@@ -258,18 +258,18 @@ int main(int argc, char *argv[])
             crate_name = ::std::string(params.infile.begin() + s, params.infile.begin() + e);
             for(auto& b : crate_name)
             {
-				if ('0' <= b && b <= '9') {
-				}
-				else if ('A' <= b && b <= 'Z') {
-				}
-				else if (b == '_') {
-				}
-				else if (b == '-') {
-					b = '_';
-				}
-				else {
-					// TODO: Error?
-				}
+                if ('0' <= b && b <= '9') {
+                }
+                else if ('A' <= b && b <= 'Z') {
+                }
+                else if (b == '_') {
+                }
+                else if (b == '-') {
+                    b = '_';
+                }
+                else {
+                    // TODO: Error?
+                }
             }
         }
         crate.m_crate_name = crate_name;
@@ -571,14 +571,14 @@ ProgramParams::ProgramParams(int argc, char *argv[])
 
         if( arg[0] != '-' )
         {
-			if (this->infile == "")
-			{
-				this->infile = arg;
-			}
-			else
-			{
-				// TODO: Error
-			}
+            if (this->infile == "")
+            {
+                this->infile = arg;
+            }
+            else
+            {
+                // TODO: Error
+            }
         }
         else if( arg[1] != '-' )
         {
@@ -647,15 +647,15 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 this->crate_path = argv[++i];
             }
-			else if (strcmp(arg, "--out-dir") == 0) {
-				if (i == argc - 1) {
-					::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
-					exit(1);
-				}
-				this->output_dir = argv[++i];
-				if (this->output_dir == "") {
-					// TODO: Error?
-				}
+            else if (strcmp(arg, "--out-dir") == 0) {
+                if (i == argc - 1) {
+                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                this->output_dir = argv[++i];
+                if (this->output_dir == "") {
+                    // TODO: Error?
+                }
                 if( this->output_dir.back() != '/' )
                     this->output_dir += '/';
             }
