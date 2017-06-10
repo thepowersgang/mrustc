@@ -63,6 +63,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Dump HIR" );
     g_debug_disable_map.insert( "Lower MIR" );
     g_debug_disable_map.insert( "MIR Validate" );
+    g_debug_disable_map.insert( "MIR Validate Full Early" );
     g_debug_disable_map.insert( "Dump MIR" );
     g_debug_disable_map.insert( "Constant Evaluate Full" );
     g_debug_disable_map.insert( "MIR Cleanup" );
@@ -450,7 +451,7 @@ int main(int argc, char *argv[])
             });
         if( getenv("MRUSTC_FULL_VALIDATE_PREOPT") )
         {
-            CompilePhaseV("MIR Validate Full", [&]() {
+            CompilePhaseV("MIR Validate Full Early", [&]() {
                 MIR_CheckCrate_Full(*hir_crate);
                 });
         }

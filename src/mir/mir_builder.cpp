@@ -355,7 +355,7 @@ void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
 }
 void MirBuilder::push_stmt_set_dropflag_val(const Span& sp, unsigned int idx, bool value)
 {
-    this->push_stmt(sp, ::MIR::Statement::make_SetDropFlag({ idx, value }));
+    this->push_stmt(sp, ::MIR::Statement::make_SetDropFlag({ idx, value, ~0u }));
 }
 void MirBuilder::push_stmt_set_dropflag_other(const Span& sp, unsigned int idx, unsigned int other)
 {
@@ -363,7 +363,7 @@ void MirBuilder::push_stmt_set_dropflag_other(const Span& sp, unsigned int idx, 
 }
 void MirBuilder::push_stmt_set_dropflag_default(const Span& sp, unsigned int idx)
 {
-    this->push_stmt(sp, ::MIR::Statement::make_SetDropFlag({ idx, this->get_drop_flag_default(sp, idx) }));
+    this->push_stmt(sp, ::MIR::Statement::make_SetDropFlag({ idx, this->get_drop_flag_default(sp, idx), ~0u }));
 }
 void MirBuilder::push_stmt(const Span& sp, ::MIR::Statement stmt)
 {
