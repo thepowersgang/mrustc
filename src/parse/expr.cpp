@@ -20,7 +20,8 @@
 
 using AST::ExprNode;
 using AST::ExprNodeP;
-static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){en->set_pos(lex.getPosition()); return ExprNodeP(en); }
+// TODO: Use a ProtoSpan
+static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){en->set_span(lex.point_span()); return ExprNodeP(en); }
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
 //ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe=false);    // common.hpp
@@ -552,7 +553,7 @@ ExprNodeP Parse_Stmt_Let(TokenStream& lex)
 {
     Token   tok;
     AST::Pattern pat = Parse_Pattern(lex, false);   // irrefutable
-    TypeRef type { lex.getPosition() };
+    TypeRef type { lex.point_span() };
     if( GET_TOK(tok, lex) == TOK_COLON ) {
         type = Parse_Type(lex);
         GET_TOK(tok, lex);
@@ -969,7 +970,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             ExprNodeP   val = Parse_Stmt(lex);
             if( ! nodes.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {
-                ERROR(lex.getPosition(), E0000, "Duplicate index");
+                ERROR(lex.point_span(), E0000, "Duplicate index");
             }
 
             if( GET_TOK(tok,lex) == TOK_BRACE_CLOSE )
@@ -983,7 +984,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
         for(auto& p : nodes)
         {
             if( p.first != i ) {
-                ERROR(lex.getPosition(), E0000, "Missing index " << i);
+                ERROR(lex.point_span(), E0000, "Missing index " << i);
             }
             items.push_back( mv$(p.second) );
             i ++;
@@ -1041,7 +1042,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
         // Irrefutable pattern
         AST::Pattern    pat = Parse_Pattern(lex, false);
 
-        TypeRef type { lex.getPosition() };
+        TypeRef type { lex.point_span() };
         if( GET_TOK(tok, lex) == TOK_COLON )
             type = Parse_Type(lex);
         else
@@ -1054,7 +1055,7 @@ ExprNodeP Parse_ExprVal_Closure(TokenStream& lex, bool is_move)
     }
     CHECK_TOK(tok, TOK_PIPE);
 
-    auto rt = TypeRef(lex.getPosition());
+    auto rt = TypeRef(lex.point_span());
     if( GET_TOK(tok, lex) == TOK_THINARROW ) {
 
         if( GET_TOK(tok, lex) == TOK_EXCLAM ) {
@@ -1264,8 +1265,9 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
 }
 ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
 {
+    ASSERT_BUG(lex.point_span(), path.is_trivial(), "TODO: Support path macros - " << path);
+
     Token   tok;
-    ASSERT_BUG(lex.getPosition(), path.is_trivial(), "TODO: Support path macros - " << path);
     ::std::string name = path.m_class.is_Local() ? path.m_class.as_Local().name : path.nodes()[0].name();
     ::std::string ident;
     if( GET_TOK(tok, lex) == TOK_IDENT ) {

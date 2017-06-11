@@ -618,9 +618,9 @@ bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
     switch(type)
     {
     case MacroPatEnt::PAT_TOKEN:
-        BUG(lex.getPosition(), "");
+        BUG(lex.point_span(), "");
     case MacroPatEnt::PAT_LOOP:
-        BUG(lex.getPosition(), "");
+        BUG(lex.point_span(), "");
     case MacroPatEnt::PAT_BLOCK:
         return LOOK_AHEAD(lex) == TOK_BRACE_OPEN || LOOK_AHEAD(lex) == TOK_INTERPOLATED_BLOCK;
     case MacroPatEnt::PAT_IDENT:
@@ -651,7 +651,7 @@ bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
     case MacroPatEnt::PAT_ITEM:
         return is_token_item( LOOK_AHEAD(lex) );
     }
-    BUG(lex.getPosition(), "");
+    BUG(lex.point_span(), "Fell through");
 }
 bool Macro_TryPattern(TokenStream& lex, const MacroPatEnt& pat)
 {
@@ -680,9 +680,9 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     switch(type)
     {
     case MacroPatEnt::PAT_TOKEN:
-        BUG(lex.getPosition(), "Encountered PAT_TOKEN when handling capture");
+        BUG(lex.point_span(), "Encountered PAT_TOKEN when handling capture");
     case MacroPatEnt::PAT_LOOP:
-        BUG(lex.getPosition(), "Encountered PAT_LOOP when handling capture");
+        BUG(lex.point_span(), "Encountered PAT_LOOP when handling capture");
 
     case MacroPatEnt::PAT_TT:
         if( GET_TOK(tok, lex) == TOK_EOF )

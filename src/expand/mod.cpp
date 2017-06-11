@@ -317,7 +317,7 @@ struct CExpandExpr:
         {
             this->visit(cnode);
             if(cnode.get() == nullptr)
-                ERROR(parent.get_pos(), E0000, "#[cfg] not allowed in this position");
+                ERROR(parent.span(), E0000, "#[cfg] not allowed in this position");
         }
         assert( ! this->replacement );
     }
@@ -343,7 +343,7 @@ struct CExpandExpr:
 
         ::AST::ExprNodeP    rv;
         auto& mod = this->cur_mod();
-        auto ttl = Expand_Macro( crate, modstack, mod,  Span(node.get_pos()),  node.m_name, node.m_ident, node.m_tokens );
+        auto ttl = Expand_Macro( crate, modstack, mod,  node.span(),  node.m_name, node.m_ident, node.m_tokens );
         if( !ttl.get() )
         {
             // No expansion
@@ -362,7 +362,7 @@ struct CExpandExpr:
                 auto newexpr = Parse_ExprBlockLine_WithItems(*ttl, local_mod_ptr, add_silence_if_end);
 
                 if( tmp_local_mod )
-                    TODO(node.get_pos(), "Handle edge case where a macro expansion outside of a _Block creates an item");
+                    TODO(node.span(), "Handle edge case where a macro expansion outside of a _Block creates an item");
 
                 if( newexpr )
                 {
@@ -382,7 +382,7 @@ struct CExpandExpr:
                 if( ttl->lookahead(0) != TOK_EOF )
                 {
                     if( !nodes_out ) {
-                        ERROR(node.get_pos(), E0000, "Unused tokens at the end of macro expansion - " << ttl->getToken());
+                        ERROR(node.span(), E0000, "Unused tokens at the end of macro expansion - " << ttl->getToken());
                     }
                 }
             }

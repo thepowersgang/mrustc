@@ -26,7 +26,7 @@ class NodeVisitor;
 class ExprNode
 {
     MetaItems   m_attrs;
-    Position    m_pos;
+    Span    m_span;
 public:
     virtual ~ExprNode() = 0;
 
@@ -34,9 +34,8 @@ public:
     virtual void print(::std::ostream& os) const = 0;
     virtual ::std::unique_ptr<ExprNode> clone() const = 0;
 
-    void set_pos(Position p) { m_pos = ::std::move(p); }
-    const Position& get_pos() const { return m_pos; }
-    Span span() const { return m_pos; }
+    void set_span(Span s) { m_span = ::std::move(s); }
+    const Span& span() const { return m_span; }
 
     void set_attrs(MetaItems&& mi) {
         m_attrs = mv$(mi);

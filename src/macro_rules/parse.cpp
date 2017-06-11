@@ -82,7 +82,7 @@ public:
                 else if( type == "item" )
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_ITEM) );
                 else
-                    ERROR(lex.getPosition(), E0000, "Unknown fragment type '" << type << "'");
+                    ERROR(lex.point_span(), E0000, "Unknown fragment type '" << type << "'");
                 break; }
             case TOK_PAREN_OPEN: {
                 auto subpat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
@@ -155,7 +155,7 @@ public:
         {
             DEBUG("depth--");
             if(depth == 0)
-                ERROR(lex.getPosition(), E0000, "Unmatched " << Token(close) << " in macro content");
+                ERROR(lex.point_span(), E0000, "Unmatched " << Token(close) << " in macro content");
             depth --;
         }
 
@@ -206,7 +206,7 @@ public:
                 auto name = tok.type() == TOK_IDENT ? tok.str() : FMT(tok);
                 unsigned int idx = ::std::find(var_names.begin(), var_names.end(), name) - var_names.begin();
                 if( idx == var_names.size() )
-                    ERROR(lex.getPosition(), E0000, "Macro variable $" << name << " not found");
+                    ERROR(lex.point_span(), E0000, "Macro variable $" << name << " not found");
                 if( var_set_ptr ) {
                     var_set_ptr->insert( ::std::make_pair(idx,true) );
                 }

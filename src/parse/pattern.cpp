@@ -258,7 +258,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
             return AST::Pattern( AST::Pattern::TagValue(), AST::Pattern::Value::make_Float({n->m_datatype, n->m_value}) );
         }
         else {
-            TODO(lex.getPosition(), "Convert :expr into a pattern value - " << *e);
+            TODO(lex.point_span(), "Convert :expr into a pattern value - " << *e);
         }
         } break;
 
@@ -414,7 +414,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             auto val = Parse_Pattern(lex, is_refutable);
             if( ! pats.insert( ::std::make_pair(ofs, mv$(val)) ).second ) {
-                ERROR(lex.getPosition(), E0000, "Duplicate index");
+                ERROR(lex.point_span(), E0000, "Duplicate index");
             }
 
             if( GET_TOK(tok,lex) == TOK_BRACE_CLOSE )
@@ -435,7 +435,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, AST::Path path, bool is_refut
         {
             if( p.first != i ) {
                 if( has_split || !split_allowed ) {
-                    ERROR(lex.getPosition(), E0000, "Missing index " << i);
+                    ERROR(lex.point_span(), E0000, "Missing index " << i);
                 }
                 has_split = true;
                 i = p.first;

@@ -116,11 +116,15 @@ ProtoSpan TokenStream::start_span() const
 Span TokenStream::end_span(ProtoSpan ps) const
 {
     auto p = this->getPosition();
-    return Span(
-        ps.filename,
-        ps.start_line, ps.start_ofs,
-        p.line, p.ofs
-        );
+    auto rv = Span( ps.filename,  ps.start_line, ps.start_ofs,  p.line, p.ofs );
+    rv.outer_span = this->outerSpan();
+    return rv;
+}
+Span TokenStream::point_span() const
+{
+    Span rv = this->getPosition();
+    rv.outer_span = this->outerSpan();
+    return rv;
 }
 Ident TokenStream::get_ident(Token tok) const
 {
