@@ -1670,6 +1670,7 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
 
     TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
     (Generic,
+        // TODO: Is this an error?
         return true;
         ),
     (Path,
@@ -1797,7 +1798,7 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
     (Tuple,
         for(const auto& ty : e)
         {
-            if( !type_needs_drop_glue(sp, ty) )
+            if( type_needs_drop_glue(sp, ty) )
                 return true;
         }
         return false;
