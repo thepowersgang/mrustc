@@ -2988,7 +2988,7 @@ namespace {
                     m_of << "NAN";
                 }
                 else if( ::std::isinf(c.v) ) {
-                    m_of << "INFINITY";
+                    m_of << (c.v < 0 ? "-" : "") << "INFINITY";
                 }
                 else {
                     m_of << c.v;
