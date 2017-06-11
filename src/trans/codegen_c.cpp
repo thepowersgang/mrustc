@@ -219,7 +219,7 @@ namespace {
 
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, *(::MIR::Function*)nullptr };
             m_mir_res = &mir_res;
-            m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
+            m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
 
             // Obtain inner pointer
             // TODO: This is very specific to the structure of the official liballoc's Box.
@@ -321,7 +321,7 @@ namespace {
                 auto ty_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ty.clone());
                 ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), ty_ptr, args, *(::MIR::Function*)nullptr };
                 m_mir_res = &mir_res;
-                m_of << "void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {";
+                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {";
                 auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
                 auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
                 for(const auto& ity : te)
@@ -433,13 +433,13 @@ namespace {
             else if( m_resolve.is_type_owned_box(struct_ty) )
             {
                 m_box_glue_todo.push_back( ::std::make_pair( mv$(struct_ty.m_data.as_Path().path.m_data.as_Generic()), &item ) );
-                m_of << "void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
+                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
                 return ;
             }
 
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, *(::MIR::Function*)nullptr };
             m_mir_res = &mir_res;
-            m_of << "void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ") {\n";
+            m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ") {\n";
 
             // If this type has an impl of Drop, call that impl
             if( item.m_markings.has_drop_impl ) {
@@ -511,7 +511,7 @@ namespace {
                 m_of << "tUNIT " << Trans_Mangle(drop_impl_path) << "(union u_" << Trans_Mangle(p) << "*rv);\n";
             }
 
-            m_of << "void " << Trans_Mangle(drop_glue_path) << "(union u_" << Trans_Mangle(p) << "* rv) {\n";
+            m_of << "static void " << Trans_Mangle(drop_glue_path) << "(union u_" << Trans_Mangle(p) << "* rv) {\n";
             if( item.m_markings.has_drop_impl )
             {
                 m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
@@ -685,7 +685,7 @@ namespace {
                 m_of << "tUNIT " << Trans_Mangle(drop_impl_path) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
             }
 
-            m_of << "void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
+            m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
 
             // If this type has an impl of Drop, call that impl
             if( item.m_markings.has_drop_impl )
