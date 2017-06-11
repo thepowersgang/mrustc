@@ -11,6 +11,7 @@
 #include <synext.hpp>
 #include <map>
 #include "macro_rules.hpp"
+#include "../macro_rules/macro_rules.hpp"
 #include "../parse/common.hpp"  // For reparse from macros
 #include <ast/expr.hpp>
 #include "cfg.hpp"
@@ -115,7 +116,7 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
-                auto e = Macro_Invoke(name.c_str(), *mr.data, mv$(input_tt), mod);
+                auto e = Macro_InvokeRules(name.c_str(), *mr.data, mi_span, mv$(input_tt), mod);
                 return e;
             }
         }
@@ -134,7 +135,7 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
         }
         if( last_mac )
         {
-            auto e = Macro_Invoke(name.c_str(), *last_mac, mv$(input_tt), mod);
+            auto e = Macro_InvokeRules(name.c_str(), *last_mac, mi_span, mv$(input_tt), mod);
             return e;
         }
     }

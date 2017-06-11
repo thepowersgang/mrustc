@@ -156,7 +156,7 @@ public:
     SERIALISABLE_PROTOTYPES();
 };
 
-extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input, AST::Module& mod);
+extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, AST::Module& mod);
 extern MacroRulesPtr    Parse_MacroRules(TokenStream& lex);
 
 #endif // MACROS_HPP_INCLUDED

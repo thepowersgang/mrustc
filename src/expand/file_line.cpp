@@ -9,12 +9,23 @@
 #include "../parse/common.hpp"
 #include "../parse/ttstream.hpp"
 
+namespace {
+    const Span& get_top_span(const Span& sp) {
+        if( sp.outer_span ) {
+            return get_top_span(*sp.outer_span);
+        }
+        else {
+            return sp;
+        }
+    }
+}
+
 class CExpanderFile:
     public ExpandProcMacro
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree(Token(TOK_STRING, sp.filename.c_str()))) );
+        return box$( TTStreamO(TokenTree(Token(TOK_STRING, get_top_span(sp).filename.c_str()))) );
     }
 };
 
@@ -23,7 +34,7 @@ class CExpanderLine:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree(Token((uint64_t)sp.start_line, CORETYPE_U32))) );
+        return box$( TTStreamO(TokenTree(Token((uint64_t)get_top_span(sp).start_line, CORETYPE_U32))) );
     }
 };
 
@@ -32,7 +43,7 @@ class CExpanderColumn:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree(Token((uint64_t)sp.start_ofs, CORETYPE_U32))) );
+        return box$( TTStreamO(TokenTree(Token((uint64_t)get_top_span(sp).start_ofs, CORETYPE_U32))) );
     }
 };
 

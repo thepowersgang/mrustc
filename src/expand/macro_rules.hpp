@@ -12,5 +12,3 @@ namespace AST {
 class TokenTree;
 class TokenStream;
 class MacroRules;
-
-extern ::std::unique_ptr<TokenStream>   Macro_Invoke(const char* name, const MacroRules& rules, TokenTree tt, AST::Module& mod);
