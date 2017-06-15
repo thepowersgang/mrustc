@@ -779,6 +779,7 @@ DISABLED_TESTS += run-pass/deriving-copyclone
 # - BUG: Unknown
 DISABLED_TESTS += run-pass/process-spawn-with-unicode-params	# Bad path for process spawn
 DISABLED_TESTS += run-pass/u128	# u128 not very good, unknown where error is
+DISABLED_TESTS += run-pass/issue-32805	# Possible f32 literal rounding isue
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass) $(call DEF_RUST_TESTS,run-pass/union))

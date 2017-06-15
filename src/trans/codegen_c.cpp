@@ -894,6 +894,18 @@ namespace {
 
             m_mir_res = nullptr;
         }
+        void emit_float(double v) {
+            if( ::std::isnan(v) ) {
+                m_of << "NAN";
+            }
+            else if( ::std::isinf(v) ) {
+                m_of << (v < 0 ? "-" : "") << "INFINITY";
+            }
+            else {
+                m_of.precision(::std::numeric_limits<double>::max_digits10 + 1);
+                m_of << ::std::scientific << v;
+            }
+        }
         void emit_literal(const ::HIR::TypeRef& ty, const ::HIR::Literal& lit, const Trans_Params& params) {
             TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
             ::HIR::TypeRef  tmp;
@@ -1065,15 +1077,7 @@ namespace {
                 }
                 ),
             (Float,
-                if( ::std::isnan(e) ) {
-                    m_of << "NAN";
-                }
-                else if( ::std::isinf(e) ) {
-                    m_of << "INFINITY";
-                }
-                else {
-                    m_of << e;
-                }
+                this->emit_float(e);
                 ),
             (BorrowOf,
                 TU_MATCHA( (e.m_data), (pe),
@@ -2984,15 +2988,7 @@ namespace {
                 }
                 ),
             (Float,
-                if( ::std::isnan(c.v) ) {
-                    m_of << "NAN";
-                }
-                else if( ::std::isinf(c.v) ) {
-                    m_of << (c.v < 0 ? "-" : "") << "INFINITY";
-                }
-                else {
-                    m_of << c.v;
-                }
+                this->emit_float(c.v);
                 ),
             (Bool,
                 m_of << (c.v ? "true" : "false");
