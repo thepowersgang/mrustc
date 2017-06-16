@@ -555,8 +555,18 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
                 }
                 else
                 {
-                    // TODO: Can Argument(_) be assigned?
-                    // Not a direct assignment of a slot
+                    // Not a direct assignment of a slot. But check if a slot is mutated as part of this.
+                    ::MIR::visit::visit_mir_lvalue(lv, ValUsage::Write, [&](const auto& ilv, ValUsage vu) {
+                        if( const auto* de = ilv.opt_Local() )
+                        {
+                            if( vu == ValUsage::Write )
+                            {
+                                MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[*de]);
+                                slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
+                            }
+                        }
+                        return false;
+                        });
                 }
             };
 

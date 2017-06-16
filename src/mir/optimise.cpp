@@ -17,7 +17,7 @@
 #include <iomanip>
 #include <trans/target.hpp>
 
-#define DUMP_BEFORE_ALL 0
+#define DUMP_BEFORE_ALL 1
 #define DUMP_BEFORE_CONSTPROPAGATE 0
 #define CHECK_AFTER_PASS    0
 #define CHECK_AFTER_ALL     0
@@ -476,21 +476,11 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         MIR_Validate(resolve, path, fcn, args, ret_type);
         #endif
 
-        // >> Inline short functions
-        bool inline_happened = MIR_Optimise_Inlining(state, fcn);
-        if( inline_happened )
-        {
-            // Apply cleanup again (as monomorpisation in inlining may have exposed a vtable call)
-            MIR_Cleanup(resolve, path, fcn, args, ret_type);
-            //MIR_Dump_Fcn(::std::cout, fcn);
-            change_happened = true;
-        }
-        #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
-
         // TODO: Convert `&mut *mut_foo` into `mut_foo` if the source is movable and not used afterwards
 
+#if DUMP_BEFORE_ALL || DUMP_BEFORE_PSA
+        if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
+#endif
         // >> Propagate/remove dead assignments
         while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
             change_happened = true;
@@ -511,6 +501,26 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
         // >> Remove assignments of unsed drop flags
         change_happened |= MIR_Optimise_DeadDropFlags(state, fcn);
+
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
+
+        // >> Inline short functions
+        if( !change_happened )
+        {
+            bool inline_happened = MIR_Optimise_Inlining(state, fcn);
+            if( inline_happened )
+            {
+                // Apply cleanup again (as monomorpisation in inlining may have exposed a vtable call)
+                MIR_Cleanup(resolve, path, fcn, args, ret_type);
+                //MIR_Dump_Fcn(::std::cout, fcn);
+                change_happened = true;
+            }
+            #if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+            #endif
+        }
 
         if( change_happened )
         {
@@ -704,7 +714,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // TODO: Allow functions that are just a switch on an input.
             if( fcn.blocks.size() == 1 )
             {
-                return fcn.blocks[0].statements.size() < 5 && ! fcn.blocks[0].terminator.is_Goto();
+                return fcn.blocks[0].statements.size() < 10 && ! fcn.blocks[0].terminator.is_Goto();
             }
             else if( fcn.blocks.size() == 3 && fcn.blocks[0].terminator.is_Call() )
             {
@@ -740,6 +750,8 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
         size_t tmp_end = 0;
         mutable ::std::vector< ::MIR::Constant >  const_assignments;
+
+        ::MIR::LValue   retval;
 
         Cloner(const Span& sp, const ::StaticTraitResolve& resolve, ::MIR::Terminator::Data_Call& te):
             sp(sp),
@@ -838,8 +850,14 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     rv.statements.push_back(::MIR::Statement( mv$(new_se) ));
                     )
                 )
+                DEBUG("-> " << rv.statements.back());
             }
             DEBUG("BB" << src_idx << "->BB" << new_idx << "/" << rv.statements.size() << ": " << src.terminator);
+            if(src.terminator.is_Return())
+            {
+                rv.statements.push_back(::MIR::Statement::make_Assign({ this->te.ret_val.clone(), this->retval.clone() }));
+                DEBUG("++ " << rv.statements.back());
+            }
             rv.terminator = this->clone_term(src.terminator);
             DEBUG("-> " << rv.terminator);
             return rv;
@@ -924,11 +942,12 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 rv.push_back( this->clone_param(lv) );
             return rv;
         }
+
         ::MIR::LValue clone_lval(const ::MIR::LValue& src) const
         {
             TU_MATCHA( (src), (se),
             (Return,
-                return this->te.ret_val.clone();
+                return this->retval.clone();
                 ),
             (Argument,
                 const auto& arg = this->te.args.at(se.idx);
@@ -1075,16 +1094,28 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 DEBUG("Can't inline " << path);
                 continue ;
             }
+            DEBUG(state << fcn.blocks[i].terminator);
             TRACE_FUNCTION_F("Inline " << path);
 
-            // Monomorph values and append
+            // Allocate a temporary for the return value
+            {
+                cloner.retval = ::MIR::LValue::make_Local( fcn.locals.size() );
+                DEBUG("- Storing return value in " << cloner.retval);
+                ::HIR::TypeRef  tmp_ty;
+                fcn.locals.push_back( state.get_lvalue_type(tmp_ty, te->ret_val).clone() );
+                //fcn.local_names.push_back( "" );
+            }
+
+            // Monomorph locals and append
             cloner.var_base = fcn.locals.size();
             for(const auto& ty : called_mir->locals)
                 fcn.locals.push_back( cloner.monomorph(ty) );
             cloner.tmp_end = fcn.locals.size();
+
             cloner.df_base = fcn.drop_flags.size();
             fcn.drop_flags.insert( fcn.drop_flags.end(), called_mir->drop_flags.begin(), called_mir->drop_flags.end() );
             cloner.bb_base = fcn.blocks.size();
+
             // Append monomorphised copy of all blocks.
             // > Arguments replaced by input lvalues
             ::std::vector<::MIR::BasicBlock>    new_blocks;
@@ -1093,6 +1124,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             {
                 new_blocks.push_back( cloner.clone_bb(bb, (&bb - called_mir->blocks.data()), fcn.blocks.size() + new_blocks.size()) );
             }
+
             // > Append new temporaries
             for(auto& val : cloner.const_assignments)
             {
@@ -2134,6 +2166,19 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     const auto& new_dst_lval = it2->as_Assign().dst;
                     // `... = Use(to_replace_lval)`
 
+                    // TODO: Ensure that the target isn't borrowed.
+                    if( const auto* e = new_dst_lval.opt_Local() ) {
+                        const auto& vu = val_uses.local_uses[*e];
+                        if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
+                            break ;
+                    }
+                    else if( new_dst_lval.is_Return() ) {
+                        // Return, can't be borrowed?
+                    }
+                    else {
+                        break;
+                    }
+
                     // Ensure that the target doesn't change in the intervening time.
                     bool was_invalidated = false;
                     for(auto it3 = it+1; it3 != it2; it3++)
@@ -2234,6 +2279,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         {
             for(auto it = block.statements.begin(); it != block.statements.end(); ++it)
             {
+                state.set_cur_stmt(&block - &fcn.blocks.front(), it - block.statements.begin());
                 if( const auto& se = it->opt_Assign() )
                 {
                     TU_MATCH_DEF( ::MIR::LValue, (se->dst), (de),
@@ -2242,7 +2288,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     (Local,
                         const auto& vu = val_uses.local_uses[de];
                         if( vu.write == 1 && vu.read == 0 && vu.borrow == 0 ) {
-                            DEBUG(se->dst << " only written, removing write");
+                            DEBUG(state << se->dst << " only written, removing write");
                             it = block.statements.erase(it)-1;
                         }
                         )

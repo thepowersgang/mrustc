@@ -437,10 +437,12 @@ void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::LValue& val, con
     )
     ASSERT_BUG(sp, val.is_Local(), "Hit value raising code with non-variable value - " << val);
     const auto idx = val.as_Local();
-    bool is_temp = (idx < m_first_temp_idx);
-    if( idx < m_first_temp_idx ) {
+    bool is_temp = (idx >= m_first_temp_idx);
+    /*
+    if( !is_temp ) {
         return ;
     }
+    */
 
     // Find controlling scope
     auto scope_it = m_scope_stack.rbegin();
