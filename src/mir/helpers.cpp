@@ -70,23 +70,19 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_static_type(::HIR::TypeRef& tmp, c
 const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const
 {
     TU_MATCH(::MIR::LValue, (val), (e),
-    (Variable,
-        MIR_ASSERT(*this, e < m_fcn.named_variables.size(), val << " out of range (" << m_fcn.named_variables.size() << ")");
-        return m_fcn.named_variables.at(e);
-        ),
-    (Temporary,
-        MIR_ASSERT(*this, e.idx < m_fcn.temporaries.size(), val << " out of range (" << m_fcn.temporaries.size() << ")");
-        return m_fcn.temporaries.at(e.idx);
+    (Return,
+        return m_ret_type;
         ),
     (Argument,
-        MIR_ASSERT(*this, e.idx < m_args.size(), val << " out of range (" << m_args.size() << ")");
+        MIR_ASSERT(*this, e.idx < m_args.size(), "Argument " << val << " out of range (" << m_args.size() << ")");
         return m_args.at(e.idx).second;
+        ),
+    (Local,
+        MIR_ASSERT(*this, e < m_fcn.locals.size(), "Local " << val << " out of range (" << m_fcn.locals.size() << ")");
+        return m_fcn.locals.at(e);
         ),
     (Static,
         return get_static_type(tmp,  e);
-        ),
-    (Return,
-        return m_ret_type;
         ),
     (Field,
         const auto& ty = this->get_lvalue_type(tmp, *e.val);
@@ -314,15 +310,13 @@ namespace visit {
         if( cb(lv, u) )
             return true;
         TU_MATCHA( (lv), (e),
-        (Variable,
+        (Return,
             ),
         (Argument,
             ),
-        (Temporary,
+        (Local,
             ),
         (Static,
-            ),
-        (Return,
             ),
         (Field,
             return visit_mir_lvalue(*e.val, u, cb);
@@ -547,27 +541,21 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
     }
     block_offsets.push_back(statement_count);   // Store the final limit for later code to use.
 
-    ::std::vector<ValueLifetime>    temporary_lifetimes( fcn.temporaries.size(), ValueLifetime(statement_count) );
-    ::std::vector<ValueLifetime>    variable_lifetimes( fcn.named_variables.size(), ValueLifetime(statement_count) );
-
+    ::std::vector<ValueLifetime>    slot_lifetimes( fcn.locals.size(), ValueLifetime(statement_count) );
 
     // Enumerate direct assignments of variables (linear iteration of BB list)
     for(size_t bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
     {
         auto assigned_lvalue = [&](size_t bb_idx, size_t stmt_idx, const ::MIR::LValue& lv) {
                 // NOTE: Fills the first statement after running, just to ensure that any assigned value has _a_ lifetime
-                if( const auto* de = lv.opt_Variable() )
+                if( const auto* de = lv.opt_Local() )
                 {
-                    MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, variable_lifetimes[*de]);
-                    variable_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
-                }
-                else if( const auto* de = lv.opt_Temporary() )
-                {
-                    MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, temporary_lifetimes[de->idx]);
-                    temporary_lifetimes[de->idx].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
+                    MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[*de]);
+                    slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
                 }
                 else
                 {
+                    // TODO: Can Argument(_) be assigned?
                     // Not a direct assignment of a slot
                 }
             };
@@ -589,6 +577,14 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
                     assigned_lvalue(bb_idx, stmt_idx+1, e.second);
                 }
             }
+            else if( const auto* se = stmt.opt_Drop() )
+            {
+                // HACK: Mark values as valid wherever there's a drop (prevents confusion by simple validator)
+                if( const auto* de = se->slot.opt_Local() )
+                {
+                    slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx,stmt_idx);
+                }
+            }
         }
         state.set_cur_stmt_term(bb_idx);
 
@@ -601,25 +597,18 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
     // Dump out variable lifetimes.
     if( dump_debug )
     {
-        for(unsigned int i = 0; i < temporary_lifetimes.size(); i ++)
+        for(size_t i = 0; i < slot_lifetimes.size(); i ++)
         {
-            temporary_lifetimes[i].dump_debug("tmp", i, block_offsets);
-        }
-        for(unsigned int i = 0; i < variable_lifetimes.size(); i ++)
-        {
-            variable_lifetimes[i].dump_debug("var", i, block_offsets);
+            slot_lifetimes[i].dump_debug("_", i, block_offsets);
         }
     }
 
 
     ::MIR::ValueLifetimes   rv;
     rv.m_block_offsets = mv$(block_offsets);
-    rv.m_temporaries.reserve( temporary_lifetimes.size() );
-    for(auto& lft : temporary_lifetimes)
-        rv.m_temporaries.push_back( ::MIR::ValueLifetime(mv$(lft.stmt_bitmap)) );
-    rv.m_variables.reserve( variable_lifetimes.size() );
-    for(auto& lft : variable_lifetimes)
-        rv.m_variables.push_back( ::MIR::ValueLifetime(mv$(lft.stmt_bitmap)) );
+    rv.m_slots.reserve( slot_lifetimes.size() );
+    for(auto& lft : slot_lifetimes)
+        rv.m_slots.push_back( ::MIR::ValueLifetime(mv$(lft.stmt_bitmap)) );
     return rv;
 }
 void MIR_Helper_GetLifetimes_DetermineValueLifetime(

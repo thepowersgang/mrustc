@@ -92,20 +92,17 @@ namespace MIR {
     ::std::ostream& operator<<(::std::ostream& os, const LValue& x)
     {
         TU_MATCHA( (x), (e),
-        (Variable,
-            os << "Variable(" << e << ")";
-            ),
-        (Temporary,
-            os << "Temporary(" << e.idx << ")";
+        (Return,
+            os << "Return";
             ),
         (Argument,
             os << "Argument(" << e.idx << ")";
             ),
+        (Local,
+            os << "Local(" << e << ")";
+            ),
         (Static,
             os << "Static(" << e << ")";
-            ),
-        (Return,
-            os << "Return";
             ),
         (Field,
             os << "Field(" << e.field_index << ", " << *e.val << ")";
@@ -127,20 +124,17 @@ namespace MIR {
         if( a.tag() != b.tag() )
             return a.tag() < b.tag();
         TU_MATCHA( (a, b), (ea, eb),
-        (Variable,
-            return ea < eb;
-            ),
-        (Temporary,
-            return ea.idx < eb.idx;
+        (Return,
+            return false;
             ),
         (Argument,
             return ea.idx < eb.idx;
             ),
-        (Static,
+        (Local,
             return ea < eb;
             ),
-        (Return,
-            return false;
+        (Static,
+            return ea < eb;
             ),
         (Field,
             if( *ea.val != *eb.val )
@@ -170,20 +164,17 @@ namespace MIR {
         if( a.tag() != b.tag() )
             return false;
         TU_MATCHA( (a, b), (ea, eb),
-        (Variable,
-            return ea == eb;
-            ),
-        (Temporary,
-            return ea.idx == eb.idx;
+        (Return,
+            return true;
             ),
         (Argument,
             return ea.idx == eb.idx;
             ),
-        (Static,
+        (Local,
             return ea == eb;
             ),
-        (Return,
-            return true;
+        (Static,
+            return ea == eb;
             ),
         (Field,
             if( *ea.val != *eb.val )
@@ -486,10 +477,8 @@ namespace MIR {
             ),
         (ScopeEnd,
             os << "ScopeEnd(";
-            for(auto idx : e.vars)
-                os << "var$" << idx << ",";
-            for(auto idx : e.tmps)
-                os << "tmp$" << idx << ",";
+            for(auto idx : e.slots)
+                os << "_$" << idx << ",";
             os << ")";
             )
         )
@@ -500,11 +489,10 @@ namespace MIR {
 ::MIR::LValue MIR::LValue::clone() const
 {
     TU_MATCHA( (*this), (e),
-    (Variable, return LValue(e); ),
-    (Temporary, return LValue(e); ),
-    (Argument, return LValue(e); ),
-    (Static, return LValue(e.clone()); ),
     (Return, return LValue(e); ),
+    (Argument, return LValue(e); ),
+    (Local,  return LValue(e); ),
+    (Static, return LValue(e.clone()); ),
     (Field, return LValue::make_Field({
         box$( e.val->clone() ),
         e.field_index

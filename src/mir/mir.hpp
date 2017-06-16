@@ -17,21 +17,15 @@ typedef unsigned int    RegionId;
 typedef unsigned int    BasicBlockId;
 
 // "LVALUE" - Assignable values
-TAGGED_UNION_EX(LValue, (), Variable, (
-    // User-named variable
-    (Variable, unsigned int),
-    // Temporary with no user-defined name
-    (Temporary, struct {
-        unsigned int idx;
-        }),
-    // Function argument (matters for destructuring)
-    (Argument, struct {
-        unsigned int idx;
-        }),
-    // `static` or `static mut`
-    (Static, ::HIR::Path),
+TAGGED_UNION_EX(LValue, (), Return, (
     // Function return
     (Return, struct{}),
+    // Function argument (input)
+    (Argument, struct { unsigned int idx; }),
+    // Variable/Temporary
+    (Local, unsigned int),
+    // `static` or `static mut`
+    (Static, ::HIR::Path),
     // Field access (tuple, struct, tuple struct, enum field, ...)
     // NOTE: Also used to index an array/slice by a compile-time known index (e.g. in destructuring)
     (Field, struct {
@@ -274,8 +268,7 @@ TAGGED_UNION(Statement, Assign,
         unsigned int flag_idx;  // Valid if != ~0u
         }),
     (ScopeEnd, struct {
-        ::std::vector<unsigned> vars;
-        ::std::vector<unsigned> tmps;
+        ::std::vector<unsigned> slots;
         })
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Statement& x);
@@ -290,9 +283,8 @@ struct BasicBlock
 class Function
 {
 public:
-    // TODO: Unify Variables, Temporaries, and Arguments
-    ::std::vector< ::HIR::TypeRef>  named_variables;
-    ::std::vector< ::HIR::TypeRef>  temporaries;
+    ::std::vector< ::HIR::TypeRef>  locals;
+    //::std::vector< ::std::string>   local_names;
     ::std::vector<bool> drop_flags;
 
     ::std::vector<BasicBlock>   blocks;

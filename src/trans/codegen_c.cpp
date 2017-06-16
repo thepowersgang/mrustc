@@ -1303,16 +1303,10 @@ namespace {
             m_of << "{\n";
             // Variables
             m_of << "\t"; emit_ctype(ret_type, FMT_CB(ss, ss << "rv";)); m_of << ";\n";
-            for(unsigned int i = 0; i < code->named_variables.size(); i ++) {
-                DEBUG("var" << i << " : " << code->named_variables[i]);
-                m_of << "\t"; emit_ctype(code->named_variables[i], FMT_CB(ss, ss << "var" << i;)); m_of << ";";
-                m_of << "\t// " << code->named_variables[i];
-                m_of << "\n";
-            }
-            for(unsigned int i = 0; i < code->temporaries.size(); i ++) {
-                DEBUG("tmp" << i << " : " << code->temporaries[i]);
-                m_of << "\t"; emit_ctype(code->temporaries[i], FMT_CB(ss, ss << " tmp" << i;)); m_of << ";";
-                m_of << "\t// " << code->temporaries[i];
+            for(unsigned int i = 0; i < code->locals.size(); i ++) {
+                DEBUG("var" << i << " : " << code->locals[i]);
+                m_of << "\t"; emit_ctype(code->locals[i], FMT_CB(ss, ss << "var" << i;)); m_of << ";";
+                m_of << "\t// " << code->locals[i];
                 m_of << "\n";
             }
             for(unsigned int i = 0; i < code->drop_flags.size(); i ++) {
@@ -2612,7 +2606,7 @@ namespace {
                 // Call destructor on all entries
                 m_of << "for(unsigned i = 0; i < "; emit_lvalue(*lvp->as_Deref().val); m_of << ".META; i++) {";
                 m_of << "\t\t";
-                emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Temporary({~0u})) }), *te.inner, false);
+                emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Local(~0u)) }), *te.inner, false);
                 m_of << "\n\t}";
                 )
             )
@@ -2814,20 +2808,17 @@ namespace {
 
         void emit_lvalue(const ::MIR::LValue& val) {
             TU_MATCHA( (val), (e),
-            (Variable,
-                m_of << "var" << e;
-                ),
-            (Temporary,
-                if( e.idx == ~0u )
-                    m_of << "i";
-                else
-                    m_of << "tmp" << e.idx;
+            (Return,
+                m_of << "rv";
                 ),
             (Argument,
                 m_of << "arg" << e.idx;
                 ),
-            (Return,
-                m_of << "rv";
+            (Local,
+                if( e == ~0u )
+                    m_of << "i";
+                else
+                    m_of << "var" << e;
                 ),
             (Static,
                 m_of << Trans_Mangle(e);

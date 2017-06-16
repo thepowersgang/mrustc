@@ -20,6 +20,7 @@
 #define DUMP_BEFORE_ALL 0
 #define DUMP_BEFORE_CONSTPROPAGATE 0
 #define CHECK_AFTER_PASS    0
+#define CHECK_AFTER_ALL     0
 
 #define DUMP_AFTER_DONE     0
 #define CHECK_AFTER_DONE    1
@@ -59,15 +60,13 @@ namespace {
         if( cb(lv, u) )
             return true;
         TU_MATCHA( (lv), (e),
-        (Variable,
+        (Return,
             ),
         (Argument,
             ),
-        (Temporary,
+        (Local,
             ),
         (Static,
-            ),
-        (Return,
             ),
         (Field,
             return visit_mir_lvalue_mut(*e.val, u, cb);
@@ -473,6 +472,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Apply known constants
         change_happened |= MIR_Optimise_ConstPropagte(state, fcn);
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
 
         // >> Inline short functions
         bool inline_happened = MIR_Optimise_Inlining(state, fcn);
@@ -483,18 +485,27 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             //MIR_Dump_Fcn(::std::cout, fcn);
             change_happened = true;
         }
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
 
         // TODO: Convert `&mut *mut_foo` into `mut_foo` if the source is movable and not used afterwards
 
         // >> Propagate/remove dead assignments
         while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
             change_happened = true;
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
 
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
 
         // >> Unify duplicate temporaries
         // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
         change_happened |= MIR_Optimise_UnifyTemporaries(state, fcn);
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
@@ -553,12 +564,9 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     auto& dst = (it-1)->as_ScopeEnd();
                     const auto& src = it->as_ScopeEnd();
                     DEBUG("Unify " << *(it-1) << " and " << *it);
-                    for(auto v : src.vars)
-                        dst.vars.push_back(v);
-                    for(auto v : src.tmps)
-                        dst.tmps.push_back(v);
-                    ::std::sort(dst.vars.begin(), dst.vars.end());
-                    ::std::sort(dst.tmps.begin(), dst.tmps.end());
+                    for(auto v : src.slots)
+                        dst.slots.push_back(v);
+                    ::std::sort(dst.slots.begin(), dst.slots.end());
                     it = block.statements.erase(it);
                 }
                 else
@@ -824,12 +832,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     ),
                 (ScopeEnd,
                     ::MIR::Statement::Data_ScopeEnd new_se;
-                    new_se.vars.reserve(se.vars.size());
-                    for(auto idx : se.vars)
-                        new_se.vars.push_back(this->var_base + idx);
-                    new_se.tmps.reserve(se.tmps.size());
-                    for(auto idx : se.tmps)
-                        new_se.tmps.push_back(this->tmp_base + idx);
+                    new_se.slots.reserve(se.slots.size());
+                    for(auto idx : se.slots)
+                        new_se.slots.push_back(this->var_base + idx);
                     rv.statements.push_back(::MIR::Statement( mv$(new_se) ));
                     )
                 )
@@ -922,23 +927,24 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         ::MIR::LValue clone_lval(const ::MIR::LValue& src) const
         {
             TU_MATCHA( (src), (se),
-            (Variable,
-                return ::MIR::LValue::make_Variable(se + this->var_base);
-                ),
-            (Temporary,
-                return ::MIR::LValue::make_Temporary({se.idx + this->tmp_base});
+            (Return,
+                return this->te.ret_val.clone();
                 ),
             (Argument,
                 const auto& arg = this->te.args.at(se.idx);
-                if( const auto* e = arg.opt_Constant() ) {
-                    auto tmp = ::MIR::LValue::make_Temporary({ static_cast<unsigned>(this->tmp_end + this->const_assignments.size()) });
+                if( const auto* e = arg.opt_Constant() )
+                {
+                    auto tmp = ::MIR::LValue::make_Local( static_cast<unsigned>(this->tmp_end + this->const_assignments.size()) );
                     this->const_assignments.push_back( e->clone() );
                     return tmp;
                 }
-                return arg.as_LValue().clone();
+                else
+                {
+                    return arg.as_LValue().clone();
+                }
                 ),
-            (Return,
-                return this->te.ret_val.clone();
+            (Local,
+                return ::MIR::LValue::make_Local(this->var_base + se);
                 ),
             (Static,
                 return this->monomorph( se );
@@ -983,8 +989,8 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         {
             TU_MATCHA( (src), (se),
             (LValue,
-                if( se.is_Argument() )
-                    return this->te.args.at(se.as_Argument().idx).clone();
+                if( const auto* ae = se.opt_Argument() )
+                    return this->te.args.at(ae->idx).clone();
                 return clone_lval(se);
                 ),
             (Constant, return clone_constant(se); )
@@ -995,8 +1001,8 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         {
             TU_MATCHA( (src), (se),
             (Use,
-                if( se.is_Argument() )
-                    if( const auto* e = this->te.args.at(se.as_Argument().idx).opt_Constant() )
+                if( const auto* ae = se.opt_Argument() )
+                    if( const auto* e = this->te.args.at(ae->idx).opt_Constant() )
                         return e->clone();
                 return ::MIR::RValue( this->clone_lval(se) );
                 ),
@@ -1072,13 +1078,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             TRACE_FUNCTION_F("Inline " << path);
 
             // Monomorph values and append
-            cloner.var_base = fcn.named_variables.size();
-            for(const auto& ty : called_mir->named_variables)
-                fcn.named_variables.push_back( cloner.monomorph(ty) );
-            cloner.tmp_base = fcn.temporaries.size();
-            for(const auto& ty : called_mir->temporaries)
-                fcn.temporaries.push_back( cloner.monomorph(ty) );
-            cloner.tmp_end = fcn.temporaries.size();
+            cloner.var_base = fcn.locals.size();
+            for(const auto& ty : called_mir->locals)
+                fcn.locals.push_back( cloner.monomorph(ty) );
+            cloner.tmp_end = fcn.locals.size();
             cloner.df_base = fcn.drop_flags.size();
             fcn.drop_flags.insert( fcn.drop_flags.end(), called_mir->drop_flags.begin(), called_mir->drop_flags.end() );
             cloner.bb_base = fcn.blocks.size();
@@ -1094,8 +1097,8 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             for(auto& val : cloner.const_assignments)
             {
                 auto ty = state.get_const_type(val);
-                auto lv = ::MIR::LValue::make_Temporary({ static_cast<unsigned>(fcn.temporaries.size()) });
-                fcn.temporaries.push_back( mv$(ty) );
+                auto lv = ::MIR::LValue::make_Local( static_cast<unsigned>(fcn.locals.size()) );
+                fcn.locals.push_back( mv$(ty) );
                 new_blocks[0].statements.insert( new_blocks[0].statements.begin(), ::MIR::Statement::make_Assign({ mv$(lv), mv$(val) }) );
             }
             cloner.const_assignments.clear();
@@ -1120,19 +1123,19 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     TRACE_FUNCTION;
-    ::std::vector<bool> replacable( fcn.temporaries.size() );
+    ::std::vector<bool> replacable( fcn.locals.size() );
     // 1. Enumerate which (if any) temporaries share the same type
     {
         unsigned int n_found = 0;
-        for(unsigned int tmpidx = 0; tmpidx < fcn.temporaries.size(); tmpidx ++)
+        for(unsigned int tmpidx = 0; tmpidx < fcn.locals.size(); tmpidx ++)
         {
             if( replacable[tmpidx] )
                 continue ;
-            for(unsigned int i = tmpidx+1; i < fcn.temporaries.size(); i ++ )
+            for(unsigned int i = tmpidx+1; i < fcn.locals.size(); i ++ )
             {
                 if( replacable[i] )
                     continue ;
-                if( fcn.temporaries[i] == fcn.temporaries[tmpidx] )
+                if( fcn.locals[i] == fcn.locals[tmpidx] )
                 {
                     replacable[i] = true;
                     replacable[tmpidx] = true;
@@ -1145,34 +1148,33 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
     }
 
     auto lifetimes = MIR_Helper_GetLifetimes(state, fcn, /*dump_debug=*/true);
-    //::std::vector<::MIR::ValueLifetime>  var_lifetimes = mv$(lifetimes.m_variables);
-    ::std::vector<::MIR::ValueLifetime>  tmp_lifetimes = mv$(lifetimes.m_temporaries);
+    ::std::vector<::MIR::ValueLifetime>  slot_lifetimes = mv$(lifetimes.m_slots);
 
     // 2. Unify variables of the same type with distinct non-overlapping lifetimes
     ::std::map<unsigned int, unsigned int> replacements;
-    ::std::vector<bool> visited( fcn.temporaries.size() );
+    ::std::vector<bool> visited( fcn.locals.size() );
     bool replacement_needed = false;
-    for(unsigned int tmpidx = 0; tmpidx < fcn.temporaries.size(); tmpidx ++)
+    for(unsigned int local_idx = 0; local_idx < fcn.locals.size(); local_idx ++)
     {
-        if( ! replacable[tmpidx] )  continue ;
-        if( visited[tmpidx] )   continue ;
-        if( ! tmp_lifetimes[tmpidx].is_used() )  continue ;
-        visited[tmpidx] = true;
+        if( ! replacable[local_idx] )  continue ;
+        if( visited[local_idx] )   continue ;
+        if( ! slot_lifetimes[local_idx].is_used() )  continue ;
+        visited[local_idx] = true;
 
-        for(unsigned int i = tmpidx+1; i < fcn.temporaries.size(); i ++)
+        for(unsigned int i = local_idx+1; i < fcn.locals.size(); i ++)
         {
             if( !replacable[i] )
                 continue ;
-            if( fcn.temporaries[i] != fcn.temporaries[tmpidx] )
+            if( fcn.locals[i] != fcn.locals[local_idx] )
                 continue ;
-            if( ! tmp_lifetimes[i].is_used() )
+            if( ! slot_lifetimes[i].is_used() )
                 continue ;
             // Variables are of the same type, check if they overlap
-            if( tmp_lifetimes[tmpidx].overlaps( tmp_lifetimes[i] ) )
+            if( slot_lifetimes[local_idx].overlaps( slot_lifetimes[i] ) )
                 continue ;
             // They don't overlap, unify
-            tmp_lifetimes[tmpidx].unify( tmp_lifetimes[i] );
-            replacements[i] = tmpidx;
+            slot_lifetimes[local_idx].unify( slot_lifetimes[i] );
+            replacements[i] = local_idx;
             replacement_needed = true;
             visited[i] = true;
         }
@@ -1182,12 +1184,12 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
     {
         DEBUG("Replacing temporaries using {" << replacements << "}");
         visit_mir_lvalues_mut(state, fcn, [&](auto& lv, auto ) {
-            if( auto* ve = lv.opt_Temporary() ) {
-                auto it = replacements.find(ve->idx);
+            if( auto* ve = lv.opt_Local() ) {
+                auto it = replacements.find(*ve);
                 if( it != replacements.end() )
                 {
-                    MIR_DEBUG(state, lv << " => Temporary(" << it->second << ")");
-                    ve->idx = it->second;
+                    MIR_DEBUG(state, lv << " => Local(" << it->second << ")");
+                    *ve = it->second;
                     return true;
                 }
             }
@@ -1249,9 +1251,7 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         return false;
                     ),
                 (ScopeEnd,
-                    if( ae.vars != be.vars )
-                        return false;
-                    if( ae.tmps == be.tmps )
+                    if( ae.slots != be.slots )
                         return false;
                     )
                 )
@@ -1721,7 +1721,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // - Locate `temp = SOME_CONST` and record value
             if( const auto* e = stmt.opt_Assign() )
             {
-                if( e->dst.is_Temporary() || e->dst.is_Variable() )
+                if( e->dst.is_Local() )
                 {
                     if( const auto* ce = e->src.opt_Constant() )
                     {
@@ -1743,9 +1743,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         const auto& te = bb.terminator.as_If();
 
         // Restrict condition to being a temporary/variable
-        if( te.cond.is_Temporary() )
-            ;
-        else if( te.cond.is_Argument() )
+        if( te.cond.is_Local() )
             ;
         else
             continue;
@@ -1813,24 +1811,16 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         unsigned int    borrow = 0;
     };
     struct {
-        ::std::vector<ValUse> var_uses;
-        ::std::vector<ValUse> tmp_uses;
+        ::std::vector<ValUse> local_uses;
 
         void use_lvalue(const ::MIR::LValue& lv, ValUsage ut) {
             TU_MATCHA( (lv), (e),
-            (Variable,
-                auto& vu = var_uses[e];
-                switch(ut)
-                {
-                case ValUsage::Read:    vu.read += 1;   break;
-                case ValUsage::Write:   vu.write += 1;  break;
-                case ValUsage::Borrow:  vu.borrow += 1; break;
-                }
+            (Return,
                 ),
             (Argument,
                 ),
-            (Temporary,
-                auto& vu = tmp_uses[e.idx];
+            (Local,
+                auto& vu = local_uses[e];
                 switch(ut)
                 {
                 case ValUsage::Read:    vu.read += 1;   break;
@@ -1839,8 +1829,6 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 }
                 ),
             (Static,
-                ),
-            (Return,
                 ),
             (Field,
                 use_lvalue(*e.val, ut);
@@ -1858,8 +1846,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             )
         }
     } val_uses = {
-        ::std::vector<ValUse>(fcn.named_variables.size()),
-        ::std::vector<ValUse>(fcn.temporaries.size())
+        ::std::vector<ValUse>(fcn.locals.size())
         };
     visit_mir_lvalues(state, fcn, [&](const auto& lv, auto ut){ val_uses.use_lvalue(lv, ut); return false; });
 
@@ -1886,19 +1873,10 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     continue ;
                 const auto& e = stmt.as_Assign();
                 // > Of a temporary from with a RValue::Use
-                if( const auto* de = e.dst.opt_Temporary() )
+                if( const auto* de = e.dst.opt_Local() )
                 {
-                    const auto& vu = val_uses.tmp_uses[de->idx];
-                    DEBUG(e.dst << " - VU " << e.dst << " R:" << vu.read << " W:" << vu.write);
-                    // TODO: Allow write many?
-                    // > Where the temporary is written once and read once
-                    if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
-                        continue ;
-                }
-                else if( const auto* de = e.dst.opt_Variable() )
-                {
-                    const auto& vu = val_uses.var_uses[*de];
-                    DEBUG(e.dst << " - VU " << e.dst << " R:" << vu.read << " W:" << vu.write);
+                    const auto& vu = val_uses.local_uses[*de];
+                    DEBUG(e.dst << " - VU " << e.dst << " R:" << vu.read << " W:" << vu.write << " B:" << vu.borrow);
                     // TODO: Allow write many?
                     // > Where the variable is written once and read once
                     if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
@@ -1915,7 +1893,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     const auto* srcp = &e.src.as_Use();
                     while( srcp->is_Field() )
                         srcp = &*srcp->as_Field().val;
-                    if( !( srcp->is_Temporary() || srcp->is_Variable() || srcp->is_Argument() ) )
+                    if( !srcp->is_Local() )
                         continue ;
 
                     if( replacements.find(*srcp) != replacements.end() )
@@ -2030,6 +2008,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             }   // for(stmt : block.statements)
         }
 
+        // Apply replacements within replacements
         for(;;)
         {
             unsigned int inner_replaced_count = 0;
@@ -2131,9 +2110,9 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 if( it->as_Assign().src.tag() == ::MIR::RValue::TAGDEAD )
                     continue ;
                 auto& to_replace_lval = it->as_Assign().dst;
-                if( const auto* e = to_replace_lval.opt_Temporary() ) {
-                    const auto& vu = val_uses.tmp_uses[e->idx];
-                    if( !( vu.read == 1 && vu.write == 1 ) )
+                if( const auto* e = to_replace_lval.opt_Local() ) {
+                    const auto& vu = val_uses.local_uses[*e];
+                    if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
                         continue ;
                 }
                 else {
@@ -2201,10 +2180,9 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             {
                 // TODO: What if the destination located here is a 1:1 and its usage is listed to be replaced by the return value.
                 auto& e = block.terminator.as_Call();
-                // TODO: Support variables too?
-                if( !e.ret_val.is_Temporary() )
+                if( !e.ret_val.is_Local() )
                     continue ;
-                const auto& vu = val_uses.tmp_uses[e.ret_val.as_Temporary().idx];
+                const auto& vu = val_uses.local_uses[e.ret_val.as_Local()];
                 if( !( vu.read == 1 && vu.write == 1 && vu.borrow == 0 ) )
                     continue ;
 
@@ -2261,17 +2239,10 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     TU_MATCH_DEF( ::MIR::LValue, (se->dst), (de),
                     (
                         ),
-                    (Variable,
-                        const auto& vu = val_uses.var_uses[de];
+                    (Local,
+                        const auto& vu = val_uses.local_uses[de];
                         if( vu.write == 1 && vu.read == 0 && vu.borrow == 0 ) {
                             DEBUG(se->dst << " only written, removing write");
-                            it = block.statements.erase(it)-1;
-                        }
-                        ),
-                    (Temporary,
-                        const auto& vu = val_uses.tmp_uses[de.idx];
-                        if( vu.write == 1 && vu.read == 0 && vu.borrow == 0 ) {
-                            DEBUG(se->dst << " only written, removing write with " << se->src);
                             it = block.statements.erase(it)-1;
                         }
                         )
@@ -2355,8 +2326,7 @@ bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Funct
 // --------------------------------------------------------------------
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
-    ::std::vector<bool> used_temps( fcn.temporaries.size() );
-    ::std::vector<bool> used_vars( fcn.named_variables.size() );
+    ::std::vector<bool> used_locals( fcn.locals.size() );
     ::std::vector<bool> used_dfs( fcn.drop_flags.size() );
     ::std::vector<bool> visited( fcn.blocks.size() );
 
@@ -2364,10 +2334,8 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         visited[bb] = true;
 
         auto assigned_lval = [&](const ::MIR::LValue& lv) {
-            if(const auto* le = lv.opt_Temporary() )
-                used_temps[le->idx] = true;
-            if(const auto* le = lv.opt_Variable() )
-                used_vars[*le] = true;
+            if(const auto* le = lv.opt_Local() )
+                used_locals[*le] = true;
             };
 
         for(const auto& stmt : block.statements)
@@ -2404,42 +2372,28 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
     {
         block_rewrite_table.push_back( visited[i] ? j ++ : ~0u );
     }
-    ::std::vector<unsigned int> temp_rewrite_table;
-    unsigned int n_temp = fcn.temporaries.size();
-    for(unsigned int i = 0, j = 0; i < n_temp; i ++)
+    ::std::vector<unsigned int> local_rewrite_table;
+    unsigned int n_locals = fcn.locals.size();
+    for(unsigned int i = 0, j = 0; i < n_locals; i ++)
     {
-        if( !used_temps[i] )
+        if( !used_locals[i] )
         {
-            fcn.temporaries.erase(fcn.temporaries.begin() + j);
+            fcn.locals.erase(fcn.locals.begin() + j);
         }
         else {
-            DEBUG("tmp$" << i << " => tmp$" << j);
+            DEBUG("_" << i << " => _" << j);
         }
-        temp_rewrite_table.push_back( used_temps[i] ? j ++ : ~0u );
+        local_rewrite_table.push_back( used_locals[i] ? j ++ : ~0u );
     }
-    DEBUG("Deleted Temporaries:" << FMT_CB(ss,
-                for(auto run : runs(used_temps))
-                    if( !used_temps[run.first] )
+    DEBUG("Deleted Locals:" << FMT_CB(ss,
+                for(auto run : runs(used_locals))
+                    if( !used_locals[run.first] )
                     {
                         ss << " " << run.first;
                         if(run.second != run.first)
                             ss << "-" << run.second;
                     }
                 ));
-    ::std::vector<unsigned int> var_rewrite_table;
-    unsigned int n_var = fcn.named_variables.size();
-    for(unsigned int i = 0, j = 0; i < n_var; i ++)
-    {
-        if( !used_vars[i] )
-        {
-            DEBUG("GC Variable(" << i << ")");
-            fcn.named_variables.erase(fcn.named_variables.begin() + j);
-        }
-        else {
-            DEBUG("var$" << i << " => var$" << j);
-        }
-        var_rewrite_table.push_back( used_vars[i] ? j ++ : ~0u );
-    }
     ::std::vector<unsigned int> df_rewrite_table;
     unsigned int n_df = fcn.drop_flags.size();
     for(unsigned int i = 0, j = 0; i < n_df; i ++)
@@ -2464,17 +2418,11 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         else
         {
             auto lvalue_cb = [&](auto& lv, auto ) {
-                if(auto* e = lv.opt_Temporary() ) {
-                    MIR_ASSERT(state, e->idx < temp_rewrite_table.size(), "Temporary out of range - " << lv);
-                    // If the table entry for this temporary is !0, it wasn't marked as used
-                    MIR_ASSERT(state, temp_rewrite_table.at(e->idx) != ~0u, "LValue " << lv << " incorrectly marked as unused");
-                    e->idx = temp_rewrite_table.at(e->idx);
-                }
-                if(auto* e = lv.opt_Variable() ) {
-                    MIR_ASSERT(state, *e < var_rewrite_table.size(), "Variable out of range - " << lv);
+                if(auto* e = lv.opt_Local() ) {
+                    MIR_ASSERT(state, *e < local_rewrite_table.size(), "Variable out of range - " << lv);
                     // If the table entry for this variable is !0, it wasn't marked as used
-                    MIR_ASSERT(state, var_rewrite_table.at(*e) != ~0u, "LValue " << lv << " incorrectly marked as unused");
-                    *e = var_rewrite_table.at(*e);
+                    MIR_ASSERT(state, local_rewrite_table.at(*e) != ~0u, "LValue " << lv << " incorrectly marked as unused");
+                    *e = local_rewrite_table.at(*e);
                 }
                 return false;
                 };
@@ -2520,28 +2468,18 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 }
                 else if( auto* se = stmt.opt_ScopeEnd() )
                 {
-                    for(auto it = se->vars.begin(); it != se->vars.end(); )
+                    for(auto it = se->slots.begin(); it != se->slots.end(); )
                     {
-                        if( var_rewrite_table.at(*it) == ~0u ) {
-                            it = se->vars.erase(it);
+                        if( local_rewrite_table.at(*it) == ~0u ) {
+                            it = se->slots.erase(it);
                         }
                         else {
-                            *it = var_rewrite_table.at(*it);
-                            ++ it;
-                        }
-                    }
-                    for(auto it = se->tmps.begin(); it != se->tmps.end(); )
-                    {
-                        if( temp_rewrite_table.at(*it) == ~0u ) {
-                            it = se->tmps.erase(it);
-                        }
-                        else {
-                            *it = temp_rewrite_table.at(*it);
+                            *it = local_rewrite_table.at(*it);
                             ++ it;
                         }
                     }
 
-                    if( se->vars.empty() && se->tmps.empty() ) {
+                    if( se->slots.empty() ) {
                         DEBUG(state << "Delete ScopeEnd (now empty)");
                         to_remove_statements[stmt_idx] = true;
                         continue ;

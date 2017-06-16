@@ -13,10 +13,9 @@ namespace {
     ::MIR::LValue monomorph_LValue(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::LValue& tpl)
     {
         TU_MATCHA( (tpl), (e),
-        (Variable,  return e; ),
-        (Temporary, return e; ),
-        (Argument,  return e; ),
         (Return, return e; ),
+        (Argument,  return e; ),
+        (Local,  return e; ),
         (Static,
             return params.monomorph(resolve, e);
             ),
@@ -120,17 +119,11 @@ namespace {
     ::MIR::Function output;
 
     // 1. Monomorphise locals and temporaries
-    output.named_variables.reserve( tpl->named_variables.size() );
-    for(const auto& var : tpl->named_variables)
+    output.locals.reserve( tpl->locals.size() );
+    for(const auto& var : tpl->locals)
     {
-        DEBUG("- var" << output.named_variables.size());
-        output.named_variables.push_back( params.monomorph(resolve, var) );
-    }
-    output.temporaries.reserve( tpl->temporaries.size() );
-    for(const auto& ty : tpl->temporaries)
-    {
-        DEBUG("- tmp" << output.temporaries.size());
-        output.temporaries.push_back( params.monomorph(resolve, ty) );
+        DEBUG("- _" << output.locals.size());
+        output.locals.push_back( params.monomorph(resolve, var) );
     }
     output.drop_flags = tpl->drop_flags;
 

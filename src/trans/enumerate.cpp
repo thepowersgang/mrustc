@@ -623,9 +623,7 @@ void Trans_Enumerate_Types(EnumState& state)
             if( fcn.m_code.m_mir )
             {
                 const auto& mir = *fcn.m_code.m_mir;
-                for(const auto& ty : mir.named_variables)
-                    tv.visit_type(monomorph(ty));
-                for(const auto& ty : mir.temporaries)
+                for(const auto& ty : mir.locals)
                     tv.visit_type(monomorph(ty));
 
                 // TODO: Find all LValue::Deref instances and get the result type
@@ -646,19 +644,19 @@ void Trans_Enumerate_Types(EnumState& state)
                                 };
                             // Recurse, if Deref get the type and add it to the visitor
                             TU_MATCHA( (lv), (e),
-                            (Variable,
+                            (Return,
                                 if( tmp_ty_ptr ) {
-                                    return monomorph_outer(fcn.m_code.m_mir->named_variables[e]);
-                                }
-                                ),
-                            (Temporary,
-                                if( tmp_ty_ptr ) {
-                                    return monomorph_outer(fcn.m_code.m_mir->temporaries[e.idx]);
+                                    TODO(Span(), "Get return type for MIR type enumeration");
                                 }
                                 ),
                             (Argument,
                                 if( tmp_ty_ptr ) {
                                     return monomorph_outer(fcn.m_args[e.idx].second);
+                                }
+                                ),
+                            (Local,
+                                if( tmp_ty_ptr ) {
+                                    return monomorph_outer(fcn.m_code.m_mir->locals[e]);
                                 }
                                 ),
                             (Static,
@@ -680,11 +678,6 @@ void Trans_Enumerate_Types(EnumState& state)
                                         TODO(Span(), "LValue::Static - UfcsInherent - " << path);
                                         )
                                     )
-                                }
-                                ),
-                            (Return,
-                                if( tmp_ty_ptr ) {
-                                    TODO(Span(), "Get return type for MIR type enumeration");
                                 }
                                 ),
                             (Field,
@@ -1344,16 +1337,14 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
 void Trans_Enumerate_FillFrom_MIR_LValue(EnumState& state, const ::MIR::LValue& lv, const Trans_Params& pp)
 {
     TU_MATCHA( (lv), (e),
-    (Variable,
-        ),
-    (Temporary,
+    (Return,
         ),
     (Argument,
         ),
+    (Local,
+        ),
     (Static,
         Trans_Enumerate_FillFrom_Path(state, e, pp);
-        ),
-    (Return,
         ),
     (Field,
         Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val, pp);

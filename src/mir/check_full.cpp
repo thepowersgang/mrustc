@@ -67,10 +67,9 @@ namespace
 {
     struct ValueStates
     {
-        ::std::vector<State> vars;
-        ::std::vector<State> temporaries;
-        ::std::vector<State> arguments;
         State   return_value;
+        ::std::vector<State> args;
+        ::std::vector<State> locals;
         ::std::vector<bool> drop_flags;
 
         ::std::vector< ::std::vector<State> >   inner_states;
@@ -89,10 +88,9 @@ namespace
                 }
             };
             ValueStates rv;
-            rv.vars = H::clone_state_list(this->vars);
-            rv.temporaries = H::clone_state_list(this->temporaries);
-            rv.arguments = H::clone_state_list(this->arguments);
             rv.return_value = State(this->return_value);
+            rv.args = H::clone_state_list(this->args);
+            rv.locals = H::clone_state_list(this->locals);
             rv.drop_flags = this->drop_flags;
             rv.inner_states.reserve( this->inner_states.size() );
             for(const auto& isl : this->inner_states)
@@ -139,22 +137,18 @@ namespace
                 return false;
             if( ! H::equal(*this, return_value,  x, x.return_value) )
                 return false;
-            assert(vars.size() == x.vars.size());
-            for(size_t i = 0; i < vars.size(); i ++)
+
+            assert(args.size() == x.args.size());
+            for(size_t i = 0; i < args.size(); i ++)
             {
-                if( ! H::equal(*this, vars[i],  x, x.vars[i]) )
+                if( ! H::equal(*this, args[i],  x, x.args[i]) )
                     return false;
             }
-            assert(temporaries.size() == x.temporaries.size());
-            for(size_t i = 0; i < temporaries.size(); i ++)
+
+            assert(locals.size() == x.locals.size());
+            for(size_t i = 0; i < locals.size(); i ++)
             {
-                if( ! H::equal(*this, temporaries[i],  x, x.temporaries[i]) )
-                    return false;
-            }
-            assert(arguments.size() == x.arguments.size());
-            for(size_t i = 0; i < arguments.size(); i ++)
-            {
-                if( ! H::equal(*this, arguments[i],  x, x.arguments[i]) )
+                if( ! H::equal(*this, locals[i],  x, x.locals[i]) )
                     return false;
             }
             return true;
@@ -397,13 +391,11 @@ namespace
             Marker  m;
             m.used.resize(this->inner_states.size(), false);
 
-            for(const auto& s : this->vars)
-                m.mark_from_state(*this, s);
-            for(const auto& s : this->temporaries)
-                m.mark_from_state(*this, s);
-            for(const auto& s : this->arguments)
-                m.mark_from_state(*this, s);
             m.mark_from_state(*this, this->return_value);
+            for(const auto& s : this->args)
+                m.mark_from_state(*this, s);
+            for(const auto& s : this->locals)
+                m.mark_from_state(*this, s);
         }
     private:
         ::std::vector<State>& allocate_composite_int(State& out_state)
@@ -455,21 +447,18 @@ namespace
         const State& get_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv) const
         {
             TU_MATCHA( (lv), (e),
-            (Variable,
-                return vars.at(e);
-                ),
-            (Temporary,
-                return temporaries.at(e.idx);
+            (Return,
+                return return_value;
                 ),
             (Argument,
-                return arguments.at(e.idx);
+                return args.at(e.idx);
+                ),
+            (Local,
+                return locals.at(e);
                 ),
             (Static,
                 static State    state_of_static(true);
                 return state_of_static;
-                ),
-            (Return,
-                return return_value;
                 ),
             (Field,
                 const auto& vs = get_lvalue_state(mir_res, *e.val);
@@ -520,7 +509,7 @@ namespace
             )
             throw "";
         }
-        
+
         void clear_state(const ::MIR::TypeResolve& mir_res, State& s) {
             if(s.is_composite()) {
                 auto& sub_states = this->get_composite(mir_res, s);
@@ -529,32 +518,27 @@ namespace
                 sub_states.clear();
             }
         }
-        
+
         void set_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv, State new_vs)
         {
             TRACE_FUNCTION_F(lv << " = " << StateFmt(*this, new_vs) << " (from " << StateFmt(*this, get_lvalue_state(mir_res, lv)) << ")");
             TU_MATCHA( (lv), (e),
-            (Variable,
-                auto& slot = vars.at(e);
-                this->clear_state(mir_res, slot);
-                slot = mv$(new_vs);
-                ),
-            (Temporary,
-                auto& slot = temporaries.at(e.idx);
-                this->clear_state(mir_res, slot);
-                slot = mv$(new_vs);
+            (Return,
+                this->clear_state(mir_res, return_value);
+                return_value = mv$(new_vs);
                 ),
             (Argument,
-                auto& slot = arguments.at(e.idx);
+                auto& slot = args.at(e.idx);
+                this->clear_state(mir_res, slot);
+                slot = mv$(new_vs);
+                ),
+            (Local,
+                auto& slot = locals.at(e);
                 this->clear_state(mir_res, slot);
                 slot = mv$(new_vs);
                 ),
             (Static,
                 // Ignore.
-                ),
-            (Return,
-                this->clear_state(mir_res, return_value);
-                return_value = mv$(new_vs);
                 ),
             (Field,
                 const auto& cur_vs = get_lvalue_state(mir_res, *e.val);
@@ -736,12 +720,10 @@ namespace std {
 
         os << "ValueStates(path=[" << x.bb_path << "]";
         print_val(",rv", x.return_value);
-        for(unsigned int i = 0; i < x.arguments.size(); i ++)
-            print_val(FMT_CB(ss, ss << ",a" << i;), x.arguments[i]);
-        for(unsigned int i = 0; i < x.vars.size(); i ++)
-            print_val(FMT_CB(ss, ss << ",_" << i;), x.vars[i]);
-        for(unsigned int i = 0; i < x.temporaries.size(); i ++)
-            print_val(FMT_CB(ss, ss << ",t" << i;), x.temporaries[i]);
+        for(unsigned int i = 0; i < x.args.size(); i ++)
+            print_val(FMT_CB(ss, ss << ",a" << i;), x.args[i]);
+        for(unsigned int i = 0; i < x.locals.size(); i ++)
+            print_val(FMT_CB(ss, ss << ",_" << i;), x.locals[i]);
         for(unsigned int i = 0; i < x.drop_flags.size(); i++)
             if(x.drop_flags[i])
                 os << ",df" << i;
@@ -774,9 +756,8 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
             return rv;
         }
     };
-    state.arguments = H::make_list(mir_res.m_args.size(), true);
-    state.vars = H::make_list(fcn.named_variables.size(), false);
-    state.temporaries = H::make_list(fcn.temporaries.size(), false);
+    state.args = H::make_list(mir_res.m_args.size(), true);
+    state.locals = H::make_list(fcn.locals.size(), false);
     state.drop_flags = fcn.drop_flags;
 
     ::std::vector< ::std::pair<unsigned int, ValueStates> > todo_queue;
@@ -789,46 +770,25 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
 
         // Mask off any values which aren't valid in the first statement of this block
         {
-            for(unsigned i = 0; i < state.vars.size(); i ++)
+            for(unsigned i = 0; i < state.locals.size(); i ++)
             {
                 /*if( !variables_copy[i] )
                 {
                     // Not Copy, don't apply masking
                 }
-                else*/ if( ! state.vars[i].is_valid() )
+                else*/ if( ! state.locals[i].is_valid() )
                 {
                     // Already invalid
                 }
-                else if( lifetimes.var_valid(i, cur_block, 0) )
+                else if( lifetimes.slot_valid(i, cur_block, 0) )
                 {
                     // Expected to be valid in this block, leave as-is
                 }
                 else
                 {
                     // Copy value not used at/after this block, mask to false
-                    DEBUG("BB" << cur_block << " - var$" << i << " - Outside lifetime, discard");
-                    state.vars[i] = State(false);
-                }
-            }
-            for(unsigned i = 0; i < state.temporaries.size(); i ++)
-            {
-                /*if( !variables_copy[i] )
-                {
-                    // Not Copy, don't apply masking
-                }
-                else*/ if( ! state.temporaries[i].is_valid() )
-                {
-                    // Already invalid
-                }
-                else if( lifetimes.tmp_valid(i, cur_block, 0) )
-                {
-                    // Expected to be valid in this block, leave as-is
-                }
-                else
-                {
-                    // Copy value not used at/after this block, mask to false
-                    DEBUG("BB" << cur_block << " - tmp$" << i << " - Outside lifetime, discard");
-                    state.temporaries[i] = State(false);
+                    DEBUG("BB" << cur_block << " - _" << i << " - Outside lifetime, discard");
+                    state.locals[i] = State(false);
                 }
             }
         }
@@ -1007,11 +967,11 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                         }
                     }
                     };
-                for(unsigned i = 0; i < state.arguments.size(); i ++ ) {
-                    ensure_dropped(state.arguments[i], ::MIR::LValue::make_Argument({i}));
+                for(unsigned i = 0; i < state.locals.size(); i ++ ) {
+                    ensure_dropped(state.locals[i], ::MIR::LValue::make_Local(i));
                 }
-                for(unsigned i = 0; i < state.vars.size(); i ++ ) {
-                    ensure_dropped(state.vars[i], ::MIR::LValue::make_Variable(i));
+                for(unsigned i = 0; i < state.args.size(); i ++ ) {
+                    ensure_dropped(state.args[i], ::MIR::LValue::make_Argument({i}));
                 }
             }
             ),

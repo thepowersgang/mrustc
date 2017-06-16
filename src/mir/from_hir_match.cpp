@@ -219,7 +219,7 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             {
                 if( pat.m_binding.m_type != ::HIR::PatternBinding::Type::Move)
                     return false;
-                return !builder.lvalue_is_copy( sp, ::MIR::LValue::make_Variable( pat.m_binding.m_slot) );
+                return !builder.lvalue_is_copy( sp, builder.get_variable(sp, pat.m_binding.m_slot) );
             }
             TU_MATCHA( (pat.m_data), (e),
             (Any,

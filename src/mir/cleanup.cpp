@@ -32,8 +32,8 @@ struct MirMutator
 
     ::MIR::LValue new_temporary(::HIR::TypeRef ty)
     {
-        auto rv = ::MIR::LValue::make_Temporary({ static_cast<unsigned int>(m_fcn.temporaries.size()) });
-        m_fcn.temporaries.push_back( mv$(ty) );
+        auto rv = ::MIR::LValue::make_Local( static_cast<unsigned int>(m_fcn.locals.size()) );
+        m_fcn.locals.push_back( mv$(ty) );
         return rv;
     }
 
@@ -831,15 +831,13 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
 void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::LValue& lval)
 {
     TU_MATCHA( (lval), (le),
-    (Variable,
-        ),
-    (Temporary,
+    (Return,
         ),
     (Argument,
         ),
-    (Static,
+    (Local,
         ),
-    (Return,
+    (Static,
         ),
     (Field,
         MIR_Cleanup_LValue(state, mutator,  *le.val);

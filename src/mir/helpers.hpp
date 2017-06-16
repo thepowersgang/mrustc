@@ -158,14 +158,10 @@ public:
 struct ValueLifetimes
 {
     ::std::vector<size_t>   m_block_offsets;
-    ::std::vector<ValueLifetime> m_temporaries;
-    ::std::vector<ValueLifetime> m_variables;
+    ::std::vector<ValueLifetime> m_slots;
 
-    bool var_valid(unsigned var_idx,  unsigned bb_idx, unsigned stmt_idx) const {
-        return m_variables.at(var_idx).valid_at( m_block_offsets[bb_idx] + stmt_idx );
-    }
-    bool tmp_valid(unsigned tmp_idx,  unsigned bb_idx, unsigned stmt_idx) const {
-        return m_temporaries.at(tmp_idx).valid_at( m_block_offsets[bb_idx] + stmt_idx );
+    bool slot_valid(unsigned idx,  unsigned bb_idx, unsigned stmt_idx) const {
+        return m_slots.at(idx).valid_at( m_block_offsets[bb_idx] + stmt_idx );
     }
 };
 

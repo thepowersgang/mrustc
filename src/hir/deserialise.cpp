@@ -338,11 +338,10 @@ namespace {
             switch(auto tag = m_in.read_tag())
             {
             #define _(x, ...)    case ::MIR::LValue::TAG_##x: return ::MIR::LValue::make_##x( __VA_ARGS__ );
-            _(Variable,  static_cast<unsigned int>(m_in.read_count()) )
-            _(Temporary, { static_cast<unsigned int>(m_in.read_count()) } )
-            _(Argument,  { static_cast<unsigned int>(m_in.read_count()) } )
-            _(Static,  deserialise_path() )
             _(Return, {})
+            _(Argument, { static_cast<unsigned int>(m_in.read_count()) } )
+            _(Local,   static_cast<unsigned int>(m_in.read_count()) )
+            _(Static,  deserialise_path() )
             _(Field, {
                 box$( deserialise_mir_lvalue() ),
                 static_cast<unsigned int>(m_in.read_count())
@@ -962,8 +961,8 @@ namespace {
 
         ::MIR::Function rv;
 
-        rv.named_variables = deserialise_vec< ::HIR::TypeRef>( );
-        rv.temporaries = deserialise_vec< ::HIR::TypeRef>( );
+        rv.locals = deserialise_vec< ::HIR::TypeRef>( );
+        //rv.local_names = deserialise_vec< ::std::string>( );
         rv.drop_flags = deserialise_vec<bool>();
         rv.blocks = deserialise_vec< ::MIR::BasicBlock>( );
 
@@ -1012,7 +1011,6 @@ namespace {
             }
         case 4:
             return ::MIR::Statement::make_ScopeEnd({
-                deserialise_vec<unsigned int>(),
                 deserialise_vec<unsigned int>()
                 });
         default:

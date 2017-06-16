@@ -457,8 +457,8 @@ namespace {
         void serialise(const ::MIR::Function& mir)
         {
             // Write out MIR.
-            serialise_vec( mir.named_variables );
-            serialise_vec( mir.temporaries );
+            serialise_vec( mir.locals );
+            //serialise_vec( mir.slot_names );
             serialise_vec( mir.drop_flags );
             serialise_vec( mir.blocks );
         }
@@ -498,8 +498,7 @@ namespace {
                 ),
             (ScopeEnd,
                 m_out.write_tag(4);
-                serialise_vec(e.vars);
-                serialise_vec(e.tmps);
+                serialise_vec(e.slots);
                 )
             )
         }
@@ -571,19 +570,16 @@ namespace {
             TRACE_FUNCTION_F("LValue = "<<lv);
             m_out.write_tag( static_cast<int>(lv.tag()) );
             TU_MATCHA( (lv), (e),
-            (Variable,
-                m_out.write_count(e);
-                ),
-            (Temporary,
-                m_out.write_count(e.idx);
+            (Return,
                 ),
             (Argument,
                 m_out.write_count(e.idx);
                 ),
+            (Local,
+                m_out.write_count(e);
+                ),
             (Static,
                 serialise_path(e);
-                ),
-            (Return,
                 ),
             (Field,
                 serialise(e.val);

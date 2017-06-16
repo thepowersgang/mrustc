@@ -292,48 +292,40 @@ namespace {
         ::MIR::TypeResolve  state { sp, resolve, name, ::HIR::TypeRef(), {}, fcn };
 
         ::HIR::Literal  retval;
-        ::std::vector< ::HIR::Literal>  locals;
-        ::std::vector< ::HIR::Literal>  temps;
-        locals.resize( fcn.named_variables.size() );
-        temps.resize( fcn.temporaries.size() );
+        ::std::vector< ::HIR::Literal>  locals( fcn.locals.size() );
 
         struct LocalState {
             typedef ::std::vector< ::HIR::Literal>  t_vec_lit;
             ::MIR::TypeResolve& state;
             ::HIR::Literal&  retval;
-            ::std::vector< ::HIR::Literal>&  locals;
-            ::std::vector< ::HIR::Literal>&  temps;
             ::std::vector< ::HIR::Literal>&  args;
+            ::std::vector< ::HIR::Literal>&  locals;
 
-            LocalState(::MIR::TypeResolve& state, ::HIR::Literal& retval, t_vec_lit& locals, t_vec_lit& temps, t_vec_lit& args):
+            LocalState(::MIR::TypeResolve& state, ::HIR::Literal& retval, t_vec_lit& args, t_vec_lit& locals):
                 state(state),
                 retval(retval),
-                locals(locals),
-                temps(temps),
-                args(args)
+                args(args),
+                locals(locals)
             {}
 
             ::HIR::Literal& get_lval(const ::MIR::LValue& lv)
             {
                 TU_MATCHA( (lv), (e),
-                (Variable,
+                (Return,
+                    return retval;
+                    ),
+                (Local,
                     if( e >= locals.size() )
                         MIR_BUG(state, "Local index out of range - " << e << " >= " << locals.size());
                     return locals[e];
                     ),
-                (Temporary,
-                    if( e.idx >= temps.size() )
-                        MIR_BUG(state, "Temp index out of range - " << e.idx << " >= " << temps.size());
-                    return temps[e.idx];
-                    ),
                 (Argument,
+                    if( e.idx >= args.size() )
+                        MIR_BUG(state, "Local index out of range - " << e.idx << " >= " << args.size());
                     return args[e.idx];
                     ),
                 (Static,
                     MIR_TODO(state, "LValue::Static - " << e);
-                    ),
-                (Return,
-                    return retval;
                     ),
                 (Field,
                     auto& val = get_lval(*e.val);
@@ -362,7 +354,7 @@ namespace {
                 throw "";
             }
         };
-        LocalState  local_state( state, retval, locals, temps, args );
+        LocalState  local_state( state, retval, args, locals );
 
         auto get_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal& { return local_state.get_lval(lv); };
         auto read_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal {

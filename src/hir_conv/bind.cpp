@@ -480,13 +480,11 @@ namespace {
                     static void visit_lvalue(Visitor& upper_visitor, ::MIR::LValue& lv)
                     {
                         TU_MATCHA( (lv), (e),
-                        (Variable,
+                        (Return,
                             ),
-                        (Temporary,
+                        (Local,
                             ),
                         (Argument,
-                            ),
-                        (Return,
                             ),
                         (Static,
                             upper_visitor.visit_path(e, ::HIR::Visitor::PathContext::VALUE);
@@ -529,9 +527,7 @@ namespace {
                         )
                     }
                 };
-                for(auto& ty : expr.m_mir->named_variables)
-                    this->visit_type(ty);
-                for(auto& ty : expr.m_mir->temporaries)
+                for(auto& ty : expr.m_mir->locals)
                     this->visit_type(ty);
                 for(auto& block : expr.m_mir->blocks)
                 {

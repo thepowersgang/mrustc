@@ -1026,31 +1026,24 @@ namespace {
         ::MIR::TypeResolve  state { sp, resolve, FMT_CB(,), exp, {}, fcn };
 
         ::HIR::Literal  retval;
-        ::std::vector< ::HIR::Literal>  locals;
-        ::std::vector< ::HIR::Literal>  temps;
-        locals.resize( fcn.named_variables.size() );
-        temps.resize( fcn.temporaries.size() );
+        ::std::vector< ::HIR::Literal>  locals( fcn.locals.size() );
 
         auto get_lval = [&](const ::MIR::LValue& lv) -> ::HIR::Literal& {
             TU_MATCHA( (lv), (e),
-            (Variable,
+            (Return,
+                return retval;
+                ),
+            (Argument,
+                ASSERT_BUG(sp, e.idx < args.size(), "Argument index out of range - " << e.idx << " >= " << args.size());
+                return args[e.idx];
+                ),
+            (Local,
                 if( e >= locals.size() )
                     BUG(sp, "Local index out of range - " << e << " >= " << locals.size());
                 return locals[e];
                 ),
-            (Temporary,
-                if( e.idx >= temps.size() )
-                    BUG(sp, "Temp index out of range - " << e.idx << " >= " << temps.size());
-                return temps[e.idx];
-                ),
-            (Argument,
-                return args[e.idx];
-                ),
             (Static,
                 TODO(sp, "LValue::Static");
-                ),
-            (Return,
-                return retval;
                 ),
             (Field,
                 TODO(sp, "LValue::Field");

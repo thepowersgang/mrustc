@@ -79,20 +79,16 @@ extern ::std::ostream& operator<<(::std::ostream& os, const VarState& x);
 struct SplitArm {
     bool    has_early_terminated = false;
     bool    always_early_terminated = false;    // Populated on completion
-    ::std::map<unsigned int, VarState>  var_states;
-    ::std::map<unsigned int, VarState>  tmp_states;
+    ::std::map<unsigned int, VarState>  states;
 };
 struct SplitEnd {
-    ::std::map<unsigned int, VarState>  var_states;
-    ::std::map<unsigned int, VarState>  tmp_states;
+    ::std::map<unsigned int, VarState>  states;
 };
 
-TAGGED_UNION(ScopeType, Variables,
-    (Variables, struct {
-        ::std::vector<unsigned int> vars;   // List of owned variables
-        }),
-    (Temporaries, struct {
-        ::std::vector<unsigned int> temporaries;    // Controlled temporaries
+TAGGED_UNION(ScopeType, Owning,
+    (Owning, struct {
+        bool is_temporary;
+        ::std::vector<unsigned int> slots;  // List of owned variables
         }),
     (Split, struct {
         bool end_state_valid = false;
@@ -101,8 +97,7 @@ TAGGED_UNION(ScopeType, Variables,
         }),
     (Loop, struct {
         // NOTE: This contains the original state for variables changed after `exit_state_valid` is true
-        ::std::map<unsigned int,VarState>    changed_vars;
-        ::std::map<unsigned int,VarState>    changed_tmps;
+        ::std::map<unsigned int,VarState>    changed_slots;
         bool exit_state_valid;
         SplitEnd    exit_state;
         })
@@ -134,11 +129,11 @@ class MirBuilder
     ::MIR::RValue   m_result;
     bool    m_result_valid;
 
-    // TODO: Extra information.
+    // TODO: Extra information (e.g. mutability)
     VarState    m_return_state;
     ::std::vector<VarState>   m_arg_states;
-    ::std::vector<VarState> m_variable_states;
-    ::std::vector<VarState> m_temporary_states;
+    ::std::vector<VarState>   m_slot_states;
+    size_t  m_first_temp_idx;
 
     struct ScopeDef
     {
@@ -177,6 +172,9 @@ public:
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 
     // - Values
+    ::MIR::LValue get_variable(const Span& sp, unsigned idx) const {
+        return ::MIR::LValue::make_Local( idx );
+    }
     ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty);
     ::MIR::LValue lvalue_or_temp(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::RValue val);
 
@@ -228,8 +226,8 @@ public:
     void mark_value_assigned(const Span& sp, const ::MIR::LValue& val);
 
     // Moves control of temporaries up to the specified scope (or to above it)
-    void raise_variables(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope, bool to_above=false);
-    void raise_variables(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope, bool to_above=false);
+    void raise_temporaries(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope, bool to_above=false);
+    void raise_temporaries(const Span& sp, const ::MIR::RValue& rval, const ScopeHandle& scope, bool to_above=false);
 
     void set_cur_block(unsigned int new_block);
     ::MIR::BasicBlockId pause_cur_block();
@@ -269,13 +267,8 @@ public:
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
     void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
-    const VarState& get_slot_state(const Span& sp, VarGroup ty, unsigned int idx, unsigned int skip_count=0) const;
-    VarState& get_slot_state_mut(const Span& sp, VarGroup ty, unsigned int idx);
-
-    const VarState& get_variable_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
-    VarState& get_variable_state_mut(const Span& sp, unsigned int idx);
-    const VarState& get_temp_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
-    VarState& get_temp_state_mut(const Span& sp, unsigned int idx);
+    const VarState& get_slot_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
+    VarState& get_slot_state_mut(const Span& sp, unsigned int idx);
 
     const VarState& get_val_state(const Span& sp, const ::MIR::LValue& lv, unsigned int skip_count=0);
     VarState& get_val_state_mut(const Span& sp, const ::MIR::LValue& lv);
