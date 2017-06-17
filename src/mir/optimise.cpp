@@ -552,8 +552,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     // - Find unused blocks, then delete and rewrite all references.
     MIR_Optimise_GarbageCollect(state, fcn);
 
-    //MIR_Validate(resolve, path, fcn, args, ret_type);
     //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
+
+    MIR_SortBlocks(resolve, path, fcn);
 }
 
 // --------------------------------------------------------------------
@@ -2282,6 +2283,18 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 state.set_cur_stmt(&block - &fcn.blocks.front(), it - block.statements.begin());
                 if( const auto& se = it->opt_Assign() )
                 {
+                    // Remove No-op assignments (assignment from a lvalue to itself)
+                    if( const auto* src_e = se->src.opt_Use() )
+                    {
+                        if( se->dst == *src_e )
+                        {
+                            DEBUG(state << se->dst << " set to itself, removing write");
+                            it = block.statements.erase(it)-1;
+                            continue ;
+                        }
+                    }
+
+                    // Remove assignments of locals that are never read
                     TU_MATCH_DEF( ::MIR::LValue, (se->dst), (de),
                     (
                         ),
@@ -2599,6 +2612,108 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
     // TODO: Detect if any optimisations happened, and return true in that case
     return false;
 }
+
+
+void MIR_SortBlocks(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn)
+{
+    ::std::vector<bool> visited( fcn.blocks.size() );
+    ::std::vector<::std::pair<unsigned,unsigned>> depths( fcn.blocks.size() );
+
+    struct Todo {
+        size_t  bb_idx;
+        unsigned    branch_count;
+        unsigned    level;
+    };
+    unsigned int branches = 0;
+    ::std::vector<Todo> todo;
+    todo.push_back( Todo { 0, 0, 0 } );
+
+    while(!todo.empty())
+    {
+        auto info = todo.back();
+        todo.pop_back();
+        if( visited[info.bb_idx] )
+            continue ;
+
+        visited[info.bb_idx] = true;
+        depths[info.bb_idx] = ::std::make_pair( info.branch_count, info.level );
+        const auto& bb = fcn.blocks[info.bb_idx];
+
+        TU_MATCHA( (bb.terminator), (te),
+        (Incomplete,
+            ),
+        (Return,
+            ),
+        (Diverge,
+            ),
+        (Goto,
+            todo.push_back(Todo { te, info.branch_count, info.level + 1 });
+            ),
+        (Panic,
+            todo.push_back(Todo { te.dst, info.branch_count, info.level + 1 });
+            ),
+        (If,
+            todo.push_back(Todo { te.bb0, ++branches, info.level + 1 });
+            todo.push_back(Todo { te.bb1, ++branches, info.level + 1 });
+            ),
+        (Switch,
+            for(auto dst : te.targets)
+                todo.push_back(Todo { dst, ++branches, info.level + 1 });
+            ),
+        (Call,
+            todo.push_back(Todo { te.ret_block, info.branch_count, info.level + 1 });
+            todo.push_back(Todo { te.panic_block, ++branches, info.level + 1 });
+            )
+        )
+    }
+
+    // Sort a list of block indexes by `depths`
+    ::std::vector<size_t>   idxes;
+    idxes.reserve(fcn.blocks.size());
+    for(size_t i = 0; i < fcn.blocks.size(); i++)
+        idxes.push_back(i);
+    ::std::sort( idxes.begin(), idxes.end(), [&](auto a, auto b){
+            return depths.at(a) < depths.at(b);
+            });
+
+    DEBUG(idxes);
+
+    decltype(fcn.blocks)    new_block_list;
+    new_block_list.reserve( fcn.blocks.size() );
+    for(auto idx : idxes)
+    {
+        auto fix_bb_idx = [&](auto idx){ return ::std::find(idxes.begin(), idxes.end(), idx) - idxes.begin(); };
+        new_block_list.push_back( mv$(fcn.blocks[idx]) );
+        TU_MATCHA( (new_block_list.back().terminator), (te),
+        (Incomplete,
+            ),
+        (Return,
+            ),
+        (Diverge,
+            ),
+        (Goto,
+            te = fix_bb_idx(te);
+            ),
+        (Panic,
+            te.dst = fix_bb_idx(te.dst);
+            ),
+        (If,
+            te.bb0 = fix_bb_idx(te.bb0);
+            te.bb1 = fix_bb_idx(te.bb1);
+            ),
+        (Switch,
+            for(auto& tgt : te.targets)
+                tgt = fix_bb_idx(tgt);
+            ),
+        (Call,
+            te.ret_block = fix_bb_idx(te.ret_block);
+            te.panic_block = fix_bb_idx(te.panic_block);
+            )
+        )
+    }
+    fcn.blocks = mv$(new_block_list);
+}
+
 
 void MIR_OptimiseCrate(::HIR::Crate& crate)
 {
