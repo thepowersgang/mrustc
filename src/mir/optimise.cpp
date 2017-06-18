@@ -2614,6 +2614,7 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
 }
 
 
+/// Sort basic blocks to approximate program flow (helps when reading MIR)
 void MIR_SortBlocks(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn)
 {
     ::std::vector<bool> visited( fcn.blocks.size() );
