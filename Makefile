@@ -750,10 +750,9 @@ DISABLED_TESTS += run-pass/type-sizes
 DISABLED_TESTS += run-pass/discrim-explicit-23030
 DISABLED_TESTS += run-pass/issue-13902
 # - BUG: Bad floats
-DISABLED_TESTS += run-pass/float-nan
-DISABLED_TESTS += run-pass/float_math
-DISABLED_TESTS += run-pass/floatlits
+DISABLED_TESTS += run-pass/float_math	# Missing intrinsic
 DISABLED_TESTS += run-pass/intrinsics-math
+DISABLED_TESTS += run-pass/issue-32805	# Possible f32 literal rounding isue
 # - BUG: MIR Generation
 DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to union field
 DISABLED_TESTS += run-pass/issue-4734	# Destructor on unused rvalue
@@ -779,7 +778,6 @@ DISABLED_TESTS += run-pass/deriving-copyclone
 # - BUG: Unknown
 DISABLED_TESTS += run-pass/process-spawn-with-unicode-params	# Bad path for process spawn
 DISABLED_TESTS += run-pass/u128	# u128 not very good, unknown where error is
-DISABLED_TESTS += run-pass/issue-32805	# Possible f32 literal rounding isue
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass) $(call DEF_RUST_TESTS,run-pass/union))
