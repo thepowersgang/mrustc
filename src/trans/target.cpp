@@ -7,9 +7,52 @@
  */
 #include "target.hpp"
 #include <algorithm>
+#include "../expand/cfg.hpp"
 
 // TODO: Replace with target selection
 #define POINTER_SIZE_BYTES  8
+
+TargetSpec  g_target = {
+    "unix",
+    "linux",
+    "gnu",
+    CodegenMode::Gnu11,
+    TargetArch {
+        "x86_64",
+        64, false,
+        { true, false, true, true,  true }
+        }
+    };
+
+void Target_SetCfg()
+{
+    if(g_target.m_family == "unix") {
+        Cfg_SetFlag("unix");
+    }
+    else if( g_target.m_family == "windows") {
+        Cfg_SetFlag("windows");
+    }
+    Cfg_SetValue("target_family", g_target.m_family);
+
+    if( g_target.m_os_name == "linux" )
+    {
+        Cfg_SetFlag("linux");
+    }
+    Cfg_SetValue("target_env", g_target.m_env_name);
+
+    Cfg_SetValue("target_os", g_target.m_os_name);
+    Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
+    Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
+    Cfg_SetValue("target_arch", g_target.m_arch.m_name);
+    Cfg_SetValueCb("target_has_atomic", [&](const ::std::string& s) {
+        if(s == "8")    return g_target.m_arch.m_atomics.u8;    // Has an atomic byte
+        if(s == "ptr")  return g_target.m_arch.m_atomics.ptr;   // Has an atomic pointer-sized value
+        return false;
+        });
+    Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
+        return false;
+        });
+}
 
 bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
@@ -55,8 +98,8 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& 
             return true;
         case ::HIR::CoreType::Usize:
         case ::HIR::CoreType::Isize:
-            out_size = POINTER_SIZE_BYTES;
-            out_align = POINTER_SIZE_BYTES;
+            out_size = g_target.m_arch.m_pointer_bits / 8;
+            out_align = g_target.m_arch.m_pointer_bits / 8;
             return true;
         case ::HIR::CoreType::F32:
             out_size = 4;
@@ -104,6 +147,11 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& 
             size_t  size, align;
             if( !Target_GetSizeAndAlignOf(sp, t, size,align) )
                 return false;
+            if( out_size % align != 0 )
+            {
+                out_size += align;
+                out_size %= align;
+            }
             out_size += size;
             out_align = ::std::max(out_align, align);
         }
@@ -116,6 +164,9 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& 
         ),
     (Function,
         // Pointer size
+        out_size = g_target.m_arch.m_pointer_bits / 8;
+        out_align = g_target.m_arch.m_pointer_bits / 8;
+        return true;
         ),
     (Closure,
         // TODO.

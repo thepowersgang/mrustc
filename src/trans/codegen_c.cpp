@@ -26,6 +26,11 @@ namespace {
             TraitObject,
         };
 
+        enum class Compiler {
+            Gcc,
+            Msvc
+        };
+
         static Span sp;
 
         const ::HIR::Crate& m_crate;
@@ -36,6 +41,8 @@ namespace {
 
         ::std::ofstream m_of;
         const ::MIR::TypeResolve* m_mir_res;
+
+        Compiler    m_compiler = Compiler::Gcc;
 
         ::std::map<::HIR::GenericPath, ::std::vector<unsigned>> m_enum_repr_cache;
 
@@ -55,10 +62,14 @@ namespace {
                 << "#include <stddef.h>\n"
                 << "#include <stdint.h>\n"
                 << "#include <stdbool.h>\n"
-                << "#include <stdatomic.h>\n"   // atomic_*
                 << "#include <stdlib.h>\n"  // abort
                 << "#include <string.h>\n"  // mem*
                 << "#include <math.h>\n"  // round, ...
+                ;
+            m_of
+                << "#include <stdatomic.h>\n"   // atomic_*
+                ;
+            m_of
                 << "typedef uint32_t CHAR;\n"
                 << "typedef struct { } tUNIT;\n"
                 << "typedef struct { } tBANG;\n"
@@ -80,12 +91,20 @@ namespace {
                 << "static inline TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
                 << "static inline size_t max(size_t a, size_t b) { return a < b ? b : a; }\n"
+                << "static inline void noop_drop(void *p) {}\n"
+                << "\n"
+                ;
+            // 64-bit bit ops
+            m_of
                 << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
                 << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
                 << "}\n"
                 << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
                 << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
                 << "}\n"
+                ;
+            // u128/i128 ops
+            m_of
                 << "static inline unsigned __int128 __builtin_bswap128(unsigned __int128 v) {\n"
                 << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
                 << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
@@ -97,8 +116,6 @@ namespace {
                 << "static inline unsigned __int128 __builtin_ctz128(unsigned __int128 v) {\n"
                 << "\treturn ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
                 << "}\n"
-                << "\n"
-                << "static inline void noop_drop(void *p) {}\n"
                 << "\n"
                 ;
         }
@@ -134,59 +151,113 @@ namespace {
 
             // Execute $CC with the required libraries
             ::std::vector<::std::string>    tmp;
+            auto cache_str = [&](::std::string s){ tmp.push_back(::std::move(s)); return tmp.back().c_str(); };
             ::std::vector<const char*>  args;
-            args.push_back( getenv("CC") ? getenv("CC") : "gcc" );
-            args.push_back("-ffunction-sections");
-            args.push_back("-pthread");
-            switch(opt.opt_level)
+            switch( m_compiler )
             {
-            case 0: break;
-            case 1:
-                args.push_back("-O1");
-                break;
-            case 2:
-                args.push_back("-O2");
-                break;
-            }
-            if( opt.emit_debug_info )
-            {
-                args.push_back("-g");
-            }
-            args.push_back("-o");
-            args.push_back(m_outfile_path.c_str());
-            args.push_back(m_outfile_path_c.c_str());
-            if( is_executable )
-            {
-                for( const auto& crate : m_crate.m_ext_crates )
+            case Compiler::Gcc:
+                args.push_back( getenv("CC") ? getenv("CC") : "gcc" );
+                args.push_back("-ffunction-sections");
+                args.push_back("-pthread");
+                switch(opt.opt_level)
                 {
-                    tmp.push_back(crate.second.m_filename + ".o");
-                    args.push_back(tmp.back().c_str());
+                case 0: break;
+                case 1:
+                    args.push_back("-O1");
+                    break;
+                case 2:
+                    args.push_back("-O2");
+                    break;
                 }
-                for(const auto& path : opt.library_search_dirs )
+                if( opt.emit_debug_info )
                 {
-                    args.push_back("-L"); args.push_back(path.c_str());
+                    args.push_back("-g");
                 }
-                for(const auto& lib : m_crate.m_ext_libs) {
-                    ASSERT_BUG(Span(), lib.name != "", "");
-                    args.push_back("-l"); args.push_back(lib.name.c_str());
-                }
-                for( const auto& crate : m_crate.m_ext_crates )
+                args.push_back("-o");
+                args.push_back(m_outfile_path.c_str());
+                args.push_back(m_outfile_path_c.c_str());
+                if( is_executable )
                 {
-                    for(const auto& lib : crate.second.m_data->m_ext_libs) {
-                        ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
+                    for( const auto& crate : m_crate.m_ext_crates )
+                    {
+                        args.push_back(cache_str( crate.second.m_filename + ".o" ));
+                    }
+                    for(const auto& path : opt.library_search_dirs )
+                    {
+                        args.push_back("-L"); args.push_back(path.c_str());
+                    }
+                    for(const auto& lib : m_crate.m_ext_libs) {
+                        ASSERT_BUG(Span(), lib.name != "", "");
                         args.push_back("-l"); args.push_back(lib.name.c_str());
                     }
+                    for( const auto& crate : m_crate.m_ext_crates )
+                    {
+                        for(const auto& lib : crate.second.m_data->m_ext_libs) {
+                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
+                            args.push_back("-l"); args.push_back(lib.name.c_str());
+                        }
+                    }
+                    for(const auto& path : opt.libraries )
+                    {
+                        args.push_back("-l"); args.push_back(path.c_str());
+                    }
+                    args.push_back("-z"); args.push_back("muldefs");
+                    args.push_back("-Wl,--gc-sections");
                 }
-                for(const auto& path : opt.libraries )
+                else
                 {
-                    args.push_back("-l"); args.push_back(path.c_str());
+                    args.push_back("-c");
                 }
-                args.push_back("-z"); args.push_back("muldefs");
-                args.push_back("-Wl,--gc-sections");
-            }
-            else
-            {
-                args.push_back("-c");
+                break;
+            case Compiler::Msvc:
+                args.push_back( "cl.exe" );
+                args.push_back(m_outfile_path_c.c_str());
+                switch(opt.opt_level)
+                {
+                case 0: break;
+                case 1:
+                    args.push_back("/O1");
+                    break;
+                case 2:
+                    args.push_back("/O2");
+                    break;
+                }
+                if(is_executable)
+                {
+                    for( const auto& crate : m_crate.m_ext_crates )
+                    {
+                        args.push_back(cache_str( crate.second.m_filename + ".o" ));
+                    }
+                    // Command-line specified linker search directories
+                    for(const auto& path : opt.library_search_dirs )
+                    {
+                        args.push_back("/link");
+                        args.push_back("/LIBPATH");
+                        args.push_back(path.c_str());
+                    }
+                    // Crate-specified libraries
+                    for(const auto& lib : m_crate.m_ext_libs) {
+                        ASSERT_BUG(Span(), lib.name != "", "");
+                        args.push_back(lib.name.c_str());
+                    }
+                    for( const auto& crate : m_crate.m_ext_crates )
+                    {
+                        for(const auto& lib : crate.second.m_data->m_ext_libs) {
+                            ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
+                            args.push_back(lib.name.c_str());
+                        }
+                    }
+                    for(const auto& path : opt.libraries )
+                    {
+                        args.push_back(path.c_str());
+                    }
+                }
+                else
+                {
+                    args.push_back("/c");
+                    args.push_back(cache_str( FMT("/Fo" + m_outfile_path) ));
+                }
+                break;
             }
 
             ::std::stringstream cmd_ss;
@@ -1316,6 +1387,7 @@ namespace {
             {
                 TRACE_FUNCTION_F(p << " bb" << i);
 
+                // HACK: Ignore any blocks that only contain `diverge;`
                 if( code->blocks[i].statements.size() == 0 && code->blocks[i].terminator.is_Diverge() ) {
                     DEBUG("- Diverge only, omitting");
                     m_of << "bb" << i << ": _Unwind_Resume(); // Diverge\n";
@@ -1327,454 +1399,7 @@ namespace {
                 for(const auto& stmt : code->blocks[i].statements)
                 {
                     mir_res.set_cur_stmt(i, (&stmt - &code->blocks[i].statements.front()));
-                    switch( stmt.tag() )
-                    {
-                    case ::MIR::Statement::TAGDEAD: throw "";
-                    case ::MIR::Statement::TAG_ScopeEnd:
-                        m_of << "// " << stmt << "\n";
-                        break;
-                    case ::MIR::Statement::TAG_SetDropFlag: {
-                        const auto& e = stmt.as_SetDropFlag();
-                        m_of << "\tdf" << e.idx << " = ";
-                        if( e.other == ~0u )
-                            m_of << e.new_val;
-                        else
-                            m_of << (e.new_val ? "!" : "") << "df" << e.other;
-                        m_of << ";\n";
-                        break; }
-                    case ::MIR::Statement::TAG_Drop: {
-                        const auto& e = stmt.as_Drop();
-                        ::HIR::TypeRef  tmp;
-                        const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
-
-                        if( e.flag_idx != ~0u )
-                            m_of << "\tif( df" << e.flag_idx << " ) {\n";
-
-                        switch( e.kind )
-                        {
-                        case ::MIR::eDropKind::SHALLOW:
-                            // Shallow drops are only valid on owned_box
-                            if( const auto* ity = m_resolve.is_type_owned_box(ty) )
-                            {
-                                // Emit a call to box_free for the type
-                                ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
-                                // TODO: This is specific to the official liballoc's owned_box
-                                m_of << "\t" << Trans_Mangle(box_free) << "("; emit_lvalue(e.slot); m_of << "._0._0._0);\n";
-                            }
-                            else
-                            {
-                                MIR_BUG(mir_res, "Shallow drop on non-Box - " << ty);
-                            }
-                            break;
-                        case ::MIR::eDropKind::DEEP:
-                            emit_destructor_call(e.slot, ty, false);
-                            break;
-                        }
-                        if( e.flag_idx != ~0u )
-                            m_of << "\t}\n";
-                        break; }
-                    case ::MIR::Statement::TAG_Asm: {
-                        const auto& e = stmt.as_Asm();
-
-                        struct H {
-                            static bool has_flag(const ::std::vector<::std::string>& flags, const char* des) {
-                                return ::std::find_if(flags.begin(), flags.end(), [des](const auto&x){return x==des;}) != flags.end();
-                            }
-                            static const char* convert_reg(const char* r) {
-                                if( ::std::strcmp(r, "{eax}") == 0 || ::std::strcmp(r, "{rax}") == 0 ) {
-                                    return "a";
-                                }
-                                else {
-                                    return r;
-                                }
-                            }
-                        };
-                        bool is_volatile = H::has_flag(e.flags, "volatile");
-                        bool is_intel = H::has_flag(e.flags, "intel");
-
-                        m_of << "\t__asm__ ";
-                        if(is_volatile) m_of << "__volatile__";
-                        // TODO: Convert format string?
-                        // TODO: Use a C-specific escaper here.
-                        m_of << "(\"" << (is_intel ? ".syntax intel; " : "") << FmtEscaped(e.tpl) << (is_intel ? ".syntax att; " : "") << "\"";
-                        m_of << ": ";
-                        for(unsigned int i = 0; i < e.outputs.size(); i ++ )
-                        {
-                            const auto& v = e.outputs[i];
-                            if( i != 0 )    m_of << ", ";
-                            m_of << "\"";
-                            switch(v.first[0])
-                            {
-                            case '=':   m_of << "=";    break;
-                            case '+':   m_of << "+";    break;
-                            default:    MIR_TODO(mir_res, "Handle asm! output leader '" << v.first[0] << "'");
-                            }
-                            m_of << H::convert_reg(v.first.c_str()+1);
-                            m_of << "\"("; emit_lvalue(v.second); m_of << ")";
-                        }
-                        m_of << ": ";
-                        for(unsigned int i = 0; i < e.inputs.size(); i ++ )
-                        {
-                            const auto& v = e.inputs[i];
-                            if( i != 0 )    m_of << ", ";
-                            m_of << "\"" << v.first << "\"("; emit_lvalue(v.second); m_of << ")";
-                        }
-                        m_of << ": ";
-                        for(unsigned int i = 0; i < e.clobbers.size(); i ++ )
-                        {
-                            if( i != 0 )    m_of << ", ";
-                            m_of << "\"" << e.clobbers[i] << "\"";
-                        }
-                        m_of << ");\n";
-                        break; }
-                    case ::MIR::Statement::TAG_Assign: {
-                        const auto& e = stmt.as_Assign();
-                        DEBUG("- " << e.dst << " = " << e.src);
-                        m_of << "\t";
-                        TU_MATCHA( (e.src), (ve),
-                        (Use,
-                            ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, ve);
-                            if( ty == ::HIR::TypeRef::new_diverge() ) {
-                                m_of << "abort()";
-                                break;
-                            }
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            emit_lvalue(ve);
-                            ),
-                        (Constant,
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            emit_constant(ve, &e.dst);
-                            ),
-                        (SizedArray,
-                            if( ve.count == 0 ) {
-                            }
-                            else if( ve.count == 1 ) {
-                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val);
-                            }
-                            else if( ve.count == 2 ) {
-                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val);
-                            }
-                            else if( ve.count == 3 ) {
-                                emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val); m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA[2] = "; emit_param(ve.val);
-                            }
-                            else {
-                                m_of << "for(unsigned int i = 0; i < " << ve.count << "; i ++)\n";
-                                m_of << "\t\t"; emit_lvalue(e.dst); m_of << ".DATA[i] = "; emit_param(ve.val);
-                            }
-                            ),
-                        (Borrow,
-                            ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
-                            bool special = false;
-                            // If the inner value has type [T] or str, create DST based on inner pointer and existing metadata
-                            TU_IFLET(::MIR::LValue, ve.val, Deref, le,
-                                if( metadata_type(ty) != MetadataType::None ) {
-                                    emit_lvalue(e.dst);
-                                    m_of << " = ";
-                                    emit_lvalue(*le.val);
-                                    special = true;
-                                }
-                            )
-                            // Magic for taking a &-ptr to unsized field of a struct.
-                            // - Needs to get metadata from bottom-level pointer.
-                            else TU_IFLET(::MIR::LValue, ve.val, Field, le,
-                                if( metadata_type(ty) != MetadataType::None ) {
-                                    const ::MIR::LValue* base_val = &*le.val;
-                                    while(base_val->is_Field())
-                                        base_val = &*base_val->as_Field().val;
-                                    MIR_ASSERT(mir_res, base_val->is_Deref(), "DST access must be via a deref");
-                                    const ::MIR::LValue& base_ptr = *base_val->as_Deref().val;
-
-                                    // Construct the new DST
-                                    emit_lvalue(e.dst); m_of << ".META = "; emit_lvalue(base_ptr); m_of << ".META;\n\t";
-                                    emit_lvalue(e.dst); m_of << ".PTR = &"; emit_lvalue(ve.val);
-                                    special = true;
-                                }
-                            )
-                            if( !special )
-                            {
-                                emit_lvalue(e.dst);
-                                m_of << " = ";
-                                m_of << "& "; emit_lvalue(ve.val);
-                            }
-                            ),
-                        (Cast,
-                            if( m_resolve.is_type_phantom_data(ve.type) ) {
-                                m_of << "/* PhandomData cast */\n";
-                                continue ;
-                            }
-
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            m_of << "("; emit_ctype(ve.type); m_of << ")";
-                            // TODO: If the source is an unsized borrow, then extract the pointer
-                            bool special = false;
-                            ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
-                            // If the destination is a thin pointer
-                            if( ve.type.m_data.is_Pointer() && !is_dst( *ve.type.m_data.as_Pointer().inner ) )
-                            {
-                                // NOTE: Checks the result of the deref
-                                if( (ty.m_data.is_Borrow() && is_dst(*ty.m_data.as_Borrow().inner))
-                                 || (ty.m_data.is_Pointer() && is_dst(*ty.m_data.as_Pointer().inner))
-                                    )
-                                {
-                                    emit_lvalue(ve.val);
-                                    m_of << ".PTR";
-                                    special = true;
-                                }
-                            }
-                            if( ve.type.m_data.is_Primitive() && ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum() )
-                            {
-                                emit_lvalue(ve.val);
-                                m_of << ".TAG";
-                                special = true;
-                            }
-                            if( !special )
-                            {
-                                emit_lvalue(ve.val);
-                            }
-                            ),
-                        (BinOp,
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            ::HIR::TypeRef  tmp;
-                            const auto& ty = ve.val_l.is_LValue() ? mir_res.get_lvalue_type(tmp, ve.val_l.as_LValue()) : tmp = mir_res.get_const_type(ve.val_l.as_Constant());
-                            if( ty.m_data.is_Borrow() ) {
-                                m_of << "(slice_cmp("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
-                                switch(ve.op)
-                                {
-                                case ::MIR::eBinOp::EQ: m_of << " == 0";    break;
-                                case ::MIR::eBinOp::NE: m_of << " != 0";    break;
-                                case ::MIR::eBinOp::GT: m_of << " >  0";    break;
-                                case ::MIR::eBinOp::GE: m_of << " >= 0";    break;
-                                case ::MIR::eBinOp::LT: m_of << " <  0";    break;
-                                case ::MIR::eBinOp::LE: m_of << " <= 0";    break;
-                                default:
-                                    MIR_BUG(mir_res, "Unknown comparison of a &-ptr - " << e.src << " with " << ty);
-                                }
-                                m_of << ")";
-                                break;
-                            }
-                            else if( const auto* te = ty.m_data.opt_Pointer() ) {
-                                if( metadata_type(*te->inner) != MetadataType::None )
-                                {
-                                    switch(ve.op)
-                                    {
-                                    case ::MIR::eBinOp::EQ:
-                                        emit_param(ve.val_l); m_of << ".PTR == "; emit_param(ve.val_r); m_of << ".PTR && ";
-                                        emit_param(ve.val_l); m_of << ".META == "; emit_param(ve.val_r); m_of << ".META";
-                                        break;
-                                    case ::MIR::eBinOp::NE:
-                                        emit_param(ve.val_l); m_of << ".PTR != "; emit_param(ve.val_r); m_of << ".PTR || ";
-                                        emit_param(ve.val_l); m_of << ".META != "; emit_param(ve.val_r); m_of << ".META";
-                                        break;
-                                    default:
-                                        MIR_BUG(mir_res, "Unknown comparison of a *-ptr - " << e.src << " with " << ty);
-                                    }
-                                }
-                                else
-                                {
-                                    emit_param(ve.val_l);
-                                    switch(ve.op)
-                                    {
-                                    case ::MIR::eBinOp::EQ: m_of << " == "; break;
-                                    case ::MIR::eBinOp::NE: m_of << " != "; break;
-                                    case ::MIR::eBinOp::GT: m_of << " > " ; break;
-                                    case ::MIR::eBinOp::GE: m_of << " >= "; break;
-                                    case ::MIR::eBinOp::LT: m_of << " < " ; break;
-                                    case ::MIR::eBinOp::LE: m_of << " <= "; break;
-                                    default:
-                                        MIR_BUG(mir_res, "Unknown comparison of a *-ptr - " << e.src << " with " << ty);
-                                    }
-                                    emit_param(ve.val_r);
-                                }
-                                break;
-                            }
-                            else if( ve.op == ::MIR::eBinOp::MOD && (ty == ::HIR::CoreType::F32 || ty == ::HIR::CoreType::F64) ) {
-                                if( ty == ::HIR::CoreType::F32 )
-                                    m_of << "remainderf";
-                                else
-                                    m_of << "remainder";
-                                m_of << "("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
-                                break;
-                            }
-                            else {
-                            }
-
-                            emit_param(ve.val_l);
-                            switch(ve.op)
-                            {
-                            case ::MIR::eBinOp::ADD:   m_of << " + ";    break;
-                            case ::MIR::eBinOp::SUB:   m_of << " - ";    break;
-                            case ::MIR::eBinOp::MUL:   m_of << " * ";    break;
-                            case ::MIR::eBinOp::DIV:   m_of << " / ";    break;
-                            case ::MIR::eBinOp::MOD:   m_of << " % ";    break;
-
-                            case ::MIR::eBinOp::BIT_OR:    m_of << " | ";    break;
-                            case ::MIR::eBinOp::BIT_AND:   m_of << " & ";    break;
-                            case ::MIR::eBinOp::BIT_XOR:   m_of << " ^ ";    break;
-                            case ::MIR::eBinOp::BIT_SHR:   m_of << " >> ";   break;
-                            case ::MIR::eBinOp::BIT_SHL:   m_of << " << ";   break;
-                            case ::MIR::eBinOp::EQ:    m_of << " == ";   break;
-                            case ::MIR::eBinOp::NE:    m_of << " != ";   break;
-                            case ::MIR::eBinOp::GT:    m_of << " > " ;   break;
-                            case ::MIR::eBinOp::GE:    m_of << " >= ";   break;
-                            case ::MIR::eBinOp::LT:    m_of << " < " ;   break;
-                            case ::MIR::eBinOp::LE:    m_of << " <= ";   break;
-
-                            case ::MIR::eBinOp::ADD_OV:
-                            case ::MIR::eBinOp::SUB_OV:
-                            case ::MIR::eBinOp::MUL_OV:
-                            case ::MIR::eBinOp::DIV_OV:
-                                MIR_TODO(mir_res, "Overflow");
-                                break;
-                            }
-                            emit_param(ve.val_r);
-                            ),
-                        (UniOp,
-                            ::HIR::TypeRef  tmp;
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            switch(ve.op)
-                            {
-                            case ::MIR::eUniOp::NEG:    m_of << "-";    break;
-                            case ::MIR::eUniOp::INV:
-                                if( mir_res.get_lvalue_type(tmp, e.dst) == ::HIR::CoreType::Bool )
-                                    m_of << "!";
-                                else
-                                    m_of << "~";
-                                break;
-                            }
-                            emit_lvalue(ve.val);
-                            ),
-                        (DstMeta,
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            emit_lvalue(ve.val);
-                            m_of << ".META";
-                            ),
-                        (DstPtr,
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            emit_lvalue(ve.val);
-                            m_of << ".PTR";
-                            ),
-                        (MakeDst,
-                            emit_lvalue(e.dst);
-                            m_of << ".PTR = ";
-                            emit_param(ve.ptr_val);
-                            m_of << ";\n\t";
-                            emit_lvalue(e.dst);
-                            m_of << ".META = ";
-                            emit_param(ve.meta_val);
-                            ),
-                        (Tuple,
-                            for(unsigned int j = 0; j < ve.vals.size(); j ++) {
-                                if( j != 0 )    m_of << ";\n\t";
-                                emit_lvalue(e.dst);
-                                m_of << "._" << j << " = ";
-                                emit_param(ve.vals[j]);
-                            }
-                            ),
-                        (Array,
-                            for(unsigned int j = 0; j < ve.vals.size(); j ++) {
-                                if( j != 0 )    m_of << ";\n\t";
-                                emit_lvalue(e.dst); m_of << ".DATA[" << j << "] = ";
-                                emit_param(ve.vals[j]);
-                            }
-                            ),
-                        (Variant,
-                            const auto& tyi = m_crate.get_typeitem_by_path(sp, ve.path.m_path);
-                            if( tyi.is_Union() )
-                            {
-                                emit_lvalue(e.dst);
-                                m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
-                            }
-                            else if( const auto* enm_p = tyi.opt_Enum() )
-                            {
-                                MIR_TODO(mir_res, "Construct enum with RValue::Variant");
-                                if( enm_p->is_value() )
-                                {
-                                    emit_lvalue(e.dst); m_of << ".TAG = " << enm_p->get_value(ve.index) << "";
-                                }
-                                else
-                                {
-                                    emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
-                                    emit_lvalue(e.dst); m_of << ".DATA";
-                                    m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
-                                }
-                            }
-                            else
-                            {
-                                BUG(mir_res.sp, "Unexpected type in Variant");
-                            }
-                            ),
-                        (Struct,
-                            if(ve.variant_idx != ~0u)
-                            {
-                                ::HIR::TypeRef  tmp;
-                                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
-                                const auto* enm_p = ty.m_data.as_Path().binding.as_Enum();
-
-                                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                                if( it != m_enum_repr_cache.end() )
-                                {
-                                    if( ve.variant_idx == 0 ) {
-                                        // TODO: Use nonzero_path
-                                        m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
-                                    }
-                                    else if( ve.variant_idx == 1 ) {
-                                        emit_lvalue(e.dst);
-                                        m_of << "._0 = ";
-                                        emit_param(ve.vals[0]);
-                                    }
-                                    else {
-                                    }
-                                    break;
-                                }
-                                else if( enm_p->is_value() )
-                                {
-                                    emit_lvalue(e.dst);
-                                    m_of << ".TAG = " << enm_p->get_value(ve.variant_idx);
-                                    assert(ve.vals.size() == 0);
-                                }
-                                else
-                                {
-                                    emit_lvalue(e.dst);
-                                    m_of << ".TAG = " << ve.variant_idx;
-                                }
-                                if(ve.vals.size() > 0)
-                                    m_of << ";\n\t";
-                            }
-
-                            for(unsigned int j = 0; j < ve.vals.size(); j ++)
-                            {
-                                // HACK: Don't emit assignment of PhantomData
-                                ::HIR::TypeRef  tmp;
-                                if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j].as_LValue())) )
-                                    continue ;
-
-                                if( j != 0 )    m_of << ";\n\t";
-                                emit_lvalue(e.dst);
-                                if(ve.variant_idx != ~0u)
-                                    m_of << ".DATA.var_" << ve.variant_idx;
-                                m_of << "._" << j << " = ";
-                                emit_param(ve.vals[j]);
-                            }
-                            )
-                        )
-                        m_of << ";";
-                        m_of << "\t// " << e.dst << " = " << e.src;
-                        m_of << "\n";
-                        break; }
-                    }
+                    emit_statement(mir_res, stmt);
                 }
 
                 mir_res.set_cur_stmt_term(i);
@@ -1911,6 +1536,457 @@ namespace {
             m_of << "}\n";
             m_of.flush();
             m_mir_res = nullptr;
+        }
+        void emit_statement(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt)
+        {
+            switch( stmt.tag() )
+            {
+            case ::MIR::Statement::TAGDEAD: throw "";
+            case ::MIR::Statement::TAG_ScopeEnd:
+                m_of << "// " << stmt << "\n";
+                break;
+            case ::MIR::Statement::TAG_SetDropFlag: {
+                const auto& e = stmt.as_SetDropFlag();
+                m_of << "\tdf" << e.idx << " = ";
+                if( e.other == ~0u )
+                    m_of << e.new_val;
+                else
+                    m_of << (e.new_val ? "!" : "") << "df" << e.other;
+                m_of << ";\n";
+                break; }
+            case ::MIR::Statement::TAG_Drop: {
+                const auto& e = stmt.as_Drop();
+                ::HIR::TypeRef  tmp;
+                const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
+
+                if( e.flag_idx != ~0u )
+                    m_of << "\tif( df" << e.flag_idx << " ) {\n";
+
+                switch( e.kind )
+                {
+                case ::MIR::eDropKind::SHALLOW:
+                    // Shallow drops are only valid on owned_box
+                    if( const auto* ity = m_resolve.is_type_owned_box(ty) )
+                    {
+                        // Emit a call to box_free for the type
+                        ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
+                        // TODO: This is specific to the official liballoc's owned_box
+                        m_of << "\t" << Trans_Mangle(box_free) << "("; emit_lvalue(e.slot); m_of << "._0._0._0);\n";
+                    }
+                    else
+                    {
+                        MIR_BUG(mir_res, "Shallow drop on non-Box - " << ty);
+                    }
+                    break;
+                case ::MIR::eDropKind::DEEP:
+                    emit_destructor_call(e.slot, ty, false);
+                    break;
+                }
+                if( e.flag_idx != ~0u )
+                    m_of << "\t}\n";
+                break; }
+            case ::MIR::Statement::TAG_Asm: {
+                const auto& e = stmt.as_Asm();
+
+                struct H {
+                    static bool has_flag(const ::std::vector<::std::string>& flags, const char* des) {
+                        return ::std::find_if(flags.begin(), flags.end(), [des](const auto&x){return x==des;}) != flags.end();
+                    }
+                    static const char* convert_reg(const char* r) {
+                        if( ::std::strcmp(r, "{eax}") == 0 || ::std::strcmp(r, "{rax}") == 0 ) {
+                            return "a";
+                        }
+                        else {
+                            return r;
+                        }
+                    }
+                };
+                bool is_volatile = H::has_flag(e.flags, "volatile");
+                bool is_intel = H::has_flag(e.flags, "intel");
+
+                m_of << "\t__asm__ ";
+                if(is_volatile) m_of << "__volatile__";
+                // TODO: Convert format string?
+                // TODO: Use a C-specific escaper here.
+                m_of << "(\"" << (is_intel ? ".syntax intel; " : "") << FmtEscaped(e.tpl) << (is_intel ? ".syntax att; " : "") << "\"";
+                m_of << ": ";
+                for(unsigned int i = 0; i < e.outputs.size(); i ++ )
+                {
+                    const auto& v = e.outputs[i];
+                    if( i != 0 )    m_of << ", ";
+                    m_of << "\"";
+                    switch(v.first[0])
+                    {
+                    case '=':   m_of << "=";    break;
+                    case '+':   m_of << "+";    break;
+                    default:    MIR_TODO(mir_res, "Handle asm! output leader '" << v.first[0] << "'");
+                    }
+                    m_of << H::convert_reg(v.first.c_str()+1);
+                    m_of << "\"("; emit_lvalue(v.second); m_of << ")";
+                }
+                m_of << ": ";
+                for(unsigned int i = 0; i < e.inputs.size(); i ++ )
+                {
+                    const auto& v = e.inputs[i];
+                    if( i != 0 )    m_of << ", ";
+                    m_of << "\"" << v.first << "\"("; emit_lvalue(v.second); m_of << ")";
+                }
+                m_of << ": ";
+                for(unsigned int i = 0; i < e.clobbers.size(); i ++ )
+                {
+                    if( i != 0 )    m_of << ", ";
+                    m_of << "\"" << e.clobbers[i] << "\"";
+                }
+                m_of << ");\n";
+                break; }
+            case ::MIR::Statement::TAG_Assign: {
+                const auto& e = stmt.as_Assign();
+                DEBUG("- " << e.dst << " = " << e.src);
+                m_of << "\t";
+                TU_MATCHA( (e.src), (ve),
+                (Use,
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, ve);
+                    if( ty == ::HIR::TypeRef::new_diverge() ) {
+                        m_of << "abort()";
+                        break;
+                    }
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    emit_lvalue(ve);
+                    ),
+                (Constant,
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    emit_constant(ve, &e.dst);
+                    ),
+                (SizedArray,
+                    if( ve.count == 0 ) {
+                    }
+                    else if( ve.count == 1 ) {
+                        emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val);
+                    }
+                    else if( ve.count == 2 ) {
+                        emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n\t";
+                        emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val);
+                    }
+                    else if( ve.count == 3 ) {
+                        emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n\t";
+                        emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val); m_of << ";\n\t";
+                        emit_lvalue(e.dst); m_of << ".DATA[2] = "; emit_param(ve.val);
+                    }
+                    else {
+                        m_of << "for(unsigned int i = 0; i < " << ve.count << "; i ++)\n";
+                        m_of << "\t\t"; emit_lvalue(e.dst); m_of << ".DATA[i] = "; emit_param(ve.val);
+                    }
+                    ),
+                (Borrow,
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
+                    bool special = false;
+                    // If the inner value has type [T] or str, create DST based on inner pointer and existing metadata
+                    TU_IFLET(::MIR::LValue, ve.val, Deref, le,
+                        if( metadata_type(ty) != MetadataType::None ) {
+                            emit_lvalue(e.dst);
+                            m_of << " = ";
+                            emit_lvalue(*le.val);
+                            special = true;
+                        }
+                    )
+                    // Magic for taking a &-ptr to unsized field of a struct.
+                    // - Needs to get metadata from bottom-level pointer.
+                    else TU_IFLET(::MIR::LValue, ve.val, Field, le,
+                        if( metadata_type(ty) != MetadataType::None ) {
+                            const ::MIR::LValue* base_val = &*le.val;
+                            while(base_val->is_Field())
+                                base_val = &*base_val->as_Field().val;
+                            MIR_ASSERT(mir_res, base_val->is_Deref(), "DST access must be via a deref");
+                            const ::MIR::LValue& base_ptr = *base_val->as_Deref().val;
+
+                            // Construct the new DST
+                            emit_lvalue(e.dst); m_of << ".META = "; emit_lvalue(base_ptr); m_of << ".META;\n\t";
+                            emit_lvalue(e.dst); m_of << ".PTR = &"; emit_lvalue(ve.val);
+                            special = true;
+                        }
+                    )
+                    if( !special )
+                    {
+                        emit_lvalue(e.dst);
+                        m_of << " = ";
+                        m_of << "& "; emit_lvalue(ve.val);
+                    }
+                    ),
+                (Cast,
+                    if( m_resolve.is_type_phantom_data(ve.type) ) {
+                        m_of << "/* PhandomData cast */\n";
+                        return ;
+                    }
+
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    m_of << "("; emit_ctype(ve.type); m_of << ")";
+                    // TODO: If the source is an unsized borrow, then extract the pointer
+                    bool special = false;
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
+                    // If the destination is a thin pointer
+                    if( ve.type.m_data.is_Pointer() && !is_dst( *ve.type.m_data.as_Pointer().inner ) )
+                    {
+                        // NOTE: Checks the result of the deref
+                        if( (ty.m_data.is_Borrow() && is_dst(*ty.m_data.as_Borrow().inner))
+                         || (ty.m_data.is_Pointer() && is_dst(*ty.m_data.as_Pointer().inner))
+                            )
+                        {
+                            emit_lvalue(ve.val);
+                            m_of << ".PTR";
+                            special = true;
+                        }
+                    }
+                    if( ve.type.m_data.is_Primitive() && ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum() )
+                    {
+                        emit_lvalue(ve.val);
+                        m_of << ".TAG";
+                        special = true;
+                    }
+                    if( !special )
+                    {
+                        emit_lvalue(ve.val);
+                    }
+                    ),
+                (BinOp,
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = ve.val_l.is_LValue() ? mir_res.get_lvalue_type(tmp, ve.val_l.as_LValue()) : tmp = mir_res.get_const_type(ve.val_l.as_Constant());
+                    if( ty.m_data.is_Borrow() ) {
+                        m_of << "(slice_cmp("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
+                        switch(ve.op)
+                        {
+                        case ::MIR::eBinOp::EQ: m_of << " == 0";    break;
+                        case ::MIR::eBinOp::NE: m_of << " != 0";    break;
+                        case ::MIR::eBinOp::GT: m_of << " >  0";    break;
+                        case ::MIR::eBinOp::GE: m_of << " >= 0";    break;
+                        case ::MIR::eBinOp::LT: m_of << " <  0";    break;
+                        case ::MIR::eBinOp::LE: m_of << " <= 0";    break;
+                        default:
+                            MIR_BUG(mir_res, "Unknown comparison of a &-ptr - " << e.src << " with " << ty);
+                        }
+                        m_of << ")";
+                        break;
+                    }
+                    else if( const auto* te = ty.m_data.opt_Pointer() ) {
+                        if( metadata_type(*te->inner) != MetadataType::None )
+                        {
+                            switch(ve.op)
+                            {
+                            case ::MIR::eBinOp::EQ:
+                                emit_param(ve.val_l); m_of << ".PTR == "; emit_param(ve.val_r); m_of << ".PTR && ";
+                                emit_param(ve.val_l); m_of << ".META == "; emit_param(ve.val_r); m_of << ".META";
+                                break;
+                            case ::MIR::eBinOp::NE:
+                                emit_param(ve.val_l); m_of << ".PTR != "; emit_param(ve.val_r); m_of << ".PTR || ";
+                                emit_param(ve.val_l); m_of << ".META != "; emit_param(ve.val_r); m_of << ".META";
+                                break;
+                            default:
+                                MIR_BUG(mir_res, "Unknown comparison of a *-ptr - " << e.src << " with " << ty);
+                            }
+                        }
+                        else
+                        {
+                            emit_param(ve.val_l);
+                            switch(ve.op)
+                            {
+                            case ::MIR::eBinOp::EQ: m_of << " == "; break;
+                            case ::MIR::eBinOp::NE: m_of << " != "; break;
+                            case ::MIR::eBinOp::GT: m_of << " > " ; break;
+                            case ::MIR::eBinOp::GE: m_of << " >= "; break;
+                            case ::MIR::eBinOp::LT: m_of << " < " ; break;
+                            case ::MIR::eBinOp::LE: m_of << " <= "; break;
+                            default:
+                                MIR_BUG(mir_res, "Unknown comparison of a *-ptr - " << e.src << " with " << ty);
+                            }
+                            emit_param(ve.val_r);
+                        }
+                        break;
+                    }
+                    else if( ve.op == ::MIR::eBinOp::MOD && (ty == ::HIR::CoreType::F32 || ty == ::HIR::CoreType::F64) ) {
+                        if( ty == ::HIR::CoreType::F32 )
+                            m_of << "remainderf";
+                        else
+                            m_of << "remainder";
+                        m_of << "("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
+                        break;
+                    }
+                    else {
+                    }
+
+                    emit_param(ve.val_l);
+                    switch(ve.op)
+                    {
+                    case ::MIR::eBinOp::ADD:   m_of << " + ";    break;
+                    case ::MIR::eBinOp::SUB:   m_of << " - ";    break;
+                    case ::MIR::eBinOp::MUL:   m_of << " * ";    break;
+                    case ::MIR::eBinOp::DIV:   m_of << " / ";    break;
+                    case ::MIR::eBinOp::MOD:   m_of << " % ";    break;
+
+                    case ::MIR::eBinOp::BIT_OR:    m_of << " | ";    break;
+                    case ::MIR::eBinOp::BIT_AND:   m_of << " & ";    break;
+                    case ::MIR::eBinOp::BIT_XOR:   m_of << " ^ ";    break;
+                    case ::MIR::eBinOp::BIT_SHR:   m_of << " >> ";   break;
+                    case ::MIR::eBinOp::BIT_SHL:   m_of << " << ";   break;
+                    case ::MIR::eBinOp::EQ:    m_of << " == ";   break;
+                    case ::MIR::eBinOp::NE:    m_of << " != ";   break;
+                    case ::MIR::eBinOp::GT:    m_of << " > " ;   break;
+                    case ::MIR::eBinOp::GE:    m_of << " >= ";   break;
+                    case ::MIR::eBinOp::LT:    m_of << " < " ;   break;
+                    case ::MIR::eBinOp::LE:    m_of << " <= ";   break;
+
+                    case ::MIR::eBinOp::ADD_OV:
+                    case ::MIR::eBinOp::SUB_OV:
+                    case ::MIR::eBinOp::MUL_OV:
+                    case ::MIR::eBinOp::DIV_OV:
+                        MIR_TODO(mir_res, "Overflow");
+                        break;
+                    }
+                    emit_param(ve.val_r);
+                    ),
+                (UniOp,
+                    ::HIR::TypeRef  tmp;
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    switch(ve.op)
+                    {
+                    case ::MIR::eUniOp::NEG:    m_of << "-";    break;
+                    case ::MIR::eUniOp::INV:
+                        if( mir_res.get_lvalue_type(tmp, e.dst) == ::HIR::CoreType::Bool )
+                            m_of << "!";
+                        else
+                            m_of << "~";
+                        break;
+                    }
+                    emit_lvalue(ve.val);
+                    ),
+                (DstMeta,
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    emit_lvalue(ve.val);
+                    m_of << ".META";
+                    ),
+                (DstPtr,
+                    emit_lvalue(e.dst);
+                    m_of << " = ";
+                    emit_lvalue(ve.val);
+                    m_of << ".PTR";
+                    ),
+                (MakeDst,
+                    emit_lvalue(e.dst);
+                    m_of << ".PTR = ";
+                    emit_param(ve.ptr_val);
+                    m_of << ";\n\t";
+                    emit_lvalue(e.dst);
+                    m_of << ".META = ";
+                    emit_param(ve.meta_val);
+                    ),
+                (Tuple,
+                    for(unsigned int j = 0; j < ve.vals.size(); j ++) {
+                        if( j != 0 )    m_of << ";\n\t";
+                        emit_lvalue(e.dst);
+                        m_of << "._" << j << " = ";
+                        emit_param(ve.vals[j]);
+                    }
+                    ),
+                (Array,
+                    for(unsigned int j = 0; j < ve.vals.size(); j ++) {
+                        if( j != 0 )    m_of << ";\n\t";
+                        emit_lvalue(e.dst); m_of << ".DATA[" << j << "] = ";
+                        emit_param(ve.vals[j]);
+                    }
+                    ),
+                (Variant,
+                    const auto& tyi = m_crate.get_typeitem_by_path(sp, ve.path.m_path);
+                    if( tyi.is_Union() )
+                    {
+                        emit_lvalue(e.dst);
+                        m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                    }
+                    else if( const auto* enm_p = tyi.opt_Enum() )
+                    {
+                        MIR_TODO(mir_res, "Construct enum with RValue::Variant");
+                        if( enm_p->is_value() )
+                        {
+                            emit_lvalue(e.dst); m_of << ".TAG = " << enm_p->get_value(ve.index) << "";
+                        }
+                        else
+                        {
+                            emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
+                            emit_lvalue(e.dst); m_of << ".DATA";
+                            m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                        }
+                    }
+                    else
+                    {
+                        BUG(mir_res.sp, "Unexpected type in Variant");
+                    }
+                    ),
+                (Struct,
+                    if(ve.variant_idx != ~0u)
+                    {
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+                        const auto* enm_p = ty.m_data.as_Path().binding.as_Enum();
+
+                        auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
+                        if( it != m_enum_repr_cache.end() )
+                        {
+                            if( ve.variant_idx == 0 ) {
+                                // TODO: Use nonzero_path
+                                m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
+                            }
+                            else if( ve.variant_idx == 1 ) {
+                                emit_lvalue(e.dst);
+                                m_of << "._0 = ";
+                                emit_param(ve.vals[0]);
+                            }
+                            else {
+                            }
+                            break;
+                        }
+                        else if( enm_p->is_value() )
+                        {
+                            emit_lvalue(e.dst);
+                            m_of << ".TAG = " << enm_p->get_value(ve.variant_idx);
+                            assert(ve.vals.size() == 0);
+                        }
+                        else
+                        {
+                            emit_lvalue(e.dst);
+                            m_of << ".TAG = " << ve.variant_idx;
+                        }
+                        if(ve.vals.size() > 0)
+                            m_of << ";\n\t";
+                    }
+
+                    for(unsigned int j = 0; j < ve.vals.size(); j ++)
+                    {
+                        // HACK: Don't emit assignment of PhantomData
+                        ::HIR::TypeRef  tmp;
+                        if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j].as_LValue())) )
+                            continue ;
+
+                        if( j != 0 )    m_of << ";\n\t";
+                        emit_lvalue(e.dst);
+                        if(ve.variant_idx != ~0u)
+                            m_of << ".DATA.var_" << ve.variant_idx;
+                        m_of << "._" << j << " = ";
+                        emit_param(ve.vals[j]);
+                    }
+                    )
+                )
+                m_of << ";";
+                m_of << "\t// " << e.dst << " = " << e.src;
+                m_of << "\n";
+                break; }
+            }
         }
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)

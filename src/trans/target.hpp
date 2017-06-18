@@ -10,6 +10,38 @@
 #include <cstddef>
 #include <hir/type.hpp>
 
+enum class CodegenMode
+{
+    Gnu11,
+    Msvc,
+};
+
+struct TargetArch
+{
+    ::std::string   m_name;
+    unsigned    m_pointer_bits;
+    bool    m_big_endian;
+
+    struct {
+        bool u8;
+        bool u16;
+        bool u32;
+        bool u64;
+        bool ptr;
+    } m_atomics;
+};
+struct TargetSpec
+{
+    ::std::string   m_family;
+    ::std::string   m_os_name;
+    ::std::string   m_env_name;
+
+    CodegenMode m_codegen_mode;
+    TargetArch  m_arch;
+};
+
+
+extern void Target_SetCfg();
 extern bool Target_GetSizeOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_size);
 extern bool Target_GetAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_align);
 
