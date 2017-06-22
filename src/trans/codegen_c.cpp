@@ -14,6 +14,7 @@
 #include <mir/mir.hpp>
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>
+#include "codegen_c.hpp"
 
 
 namespace {
@@ -1383,6 +1384,17 @@ namespace {
             for(unsigned int i = 0; i < code->drop_flags.size(); i ++) {
                 m_of << "\tbool df" << i << " = " << code->drop_flags[i] << ";\n";
             }
+
+            {
+                m_of << "#if 0\n";
+                auto nodes = MIR_To_Structured(*code);
+                for(const auto& node : nodes)
+                {
+                    emit_fcn_node(mir_res, node, 1);
+                }
+                m_of << "#endif\n";
+            }
+
             for(unsigned int i = 0; i < code->blocks.size(); i ++)
             {
                 TRACE_FUNCTION_F(p << " bb" << i);
@@ -1458,76 +1470,7 @@ namespace {
                     }
                     ),
                 (Call,
-                    m_of << "\t";
-                    if( e.fcn.is_Intrinsic() )
-                    {
-                        const auto& name = e.fcn.as_Intrinsic().name;
-                        const auto& params = e.fcn.as_Intrinsic().params;
-                        emit_intrinsic_call(name, params, e);
-                        m_of << "\tgoto bb" << e.ret_block << ";\n";
-                        break ;
-                    }
-
-                    TU_MATCHA( (e.fcn), (e2),
-                    (Value,
-                        {
-                            ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, e2);
-                            MIR_ASSERT(mir_res, ty.m_data.is_Function(), "Call::Value on non-function - " << ty);
-                            if( !ty.m_data.as_Function().m_rettype->m_data.is_Diverge() )
-                            {
-                                emit_lvalue(e.ret_val); m_of << " = ";
-                            }
-                        }
-                        m_of << "("; emit_lvalue(e2); m_of << ")";
-                        ),
-                    (Path,
-                        {
-                            bool is_diverge = false;
-                            TU_MATCHA( (e2.m_data), (pe),
-                            (Generic,
-                                const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
-                                is_diverge |= fcn.m_return.m_data.is_Diverge();
-                                // TODO: Monomorph.
-                                ),
-                            (UfcsUnknown,
-                                ),
-                            (UfcsInherent,
-                                // TODO: Check if the return type is !
-                                is_diverge |= m_resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
-                                    [&](const auto& impl) {
-                                        // Associated functions
-                                        {
-                                            auto it = impl.m_methods.find(pe.item);
-                                            if( it != impl.m_methods.end() ) {
-                                                return it->second.data.m_return.m_data.is_Diverge();
-                                            }
-                                        }
-                                        // Associated static (undef)
-                                        return false;
-                                    });
-                                ),
-                            (UfcsKnown,
-                                // TODO: Check if the return type is !
-                                )
-                            )
-                            if(!is_diverge)
-                            {
-                                emit_lvalue(e.ret_val); m_of << " = ";
-                            }
-                        }
-                        m_of << Trans_Mangle(e2);
-                        ),
-                    (Intrinsic,
-                        MIR_BUG(mir_res, "Intrinsic not expected, should be handled above");
-                        )
-                    )
-                    m_of << "(";
-                    for(unsigned int j = 0; j < e.args.size(); j ++) {
-                        if(j != 0)  m_of << ",";
-                        m_of << " "; emit_param(e.args[j]);
-                    }
-                    m_of << " );\n";
+                    emit_term_call(mir_res, e, 1);
                     m_of << "\tgoto bb" << e.ret_block << ";\n";
                     )
                 )
@@ -1537,17 +1480,114 @@ namespace {
             m_of.flush();
             m_mir_res = nullptr;
         }
-        void emit_statement(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt)
+
+        void emit_fcn_node(::MIR::TypeResolve& mir_res, const Node& node, unsigned indent_level)
         {
+            auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
+            TU_MATCHA( (node), (e),
+            (Block,
+                for(size_t i = 0; i < e.nodes.size(); i ++)
+                {
+                    const auto& snr = e.nodes[i];
+                    if( snr.node ) {
+                        emit_fcn_node(mir_res, *snr.node, indent_level);
+                    }
+                    else {
+                        DEBUG(mir_res << "BB" << snr.bb_idx);
+                        m_of << indent << "bb" << snr.bb_idx << ":\n";
+                        const auto& bb = mir_res.m_fcn.blocks.at(snr.bb_idx);
+                        for(const auto& stmt : bb.statements)
+                        {
+                            mir_res.set_cur_stmt(snr.bb_idx, (&stmt - &bb.statements.front()));
+                            this->emit_statement(mir_res, stmt, indent_level);
+                        }
+
+                        TU_MATCHA( (bb.terminator), (te),
+                        (Incomplete, ),
+                        (Return,
+                            assert(i == e.nodes.size()-1 && "Return");
+                            m_of << indent << "return;\n";
+                            ),
+                        (Goto,
+                            // Ignore (handled by caller)
+                            ),
+                        (Diverge,
+                            ),
+                        (Panic,
+                            ),
+                        (If,
+                            //assert(i == e.nodes.size()-1 && "If");
+                            ),
+                        (Call,
+                            // TODO: Emit call
+                            emit_term_call(mir_res, te, indent_level);
+                            ),
+                        (Switch,
+                            //assert(i == e.nodes.size()-1 && "Switch");
+                            )
+                        )
+                    }
+                }
+                ),
+            (If,
+                m_of << indent << "if("; emit_lvalue(*e.val); m_of << ") {\n";
+                if( e.arm_true.node ) {
+                    emit_fcn_node(mir_res, *e.arm_true.node, indent_level+1);
+                }
+                else {
+                    m_of << indent << "\tgoto bb" << e.arm_true.bb_idx << ";\n";
+                }
+                m_of << indent << "}\n";
+                m_of << indent << "else {\n";
+                if( e.arm_false.node ) {
+                    emit_fcn_node(mir_res, *e.arm_false.node, indent_level+1);
+                }
+                else {
+                    m_of << indent << "\tgoto bb" << e.arm_false.bb_idx << ";\n";
+                }
+                m_of << indent << "}\n";
+                ),
+            (Switch,
+                this->emit_term_switch(mir_res, *e.val, e.arms.size(), indent_level, [&](auto idx) {
+                    const auto& arm = e.arms.at(idx);
+                    if( arm.node ) {
+                        m_of << "{\n";
+                        this->emit_fcn_node(mir_res, *arm.node, indent_level+1);
+                        m_of << indent  << "\t} ";
+                        if( arm.has_target() && arm.target() != e.next_bb ) {
+                            m_of << "goto bb" << arm.target() << ";";
+                        }
+                        else {
+                            m_of << "break;";
+                        }
+                    }
+                    else {
+                        m_of << "goto bb" << arm.bb_idx << ";";
+                    }
+                    });
+                ),
+            (Loop,
+                m_of << indent << "for(;;) {\n";
+                assert(e.code.node);
+                assert(e.code.node->is_Block());
+                this->emit_fcn_node(mir_res, *e.code.node, indent_level+1);
+                m_of << indent << "}\n";
+                )
+            )
+        }
+
+        void emit_statement(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level=1)
+        {
+            auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
             switch( stmt.tag() )
             {
             case ::MIR::Statement::TAGDEAD: throw "";
             case ::MIR::Statement::TAG_ScopeEnd:
-                m_of << "// " << stmt << "\n";
+                m_of << indent << "// " << stmt << "\n";
                 break;
             case ::MIR::Statement::TAG_SetDropFlag: {
                 const auto& e = stmt.as_SetDropFlag();
-                m_of << "\tdf" << e.idx << " = ";
+                m_of << indent << "df" << e.idx << " = ";
                 if( e.other == ~0u )
                     m_of << e.new_val;
                 else
@@ -1560,7 +1600,7 @@ namespace {
                 const auto& ty = mir_res.get_lvalue_type(tmp, e.slot);
 
                 if( e.flag_idx != ~0u )
-                    m_of << "\tif( df" << e.flag_idx << " ) {\n";
+                    m_of << indent << "if( df" << e.flag_idx << " ) {\n";
 
                 switch( e.kind )
                 {
@@ -1571,7 +1611,7 @@ namespace {
                         // Emit a call to box_free for the type
                         ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
                         // TODO: This is specific to the official liballoc's owned_box
-                        m_of << "\t" << Trans_Mangle(box_free) << "("; emit_lvalue(e.slot); m_of << "._0._0._0);\n";
+                        m_of << indent << Trans_Mangle(box_free) << "("; emit_lvalue(e.slot); m_of << "._0._0._0);\n";
                     }
                     else
                     {
@@ -1583,7 +1623,7 @@ namespace {
                     break;
                 }
                 if( e.flag_idx != ~0u )
-                    m_of << "\t}\n";
+                    m_of << indent << "}\n";
                 break; }
             case ::MIR::Statement::TAG_Asm: {
                 const auto& e = stmt.as_Asm();
@@ -1604,7 +1644,7 @@ namespace {
                 bool is_volatile = H::has_flag(e.flags, "volatile");
                 bool is_intel = H::has_flag(e.flags, "intel");
 
-                m_of << "\t__asm__ ";
+                m_of << indent << "__asm__ ";
                 if(is_volatile) m_of << "__volatile__";
                 // TODO: Convert format string?
                 // TODO: Use a C-specific escaper here.
@@ -1642,7 +1682,7 @@ namespace {
             case ::MIR::Statement::TAG_Assign: {
                 const auto& e = stmt.as_Assign();
                 DEBUG("- " << e.dst << " = " << e.src);
-                m_of << "\t";
+                m_of << indent;
                 TU_MATCHA( (e.src), (ve),
                 (Use,
                     ::HIR::TypeRef  tmp;
@@ -1667,17 +1707,17 @@ namespace {
                         emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val);
                     }
                     else if( ve.count == 2 ) {
-                        emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n\t";
+                        emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n" << indent;
                         emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val);
                     }
                     else if( ve.count == 3 ) {
-                        emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n\t";
-                        emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val); m_of << ";\n\t";
+                        emit_lvalue(e.dst); m_of << ".DATA[0] = "; emit_param(ve.val); m_of << ";\n" << indent;
+                        emit_lvalue(e.dst); m_of << ".DATA[1] = "; emit_param(ve.val); m_of << ";\n" << indent;
                         emit_lvalue(e.dst); m_of << ".DATA[2] = "; emit_param(ve.val);
                     }
                     else {
                         m_of << "for(unsigned int i = 0; i < " << ve.count << "; i ++)\n";
-                        m_of << "\t\t"; emit_lvalue(e.dst); m_of << ".DATA[i] = "; emit_param(ve.val);
+                        m_of << indent << "\t"; emit_lvalue(e.dst); m_of << ".DATA[i] = "; emit_param(ve.val);
                     }
                     ),
                 (Borrow,
@@ -1704,7 +1744,7 @@ namespace {
                             const ::MIR::LValue& base_ptr = *base_val->as_Deref().val;
 
                             // Construct the new DST
-                            emit_lvalue(e.dst); m_of << ".META = "; emit_lvalue(base_ptr); m_of << ".META;\n\t";
+                            emit_lvalue(e.dst); m_of << ".META = "; emit_lvalue(base_ptr); m_of << ".META;\n" << indent;
                             emit_lvalue(e.dst); m_of << ".PTR = &"; emit_lvalue(ve.val);
                             special = true;
                         }
@@ -1879,17 +1919,12 @@ namespace {
                     m_of << ".PTR";
                     ),
                 (MakeDst,
-                    emit_lvalue(e.dst);
-                    m_of << ".PTR = ";
-                    emit_param(ve.ptr_val);
-                    m_of << ";\n\t";
-                    emit_lvalue(e.dst);
-                    m_of << ".META = ";
-                    emit_param(ve.meta_val);
+                    emit_lvalue(e.dst);  m_of << ".PTR = ";  emit_param(ve.ptr_val);  m_of << ";\n" << indent;
+                    emit_lvalue(e.dst);  m_of << ".META = "; emit_param(ve.meta_val);
                     ),
                 (Tuple,
                     for(unsigned int j = 0; j < ve.vals.size(); j ++) {
-                        if( j != 0 )    m_of << ";\n\t";
+                        if( j != 0 )    m_of << ";\n" << indent;
                         emit_lvalue(e.dst);
                         m_of << "._" << j << " = ";
                         emit_param(ve.vals[j]);
@@ -1897,7 +1932,7 @@ namespace {
                     ),
                 (Array,
                     for(unsigned int j = 0; j < ve.vals.size(); j ++) {
-                        if( j != 0 )    m_of << ";\n\t";
+                        if( j != 0 )    m_of << ";\n" << indent;
                         emit_lvalue(e.dst); m_of << ".DATA[" << j << "] = ";
                         emit_param(ve.vals[j]);
                     }
@@ -1963,7 +1998,7 @@ namespace {
                             m_of << ".TAG = " << ve.variant_idx;
                         }
                         if(ve.vals.size() > 0)
-                            m_of << ";\n\t";
+                            m_of << ";\n" << indent;
                     }
 
                     for(unsigned int j = 0; j < ve.vals.size(); j ++)
@@ -1973,7 +2008,7 @@ namespace {
                         if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j].as_LValue())) )
                             continue ;
 
-                        if( j != 0 )    m_of << ";\n\t";
+                        if( j != 0 )    m_of << ";\n" << indent;
                         emit_lvalue(e.dst);
                         if(ve.variant_idx != ~0u)
                             m_of << ".DATA.var_" << ve.variant_idx;
@@ -1987,6 +2022,124 @@ namespace {
                 m_of << "\n";
                 break; }
             }
+        }
+        void emit_term_switch(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, size_t n_arms, unsigned indent_level, ::std::function<void(size_t)> cb)
+        {
+            auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
+
+            ::HIR::TypeRef  tmp;
+            const auto& ty = mir_res.get_lvalue_type(tmp, val);
+            MIR_ASSERT(mir_res, ty.m_data.is_Path(), "Switch over non-Path type");
+            MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "Switch over non-enum");
+            const auto* enm = ty.m_data.as_Path().binding.as_Enum();
+
+            auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
+            if( it != m_enum_repr_cache.end() )
+            {
+                //MIR_ASSERT(mir_res, e.targets.size() == 2, "NonZero optimised representation for an enum without two variants");
+                MIR_ASSERT(mir_res, n_arms == 2, "NonZero optimised switch without two arms");
+                m_of << indent << "if("; emit_lvalue(val); emit_nonzero_path(it->second); m_of << ")\n";
+                m_of << indent;
+                cb(1);
+                m_of << "\n";
+                m_of << indent << "else\n";
+                m_of << indent;
+                cb(0);
+                m_of << "\n";
+            }
+            else if( enm->is_value() )
+            {
+                m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
+                for(size_t j = 0; j < n_arms; j ++)
+                {
+                    m_of << indent << "case " << enm->get_value(j) << ": ";
+                    cb(j);
+                    m_of << "\n";
+                }
+                m_of << indent << "default: abort();\n";
+                m_of << indent << "}\n";
+            }
+            else
+            {
+                m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
+                for(size_t j = 0; j < n_arms; j ++)
+                {
+                    m_of << indent << "case " << j << ": ";
+                    cb(j);
+                    m_of << "\n";
+                }
+                m_of << indent << "default: abort();\n";
+                m_of << indent << "}\n";
+            }
+        }
+        void emit_term_call(const ::MIR::TypeResolve& mir_res, const ::MIR::Terminator::Data_Call& e, unsigned indent_level)
+        {
+            auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
+            m_of << indent;
+
+            TU_MATCHA( (e.fcn), (e2),
+            (Value,
+                {
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, e2);
+                    MIR_ASSERT(mir_res, ty.m_data.is_Function(), "Call::Value on non-function - " << ty);
+                    if( !ty.m_data.as_Function().m_rettype->m_data.is_Diverge() )
+                    {
+                        emit_lvalue(e.ret_val); m_of << " = ";
+                    }
+                }
+                m_of << "("; emit_lvalue(e2); m_of << ")";
+                ),
+            (Path,
+                {
+                    bool is_diverge = false;
+                    TU_MATCHA( (e2.m_data), (pe),
+                    (Generic,
+                        const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
+                        is_diverge |= fcn.m_return.m_data.is_Diverge();
+                        // TODO: Monomorph.
+                        ),
+                    (UfcsUnknown,
+                        ),
+                    (UfcsInherent,
+                        // TODO: Check if the return type is !
+                        is_diverge |= m_resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+                            [&](const auto& impl) {
+                                // Associated functions
+                                {
+                                    auto it = impl.m_methods.find(pe.item);
+                                    if( it != impl.m_methods.end() ) {
+                                        return it->second.data.m_return.m_data.is_Diverge();
+                                    }
+                                }
+                                // Associated static (undef)
+                                return false;
+                            });
+                        ),
+                    (UfcsKnown,
+                        // TODO: Check if the return type is !
+                        )
+                    )
+                    if(!is_diverge)
+                    {
+                        emit_lvalue(e.ret_val); m_of << " = ";
+                    }
+                }
+                m_of << Trans_Mangle(e2);
+                ),
+            (Intrinsic,
+                const auto& name = e.fcn.as_Intrinsic().name;
+                const auto& params = e.fcn.as_Intrinsic().params;
+                emit_intrinsic_call(name, params, e);
+                return ;
+                )
+            )
+            m_of << "(";
+            for(unsigned int j = 0; j < e.args.size(); j ++) {
+                if(j != 0)  m_of << ",";
+                m_of << " "; emit_param(e.args[j]);
+            }
+            m_of << " );\n";
         }
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)

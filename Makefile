@@ -110,7 +110,8 @@ OBJ +=  mir/check.o mir/cleanup.o mir/optimise.o
 OBJ +=  mir/check_full.o
 OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
 OBJ += trans/trans_list.o trans/mangling.o
-OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o trans/codegen_c.o
+OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o
+OBJ += trans/codegen_c.o trans/codegen_c_structured.o
 OBJ += trans/target.o
 
 PCHS := ast/ast.hpp
