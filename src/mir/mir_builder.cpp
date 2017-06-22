@@ -40,6 +40,16 @@ MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const 
     DEBUG("First temporary will be " << m_first_temp_idx);
 
     m_if_cond_lval = this->new_temporary(::HIR::CoreType::Bool);
+
+    // Determine which variables can be replaced by arguents
+    for(size_t i = 0; i < args.size(); i ++)
+    {
+        const auto& pat = args[i].first;
+        if( pat.m_binding.is_valid() && pat.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+        {
+            m_var_arg_mappings[pat.m_binding.m_slot] = i;
+        }
+    }
 }
 MirBuilder::~MirBuilder()
 {

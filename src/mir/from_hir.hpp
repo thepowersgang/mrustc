@@ -135,6 +135,8 @@ class MirBuilder
     ::std::vector<VarState>   m_slot_states;
     size_t  m_first_temp_idx;
 
+    ::std::map<unsigned,unsigned>   m_var_arg_mappings;
+
     struct ScopeDef
     {
         const Span& span;
@@ -173,6 +175,9 @@ public:
 
     // - Values
     ::MIR::LValue get_variable(const Span& sp, unsigned idx) const {
+        auto it = m_var_arg_mappings.find(idx);
+        if(it != m_var_arg_mappings.end())
+            return ::MIR::LValue::make_Argument({ it->second });
         return ::MIR::LValue::make_Local( idx );
     }
     ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty);
