@@ -60,8 +60,9 @@ MirBuilder::~MirBuilder()
         {
             push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(sp) );
         }
-        terminate_scope( sp, ScopeHandle { *this, 1 } );
-        terminate_scope( sp, mv$(m_fcn_scope) );
+
+        terminate_scope_early(sp, fcn_scope());
+
         end_block( ::MIR::Terminator::make_Return({}) );
     }
 }
@@ -83,7 +84,7 @@ const ::HIR::TypeRef* MirBuilder::is_type_owned_box(const ::HIR::TypeRef& ty) co
         if( pe.m_path != *m_lang_Box ) {
             return nullptr;
         }
-        // TODO: Properly assert?
+        // TODO: Properly assert the size?
         return &pe.m_params.m_types.at(0);
     }
     else
@@ -937,6 +938,17 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope,
             TU_IFLET( ScopeType, scope_def.data, Split, e,
                 e.arms.back().has_early_terminated = true;
             )
+        }
+    }
+
+
+    // Index 0 is the function scope, this only happens when about to return/panic
+    if( scope.idx == 0 )
+    {
+        // Ensure that all arguments are dropped if they were not moved
+        for(size_t i = 0; i < m_arg_states.size(); i ++)
+        {
+            this->drop_value_from_state(sp, m_arg_states[i], ::MIR::LValue::make_Argument({ static_cast<unsigned>(i) }));
         }
     }
 }

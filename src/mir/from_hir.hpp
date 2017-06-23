@@ -175,9 +175,12 @@ public:
 
     // - Values
     ::MIR::LValue get_variable(const Span& sp, unsigned idx) const {
+        // DIASBLED: State tracking doesn't support arguments in loops/splits
+#if 0
         auto it = m_var_arg_mappings.find(idx);
         if(it != m_var_arg_mappings.end())
             return ::MIR::LValue::make_Argument({ it->second });
+#endif
         return ::MIR::LValue::make_Local( idx );
     }
     ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty);
