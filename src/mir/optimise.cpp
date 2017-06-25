@@ -19,8 +19,8 @@
 
 #define DUMP_BEFORE_ALL 1
 #define DUMP_BEFORE_CONSTPROPAGATE 0
-#define CHECK_AFTER_PASS    0
-#define CHECK_AFTER_ALL     0
+#define CHECK_AFTER_PASS    1
+#define CHECK_AFTER_ALL     1
 
 #define DUMP_AFTER_DONE     0
 #define CHECK_AFTER_DONE    1
@@ -441,11 +441,39 @@ namespace {
     void visit_blocks(::MIR::TypeResolve& state, const ::MIR::Function& fcn, ::std::function<void(::MIR::BasicBlockId, const ::MIR::BasicBlock&)> cb) {
         visit_blocks_mut(state, const_cast<::MIR::Function&>(fcn), [cb](auto id, auto& blk){ cb(id, blk); });
     }
+
+
+    bool statement_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& lv)
+    {
+        return visit_mir_lvalues(stmt, [&](const auto& v, auto vu) {
+            if( v == lv ) {
+                return vu != ValUsage::Read;
+            }
+            return false;
+            });
+    }
+    bool terminator_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& lv)
+    {
+        if( const auto* e = term.opt_Call() )
+        {
+            return visit_mir_lvalue(e->ret_val, ValUsage::Write, [&](const auto& v, auto vu) {
+                if( v == lv ) {
+                    return vu != ValUsage::Read;
+                }
+                return false;
+                });
+        }
+        else
+        {
+            return false;
+        }
+    }
 }
 
 bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal);
 bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
@@ -453,12 +481,40 @@ bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
-void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
+/// A minimum set of optimisations:
+/// - Inlines `#[inline(always)]` functions
+/// - Simplifies the call graph (by removing chained gotos)
+/// - Sorts blocks into a rough flow order
+void MIR_OptimiseMin(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
     static Span sp;
     TRACE_FUNCTION_F(path);
     ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
 
+    while( MIR_Optimise_Inlining(state, fcn, true) )
+    {
+        MIR_Cleanup(resolve, path, fcn, args, ret_type);
+        //MIR_Dump_Fcn(::std::cout, fcn);
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
+    }
+
+    MIR_Optimise_BlockSimplify(state, fcn);
+    MIR_Optimise_UnifyBlocks(state, fcn);
+
+    //MIR_Optimise_GarbageCollect_Partial(state, fcn);
+
+    MIR_Optimise_GarbageCollect(state, fcn);
+    //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
+    MIR_SortBlocks(resolve, path, fcn);
+    return ;
+}
+void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
+{
+    static Span sp;
+    TRACE_FUNCTION_F(path);
+    ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
 
     bool change_happened;
     unsigned int pass_num = 0;
@@ -467,7 +523,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         change_happened = false;
         TRACE_FUNCTION_FR("Pass " << pass_num, change_happened);
 
-        // >> Simplify call graph
+        // >> Simplify call graph (removes gotos to blocks with a single use)
         MIR_Optimise_BlockSimplify(state, fcn);
 
         // >> Apply known constants
@@ -475,6 +531,13 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         #if CHECK_AFTER_ALL
         MIR_Validate(resolve, path, fcn, args, ret_type);
         #endif
+
+        // >> Replace values from composites if they're known
+        //   - Undoes the inefficiencies from the `match (a, b) { ... }` pattern
+        change_happened |= MIR_Optimise_PropagateKnownValues(state, fcn);
+#if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
 
         // TODO: Convert `&mut *mut_foo` into `mut_foo` if the source is movable and not used afterwards
 
@@ -509,7 +572,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         // >> Inline short functions
         if( !change_happened )
         {
-            bool inline_happened = MIR_Optimise_Inlining(state, fcn);
+            bool inline_happened = MIR_Optimise_Inlining(state, fcn, false);
             if( inline_happened )
             {
                 // Apply cleanup again (as monomorpisation in inlining may have exposed a vtable call)
@@ -529,7 +592,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 MIR_Dump_Fcn(::std::cout, fcn);
             }
             #endif
-            #if CHECK_AFTER_PASS
+            #if CHECK_AFTER_PASS && !CHECK_AFTER_ALL
             MIR_Validate(resolve, path, fcn, args, ret_type);
             #endif
         }
@@ -704,14 +767,22 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 // --------------------------------------------------------------------
 // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
 // --------------------------------------------------------------------
-bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal)
 {
     TRACE_FUNCTION;
 
     struct H
     {
-        static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn)
+        static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn, bool minimal)
         {
+            // TODO: If the function is marked as `inline(always)`, then inline it regardless of the contents
+
+            if( minimal ) {
+                return false;
+            }
+
+            // TODO: If the function is marked as `inline(never)`, then don't inline
+
             // TODO: Allow functions that are just a switch on an input.
             if( fcn.blocks.size() == 1 )
             {
@@ -743,6 +814,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         const Span& sp;
         const ::StaticTraitResolve& resolve;
         const ::MIR::Terminator::Data_Call& te;
+        ::std::vector<unsigned> copy_args;  // Local indexes containing copies of Copy args
         ParamsSet   params;
         unsigned int bb_base = ~0u;
         unsigned int tmp_base = ~0u;
@@ -750,15 +822,17 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         unsigned int df_base = ~0u;
 
         size_t tmp_end = 0;
-        mutable ::std::vector< ::MIR::Constant >  const_assignments;
+        mutable ::std::vector< ::MIR::Param >  const_assignments;
 
         ::MIR::LValue   retval;
 
         Cloner(const Span& sp, const ::StaticTraitResolve& resolve, ::MIR::Terminator::Data_Call& te):
             sp(sp),
             resolve(resolve),
-            te(te)
-        {}
+            te(te),
+            copy_args(te.args.size(), ~0u)
+        {
+        }
 
         ::HIR::TypeRef monomorph(const ::HIR::TypeRef& ty) const {
             auto rv = monomorphise_type_with(sp, ty, params.get_cb(sp));
@@ -958,6 +1032,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     this->const_assignments.push_back( e->clone() );
                     return tmp;
                 }
+                else if( this->copy_args[se.idx] != ~0u )
+                {
+                    return ::MIR::LValue::make_Local(this->copy_args[se.idx]);
+                }
                 else
                 {
                     return arg.as_LValue().clone();
@@ -1009,6 +1087,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         {
             TU_MATCHA( (src), (se),
             (LValue,
+                // NOTE: No need to use `copy_args` here as all uses of Param are copies/moves
                 if( const auto* ae = se.opt_Argument() )
                     return this->te.args.at(ae->idx).clone();
                 return clone_lval(se);
@@ -1090,7 +1169,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // Inline IF:
             // - First BB ends with a call and total count is 3
             // - Statement count smaller than 10
-            if( ! H::can_inline(path, *called_mir) )
+            if( ! H::can_inline(path, *called_mir, minimal) )
             {
                 DEBUG("Can't inline " << path);
                 continue ;
@@ -1117,6 +1196,20 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             fcn.drop_flags.insert( fcn.drop_flags.end(), called_mir->drop_flags.begin(), called_mir->drop_flags.end() );
             cloner.bb_base = fcn.blocks.size();
 
+            // Take a copy of all Copy arguments (!Copy doesn't matter, as they're unusable after the call)
+            for(size_t i = 0; i < te->args.size(); i++)
+            {
+                if(const auto* e = te->args[i].opt_LValue())
+                {
+                    if( state.lvalue_is_copy(*e) )
+                    {
+                        cloner.copy_args[i] = cloner.tmp_end + cloner.const_assignments.size();
+                        cloner.const_assignments.push_back( e->clone() );
+                        DEBUG("- Taking a copy of arg " << i << " (" << *e << ") in Local(" << cloner.copy_args[i] << ")");
+                    }
+                }
+            }
+
             // Append monomorphised copy of all blocks.
             // > Arguments replaced by input lvalues
             ::std::vector<::MIR::BasicBlock>    new_blocks;
@@ -1129,10 +1222,12 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // > Append new temporaries
             for(auto& val : cloner.const_assignments)
             {
-                auto ty = state.get_const_type(val);
+                ::HIR::TypeRef  tmp;
+                auto ty = val.is_Constant() ? state.get_const_type(val.as_Constant()) : state.get_lvalue_type(tmp, val.as_LValue()).clone();
                 auto lv = ::MIR::LValue::make_Local( static_cast<unsigned>(fcn.locals.size()) );
                 fcn.locals.push_back( mv$(ty) );
-                new_blocks[0].statements.insert( new_blocks[0].statements.begin(), ::MIR::Statement::make_Assign({ mv$(lv), mv$(val) }) );
+                auto rval = val.is_Constant() ? ::MIR::RValue(mv$(val.as_Constant())) : ::MIR::RValue( mv$(val.as_LValue()) );
+                new_blocks[0].statements.insert( new_blocks[0].statements.begin(), ::MIR::Statement::make_Assign({ mv$(lv), mv$(rval) }) );
             }
             cloner.const_assignments.clear();
 
@@ -1236,6 +1331,7 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
 }
 
 // --------------------------------------------------------------------
+// Combine identical blocks
 // --------------------------------------------------------------------
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
@@ -1434,6 +1530,192 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     }
 }
 
+// --------------------------------------------------------------------
+// Propagate source values when a composite (tuple) is read
+// --------------------------------------------------------------------
+bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    TRACE_FUNCTION;
+    // 1. Determine reference counts for blocks (allows reversing up BB tree)
+    ::std::vector<size_t>   block_origins( fcn.blocks.size(), SIZE_MAX );
+    {
+        ::std::vector<unsigned int> block_uses( fcn.blocks.size() );
+        ::std::vector<bool> visited( fcn.blocks.size() );
+        ::std::vector< ::MIR::BasicBlockId> to_visit;
+        to_visit.push_back( 0 );
+        block_uses[0] ++;
+        while( to_visit.size() > 0 )
+        {
+            auto bb = to_visit.back(); to_visit.pop_back();
+            if( visited[bb] )
+                continue ;
+            visited[bb] = true;
+            const auto& block = fcn.blocks[bb];
+
+            auto ref_block = [&](auto idx) {
+                if( !visited[idx] )
+                    to_visit.push_back(idx);
+                if(block_uses[idx] == 0)
+                    block_origins[idx] = bb;
+                else
+                    block_origins[idx] = SIZE_MAX;
+                block_uses[idx] ++;
+                };
+            TU_MATCHA( (block.terminator), (e),
+            (Incomplete,
+                ),
+            (Return,
+                ),
+            (Diverge,
+                ),
+            (Goto,
+                ref_block(e);
+                ),
+            (Panic,
+                ),
+            (If,
+                ref_block(e.bb0);
+                ref_block(e.bb1);
+                ),
+            (Switch,
+                for(auto& target : e.targets)
+                {
+                    ref_block(target);
+                }
+                ),
+            (Call,
+                ref_block(e.ret_block);
+                ref_block(e.panic_block);
+                )
+            )
+        }
+    }
+
+    // 2. Find any assignments (or function uses?) of the form FIELD(LOCAL, _)
+    //  > Restricted to simplify logic (and because that's the inefficient pattern observed)
+    // 3. Search backwards from that point until the referenced local is assigned
+    bool change_happend = false;
+    auto get_field = [&](const ::MIR::LValue& slot_lvalue, unsigned field, size_t start_bb_idx, size_t start_stmt_idx)->const ::MIR::LValue* {
+        TRACE_FUNCTION_F(slot_lvalue << "." << field << " BB" << start_bb_idx << "/" << start_stmt_idx);
+        // NOTE: An infinite loop is (theoretically) impossible.
+        auto bb_idx = start_bb_idx;
+        auto stmt_idx = start_stmt_idx;
+        for(;;)
+        {
+            const auto& bb = fcn.blocks[bb_idx];
+            while(stmt_idx --)
+            {
+                if( stmt_idx == bb.statements.size() )
+                {
+                    DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
+                    if( terminator_invalidates_lvalue(bb.terminator, slot_lvalue) ) {
+                        return nullptr;
+                    }
+                    continue ;
+                }
+                const auto& stmt = bb.statements[stmt_idx];
+                DEBUG("BB" << bb_idx << "/" << stmt_idx << " - " << stmt);
+                if( const auto* se = stmt.opt_Assign() )
+                {
+                    if( se->dst == slot_lvalue )
+                    {
+                        if( !se->src.is_Tuple() )
+                            return nullptr;
+                        const auto& src_param = se->src.as_Tuple().vals.at(field);
+                        DEBUG("> Found a source " << src_param);
+                        // TODO: Support returning a Param
+                        if( !src_param.is_LValue() )
+                            return nullptr;
+                        const auto& src_lval = src_param.as_LValue();
+                        // Visit all statements between the start and here, checking for mutation of this value.
+                        auto end_bb_idx = bb_idx;
+                        auto end_stmt_idx = stmt_idx;
+                        bb_idx = start_bb_idx;
+                        stmt_idx = start_stmt_idx;
+                        for(;;)
+                        {
+                            const auto& bb = fcn.blocks[bb_idx];
+                            while(stmt_idx--)
+                            {
+                                if(bb_idx == end_bb_idx && stmt_idx == end_stmt_idx)
+                                    return &src_lval;
+                                if(stmt_idx == bb.statements.size())
+                                {
+                                    DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
+                                    if( terminator_invalidates_lvalue(bb.terminator, src_lval) ) {
+                                        // Invalidated: Return.
+                                        return nullptr;
+                                    }
+                                    continue ;
+                                }
+                                if( statement_invalidates_lvalue(bb.statements[stmt_idx], src_lval) ) {
+                                    // Invalidated: Return.
+                                    return nullptr;
+                                }
+                            }
+                            assert( block_origins[bb_idx] != SIZE_MAX );
+                            bb_idx = block_origins[bb_idx];
+                            stmt_idx = fcn.blocks[bb_idx].statements.size() + 1;
+                        }
+                        throw "";
+                    }
+                }
+
+                // Check if the slot is invalidated (mutated)
+                if( statement_invalidates_lvalue(stmt, slot_lvalue) ) {
+                    return nullptr;
+                }
+            }
+            if( block_origins[bb_idx] == SIZE_MAX )
+                break;
+            bb_idx = block_origins[bb_idx];
+            stmt_idx = fcn.blocks[bb_idx].statements.size() + 1;
+        }
+        return nullptr;
+        };
+    for(auto& block : fcn.blocks)
+    {
+        size_t bb_idx = &block - &fcn.blocks.front();
+        for(size_t i = 0; i < block.statements.size(); i++)
+        {
+            state.set_cur_stmt(bb_idx, i);
+            DEBUG(state << block.statements[i]);
+            visit_mir_lvalues_mut(block.statements[i], [&](::MIR::LValue& lv, auto vu) {
+                    if(const auto* e = lv.opt_Field())
+                    {
+                        if(vu == ValUsage::Read && e->val->is_Local() ) {
+                            // TODO: This value _must_ be Copy for this optimisation to work.
+                            // - OR, it has to somehow invalidate the original tuple
+                            DEBUG(state << "Locating origin of " << lv);
+                            ::HIR::TypeRef  tmp;
+                            if( !state.m_resolve.type_is_copy(state.sp, state.get_lvalue_type(tmp, *e->val)) )
+                            {
+                                DEBUG(state << "- not Copy, can't optimise");
+                                return false;
+                            }
+                            const auto* source_lvalue = get_field(*e->val, e->field_index, bb_idx, i);
+                            if( source_lvalue )
+                            {
+                                if( lv != *source_lvalue )
+                                {
+                                    DEBUG(state << "Source is " << *source_lvalue);
+                                    lv = source_lvalue->clone();
+                                    change_happend = true;
+                                }
+                                else
+                                {
+                                    DEBUG(state << "No change");
+                                }
+                                return false;
+                            }
+                        }
+                    }
+                    return false;
+                    });
+        }
+    }
+    return change_happend;
+}
 
 // --------------------------------------------------------------------
 // Propagate constants and eliminate known paths
@@ -2716,11 +2998,16 @@ void MIR_SortBlocks(const StaticTraitResolve& resolve, const ::HIR::ItemPath& pa
 }
 
 
-void MIR_OptimiseCrate(::HIR::Crate& crate)
+void MIR_OptimiseCrate(::HIR::Crate& crate, bool do_minimal_optimisation)
 {
-    ::MIR::OuterVisitor ov { crate, [](const auto& res, const auto& p, auto& expr, const auto& args, const auto& ty)
+    ::MIR::OuterVisitor ov { crate, [do_minimal_optimisation](const auto& res, const auto& p, auto& expr, const auto& args, const auto& ty)
         {
-            MIR_Optimise(res, p, *expr.m_mir, args, ty);
+            if( do_minimal_optimisation ) {
+                MIR_OptimiseMin(res, p, *expr.m_mir, args, ty);
+            }
+            else {
+                MIR_Optimise(res, p, *expr.m_mir, args, ty);
+            }
         }
         };
     ov.visit_crate(crate);

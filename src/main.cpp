@@ -144,6 +144,13 @@ struct ProgramParams
 
     ::std::set< ::std::string> features;
 
+
+    struct {
+        bool disable_mir_optimisations = false;
+        bool full_validate = false;
+        bool full_validate_early = false;
+    } debug;
+
     ProgramParams(int argc, char *argv[]);
 };
 
@@ -434,7 +441,7 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Cleanup", [&]() {
             MIR_CleanupCrate(*hir_crate);
             });
-        if( getenv("MRUSTC_FULL_VALIDATE_PREOPT") )
+        if( params.debug.full_validate_early || getenv("MRUSTC_FULL_VALIDATE_PREOPT") )
         {
             CompilePhaseV("MIR Validate Full Early", [&]() {
                 MIR_CheckCrate_Full(*hir_crate);
@@ -443,7 +450,7 @@ int main(int argc, char *argv[])
 
         // Optimise the MIR
         CompilePhaseV("MIR Optimise", [&]() {
-            MIR_OptimiseCrate(*hir_crate);
+            MIR_OptimiseCrate(*hir_crate, params.debug.disable_mir_optimisations);
             });
 
         CompilePhaseV("Dump MIR", [&]() {
@@ -456,7 +463,7 @@ int main(int argc, char *argv[])
         // - Exhaustive MIR validation (follows every code path and checks variable validity)
         // > DEBUGGING ONLY
         CompilePhaseV("MIR Validate Full", [&]() {
-            if( getenv("MRUSTC_FULL_VALIDATE") )
+            if( params.debug.full_validate || getenv("MRUSTC_FULL_VALIDATE") )
                 MIR_CheckCrate_Full(*hir_crate);
             });
 
@@ -596,6 +603,32 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     this->libraries.push_back( arg+1 );
                 }
                 continue ;
+            case 'Z': {
+                ::std::string optname;
+                if( arg[1] == '\0' ) {
+                    if( i == argc - 1) {
+                        exit(1);
+                    }
+                    optname = argv[++i];
+                }
+                else {
+                    optname = arg+1;
+                }
+
+                if( optname == "disable_mir_opt" ) {
+                    this->debug.disable_mir_optimisations = true;
+                }
+                else if( optname == "full-validate" ) {
+                    this->debug.full_validate = true;
+                }
+                else if( optname == "full-validate-early" ) {
+                    this->debug.full_validate_early = true;
+                }
+                else {
+                    ::std::cerr << "Unknown debug option: '" << optname << "'" << ::std::endl;
+                    exit(1);
+                }
+                } continue;
 
             default:
                 break;
