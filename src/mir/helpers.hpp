@@ -104,6 +104,7 @@ public:
 
     ::HIR::TypeRef get_const_type(const ::MIR::Constant& c) const;
 
+    bool lvalue_is_copy(const ::MIR::LValue& val) const;
     const ::HIR::TypeRef* is_type_owned_box(const ::HIR::TypeRef& ty) const;
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TypeResolve& x) {

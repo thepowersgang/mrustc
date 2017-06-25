@@ -293,6 +293,11 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
     )
     throw "";
 }
+bool ::MIR::TypeResolve::lvalue_is_copy(const ::MIR::LValue& val) const
+{
+    ::HIR::TypeRef  tmp;
+    return m_resolve.type_is_copy( this->sp, get_lvalue_type(tmp, val) );
+}
 const ::HIR::TypeRef* ::MIR::TypeResolve::is_type_owned_box(const ::HIR::TypeRef& ty) const
 {
     return m_resolve.is_type_owned_box(ty);
