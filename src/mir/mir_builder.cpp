@@ -745,6 +745,14 @@ ScopeHandle MirBuilder::new_scope_loop(const Span& sp)
     DEBUG("START (loop) scope " << idx);
     return ScopeHandle { *this, idx };
 }
+ScopeHandle MirBuilder::new_scope_freeze(const Span& sp)
+{
+    unsigned int idx = m_scopes.size();
+    m_scopes.push_back( ScopeDef {sp, ScopeType::make_Freeze({})} );
+    m_scope_stack.push_back( idx );
+    DEBUG("START (freeze) scope " << idx);
+    return ScopeHandle { *this, idx };
+}
 void MirBuilder::terminate_scope(const Span& sp, ScopeHandle scope, bool emit_cleanup/*=true*/)
 {
     TRACE_FUNCTION_F("DONE scope " << scope.idx << " - " << (emit_cleanup ? "CLEANUP" : "NO CLEANUP"));
@@ -1510,6 +1518,9 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         DEBUG("Loop");
         ),
     (Split,
+        ),
+    (Freeze,
+        //DEBUG("Freeze");
         )
     )
 
@@ -1886,6 +1897,18 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotT
                 }
             }
         }
+        else if( scope_def.data.is_Freeze() )
+        {
+            if( type == SlotType::Local && idx == m_if_cond_lval.as_Local() )
+            {
+            }
+            else
+            {
+                // NOTE: This is only used in match conditions
+                DEBUG("Mutating state of ?" << idx);
+                ERROR(sp, E0000, "Attempting to move/initialise a value where not allowed");
+            }
+        }
         else
         {
         }
@@ -2159,6 +2182,8 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
         ),
     (Loop,
         // No values
+        ),
+    (Freeze,
         )
     )
 }

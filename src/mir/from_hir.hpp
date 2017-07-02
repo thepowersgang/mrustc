@@ -103,6 +103,11 @@ TAGGED_UNION(ScopeType, Owning,
         ::std::map<unsigned int,VarState>    changed_args;
         bool exit_state_valid;
         SplitEnd    exit_state;
+        }),
+    // State which should end up with no mutation of variable states
+    (Freeze, struct {
+        //::std::map<unsigned int,VarState>    changed_slots;
+        //::std::map<unsigned int,VarState>    changed_args;
         })
     );
 
@@ -257,6 +262,7 @@ public:
     ScopeHandle new_scope_temp(const Span& sp);
     ScopeHandle new_scope_split(const Span& sp);
     ScopeHandle new_scope_loop(const Span& sp);
+    ScopeHandle new_scope_freeze(const Span& sp);
 
     /// Raises every variable defined in the source scope into the target scope
     void raise_all(const Span& sp, ScopeHandle src, const ScopeHandle& target);

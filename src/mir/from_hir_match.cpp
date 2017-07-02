@@ -372,17 +372,18 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
             ac.cond_start = builder.new_bb_unlinked();
             builder.set_cur_block( ac.cond_start );
 
+            auto freeze_scope = builder.new_scope_freeze(arm.m_cond->span());
             auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
             conv.visit_node_ptr( arm.m_cond );
             auto cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
             builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
             ac.cond_false = builder.new_bb_unlinked();
             builder.end_block(::MIR::Terminator::make_If({ mv$(cond_lval), ac.code, ac.cond_false }));
-            // TODO: Emit the `if` (to new blocks) and insert an early termination of the this split arm
 
             builder.set_cur_block(ac.cond_false);
             builder.end_split_arm(arm.m_cond->span(), match_scope, true, true);
             builder.pause_cur_block();
+            builder.terminate_scope( arm.m_code->span(), mv$(freeze_scope) );
 
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
 
