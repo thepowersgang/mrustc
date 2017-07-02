@@ -297,7 +297,7 @@ namespace {
             // TODO: This is very specific to the structure of the official liballoc's Box.
             m_of << "\t"; emit_ctype(args[0].second, FMT_CB(ss, ss << "arg0"; ));    m_of << " = rv->_0._0._0;\n";
             // Call destructor of inner data
-            emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) }), *ity, true);
+            emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) }), *ity, true, 1);
             // Emit a call to box_free for the type
             m_of << "\t" << Trans_Mangle(box_free) << "(arg0);\n";
 
@@ -398,7 +398,7 @@ namespace {
                 auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
                 for(const auto& ity : te)
                 {
-                    emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false);
+                    emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false, 1);
                     fld_lv.as_Field().field_index ++;
                 }
                 m_of << "}\n";
@@ -529,7 +529,7 @@ namespace {
                     const auto& fld = e[i];
                     fld_lv.as_Field().field_index = i;
 
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), true);
+                    emit_destructor_call(fld_lv, monomorph(fld.ent), true, 1);
                 }
                 ),
             (Named,
@@ -538,7 +538,7 @@ namespace {
                     const auto& fld = e[i].second;
                     fld_lv.as_Field().field_index = i;
 
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), true);
+                    emit_destructor_call(fld_lv, monomorph(fld.ent), true, 1);
                 }
                 )
             )
@@ -774,7 +774,7 @@ namespace {
                 m_of << "\tif( ! (*rv)"; emit_nonzero_path(nonzero_path); m_of << " ) {\n";
                 for(const auto& fld : item.m_variants[1].second.as_Tuple())
                 {
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), false);
+                    emit_destructor_call(fld_lv, monomorph(fld.ent), false, 2);
                     fld_lv.as_Field().field_index ++;
                 }
                 m_of << "\t}\n";
@@ -805,7 +805,7 @@ namespace {
                             fld_lv.as_Field().field_index = i;
                             const auto& fld = e[i];
 
-                            emit_destructor_call(fld_lv, monomorph(fld.ent), false);
+                            emit_destructor_call(fld_lv, monomorph(fld.ent), false, 2);
                         }
                         m_of << "\tbreak;\n";
                         ),
@@ -815,7 +815,7 @@ namespace {
                         {
                             fld_lv.as_Field().field_index = i;
                             const auto& fld = e[i];
-                            emit_destructor_call(fld_lv, monomorph(fld.second.ent), false);
+                            emit_destructor_call(fld_lv, monomorph(fld.second.ent), false, 2);
                         }
                         m_of << "\tbreak;\n";
                         )
@@ -1620,7 +1620,7 @@ namespace {
                     }
                     break;
                 case ::MIR::eDropKind::DEEP:
-                    emit_destructor_call(e.slot, ty, false);
+                    emit_destructor_call(e.slot, ty, false, indent_level + (e.flag_idx != ~0u ? 1 : 0));
                     break;
                 }
                 if( e.flag_idx != ~0u )
@@ -2389,7 +2389,7 @@ namespace {
                 // Nothing needs to be done, this just stops the destructor from running.
             }
             else if( name == "drop_in_place" ) {
-                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).as_LValue().clone()) }), params.m_types.at(0), true );
+                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).as_LValue().clone()) }), params.m_types.at(0), true, 1 /* TODO: get from caller */ );
             }
             else if( name == "needs_drop" ) {
                 // Returns `true` if the actual type given as `T` requires drop glue;
@@ -2729,8 +2729,9 @@ namespace {
             m_of << ";\n";
         }
 
-        void emit_destructor_call(const ::MIR::LValue& slot, const ::HIR::TypeRef& ty, bool unsized_valid)
+        void emit_destructor_call(const ::MIR::LValue& slot, const ::HIR::TypeRef& ty, bool unsized_valid, unsigned indent_level)
         {
+            auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
             TU_MATCHA( (ty.m_data), (te),
             // Impossible
             (Diverge, ),
@@ -2751,7 +2752,7 @@ namespace {
                 if( te.type == ::HIR::BorrowType::Owned )
                 {
                     // Call drop glue on inner.
-                    emit_destructor_call( ::MIR::LValue::make_Deref({ box$(slot.clone()) }), *te.inner, true );
+                    emit_destructor_call( ::MIR::LValue::make_Deref({ box$(slot.clone()) }), *te.inner, true, indent_level );
                 }
                 ),
             (Path,
@@ -2762,13 +2763,13 @@ namespace {
                 switch( metadata_type(ty) )
                 {
                 case MetadataType::None:
-                    m_of << "\t" << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
+                    m_of << indent << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
                     break;
                 case MetadataType::Slice:
                     make_fcn = "make_sliceptr"; if(0)
                 case MetadataType::TraitObject:
                     make_fcn = "make_traitobjptr";
-                    m_of << "\t" << Trans_Mangle(p) << "( " << make_fcn << "(";
+                    m_of << indent << Trans_Mangle(p) << "( " << make_fcn << "(";
                     if( slot.is_Deref() )
                     {
                         emit_lvalue(*slot.as_Deref().val);
@@ -2791,12 +2792,9 @@ namespace {
                 // Emit destructors for all entries
                 if( te.size_val > 0 )
                 {
-                    ::MIR::LValue   lv = ::MIR::LValue::make_Field({ box$(slot.clone()), 0 });
-                    for(unsigned int i = 0; i < te.size_val; i ++)
-                    {
-                        lv.as_Field().field_index = i;
-                        emit_destructor_call(lv, *te.inner, false);
-                    }
+                    m_of << indent << "for(unsigned i = 0; i < " << te.size_val << "; i++) {\n";
+                    emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Local(~0u)) }), *te.inner, false, indent_level+1);
+                    m_of << "\n" << indent << "}";
                 }
                 ),
             (Tuple,
@@ -2807,7 +2805,7 @@ namespace {
                     for(unsigned int i = 0; i < te.size(); i ++)
                     {
                         lv.as_Field().field_index = i;
-                        emit_destructor_call(lv, te[i], unsized_valid && (i == te.size()-1));
+                        emit_destructor_call(lv, te[i], unsized_valid && (i == te.size()-1), indent_level);
                     }
                 }
                 ),
@@ -2817,7 +2815,7 @@ namespace {
                 const auto* lvp = &slot;
                 while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
                 MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
-                m_of << "((VTABLE_HDR*)"; emit_lvalue(*lvp->as_Deref().val); m_of << ".META)->drop(";
+                m_of << indent << "((VTABLE_HDR*)"; emit_lvalue(*lvp->as_Deref().val); m_of << ".META)->drop(";
                 if( const auto* ve = slot.opt_Deref() )
                 {
                     emit_lvalue(*ve->val); m_of << ".PTR";
@@ -2834,10 +2832,9 @@ namespace {
                 while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
                 MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
                 // Call destructor on all entries
-                m_of << "for(unsigned i = 0; i < "; emit_lvalue(*lvp->as_Deref().val); m_of << ".META; i++) {";
-                m_of << "\t\t";
-                emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Local(~0u)) }), *te.inner, false);
-                m_of << "\n\t}";
+                m_of << indent << "for(unsigned i = 0; i < "; emit_lvalue(*lvp->as_Deref().val); m_of << ".META; i++) {\n";
+                emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Local(~0u)) }), *te.inner, false, indent_level+1);
+                m_of << "\n" << indent << "}";
                 )
             )
         }
