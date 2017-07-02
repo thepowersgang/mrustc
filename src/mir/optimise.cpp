@@ -21,6 +21,7 @@
 #define DUMP_BEFORE_CONSTPROPAGATE 0
 #define CHECK_AFTER_PASS    1
 #define CHECK_AFTER_ALL     1
+#define DUMP_AFTER_PASS     1
 
 #define DUMP_AFTER_DONE     0
 #define CHECK_AFTER_DONE    1
@@ -1026,18 +1027,13 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 ),
             (Argument,
                 const auto& arg = this->te.args.at(se.idx);
-                if( const auto* e = arg.opt_Constant() )
-                {
-                    auto tmp = ::MIR::LValue::make_Local( static_cast<unsigned>(this->tmp_end + this->const_assignments.size()) );
-                    this->const_assignments.push_back( e->clone() );
-                    return tmp;
-                }
-                else if( this->copy_args[se.idx] != ~0u )
+                if( this->copy_args[se.idx] != ~0u )
                 {
                     return ::MIR::LValue::make_Local(this->copy_args[se.idx]);
                 }
                 else
                 {
+                    assert( !arg.is_Constant() );   // Should have been handled in the above
                     return arg.as_LValue().clone();
                 }
                 ),
@@ -1088,8 +1084,8 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             TU_MATCHA( (src), (se),
             (LValue,
                 // NOTE: No need to use `copy_args` here as all uses of Param are copies/moves
-                if( const auto* ae = se.opt_Argument() )
-                    return this->te.args.at(ae->idx).clone();
+                //if( const auto* ae = se.opt_Argument() )
+                //    return this->te.args.at(ae->idx).clone();
                 return clone_lval(se);
                 ),
             (Constant, return clone_constant(se); )
@@ -1100,9 +1096,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
         {
             TU_MATCHA( (src), (se),
             (Use,
-                if( const auto* ae = se.opt_Argument() )
-                    if( const auto* e = this->te.args.at(ae->idx).opt_Constant() )
-                        return e->clone();
+                //if( const auto* ae = se.opt_Argument() )
+                //    if( const auto* e = this->te.args.at(ae->idx).opt_Constant() )
+                //        return e->clone();
                 return ::MIR::RValue( this->clone_lval(se) );
                 ),
             (Constant,
@@ -1196,17 +1192,15 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             fcn.drop_flags.insert( fcn.drop_flags.end(), called_mir->drop_flags.begin(), called_mir->drop_flags.end() );
             cloner.bb_base = fcn.blocks.size();
 
-            // Take a copy of all Copy arguments (!Copy doesn't matter, as they're unusable after the call)
+            // Store all Copy lvalue arguments and Constants in variables
             for(size_t i = 0; i < te->args.size(); i++)
             {
-                if(const auto* e = te->args[i].opt_LValue())
+                const auto& a = te->args[i];
+                if( !a.is_LValue() || state.lvalue_is_copy(a.as_LValue()) )
                 {
-                    if( state.lvalue_is_copy(*e) )
-                    {
-                        cloner.copy_args[i] = cloner.tmp_end + cloner.const_assignments.size();
-                        cloner.const_assignments.push_back( e->clone() );
-                        DEBUG("- Taking a copy of arg " << i << " (" << *e << ") in Local(" << cloner.copy_args[i] << ")");
-                    }
+                    cloner.copy_args[i] = cloner.tmp_end + cloner.const_assignments.size();
+                    cloner.const_assignments.push_back( a.clone() );
+                    DEBUG("- Taking a copy of arg " << i << " (" << a << ") in Local(" << cloner.copy_args[i] << ")");
                 }
             }
 
@@ -1227,7 +1221,9 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 auto lv = ::MIR::LValue::make_Local( static_cast<unsigned>(fcn.locals.size()) );
                 fcn.locals.push_back( mv$(ty) );
                 auto rval = val.is_Constant() ? ::MIR::RValue(mv$(val.as_Constant())) : ::MIR::RValue( mv$(val.as_LValue()) );
-                new_blocks[0].statements.insert( new_blocks[0].statements.begin(), ::MIR::Statement::make_Assign({ mv$(lv), mv$(rval) }) );
+                auto stmt = ::MIR::Statement::make_Assign({ mv$(lv), mv$(rval) });
+                DEBUG("++ " << stmt);
+                new_blocks[0].statements.insert( new_blocks[0].statements.begin(), mv$(stmt) );
             }
             cloner.const_assignments.clear();
 

@@ -288,7 +288,29 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
         }
         ),
     (ItemAddr,
-        MIR_TODO(*this, "get_const_type - Get type for constant `" << c << "`");
+        MonomorphState  p;
+        auto v = m_resolve.get_value(this->sp, e, p, /*signature_only=*/true);
+        TU_MATCHA( (v), (ve),
+        (NotFound,
+            MIR_BUG(*this, "get_const_type - ItemAddr points to unknown value - " << c);
+            ),
+        (Constant,
+            MIR_TODO(*this, "get_const_type - Get type for constant borrow `" << c << "`");
+            ),
+        (Static,
+            MIR_TODO(*this, "get_const_type - Get type for static borrow `" << c << "`");
+            ),
+        (Function,
+            ::HIR::FunctionType ft;
+            ft.is_unsafe = ve->m_unsafe;
+            ft.m_abi = ve->m_abi;
+            ft.m_rettype = box$( p.monomorph(this->sp, ve->m_return) );
+            ft.m_arg_types.reserve(ve->m_args.size());
+            for(const auto& arg : ve->m_args)
+                ft.m_arg_types.push_back( p.monomorph(this->sp, arg.second) );
+            return ::HIR::TypeRef( mv$(ft) );
+            )
+        )
         )
     )
     throw "";
