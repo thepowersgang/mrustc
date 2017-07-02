@@ -373,6 +373,8 @@ DISABLED_TESTS += run-pass/out-of-stack
 # - Requires jemalloc
 DISABLED_TESTS += run-pass/allocator-default
 DISABLED_TESTS += run-pass/allocator-override
+# - Really odd behavior:
+DISABLED_TESTS += run-pass/move-guard-const	# Moves are allowed in match arm guards (should error in mrustc)
 # - Lazy.
 DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause	# Not normalizing bounds
 DISABLED_TESTS += run-pass/cast	# Disallows cast from char to i32
