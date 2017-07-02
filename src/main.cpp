@@ -615,7 +615,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     optname = arg+1;
                 }
 
-                if( optname == "disable_mir_opt" ) {
+                if( optname == "disable-mir-opt" ) {
                     this->debug.disable_mir_optimisations = true;
                 }
                 else if( optname == "full-validate" ) {
