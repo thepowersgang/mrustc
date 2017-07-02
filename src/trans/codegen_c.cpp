@@ -666,6 +666,7 @@ namespace {
                 }
             }
 
+            m_of << "// enum " << p << "\n";
             if( nonzero_path.size() > 0 )
             {
                 MIR_ASSERT(*m_mir_res, nonzero_path[0] == 0, "");
