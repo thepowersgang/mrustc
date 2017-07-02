@@ -80,9 +80,11 @@ struct SplitArm {
     bool    has_early_terminated = false;
     bool    always_early_terminated = false;    // Populated on completion
     ::std::map<unsigned int, VarState>  states;
+    ::std::map<unsigned int, VarState>  arg_states;
 };
 struct SplitEnd {
     ::std::map<unsigned int, VarState>  states;
+    ::std::map<unsigned int, VarState>  arg_states;
 };
 
 TAGGED_UNION(ScopeType, Owning,
@@ -98,6 +100,7 @@ TAGGED_UNION(ScopeType, Owning,
     (Loop, struct {
         // NOTE: This contains the original state for variables changed after `exit_state_valid` is true
         ::std::map<unsigned int,VarState>    changed_slots;
+        ::std::map<unsigned int,VarState>    changed_args;
         bool exit_state_valid;
         SplitEnd    exit_state;
         })
@@ -176,7 +179,7 @@ public:
     // - Values
     ::MIR::LValue get_variable(const Span& sp, unsigned idx) const {
         // DIASBLED: State tracking doesn't support arguments in loops/splits
-#if 0
+#if 1
         auto it = m_var_arg_mappings.find(idx);
         if(it != m_var_arg_mappings.end())
             return ::MIR::LValue::make_Argument({ it->second });
@@ -262,7 +265,7 @@ public:
     /// Terminates a scope early (e.g. via return/break/...)
     void terminate_scope_early(const Span& sp, const ScopeHandle& , bool loop_exit=false);
     /// Marks the end of a split arm (end match arm, if body, ...)
-    void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable);
+    void end_split_arm(const Span& sp, const ScopeHandle& , bool reachable, bool early=false);
     /// Terminates the current split early (TODO: What does this mean?)
     void end_split_arm_early(const Span& sp);
 
@@ -275,8 +278,12 @@ public:
     // Helper - Marks a variable/... as moved (and checks if the move is valid)
     void moved_lvalue(const Span& sp, const ::MIR::LValue& lv);
 private:
-    const VarState& get_slot_state(const Span& sp, unsigned int idx, unsigned int skip_count=0) const;
-    VarState& get_slot_state_mut(const Span& sp, unsigned int idx);
+    enum class SlotType {
+        Local,  // Local ~0u is return
+        Argument
+    };
+    const VarState& get_slot_state(const Span& sp, unsigned int idx, SlotType type, unsigned int skip_count=0) const;
+    VarState& get_slot_state_mut(const Span& sp, unsigned int idx, SlotType type);
 
     const VarState& get_val_state(const Span& sp, const ::MIR::LValue& lv, unsigned int skip_count=0);
     VarState& get_val_state_mut(const Span& sp, const ::MIR::LValue& lv);

@@ -2252,8 +2252,15 @@ namespace {
         unsigned int i = 0;
         for( const auto& arg : args )
         {
-            ev.define_vars_from(ptr->span(), arg.first);
-            ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::make_Argument({i}));
+            const auto& pat = arg.first;
+            if( pat.m_binding.is_valid() && pat.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+            {
+            }
+            else
+            {
+                ev.define_vars_from(ptr->span(), arg.first);
+                ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::make_Argument({i}));
+            }
             i ++;
         }
 

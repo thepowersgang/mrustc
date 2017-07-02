@@ -82,8 +82,7 @@ struct ArmCode {
     ::MIR::BasicBlockId   code = 0;
     bool has_condition = false;
     ::MIR::BasicBlockId   cond_start;
-    ::MIR::BasicBlockId   cond_end;
-    ::MIR::LValue   cond_lval;
+    ::MIR::BasicBlockId   cond_false;
     ::std::vector< ::MIR::BasicBlockId> destructures;   // NOTE: Incomplete
 
     mutable ::MIR::BasicBlockId cond_fail_tgt = 0;
@@ -355,9 +354,12 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         }
         builder.terminate_scope( sp, mv$(pat_scope) );
 
+        ac.code = builder.new_bb_unlinked();
+
         // Condition
         // NOTE: Lack of drop due to early exit from this arm isn't an issue. All captures must be Copy
         // - The above is rustc E0008 "cannot bind by-move into a pattern guard"
+        // TODO: Create a special wrapping scope for the conditions that forces any moves to use a drop flag
         if(arm.m_cond)
         {
             if( H::is_pattern_move(sp, builder, arm.m_patterns[0]) )
@@ -372,9 +374,15 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
 
             auto tmp_scope = builder.new_scope_temp(arm.m_cond->span());
             conv.visit_node_ptr( arm.m_cond );
-            ac.cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
+            auto cond_lval = builder.get_result_in_if_cond(arm.m_cond->span());
             builder.terminate_scope( arm.m_code->span(), mv$(tmp_scope) );
-            ac.cond_end = builder.pause_cur_block();
+            ac.cond_false = builder.new_bb_unlinked();
+            builder.end_block(::MIR::Terminator::make_If({ mv$(cond_lval), ac.code, ac.cond_false }));
+            // TODO: Emit the `if` (to new blocks) and insert an early termination of the this split arm
+
+            builder.set_cur_block(ac.cond_false);
+            builder.end_split_arm(arm.m_cond->span(), match_scope, true, true);
+            builder.pause_cur_block();
 
             // NOTE: Paused so that later code (which knows what the false branch will be) can end it correctly
 
@@ -390,7 +398,6 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         // Code
         DEBUG("-- Body Code");
 
-        ac.code = builder.new_bb_unlinked();
         auto tmp_scope = builder.new_scope_temp(arm.m_code->span());
         builder.set_cur_block( ac.code );
         conv.visit_node_ptr( arm.m_code );
@@ -1923,8 +1930,8 @@ void MIR_LowerHIR_Match_Simple( MirBuilder& builder, MirConverter& conv, ::HIR::
         }
         if( arm_code.has_condition )
         {
-            builder.set_cur_block( arm_code.cond_end );
-            builder.end_block( ::MIR::Terminator::make_If({ mv$(arm_code.cond_lval), arm_code.code, next_arm_bb }) );
+            builder.set_cur_block( arm_code.cond_false );
+            builder.end_block( ::MIR::Terminator::make_Goto(next_arm_bb) );
         }
         builder.set_cur_block( next_arm_bb );
     }
@@ -2625,8 +2632,8 @@ void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR:
                         {
                             ac.cond_fail_tgt = next;
 
-                            m_builder.set_cur_block( ac.cond_end );
-                            m_builder.end_block( ::MIR::Terminator::make_If({ ac.cond_lval.clone(), ac.code, next }) );
+                            m_builder.set_cur_block( ac.cond_false );
+                            m_builder.end_block( ::MIR::Terminator::make_Goto(next) );
                         }
                     }
 

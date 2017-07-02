@@ -400,8 +400,11 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
         // Don't drop.
         // No state tracking for the return value
         ),
+    (Argument,
+        state_p = &get_slot_state_mut(sp, e.idx, SlotType::Argument);
+        ),
     (Local,
-        state_p = &get_slot_state_mut(sp, e);
+        state_p = &get_slot_state_mut(sp, e, SlotType::Local);
         )
     )
 
@@ -576,7 +579,7 @@ void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::LValue& val, con
 
             // TODO: This should update the outer state to unset.
             auto& arm = sd_split->arms.back();
-            arm.states.insert(::std::make_pair( idx, get_slot_state(sp, idx).clone() ));
+            arm.states.insert(::std::make_pair( idx, get_slot_state(sp, idx, SlotType::Local).clone() ));
             m_slot_states.at(idx) = VarState(InvalidType::Uninit);
         }
         else
@@ -948,7 +951,8 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope,
         // Ensure that all arguments are dropped if they were not moved
         for(size_t i = 0; i < m_arg_states.size(); i ++)
         {
-            this->drop_value_from_state(sp, m_arg_states[i], ::MIR::LValue::make_Argument({ static_cast<unsigned>(i) }));
+            const auto& state = get_slot_state(sp, i, SlotType::Argument);
+            this->drop_value_from_state(sp, state, ::MIR::LValue::make_Argument({ static_cast<unsigned>(i) }));
         }
     }
 }
@@ -983,6 +987,9 @@ namespace
                     old_state = VarState::make_Optional( new_flag );
                     #else
                     // TODO: Rewrite history. I.e. visit all previous branches and set this drop flag to `false` in all of them
+                    for(auto pos : other_arms) {
+                        builder.push_df_set_at(pos, flag_idx, false);
+                    }
                     TODO(sp, "Drop flag default not false when going Invalid->Optional");
                     #endif
                 }
@@ -1007,6 +1014,10 @@ namespace
                         builder.push_stmt_set_dropflag_other(sp, new_flag, nse.outer_flag);
                         builder.push_stmt_set_dropflag_default(sp, nse.outer_flag);
                         ose.outer_flag = new_flag;
+#if 0
+                        for(auto pos : other_arms) {
+                        }
+#endif
                     }
                 }
                 else
@@ -1354,30 +1365,39 @@ void MirBuilder::terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_l
     {
         // Insert copies of parent state for newly changed values
         // and Merge all changed values
-        for(const auto& ent : sd_loop.changed_slots)
-        {
-            auto idx = ent.first;
-            if( sd_loop.exit_state.states.count(idx) == 0 ) {
-                sd_loop.exit_state.states.insert(::std::make_pair( idx, ent.second.clone() ));
+        auto merge_list = [sp,this](const auto& changed, auto& exit_states, ::std::function<::MIR::LValue(unsigned)> val_cb, auto type) {
+            for(const auto& ent : changed)
+            {
+                auto idx = ent.first;
+                auto it = exit_states.find(idx);
+                if( it == exit_states.end() ) {
+                    it = exit_states.insert(::std::make_pair( idx, ent.second.clone() )).first;
+                }
+                auto& old_state = it->second;
+                merge_state(sp, *this, val_cb(idx), old_state,  get_slot_state(sp, idx, type));
             }
-            auto& old_state = sd_loop.exit_state.states.at(idx);
-            merge_state(sp, *this, ::MIR::LValue::make_Local(idx), old_state,  get_slot_state(sp, idx));
-        }
+            };
+        merge_list(sd_loop.changed_slots, sd_loop.exit_state.states, ::MIR::LValue::make_Local, SlotType::Local);
+        merge_list(sd_loop.changed_args, sd_loop.exit_state.arg_states, [](auto v){ return ::MIR::LValue::make_Argument({v}); }, SlotType::Argument);
     }
     else
     {
+        auto init_list = [sp,this](const auto& changed, auto& exit_states, auto type) {
+            for(const auto& ent : changed)
+            {
+                DEBUG("Slot(" << ent.first << ") = " << ent.second);
+                auto idx = ent.first;
+                exit_states.insert(::std::make_pair( idx, get_slot_state(sp, idx, type).clone() ));
+            }
+            };
         // Obtain states of changed variables/temporaries
-        for(const auto& ent : sd_loop.changed_slots)
-        {
-            DEBUG("Slot(" << ent.first << ") = " << ent.second);
-            auto idx = ent.first;
-            sd_loop.exit_state.states.insert(::std::make_pair( idx, get_slot_state(sp, idx).clone() ));
-        }
+        init_list(sd_loop.changed_slots, sd_loop.exit_state.states, SlotType::Local);
+        init_list(sd_loop.changed_args, sd_loop.exit_state.arg_states, SlotType::Argument);
         sd_loop.exit_state_valid = true;
     }
 }
 
-void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool reachable)
+void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool reachable, bool early/*=false*/)
 {
     ASSERT_BUG(sp, handle.idx < m_scopes.size(), "Handle passed to end_split_arm is invalid");
     auto& sd = m_scopes.at( handle.idx );
@@ -1396,25 +1416,29 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
     {
         if( reachable )
         {
-            // Insert copies of the parent state 
-            for(const auto& ent : this_arm_state.states) {
-                if( sd_split.end_state.states.count(ent.first) == 0 ) {
-                    sd_split.end_state.states.insert(::std::make_pair( ent.first, get_slot_state(sp, ent.first, 1).clone() ));
+            auto merge_list = [sp,this](const auto& states, auto& end_states, auto type) {
+                // Insert copies of the parent state
+                for(const auto& ent : states) {
+                    if( end_states.count(ent.first) == 0 ) {
+                        end_states.insert(::std::make_pair( ent.first, get_slot_state(sp, ent.first, type, 1).clone() ));
+                    }
                 }
-            }
+                // Merge state
+                for(auto& ent : end_states)
+                {
+                    auto idx = ent.first;
+                    auto& out_state = ent.second;
 
-            // Merge state
-            for(auto& ent : sd_split.end_state.states)
-            {
-                auto idx = ent.first;
-                auto& out_state = ent.second;
+                    // Merge the states
+                    auto it = states.find(idx);
+                    const auto& src_state = (it != states.end() ? it->second : get_slot_state(sp, idx, type, 1));
 
-                // Merge the states
-                auto it = this_arm_state.states.find(idx);
-                const auto& src_state = (it != this_arm_state.states.end() ? it->second : get_slot_state(sp, idx, 1));
-
-                merge_state(sp, *this, ::MIR::LValue::make_Local(idx), out_state, src_state);
-            }
+                    auto lv = (type == SlotType::Local ? ::MIR::LValue::make_Local(idx) : ::MIR::LValue::make_Argument({idx}));
+                    merge_state(sp, *this, mv$(lv), out_state, src_state);
+                }
+                };
+            merge_list(this_arm_state.states, sd_split.end_state.states, SlotType::Local);
+            merge_list(this_arm_state.arg_states, sd_split.end_state.arg_states, SlotType::Argument);
         }
         else
         {
@@ -1429,17 +1453,29 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
             DEBUG("Slot(" << ent.first << ") = " << ent.second);
             sd_split.end_state.states.insert(::std::make_pair( ent.first, ent.second.clone() ));
         }
+        for(auto& ent : this_arm_state.arg_states)
+        {
+            DEBUG("Argument(" << ent.first << ") = " << ent.second);
+            sd_split.end_state.arg_states.insert(::std::make_pair( ent.first, ent.second.clone() ));
+        }
         sd_split.end_state_valid = true;
     }
 
-    sd_split.arms.push_back( {} );
+    if( reachable )
+    {
+        assert(m_block_active);
+    }
+    if( !early )
+    {
+        sd_split.arms.push_back( {} );
+    }
 }
 void MirBuilder::end_split_arm_early(const Span& sp)
 {
     TRACE_FUNCTION_F("");
     size_t i = m_scope_stack.size();
-    // Terminate all scopes until a split is found.
-    while( i -- && ! (m_scopes.at(m_scope_stack[i]).data.is_Split() || m_scopes.at(m_scope_stack[i]).data.is_Loop()) )
+    // Terminate every sequence of owning scopes
+    while( i -- && m_scopes.at(m_scope_stack[i]).data.is_Owning() )
     {
         auto& scope_def = m_scopes[m_scope_stack[i]];
         // Fully drop the scope
@@ -1459,6 +1495,7 @@ void MirBuilder::end_split_arm_early(const Span& sp)
 
             // TODO: Create drop flags if required?
         }
+        // TODO: What if this is a loop?
     }
 }
 void MirBuilder::complete_scope(ScopeDef& sd)
@@ -1481,10 +1518,19 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         {
             for(auto& ent : end_state.states)
             {
-                auto& vs = builder.get_slot_state_mut(sp, ent.first);
+                auto& vs = builder.get_slot_state_mut(sp, ent.first, SlotType::Local);
                 if( vs != ent.second )
                 {
                     DEBUG(::MIR::LValue::make_Local(ent.first) << " " << vs << " => " << ent.second);
+                    vs = ::std::move(ent.second);
+                }
+            }
+            for(auto& ent : end_state.arg_states)
+            {
+                auto& vs = builder.get_slot_state_mut(sp, ent.first, SlotType::Argument);
+                if( vs != ent.second )
+                {
+                    DEBUG(::MIR::LValue::make_Argument({ent.first}) << " " << vs << " => " << ent.second);
                     vs = ::std::move(ent.second);
                 }
             }
@@ -1735,7 +1781,7 @@ bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val) const
     return rv == 2;
 }
 
-const VarState& MirBuilder::get_slot_state(const Span& sp, unsigned int idx, unsigned int skip_count/*=0*/) const
+const VarState& MirBuilder::get_slot_state(const Span& sp, unsigned int idx, SlotType type, unsigned int skip_count/*=0*/) const
 {
     // 1. Find an applicable Split scope
     for( auto scope_idx : ::reverse(m_scope_stack) )
@@ -1745,15 +1791,19 @@ const VarState& MirBuilder::get_slot_state(const Span& sp, unsigned int idx, uns
         (
             ),
         (Owning,
-            auto it = ::std::find(e.slots.begin(), e.slots.end(), idx);
-            if( it != e.slots.end() ) {
-                break ;
+            if( type == SlotType::Local )
+            {
+                auto it = ::std::find(e.slots.begin(), e.slots.end(), idx);
+                if( it != e.slots.end() ) {
+                    break ;
+                }
             }
             ),
         (Split,
             const auto& cur_arm = e.arms.back();
-            auto it = cur_arm.states.find(idx);
-            if( it != cur_arm.states.end() )
+            const auto& list = (type == SlotType::Local ? cur_arm.states : cur_arm.arg_states);
+            auto it = list.find(idx);
+            if( it != list.end() )
             {
                 if( ! skip_count -- )
                 {
@@ -1763,17 +1813,26 @@ const VarState& MirBuilder::get_slot_state(const Span& sp, unsigned int idx, uns
             )
         )
     }
-    if( idx == ~0u )
+    switch(type)
     {
-        return m_return_state;
+    case SlotType::Local:
+        if( idx == ~0u )
+        {
+            return m_return_state;
+        }
+        else
+        {
+            ASSERT_BUG(sp, idx < m_slot_states.size(), "Slot " << idx << " out of range for state table");
+            return m_slot_states.at(idx);
+        }
+        break;
+    case SlotType::Argument:
+        ASSERT_BUG(sp, idx < m_arg_states.size(), "Argument " << idx << " out of range for state table");
+        return m_arg_states.at(idx);
     }
-    else
-    {
-        ASSERT_BUG(sp, idx < m_slot_states.size(), "Slot " << idx << " out of range for state table");
-        return m_slot_states.at(idx);
-    }
+    throw "";
 }
-VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx)
+VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotType type)
 {
     VarState* ret = nullptr;
     for( auto scope_idx : ::reverse(m_scope_stack) )
@@ -1781,26 +1840,28 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx)
         auto& scope_def = m_scopes.at(scope_idx);
         if( const auto* e = scope_def.data.opt_Owning() )
         {
-            auto it = ::std::find(e->slots.begin(), e->slots.end(), idx);
-            if( it != e->slots.end() ) {
-                break ;
+            if( type == SlotType::Local )
+            {
+                auto it = ::std::find(e->slots.begin(), e->slots.end(), idx);
+                if( it != e->slots.end() ) {
+                    break ;
+                }
             }
         }
-        else if( scope_def.data.is_Split() )
+        else if( auto* e = scope_def.data.opt_Split() )
         {
-            auto& e = scope_def.data.as_Split();
-            auto& cur_arm = e.arms.back();
+            auto& cur_arm = e->arms.back();
             if( ! ret )
             {
                 if( idx == ~0u ) {
                 }
                 else {
-                    auto* states = &cur_arm.states;
-                    auto it = states->find(idx);
-                    if( it == states->end() )
+                    auto& states = (type == SlotType::Local ? cur_arm.states : cur_arm.arg_states);
+                    auto it = states.find(idx);
+                    if( it == states.end() )
                     {
                         DEBUG("Split new (scope " << scope_idx << ")");
-                        it = states->insert(::std::make_pair( idx, get_slot_state(sp, idx).clone() )).first;
+                        it = states.insert(::std::make_pair( idx, get_slot_state(sp, idx, type).clone() )).first;
                     }
                     else
                     {
@@ -1810,20 +1871,18 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx)
                 }
             }
         }
-        else if( scope_def.data.is_Loop() )
+        else if( auto* e = scope_def.data.opt_Loop() )
         {
-            auto& e = scope_def.data.as_Loop();
-            ::std::map<unsigned int, VarState>* states = nullptr;
             if( idx == ~0u )
             {
             }
             else
             {
-                states = &e.changed_slots;
-                if( states->count(idx) == 0 )
+                auto& states = (type == SlotType::Local ? e->changed_slots : e->changed_args);
+                if( states.count(idx) == 0 )
                 {
-                    auto state = e.exit_state_valid ? get_slot_state(sp, idx).clone() : VarState::make_Valid({});
-                    states->insert(::std::make_pair( idx, mv$(state) ));
+                    auto state = e->exit_state_valid ? get_slot_state(sp, idx, type).clone() : VarState::make_Valid({});
+                    states.insert(::std::make_pair( idx, mv$(state) ));
                 }
             }
         }
@@ -1837,14 +1896,21 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx)
     }
     else
     {
-        if( idx == ~0u )
+        switch(type)
         {
-            return m_return_state;
+        case SlotType::Local:
+            if( idx == ~0u )
+            {
+                return m_return_state;
+            }
+            else
+            {
+                return m_slot_states.at(idx);
+            }
+        case SlotType::Argument:
+            return m_arg_states.at(idx);
         }
-        else
-        {
-            return m_slot_states.at(idx);
-        }
+        throw "";
     }
 }
 
@@ -1858,14 +1924,13 @@ VarState& MirBuilder::get_val_state_mut(const Span& sp, const ::MIR::LValue& lv)
     TU_MATCHA( (lv), (e),
     (Return,
         BUG(sp, "Move of return value");
-        return get_slot_state_mut(sp, ~0u);
+        return get_slot_state_mut(sp, ~0u, SlotType::Local);
         ),
     (Argument,
-        // NOTE: Only valid outside of split scopes (should only happen at the start)
-        return m_arg_states.at(e.idx);
+        return get_slot_state_mut(sp, e.idx, SlotType::Argument);
         ),
     (Local,
-        return get_slot_state_mut(sp, e);
+        return get_slot_state_mut(sp, e, SlotType::Local);
         ),
     (Static,
         BUG(sp, "Attempting to mutate state of a static");
@@ -2084,7 +2149,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
     (Owning,
         for(auto idx : ::reverse(e.slots))
         {
-            const auto& vs = get_slot_state(sd.span, idx);
+            const auto& vs = get_slot_state(sd.span, idx, SlotType::Local);
             DEBUG("slot" << idx << " - " << vs);
             drop_value_from_state( sd.span, vs, ::MIR::LValue::make_Local(idx) );
         }
