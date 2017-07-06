@@ -338,11 +338,10 @@ namespace {
             switch(auto tag = m_in.read_tag())
             {
             #define _(x, ...)    case ::MIR::LValue::TAG_##x: return ::MIR::LValue::make_##x( __VA_ARGS__ );
-            _(Variable,  static_cast<unsigned int>(m_in.read_count()) )
-            _(Temporary, { static_cast<unsigned int>(m_in.read_count()) } )
-            _(Argument,  { static_cast<unsigned int>(m_in.read_count()) } )
-            _(Static,  deserialise_path() )
             _(Return, {})
+            _(Argument, { static_cast<unsigned int>(m_in.read_count()) } )
+            _(Local,   static_cast<unsigned int>(m_in.read_count()) )
+            _(Static,  deserialise_path() )
             _(Field, {
                 box$( deserialise_mir_lvalue() ),
                 static_cast<unsigned int>(m_in.read_count())
@@ -505,10 +504,10 @@ namespace {
 
         ::HIR::Linkage deserialise_linkage()
         {
-			::HIR::Linkage	l;
-			l.type = ::HIR::Linkage::Type::Auto;
-			l.name = m_in.read_string();
-			return l;
+            ::HIR::Linkage  l;
+            l.type = ::HIR::Linkage::Type::Auto;
+            l.name = m_in.read_string();
+            return l;
         }
 
         // - Value items
@@ -962,8 +961,8 @@ namespace {
 
         ::MIR::Function rv;
 
-        rv.named_variables = deserialise_vec< ::HIR::TypeRef>( );
-        rv.temporaries = deserialise_vec< ::HIR::TypeRef>( );
+        rv.locals = deserialise_vec< ::HIR::TypeRef>( );
+        //rv.local_names = deserialise_vec< ::std::string>( );
         rv.drop_flags = deserialise_vec<bool>();
         rv.blocks = deserialise_vec< ::MIR::BasicBlock>( );
 
@@ -1004,15 +1003,14 @@ namespace {
                 deserialise_vec< ::std::string>()
                 });
         case 3: {
-			::MIR::Statement::Data_SetDropFlag	sdf;
-			sdf.idx = static_cast<unsigned int>(m_in.read_count());
-			sdf.new_val = m_in.read_bool();
-			sdf.other = static_cast<unsigned int>(m_in.read_count());
-			return ::MIR::Statement::make_SetDropFlag(sdf);
-			}
+            ::MIR::Statement::Data_SetDropFlag  sdf;
+            sdf.idx = static_cast<unsigned int>(m_in.read_count());
+            sdf.new_val = m_in.read_bool();
+            sdf.other = static_cast<unsigned int>(m_in.read_count());
+            return ::MIR::Statement::make_SetDropFlag(sdf);
+            }
         case 4:
             return ::MIR::Statement::make_ScopeEnd({
-                deserialise_vec<unsigned int>(),
                 deserialise_vec<unsigned int>()
                 });
         default:

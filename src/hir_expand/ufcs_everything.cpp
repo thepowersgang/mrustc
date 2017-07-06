@@ -289,7 +289,7 @@ namespace {
                 ASSERT_BUG(sp, ty_slot == ty_val, "Types must equal for non-operator assignment, " << ty_slot << " != " << ty_val);
                 return ;
             _(Shr): {langitem = "shr_assign"; opname = "shr_assign"; } if(0)
-			_(Shl): {langitem = "shl_assign"; opname = "shl_assign"; }
+            _(Shl): {langitem = "shl_assign"; opname = "shl_assign"; }
                 if( is_op_valid_shift(ty_slot, ty_val) ) {
                     return ;
                 }
@@ -385,8 +385,8 @@ namespace {
                 auto ty_r_ref = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ty_r.clone() );
 
                 ::std::vector< ::HIR::ExprNodeP>    args;
-				auto sp_left  = node.m_left ->span();
-				auto sp_right = node.m_right->span();
+                auto sp_left  = node.m_left ->span();
+                auto sp_right = node.m_right->span();
                 args.push_back(NEWNODE(ty_l_ref.clone(), Borrow, sp_left ,  ::HIR::BorrowType::Shared, mv$(node.m_left ) ));
                 args.push_back(NEWNODE(ty_r_ref.clone(), Borrow, sp_right,  ::HIR::BorrowType::Shared, mv$(node.m_right) ));
 

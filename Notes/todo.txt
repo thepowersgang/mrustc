@@ -23,3 +23,12 @@ TODO:
  - This should reduce the amount of code needed for validation, but will be a
    BIG change.
 
+
+
+## Optimisations
+- Argument propagation: replace assignments from Argument(_) if target is only
+  written once
+- Dead assignment removal (Delete `<val> = Use(<val>)`
+- Tuple destructure removal
+ - Spot `#1 = (...,)`, `#2 = (#1).n` where #1 is Write-once, borrow-none
+

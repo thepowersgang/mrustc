@@ -42,10 +42,10 @@ class NullSink
 {
 public:
     NullSink()
-	{}
+    {}
 
-	template<typename T>
-	const NullSink& operator<<(const T&) const { return *this;  }
+    template<typename T>
+    const NullSink& operator<<(const T&) const { return *this;  }
 };
 
 class TraceLog
@@ -62,9 +62,9 @@ public:
 struct FmtLambda
 {
     ::std::function<void(::std::ostream&)>  m_cb;
-	FmtLambda(::std::function<void(::std::ostream&)> cb):
-		m_cb(cb)
-	{ }
+    FmtLambda(::std::function<void(::std::ostream&)> cb):
+        m_cb(cb)
+    { }
     friend ::std::ostream& operator<<(::std::ostream& os, const FmtLambda& x) {
         x.m_cb(os);
         return os;

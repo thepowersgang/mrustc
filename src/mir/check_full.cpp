@@ -24,6 +24,11 @@ namespace
         // other = 1-based index into `inner_states`
         unsigned int    index;
 
+        explicit State(const State&) = default;
+        State(State&& x) = default;
+        State& operator=(const State&) = delete;
+        State& operator=(State&& ) = default;
+
         State(): index(0) {}
         State(bool valid): index(valid ? ~0u : 0) {}
         State(size_t idx):
@@ -51,20 +56,20 @@ namespace
 
 struct StateFmt {
     const ValueStates&  vss;
-    State   s;
-    StateFmt( const ValueStates& vss, State s ):
+    const State&    s;
+    StateFmt( const ValueStates& vss, const State& s ):
         vss(vss), s(s)
     {}
 };
+::std::ostream& operator<<(::std::ostream& os, const StateFmt& x);
 
 namespace
 {
     struct ValueStates
     {
-        ::std::vector<State> vars;
-        ::std::vector<State> temporaries;
-        ::std::vector<State> arguments;
         State   return_value;
+        ::std::vector<State> args;
+        ::std::vector<State> locals;
         ::std::vector<bool> drop_flags;
 
         ::std::vector< ::std::vector<State> >   inner_states;
@@ -73,8 +78,27 @@ namespace
 
         ValueStates clone() const
         {
+            struct H  {
+                static ::std::vector<State> clone_state_list(const ::std::vector<State>& l) {
+                    ::std::vector<State> rv;
+                    rv.reserve(l.size());
+                    for(const auto& s : l)
+                        rv.push_back( State(s) );
+                    return rv;
+                }
+            };
+            ValueStates rv;
+            rv.return_value = State(this->return_value);
+            rv.args = H::clone_state_list(this->args);
+            rv.locals = H::clone_state_list(this->locals);
+            rv.drop_flags = this->drop_flags;
+            rv.inner_states.reserve( this->inner_states.size() );
+            for(const auto& isl : this->inner_states)
+                rv.inner_states.push_back( H::clone_state_list(isl) );
+            rv.bb_path = this->bb_path;
             return *this;
         }
+
         bool is_equivalent_to(const ValueStates& x) const
         {
             struct H {
@@ -113,22 +137,18 @@ namespace
                 return false;
             if( ! H::equal(*this, return_value,  x, x.return_value) )
                 return false;
-            assert(vars.size() == x.vars.size());
-            for(size_t i = 0; i < vars.size(); i ++)
+
+            assert(args.size() == x.args.size());
+            for(size_t i = 0; i < args.size(); i ++)
             {
-                if( ! H::equal(*this, vars[i],  x, x.vars[i]) )
+                if( ! H::equal(*this, args[i],  x, x.args[i]) )
                     return false;
             }
-            assert(temporaries.size() == x.temporaries.size());
-            for(size_t i = 0; i < temporaries.size(); i ++)
+
+            assert(locals.size() == x.locals.size());
+            for(size_t i = 0; i < locals.size(); i ++)
             {
-                if( ! H::equal(*this, temporaries[i],  x, x.temporaries[i]) )
-                    return false;
-            }
-            assert(arguments.size() == x.arguments.size());
-            for(size_t i = 0; i < arguments.size(); i ++)
-            {
-                if( ! H::equal(*this, arguments[i],  x, x.arguments[i]) )
+                if( ! H::equal(*this, locals[i],  x, x.locals[i]) )
                     return false;
             }
             return true;
@@ -147,7 +167,7 @@ namespace
         }
         void ensure_lvalue_valid(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv) const
         {
-            auto vs = get_lvalue_state(mir_res, lv);
+            const auto& vs = get_lvalue_state(mir_res, lv);
             ::std::vector<unsigned int> path;
             ensure_valid(mir_res, lv, vs, path);
         }
@@ -371,29 +391,46 @@ namespace
             Marker  m;
             m.used.resize(this->inner_states.size(), false);
 
-            for(const auto& s : this->vars)
-                m.mark_from_state(*this, s);
-            for(const auto& s : this->temporaries)
-                m.mark_from_state(*this, s);
-            for(const auto& s : this->arguments)
-                m.mark_from_state(*this, s);
             m.mark_from_state(*this, this->return_value);
+            for(const auto& s : this->args)
+                m.mark_from_state(*this, s);
+            for(const auto& s : this->locals)
+                m.mark_from_state(*this, s);
         }
     private:
-        State allocate_composite(unsigned int n_fields, State basis)
+        ::std::vector<State>& allocate_composite_int(State& out_state)
         {
-            assert(n_fields > 0);
+            // 1. Search for an unused (empty) slot
             for(size_t i = 0; i < this->inner_states.size(); i ++)
             {
                 if( this->inner_states[i].size() == 0 )
                 {
-                    inner_states[i] = ::std::vector<State>(n_fields, basis);
-                    return State(i);
+                    out_state = State(i);
+                    return inner_states[i];
                 }
             }
+            // 2. If none avaliable, allocate a new slot
             auto idx = inner_states.size();
-            inner_states.push_back( ::std::vector<State>(n_fields, basis) );
-            return State(idx);
+            inner_states.push_back({});
+            out_state = State(idx);
+            return inner_states.back();
+        }
+        State allocate_composite(unsigned int n_fields, const State& basis)
+        {
+            assert(n_fields > 0);
+            assert(!basis.is_composite());
+
+            State   rv;
+            auto& sub_states = allocate_composite_int(rv);
+            assert(sub_states.size() == 0);
+
+            sub_states.reserve(n_fields);
+            while(n_fields--)
+            {
+                sub_states.push_back( State(basis) );
+            }
+
+            return rv;
         }
 
     public:
@@ -407,26 +444,24 @@ namespace
             MIR_ASSERT(mir_res, vs.index-1 < this->inner_states.size(), "");
             return this->inner_states.at( vs.index - 1 );
         }
-        State get_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv) const
+        const State& get_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv) const
         {
             TU_MATCHA( (lv), (e),
-            (Variable,
-                return vars.at(e);
-                ),
-            (Temporary,
-                return temporaries.at(e.idx);
-                ),
-            (Argument,
-                return arguments.at(e.idx);
-                ),
-            (Static,
-                return State(true);
-                ),
             (Return,
                 return return_value;
                 ),
+            (Argument,
+                return args.at(e.idx);
+                ),
+            (Local,
+                return locals.at(e);
+                ),
+            (Static,
+                static State    state_of_static(true);
+                return state_of_static;
+                ),
             (Field,
-                auto vs = get_lvalue_state(mir_res, *e.val);
+                const auto& vs = get_lvalue_state(mir_res, *e.val);
                 if( vs.is_composite() )
                 {
                     const auto& states = this->get_composite(mir_res, vs);
@@ -439,7 +474,7 @@ namespace
                 }
                 ),
             (Deref,
-                auto vs = get_lvalue_state(mir_res, *e.val);
+                const auto& vs = get_lvalue_state(mir_res, *e.val);
                 if( vs.is_composite() )
                 {
                     MIR_TODO(mir_res, "Deref with composite state");
@@ -450,18 +485,20 @@ namespace
                 }
                 ),
             (Index,
-                auto vs_v = get_lvalue_state(mir_res, *e.val);
-                auto vs_i = get_lvalue_state(mir_res, *e.idx);
+                const auto& vs_v = get_lvalue_state(mir_res, *e.val);
+                const auto& vs_i = get_lvalue_state(mir_res, *e.idx);
                 MIR_ASSERT(mir_res, !vs_v.is_composite(), "");
                 MIR_ASSERT(mir_res, !vs_i.is_composite(), "");
-                return State(vs_v.is_valid() && vs_i.is_valid());
+                //return State(vs_v.is_valid() && vs_i.is_valid());
+                MIR_ASSERT(mir_res, vs_i.is_valid(), "Indexing with an invalidated value");
+                return vs_v;
                 ),
             (Downcast,
-                auto vs_v = get_lvalue_state(mir_res, *e.val);
+                const auto& vs_v = get_lvalue_state(mir_res, *e.val);
                 if( vs_v.is_composite() )
                 {
                     const auto& states = this->get_composite(mir_res, vs_v);
-                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size");
+                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size - " << StateFmt(*this, vs_v));
                     return states[0];
                 }
                 else
@@ -473,32 +510,45 @@ namespace
             throw "";
         }
 
+        void clear_state(const ::MIR::TypeResolve& mir_res, State& s) {
+            if(s.is_composite()) {
+                auto& sub_states = this->get_composite(mir_res, s);
+                for(auto& ss : sub_states)
+                    this->clear_state(mir_res, ss);
+                sub_states.clear();
+            }
+        }
+
         void set_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv, State new_vs)
         {
+            TRACE_FUNCTION_F(lv << " = " << StateFmt(*this, new_vs) << " (from " << StateFmt(*this, get_lvalue_state(mir_res, lv)) << ")");
             TU_MATCHA( (lv), (e),
-            (Variable,
-                vars.at(e) = new_vs;
-                ),
-            (Temporary,
-                temporaries.at(e.idx) = new_vs;
+            (Return,
+                this->clear_state(mir_res, return_value);
+                return_value = mv$(new_vs);
                 ),
             (Argument,
-                arguments.at(e.idx) = new_vs;
+                auto& slot = args.at(e.idx);
+                this->clear_state(mir_res, slot);
+                slot = mv$(new_vs);
+                ),
+            (Local,
+                auto& slot = locals.at(e);
+                this->clear_state(mir_res, slot);
+                slot = mv$(new_vs);
                 ),
             (Static,
                 // Ignore.
                 ),
-            (Return,
-                return_value = new_vs;
-                ),
             (Field,
-                auto cur_vs = get_lvalue_state(mir_res, *e.val);
+                const auto& cur_vs = get_lvalue_state(mir_res, *e.val);
                 if( !cur_vs.is_composite() && cur_vs == new_vs )
                 {
                     // Not a composite, and no state change
                 }
                 else
                 {
+                    ::std::vector<State>* states_p;
                     if( !cur_vs.is_composite() )
                     {
                         ::HIR::TypeRef    tmp;
@@ -526,41 +576,55 @@ namespace
                         else {
                             MIR_BUG(mir_res, "Unknown type being accessed with Field - " << ty);
                         }
-                        cur_vs = this->allocate_composite(n_fields, cur_vs);
-                        set_lvalue_state(mir_res, *e.val, cur_vs);
+
+                        auto new_cur_vs = this->allocate_composite(n_fields, cur_vs);
+                        set_lvalue_state(mir_res, *e.val, State(new_cur_vs));
+                        states_p = &this->get_composite(mir_res, new_cur_vs);
+                    }
+                    else
+                    {
+                        states_p = &this->get_composite(mir_res, cur_vs);
                     }
                     // Get composite state and assign into it
-                    auto& states = this->get_composite(mir_res, cur_vs);
+                    auto& states = *states_p;
                     MIR_ASSERT(mir_res, e.field_index < states.size(), "Field index out of range");
-                    states[e.field_index] = new_vs;
+                    this->clear_state(mir_res, states[e.field_index]);
+                    states[e.field_index] = mv$(new_vs);
                 }
                 ),
             (Deref,
-                auto cur_vs = get_lvalue_state(mir_res, *e.val);
+                const auto& cur_vs = get_lvalue_state(mir_res, *e.val);
                 if( !cur_vs.is_composite() && cur_vs == new_vs )
                 {
                     // Not a composite, and no state change
                 }
                 else
                 {
+                    ::std::vector<State>* states_p;
                     if( !cur_vs.is_composite() )
                     {
                         //::HIR::TypeRef    tmp;
                         //const auto& ty = mir_res.get_lvalue_type(tmp, *e.val);
                         // TODO: Should this check if the type is Box?
 
-                        cur_vs = this->allocate_composite(2, cur_vs);
-                        set_lvalue_state(mir_res, *e.val, cur_vs);
+                        auto new_cur_vs = this->allocate_composite(2, cur_vs);
+                        set_lvalue_state(mir_res, *e.val, State(new_cur_vs));
+                        states_p = &this->get_composite(mir_res, new_cur_vs);
+                    }
+                    else
+                    {
+                        states_p = &this->get_composite(mir_res, cur_vs);
                     }
                     // Get composite state and assign into it
-                    auto& states = this->get_composite(mir_res, cur_vs);
+                    auto& states = *states_p;
                     MIR_ASSERT(mir_res, states.size() == 2, "Deref with invalid state list size");
-                    states[1] = new_vs;
+                    this->clear_state(mir_res, states[1]);
+                    states[1] = mv$(new_vs);
                 }
                 ),
             (Index,
-                auto vs_v = get_lvalue_state(mir_res, *e.val);
-                auto vs_i = get_lvalue_state(mir_res, *e.idx);
+                const auto& vs_v = get_lvalue_state(mir_res, *e.val);
+                const auto& vs_i = get_lvalue_state(mir_res, *e.idx);
                 MIR_ASSERT(mir_res, !vs_v.is_composite(), "");
                 MIR_ASSERT(mir_res, !vs_i.is_composite(), "");
 
@@ -570,22 +634,30 @@ namespace
                 // NOTE: Ignore
                 ),
             (Downcast,
-                auto cur_vs = get_lvalue_state(mir_res, *e.val);
+                const auto& cur_vs = get_lvalue_state(mir_res, *e.val);
                 if( !cur_vs.is_composite() && cur_vs == new_vs )
                 {
                     // Not a composite, and no state change
                 }
                 else
                 {
+                    ::std::vector<State>* states_p;
                     if( !cur_vs.is_composite() )
                     {
-                        cur_vs = this->allocate_composite(1, cur_vs);
-                        set_lvalue_state(mir_res, *e.val, cur_vs);
+                        auto new_cur_vs = this->allocate_composite(1, cur_vs);
+                        set_lvalue_state(mir_res, *e.val, State(new_cur_vs));
+                        states_p = &this->get_composite(mir_res, new_cur_vs);
                     }
+                    else
+                    {
+                        states_p = &this->get_composite(mir_res, cur_vs);
+                    }
+
                     // Get composite state and assign into it
-                    auto& states = this->get_composite(mir_res, cur_vs);
-                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size");
-                    states[0] = new_vs;
+                    auto& states = *states_p;
+                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size - " << *e.val << " - " << this->fmt_state(mir_res, *e.val));
+                    this->clear_state(mir_res, states[0]);
+                    states[0] = mv$(new_vs);
                 }
                 )
             )
@@ -648,12 +720,10 @@ namespace std {
 
         os << "ValueStates(path=[" << x.bb_path << "]";
         print_val(",rv", x.return_value);
-        for(unsigned int i = 0; i < x.arguments.size(); i ++)
-            print_val(FMT_CB(ss, ss << ",a" << i;), x.arguments[i]);
-        for(unsigned int i = 0; i < x.vars.size(); i ++)
-            print_val(FMT_CB(ss, ss << ",_" << i;), x.vars[i]);
-        for(unsigned int i = 0; i < x.temporaries.size(); i ++)
-            print_val(FMT_CB(ss, ss << ",t" << i;), x.temporaries[i]);
+        for(unsigned int i = 0; i < x.args.size(); i ++)
+            print_val(FMT_CB(ss, ss << ",a" << i;), x.args[i]);
+        for(unsigned int i = 0; i < x.locals.size(); i ++)
+            print_val(FMT_CB(ss, ss << ",_" << i;), x.locals[i]);
         for(unsigned int i = 0; i < x.drop_flags.size(); i++)
             if(x.drop_flags[i])
                 os << ",df" << i;
@@ -677,9 +747,17 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
     DEBUG(lifetimes.m_block_offsets);
 
     ValueStates state;
-    state.arguments.resize( mir_res.m_args.size(), State(true) );
-    state.vars.resize( fcn.named_variables.size() );
-    state.temporaries.resize( fcn.temporaries.size() );
+    struct H {
+        static ::std::vector<State> make_list(size_t n, bool pop) {
+            ::std::vector<State>    rv;
+            rv.reserve(n);
+            while(n--)
+                rv.push_back(State(pop));
+            return rv;
+        }
+    };
+    state.args = H::make_list(mir_res.m_args.size(), true);
+    state.locals = H::make_list(fcn.locals.size(), false);
     state.drop_flags = fcn.drop_flags;
 
     ::std::vector< ::std::pair<unsigned int, ValueStates> > todo_queue;
@@ -692,46 +770,25 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
 
         // Mask off any values which aren't valid in the first statement of this block
         {
-            for(unsigned i = 0; i < state.vars.size(); i ++)
+            for(unsigned i = 0; i < state.locals.size(); i ++)
             {
                 /*if( !variables_copy[i] )
                 {
                     // Not Copy, don't apply masking
                 }
-                else*/ if( ! state.vars[i].is_valid() )
+                else*/ if( ! state.locals[i].is_valid() )
                 {
                     // Already invalid
                 }
-                else if( lifetimes.var_valid(i, cur_block, 0) )
+                else if( lifetimes.slot_valid(i, cur_block, 0) )
                 {
                     // Expected to be valid in this block, leave as-is
                 }
                 else
                 {
                     // Copy value not used at/after this block, mask to false
-                    DEBUG("BB" << cur_block << " - var$" << i << " - Outside lifetime, discard");
-                    state.vars[i] = State(false);
-                }
-            }
-            for(unsigned i = 0; i < state.temporaries.size(); i ++)
-            {
-                /*if( !variables_copy[i] )
-                {
-                    // Not Copy, don't apply masking
-                }
-                else*/ if( ! state.temporaries[i].is_valid() )
-                {
-                    // Already invalid
-                }
-                else if( lifetimes.tmp_valid(i, cur_block, 0) )
-                {
-                    // Expected to be valid in this block, leave as-is
-                }
-                else
-                {
-                    // Copy value not used at/after this block, mask to false
-                    DEBUG("BB" << cur_block << " - tmp$" << i << " - Outside lifetime, discard");
-                    state.temporaries[i] = State(false);
+                    DEBUG("BB" << cur_block << " - _" << i << " - Outside lifetime, discard");
+                    state.locals[i] = State(false);
                 }
             }
         }
@@ -755,9 +812,9 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
             TU_MATCHA( (blk.statements[i]), (se),
             (Assign,
                 if( ENABLE_LEAK_DETECTOR )
-				{
-					// TODO: Check if the target isn't valid. Allow if either invaid, or too complex to know.
-				}
+                {
+                    // TODO: Check if the target isn't valid. Allow if either invaid, or too complex to know.
+                }
                 TU_MATCHA( (se.src), (ve),
                 (Use,
                     state.move_lvalue(mir_res, ve);
@@ -845,7 +902,7 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                     {
                         // HACK: A move out of a Box generates the following pattern: `[[[[X_]]X]]`
                         // - Ensure that that is the pattern we're seeing here.
-                        auto vs = state.get_lvalue_state(mir_res, se.slot);
+                        const auto& vs = state.get_lvalue_state(mir_res, se.slot);
 
                         MIR_ASSERT(mir_res, vs.index != ~0u, "Shallow drop on fully-valid value - " << se.slot);
 
@@ -910,11 +967,11 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                         }
                     }
                     };
-                for(unsigned i = 0; i < state.arguments.size(); i ++ ) {
-                    ensure_dropped(state.arguments[i], ::MIR::LValue::make_Argument({i}));
+                for(unsigned i = 0; i < state.locals.size(); i ++ ) {
+                    ensure_dropped(state.locals[i], ::MIR::LValue::make_Local(i));
                 }
-                for(unsigned i = 0; i < state.vars.size(); i ++ ) {
-                    ensure_dropped(state.vars[i], ::MIR::LValue::make_Variable(i));
+                for(unsigned i = 0; i < state.args.size(); i ++ ) {
+                    ensure_dropped(state.args[i], ::MIR::LValue::make_Argument({i}));
                 }
             }
             ),
@@ -937,6 +994,14 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
             {
                 todo_queue.push_back( ::std::make_pair(te.targets[i], i == te.targets.size()-1 ? mv$(state) : state.clone()) );
             }
+            ),
+        (SwitchValue,
+            state.ensure_lvalue_valid(mir_res, te.val);
+            for(size_t i = 0; i < te.targets.size(); i ++)
+            {
+                todo_queue.push_back( ::std::make_pair(te.targets[i], state.clone()) );
+            }
+            todo_queue.push_back( ::std::make_pair(te.def_target, mv$(state)) );
             ),
         (Call,
             if(const auto* e = te.fcn.opt_Value())

@@ -169,11 +169,6 @@ class CMacroReexportHandler:
     }
 };
 
-::std::unique_ptr<TokenStream>  Macro_Invoke(const char* name, const MacroRules& rules, TokenTree tt, AST::Module& mod)
-{
-    return Macro_InvokeRules(name, rules, mv$(tt), mod);
-}
-
 
 STATIC_MACRO("macro_rules", CMacroRulesExpander);
 STATIC_DECORATOR("macro_use", CMacroUseHandler);

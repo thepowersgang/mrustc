@@ -1601,7 +1601,7 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
                 Resolve_Absolute_Pattern(this->context, true, node.m_pattern);
                 break;
             case ::AST::ExprNode_Loop::FOR:
-                BUG(node.get_pos(), "`for` should be desugared");
+                BUG(node.span(), "`for` should be desugared");
             }
             node.m_code->visit( *this );
             this->context.pop_block();
@@ -1629,22 +1629,22 @@ void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node)
         }
         void visit(AST::ExprNode_StructLiteral& node) override {
             DEBUG("ExprNode_StructLiteral");
-            Resolve_Absolute_Path(this->context, Span(node.get_pos()), Context::LookupMode::Type, node.m_path);
+            Resolve_Absolute_Path(this->context, node.span(), Context::LookupMode::Type, node.m_path);
             AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_CallPath& node) override {
             DEBUG("ExprNode_CallPath");
-            Resolve_Absolute_Path(this->context, Span(node.get_pos()), Context::LookupMode::Variable,  node.m_path);
+            Resolve_Absolute_Path(this->context, node.span(), Context::LookupMode::Variable,  node.m_path);
             AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_CallMethod& node) override {
             DEBUG("ExprNode_CallMethod");
-            Resolve_Absolute_PathParams(this->context, Span(node.get_pos()),  node.m_method.args());
+            Resolve_Absolute_PathParams(this->context, node.span(),  node.m_method.args());
             AST::NodeVisitorDef::visit(node);
         }
         void visit(AST::ExprNode_NamedValue& node) override {
-            DEBUG("(" << node.get_pos() << ") ExprNode_NamedValue - " << node.m_path);
-            Resolve_Absolute_Path(this->context, Span(node.get_pos()), Context::LookupMode::Variable,  node.m_path);
+            DEBUG("(" << node.span() << ") ExprNode_NamedValue - " << node.m_path);
+            Resolve_Absolute_Path(this->context, node.span(), Context::LookupMode::Variable,  node.m_path);
         }
         void visit(AST::ExprNode_Cast& node) override {
             DEBUG("ExprNode_Cast");

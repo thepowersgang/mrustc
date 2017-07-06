@@ -9,6 +9,7 @@
 
 #include <rc_string.hpp>
 #include <functional>
+#include <memory>
 
 enum ErrorType
 {
@@ -30,6 +31,7 @@ struct ProtoSpan
 };
 struct Span
 {
+    ::std::shared_ptr<Span> outer_span; // Expansion target for macros
     RcString    filename;
 
     unsigned int start_line;

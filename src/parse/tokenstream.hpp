@@ -60,17 +60,19 @@ public:
     void    putback(Token tok);
     eTokenType  lookahead(unsigned int count);
 
-    virtual Position getPosition() const = 0;
     Ident::Hygiene getHygiene() const;
 
     ParseState& parse_state() { return m_parse_state; }
 
     ProtoSpan   start_span() const;
     Span    end_span(ProtoSpan ps) const;
+    Span    point_span() const;
 
     Ident get_ident(Token tok) const;
 
 protected:
+    virtual Position getPosition() const = 0;
+    virtual ::std::shared_ptr<Span> outerSpan() const { return ::std::shared_ptr<Span>(0); }
     virtual Token   realGetToken() = 0;
     virtual Ident::Hygiene realGetHygiene() const = 0;
 private:

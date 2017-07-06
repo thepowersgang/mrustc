@@ -23,6 +23,7 @@
 #include "hir_expand/main_bindings.hpp"
 #include "mir/main_bindings.hpp"
 #include "trans/main_bindings.hpp"
+#include "trans/target.hpp"
 
 #include "expand/cfg.hpp"
 
@@ -63,6 +64,7 @@ void init_debug_list()
     g_debug_disable_map.insert( "Dump HIR" );
     g_debug_disable_map.insert( "Lower MIR" );
     g_debug_disable_map.insert( "MIR Validate" );
+    g_debug_disable_map.insert( "MIR Validate Full Early" );
     g_debug_disable_map.insert( "Dump MIR" );
     g_debug_disable_map.insert( "Constant Evaluate Full" );
     g_debug_disable_map.insert( "MIR Cleanup" );
@@ -142,6 +144,13 @@ struct ProgramParams
 
     ::std::set< ::std::string> features;
 
+
+    struct {
+        bool disable_mir_optimisations = false;
+        bool full_validate = false;
+        bool full_validate_early = false;
+    } debug;
+
     ProgramParams(int argc, char *argv[]);
 };
 
@@ -174,26 +183,10 @@ int main(int argc, char *argv[])
 
     // Set up cfg values
     Cfg_SetValue("rust_compiler", "mrustc");
-    // TODO: Target spec
-    Cfg_SetFlag("unix");
-    Cfg_SetFlag("linux");
-    Cfg_SetValue("target_os", "linux");
-    Cfg_SetValue("target_family", "unix");
-    Cfg_SetValue("target_pointer_width", "64");
-    Cfg_SetValue("target_endian", "little");
-    Cfg_SetValue("target_arch", "x86_64");
-    Cfg_SetValue("target_env", "gnu");
-    Cfg_SetValueCb("target_has_atomic", [](const ::std::string& s) {
-        if(s == "8")    return true;    // Has an atomic byte
-        if(s == "ptr")  return true;    // Has an atomic pointer-sized value
-        return false;
-        });
-    Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
-        return false;
-        });
     Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
         return params.features.count(s) != 0;
         });
+    Target_SetCfg();
 
 
     if( params.test_harness )
@@ -258,18 +251,18 @@ int main(int argc, char *argv[])
             crate_name = ::std::string(params.infile.begin() + s, params.infile.begin() + e);
             for(auto& b : crate_name)
             {
-				if ('0' <= b && b <= '9') {
-				}
-				else if ('A' <= b && b <= 'Z') {
-				}
-				else if (b == '_') {
-				}
-				else if (b == '-') {
-					b = '_';
-				}
-				else {
-					// TODO: Error?
-				}
+                if ('0' <= b && b <= '9') {
+                }
+                else if ('A' <= b && b <= 'Z') {
+                }
+                else if (b == '_') {
+                }
+                else if (b == '-') {
+                    b = '_';
+                }
+                else {
+                    // TODO: Error?
+                }
             }
         }
         crate.m_crate_name = crate_name;
@@ -448,16 +441,16 @@ int main(int argc, char *argv[])
         CompilePhaseV("MIR Cleanup", [&]() {
             MIR_CleanupCrate(*hir_crate);
             });
-        if( getenv("MRUSTC_FULL_VALIDATE_PREOPT") )
+        if( params.debug.full_validate_early || getenv("MRUSTC_FULL_VALIDATE_PREOPT") )
         {
-            CompilePhaseV("MIR Validate Full", [&]() {
+            CompilePhaseV("MIR Validate Full Early", [&]() {
                 MIR_CheckCrate_Full(*hir_crate);
                 });
         }
 
         // Optimise the MIR
         CompilePhaseV("MIR Optimise", [&]() {
-            MIR_OptimiseCrate(*hir_crate);
+            MIR_OptimiseCrate(*hir_crate, params.debug.disable_mir_optimisations);
             });
 
         CompilePhaseV("Dump MIR", [&]() {
@@ -470,7 +463,7 @@ int main(int argc, char *argv[])
         // - Exhaustive MIR validation (follows every code path and checks variable validity)
         // > DEBUGGING ONLY
         CompilePhaseV("MIR Validate Full", [&]() {
-            if( getenv("MRUSTC_FULL_VALIDATE") )
+            if( params.debug.full_validate || getenv("MRUSTC_FULL_VALIDATE") )
                 MIR_CheckCrate_Full(*hir_crate);
             });
 
@@ -571,14 +564,14 @@ ProgramParams::ProgramParams(int argc, char *argv[])
 
         if( arg[0] != '-' )
         {
-			if (this->infile == "")
-			{
-				this->infile = arg;
-			}
-			else
-			{
-				// TODO: Error
-			}
+            if (this->infile == "")
+            {
+                this->infile = arg;
+            }
+            else
+            {
+                // TODO: Error
+            }
         }
         else if( arg[1] != '-' )
         {
@@ -610,6 +603,32 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     this->libraries.push_back( arg+1 );
                 }
                 continue ;
+            case 'Z': {
+                ::std::string optname;
+                if( arg[1] == '\0' ) {
+                    if( i == argc - 1) {
+                        exit(1);
+                    }
+                    optname = argv[++i];
+                }
+                else {
+                    optname = arg+1;
+                }
+
+                if( optname == "disable-mir-opt" ) {
+                    this->debug.disable_mir_optimisations = true;
+                }
+                else if( optname == "full-validate" ) {
+                    this->debug.full_validate = true;
+                }
+                else if( optname == "full-validate-early" ) {
+                    this->debug.full_validate_early = true;
+                }
+                else {
+                    ::std::cerr << "Unknown debug option: '" << optname << "'" << ::std::endl;
+                    exit(1);
+                }
+                } continue;
 
             default:
                 break;
@@ -647,15 +666,15 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 this->crate_path = argv[++i];
             }
-			else if (strcmp(arg, "--out-dir") == 0) {
-				if (i == argc - 1) {
-					::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
-					exit(1);
-				}
-				this->output_dir = argv[++i];
-				if (this->output_dir == "") {
-					// TODO: Error?
-				}
+            else if (strcmp(arg, "--out-dir") == 0) {
+                if (i == argc - 1) {
+                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                this->output_dir = argv[++i];
+                if (this->output_dir == "") {
+                    // TODO: Error?
+                }
                 if( this->output_dir.back() != '/' )
                     this->output_dir += '/';
             }

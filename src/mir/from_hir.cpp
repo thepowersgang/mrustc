@@ -175,16 +175,16 @@ namespace {
                 switch( pat.m_binding.m_type )
                 {
                 case ::HIR::PatternBinding::Type::Move:
-                    m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), mv$(lval) );
+                    m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, pat.m_binding.m_slot), mv$(lval) );
                     break;
                 case ::HIR::PatternBinding::Type::Ref:
                     if(m_borrow_raise_target)
                     {
                         DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
-                        m_builder.raise_variables(sp, lval, *m_borrow_raise_target);
+                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
 
-                    m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
+                    m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
                         0, ::HIR::BorrowType::Shared, mv$(lval)
                         }) );
                     break;
@@ -192,9 +192,9 @@ namespace {
                     if(m_borrow_raise_target)
                     {
                         DEBUG("- Raising destructure borrow of " << lval << " to scope " << *m_borrow_raise_target);
-                        m_builder.raise_variables(sp, lval, *m_borrow_raise_target);
+                        m_builder.raise_temporaries(sp, lval, *m_borrow_raise_target);
                     }
-                    m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
+                    m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, pat.m_binding.m_slot), ::MIR::RValue::make_Borrow({
                         0, ::HIR::BorrowType::Unique, mv$(lval)
                         }) );
                     break;
@@ -390,7 +390,7 @@ namespace {
                             );
 
                         // Construct fat pointer
-                        m_builder.push_stmt_assign( sp, ::MIR::LValue::make_Variable(e.extra_bind.m_slot), ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(len_val) }) );
+                        m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, e.extra_bind.m_slot), ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(len_val) }) );
                     }
                     if( e.trailing.size() > 0 )
                     {
@@ -536,7 +536,7 @@ namespace {
 
                 if( node.m_pattern.m_binding.is_valid() && node.m_pattern.m_data.is_Any() && node.m_pattern.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
                 {
-                    m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Variable(node.m_pattern.m_binding.m_slot),  mv$(res) );
+                    m_builder.push_stmt_assign( node.span(), m_builder.get_variable(node.span(), node.m_pattern.m_binding.m_slot),  mv$(res) );
                 }
                 else
                 {
@@ -548,8 +548,8 @@ namespace {
         void visit(::HIR::ExprNode_Loop& node) override
         {
             TRACE_FUNCTION_FR("_Loop", "_Loop");
-            auto loop_body_scope = m_builder.new_scope_loop(node.span());
             auto loop_block = m_builder.new_bb_linked();
+            auto loop_body_scope = m_builder.new_scope_loop(node.span());
             auto loop_next = m_builder.new_bb_unlinked();
 
             auto loop_tmp_scope = m_builder.new_scope_temp(node.span());
@@ -663,7 +663,7 @@ namespace {
 
                 if( m_builder.block_active() ) {
                     auto res = m_builder.get_result(arm.m_code->span());
-                    m_builder.raise_variables( arm.m_code->span(), res, scope, /*to_above=*/true);
+                    m_builder.raise_temporaries( arm.m_code->span(), res, scope, /*to_above=*/true);
                     m_builder.set_result(arm.m_code->span(), mv$(res));
 
                     m_builder.terminate_scope( node.span(), mv$(tmp_scope) );
@@ -1157,7 +1157,7 @@ namespace {
             if( m_borrow_raise_target )
             {
                 DEBUG("- Raising borrow to scope " << *m_borrow_raise_target);
-                m_builder.raise_variables(node.span(), val, *m_borrow_raise_target);
+                m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
             }
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Borrow({ 0, node.m_type, mv$(val) }) );
@@ -1438,7 +1438,7 @@ namespace {
                     if( m_borrow_raise_target && m_in_borrow )
                     {
                         DEBUG("- Raising deref in borrow to scope " << *m_borrow_raise_target);
-                        m_builder.raise_variables(node.span(), val, *m_borrow_raise_target);
+                        m_builder.raise_temporaries(node.span(), val, *m_borrow_raise_target);
                     }
 
 
@@ -2057,7 +2057,7 @@ namespace {
         void visit(::HIR::ExprNode_Variable& node) override
         {
             TRACE_FUNCTION_F("_Variable - " << node.m_name << " #" << node.m_slot);
-            m_builder.set_result( node.span(), ::MIR::LValue::make_Variable(node.m_slot) );
+            m_builder.set_result( node.span(), m_builder.get_variable(node.span(), node.m_slot) );
         }
 
         void visit(::HIR::ExprNode_StructLiteral& node) override
@@ -2239,9 +2239,9 @@ namespace {
     TRACE_FUNCTION;
 
     ::MIR::Function fcn;
-    fcn.named_variables.reserve(ptr.m_bindings.size());
+    fcn.locals.reserve(ptr.m_bindings.size());
     for(const auto& t : ptr.m_bindings)
-        fcn.named_variables.push_back( t.clone() );
+        fcn.locals.push_back( t.clone() );
 
     // Scope ensures that builder cleanup happens before `fcn` is moved
     {
@@ -2252,8 +2252,15 @@ namespace {
         unsigned int i = 0;
         for( const auto& arg : args )
         {
-            ev.define_vars_from(ptr->span(), arg.first);
-            ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::make_Argument({i}));
+            const auto& pat = arg.first;
+            if( pat.m_binding.is_valid() && pat.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+            {
+            }
+            else
+            {
+                ev.define_vars_from(ptr->span(), arg.first);
+                ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::make_Argument({i}));
+            }
             i ++;
         }
 
@@ -2262,7 +2269,13 @@ namespace {
         root_node.visit( ev );
     }
 
+    // NOTE: Can't clean up yet, as consteval isn't done
+    //MIR_Cleanup(resolve, path, fcn, args, ptr->m_res_type);
     MIR_Validate(resolve, path, fcn, args, ptr->m_res_type);
+
+    if( getenv("MRUSTC_VALIDATE_FULL_EARLY") ) {
+        MIR_Validate_Full(resolve, path, fcn, args, ptr->m_res_type);
+    }
 
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
 }

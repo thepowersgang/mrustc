@@ -577,6 +577,7 @@ class MacroExpander:
     const RcString  m_macro_filename;
 
     const ::std::string m_crate_name;
+    ::std::shared_ptr<Span> m_invocation_span;
 
     ParameterMappings m_mappings;
     MacroExpandState    m_state;
@@ -588,9 +589,10 @@ class MacroExpander:
 public:
     MacroExpander(const MacroExpander& x) = delete;
 
-    MacroExpander(const ::std::string& macro_name, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
+    MacroExpander(const ::std::string& macro_name, const Span& sp, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
+        m_invocation_span( new Span(sp) ),
         m_mappings( mv$(mappings) ),
         m_state( contents, m_mappings ),
         m_hygiene( Ident::Hygiene::new_scope_chained(parent_hygiene) )
@@ -598,6 +600,7 @@ public:
     }
 
     Position getPosition() const override;
+    ::std::shared_ptr<Span> outerSpan() const override;
     Ident::Hygiene realGetHygiene() const override;
     Token realGetToken() override;
 };
@@ -618,9 +621,9 @@ bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
     switch(type)
     {
     case MacroPatEnt::PAT_TOKEN:
-        BUG(lex.getPosition(), "");
+        BUG(lex.point_span(), "");
     case MacroPatEnt::PAT_LOOP:
-        BUG(lex.getPosition(), "");
+        BUG(lex.point_span(), "");
     case MacroPatEnt::PAT_BLOCK:
         return LOOK_AHEAD(lex) == TOK_BRACE_OPEN || LOOK_AHEAD(lex) == TOK_INTERPOLATED_BLOCK;
     case MacroPatEnt::PAT_IDENT:
@@ -651,7 +654,7 @@ bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
     case MacroPatEnt::PAT_ITEM:
         return is_token_item( LOOK_AHEAD(lex) );
     }
-    BUG(lex.getPosition(), "");
+    BUG(lex.point_span(), "Fell through");
 }
 bool Macro_TryPattern(TokenStream& lex, const MacroPatEnt& pat)
 {
@@ -680,9 +683,9 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     switch(type)
     {
     case MacroPatEnt::PAT_TOKEN:
-        BUG(lex.getPosition(), "Encountered PAT_TOKEN when handling capture");
+        BUG(lex.point_span(), "Encountered PAT_TOKEN when handling capture");
     case MacroPatEnt::PAT_LOOP:
-        BUG(lex.getPosition(), "Encountered PAT_LOOP when handling capture");
+        BUG(lex.point_span(), "Encountered PAT_LOOP when handling capture");
 
     case MacroPatEnt::PAT_TT:
         if( GET_TOK(tok, lex) == TOK_EOF )
@@ -722,7 +725,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 }
 
 /// Parse the input TokenTree according to the `macro_rules!` patterns and return a token stream of the replacement
-::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, TokenTree input, AST::Module& mod)
+::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, AST::Module& mod)
 {
     TRACE_FUNCTION_F("'" << name << "', " << input);
 
@@ -741,7 +744,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     // Run through the expansion counting the number of times each fragment is used
     Macro_InvokeRules_CountSubstUses(bound_tts, rule.m_contents);
 
-    TokenStream* ret_ptr = new MacroExpander(name, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
+    TokenStream* ret_ptr = new MacroExpander(name, sp, rules.m_hygiene, rule.m_contents, mv$(bound_tts), rules.m_source_crate);
 
     return ::std::unique_ptr<TokenStream>( ret_ptr );
 }
@@ -1065,8 +1068,12 @@ void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std:
 
 Position MacroExpander::getPosition() const
 {
-    // TODO: Return a far better span - invocaion location?
+    // TODO: Return the attached position of the last fetched token
     return Position(m_macro_filename, 0, m_state.top_pos());
+}
+::std::shared_ptr<Span> MacroExpander::outerSpan() const
+{
+    return m_invocation_span;
 }
 Ident::Hygiene MacroExpander::realGetHygiene() const
 {

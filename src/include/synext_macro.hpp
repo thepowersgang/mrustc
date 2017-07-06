@@ -31,19 +31,19 @@ extern void Register_Synext_Macro_Static(MacroDef* def);
 
 struct MacroDef
 {
-	MacroDef*	prev;
-	::std::string	name;
-	::std::unique_ptr<ExpandProcMacro>	def;
-	MacroDef(::std::string name, ::std::unique_ptr<ExpandProcMacro> def) :
-		name(::std::move(name)),
-		def(::std::move(def)),
-		prev(nullptr)
-	{
-		Register_Synext_Macro_Static(this);
-	}
+    MacroDef*   prev;
+    ::std::string   name;
+    ::std::unique_ptr<ExpandProcMacro>  def;
+    MacroDef(::std::string name, ::std::unique_ptr<ExpandProcMacro> def) :
+        prev(nullptr),
+        name(::std::move(name)),
+        def(::std::move(def))
+    {
+        Register_Synext_Macro_Static(this);
+    }
 };
 
-#define STATIC_MACRO(ident, _handler_class)	static MacroDef s_register_##_handler_class(ident, ::std::unique_ptr<ExpandProcMacro>(new _handler_class()));
+#define STATIC_MACRO(ident, _handler_class) static MacroDef s_register_##_handler_class(ident, ::std::unique_ptr<ExpandProcMacro>(new _handler_class()));
 
 #endif
 

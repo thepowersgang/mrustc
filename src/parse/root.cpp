@@ -196,7 +196,7 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             ::std::string param_name = mv$(tok.str());
             ret.add_ty_param( AST::TypeParam( param_name ) );
 
-            auto param_ty = TypeRef(lex.getPosition(), param_name);
+            auto param_ty = TypeRef(lex.point_span(), param_name);
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 Parse_TypeBound(lex, ret, mv$(param_ty));
@@ -382,7 +382,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             GET_TOK(tok, lex);
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
-            TypeRef ty = TypeRef( lex.getPosition(), "Self", 0xFFFF );
+            TypeRef ty = TypeRef( lex.point_span(), "Self", 0xFFFF );
             if( GET_TOK(tok, lex) == TOK_COLON ) {
                 // Typed mut self
                 ty = Parse_Type(lex);
@@ -399,7 +399,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         // By-value method
         if( allow_self == false )
             throw ParseError::Generic(lex, "Self binding not expected");
-        TypeRef ty = TypeRef( lex.getPosition(), "Self", 0xFFFF );
+        TypeRef ty = TypeRef( lex.point_span(), "Self", 0xFFFF );
         if( GET_TOK(tok, lex) == TOK_COLON ) {
             // Typed mut self
             ty = Parse_Type(lex);
@@ -723,14 +723,14 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 // Bounded associated type
-                Parse_TypeBound(lex, atype_params, TypeRef(lex.getPosition(), "Self", 0xFFFF));
+                Parse_TypeBound(lex, atype_params, TypeRef(lex.point_span(), "Self", 0xFFFF));
                 GET_TOK(tok, lex);
             }
             if( tok.type() == TOK_RWORD_WHERE ) {
                 throw ParseError::Todo(lex, "Where clause on associated type");
             }
 
-            TypeRef default_type = TypeRef( lex.getPosition() );
+            TypeRef default_type = TypeRef( lex.point_span() );
             if( tok.type() == TOK_EQUAL ) {
                 default_type = Parse_Type(lex);
                 GET_TOK(tok, lex);
@@ -1049,7 +1049,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
         if( GET_TOK(tok, lex) == TOK_DOUBLE_DOT )
         {
             // Default impl
-            impl_type = TypeRef(TypeRef::TagInvalid(), lex.getPosition());
+            impl_type = TypeRef(TypeRef::TagInvalid(), lex.point_span());
         }
         else
         {
@@ -1390,7 +1390,7 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     else
     {
         PUTBACK(tok, lex);
-        ASSERT_BUG(lex.getPosition(), path.nodes().size() > 0, "`use` with no path");
+        ASSERT_BUG(lex.point_span(), path.nodes().size() > 0, "`use` with no path");
         name = path.nodes().back().name();
     }
 
@@ -1490,7 +1490,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
         Parse_Use(lex, [&](AST::UseStmt p, std::string s) {
                 DEBUG(mod_path << " - use " << p << " as '" << s << "'");
                 if( !item_data.is_None() )
-                    TODO(lex.getPosition(), "Encode multi-item use statements as a single Item");
+                    TODO(lex.point_span(), "Encode multi-item use statements as a single Item");
                 item_data = ::AST::Item(mv$(p));
                 item_name = mv$(s);
             });
@@ -1735,7 +1735,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
         bool    sub_file_controls_dir = true;
         if( mod_fileinfo.path == "-" ) {
             if( path_attr.size() ) {
-                ERROR(lex.getPosition(), E0000, "Cannot load module from file when reading stdin");
+                ERROR(lex.point_span(), E0000, "Cannot load module from file when reading stdin");
             }
             sub_path = "-";
         }
@@ -1779,11 +1779,11 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
             break;
         case TOK_SEMICOLON:
             if( sub_path == "-" ) {
-                ERROR(lex.getPosition(), E0000, "Cannot load module from file when reading stdin");
+                ERROR(lex.point_span(), E0000, "Cannot load module from file when reading stdin");
             }
             else if( path_attr.size() == 0 && ! mod_fileinfo.controls_dir )
             {
-                ERROR(lex.getPosition(), E0000, "Can't load from files outside of mod.rs or crate root");
+                ERROR(lex.point_span(), E0000, "Can't load from files outside of mod.rs or crate root");
             }
             else if( !H::check_item_cfg(meta_items) ) {
                 // Ignore - emit Item::None
@@ -1801,7 +1801,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
                 if( ifs_dir.is_open() && ifs_file.is_open() )
                 {
                     // Collision
-                    ERROR(lex.getPosition(), E0000, "Both modname.rs and modname/mod.rs exist");
+                    ERROR(lex.point_span(), E0000, "Both modname.rs and modname/mod.rs exist");
                 }
                 else if( ifs_dir.is_open() )
                 {
@@ -1815,7 +1815,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
                 else
                 {
                     // Can't find file
-                    ERROR(lex.getPosition(), E0000, "Can't find file for '" << name << "' in '" << mod_fileinfo.path << "'");
+                    ERROR(lex.point_span(), E0000, "Can't find file for '" << name << "' in '" << mod_fileinfo.path << "'");
                 }
                 DEBUG("- path = " << submod.m_file_info.path);
                 Lexer sub_lex(submod.m_file_info.path);

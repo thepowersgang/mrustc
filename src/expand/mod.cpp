@@ -11,12 +11,13 @@
 #include <synext.hpp>
 #include <map>
 #include "macro_rules.hpp"
+#include "../macro_rules/macro_rules.hpp"
 #include "../parse/common.hpp"  // For reparse from macros
 #include <ast/expr.hpp>
 #include "cfg.hpp"
 
-DecoratorDef*	g_decorators_list = nullptr;
-MacroDef*	g_macros_list = nullptr;
+DecoratorDef*   g_decorators_list = nullptr;
+MacroDef*   g_macros_list = nullptr;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
@@ -26,18 +27,18 @@ void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::E
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
 
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
-	g_decorators.insert(::std::make_pair( mv$(name), mv$(handler) )); 
+    g_decorators.insert(::std::make_pair( mv$(name), mv$(handler) )); 
 }
 void Register_Synext_Macro(::std::string name, ::std::unique_ptr<ExpandProcMacro> handler) {
-	g_macros.insert(::std::make_pair( mv$(name), mv$(handler) ));
+    g_macros.insert(::std::make_pair( mv$(name), mv$(handler) ));
 }
 void Register_Synext_Decorator_Static(DecoratorDef* def) {
-	def->prev = g_decorators_list;
-	g_decorators_list = def;
+    def->prev = g_decorators_list;
+    g_decorators_list = def;
 }
 void Register_Synext_Macro_Static(MacroDef* def) {
-	def->prev = g_macros_list;
-	g_macros_list = def;
+    def->prev = g_macros_list;
+    g_macros_list = def;
 }
 
 
@@ -115,7 +116,7 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
                 if( input_ident != "" )
                     ERROR(mi_span, E0000, "macro_rules! macros can't take an ident");
 
-                auto e = Macro_Invoke(name.c_str(), *mr.data, mv$(input_tt), mod);
+                auto e = Macro_InvokeRules(name.c_str(), *mr.data, mi_span, mv$(input_tt), mod);
                 return e;
             }
         }
@@ -134,7 +135,7 @@ void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate
         }
         if( last_mac )
         {
-            auto e = Macro_Invoke(name.c_str(), *last_mac, mv$(input_tt), mod);
+            auto e = Macro_InvokeRules(name.c_str(), *last_mac, mi_span, mv$(input_tt), mod);
             return e;
         }
     }
@@ -317,7 +318,7 @@ struct CExpandExpr:
         {
             this->visit(cnode);
             if(cnode.get() == nullptr)
-                ERROR(parent.get_pos(), E0000, "#[cfg] not allowed in this position");
+                ERROR(parent.span(), E0000, "#[cfg] not allowed in this position");
         }
         assert( ! this->replacement );
     }
@@ -343,7 +344,7 @@ struct CExpandExpr:
 
         ::AST::ExprNodeP    rv;
         auto& mod = this->cur_mod();
-        auto ttl = Expand_Macro( crate, modstack, mod,  Span(node.get_pos()),  node.m_name, node.m_ident, node.m_tokens );
+        auto ttl = Expand_Macro( crate, modstack, mod,  node.span(),  node.m_name, node.m_ident, node.m_tokens );
         if( !ttl.get() )
         {
             // No expansion
@@ -362,7 +363,7 @@ struct CExpandExpr:
                 auto newexpr = Parse_ExprBlockLine_WithItems(*ttl, local_mod_ptr, add_silence_if_end);
 
                 if( tmp_local_mod )
-                    TODO(node.get_pos(), "Handle edge case where a macro expansion outside of a _Block creates an item");
+                    TODO(node.span(), "Handle edge case where a macro expansion outside of a _Block creates an item");
 
                 if( newexpr )
                 {
@@ -382,7 +383,7 @@ struct CExpandExpr:
                 if( ttl->lookahead(0) != TOK_EOF )
                 {
                     if( !nodes_out ) {
-                        ERROR(node.get_pos(), E0000, "Unused tokens at the end of macro expansion - " << ttl->getToken());
+                        ERROR(node.span(), E0000, "Unused tokens at the end of macro expansion - " << ttl->getToken());
                     }
                 }
             }
@@ -1074,17 +1075,17 @@ void Expand_Mod_IndexAnon(::AST::Crate& crate, ::AST::Module& mod)
 }
 void Expand(::AST::Crate& crate)
 {
-	// Fill macro/decorator map from init list
-	while(g_decorators_list)
-	{
-		g_decorators.insert(::std::make_pair( mv$(g_decorators_list->name), mv$(g_decorators_list->def) ));
-		g_decorators_list = g_decorators_list->prev;
-	}
-	while (g_macros_list)
-	{
-		g_macros.insert(::std::make_pair(mv$(g_macros_list->name), mv$(g_macros_list->def)));
-		g_macros_list = g_macros_list->prev;
-	}
+    // Fill macro/decorator map from init list
+    while(g_decorators_list)
+    {
+        g_decorators.insert(::std::make_pair( mv$(g_decorators_list->name), mv$(g_decorators_list->def) ));
+        g_decorators_list = g_decorators_list->prev;
+    }
+    while (g_macros_list)
+    {
+        g_macros.insert(::std::make_pair(mv$(g_macros_list->name), mv$(g_macros_list->def)));
+        g_macros_list = g_macros_list->prev;
+    }
 
     auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
 

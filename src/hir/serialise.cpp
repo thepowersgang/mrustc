@@ -77,6 +77,9 @@ namespace {
             m_out.write_count(e.first);
             serialise(e.second);
         }
+        //void serialise(::MIR::BasicBlockId val) {
+        //    m_out.write_count(val);
+        //}
 
         void serialise_type(const ::HIR::TypeRef& ty)
         {
@@ -457,8 +460,8 @@ namespace {
         void serialise(const ::MIR::Function& mir)
         {
             // Write out MIR.
-            serialise_vec( mir.named_variables );
-            serialise_vec( mir.temporaries );
+            serialise_vec( mir.locals );
+            //serialise_vec( mir.slot_names );
             serialise_vec( mir.drop_flags );
             serialise_vec( mir.blocks );
         }
@@ -498,8 +501,7 @@ namespace {
                 ),
             (ScopeEnd,
                 m_out.write_tag(4);
-                serialise_vec(e.vars);
-                serialise_vec(e.tmps);
+                serialise_vec(e.slots);
                 )
             )
         }
@@ -532,12 +534,33 @@ namespace {
                 for(auto t : e.targets)
                     m_out.write_count(t);
                 ),
+            (SwitchValue,
+                serialise(e.val);
+                m_out.write_count(e.def_target);
+                serialise_vec(e.targets);
+                serialise(e.values);
+                ),
             (Call,
                 m_out.write_count(e.ret_block);
                 m_out.write_count(e.panic_block);
                 serialise(e.ret_val);
                 serialise(e.fcn);
                 serialise_vec(e.args);
+                )
+            )
+        }
+        void serialise(const ::MIR::SwitchValues& sv)
+        {
+            m_out.write_tag( static_cast<int>(sv.tag()) );
+            TU_MATCHA( (sv), (e),
+            (Unsigned,
+                serialise_vec(e);
+                ),
+            (Signed,
+                serialise_vec(e);
+                ),
+            (String,
+                serialise_vec(e);
                 )
             )
         }
@@ -571,19 +594,16 @@ namespace {
             TRACE_FUNCTION_F("LValue = "<<lv);
             m_out.write_tag( static_cast<int>(lv.tag()) );
             TU_MATCHA( (lv), (e),
-            (Variable,
-                m_out.write_count(e);
-                ),
-            (Temporary,
-                m_out.write_count(e.idx);
+            (Return,
                 ),
             (Argument,
                 m_out.write_count(e.idx);
                 ),
+            (Local,
+                m_out.write_count(e);
+                ),
             (Static,
                 serialise_path(e);
-                ),
-            (Return,
                 ),
             (Field,
                 serialise(e.val);

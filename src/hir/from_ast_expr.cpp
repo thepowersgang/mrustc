@@ -30,7 +30,7 @@ struct LowerHIR_ExprNode_Visitor:
         auto rv = new ::HIR::ExprNode_Block(v.span());
         for(const auto& n : v.m_nodes)
         {
-            ASSERT_BUG(v.get_pos(), n, "NULL node encountered in block");
+            ASSERT_BUG(v.span(), n, "NULL node encountered in block");
             rv->m_nodes.push_back( LowerHIR_ExprNode_Inner( *n ) );
         }
         if( v.m_yields_final_value && ! rv->m_nodes.empty() )
@@ -48,7 +48,7 @@ struct LowerHIR_ExprNode_Visitor:
         m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );
     }
     virtual void visit(::AST::ExprNode_Macro& v) override {
-        BUG(v.get_pos(), "Hit ExprNode_Macro");
+        BUG(v.span(), "Hit ExprNode_Macro");
     }
     virtual void visit(::AST::ExprNode_Asm& v) override {
         ::std::vector< ::HIR::ExprNode_Asm::ValRef> outputs;
@@ -72,7 +72,7 @@ struct LowerHIR_ExprNode_Visitor:
         case ::AST::ExprNode_Flow::CONTINUE:
         case ::AST::ExprNode_Flow::BREAK:
             if( v.m_value )
-                TODO(v.get_pos(), "Handle break/continue values in HIR");
+                TODO(v.span(), "Handle break/continue values in HIR");
             m_rv.reset( new ::HIR::ExprNode_LoopControl( v.span(), v.m_target, (v.m_type == ::AST::ExprNode_Flow::CONTINUE) ) );
             break;
         }
@@ -167,7 +167,7 @@ struct LowerHIR_ExprNode_Visitor:
             }
             break; }
         case ::AST::ExprNode_BinOp::PLACE_IN:
-            TODO(v.get_pos(), "Desugar placement syntax");
+            TODO(v.span(), "Desugar placement syntax");
             break;
 
         case ::AST::ExprNode_BinOp::CMPEQU :    op = ::HIR::ExprNode_BinOp::Op::CmpEqu ; if(0)
@@ -213,7 +213,7 @@ struct LowerHIR_ExprNode_Visitor:
                 ));
             } break;
         case ::AST::ExprNode_UniOp::QMARK:
-            BUG(v.get_pos(), "Encounterd question mark operator (should have been expanded in AST)");
+            BUG(v.span(), "Encounterd question mark operator (should have been expanded in AST)");
             break;
 
         case ::AST::ExprNode_UniOp::REF:
@@ -262,7 +262,7 @@ struct LowerHIR_ExprNode_Visitor:
             TU_MATCH_DEF(::AST::PathBinding, (v.m_path.binding()), (e),
             (
                 m_rv.reset( new ::HIR::ExprNode_CallPath( v.span(),
-                    LowerHIR_Path(Span(v.get_pos()), v.m_path),
+                    LowerHIR_Path(v.span(), v.m_path),
                     mv$( args )
                     ) );
                 ),
@@ -361,7 +361,7 @@ struct LowerHIR_ExprNode_Visitor:
             break; }
         case ::AST::ExprNode_Loop::FOR:
             // NOTE: This should already be desugared (as a pass before resolve)
-            BUG(v.get_pos(), "Encountered still-sugared for loop");
+            BUG(v.span(), "Encountered still-sugared for loop");
             break;
         }
 
@@ -507,7 +507,7 @@ struct LowerHIR_ExprNode_Visitor:
         }
         m_rv.reset( new ::HIR::ExprNode_Literal( v.span(),
             ::HIR::ExprNode_Literal::Data::make_Integer({
-                H::get_type( Span(v.get_pos()), v.m_datatype ),
+                H::get_type( v.span(), v.m_datatype ),
                 v.m_value
                 })
             ) );
@@ -520,7 +520,7 @@ struct LowerHIR_ExprNode_Visitor:
         case CORETYPE_F32:  ct = ::HIR::CoreType::F32;  break;
         case CORETYPE_F64:  ct = ::HIR::CoreType::F64;  break;
         default:
-            BUG(v.get_pos(), "Unknown type for float literal");
+            BUG(v.span(), "Unknown type for float literal");
         }
         m_rv.reset( new ::HIR::ExprNode_Literal( v.span(),
             ::HIR::ExprNode_Literal::Data::make_Float({ ct, v.m_value })
@@ -560,7 +560,7 @@ struct LowerHIR_ExprNode_Visitor:
                 ERROR(v.span(), E0000, "Union constructors can't take a base value");
 
             m_rv.reset( new ::HIR::ExprNode_UnionLiteral( v.span(),
-                LowerHIR_GenericPath(v.get_pos(), v.m_path),
+                LowerHIR_GenericPath(v.span(), v.m_path),
                 v.m_values[0].first,
                 LowerHIR_ExprNode_Inner(*v.m_values[0].second)
                 ) );
@@ -571,7 +571,7 @@ struct LowerHIR_ExprNode_Visitor:
             for(const auto& val : v.m_values)
                 values.push_back( ::std::make_pair(val.first, LowerHIR_ExprNode_Inner(*val.second)) );
             m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
-                LowerHIR_GenericPath(v.get_pos(), v.m_path),
+                LowerHIR_GenericPath(v.span(), v.m_path),
                 ! v.m_path.binding().is_EnumVar(),
                 LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
                 mv$(values)
@@ -604,7 +604,7 @@ struct LowerHIR_ExprNode_Visitor:
     virtual void visit(::AST::ExprNode_NamedValue& v) override {
         TU_IFLET(::AST::Path::Class, v.m_path.m_class, Local, e,
             if( !v.m_path.binding().is_Variable() ) {
-                BUG(v.get_pos(), "Named value was a local, but wasn't bound - " << v.m_path);
+                BUG(v.span(), "Named value was a local, but wasn't bound - " << v.m_path);
             }
             auto slot = v.m_path.binding().as_Variable().slot;
             m_rv.reset( new ::HIR::ExprNode_Variable( v.span(), e.name, slot ) );
@@ -612,7 +612,7 @@ struct LowerHIR_ExprNode_Visitor:
         else {
             TU_MATCH_DEF(::AST::PathBinding, (v.m_path.binding()), (e),
             (
-                auto p = LowerHIR_Path(Span(v.get_pos()), v.m_path);
+                auto p = LowerHIR_Path(v.span(), v.m_path);
                 if( p.m_data.is_Generic() ) {
                     BUG(v.span(), "Unknown binding for PathValue but path is generic - " << v.m_path);
                 }
@@ -643,10 +643,10 @@ struct LowerHIR_ExprNode_Visitor:
                     }
                 }
                 if( is_tuple_constructor ) {
-                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path), ::HIR::ExprNode_PathValue::STRUCT_CONSTR ) );
                 }
                 else {
-                    m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), true ) );
+                    m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(v.span(), v.m_path), true ) );
                 }
                 ),
             (EnumVar,
@@ -680,33 +680,33 @@ struct LowerHIR_ExprNode_Visitor:
                 }
                 (void)var_idx;  // TODO: Save time later by saving this.
                 if( is_tuple_constructor ) {
-                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR ) );
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path), ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR ) );
                 }
                 else {
-                    m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(Span(v.get_pos()), v.m_path), false ) );
+                    m_rv.reset( new ::HIR::ExprNode_UnitVariant( v.span(), LowerHIR_GenericPath(v.span(), v.m_path), false ) );
                 }
                 ),
             (Function,
-                m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::FUNCTION ) );
+                m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path), ::HIR::ExprNode_PathValue::FUNCTION ) );
                 ),
             (Static,
                 if( e.static_ )
                 {
                     if( e.static_->s_class() != ::AST::Static::CONST ) {
-                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STATIC ) );
+                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path), ::HIR::ExprNode_PathValue::STATIC ) );
                     }
                     else {
-                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::CONSTANT ) );
+                        m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path), ::HIR::ExprNode_PathValue::CONSTANT ) );
                     }
                 }
                 else if( e.hir )
                 {
-                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::STATIC ) );
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path), ::HIR::ExprNode_PathValue::STATIC ) );
                 }
                 // HACK: If the HIR pointer is nullptr, then it refers to a `const
                 else
                 {
-                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(Span(v.get_pos()), v.m_path), ::HIR::ExprNode_PathValue::CONSTANT ) );
+                    m_rv.reset( new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path), ::HIR::ExprNode_PathValue::CONSTANT ) );
                 }
                 )
             )
@@ -739,7 +739,7 @@ struct LowerHIR_ExprNode_Visitor:
     const_cast<::AST::ExprNode*>(&e)->visit( v );
 
     if( ! v.m_rv ) {
-        BUG(e.get_pos(), typeid(e).name() << " - Yielded a nullptr HIR node");
+        BUG(e.span(), typeid(e).name() << " - Yielded a nullptr HIR node");
     }
     return mv$( v.m_rv );
 }

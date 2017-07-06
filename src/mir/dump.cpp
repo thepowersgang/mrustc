@@ -25,13 +25,9 @@ namespace {
 
         void dump_mir(const ::MIR::Function& fcn)
         {
-            for(unsigned int i = 0; i < fcn.named_variables.size(); i ++)
+            for(size_t i = 0; i < fcn.locals.size(); i ++)
             {
-                m_os << indent() << "let _#" << i << ": " << fcn.named_variables[i] << ";\n";
-            }
-            for(unsigned int i = 0; i < fcn.temporaries.size(); i ++)
-            {
-                m_os << indent() << "let tmp$" << i << ": " << fcn.temporaries[i] << ";\n";
+                m_os << indent() << "let _$" << i << ": " << fcn.locals[i] << ";\n";
             }
             for(unsigned int i = 0; i < fcn.drop_flags.size(); i ++)
             {
@@ -102,10 +98,8 @@ namespace {
                         ),
                     (ScopeEnd,
                         m_os << "// Scope End: ";
-                        for(auto idx : e.vars)
-                            m_os << "var$" << idx << ",";
-                        for(auto idx : e.tmps)
-                            m_os << "tmp$" << idx << ",";
+                        for(auto idx : e.slots)
+                            m_os << "_$" << idx << ",";
                         m_os << "\n";
                         )
                     )
@@ -137,6 +131,24 @@ namespace {
                         m_os << j << " => bb" << e.targets[j] << ", ";
                     m_os << "}\n";
                     ),
+                (SwitchValue,
+                    m_os << "switch " << FMT_M(e.val) << " {";
+                    TU_MATCHA( (e.values), (ve),
+                    (Unsigned,
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                            m_os << ve[j] << " => bb" << e.targets[j] << ", ";
+                        ),
+                    (Signed,
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                            m_os << (ve[j] >= 0 ? "+" : "") << ve[j] << " => bb" << e.targets[j] << ", ";
+                        ),
+                    (String,
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                            m_os << "\"" << ve[j] << "\" => bb" << e.targets[j] << ", ";
+                        )
+                    )
+                    m_os << "_ => bb" << e.def_target <<  "}\n";
+                    ),
                 (Call,
                     m_os << FMT_M(e.ret_val) << " = ";
                     TU_MATCHA( (e.fcn), (e2),
@@ -165,20 +177,17 @@ namespace {
         }
         void fmt_val(::std::ostream& os, const ::MIR::LValue& lval) {
             TU_MATCHA( (lval), (e),
-            (Variable,
-                os << "_#" << e;
-                ),
-            (Temporary,
-                os << "tmp$" << e.idx;
+            (Return,
+                os << "RETURN";
                 ),
             (Argument,
                 os << "arg$" << e.idx;
                 ),
+            (Local,
+                os << "_$" << e;
+                ),
             (Static,
                 os << e;
-                ),
-            (Return,
-                os << "RETURN";
                 ),
             (Field,
                 os << "(";

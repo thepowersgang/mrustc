@@ -69,11 +69,11 @@ ExprNode::~ExprNode() {
 #define OPT_CLONE(node) (node.get() ? node->clone() : ::AST::ExprNodeP())
 
 namespace {
-    static inline ExprNodeP mk_exprnodep(const Position& pos, AST::ExprNode* en) {
-        en->set_pos(pos);
+    static inline ExprNodeP mk_exprnodep(const Span& pos, AST::ExprNode* en) {
+        en->set_span(pos);
         return ExprNodeP(en);
     }
-    #define NEWNODE(type, ...)  mk_exprnodep(get_pos(), new type(__VA_ARGS__))
+    #define NEWNODE(type, ...)  mk_exprnodep(span(), new type(__VA_ARGS__))
 }
 
 NODE(ExprNode_Block, {
@@ -453,7 +453,7 @@ NV(ExprNode_Block, {
 })
 NV(ExprNode_Macro,
 {
-    BUG(node.get_pos(), "Hit unexpanded macro in expression - " << node);
+    BUG(node.span(), "Hit unexpanded macro in expression - " << node);
 })
 NV(ExprNode_Asm,
 {

@@ -49,6 +49,7 @@ CXXFLAGS += -Wno-misleading-indentation
 RUST_FLAGS := --cfg debug_assertions
 RUST_FLAGS += -g
 RUST_FLAGS += -O
+RUST_FLAGS += $(RUST_FLAGS_EXTRA)
 
 SHELL = bash
 
@@ -110,7 +111,8 @@ OBJ +=  mir/check.o mir/cleanup.o mir/optimise.o
 OBJ +=  mir/check_full.o
 OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
 OBJ += trans/trans_list.o trans/mangling.o
-OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o trans/codegen_c.o
+OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o
+OBJ += trans/codegen_c.o trans/codegen_c_structured.o
 OBJ += trans/target.o
 
 PCHS := ast/ast.hpp
@@ -372,6 +374,8 @@ DISABLED_TESTS += run-pass/out-of-stack
 # - Requires jemalloc
 DISABLED_TESTS += run-pass/allocator-default
 DISABLED_TESTS += run-pass/allocator-override
+# - Really odd behavior:
+DISABLED_TESTS += run-pass/move-guard-const	# Moves are allowed in match arm guards (should error in mrustc)
 # - Lazy.
 DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause	# Not normalizing bounds
 DISABLED_TESTS += run-pass/cast	# Disallows cast from char to i32
@@ -715,7 +719,7 @@ DISABLED_TESTS += run-pass/issue-13027	# Infinite loop (match?)
 DISABLED_TESTS += run-pass/issue-36936	# assert_eq failing on equal values
 # - BUG: signed ctpop/cttz/ctlz
 DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
-# - BUG: Incorrect drop order of ?
+# - BUG: Incorrect drop ordering
 DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
 # - BUG: Incorrect consteval
 DISABLED_TESTS += run-pass/issue-23968-const-not-overflow	# !0 / 2 incorrect value
@@ -750,15 +754,14 @@ DISABLED_TESTS += run-pass/type-sizes
 DISABLED_TESTS += run-pass/discrim-explicit-23030
 DISABLED_TESTS += run-pass/issue-13902
 # - BUG: Bad floats
-DISABLED_TESTS += run-pass/float-nan
-DISABLED_TESTS += run-pass/float_math
-DISABLED_TESTS += run-pass/floatlits
+DISABLED_TESTS += run-pass/float_math	# Missing intrinsic
 DISABLED_TESTS += run-pass/intrinsics-math
+DISABLED_TESTS += run-pass/issue-32805	# Possible f32 literal rounding isue
 # - BUG: MIR Generation
 DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to union field
 DISABLED_TESTS += run-pass/issue-4734	# Destructor on unused rvalue
 DISABLED_TESTS += run-pass/issue-8860	# No drop of un-moved arguments
-DISABLED_TESTS += run-pass/issue-15080	# Inifinte loop from incorrect match generation
+DISABLED_TESTS += run-pass/issue-15080	# Infinte loop from incorrect match generation
 # - BUG: Codegen
 DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
 DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior

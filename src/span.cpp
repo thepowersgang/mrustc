@@ -12,6 +12,7 @@
 #include <common.hpp>
 
 Span::Span(const Span& x):
+    outer_span(x.outer_span),
     filename(x.filename),
     start_line(x.start_line),
     start_ofs(x.start_ofs),
@@ -20,6 +21,7 @@ Span::Span(const Span& x):
 {
 }
 Span::Span(const Position& pos):
+    outer_span(),
     filename(pos.filename),
     start_line(pos.line),
     start_ofs(pos.ofs),
@@ -28,6 +30,7 @@ Span::Span(const Position& pos):
 {
 }
 Span::Span():
+    outer_span(),
     filename("")/*,
     start_line(0), start_ofs(0),
     end_line(0), end_ofs(0) // */
