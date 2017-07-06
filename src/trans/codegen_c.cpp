@@ -25,6 +25,11 @@ namespace {
             Slice,
             TraitObject,
         };
+        enum class Mode {
+            //FullStd,
+            Gcc,	// Use GCC/Clang extensions
+            Msvc,	// Use MSVC extensions
+        };
 
         static Span sp;
 
@@ -66,6 +71,8 @@ namespace {
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
                 << "typedef struct { size_t size; size_t align; void (*drop)(void*); } VTABLE_HDR;\n"
+                << "typedef unsigned __int128 uint128_t;\n"
+                << "typedef signed __int128 int128_t;\n"
                 << "\n"
                 << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                 << "\n"
@@ -86,15 +93,15 @@ namespace {
                 << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
                 << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
                 << "}\n"
-                << "static inline unsigned __int128 __builtin_bswap128(unsigned __int128 v) {\n"
+                << "static inline uint128_t __builtin_bswap128(uint128_t v) {\n"
                 << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
                 << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
-                << "\treturn ((unsigned __int128)lo << 64) | (unsigned __int128)hi;\n"
+                << "\treturn ((uint128_t)lo << 64) | (uint128_t)hi;\n"
                 << "}\n"
-                << "static inline unsigned __int128 __builtin_clz128(unsigned __int128 v) {\n"
+                << "static inline uint128_t __builtin_clz128(uint128_t v) {\n"
                 << "\treturn (v >> 64 != 0 ? __builtin_clz64(v>>64) : 64 + __builtin_clz64(v));\n"
                 << "}\n"
-                << "static inline unsigned __int128 __builtin_ctz128(unsigned __int128 v) {\n"
+                << "static inline uint128_t __builtin_ctz128(uint128_t v) {\n"
                 << "\treturn ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
                 << "}\n"
                 << "\n"
@@ -3095,8 +3102,8 @@ namespace {
                 case ::HIR::CoreType::I32: m_of << "int32_t"; break;
                 case ::HIR::CoreType::U64: m_of << "uint64_t"; break;
                 case ::HIR::CoreType::I64: m_of << "int64_t"; break;
-                case ::HIR::CoreType::U128: m_of << "unsigned __int128"; break;
-                case ::HIR::CoreType::I128: m_of << "__int128"; break;
+                case ::HIR::CoreType::U128: m_of << "uint128_t"; break;
+                case ::HIR::CoreType::I128: m_of << "int128_t"; break;
 
                 case ::HIR::CoreType::F32: m_of << "float"; break;
                 case ::HIR::CoreType::F64: m_of << "double"; break;
