@@ -4,8 +4,8 @@ RUSTC := ../output/rustc
 RUST_SRC := ../rustc-nightly/src/
 
 PREFIX := prefix/
-BINDIR := $(PREFIX)bin
-LIBDIR := $(PREFIX)lib
+BINDIR := $(PREFIX)bin/
+LIBDIR := $(PREFIX)lib/
 
 V ?= @
 
@@ -24,7 +24,7 @@ $(BINDIR)rustc: $(RUSTC)
 $(LIBDIR)%.rlib: $(RUST_SRC)%/lib.rs $(RUSTC)
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	time $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+	$Vtime $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
 $(LIBDIR)%.rlib: $(RUST_SRC)%/src/lib.rs $(RUSTC)
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
