@@ -368,6 +368,9 @@
     <ClCompile Include="..\src\mir\check_full.cpp">
       <Filter>Source Files\mir</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\trans\codegen_c_structured.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\common.hpp">

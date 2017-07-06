@@ -1574,7 +1574,7 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
             // 1. Data trait must be the same
             if( de->m_trait != se->m_trait )
             {
-                return ::HIR::Compare::Unequal;
+                return false;
             }
 
             // 2. Destination markers must be a strict subset
@@ -1658,7 +1658,7 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
     }
 
     DEBUG("Can't unsize, no rules matched");
-    return ::HIR::Compare::Unequal;
+    return false;
 
 }
 

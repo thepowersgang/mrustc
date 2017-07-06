@@ -113,7 +113,7 @@ namespace {
                 ;
             // u128/i128 ops
             m_of
-                << "static inline unsigned __int128 __builtin_bswap128(unsigned __int128 v) {\n"
+                << "static inline unsigned __int128 __builtin_bswap128(uint128_t v) {\n"
                 << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
                 << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
                 << "\treturn ((uint128_t)lo << 64) | (uint128_t)hi;\n"

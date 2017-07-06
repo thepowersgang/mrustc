@@ -231,6 +231,7 @@
     <ClCompile Include="..\src\span.cpp" />
     <ClCompile Include="..\src\trans\codegen.cpp" />
     <ClCompile Include="..\src\trans\codegen_c.cpp" />
+    <ClCompile Include="..\src\trans\codegen_c_structured.cpp" />
     <ClCompile Include="..\src\trans\enumerate.cpp" />
     <ClCompile Include="..\src\trans\mangling.cpp" />
     <ClCompile Include="..\src\trans\monomorphise.cpp" />
