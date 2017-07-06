@@ -194,7 +194,6 @@ int main(int argc, char *argv[])
         Cfg_SetFlag("test");
     }
 
-
     try
     {
         // Parse the crate into AST
@@ -752,6 +751,12 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 exit(1);
             }
         }
+    }
+
+    if (this->infile == "")
+    {
+        ::std::cerr << "No input file passed" << ::std::endl;
+        exit(1);
     }
 }
 

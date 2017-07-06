@@ -12,477 +12,480 @@
 #include <main_bindings.hpp>
 #include <hir/hir.hpp>
 
-struct GenericSlot
+namespace
 {
-    enum class Level
+    struct GenericSlot
     {
-        Top,
-        Method,
-    } level;
-    unsigned short  index;
+        enum class Level
+        {
+            Top,
+            Method,
+        } level;
+        unsigned short  index;
 
-    unsigned int to_binding() const {
-        if(level == Level::Method && index != 0xFFFF) {
-            return (unsigned int)index + 256;
-        }
-        else {
-            return (unsigned int)index;
-        }
-    }
-};
-template<typename Val>
-struct Named
-{
-    ::std::string   name;
-    Val value;
-};
-
-struct Context
-{
-    TAGGED_UNION(Ent, Module,
-    (Module, struct {
-        const ::AST::Module* mod;
-        }),
-    (ConcreteSelf, const TypeRef* ),
-    (VarBlock, struct {
-        unsigned int level;
-        // "Map" of names to function-level variable slots
-        ::std::vector< ::std::pair<Ident, unsigned int> > variables;
-        }),
-    (Generic, struct {
-        // Map of names to slots
-        ::std::vector< Named< GenericSlot > > types;
-        ::std::vector< Named< GenericSlot > > constants;
-        ::std::vector< Named< GenericSlot > > lifetimes;
-        })
-    );
-
-    const ::AST::Crate&     m_crate;
-    const ::AST::Module&    m_mod;
-    ::std::vector<Ent>  m_name_context;
-    unsigned int m_var_count;
-    unsigned int m_block_level;
-    bool m_frozen_bind_set;
-
-    Context(const ::AST::Crate& crate, const ::AST::Module& mod):
-        m_crate(crate),
-        m_mod(mod),
-        m_var_count(~0u),
-        m_block_level(0),
-        m_frozen_bind_set( false )
-    {}
-
-    void push(const ::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
-        auto   e = Ent::make_Generic({});
-        auto& data = e.as_Generic();
-
-        if( has_self ) {
-            //assert( level == GenericSlot::Level::Top );
-            data.types.push_back( Named<GenericSlot> { "Self", GenericSlot { level, 0xFFFF } } );
-            m_name_context.push_back( Ent::make_ConcreteSelf(nullptr) );
-        }
-        if( params.ty_params().size() > 0 ) {
-            const auto& typs = params.ty_params();
-            for(unsigned int i = 0; i < typs.size(); i ++ ) {
-                data.types.push_back( Named<GenericSlot> { typs[i].name(), GenericSlot { level, static_cast<unsigned short>(i) } } );
+        unsigned int to_binding() const {
+            if(level == Level::Method && index != 0xFFFF) {
+                return (unsigned int)index + 256;
+            }
+            else {
+                return (unsigned int)index;
             }
         }
-        if( params.lft_params().size() > 0 ) {
-            //TODO(Span(), "resolve/absolute.cpp - Context::push(GenericParams) - Lifetime params - " << params);
-        }
+    };
+    template<typename Val>
+    struct Named
+    {
+        ::std::string   name;
+        Val value;
+    };
 
-        m_name_context.push_back(mv$(e));
-    }
-    void pop(const ::AST::GenericParams& , bool has_self=false) {
-        if( !m_name_context.back().is_Generic() )
-            BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
-        m_name_context.pop_back();
-        if(has_self) {
-            if( !m_name_context.back().is_ConcreteSelf() )
+    struct Context
+    {
+        TAGGED_UNION(Ent, Module,
+        (Module, struct {
+            const ::AST::Module* mod;
+            }),
+        (ConcreteSelf, const TypeRef* ),
+        (VarBlock, struct {
+            unsigned int level;
+            // "Map" of names to function-level variable slots
+            ::std::vector< ::std::pair<Ident, unsigned int> > variables;
+            }),
+        (Generic, struct {
+            // Map of names to slots
+            ::std::vector< Named< GenericSlot > > types;
+            ::std::vector< Named< GenericSlot > > constants;
+            ::std::vector< Named< GenericSlot > > lifetimes;
+            })
+        );
+
+        const ::AST::Crate&     m_crate;
+        const ::AST::Module&    m_mod;
+        ::std::vector<Ent>  m_name_context;
+        unsigned int m_var_count;
+        unsigned int m_block_level;
+        bool m_frozen_bind_set;
+
+        Context(const ::AST::Crate& crate, const ::AST::Module& mod):
+            m_crate(crate),
+            m_mod(mod),
+            m_var_count(~0u),
+            m_block_level(0),
+            m_frozen_bind_set( false )
+        {}
+
+        void push(const ::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
+            auto   e = Ent::make_Generic({});
+            auto& data = e.as_Generic();
+
+            if( has_self ) {
+                //assert( level == GenericSlot::Level::Top );
+                data.types.push_back( Named<GenericSlot> { "Self", GenericSlot { level, 0xFFFF } } );
+                m_name_context.push_back( Ent::make_ConcreteSelf(nullptr) );
+            }
+            if( params.ty_params().size() > 0 ) {
+                const auto& typs = params.ty_params();
+                for(unsigned int i = 0; i < typs.size(); i ++ ) {
+                    data.types.push_back( Named<GenericSlot> { typs[i].name(), GenericSlot { level, static_cast<unsigned short>(i) } } );
+                }
+            }
+            if( params.lft_params().size() > 0 ) {
+                //TODO(Span(), "resolve/absolute.cpp - Context::push(GenericParams) - Lifetime params - " << params);
+            }
+
+            m_name_context.push_back(mv$(e));
+        }
+        void pop(const ::AST::GenericParams& , bool has_self=false) {
+            if( !m_name_context.back().is_Generic() )
+                BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
+            m_name_context.pop_back();
+            if(has_self) {
+                if( !m_name_context.back().is_ConcreteSelf() )
+                    BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
+                m_name_context.pop_back();
+            }
+        }
+        void push(const ::AST::Module& mod) {
+            m_name_context.push_back( Ent::make_Module({ &mod }) );
+        }
+        void pop(const ::AST::Module& mod) {
+            if( !m_name_context.back().is_Module() )
                 BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
             m_name_context.pop_back();
         }
-    }
-    void push(const ::AST::Module& mod) {
-        m_name_context.push_back( Ent::make_Module({ &mod }) );
-    }
-    void pop(const ::AST::Module& mod) {
-        if( !m_name_context.back().is_Module() )
-            BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
-        m_name_context.pop_back();
-    }
 
-    class RootBlockScope {
-        friend struct Context;
-        Context& ctxt;
-        unsigned int old_varcount;
-        RootBlockScope(Context& ctxt, unsigned int val):
-            ctxt(ctxt),
-            old_varcount(ctxt.m_var_count)
-        {
-            ctxt.m_var_count = val;
-        }
-    public:
-        ~RootBlockScope() {
-            ctxt.m_var_count = old_varcount;
-        }
-    };
-    RootBlockScope enter_rootblock() {
-        return RootBlockScope(*this, 0);
-    }
-    RootBlockScope clear_rootblock() {
-        return RootBlockScope(*this, ~0u);
-    }
-
-    void push_self(const TypeRef& tr) {
-        m_name_context.push_back( Ent::make_ConcreteSelf(&tr) );
-    }
-    void pop_self(const TypeRef& tr) {
-        TU_IFLET(Ent, m_name_context.back(), ConcreteSelf, e,
-            m_name_context.pop_back();
-        )
-        else {
-            BUG(Span(), "resolve/absolute.cpp - Context::pop(TypeRef) - Mismatched pop");
-        }
-    }
-    ::TypeRef get_self() const {
-        for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
-        {
-            TU_MATCH_DEF(Ent, (*it), (e),
-            (
-                ),
-            (ConcreteSelf,
-                if( e ) {
-                    return e->clone();
-                }
-                else {
-                    return ::TypeRef(Span(), "Self", 0xFFFF);
-                }
-                )
-            )
-        }
-
-        TODO(Span(), "Error when get_self called with no self");
-    }
-
-    void push_block() {
-        m_block_level += 1;
-        DEBUG("Push block to " << m_block_level);
-    }
-    unsigned int push_var(const Span& sp, const Ident& name) {
-        if( m_var_count == ~0u ) {
-            BUG(sp, "Assigning local when there's no variable context");
-        }
-        // TODO: Handle avoiding duplicate bindings in a pattern
-        if( m_frozen_bind_set )
-        {
-            if( !m_name_context.back().is_VarBlock() ) {
-                BUG(sp, "resolve/absolute.cpp - Context::push_var - No block");
-            }
-            auto& vb = m_name_context.back().as_VarBlock();
-            for( const auto& v : vb.variables )
+        class RootBlockScope {
+            friend struct Context;
+            Context& ctxt;
+            unsigned int old_varcount;
+            RootBlockScope(Context& ctxt, unsigned int val):
+                ctxt(ctxt),
+                old_varcount(ctxt.m_var_count)
             {
-                // TODO: Error when a binding is used twice or not at all
-                if( v.first == name ) {
-                    return v.second;
-                }
+                ctxt.m_var_count = val;
             }
-            ERROR(sp, E0000, "Mismatched bindings in pattern");
-        }
-        else
-        {
-            assert( m_block_level > 0 );
-            if( !m_name_context.back().is_VarBlock() || m_name_context.back().as_VarBlock().level < m_block_level ) {
-                m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
+        public:
+            ~RootBlockScope() {
+                ctxt.m_var_count = old_varcount;
             }
-            DEBUG("New var @ " << m_block_level << ": #" << m_var_count << " " << name);
-            auto& vb = m_name_context.back().as_VarBlock();
-            assert(vb.level == m_block_level);
-            vb.variables.push_back( ::std::make_pair(mv$(name), m_var_count) );
-            m_var_count += 1;
-            assert( m_var_count >= vb.variables.size() );
-            return m_var_count - 1;
+        };
+        RootBlockScope enter_rootblock() {
+            return RootBlockScope(*this, 0);
         }
-    }
-    void pop_block() {
-        assert( m_block_level > 0 );
-        if( m_name_context.size() > 0 && m_name_context.back().is_VarBlock() && m_name_context.back().as_VarBlock().level == m_block_level ) {
-            DEBUG("Pop block from " << m_block_level << " with vars:" << FMT_CB(os,
-                for(const auto& v : m_name_context.back().as_VarBlock().variables)
-                    os << " " << v.first << "#" << v.second;
-                ));
-            m_name_context.pop_back();
+        RootBlockScope clear_rootblock() {
+            return RootBlockScope(*this, ~0u);
         }
-        else {
-            DEBUG("Pop block from " << m_block_level << " - no vars");
-            for(const auto& ent : ::reverse(m_name_context)) {
-                TU_IFLET(Ent, ent, VarBlock, e,
-                    //DEBUG("Block @" << e.level << ": " << e.variables.size() << " vars");
-                    assert( e.level < m_block_level );
+
+        void push_self(const TypeRef& tr) {
+            m_name_context.push_back( Ent::make_ConcreteSelf(&tr) );
+        }
+        void pop_self(const TypeRef& tr) {
+            TU_IFLET(Ent, m_name_context.back(), ConcreteSelf, e,
+                m_name_context.pop_back();
+            )
+            else {
+                BUG(Span(), "resolve/absolute.cpp - Context::pop(TypeRef) - Mismatched pop");
+            }
+        }
+        ::TypeRef get_self() const {
+            for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
+            {
+                TU_MATCH_DEF(Ent, (*it), (e),
+                (
+                    ),
+                (ConcreteSelf,
+                    if( e ) {
+                        return e->clone();
+                    }
+                    else {
+                        return ::TypeRef(Span(), "Self", 0xFFFF);
+                    }
+                    )
                 )
             }
+
+            TODO(Span(), "Error when get_self called with no self");
         }
-        m_block_level -= 1;
-    }
 
-    /// Indicate that a multiple-pattern binding is started
-    void start_patbind() {
-        assert( m_block_level > 0 );
-        m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
-        assert( m_frozen_bind_set == false );
-    }
-    /// Freeze the set of pattern bindings
-    void freeze_patbind() {
-        m_frozen_bind_set = true;
-    }
-    /// End a multiple-pattern binding state (unfreeze really)
-    void end_patbind() {
-        m_frozen_bind_set = false;
-    }
-
-
-    enum class LookupMode {
-        Namespace,
-        Type,
-        Constant,
-        Pattern,
-        Variable,
-    };
-    static const char* lookup_mode_msg(LookupMode mode) {
-        switch(mode)
-        {
-        case LookupMode::Namespace: return "path component";
-        case LookupMode::Type:      return "type name";
-        case LookupMode::Pattern:   return "pattern name";
-        case LookupMode::Constant:  return "constant name";
-        case LookupMode::Variable:  return "variable name";
+        void push_block() {
+            m_block_level += 1;
+            DEBUG("Push block to " << m_block_level);
         }
-        return "";
-    }
-    AST::Path lookup(const Span& sp, const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
-        auto rv = this->lookup_opt(name, src_context, mode);
-        if( !rv.is_valid() ) {
+        unsigned int push_var(const Span& sp, const Ident& name) {
+            if( m_var_count == ~0u ) {
+                BUG(sp, "Assigning local when there's no variable context");
+            }
+            // TODO: Handle avoiding duplicate bindings in a pattern
+            if( m_frozen_bind_set )
+            {
+                if( !m_name_context.back().is_VarBlock() ) {
+                    BUG(sp, "resolve/absolute.cpp - Context::push_var - No block");
+                }
+                auto& vb = m_name_context.back().as_VarBlock();
+                for( const auto& v : vb.variables )
+                {
+                    // TODO: Error when a binding is used twice or not at all
+                    if( v.first == name ) {
+                        return v.second;
+                    }
+                }
+                ERROR(sp, E0000, "Mismatched bindings in pattern");
+            }
+            else
+            {
+                assert( m_block_level > 0 );
+                if( !m_name_context.back().is_VarBlock() || m_name_context.back().as_VarBlock().level < m_block_level ) {
+                    m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
+                }
+                DEBUG("New var @ " << m_block_level << ": #" << m_var_count << " " << name);
+                auto& vb = m_name_context.back().as_VarBlock();
+                assert(vb.level == m_block_level);
+                vb.variables.push_back( ::std::make_pair(mv$(name), m_var_count) );
+                m_var_count += 1;
+                assert( m_var_count >= vb.variables.size() );
+                return m_var_count - 1;
+            }
+        }
+        void pop_block() {
+            assert( m_block_level > 0 );
+            if( m_name_context.size() > 0 && m_name_context.back().is_VarBlock() && m_name_context.back().as_VarBlock().level == m_block_level ) {
+                DEBUG("Pop block from " << m_block_level << " with vars:" << FMT_CB(os,
+                    for(const auto& v : m_name_context.back().as_VarBlock().variables)
+                        os << " " << v.first << "#" << v.second;
+                    ));
+                m_name_context.pop_back();
+            }
+            else {
+                DEBUG("Pop block from " << m_block_level << " - no vars");
+                for(const auto& ent : ::reverse(m_name_context)) {
+                    TU_IFLET(Ent, ent, VarBlock, e,
+                        //DEBUG("Block @" << e.level << ": " << e.variables.size() << " vars");
+                        assert( e.level < m_block_level );
+                    )
+                }
+            }
+            m_block_level -= 1;
+        }
+
+        /// Indicate that a multiple-pattern binding is started
+        void start_patbind() {
+            assert( m_block_level > 0 );
+            m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
+            assert( m_frozen_bind_set == false );
+        }
+        /// Freeze the set of pattern bindings
+        void freeze_patbind() {
+            m_frozen_bind_set = true;
+        }
+        /// End a multiple-pattern binding state (unfreeze really)
+        void end_patbind() {
+            m_frozen_bind_set = false;
+        }
+
+
+        enum class LookupMode {
+            Namespace,
+            Type,
+            Constant,
+            Pattern,
+            Variable,
+        };
+        static const char* lookup_mode_msg(LookupMode mode) {
             switch(mode)
             {
-            case LookupMode::Namespace: ERROR(sp, E0000, "Couldn't find path component '" << name << "'");
-            case LookupMode::Type:      ERROR(sp, E0000, "Couldn't find type name '" << name << "'");
-            case LookupMode::Pattern:   ERROR(sp, E0000, "Couldn't find pattern name '" << name << "'");
-            case LookupMode::Constant:  ERROR(sp, E0000, "Couldn't find constant name '" << name << "'");
-            case LookupMode::Variable:  ERROR(sp, E0000, "Couldn't find variable name '" << name << "'");
+            case LookupMode::Namespace: return "path component";
+            case LookupMode::Type:      return "type name";
+            case LookupMode::Pattern:   return "pattern name";
+            case LookupMode::Constant:  return "constant name";
+            case LookupMode::Variable:  return "variable name";
             }
+            return "";
         }
-        return rv;
-    }
-    static bool lookup_in_mod(const ::AST::Module& mod, const ::std::string& name, LookupMode mode,  ::AST::Path& path) {
-        switch(mode)
-        {
-        case LookupMode::Namespace:
-            {
-                auto v = mod.m_namespace_items.find(name);
-                if( v != mod.m_namespace_items.end() ) {
-                    path = ::AST::Path( v->second.path );
-                    return true;
+        AST::Path lookup(const Span& sp, const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
+            auto rv = this->lookup_opt(name, src_context, mode);
+            if( !rv.is_valid() ) {
+                switch(mode)
+                {
+                case LookupMode::Namespace: ERROR(sp, E0000, "Couldn't find path component '" << name << "'");
+                case LookupMode::Type:      ERROR(sp, E0000, "Couldn't find type name '" << name << "'");
+                case LookupMode::Pattern:   ERROR(sp, E0000, "Couldn't find pattern name '" << name << "'");
+                case LookupMode::Constant:  ERROR(sp, E0000, "Couldn't find constant name '" << name << "'");
+                case LookupMode::Variable:  ERROR(sp, E0000, "Couldn't find variable name '" << name << "'");
                 }
             }
-            {
-                auto v = mod.m_type_items.find(name);
-                if( v != mod.m_type_items.end() ) {
-                    path = ::AST::Path( v->second.path );
-                    return true;
-                }
-            }
-            break;
-
-        case LookupMode::Type:
-            //if( name == "IntoIterator" ) {
-            //    DEBUG("lookup_in_mod(mod="<<mod.path()<<")");
-            //    for(const auto& v : mod.m_type_items) {
-            //        DEBUG("- " << v.first << " = " << (v.second.is_pub ? "pub " : "") << v.second.path);
-            //    }
-            //}
-            {
-                auto v = mod.m_type_items.find(name);
-                if( v != mod.m_type_items.end() ) {
-                    path = ::AST::Path( v->second.path );
-                    return true;
-                }
-            }
-            break;
-        case LookupMode::Pattern:
-            {
-                auto v = mod.m_type_items.find(name);
-                if( v != mod.m_type_items.end() ) {
-                    const auto& b = v->second.path.binding();
-                    switch( b.tag() )
-                    {
-                    case ::AST::PathBinding::TAG_Struct:
-                        path = ::AST::Path( v->second.path );
-                        return true;
-                    default:
-                        break;
-                    }
-                }
-            }
-            {
-                auto v = mod.m_value_items.find(name);
-                if( v != mod.m_value_items.end() ) {
-                    const auto& b = v->second.path.binding();
-                    switch( b.tag() )
-                    {
-                    case ::AST::PathBinding::TAG_EnumVar:
-                    case ::AST::PathBinding::TAG_Static:
-                        path = ::AST::Path( v->second.path );
-                        return true;
-                    default:
-                        break;
-                    }
-                }
-            }
-            break;
-        case LookupMode::Constant:
-        case LookupMode::Variable:
-            {
-                auto v = mod.m_value_items.find(name);
-                if( v != mod.m_value_items.end() ) {
-                    path = ::AST::Path( v->second.path );
-                    return true;
-                }
-            }
-            break;
-        }
-        return false;
-    }
-    AST::Path lookup_opt(const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
-        DEBUG("name=" << name <<", src_context=" << src_context);
-        for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
-        {
-            TU_MATCH(Ent, (*it), (e),
-            (Module,
-                DEBUG("- Module");
-                ::AST::Path rv;
-                if( this->lookup_in_mod(*e.mod, name, mode,  rv) ) {
-                    return rv;
-                }
-                ),
-            (ConcreteSelf,
-                DEBUG("- ConcreteSelf");
-                if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
-                    return ::AST::Path( ::AST::Path::TagUfcs(), e->clone(), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
-                }
-                ),
-            (VarBlock,
-                DEBUG("- VarBlock");
-                assert(e.level <= m_block_level);
-                if( mode != LookupMode::Variable ) {
-                    // ignore
-                }
-                else {
-                    for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
-                    {
-                        if( it2->first.name == name && it2->first.hygiene.is_visible(src_context) ) {
-                            ::AST::Path rv(name);
-                            rv.bind_variable( it2->second );
-                            return rv;
-                        }
-                    }
-                }
-                ),
-            (Generic,
-                DEBUG("- Generic");
-                if( mode == LookupMode::Type || mode == LookupMode::Namespace ) {
-                    for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
-                    {
-                        if( it2->name == name ) {
-                            ::AST::Path rv(name);
-                            rv.bind_variable( it2->value.to_binding() );
-                            return rv;
-                        }
-                    }
-                }
-                else {
-                    // ignore.
-                    // TODO: Integer generics
-                }
-                )
-            )
-        }
-
-        // Top-level module
-        DEBUG("- Top module (" << m_mod.path() << ")");
-        ::AST::Path rv;
-        if( this->lookup_in_mod(m_mod, name, mode,  rv) ) {
             return rv;
         }
-
-        DEBUG("- Primitives");
-        switch(mode)
-        {
-        case LookupMode::Namespace:
-        case LookupMode::Type: {
-            // Look up primitive types
-            auto ct = coretype_fromstring(name);
-            if( ct != CORETYPE_INVAL )
+        static bool lookup_in_mod(const ::AST::Module& mod, const ::std::string& name, LookupMode mode,  ::AST::Path& path) {
+            switch(mode)
             {
-                return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+            case LookupMode::Namespace:
+                {
+                    auto v = mod.m_namespace_items.find(name);
+                    if( v != mod.m_namespace_items.end() ) {
+                        path = ::AST::Path( v->second.path );
+                        return true;
+                    }
+                }
+                {
+                    auto v = mod.m_type_items.find(name);
+                    if( v != mod.m_type_items.end() ) {
+                        path = ::AST::Path( v->second.path );
+                        return true;
+                    }
+                }
+                break;
+
+            case LookupMode::Type:
+                //if( name == "IntoIterator" ) {
+                //    DEBUG("lookup_in_mod(mod="<<mod.path()<<")");
+                //    for(const auto& v : mod.m_type_items) {
+                //        DEBUG("- " << v.first << " = " << (v.second.is_pub ? "pub " : "") << v.second.path);
+                //    }
+                //}
+                {
+                    auto v = mod.m_type_items.find(name);
+                    if( v != mod.m_type_items.end() ) {
+                        path = ::AST::Path( v->second.path );
+                        return true;
+                    }
+                }
+                break;
+            case LookupMode::Pattern:
+                {
+                    auto v = mod.m_type_items.find(name);
+                    if( v != mod.m_type_items.end() ) {
+                        const auto& b = v->second.path.binding();
+                        switch( b.tag() )
+                        {
+                        case ::AST::PathBinding::TAG_Struct:
+                            path = ::AST::Path( v->second.path );
+                            return true;
+                        default:
+                            break;
+                        }
+                    }
+                }
+                {
+                    auto v = mod.m_value_items.find(name);
+                    if( v != mod.m_value_items.end() ) {
+                        const auto& b = v->second.path.binding();
+                        switch( b.tag() )
+                        {
+                        case ::AST::PathBinding::TAG_EnumVar:
+                        case ::AST::PathBinding::TAG_Static:
+                            path = ::AST::Path( v->second.path );
+                            return true;
+                        default:
+                            break;
+                        }
+                    }
+                }
+                break;
+            case LookupMode::Constant:
+            case LookupMode::Variable:
+                {
+                    auto v = mod.m_value_items.find(name);
+                    if( v != mod.m_value_items.end() ) {
+                        path = ::AST::Path( v->second.path );
+                        return true;
+                    }
+                }
+                break;
             }
-            } break;
-        default:
-            break;
+            return false;
         }
-
-        return AST::Path();
-    }
-
-    unsigned int lookup_local(const Span& sp, const ::std::string name, LookupMode mode) {
-        for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
-        {
-            TU_MATCH(Ent, (*it), (e),
-            (Module,
-                ),
-            (ConcreteSelf,
-                ),
-            (VarBlock,
-                if( mode == LookupMode::Variable ) {
-                    for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
-                    {
-                        // TODO: Hyginic lookup?
-                        if( it2->first.name == name ) {
-                            return it2->second;
+        AST::Path lookup_opt(const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
+            DEBUG("name=" << name <<", src_context=" << src_context);
+            for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
+            {
+                TU_MATCH(Ent, (*it), (e),
+                (Module,
+                    DEBUG("- Module");
+                    ::AST::Path rv;
+                    if( this->lookup_in_mod(*e.mod, name, mode,  rv) ) {
+                        return rv;
+                    }
+                    ),
+                (ConcreteSelf,
+                    DEBUG("- ConcreteSelf");
+                    if( ( mode == LookupMode::Type || mode == LookupMode::Namespace ) && name == "Self" ) {
+                        return ::AST::Path( ::AST::Path::TagUfcs(), e->clone(), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                    }
+                    ),
+                (VarBlock,
+                    DEBUG("- VarBlock");
+                    assert(e.level <= m_block_level);
+                    if( mode != LookupMode::Variable ) {
+                        // ignore
+                    }
+                    else {
+                        for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
+                        {
+                            if( it2->first.name == name && it2->first.hygiene.is_visible(src_context) ) {
+                                ::AST::Path rv(name);
+                                rv.bind_variable( it2->second );
+                                return rv;
+                            }
                         }
                     }
-                }
-                ),
-            (Generic,
-                if( mode == LookupMode::Type ) {
-                    for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
-                    {
-                        if( it2->name == name ) {
-                            return it2->value.to_binding();
+                    ),
+                (Generic,
+                    DEBUG("- Generic");
+                    if( mode == LookupMode::Type || mode == LookupMode::Namespace ) {
+                        for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
+                        {
+                            if( it2->name == name ) {
+                                ::AST::Path rv(name);
+                                rv.bind_variable( it2->value.to_binding() );
+                                return rv;
+                            }
                         }
                     }
-                }
-                else {
-                    // ignore.
-                    // TODO: Integer generics
-                }
+                    else {
+                        // ignore.
+                        // TODO: Integer generics
+                    }
+                    )
                 )
-            )
+            }
+
+            // Top-level module
+            DEBUG("- Top module (" << m_mod.path() << ")");
+            ::AST::Path rv;
+            if( this->lookup_in_mod(m_mod, name, mode,  rv) ) {
+                return rv;
+            }
+
+            DEBUG("- Primitives");
+            switch(mode)
+            {
+            case LookupMode::Namespace:
+            case LookupMode::Type: {
+                // Look up primitive types
+                auto ct = coretype_fromstring(name);
+                if( ct != CORETYPE_INVAL )
+                {
+                    return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
+                }
+                } break;
+            default:
+                break;
+            }
+
+            return AST::Path();
         }
 
-        ERROR(sp, E0000, "Unable to find local " << (mode == LookupMode::Variable ? "variable" : "type") << " '" << name << "'");
-    }
+        unsigned int lookup_local(const Span& sp, const ::std::string name, LookupMode mode) {
+            for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
+            {
+                TU_MATCH(Ent, (*it), (e),
+                (Module,
+                    ),
+                (ConcreteSelf,
+                    ),
+                (VarBlock,
+                    if( mode == LookupMode::Variable ) {
+                        for( auto it2 = e.variables.rbegin(); it2 != e.variables.rend(); ++ it2 )
+                        {
+                            // TODO: Hyginic lookup?
+                            if( it2->first.name == name ) {
+                                return it2->second;
+                            }
+                        }
+                    }
+                    ),
+                (Generic,
+                    if( mode == LookupMode::Type ) {
+                        for( auto it2 = e.types.rbegin(); it2 != e.types.rend(); ++ it2 )
+                        {
+                            if( it2->name == name ) {
+                                return it2->value.to_binding();
+                            }
+                        }
+                    }
+                    else {
+                        // ignore.
+                        // TODO: Integer generics
+                    }
+                    )
+                )
+            }
 
-    /// Clones the context, including only the module-level items (i.e. just the Module entries)
-    Context clone_mod() const {
-        auto rv = Context(this->m_crate, this->m_mod);
-        for(const auto& v : m_name_context) {
-            TU_IFLET(Ent, v, Module, e,
-                rv.m_name_context.push_back( Ent::make_Module(e) );
-            )
+            ERROR(sp, E0000, "Unable to find local " << (mode == LookupMode::Variable ? "variable" : "type") << " '" << name << "'");
         }
-        return rv;
-    }
-};
+
+        /// Clones the context, including only the module-level items (i.e. just the Module entries)
+        Context clone_mod() const {
+            auto rv = Context(this->m_crate, this->m_mod);
+            for(const auto& v : m_name_context) {
+                TU_IFLET(Ent, v, Module, e,
+                    rv.m_name_context.push_back( Ent::make_Module(e) );
+                )
+            }
+            return rv;
+        }
+    };
+}   // Namespace
 
 ::std::ostream& operator<<(::std::ostream& os, const Context::LookupMode& v) {
     switch(v)

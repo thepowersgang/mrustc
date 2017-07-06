@@ -83,6 +83,7 @@
       <PreprocessToFile>false</PreprocessToFile>
       <AssemblerListingLocation>$(IntDir)dummy\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)dummy\%(RelativeDir)</ObjectFileName>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <TargetMachine>MachineX86</TargetMachine>
@@ -100,6 +101,7 @@
       <PreprocessToFile>false</PreprocessToFile>
       <AssemblerListingLocation>$(IntDir)dummy\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)dummy\%(RelativeDir)</ObjectFileName>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <TargetMachine>MachineX86</TargetMachine>
@@ -118,6 +120,7 @@
       <ObjectFileName>$(IntDir)dummy\%(RelativeDir)</ObjectFileName>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <Optimization>Disabled</Optimization>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -127,6 +130,7 @@
       <AssemblerListingLocation>$(IntDir)dummy\%(RelativeDir)</AssemblerListingLocation>
       <ObjectFileName>$(IntDir)dummy\%(RelativeDir)</ObjectFileName>
       <PreprocessorDefinitions>_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/bigobj %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <FullProgramDatabaseFile>true</FullProgramDatabaseFile>

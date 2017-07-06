@@ -34,7 +34,7 @@ Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
 #define LOOKAHEAD2(lex, tok1, tok2) ((lex).lookahead(0) == (tok1) && (lex).lookahead(1) == (tok2))
 
 ::std::string dirname(::std::string input) {
-    while( input.size() > 0 && input.back() != '/' ) {
+    while( input.size() > 0 && input.back() != '/' && input.back() != '\\' ) {
         input.pop_back();
     }
     return input;
@@ -1925,6 +1925,7 @@ AST::Crate Parse_Crate(::std::string mainfile)
     Lexer lex(mainfile);
 
     size_t p = mainfile.find_last_of('/');
+    p = (p == ::std::string::npos ? mainfile.find_last_of('\\') : p);
     ::std::string mainpath = (p != ::std::string::npos ? ::std::string(mainfile.begin(), mainfile.begin()+p+1) : "./");
 
     AST::Crate  crate;
