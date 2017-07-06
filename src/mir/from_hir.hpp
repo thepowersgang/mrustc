@@ -103,6 +103,9 @@ TAGGED_UNION(ScopeType, Owning,
         ::std::map<unsigned int,VarState>    changed_args;
         bool exit_state_valid;
         SplitEnd    exit_state;
+        // TODO: Any drop flags allocated in the loop must be re-initialised at the start of the loop (or before a loopback)
+        ::MIR::BasicBlockId   entry_bb;
+        ::std::vector<unsigned> drop_flags;
         }),
     // State which should end up with no mutation of variable states
     (Freeze, struct {

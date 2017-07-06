@@ -338,12 +338,6 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int 
     }
 
     this->push_stmt(sp, ::MIR::Statement::make_Drop({ ::MIR::eDropKind::DEEP, mv$(val), flag }));
-
-    if( flag != ~0u )
-    {
-        // Reset flag value back to default.
-        push_stmt_set_dropflag_val(sp, flag, m_output.drop_flags.at(flag));
-    }
 }
 void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val, unsigned int flag/*=~0u*/)
 {
@@ -353,12 +347,6 @@ void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val, unsig
     // TODO: Ensure that the type is a Box?
 
     this->push_stmt(sp, ::MIR::Statement::make_Drop({ ::MIR::eDropKind::SHALLOW, mv$(val), flag }));
-
-    if( flag != ~0u )
-    {
-        // Reset flag value back to default.
-        push_stmt_set_dropflag_val(sp, flag, m_output.drop_flags.at(flag));
-    }
 }
 void MirBuilder::push_stmt_asm(const Span& sp, ::MIR::Statement::Data_Asm data)
 {
@@ -697,6 +685,14 @@ unsigned int MirBuilder::new_drop_flag(bool default_state)
 {
     auto rv = m_output.drop_flags.size();
     m_output.drop_flags.push_back(default_state);
+    for(size_t i = m_scope_stack.size(); i --;)
+    {
+        if( auto* e = m_scopes.at(m_scope_stack[i]).data.opt_Loop() )
+        {
+            e->drop_flags.push_back(rv);
+            break;
+        }
+    }
     DEBUG("(" << default_state << ") = " << rv);
     return rv;
 }
@@ -741,6 +737,7 @@ ScopeHandle MirBuilder::new_scope_loop(const Span& sp)
 {
     unsigned int idx = m_scopes.size();
     m_scopes.push_back( ScopeDef {sp, ScopeType::make_Loop({})} );
+    m_scopes.back().data.as_Loop().entry_bb = m_current_block;
     m_scope_stack.push_back( idx );
     DEBUG("START (loop) scope " << idx);
     return ScopeHandle { *this, idx };
@@ -1549,13 +1546,20 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     };
 
     // No macro for better debug output.
-    if( sd.data.is_Loop() )
+    if( auto* e = sd.data.opt_Loop() )
     {
-        auto& e = sd.data.as_Loop();
         TRACE_FUNCTION_F("Loop");
-        if( e.exit_state_valid )
+        if( e->exit_state_valid )
         {
-            H::apply_end_state(sd.span, *this, e.exit_state);
+            H::apply_end_state(sd.span, *this, e->exit_state);
+        }
+
+        // Insert sets of drop flags to the first block (at the start of that block)
+        auto& stmts = m_output.blocks.at(e->entry_bb).statements;
+        for(auto idx : e->drop_flags)
+        {
+            DEBUG("Reset df$" << idx);
+            stmts.insert( stmts.begin(), ::MIR::Statement::make_SetDropFlag({ idx, m_output.drop_flags.at(idx), ~0u }) );
         }
     }
     else if( sd.data.is_Split() )

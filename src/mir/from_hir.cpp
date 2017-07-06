@@ -548,8 +548,8 @@ namespace {
         void visit(::HIR::ExprNode_Loop& node) override
         {
             TRACE_FUNCTION_FR("_Loop", "_Loop");
-            auto loop_body_scope = m_builder.new_scope_loop(node.span());
             auto loop_block = m_builder.new_bb_linked();
+            auto loop_body_scope = m_builder.new_scope_loop(node.span());
             auto loop_next = m_builder.new_bb_unlinked();
 
             auto loop_tmp_scope = m_builder.new_scope_temp(node.span());
@@ -2269,7 +2269,13 @@ namespace {
         root_node.visit( ev );
     }
 
+    // NOTE: Can't clean up yet, as consteval isn't done
+    //MIR_Cleanup(resolve, path, fcn, args, ptr->m_res_type);
     MIR_Validate(resolve, path, fcn, args, ptr->m_res_type);
+
+    if( getenv("MRUSTC_VALIDATE_FULL_EARLY") ) {
+        MIR_Validate_Full(resolve, path, fcn, args, ptr->m_res_type);
+    }
 
     return ::MIR::FunctionPointer(new ::MIR::Function(mv$(fcn)));
 }
