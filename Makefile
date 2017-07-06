@@ -49,6 +49,7 @@ CXXFLAGS += -Wno-misleading-indentation
 RUST_FLAGS := --cfg debug_assertions
 RUST_FLAGS += -g
 RUST_FLAGS += -O
+RUST_FLAGS += $(RUST_FLAGS_EXTRA)
 
 SHELL = bash
 
@@ -718,7 +719,7 @@ DISABLED_TESTS += run-pass/issue-13027	# Infinite loop (match?)
 DISABLED_TESTS += run-pass/issue-36936	# assert_eq failing on equal values
 # - BUG: signed ctpop/cttz/ctlz
 DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
-# - BUG: Incorrect drop order of ?
+# - BUG: Incorrect drop ordering
 DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
 # - BUG: Incorrect consteval
 DISABLED_TESTS += run-pass/issue-23968-const-not-overflow	# !0 / 2 incorrect value
@@ -760,7 +761,7 @@ DISABLED_TESTS += run-pass/issue-32805	# Possible f32 literal rounding isue
 DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to union field
 DISABLED_TESTS += run-pass/issue-4734	# Destructor on unused rvalue
 DISABLED_TESTS += run-pass/issue-8860	# No drop of un-moved arguments
-DISABLED_TESTS += run-pass/issue-15080	# Inifinte loop from incorrect match generation
+DISABLED_TESTS += run-pass/issue-15080	# Infinte loop from incorrect match generation
 # - BUG: Codegen
 DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
 DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior
