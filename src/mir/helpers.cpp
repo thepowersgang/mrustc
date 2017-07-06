@@ -308,7 +308,9 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
             ft.m_arg_types.reserve(ve->m_args.size());
             for(const auto& arg : ve->m_args)
                 ft.m_arg_types.push_back( p.monomorph(this->sp, arg.second) );
-            return ::HIR::TypeRef( mv$(ft) );
+            auto rv = ::HIR::TypeRef( mv$(ft) );
+            m_resolve.expand_associated_types(this->sp, rv);
+            return rv;
             )
         )
         )
