@@ -222,6 +222,9 @@ namespace {
         (Switch,
             visit_mir_lvalue_mut(e.val, ValUsage::Read, cb);
             ),
+        (SwitchValue,
+            visit_mir_lvalue_mut(e.val, ValUsage::Read, cb);
+            ),
         (Call,
             if( e.fcn.is_Value() ) {
                 visit_mir_lvalue_mut(e.fcn.as_Value(), ValUsage::Read, cb);
@@ -392,6 +395,42 @@ namespace {
     }
 
 
+    void visit_terminator_target_mut(::MIR::Terminator& term, ::std::function<void(::MIR::BasicBlockId&)> cb) {
+        TU_MATCHA( (term), (e),
+        (Incomplete,
+            ),
+        (Return,
+            ),
+        (Diverge,
+            ),
+        (Goto,
+            cb(e);
+            ),
+        (Panic,
+            ),
+        (If,
+            cb(e.bb0);
+            cb(e.bb1);
+            ),
+        (Switch,
+            for(auto& target : e.targets)
+                cb(target);
+            ),
+        (SwitchValue,
+            for(auto& target : e.targets)
+                cb(target);
+            cb(e.def_target);
+            ),
+        (Call,
+            cb(e.ret_block);
+            cb(e.panic_block);
+            )
+        )
+    }
+    void visit_terminator_target(const ::MIR::Terminator& term, ::std::function<void(const ::MIR::BasicBlockId&)> cb) {
+        visit_terminator_target_mut(const_cast<::MIR::Terminator&>(term), cb);
+    }
+
     void visit_blocks_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<void(::MIR::BasicBlockId, ::MIR::BasicBlock&)> cb)
     {
         ::std::vector<bool> visited( fcn.blocks.size() );
@@ -406,43 +445,15 @@ namespace {
 
             cb(bb, block);
 
-            TU_MATCHA( (block.terminator), (e),
-            (Incomplete,
-                ),
-            (Return,
-                ),
-            (Diverge,
-                ),
-            (Goto,
+            visit_terminator_target(block.terminator, [&](auto e){
                 if( !visited[e] )
                     to_visit.push_back(e);
-                ),
-            (Panic,
-                ),
-            (If,
-                if( !visited[e.bb0] )
-                    to_visit.push_back(e.bb0);
-                if( !visited[e.bb1] )
-                    to_visit.push_back(e.bb1);
-                ),
-            (Switch,
-                for(auto& target : e.targets)
-                    if( !visited[target] )
-                        to_visit.push_back(target);
-                ),
-            (Call,
-                if( !visited[e.ret_block] )
-                    to_visit.push_back(e.ret_block);
-                if( !visited[e.panic_block] )
-                    to_visit.push_back(e.panic_block);
-                )
-            )
+                });
         }
     }
     void visit_blocks(::MIR::TypeResolve& state, const ::MIR::Function& fcn, ::std::function<void(::MIR::BasicBlockId, const ::MIR::BasicBlock&)> cb) {
         visit_blocks_mut(state, const_cast<::MIR::Function&>(fcn), [cb](auto id, auto& blk){ cb(id, blk); });
     }
-
 
     bool statement_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& lv)
     {
@@ -651,32 +662,10 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             }
         }
 
-        TU_MATCHA( (block.terminator), (e),
-        (Incomplete,
-            ),
-        (Return,
-            ),
-        (Diverge,
-            ),
-        (Goto,
+        visit_terminator_target_mut(block.terminator, [&](auto& e) {
             if( &fcn.blocks[e] != &block )
                 e = get_new_target(state, e);
-            ),
-        (Panic,
-            ),
-        (If,
-            e.bb0 = get_new_target(state, e.bb0);
-            e.bb1 = get_new_target(state, e.bb1);
-            ),
-        (Switch,
-            for(auto& target : e.targets)
-                target = get_new_target(state, target);
-            ),
-        (Call,
-            e.ret_block = get_new_target(state, e.ret_block);
-            e.panic_block = get_new_target(state, e.panic_block);
-            )
-        )
+            });
     }
 
     // >> Merge blocks where a block goto-s to a single-use block.
@@ -694,40 +683,10 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             visited[bb] = true;
             const auto& block = fcn.blocks[bb];
 
-            TU_MATCHA( (block.terminator), (e),
-            (Incomplete,
-                ),
-            (Return,
-                ),
-            (Diverge,
-                ),
-            (Goto,
+            visit_terminator_target(block.terminator, [&](const auto& e) {
                 if( !visited[e] )   to_visit.push_back(e);
                 uses[e] ++;
-                ),
-            (Panic,
-                ),
-            (If,
-                if( !visited[e.bb0] )   to_visit.push_back(e.bb0);
-                if( !visited[e.bb1] )   to_visit.push_back(e.bb1);
-                uses[e.bb0] ++;
-                uses[e.bb1] ++;
-                ),
-            (Switch,
-                for(auto& target : e.targets)
-                {
-                    if( !visited[target] )
-                        to_visit.push_back(target);
-                    uses[target] ++;
-                }
-                ),
-            (Call,
-                if( !visited[e.ret_block] )     to_visit.push_back(e.ret_block);
-                if( !visited[e.panic_block] )   to_visit.push_back(e.panic_block);
-                uses[e.ret_block] ++;
-                uses[e.panic_block] ++;
-                )
-            )
+                });
         }
 
         unsigned int i = 0;
@@ -969,6 +928,13 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 for(const auto& bbi : se.targets)
                     arms.push_back( bbi + this->bb_base );
                 return ::MIR::Terminator::make_Switch({ this->clone_lval(se.val), mv$(arms) });
+                ),
+            (SwitchValue,
+                ::std::vector<::MIR::BasicBlockId>  arms;
+                arms.reserve(se.targets.size());
+                for(const auto& bbi : se.targets)
+                    arms.push_back( bbi + this->bb_base );
+                return ::MIR::Terminator::make_SwitchValue({ this->clone_lval(se.val), se.def_target + this->bb_base, mv$(arms), se.values.clone() });
                 ),
             (Call,
                 ::MIR::CallTarget   tgt;
@@ -1412,6 +1378,30 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 if( ae.targets != be.targets )
                     return false;
                 ),
+            (SwitchValue,
+                if( ae.val != be.val )
+                    return false;
+                if( ae.targets != be.targets )
+                    return false;
+                if( ae.def_target != be.def_target )
+                    return false;
+                if( ae.values.tag() != be.values.tag() )
+                    return false;
+                TU_MATCHA( (ae.values, be.values), (ae2, be2),
+                (Unsigned,
+                    if( ae2 != be2 )
+                        return false;
+                    ),
+                (Signed,
+                    if( ae2 != be2 )
+                        return false;
+                    ),
+                (String,
+                    if( ae2 != be2 )
+                        return false;
+                    )
+                )
+                ),
             (Call,
                 if( ae.ret_block != be.ret_block )
                     return false;
@@ -1483,32 +1473,9 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         {
             if( bb.terminator.tag() == ::MIR::Terminator::TAGDEAD )
                 continue ;
-            TU_MATCHA( (bb.terminator), (te),
-            (Incomplete,
-                ),
-            (Return,
-                ),
-            (Diverge,
-                ),
-            (Goto,
+            visit_terminator_target_mut(bb.terminator, [&](auto& te) {
                 patch_tgt(te);
-                ),
-            (Panic,
-                patch_tgt(te.dst);
-                ),
-            (If,
-                patch_tgt(te.bb0);
-                patch_tgt(te.bb1);
-                ),
-            (Switch,
-                for(auto& tgt : te.targets)
-                    patch_tgt(tgt);
-                ),
-            (Call,
-                patch_tgt(te.ret_block);
-                patch_tgt(te.panic_block);
-                )
-            )
+                });
             //DEBUG("- " << bb.terminator);
         }
 
@@ -1548,7 +1515,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
             visited[bb] = true;
             const auto& block = fcn.blocks[bb];
 
-            auto ref_block = [&](auto idx) {
+            visit_terminator_target(block.terminator, [&](const auto& idx) {
                 if( !visited[idx] )
                     to_visit.push_back(idx);
                 if(block_uses[idx] == 0)
@@ -1556,34 +1523,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                 else
                     block_origins[idx] = SIZE_MAX;
                 block_uses[idx] ++;
-                };
-            TU_MATCHA( (block.terminator), (e),
-            (Incomplete,
-                ),
-            (Return,
-                ),
-            (Diverge,
-                ),
-            (Goto,
-                ref_block(e);
-                ),
-            (Panic,
-                ),
-            (If,
-                ref_block(e.bb0);
-                ref_block(e.bb1);
-                ),
-            (Switch,
-                for(auto& target : e.targets)
-                {
-                    ref_block(target);
-                }
-                ),
-            (Call,
-                ref_block(e.ret_block);
-                ref_block(e.panic_block);
-                )
-            )
+                });
         }
     }
 
@@ -2293,6 +2233,11 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                             found = true;
                         stop = true;
                         ),
+                    (SwitchValue,
+                        if( src_is_lvalue && visit_mir_lvalue(e.val, ValUsage::Read, is_lvalue_usage) )
+                            found = true;
+                        stop = true;
+                        ),
                     (Call,
                         if( e.fcn.is_Value() )
                             if( src_is_lvalue && visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, is_lvalue_usage) )
@@ -2847,6 +2792,12 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                 for(auto& target : e.targets)
                     target = block_rewrite_table[target];
                 ),
+            (SwitchValue,
+                visit_mir_lvalue_mut(e.val, ValUsage::Read, lvalue_cb);
+                for(auto& target : e.targets)
+                    target = block_rewrite_table[target];
+                e.def_target = block_rewrite_table[e.def_target];
+                ),
             (Call,
                 if( e.fcn.is_Value() ) {
                     visit_mir_lvalue_mut(e.fcn.as_Value(), ValUsage::Read, lvalue_cb);
@@ -2939,6 +2890,11 @@ void MIR_SortBlocks(const StaticTraitResolve& resolve, const ::HIR::ItemPath& pa
             for(auto dst : te.targets)
                 todo.push_back(Todo { dst, ++branches, info.level + 1 });
             ),
+        (SwitchValue,
+            for(auto dst : te.targets)
+                todo.push_back(Todo { dst, ++branches, info.level + 1 });
+            todo.push_back(Todo { te.def_target, info.branch_count, info.level + 1 });
+            ),
         (Call,
             todo.push_back(Todo { te.ret_block, info.branch_count, info.level + 1 });
             todo.push_back(Todo { te.panic_block, ++branches, info.level + 1 });
@@ -2963,32 +2919,9 @@ void MIR_SortBlocks(const StaticTraitResolve& resolve, const ::HIR::ItemPath& pa
     {
         auto fix_bb_idx = [&](auto idx){ return ::std::find(idxes.begin(), idxes.end(), idx) - idxes.begin(); };
         new_block_list.push_back( mv$(fcn.blocks[idx]) );
-        TU_MATCHA( (new_block_list.back().terminator), (te),
-        (Incomplete,
-            ),
-        (Return,
-            ),
-        (Diverge,
-            ),
-        (Goto,
+        visit_terminator_target_mut(new_block_list.back().terminator, [&](auto& te){
             te = fix_bb_idx(te);
-            ),
-        (Panic,
-            te.dst = fix_bb_idx(te.dst);
-            ),
-        (If,
-            te.bb0 = fix_bb_idx(te.bb0);
-            te.bb1 = fix_bb_idx(te.bb1);
-            ),
-        (Switch,
-            for(auto& tgt : te.targets)
-                tgt = fix_bb_idx(tgt);
-            ),
-        (Call,
-            te.ret_block = fix_bb_idx(te.ret_block);
-            te.panic_block = fix_bb_idx(te.panic_block);
-            )
-        )
+            });
     }
     fcn.blocks = mv$(new_block_list);
 }

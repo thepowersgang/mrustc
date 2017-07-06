@@ -1386,6 +1386,7 @@ namespace {
                 m_of << "\tbool df" << i << " = " << code->drop_flags[i] << ";\n";
             }
 
+            if( false )
             {
                 m_of << "#if 0\n";
                 auto nodes = MIR_To_Structured(*code);
@@ -1445,7 +1446,7 @@ namespace {
                     auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
                     if( it != m_enum_repr_cache.end() )
                     {
-                        MIR_ASSERT(mir_res, e.targets.size() == 2, "");
+                        MIR_ASSERT(mir_res, e.targets.size() == 2, "Non-zero optimised type a variant count that isn't 2");
                         m_of << "\tif("; emit_lvalue(e.val); emit_nonzero_path(it->second); m_of << ")\n";
                         m_of << "\t\tgoto bb" << e.targets[1] << ";\n";
                         m_of << "\telse\n";
@@ -1469,6 +1470,9 @@ namespace {
                         m_of << "\t\tdefault: abort();\n";
                         m_of << "\t}\n";
                     }
+                    ),
+                (SwitchValue,
+                    MIR_TODO(mir_res, "SwitchValue in C codegen");
                     ),
                 (Call,
                     emit_term_call(mir_res, e, 1);
@@ -1524,6 +1528,9 @@ namespace {
                             emit_term_call(mir_res, te, indent_level);
                             ),
                         (Switch,
+                            //assert(i == e.nodes.size()-1 && "Switch");
+                            ),
+                        (SwitchValue,
                             //assert(i == e.nodes.size()-1 && "Switch");
                             )
                         )

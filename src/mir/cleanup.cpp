@@ -1103,6 +1103,9 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
         (Switch,
             MIR_Cleanup_LValue(state, mutator, e.val);
             ),
+        (SwitchValue,
+            MIR_Cleanup_LValue(state, mutator, e.val);
+            ),
         (Call,
             MIR_Cleanup_LValue(state, mutator, e.ret_val);
             if( e.fcn.is_Value() ) {

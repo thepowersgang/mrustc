@@ -481,6 +481,9 @@ namespace visit {
         (Switch,
             rv |= visit_mir_lvalue(e.val, ValUsage::Read, cb);
             ),
+        (SwitchValue,
+            rv |= visit_mir_lvalue(e.val, ValUsage::Read, cb);
+            ),
         (Call,
             if( e.fcn.is_Value() ) {
                 rv |= visit_mir_lvalue(e.fcn.as_Value(), ValUsage::Read, cb);
@@ -950,6 +953,13 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                         : state.clone();
                     m_states_to_do.push_back( ::std::make_pair(te.targets[i], mv$(s)) );
                 }
+                ),
+            (SwitchValue,
+                for(size_t i = 0; i < te.targets.size(); i ++)
+                {
+                    m_states_to_do.push_back( ::std::make_pair(te.targets[i], state.clone()) );
+                }
+                m_states_to_do.push_back( ::std::make_pair(te.def_target, mv$(state)) );
                 ),
             (Call,
                 if( te.ret_val == m_lv )

@@ -935,6 +935,9 @@ void Trans_Enumerate_Types(EnumState& state)
                     (Switch,
                         H::visit_lvalue(tv,pp,fcn, te.val);
                         ),
+                    (SwitchValue,
+                        H::visit_lvalue(tv,pp,fcn, te.val);
+                        ),
                     (Call,
                         if( te.fcn.is_Value() )
                             H::visit_lvalue(tv,pp,fcn, te.fcn.as_Value());
@@ -1474,6 +1477,9 @@ void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code,
             Trans_Enumerate_FillFrom_MIR_LValue(state, e.cond, pp);
             ),
         (Switch,
+            Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
+            ),
+        (SwitchValue,
             Trans_Enumerate_FillFrom_MIR_LValue(state, e.val, pp);
             ),
         (Call,

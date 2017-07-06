@@ -211,6 +211,14 @@ TAGGED_UNION(CallTarget, Intrinsic,
         ::HIR::PathParams   params;
         })
     );
+TAGGED_UNION_EX(SwitchValues, (), Unsigned, (
+    (Unsigned, ::std::vector<uint64_t>),
+    (Signed, ::std::vector<int64_t>),
+    (String, ::std::vector<::std::string>)
+    ), (),(), (
+        SwitchValues clone() const;
+    )
+    );
 
 TAGGED_UNION(Terminator, Incomplete,
     (Incomplete, struct {}),    // Block isn't complete (ERROR in output)
@@ -226,6 +234,12 @@ TAGGED_UNION(Terminator, Incomplete,
     (Switch, struct {
         LValue val;
         ::std::vector<BasicBlockId>  targets;
+        }),
+    (SwitchValue, struct {
+        LValue  val;
+        BasicBlockId    def_target;
+        ::std::vector<BasicBlockId> targets;
+        SwitchValues    values;
         }),
     (Call, struct {
         BasicBlockId    ret_block;

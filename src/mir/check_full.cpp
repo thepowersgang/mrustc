@@ -995,6 +995,14 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                 todo_queue.push_back( ::std::make_pair(te.targets[i], i == te.targets.size()-1 ? mv$(state) : state.clone()) );
             }
             ),
+        (SwitchValue,
+            state.ensure_lvalue_valid(mir_res, te.val);
+            for(size_t i = 0; i < te.targets.size(); i ++)
+            {
+                todo_queue.push_back( ::std::make_pair(te.targets[i], state.clone()) );
+            }
+            todo_queue.push_back( ::std::make_pair(te.def_target, mv$(state)) );
+            ),
         (Call,
             if(const auto* e = te.fcn.opt_Value())
             {

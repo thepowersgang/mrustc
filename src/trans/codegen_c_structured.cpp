@@ -191,6 +191,9 @@ public:
                 refs.push_back(Node::make_Switch({ exit_bb, &te.val, mv$(arms) }));
                 stop = true;
                 ),
+            (SwitchValue,
+                TODO(Span(), "SwitchValue");
+                ),
             (Call,
                 // NOTE: Let the panic arm just be a goto
                 bb_idx = te.ret_block;
@@ -259,6 +262,11 @@ public:
         (Switch,
             for(auto tgt : te.targets)
                 conv.m_block_ref_count[tgt] += 1;
+            ),
+        (SwitchValue,
+            for(auto tgt : te.targets)
+                conv.m_block_ref_count[tgt] += 1;
+            conv.m_block_ref_count[te.def_target] += 1;
             ),
         (Call,
             conv.m_block_ref_count[te.ret_block] += 1;

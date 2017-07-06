@@ -617,6 +617,9 @@ namespace {
                     (Switch,
                         H::visit_lvalue(*this, te.val);
                         ),
+                    (SwitchValue,
+                        H::visit_lvalue(*this, te.val);
+                        ),
                     (Call,
                         H::visit_lvalue(*this, te.ret_val);
                         TU_MATCHA( (te.fcn), (e2),

@@ -419,6 +419,24 @@ namespace MIR {
                 os << j << " => bb" << e.targets[j] << ", ";
             os << ")";
             ),
+        (SwitchValue,
+            os << "SwitchValue( " << e.val << " : ";
+            TU_MATCHA( (e.values), (ve),
+            (Unsigned,
+                for(unsigned int j = 0; j < e.targets.size(); j ++)
+                    os << ve[j] << " => bb" << e.targets[j] << ", ";
+                ),
+            (Signed,
+                for(unsigned int j = 0; j < e.targets.size(); j ++)
+                    os << (ve[j] >= 0 ? "+" : "") << ve[j] << " => bb" << e.targets[j] << ", ";
+                ),
+            (String,
+                for(unsigned int j = 0; j < e.targets.size(); j ++)
+                    os << "\"" << ve[j] << "\" => bb" << e.targets[j] << ", ";
+                )
+            )
+            os << "else bb" << e.def_target << ")";
+            ),
         (Call,
             os << "Call( " << e.ret_val << " = ";
             TU_MATCHA( (e.fcn), (e2),
@@ -599,6 +617,22 @@ namespace MIR {
         for(const auto& v : e.vals)
             ret.push_back( v.clone() );
         return ::MIR::RValue::make_Struct({ e.path.clone(), e.variant_idx, mv$(ret) });
+        )
+    )
+    throw "";
+}
+
+::MIR::SwitchValues MIR::SwitchValues::clone() const
+{
+    TU_MATCHA( (*this), (ve),
+    (Unsigned,
+        return ve;
+        ),
+    (Signed,
+        return ve;
+        ),
+    (String,
+        return ve;
         )
     )
     throw "";

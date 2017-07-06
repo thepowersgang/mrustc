@@ -452,6 +452,14 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                 add_to_visit( tgt, path, val_state );
             }
             ),
+        (SwitchValue,
+            val_state.ensure_valid( state, e.val );
+            for(const auto& tgt : e.targets)
+            {
+                add_to_visit( tgt, path, val_state );
+            }
+            add_to_visit( e.def_target, path, val_state );
+            ),
         (Call,
             if( e.fcn.is_Value() )
                 val_state.ensure_valid( state, e.fcn.as_Value() );
@@ -533,6 +541,12 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 for(unsigned int i = 0; i < e.targets.size(); i++ ) {
                     PUSH_BB(e.targets[i], "Switch V" << i);
                 }
+                ),
+            (SwitchValue,
+                for(unsigned int i = 0; i < e.targets.size(); i++ ) {
+                    PUSH_BB(e.targets[i], "SwitchValue " << i);
+                }
+                PUSH_BB(e.def_target, "SwitchValue def");
                 ),
             (Call,
                 PUSH_BB(e.ret_block, "Call ret");
@@ -828,6 +842,9 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                 ),
             (Switch,
                 // Check that the condition is an enum
+                ),
+            (SwitchValue,
+                // Check that the condition's type matches the values
                 ),
             (Call,
                 if( e.fcn.is_Value() )

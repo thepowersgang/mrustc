@@ -295,6 +295,14 @@ namespace {
                 e.targets
                 });
             ),
+        (SwitchValue,
+            terminator = ::MIR::Terminator::make_SwitchValue({
+                monomorph_LValue(resolve, params, e.val),
+                e.def_target,
+                e.targets,
+                e.values.clone()
+                });
+            ),
         (Call,
             struct H {
                 static ::MIR::CallTarget monomorph_calltarget(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::CallTarget& ct) {

@@ -131,6 +131,24 @@ namespace {
                         m_os << j << " => bb" << e.targets[j] << ", ";
                     m_os << "}\n";
                     ),
+                (SwitchValue,
+                    m_os << "switch " << FMT_M(e.val) << " {";
+                    TU_MATCHA( (e.values), (ve),
+                    (Unsigned,
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                            m_os << ve[j] << " => bb" << e.targets[j] << ", ";
+                        ),
+                    (Signed,
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                            m_os << (ve[j] >= 0 ? "+" : "") << ve[j] << " => bb" << e.targets[j] << ", ";
+                        ),
+                    (String,
+                        for(unsigned int j = 0; j < e.targets.size(); j ++)
+                            m_os << "\"" << ve[j] << "\" => bb" << e.targets[j] << ", ";
+                        )
+                    )
+                    m_os << "_ => bb" << e.def_target <<  "}\n";
+                    ),
                 (Call,
                     m_os << FMT_M(e.ret_val) << " = ";
                     TU_MATCHA( (e.fcn), (e2),
