@@ -133,21 +133,48 @@ namespace {
                 << "#include <string.h>\n"  // mem*
                 << "#include <math.h>\n"  // round, ...
                 ;
+            switch(m_compiler)
+            {
+            case Compiler::Gcc:
+                m_of
+                    << "#include <stdatomic.h>\n"   // atomic_*
+                    ;
+                break;
+            case Compiler::Msvc:
+                m_of
+                    << "#include <Windows.h>\n" // Interlocked*
+                    ;
+                break;
+            }
             m_of
-                << "#include <stdatomic.h>\n"   // atomic_*
-                ;
-            m_of
-                << "typedef uint32_t CHAR;\n"
-                << "typedef struct { } tUNIT;\n"
-                << "typedef struct { } tBANG;\n"
-                << "typedef struct { } tTYPEID;\n"
+                << "typedef uint32_t RUST_CHAR;\n"
+                << "typedef struct { char _d; } tUNIT;\n"
+                << "typedef struct { char _d; } tBANG;\n"
+                << "typedef struct { char _d; } tTYPEID;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
                 << "typedef struct { size_t size; size_t align; void (*drop)(void*); } VTABLE_HDR;\n"
-                << "typedef unsigned __int128 uint128_t;\n"
-                << "typedef signed __int128 int128_t;\n"
                 << "\n"
-                << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
+                ;
+            switch(m_compiler)
+            {
+            case Compiler::Gcc:
+                m_of
+                    << "typedef unsigned __int128 uint128_t;\n"
+                    << "typedef signed __int128 int128_t;\n"
+                    << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
+                    ;
+            case Compiler::Msvc:
+                m_of << "__declspec(noreturn) extern void _Unwind_Resume(void);\n";
+            //case Compilter::Std11:
+                m_of
+                    << "typedef unsigned _int128 uint128_t;\n"
+                    << "typedef signed _int128 int128_t;\n"
+                    ;
+                break;
+            }
+            // Common helpers
+            m_of
                 << "\n"
                 << "static inline int slice_cmp(SLICE_PTR l, SLICE_PTR r) {\n"
                 << "\tint rv = memcmp(l.PTR, r.PTR, l.META < r.META ? l.META : r.META);\n"
@@ -163,30 +190,36 @@ namespace {
                 << "static inline void noop_drop(void *p) {}\n"
                 << "\n"
                 ;
-            // 64-bit bit ops
-            m_of
-                << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
-                << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
-                << "}\n"
-                << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
-                << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
-                << "}\n"
-                ;
-            // u128/i128 ops
-            m_of
-                << "static inline unsigned __int128 __builtin_bswap128(uint128_t v) {\n"
-                << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
-                << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
-                << "\treturn ((uint128_t)lo << 64) | (uint128_t)hi;\n"
-                << "}\n"
-                << "static inline uint128_t __builtin_clz128(uint128_t v) {\n"
-                << "\treturn (v >> 64 != 0 ? __builtin_clz64(v>>64) : 64 + __builtin_clz64(v));\n"
-                << "}\n"
-                << "static inline uint128_t __builtin_ctz128(uint128_t v) {\n"
-                << "\treturn ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
-                << "}\n"
-                << "\n"
-                ;
+            switch (m_compiler)
+            {
+            case Compiler::Gcc:
+                // 64-bit bit ops (gcc intrinsics)
+                m_of
+                    << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
+                    << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
+                    << "}\n"
+                    << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
+                    << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
+                    << "}\n"
+                    ;
+                // u128/i128 ops (gcc intrinsics)
+                m_of
+                    << "static inline unsigned __int128 __builtin_bswap128(uint128_t v) {\n"
+                    << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
+                    << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
+                    << "\treturn ((uint128_t)lo << 64) | (uint128_t)hi;\n"
+                    << "}\n"
+                    << "static inline uint128_t __builtin_clz128(uint128_t v) {\n"
+                    << "\treturn (v >> 64 != 0 ? __builtin_clz64(v>>64) : 64 + __builtin_clz64(v));\n"
+                    << "}\n"
+                    << "static inline uint128_t __builtin_ctz128(uint128_t v) {\n"
+                    << "\treturn ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
+                    << "}\n"
+                    << "\n"
+                    ;
+            case Compiler::Msvc:
+                break;
+            }
         }
 
         ~CodeGenerator_C() {}
@@ -550,8 +583,11 @@ namespace {
 
             TU_MATCHA( (item.m_data), (e),
             (Unit,
+                m_of << "\tchar _d;\n";
                 ),
             (Tuple,
+                if( e.empty() )
+                    m_of << "\tchar _d;\n";
                 for(unsigned int i = 0; i < e.size(); i ++)
                 {
                     const auto& fld = e[i];
@@ -561,6 +597,8 @@ namespace {
                 }
                 ),
             (Named,
+                if (e.empty())
+                    m_of << "\tchar _d;\n";
                 for(unsigned int i = 0; i < e.size(); i ++)
                 {
                     const auto& fld = e[i].second;
@@ -791,10 +829,10 @@ namespace {
                 {
                     TU_MATCHA( (item.m_variants[i].second), (e),
                     (Unit,
-                        m_of << "\t\tstruct {} var_" << i << ";\n";
+                        //m_of << "\t\tstruct {} var_" << i << ";\n";
                         ),
                     (Value,
-                        m_of << "\t\tstruct {} var_" << i << ";\n";
+                        //m_of << "\t\tstruct {} var_" << i << ";\n";
                         ),
                     (Tuple,
                         m_of << "\t\tstruct {\n";
@@ -1365,7 +1403,15 @@ namespace {
             // Size, Alignment, and destructor
             m_of << "\t{ ";
             m_of << "sizeof("; emit_ctype(type); m_of << "),";
-            m_of << "__alignof__("; emit_ctype(type); m_of << "),";
+            switch(m_compiler)
+            {
+            case Compiler::Gcc:
+                m_of << "__alignof__("; emit_ctype(type); m_of << "),";
+                break;
+            case Compiler::Msvc:
+                m_of << "__alignof("; emit_ctype(type); m_of << "),";
+                break;
+            }
             if( type.m_data.is_Borrow() || m_resolve.type_is_copy(sp, type) )
             {
                 m_of << "noop_drop,";
@@ -1851,13 +1897,34 @@ namespace {
                         return ;
                     }
 
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
+
+                    // A cast to a fat pointer doesn't actually change the C type.
+                    if( (ve.type.m_data.is_Pointer() && is_dst(*ve.type.m_data.as_Pointer().inner))
+                        || (ve.type.m_data.is_Borrow() && is_dst(*ve.type.m_data.as_Borrow().inner))
+                        // OR: If it's a no-op cast
+                        || ve.type == ty
+                        )
+                    {
+                        emit_lvalue(e.dst);
+                        m_of << " = ";
+                        emit_lvalue(ve.val);
+                        break;
+                    }
+                    //if( m_emulated_i128 && (
+                    //    ve.type == ::HIR::CoreType::U128 || ve.type == ::HIR::CoreType::I128
+                    //    || ty == ::HIR::CoreType::U128 || ty == ::HIR::CoreType::I128
+                    //    ) )
+                    //{
+                    //    if( ty == ::HIR::CoreType::U128 
+                    //}
+
                     emit_lvalue(e.dst);
                     m_of << " = ";
                     m_of << "("; emit_ctype(ve.type); m_of << ")";
                     // TODO: If the source is an unsized borrow, then extract the pointer
                     bool special = false;
-                    ::HIR::TypeRef  tmp;
-                    const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
                     // If the destination is a thin pointer
                     if( ve.type.m_data.is_Pointer() && !is_dst( *ve.type.m_data.as_Pointer().inner ) )
                     {
@@ -3404,7 +3471,7 @@ namespace {
                 case ::HIR::CoreType::F64: m_of << "double"; break;
 
                 case ::HIR::CoreType::Bool: m_of << "bool"; break;
-                case ::HIR::CoreType::Char: m_of << "CHAR";  break;
+                case ::HIR::CoreType::Char: m_of << "RUST_CHAR";  break;
                 case ::HIR::CoreType::Str:
                     MIR_BUG(*m_mir_res, "Raw str");
                 }
