@@ -41,7 +41,8 @@ struct TargetSpec
 };
 
 
-extern void Target_SetCfg();
+extern const TargetSpec& Target_GetCurSpec();
+extern void Target_SetCfg(const ::std::string& target_name);
 extern bool Target_GetSizeOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_size);
 extern bool Target_GetAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_align);
 

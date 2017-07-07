@@ -27,6 +27,21 @@
 
 #include "expand/cfg.hpp"
 
+// Hacky default target
+#ifdef _MSC_VER
+#define DEFAULT_TARGET_NAME "x86_64-windows-msvc"
+#elif defined(__GNU__)
+# if defined(__linux__)
+#define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+# elif defined(_WIN64)
+#define DEFAULT_TARGET_NAME "x86_64-windows-gnu"
+# else
+#define DEFAULT_TARGET_NAME "x86_64-windows-gnu"
+# endif
+#else
+#define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+#endif
+
 int g_debug_indent_level = 0;
 bool g_debug_enabled = true;
 ::std::string g_cur_phase;
@@ -129,6 +144,7 @@ struct ProgramParams
     ::std::string   infile;
     ::std::string   outfile;
     ::std::string   output_dir = "";
+    ::std::string   target = DEFAULT_TARGET_NAME;
     const char *crate_path = ".";
 
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
@@ -186,7 +202,7 @@ int main(int argc, char *argv[])
     Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
         return params.features.count(s) != 0;
         });
-    Target_SetCfg();
+    Target_SetCfg(params.target);
 
 
     if( params.test_harness )
@@ -720,6 +736,13 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 else {
                     Cfg_SetFlag(opt_and_val);
                 }
+            }
+            else if( strcmp(arg, "--target") == 0 ) {
+                if (i == argc - 1) {
+                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                this->target = argv[++i];
             }
             else if( strcmp(arg, "--stop-after") == 0 ) {
                 if( i == argc - 1 ) {

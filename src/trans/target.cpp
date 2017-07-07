@@ -8,24 +8,65 @@
 #include "target.hpp"
 #include <algorithm>
 #include "../expand/cfg.hpp"
+#include <fstream>
 
-// TODO: Replace with target selection
-#define POINTER_SIZE_BYTES  8
-
-TargetSpec  g_target = {
-    "unix",
-    "linux",
-    "gnu",
-    CodegenMode::Gnu11,
-    TargetArch {
-        "x86_64",
-        64, false,
-        { true, false, true, true,  true }
-        }
+TargetArch ARCH_X86_64 = {
+    "x86_64",
+    64, false,
+    { true, false, true, true,  true }
     };
+TargetSpec  g_target;
 
-void Target_SetCfg()
+namespace
 {
+    TargetSpec load_spec_from_file(const ::std::string& filename)
+    {
+        throw "";
+    }
+    TargetSpec init_from_spec_name(const ::std::string& target_name)
+    {
+        if( ::std::ifstream(target_name).is_open() )
+        {
+            return load_spec_from_file(target_name);
+        }
+        else if(target_name == "x86_64-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", CodegenMode::Gnu11,
+                ARCH_X86_64
+                };
+        }
+        else if(target_name == "x86_64-windows-gnu")
+        {
+            return TargetSpec {
+                "windows", "windows", "gnu", CodegenMode::Gnu11,
+                ARCH_X86_64
+                };
+        }
+        else if (target_name == "x86_64-windows-msvc")
+        {
+            return TargetSpec {
+                "windows", "windows", "msvd", CodegenMode::Msvc,
+                ARCH_X86_64
+                };
+        }
+        else
+        {
+            ::std::cerr << "Unknown target name '" << target_name << "'" << ::std::endl;
+            abort();
+        }
+        throw "";
+    }
+}
+
+const TargetSpec& Target_GetCurSpec()
+{
+    return g_target;
+}
+void Target_SetCfg(const ::std::string& target_name)
+{
+    g_target = init_from_spec_name(target_name);
+
     if(g_target.m_family == "unix") {
         Cfg_SetFlag("unix");
     }
