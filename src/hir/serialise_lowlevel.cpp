@@ -43,7 +43,7 @@ void Writer::write(const void* buf, size_t len)
 
 
 WriterInner::WriterInner(const ::std::string& filename):
-    m_backing( filename ),
+    m_backing( filename, ::std::ios_base::out | ::std::ios_base::binary),
     m_zstream(),
     m_buffer( 16*1024 )
     //m_buffer( 4*1024 )
@@ -177,7 +177,7 @@ size_t ReadBuffer::read(void* dst, size_t len)
 void ReadBuffer::populate(ReaderInner& is)
 {
     m_backing.resize( m_backing.capacity(), 0 );
-    auto len = is.read(m_backing.data(), m_backing.capacity());
+    auto len = is.read(m_backing.data(), m_backing.size());
     m_backing.resize( len );
     m_ofs = 0;
 }
@@ -217,10 +217,14 @@ void Reader::read(void* buf, size_t len)
 
 
 ReaderInner::ReaderInner(const ::std::string& filename):
-    m_backing(filename),
+    m_backing(filename, ::std::ios_base::in|::std::ios_base::binary),
     m_zstream(),
     m_buffer(16*1024)
 {
+    ::std::memset(&m_zstream, 0, sizeof m_zstream);
+    if( !m_backing.is_open() )
+        throw ::std::runtime_error("Unable to open file");
+
     m_zstream.zalloc = Z_NULL;
     m_zstream.zfree = Z_NULL;
     m_zstream.opaque = Z_NULL;

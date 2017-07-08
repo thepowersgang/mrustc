@@ -5,7 +5,7 @@
  * hir/serialise.cpp
  * - HIR (De)Serialisation for crate metadata
  */
-#define DISABLE_DEBUG   //  Disable debug for this function - too hot
+//#define DISABLE_DEBUG   //  Disable debug for this function - too hot
 #include "hir.hpp"
 #include "main_bindings.hpp"
 #include <serialiser_texttree.hpp>
@@ -1132,17 +1132,22 @@ namespace {
 
 ::HIR::CratePtr HIR_Deserialise(const ::std::string& filename, const ::std::string& loaded_name)
 {
-    ::HIR::serialise::Reader    in { filename };
-    HirDeserialiser  s { loaded_name, in };
-
     try
     {
+        ::HIR::serialise::Reader    in{ filename };
+        HirDeserialiser  s { loaded_name, in };
+
         ::HIR::Crate    rv = s.deserialise_crate();
 
         return ::HIR::CratePtr( mv$(rv) );
     }
     catch(int)
     { ::std::abort(); }
+    catch(const ::std::runtime_error& e)
+    {
+        ::std::cerr << "Unable to deserialise crate metadata from " << filename << ": " << e.what() << ::std::endl;
+        ::std::abort();
+    }
     #if 0
     catch(const char*)
     {

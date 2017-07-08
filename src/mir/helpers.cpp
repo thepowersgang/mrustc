@@ -251,6 +251,15 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
     )
     throw "";
 }
+const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, const ::MIR::Param& val) const
+{
+    if (const auto* p = val.opt_LValue()) {
+        return get_lvalue_type(tmp, *p);
+    }
+    else {
+        return tmp = get_const_type(val.as_Constant());
+    }
+}
 
 ::HIR::TypeRef MIR::TypeResolve::get_const_type(const ::MIR::Constant& c) const
 {

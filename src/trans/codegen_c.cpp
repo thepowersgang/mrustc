@@ -69,6 +69,32 @@ namespace {
 }
 
 namespace {
+    struct MsvcDetection
+    {
+        ::std::string   path_vcvarsall;
+    };
+
+    MsvcDetection detect_msvc()
+    {
+        auto rv = MsvcDetection {
+            "C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat"
+            };
+        if( ::std::ifstream("P:\\Program Files (x86)\\Microsoft Visual Studio\\VS2015\\VC\\vcvarsall.bat").is_open() )
+        {
+            rv.path_vcvarsall = "P:\\Program Files (x86)\\Microsoft Visual Studio\\VS2015\\VC\\vcvarsall.bat";
+        }
+        return rv;
+    }
+
+    enum class AtomicOp
+    {
+        Add,
+        Sub,
+        And,
+        Or,
+        Xor
+    };
+
     class CodeGenerator_C:
         public CodeGenerator
     {
@@ -100,6 +126,9 @@ namespace {
         const ::MIR::TypeResolve* m_mir_res;
 
         Compiler    m_compiler = Compiler::Gcc;
+        struct {
+            bool emulated_i128 = false;
+        } m_options;
 
         ::std::map<::HIR::GenericPath, ::std::vector<unsigned>> m_enum_repr_cache;
 
@@ -116,9 +145,11 @@ namespace {
             {
             case CodegenMode::Gnu11:
                 m_compiler = Compiler::Gcc;
+                m_options.emulated_i128 = false;
                 break;
             case CodegenMode::Msvc:
                 m_compiler = Compiler::Msvc;
+                m_options.emulated_i128 = true;
                 break;
             }
 
@@ -167,12 +198,60 @@ namespace {
             case Compiler::Msvc:
                 m_of << "__declspec(noreturn) extern void _Unwind_Resume(void);\n";
             //case Compilter::Std11:
-                m_of
-                    << "typedef unsigned _int128 uint128_t;\n"
-                    << "typedef signed _int128 int128_t;\n"
-                    ;
                 break;
             }
+
+            if( m_options.emulated_i128 )
+            {
+                m_of
+                    << "typedef struct { uint64_t lo, hi; } uint128_t;\n"
+                    << "typedef struct { uint64_t lo, hi; } int128_t;\n"
+                    << "int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
+                    << "int128_t add128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
+                    << "int128_t sub128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
+                    << "int128_t mul128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "int128_t div128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "int128_t mod128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "int128_t and128s(int128_t a, int128_t b) { int128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
+                    << "int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
+                    << "int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
+                    << "int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
+                    << "int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
+                    << "uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
+                    << "uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
+                    << "uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
+                    << "uint128_t mul128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "uint128_t div128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "uint128_t mod128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "uint128_t and128(uint128_t a, uint128_t b) { uint128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
+                    << "uint128_t or128 (uint128_t a, uint128_t b) { uint128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
+                    << "uint128_t xor128(uint128_t a, uint128_t b) { uint128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
+                    << "uint128_t shl128(uint128_t a, uint32_t b) { uint128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
+                    << "uint128_t shr128(uint128_t a, uint32_t b) { uint128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
+                    << "uint128_t popcount128(uint128_t a) { uint128_t v = { __builtin_popcount(a.lo) + __builtin_popcount(a.hi), 0 }; return v; }"
+                    << "static inline uint128_t __builtin_bswap128(uint128_t v) { uint128_t rv = { __builtin_bswap64(v.hi), __builtin_bswap64(v.lo) }; return rv; }\n"
+                    << "static inline uint128_t intrinsic_ctlz_u128(uint128_t v) {\n"
+                    << "\tuint128_t rv = { (v.hi != 0 ? __builtin_clz64(v.hi) : (v.lo != 0 ? 64 + __builtin_clz64(v.lo) : 128)), 0 };\n"
+                    << "\treturn rv;\n"
+                    << "}\n"
+                    << "static inline uint128_t intrinsic_cttz_u128(uint128_t v) {\n"
+                    << "\tuint128_t rv = { (v.lo == 0 ? (v.hi == 0 ? 128 : __builtin_ctz64(v.hi) + 64) : __builtin_ctz64(v.lo)), 0 };\n"
+                    << "\treturn rv;\n"
+                    << "}\n"
+                    ;
+            }
+            else
+            {
+                m_of
+                    << "static inline uint128_t intrinsic_ctlz_u128(uint128_t v) {\n"
+                    << "\treturn (v == 0 ? 128 : (v >> 64 != 0 ? __builtin_clz64(v>>64) : 64 + __builtin_clz64(v)));\n"
+                    << "}\n"
+                    << "static inline uint128_t intrinsic_cttz_u128(uint128_t v) {\n"
+                    << "\treturn (v == 0 ? 128 : ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v)));\n"
+                    << "}\n"
+                    ;
+            }
+
             // Common helpers
             m_of
                 << "\n"
@@ -186,7 +265,7 @@ namespace {
                 << "static inline SLICE_PTR make_sliceptr(void* ptr, size_t s) { SLICE_PTR rv = { ptr, s }; return rv; }\n"
                 << "static inline TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
-                << "static inline size_t max(size_t a, size_t b) { return a < b ? b : a; }\n"
+                << "static inline size_t mrustc_max(size_t a, size_t b) { return a < b ? b : a; }\n"
                 << "static inline void noop_drop(void *p) {}\n"
                 << "\n"
                 ;
@@ -204,7 +283,7 @@ namespace {
                     ;
                 // u128/i128 ops (gcc intrinsics)
                 m_of
-                    << "static inline unsigned __int128 __builtin_bswap128(uint128_t v) {\n"
+                    << "static inline uint128_t __builtin_bswap128(uint128_t v) {\n"
                     << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
                     << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
                     << "\treturn ((uint128_t)lo << 64) | (uint128_t)hi;\n"
@@ -315,7 +394,7 @@ namespace {
                 break;
             case Compiler::Msvc:
                 is_windows = true;
-                args.push_back("C:\\Program Files (x86)\\Microsoft Visual Studio 14.0\\VC\\vcvarsall.bat");
+                args.push_back(cache_str( detect_msvc().path_vcvarsall ));
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back(m_outfile_path_c.c_str());
@@ -1040,12 +1119,17 @@ namespace {
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern static " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
             m_mir_res = &top_mir_res;
-
             TRACE_FUNCTION_F(p);
+
+            if( item.m_linkage.name != "" && m_compiler != Compiler::Gcc )
+            {
+                m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+            }
+
             auto type = params.monomorph(m_resolve, item.m_type);
             m_of << "extern ";
             emit_ctype( type, FMT_CB(ss, ss << Trans_Mangle(p);) );
-            if( item.m_linkage.name != "" )
+            if( item.m_linkage.name != "" && m_compiler == Compiler::Gcc)
             {
                 m_of << " asm(\"" << item.m_linkage.name << "\")";
             }
@@ -1228,8 +1312,10 @@ namespace {
                         m_of << ::std::hex << "0x" << (e & 0xFFFFFFFF) << ::std::dec;
                         break;
                     case ::HIR::CoreType::U64:
-                    case ::HIR::CoreType::U128:
                     case ::HIR::CoreType::Usize:
+                        m_of << ::std::hex << "0x" << e << ::std::dec;
+                        break;
+                    case ::HIR::CoreType::U128:
                         m_of << ::std::hex << "0x" << e << ::std::dec;
                         break;
                     case ::HIR::CoreType::I8:
@@ -1448,12 +1534,17 @@ namespace {
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern fn " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
             m_mir_res = &top_mir_res;
-
             TRACE_FUNCTION_F(p);
+
+            if (item.m_linkage.name != "" && m_compiler != Compiler::Gcc)
+            {
+                m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+            }
+
             m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";
             m_of << "extern ";
             emit_function_header(p, item, params);
-            if( item.m_linkage.name != "" )
+            if( item.m_linkage.name != "" && m_compiler == Compiler::Gcc)
             {
                 m_of << " asm(\"" << item.m_linkage.name << "\")";
             }
@@ -1711,6 +1802,11 @@ namespace {
             )
         }
 
+        bool type_is_emulated_i128(const ::HIR::TypeRef& ty) const
+        {
+            return m_options.emulated_i128 && (ty == ::HIR::CoreType::I128 || ty == ::HIR::CoreType::U128);
+        }
+
         void emit_statement(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level=1)
         {
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
@@ -1892,68 +1988,14 @@ namespace {
                     }
                     ),
                 (Cast,
-                    if( m_resolve.is_type_phantom_data(ve.type) ) {
-                        m_of << "/* PhandomData cast */\n";
-                        return ;
-                    }
-
-                    ::HIR::TypeRef  tmp;
-                    const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
-
-                    // A cast to a fat pointer doesn't actually change the C type.
-                    if( (ve.type.m_data.is_Pointer() && is_dst(*ve.type.m_data.as_Pointer().inner))
-                        || (ve.type.m_data.is_Borrow() && is_dst(*ve.type.m_data.as_Borrow().inner))
-                        // OR: If it's a no-op cast
-                        || ve.type == ty
-                        )
-                    {
-                        emit_lvalue(e.dst);
-                        m_of << " = ";
-                        emit_lvalue(ve.val);
-                        break;
-                    }
-                    //if( m_emulated_i128 && (
-                    //    ve.type == ::HIR::CoreType::U128 || ve.type == ::HIR::CoreType::I128
-                    //    || ty == ::HIR::CoreType::U128 || ty == ::HIR::CoreType::I128
-                    //    ) )
-                    //{
-                    //    if( ty == ::HIR::CoreType::U128 
-                    //}
-
-                    emit_lvalue(e.dst);
-                    m_of << " = ";
-                    m_of << "("; emit_ctype(ve.type); m_of << ")";
-                    // TODO: If the source is an unsized borrow, then extract the pointer
-                    bool special = false;
-                    // If the destination is a thin pointer
-                    if( ve.type.m_data.is_Pointer() && !is_dst( *ve.type.m_data.as_Pointer().inner ) )
-                    {
-                        // NOTE: Checks the result of the deref
-                        if( (ty.m_data.is_Borrow() && is_dst(*ty.m_data.as_Borrow().inner))
-                         || (ty.m_data.is_Pointer() && is_dst(*ty.m_data.as_Pointer().inner))
-                            )
-                        {
-                            emit_lvalue(ve.val);
-                            m_of << ".PTR";
-                            special = true;
-                        }
-                    }
-                    if( ve.type.m_data.is_Primitive() && ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum() )
-                    {
-                        emit_lvalue(ve.val);
-                        m_of << ".TAG";
-                        special = true;
-                    }
-                    if( !special )
-                    {
-                        emit_lvalue(ve.val);
-                    }
+                    emit_rvalue_cast(mir_res, e.dst, ve);
                     ),
                 (BinOp,
                     emit_lvalue(e.dst);
                     m_of << " = ";
-                    ::HIR::TypeRef  tmp;
-                    const auto& ty = ve.val_l.is_LValue() ? mir_res.get_lvalue_type(tmp, ve.val_l.as_LValue()) : tmp = mir_res.get_const_type(ve.val_l.as_Constant());
+                    ::HIR::TypeRef  tmp, tmp_r;
+                    const auto& ty = mir_res.get_param_type(tmp, ve.val_l);
+                    const auto& ty_r = mir_res.get_param_type(tmp_r, ve.val_r);
                     if( ty.m_data.is_Borrow() ) {
                         m_of << "(slice_cmp("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
                         switch(ve.op)
@@ -2013,6 +2055,49 @@ namespace {
                         m_of << "("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
                         break;
                     }
+                    else if( type_is_emulated_i128(ty) )
+                    {
+                        switch (ve.op)
+                        {
+                        case ::MIR::eBinOp::ADD:   m_of << "add128";    if(0)
+                        case ::MIR::eBinOp::SUB:   m_of << "sub128";    if(0)
+                        case ::MIR::eBinOp::MUL:   m_of << "mul128";    if(0)
+                        case ::MIR::eBinOp::DIV:   m_of << "div128";    if(0)
+                        case ::MIR::eBinOp::MOD:   m_of << "mod128";    if(0)
+                        case ::MIR::eBinOp::BIT_OR:    m_of << "or128";  if(0)
+                        case ::MIR::eBinOp::BIT_AND:   m_of << "and128"; if(0)
+                        case ::MIR::eBinOp::BIT_XOR:   m_of << "xor128";
+                            if( ty == ::HIR::CoreType::I128 )
+                                m_of << "s";
+                            m_of << "("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r); m_of << ")";
+                            break;
+                        case ::MIR::eBinOp::BIT_SHR:   m_of << "shr128"; if (0)
+                        case ::MIR::eBinOp::BIT_SHL:   m_of << "shl128";
+                            if( ty == ::HIR::CoreType::I128 )
+                                m_of << "s";
+                            m_of << "("; emit_param(ve.val_l); m_of << ", "; emit_param(ve.val_r);
+                            if( (ty_r == ::HIR::CoreType::I128 || ty_r == ::HIR::CoreType::U128) )
+                            {
+                                m_of << ".lo";
+                            }
+                            m_of << ")";
+                            break;
+
+                        case ::MIR::eBinOp::EQ:    m_of << "0 == "; if(0)
+                        case ::MIR::eBinOp::NE:    m_of << "0 != "; if(0)
+                        case ::MIR::eBinOp::GT:    m_of << "0 > ";  if(0)
+                        case ::MIR::eBinOp::GE:    m_of << "0 >= "; if(0)
+                        case ::MIR::eBinOp::LT:    m_of << "0 < ";  if(0)
+                        case ::MIR::eBinOp::LE:    m_of << "0 <= ";
+                            // NOTE: Reversed order due to reversed logic above
+                            m_of << "cmp128";
+                            if (ty == ::HIR::CoreType::I128)
+                                m_of << "s";
+                            m_of << "("; emit_param(ve.val_r); m_of << ", "; emit_param(ve.val_l); m_of << ")";
+                            break;
+                        }
+                        break;
+                    }
                     else {
                     }
 
@@ -2045,16 +2130,43 @@ namespace {
                         break;
                     }
                     emit_param(ve.val_r);
+                    if( type_is_emulated_i128(ty_r) )
+                    {
+                        m_of << ".lo";
+                    }
                     ),
                 (UniOp,
                     ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+
+                    if( type_is_emulated_i128(ty) )
+                    {
+                        switch (ve.op)
+                        {
+                        case ::MIR::eUniOp::NEG:
+                            emit_lvalue(e.dst);
+                            m_of << ".lo = -"; emit_lvalue(ve.val); m_of << ".lo; ";
+                            emit_lvalue(e.dst);
+                            m_of << ".hi = -"; emit_lvalue(ve.val); m_of << ".hi";
+                            break;
+                        case ::MIR::eUniOp::INV:
+                            emit_lvalue(e.dst);
+                            m_of << ".lo = ~"; emit_lvalue(ve.val); m_of << ".lo; ";
+                            emit_lvalue(e.dst);
+                            m_of << ".hi = ~"; emit_lvalue(ve.val); m_of << ".hi";
+                            break;
+                        }
+                        break ;
+                    }
+
+
                     emit_lvalue(e.dst);
                     m_of << " = ";
                     switch(ve.op)
                     {
                     case ::MIR::eUniOp::NEG:    m_of << "-";    break;
                     case ::MIR::eUniOp::INV:
-                        if( mir_res.get_lvalue_type(tmp, e.dst) == ::HIR::CoreType::Bool )
+                        if( ty == ::HIR::CoreType::Bool )
                             m_of << "!";
                         else
                             m_of << "~";
@@ -2177,6 +2289,163 @@ namespace {
                 m_of << "\t// " << e.dst << " = " << e.src;
                 m_of << "\n";
                 break; }
+            }
+        }
+        void emit_rvalue_cast(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& dst, const ::MIR::RValue::Data_Cast& ve)
+        {
+            if (m_resolve.is_type_phantom_data(ve.type)) {
+                m_of << "/* PhandomData cast */\n";
+                return;
+            }
+
+            ::HIR::TypeRef  tmp;
+            const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
+
+            // A cast to a fat pointer doesn't actually change the C type.
+            if ((ve.type.m_data.is_Pointer() && is_dst(*ve.type.m_data.as_Pointer().inner))
+                || (ve.type.m_data.is_Borrow() && is_dst(*ve.type.m_data.as_Borrow().inner))
+                // OR: If it's a no-op cast
+                || ve.type == ty
+                )
+            {
+                emit_lvalue(dst);
+                m_of << " = ";
+                emit_lvalue(ve.val);
+                return;
+            }
+
+            // Emulated i128/u128 support
+            if (m_options.emulated_i128 && (
+                ve.type == ::HIR::CoreType::U128 || ve.type == ::HIR::CoreType::I128
+                || ty == ::HIR::CoreType::U128 || ty == ::HIR::CoreType::I128
+                ))
+            {
+                // Destination
+                MIR_ASSERT(mir_res, ve.type.m_data.is_Primitive(), "i128/u128 cast to non-primitive");
+                MIR_ASSERT(mir_res, ty.m_data.is_Primitive(), "i128/u128 cast from non-primitive");
+                switch (ve.type.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::U128:
+                    if (ty == ::HIR::CoreType::I128) {
+                        // Cast from i128 to u128
+                        emit_lvalue(dst);
+                        m_of << ".lo = ";
+                        emit_lvalue(ve.val);
+                        m_of << ".lo; ";
+                        emit_lvalue(dst);
+                        m_of << ".hi = ";
+                        emit_lvalue(ve.val);
+                        m_of << ".hi";
+                    }
+                    else {
+                        // Cast from small to u128
+                        emit_lvalue(dst);
+                        m_of << ".lo = ";
+                        emit_lvalue(ve.val);
+                        m_of << "; ";
+                        emit_lvalue(dst);
+                        m_of << ".hi = 0";
+                    }
+                    break;
+                case ::HIR::CoreType::I128:
+                    if (ty == ::HIR::CoreType::U128) {
+                        // Cast from u128 to i128
+                        emit_lvalue(dst);
+                        m_of << ".lo = ";
+                        emit_lvalue(ve.val);
+                        m_of << ".lo; ";
+                        emit_lvalue(dst);
+                        m_of << ".hi = ";
+                        emit_lvalue(ve.val);
+                        m_of << ".hi";
+                    }
+                    else {
+                        // Cast from small to i128
+                        emit_lvalue(dst);
+                        m_of << ".lo = ";
+                        emit_lvalue(ve.val);
+                        m_of << "; ";
+                        emit_lvalue(dst);
+                        m_of << ".hi = 0";  // TODO: Sign
+                    }
+                    break;
+                case ::HIR::CoreType::I8:
+                case ::HIR::CoreType::I16:
+                case ::HIR::CoreType::I32:
+                case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::Isize:
+                    emit_lvalue(dst);
+                    m_of << " = ";
+                    switch (ty.m_data.as_Primitive())
+                    {
+                    case ::HIR::CoreType::U128:
+                        emit_lvalue(ve.val);
+                        m_of << ".lo";
+                        break;
+                    case ::HIR::CoreType::I128:
+                        // TODO: Maintain sign
+                        emit_lvalue(ve.val);
+                        m_of << ".lo";
+                        break;
+                    default:
+                        MIR_BUG(mir_res, "Unreachable");
+                    }
+                    break;
+                case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Usize:
+                    emit_lvalue(dst);
+                    m_of << " = ";
+                    switch (ty.m_data.as_Primitive())
+                    {
+                    case ::HIR::CoreType::U128:
+                        emit_lvalue(ve.val);
+                        m_of << ".lo";
+                        break;
+                    case ::HIR::CoreType::I128:
+                        emit_lvalue(ve.val);
+                        m_of << ".lo";
+                        break;
+                    default:
+                        MIR_BUG(mir_res, "Unreachable");
+                    }
+                    break;
+                default:
+                    MIR_BUG(mir_res, "Bad i128/u128 cast");
+                }
+                return;
+            }
+
+            // Standard cast
+            emit_lvalue(dst);
+            m_of << " = ";
+            m_of << "("; emit_ctype(ve.type); m_of << ")";
+            // TODO: If the source is an unsized borrow, then extract the pointer
+            bool special = false;
+            // If the destination is a thin pointer
+            if (ve.type.m_data.is_Pointer() && !is_dst(*ve.type.m_data.as_Pointer().inner))
+            {
+                // NOTE: Checks the result of the deref
+                if ((ty.m_data.is_Borrow() && is_dst(*ty.m_data.as_Borrow().inner))
+                    || (ty.m_data.is_Pointer() && is_dst(*ty.m_data.as_Pointer().inner))
+                    )
+                {
+                    emit_lvalue(ve.val);
+                    m_of << ".PTR";
+                    special = true;
+                }
+            }
+            if (ve.type.m_data.is_Primitive() && ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum())
+            {
+                emit_lvalue(ve.val);
+                m_of << ".TAG";
+                special = true;
+            }
+            if (!special)
+            {
+                emit_lvalue(ve.val);
             }
         }
         void emit_term_switch(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, size_t n_arms, unsigned indent_level, ::std::function<void(size_t)> cb)
@@ -2354,41 +2623,129 @@ namespace {
         void emit_intrinsic_call(const ::std::string& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
         {
             const auto& mir_res = *m_mir_res;
-            struct H {
-                static const char* get_atomic_ordering(const ::MIR::TypeResolve& mir_res, const ::std::string& name, size_t prefix_len) {
+            auto get_atomic_ordering = [&](const ::std::string& name, size_t prefix_len)->const char* {
                     if( name.size() < prefix_len )
-                        return "memory_order_seq_cst";
+                    {
+                        switch(m_compiler)
+                        {
+                        case Compiler::Gcc:     return "memory_order_seq_cst";
+                        case Compiler::Msvc:    return "";
+                        }
+                    }
                     const char* suffix = name.c_str() + prefix_len;
                     if( ::std::strcmp(suffix, "acq") == 0 ) {
-                        return "memory_order_acquire";
+                        switch (m_compiler)
+                        {
+                        case Compiler::Gcc:     return "memory_order_acquire";
+                        case Compiler::Msvc:    return "Acquire";
+                        }
                     }
                     else if( ::std::strcmp(suffix, "rel") == 0 ) {
-                        return "memory_order_release";
+                        switch (m_compiler)
+                        {
+                        case Compiler::Gcc:     return "memory_order_release";
+                        case Compiler::Msvc:    return "Release";
+                        }
                     }
                     else if( ::std::strcmp(suffix, "relaxed") == 0 ) {
-                        return "memory_order_relaxed";
+                        switch (m_compiler)
+                        {
+                        case Compiler::Gcc:     return "memory_order_relaxed";
+                        case Compiler::Msvc:    return "NoFence";
+                        }
                     }
                     else if( ::std::strcmp(suffix, "acqrel") == 0 ) {
-                        return "memory_order_acq_rel";
+                        switch (m_compiler)
+                        {
+                        case Compiler::Gcc:     return "memory_order_acq_rel";
+                        case Compiler::Msvc:    return "";  // TODO: This is either Acquire or Release
+                        }
                     }
                     else {
                         MIR_BUG(mir_res, "Unknown atomic ordering suffix - '" << suffix << "'");
                     }
-                }
-            };
-            auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail, bool is_weak) {
-                emit_lvalue(e.ret_val); m_of << "._0 = "; emit_param(e.args.at(1)); m_of << ";\n\t";
-                emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_" << (is_weak ? "weak" : "strong") << "_explicit(";
-                    m_of << "(_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
-                    m_of << ", "; emit_param(e.args.at(2));
-                    m_of << ", "<<o_succ<<", "<<o_fail<<")";
+                    throw "";
                 };
-            auto emit_atomic_arith = [&](const char* name, const char* ordering) {
-                emit_lvalue(e.ret_val); m_of << " = atomic_" << name << "_explicit";
-                    m_of <<"((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", " << ordering << ")";
+            auto emit_msvc_atomic_op = [&](const char* name, const char* ordering) {
+                switch (params.m_types.at(0).m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::U16:
+                    m_of << name << "16" << ordering << "(";
+                    break;
+                case ::HIR::CoreType::U32:
+                    m_of << name << ordering << "(";
+                    break;
+                case ::HIR::CoreType::U64:
+                //case ::HIR::CoreType::I64:
+                    m_of << name << "64" << ordering << "(";
+                    break;
+                case ::HIR::CoreType::Usize:
+                case ::HIR::CoreType::Isize:
+                    m_of << "(uintptr_t)" << name << "Pointer" << ordering << "((void**)";
+                    break;
+                default:
+                    MIR_BUG(mir_res, "Unsupported atomic type - " << params.m_types.at(0));
+                }
+                };
+            auto emit_atomic_cast = [&]() {
+                m_of << "(_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)";
+                };
+            auto emit_atomic_cxchg = [&](const auto& e, const char* o_succ, const char* o_fail, bool is_weak) {
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    emit_lvalue(e.ret_val); m_of << "._0 = "; emit_param(e.args.at(1)); m_of << ";\n\t";
+                    emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_" << (is_weak ? "weak" : "strong") << "_explicit(";
+                        emit_atomic_cast(); emit_param(e.args.at(0));
+                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
+                        m_of << ", "; emit_param(e.args.at(2));
+                        m_of << ", "<<o_succ<<", "<<o_fail<<")";
+                    break;
+                case Compiler::Msvc:
+                    emit_msvc_atomic_op("InterlockedCompareExchange", "");  // TODO: Use ordering
+                    if(params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
+                    {
+                        emit_param(e.args.at(0)); m_of << ", (void*)"; emit_param(e.args.at(1)); m_of << ", (void*)"; emit_param(e.args.at(2)); m_of << ")";
+                    }
+                    else
+                    {
+                        emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
+                    }
+                    break;
+                }
+                };
+            auto emit_atomic_arith = [&](AtomicOp op, const char* ordering) {
+                emit_lvalue(e.ret_val); m_of << " = ";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    switch(op)
+                    {
+                    case AtomicOp::Add: m_of << "atomic_fetch_add_explicit";   break;
+                    case AtomicOp::Sub: m_of << "atomic_fetch_sub_explicit";   break;
+                    case AtomicOp::And: m_of << "atomic_fetch_and_explicit";   break;
+                    case AtomicOp::Or:  m_of << "atomic_fetch_or_explicit";    break;
+                    case AtomicOp::Xor: m_of << "atomic_fetch_xor_explicit";   break;
+                    }
+                    m_of << "("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
+                    break;
+                case Compiler::Msvc:
+                    switch(op)
+                    {
+                    case AtomicOp::Add: emit_msvc_atomic_op("InterlockedExchangeAdd", ordering);    break;
+                    case AtomicOp::Sub: emit_msvc_atomic_op("InterlockedExchangeSub", ordering);    break;
+                    case AtomicOp::And: emit_msvc_atomic_op("InterlockedExchangeAnd", ordering);    break;
+                    case AtomicOp::Or:  emit_msvc_atomic_op("InterlockedExchangeOr", ordering);    break;
+                    case AtomicOp::Xor: emit_msvc_atomic_op("InterlockedExchangeXor", ordering);    break;
+                    }
+                    emit_param(e.args.at(0)); m_of << ", ";
+                    if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
+                    {
+                        m_of << "(void*)";
+                    }
+                    emit_param(e.args.at(1)); m_of << ")";
+                    break;
+                }
                 };
             if( name == "size_of" ) {
                 emit_lvalue(e.ret_val); m_of << " = sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
@@ -2454,7 +2811,7 @@ namespace {
                 }
                 else if( const auto* te = inner_ty.m_data.opt_Slice() ) {
                     if( ! ty.m_data.is_Slice() ) {
-                        m_of << "max( __alignof__("; emit_ctype(ty); m_of << "), ";
+                        m_of << "mrustc_max( __alignof__("; emit_ctype(ty); m_of << "), ";
                     }
                     m_of << "__alignof__("; emit_ctype(*te->inner); m_of << ")";
                     if( ! ty.m_data.is_Slice() ) {
@@ -2471,7 +2828,7 @@ namespace {
                 }
                 else if( inner_ty.m_data.is_TraitObject() ) {
                     if( ! ty.m_data.is_TraitObject() ) {
-                        m_of << "max( __alignof__("; emit_ctype(ty); m_of << "), ";
+                        m_of << "mrustc_max( __alignof__("; emit_ctype(ty); m_of << "), ";
                     }
                     m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->align";
                     if( ! ty.m_data.is_TraitObject() ) {
@@ -2674,16 +3031,56 @@ namespace {
             }
             // Unchecked Arithmatic
             else if( name == "unchecked_div" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " / "; emit_param(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << " = ";
+                if( type_is_emulated_i128(params.m_types.at(0)) )
+                {
+                    m_of << "div128";
+                    if(params.m_types.at(0) == ::HIR::CoreType::I128)   m_of << "s";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                }
+                else
+                {
+                    emit_param(e.args.at(0)); m_of << " / "; emit_param(e.args.at(1));
+                }
             }
             else if( name == "unchecked_rem" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " % "; emit_param(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << " = ";
+                if (type_is_emulated_i128(params.m_types.at(0)))
+                {
+                    m_of << "mod128";
+                    if(params.m_types.at(0) == ::HIR::CoreType::I128)   m_of << "s";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                }
+                else
+                {
+                    emit_param(e.args.at(0)); m_of << " % "; emit_param(e.args.at(1));
+                }
             }
             else if( name == "unchecked_shl" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " << "; emit_param(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << " = ";
+                if (type_is_emulated_i128(params.m_types.at(0)))
+                {
+                    m_of << "shl128";
+                    if(params.m_types.at(0) == ::HIR::CoreType::I128)   m_of << "s";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                }
+                else
+                {
+                    emit_param(e.args.at(0)); m_of << " << "; emit_param(e.args.at(1));
+                }
             }
             else if( name == "unchecked_shr" ) {
-                emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " >> "; emit_param(e.args.at(1));
+                emit_lvalue(e.ret_val); m_of << " = ";
+                if (type_is_emulated_i128(params.m_types.at(0)))
+                {
+                    m_of << "shr128";
+                    if (params.m_types.at(0) == ::HIR::CoreType::I128)   m_of << "s";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                }
+                else
+                {
+                    emit_param(e.args.at(0)); m_of << " >> "; emit_param(e.args.at(1));
+                }
             }
             // Bit Twiddling
             // - CounT Leading Zeroes
@@ -2691,18 +3088,21 @@ namespace {
             else if( name == "ctlz" || name == "cttz" ) {
                 auto emit_arg0 = [&](){ emit_param(e.args.at(0)); };
                 const auto& ty = params.m_types.at(0);
-                emit_lvalue(e.ret_val); m_of << " = ("; emit_param(e.args.at(0)); m_of << " != 0 ? ";
+                emit_lvalue(e.ret_val); m_of << " = (";
                 if( ty == ::HIR::CoreType::U128 )
                 {
                     if( name == "ctlz" ) {
-                        m_of << "__builtin_clz128("; emit_param(e.args.at(0)); m_of << ")";
+                        m_of << "intrinsic_ctlz_u128("; emit_param(e.args.at(0)); m_of << ")";
                     }
                     else {
-                        m_of << "__builtin_ctz128("; emit_param(e.args.at(0)); m_of << ")";
+                        m_of << "intrinsic_cttz_u128("; emit_param(e.args.at(0)); m_of << ")";
                     }
+                    m_of << ");";
+                    return ;
                 }
                 else if( ty == ::HIR::CoreType::U64 || (ty == ::HIR::CoreType::Usize /*&& target_is_64_bit */) )
                 {
+                    emit_param(e.args.at(0)); m_of << " != 0 ? ";
                     if( name == "ctlz" ) {
                         m_of << "__builtin_clz64("; emit_arg0(); m_of << ")";
                     }
@@ -2712,6 +3112,7 @@ namespace {
                 }
                 else
                 {
+                    emit_param(e.args.at(0)); m_of << " != 0 ? ";
                     if( name == "ctlz" ) {
                         m_of << "__builtin_clz("; emit_param(e.args.at(0)); m_of << ")";
                     }
@@ -2723,7 +3124,19 @@ namespace {
             }
             // - CounT POPulated
             else if( name == "ctpop" ) {
-                emit_lvalue(e.ret_val); m_of << " = __builtin_popcount("; emit_param(e.args.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = ";
+
+                if( type_is_emulated_i128(params.m_types.at(0)) )
+                {
+                    m_of << "popcount128";
+                    if(params.m_types.at(0) == ::HIR::CoreType::I128)
+                        m_of << "s";
+                }
+                else
+                {
+                    m_of << "__builtin_popcount";
+                }
+                m_of << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             // --- Floating Point
             // > Round to nearest integer, half-way rounds away from zero
@@ -2792,32 +3205,54 @@ namespace {
             // --- Atomics!
             // > Single-ordering atomics
             else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                emit_atomic_arith("fetch_add", ordering);
+                auto ordering = get_atomic_ordering(name, 7+4+1);
+                emit_atomic_arith(AtomicOp::Add, ordering);
             }
             else if( name == "atomic_xsub" || name.compare(0, 7+4+1, "atomic_xsub_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                emit_atomic_arith("fetch_sub", ordering);
+                auto ordering = get_atomic_ordering(name, 7+4+1);
+                emit_atomic_arith(AtomicOp::Sub, ordering);
             }
             else if( name == "atomic_and" || name.compare(0, 7+3+1, "atomic_and_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+3+1);
-                emit_atomic_arith("fetch_and", ordering);
+                auto ordering = get_atomic_ordering(name, 7+3+1);
+                emit_atomic_arith(AtomicOp::And, ordering);
             }
             else if( name == "atomic_or" || name.compare(0, 7+2+1, "atomic_or_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+2+1);
-                emit_atomic_arith("fetch_or", ordering);
+                auto ordering = get_atomic_ordering(name, 7+2+1);
+                emit_atomic_arith(AtomicOp::Or, ordering);
             }
             else if( name == "atomic_xor" || name.compare(0, 7+3+1, "atomic_xor_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+3+1);
-                emit_atomic_arith("fetch_xor", ordering);
+                auto ordering = get_atomic_ordering(name, 7+3+1);
+                emit_atomic_arith(AtomicOp::Xor, ordering);
             }
             else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+4+1);
-                emit_lvalue(e.ret_val); m_of << " = atomic_load_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << ", " << ordering << ")";
+                auto ordering = get_atomic_ordering(name, 7+4+1);
+                emit_lvalue(e.ret_val); m_of << " = ";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "atomic_load_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", " << ordering << ")";
+                    break;
+                case Compiler::Msvc:
+                    emit_msvc_atomic_op("InterlockedRead", ordering); emit_param(e.args.at(0)); m_of << ")";
+                    break;
+                }
             }
             else if( name == "atomic_store" || name.compare(0, 7+5+1, "atomic_store_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+5+1);
-                m_of << "atomic_store_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
+                auto ordering = get_atomic_ordering(name, 7+5+1);
+                switch (m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "atomic_store_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
+                    break;
+                case Compiler::Msvc:
+                    emit_msvc_atomic_op("InterlockedStore", ordering); emit_param(e.args.at(0)); m_of << ", ";
+                    if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
+                    {
+                        m_of << "(void*)";
+                    }
+                    emit_param(e.args.at(1)); m_of << ")";
+                    break;
+                }
             }
             // Comare+Exchange (has two orderings)
             else if( name == "atomic_cxchg_acq_failrelaxed" ) {
@@ -2835,11 +3270,11 @@ namespace {
                 emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_acquire", false);
             }
             else if( name.compare(0, 7+6+4, "atomic_cxchg_fail") == 0 ) {
-                auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+6+4);
+                auto fail_ordering = get_atomic_ordering(name, 7+6+4);
                 emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering, false);
             }
             else if( name == "atomic_cxchg" || name.compare(0, 7+6, "atomic_cxchg_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
+                auto ordering = get_atomic_ordering(name, 7+6);
                 emit_atomic_cxchg(e, ordering, ordering, false);
             }
             else if( name == "atomic_cxchgweak_acq_failrelaxed" ) {
@@ -2849,7 +3284,7 @@ namespace {
                 emit_atomic_cxchg(e, "memory_order_acq_rel", "memory_order_relaxed", true);
             }
             else if( name.compare(0, 7+10+4, "atomic_cxchgweak_fail") == 0 ) {
-                auto fail_ordering = H::get_atomic_ordering(mir_res, name, 7+10+4);
+                auto fail_ordering = get_atomic_ordering(name, 7+10+4);
                 emit_atomic_cxchg(e, "memory_order_seq_cst", fail_ordering, true);
             }
             else if( name == "atomic_cxchgweak" ) {
@@ -2868,12 +3303,34 @@ namespace {
                 emit_atomic_cxchg(e, "memory_order_relaxed", "memory_order_relaxed", true);
             }
             else if( name == "atomic_xchg" || name.compare(0, 7+5, "atomic_xchg_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+5);
-                emit_lvalue(e.ret_val); m_of << " = atomic_exchange_explicit((_Atomic "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
+                auto ordering = get_atomic_ordering(name, 7+5);
+                emit_lvalue(e.ret_val); m_of << " = ";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "atomic_exchange_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
+                    break;
+                case Compiler::Msvc:
+                    emit_msvc_atomic_op("InterlockedExchange", ordering);
+                    emit_param(e.args.at(0)); m_of << ", ";
+                    if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
+                    {
+                        m_of << "(void*)";
+                    }
+                    emit_param(e.args.at(1)); m_of << ")";
+                    break;
+                }
             }
             else if( name == "atomic_fence" || name.compare(0, 7+6, "atomic_fence_") == 0 ) {
-                auto ordering = H::get_atomic_ordering(mir_res, name, 7+6);
-                m_of << "atomic_thread_fence(" << ordering << ")";
+                auto ordering = get_atomic_ordering(name, 7+6);
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "atomic_thread_fence(" << ordering << ")";
+                    break;
+                case Compiler::Msvc:
+                    break;
+                }
             }
             else if( name == "atomic_singlethreadfence" || name.compare(0, 7+18, "atomic_singlethreadfence_") == 0 ) {
                 // TODO: Does this matter?
@@ -3318,14 +3775,26 @@ namespace {
                     m_of << "INT64_MIN";
                 else
                 {
-                    m_of << c.v;
                     switch(c.t)
                     {
                     case ::HIR::CoreType::I64:
-                    case ::HIR::CoreType::I128:
                     case ::HIR::CoreType::Isize:
+                        m_of << c.v;
                         m_of << "ll";
+                        break;
+                    case ::HIR::CoreType::I128:
+                        if( m_options.emulated_i128 )
+                        {
+                            m_of << "make128s(" << c.v << "ll)";
+                        }
+                        else
+                        {
+                            m_of << c.v;
+                            m_of << "ll";
+                        }
+                        break;
                     default:
+                        m_of << c.v;
                         break;
                     }
                 }
@@ -3343,9 +3812,18 @@ namespace {
                     m_of << ::std::hex << "0x" << (c.v & 0xFFFFFFFF) << ::std::dec;
                     break;
                 case ::HIR::CoreType::U64:
-                case ::HIR::CoreType::U128:
                 case ::HIR::CoreType::Usize:
                     m_of << ::std::hex << "0x" << c.v << "ull" << ::std::dec;
+                    break;
+                case ::HIR::CoreType::U128:
+                    if( m_options.emulated_i128 )
+                    {
+                        m_of << "make128(" << ::std::hex << "0x" << c.v << "ull)" << ::std::dec;
+                    }
+                    else
+                    {
+                        m_of << ::std::hex << "0x" << c.v << "ull" << ::std::dec;
+                    }
                     break;
                 case ::HIR::CoreType::Char:
                     assert(0 <= c.v && c.v <= 0x10FFFF);

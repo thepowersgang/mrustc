@@ -101,6 +101,7 @@ public:
 
     const ::HIR::TypeRef& get_static_type(::HIR::TypeRef& tmp, const ::HIR::Path& path) const;
     const ::HIR::TypeRef& get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const;
+    const ::HIR::TypeRef& get_param_type(::HIR::TypeRef& tmp, const ::MIR::Param& val) const;
 
     ::HIR::TypeRef get_const_type(const ::MIR::Constant& c) const;
 
