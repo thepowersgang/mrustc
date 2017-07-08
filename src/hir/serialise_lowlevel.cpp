@@ -221,7 +221,6 @@ ReaderInner::ReaderInner(const ::std::string& filename):
     m_zstream(),
     m_buffer(16*1024)
 {
-    ::std::memset(&m_zstream, 0, sizeof m_zstream);
     if( !m_backing.is_open() )
         throw ::std::runtime_error("Unable to open file");
 

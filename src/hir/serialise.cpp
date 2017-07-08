@@ -150,11 +150,9 @@ namespace {
         }
         void serialise_simplepath(const ::HIR::SimplePath& path)
         {
-            //TRACE_FUNCTION_F("path="<<path);
+            DEBUG(path);
             m_out.write_string(path.m_crate_name);
-            m_out.write_count(path.m_components.size());
-            for(const auto& c : path.m_components)
-                m_out.write_string(c);
+            serialise_vec(path.m_components);
         }
         void serialise_pathparams(const ::HIR::PathParams& pp)
         {
@@ -164,7 +162,7 @@ namespace {
         }
         void serialise_genericpath(const ::HIR::GenericPath& path)
         {
-            //TRACE_FUNCTION_F("path="<<path);
+            TRACE_FUNCTION_F(path);
             serialise_simplepath(path.m_path);
             serialise_pathparams(path.m_params);
         }
@@ -217,6 +215,7 @@ namespace {
             m_out.write_bool(pd.m_is_sized);
         }
         void serialise(const ::HIR::GenericBound& b) {
+            TRACE_FUNCTION_F(b);
             TU_MATCHA( (b), (e),
             (Lifetime,
                 m_out.write_tag(0);
