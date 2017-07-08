@@ -194,9 +194,11 @@ namespace {
                     << "typedef unsigned __int128 uint128_t;\n"
                     << "typedef signed __int128 int128_t;\n"
                     << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
+                    << "#define ALIGNOF(t) __alignof__(t)\n"
                     ;
             case Compiler::Msvc:
                 m_of << "__declspec(noreturn) extern void _Unwind_Resume(void);\n";
+                m_of << "#define ALIGNOF(t) __alignof(t)\n";
             //case Compilter::Std11:
                 break;
             }
@@ -1489,15 +1491,7 @@ namespace {
             // Size, Alignment, and destructor
             m_of << "\t{ ";
             m_of << "sizeof("; emit_ctype(type); m_of << "),";
-            switch(m_compiler)
-            {
-            case Compiler::Gcc:
-                m_of << "__alignof__("; emit_ctype(type); m_of << "),";
-                break;
-            case Compiler::Msvc:
-                m_of << "__alignof("; emit_ctype(type); m_of << "),";
-                break;
-            }
+            m_of << "ALIGNOF("; emit_ctype(type); m_of << "),";
             if( type.m_data.is_Borrow() || m_resolve.type_is_copy(sp, type) )
             {
                 m_of << "noop_drop,";
@@ -2752,7 +2746,7 @@ namespace {
             }
             else if( name == "min_align_of" ) {
                 //emit_lvalue(e.ret_val); m_of << " = alignof("; emit_ctype(params.m_types.at(0)); m_of << ")";
-                emit_lvalue(e.ret_val); m_of << " = __alignof__("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                emit_lvalue(e.ret_val); m_of << " = ALIGNOF("; emit_ctype(params.m_types.at(0)); m_of << ")";
             }
             else if( name == "size_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
@@ -2807,20 +2801,20 @@ namespace {
                 #if 1
                 auto inner_ty = get_inner_unsized_type(ty);
                 if( inner_ty == ::HIR::TypeRef() ) {
-                    m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
+                    m_of << "ALIGNOF("; emit_ctype(ty); m_of << ")";
                 }
                 else if( const auto* te = inner_ty.m_data.opt_Slice() ) {
                     if( ! ty.m_data.is_Slice() ) {
-                        m_of << "mrustc_max( __alignof__("; emit_ctype(ty); m_of << "), ";
+                        m_of << "mrustc_max( ALIGNOF("; emit_ctype(ty); m_of << "), ";
                     }
-                    m_of << "__alignof__("; emit_ctype(*te->inner); m_of << ")";
+                    m_of << "ALIGNOF("; emit_ctype(*te->inner); m_of << ")";
                     if( ! ty.m_data.is_Slice() ) {
                         m_of << " )";
                     }
                 }
                 else if( inner_ty == ::HIR::CoreType::Str ) {
                     if( ! ty.m_data.is_Primitive() ) {
-                        m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
+                        m_of << "ALIGNOF("; emit_ctype(ty); m_of << ")";
                     }
                     else {
                         m_of << "1";
@@ -2828,7 +2822,7 @@ namespace {
                 }
                 else if( inner_ty.m_data.is_TraitObject() ) {
                     if( ! ty.m_data.is_TraitObject() ) {
-                        m_of << "mrustc_max( __alignof__("; emit_ctype(ty); m_of << "), ";
+                        m_of << "mrustc_max( ALIGNOF("; emit_ctype(ty); m_of << "), ";
                     }
                     m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->align";
                     if( ! ty.m_data.is_TraitObject() ) {
@@ -2842,12 +2836,12 @@ namespace {
                 switch( metadata_type(ty) )
                 {
                 case MetadataType::None:
-                    m_of << "__alignof__("; emit_ctype(ty); m_of << ")";
+                    m_of << "ALIGNOF("; emit_ctype(ty); m_of << ")";
                     break;
                 case MetadataType::Slice: {
                     // TODO: Have a function that fetches the inner type for types like `Path` or `str`
                     const auto& ity = *ty.m_data.as_Slice().inner;
-                    m_of << "__alignof__("; emit_ctype(ity); m_of << ")";
+                    m_of << "ALIGNOF("; emit_ctype(ity); m_of << ")";
                     break; }
                 case MetadataType::TraitObject:
                     m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->align";
