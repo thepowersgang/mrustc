@@ -2089,6 +2089,13 @@ namespace {
                                 m_of << "s";
                             m_of << "("; emit_param(ve.val_r); m_of << ", "; emit_param(ve.val_l); m_of << ")";
                             break;
+
+                        case ::MIR::eBinOp::ADD_OV:
+                        case ::MIR::eBinOp::SUB_OV:
+                        case ::MIR::eBinOp::MUL_OV:
+                        case ::MIR::eBinOp::DIV_OV:
+                            MIR_TODO(mir_res, "Overflowing binops for emulated i128");
+                            break;
                         }
                         break;
                     }

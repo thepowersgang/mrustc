@@ -52,7 +52,7 @@ namespace {
         template<typename V>
         ::std::unordered_map< ::std::string,V> deserialise_strumap()
         {
-            TRACE_FUNCTION_F("<" << typeid(typename V).name() << ">");
+            TRACE_FUNCTION_F("<" << typeid(V).name() << ">");
             size_t n = m_in.read_count();
             ::std::unordered_map< ::std::string, V>   rv;
             //rv.reserve(n);
