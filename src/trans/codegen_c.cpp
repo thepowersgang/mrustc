@@ -196,10 +196,29 @@ namespace {
                     << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                     << "#define ALIGNOF(t) __alignof__(t)\n"
                     ;
+                break;
             case Compiler::Msvc:
-                m_of << "__declspec(noreturn) extern void _Unwind_Resume(void);\n";
-                m_of << "#define ALIGNOF(t) __alignof(t)\n";
+                m_of
+                    << "__declspec(noreturn) extern void _Unwind_Resume(void);\n"
+                    << "#define ALIGNOF(t) __alignof(t)\n"
+                    ;
+                break;
             //case Compilter::Std11:
+            //    break;
+            }
+            switch (m_compiler)
+            {
+            case Compiler::Gcc:
+                // 64-bit bit ops (gcc intrinsics)
+                m_of
+                    << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
+                    << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
+                    << "}\n"
+                    << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
+                    << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
+                    << "}\n"
+                    ;
+            case Compiler::Msvc:
                 break;
             }
 
@@ -244,7 +263,13 @@ namespace {
             }
             else
             {
+                // GCC-only
                 m_of
+                    << "static inline uint128_t __builtin_bswap128(uint128_t v) {\n"
+                    << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
+                    << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
+                    << "\treturn ((uint128_t)lo << 64) | (uint128_t)hi;\n"
+                    << "}\n"
                     << "static inline uint128_t intrinsic_ctlz_u128(uint128_t v) {\n"
                     << "\treturn (v == 0 ? 128 : (v >> 64 != 0 ? __builtin_clz64(v>>64) : 64 + __builtin_clz64(v)));\n"
                     << "}\n"
@@ -271,36 +296,6 @@ namespace {
                 << "static inline void noop_drop(void *p) {}\n"
                 << "\n"
                 ;
-            switch (m_compiler)
-            {
-            case Compiler::Gcc:
-                // 64-bit bit ops (gcc intrinsics)
-                m_of
-                    << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
-                    << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
-                    << "}\n"
-                    << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
-                    << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
-                    << "}\n"
-                    ;
-                // u128/i128 ops (gcc intrinsics)
-                m_of
-                    << "static inline uint128_t __builtin_bswap128(uint128_t v) {\n"
-                    << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
-                    << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
-                    << "\treturn ((uint128_t)lo << 64) | (uint128_t)hi;\n"
-                    << "}\n"
-                    << "static inline uint128_t __builtin_clz128(uint128_t v) {\n"
-                    << "\treturn (v >> 64 != 0 ? __builtin_clz64(v>>64) : 64 + __builtin_clz64(v));\n"
-                    << "}\n"
-                    << "static inline uint128_t __builtin_ctz128(uint128_t v) {\n"
-                    << "\treturn ((v&0xFFFFFFFFFFFFFFFF) == 0 ? __builtin_ctz64(v>>64) + 64 : __builtin_ctz64(v));\n"
-                    << "}\n"
-                    << "\n"
-                    ;
-            case Compiler::Msvc:
-                break;
-            }
         }
 
         ~CodeGenerator_C() {}
