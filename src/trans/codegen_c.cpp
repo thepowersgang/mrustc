@@ -1065,14 +1065,20 @@ namespace {
             }
             else
             {
-                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx << ", .DATA = {.var_" << var_idx << " = {";
-                for(unsigned int i = 0; i < e.size(); i ++)
-                {
-                    if(i != 0)
-                        m_of << ",";
-                    m_of << "\n\t\t_" << i;
-                }
-                m_of << "\n\t\t}}};\n";
+                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx;
+
+		if( ! e.empty() )
+		{
+			m_of << ", .DATA = { .var_" << var_idx << " = {";
+			for(unsigned int i = 0; i < e.size(); i ++)
+			{
+			    if(i != 0)
+				m_of << ",";
+			    m_of << "\n\t\t_" << i;
+			}
+			m_of << "\n\t\t}";
+		}
+	    	m_of << " }};\n";
             }
             m_of << "\treturn rv;\n";
             m_of << "}\n";
@@ -1294,13 +1300,18 @@ namespace {
                 }
                 else
                 {
-                    m_of << "{" << e.idx << ", { .var_" << e.idx << " = {";
-                    for(unsigned int i = 0; i < e.vals.size(); i ++) {
-                        if(i != 0)  m_of << ",";
-                        m_of << " ";
-                        emit_literal(get_inner_type(e.idx, i), e.vals[i], params);
+                    m_of << "{" << e.idx << ", { ";
+                    if( !e.vals.empty() )
+                    {
+                        m_of << ".var_" << e.idx << " = {";
+                        for(unsigned int i = 0; i < e.vals.size(); i ++) {
+                            if(i != 0)  m_of << ",";
+                            m_of << " ";
+                            emit_literal(get_inner_type(e.idx, i), e.vals[i], params);
+                        }
+                        m_of << "} ";
                     }
-                    m_of << " }}}";
+                    m_of << "}}";
                 }
                 ),
             (Integer,
