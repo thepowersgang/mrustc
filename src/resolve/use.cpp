@@ -147,7 +147,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             // DEAD, Unbound, ...
             default:    break;
             }
-            ASSERT_BUG(span, allow != Lookup::Any, "");
+            ASSERT_BUG(span, allow != Lookup::Any, "Invalid path binding type in use statement - " << use_stmt_data.path);
             use_stmt_data.alt_binding = Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules, allow);
             DEBUG("- Alt Binding: " << use_stmt_data.alt_binding);
         }
@@ -508,6 +508,7 @@ namespace {
 
 ::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start,  Lookup allow)
 {
+    TRACE_FUNCTION_F(path);
     const auto& nodes = path.nodes();
     const ::HIR::Module* hmod = &hmodr;
     for(unsigned int i = start; i < nodes.size() - 1; i ++)
@@ -517,6 +518,7 @@ namespace {
             // BZZT!
             ERROR(span, E0000, "Unable to find path component " << nodes[i].name() << " in " << path);
         }
+        DEBUG(i << " : " << nodes[i].name() << " = " << it->second->ent.tag_str());
         TU_MATCH_DEF( ::HIR::TypeItem, (it->second->ent), (e),
         (
             ERROR(span, E0000, "Unexpected item type in import " << path << " @ " << i << " - " << it->second->ent.tag_str());
@@ -567,6 +569,7 @@ namespace {
         auto it = hmod->m_mod_items.find(nodes.back().name());
         if( it != hmod->m_mod_items.end() ) {
             const auto* item_ptr = &it->second->ent;
+            DEBUG("E : " << nodes.back().name() << " = " << item_ptr->tag_str());
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
                 const auto& ec = crate.m_extern_crates.at( e.path.m_crate_name );
@@ -606,12 +609,14 @@ namespace {
                 )
             )
         }
+        DEBUG("Types = " << FMT_CB(ss, for(const auto& e : hmod->m_mod_items){ ss << e.first << ":" << e.second->ent.tag_str() << ","; }));
     }
     if( allow != Lookup::Type )
     {
         auto it2 = hmod->m_value_items.find(nodes.back().name());
         if( it2 != hmod->m_value_items.end() ) {
             const auto* item_ptr = &it2->second->ent;
+            DEBUG("E : " << nodes.back().name() << " = " << item_ptr->tag_str());
             if( item_ptr->is_Import() ) {
                 const auto& e = item_ptr->as_Import();
                 // This doesn't need to recurse - it can just do a single layer (as no Import should refer to another)
@@ -647,8 +652,11 @@ namespace {
                 )
             )
         }
+
+        DEBUG("Values = " << FMT_CB(ss, for(const auto& e : hmod->m_value_items){ ss << e.first << ":" << e.second->ent.tag_str() << ","; }));
     }
 
+    DEBUG("E : None");
     return ::AST::PathBinding::make_Unbound({});
 }
 ::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start,  Lookup allow)
