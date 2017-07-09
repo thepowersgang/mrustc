@@ -1,0 +1,46 @@
+
+BUILD = x64\Release
+
+OUTDIR = ..\output^\
+RUSTSRC = ..\rustc-nightly\src^\
+
+MRUSTC = $(BUILD)\mrustc.exe
+
+.PHONY: all
+.SUFFIXES: .hir .exe .rs
+
+all: $(OUTDIR)hello-world.exe
+
+.hir.rs:
+	$(MRUSTC) -o $@ $< -l ..\output
+.exe.rs:
+	$(MRUSTC) -o $@ $< -l ..\output
+	
+$(OUTDIR)libcore.hir : $(RUSTSRC)libcore\lib.rs
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)libcore\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)liballoc.hir : $(RUSTSRC)liballoc\lib.rs $(OUTDIR)libcore.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)liballoc\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)libstd_unicode.hir : $(RUSTSRC)libstd_unicode\lib.rs $(OUTDIR)libcore.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)libstd_unicode\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)libcollections.hir: $(RUSTSRC)libcollections\lib.rs $(OUTDIR)liballoc.hir $(OUTDIR)libstd_unicode.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)libcollections\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)librand.hir: $(RUSTSRC)librand\lib.rs $(OUTDIR)libcore.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)librand\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)liblibc.hir: $(RUSTSRC)liblibc\src\lib.rs $(OUTDIR)libcore.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)liblibc\src\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)libstd.hir: $(RUSTSRC)libstd\lib.rs  $(OUTDIR)libcore.hir $(OUTDIR)libcollections.hir $(OUTDIR)liblibc.hir $(OUTDIR)librand.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)libstd\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)liballoc_system.hir: $(RUSTSRC)liballoc_system\lib.rs $(OUTDIR)libcore.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)liballoc_system\lib.rs -l ..\output > $@_dbg.txt
+
+$(OUTDIR)hello-world.exe: $(RUSTSRC)test\run-pass\hello.rs $(OUTDIR)libstd.hir $(OUTDIR)liballoc_system.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)test\run-pass\hello.rs -l ..\output > $@_dbg.txt

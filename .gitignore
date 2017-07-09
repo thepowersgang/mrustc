@@ -24,6 +24,7 @@
 /vsproject/*.VC.db
 /vsproject/*.depend
 /vsproject/*.opendb
+/vsproject/*.user
 
 /run_rustc/output
 
