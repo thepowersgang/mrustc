@@ -455,7 +455,7 @@ namespace {
             }
             for(const auto& arg : args)
             {
-                if(arg == "&" && is_windows) {
+                if(strcmp(arg, "&") == 0 && is_windows) {
                     cmd_ss << "&";
                 }
                 else {
