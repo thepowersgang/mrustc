@@ -16,31 +16,37 @@ all: $(OUTDIR)hello-world.exe
 .exe.rs:
 	$(MRUSTC) -o $@ $< -l ..\output
 	
-$(OUTDIR)libcore.hir : $(RUSTSRC)libcore\lib.rs
+$(OUTDIR)libcore.hir : $(RUSTSRC)libcore\lib.rs $(MRUSTC)
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)libcore\lib.rs -l ..\output > $@_dbg.txt
-$(OUTDIR)liballoc.hir : $(RUSTSRC)liballoc\lib.rs $(OUTDIR)libcore.hir
+$(OUTDIR)liballoc.hir : $(RUSTSRC)liballoc\lib.rs $(MRUSTC) $(OUTDIR)libcore.hir
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)liballoc\lib.rs -l ..\output > $@_dbg.txt
-$(OUTDIR)libstd_unicode.hir : $(RUSTSRC)libstd_unicode\lib.rs $(OUTDIR)libcore.hir
+$(OUTDIR)libstd_unicode.hir : $(RUSTSRC)libstd_unicode\lib.rs $(MRUSTC) $(OUTDIR)libcore.hir
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)libstd_unicode\lib.rs -l ..\output > $@_dbg.txt
-$(OUTDIR)libcollections.hir: $(RUSTSRC)libcollections\lib.rs $(OUTDIR)liballoc.hir $(OUTDIR)libstd_unicode.hir
+$(OUTDIR)libcollections.hir: $(RUSTSRC)libcollections\lib.rs $(MRUSTC) $(OUTDIR)liballoc.hir $(OUTDIR)libstd_unicode.hir
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)libcollections\lib.rs -l ..\output > $@_dbg.txt
-$(OUTDIR)librand.hir: $(RUSTSRC)librand\lib.rs $(OUTDIR)libcore.hir
+$(OUTDIR)librand.hir: $(RUSTSRC)librand\lib.rs $(MRUSTC) $(OUTDIR)libcore.hir
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)librand\lib.rs -l ..\output > $@_dbg.txt
-$(OUTDIR)liblibc.hir: $(RUSTSRC)liblibc\src\lib.rs $(OUTDIR)libcore.hir
+$(OUTDIR)liblibc.hir: $(RUSTSRC)liblibc\src\lib.rs $(MRUSTC) $(OUTDIR)libcore.hir
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)liblibc\src\lib.rs -l ..\output > $@_dbg.txt
-$(OUTDIR)libstd.hir: $(RUSTSRC)libstd\lib.rs  $(OUTDIR)libcore.hir $(OUTDIR)libcollections.hir $(OUTDIR)liblibc.hir $(OUTDIR)librand.hir
+$(OUTDIR)libunwind.hir: $(RUSTSRC)libunwind\lib.rs $(MRUSTC) $(OUTDIR)libcore.hir $(OUTDIR)liblibc.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)libunwind\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)libcompiler_builtins.hir: $(RUSTSRC)libcompiler_builtins\lib.rs $(MRUSTC) $(OUTDIR)libcore.hir
+	@echo [MRUSTC] $@
+	@$(MRUSTC) -o $@ $(RUSTSRC)libcompiler_builtins\lib.rs -l ..\output > $@_dbg.txt
+$(OUTDIR)libstd.hir: $(RUSTSRC)libstd\lib.rs $(MRUSTC) $(OUTDIR)libcore.hir $(OUTDIR)libcollections.hir $(OUTDIR)liblibc.hir $(OUTDIR)librand.hir $(OUTDIR)libunwind.hir $(OUTDIR)libcompiler_builtins.hir
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)libstd\lib.rs -l ..\output > $@_dbg.txt
-$(OUTDIR)liballoc_system.hir: $(RUSTSRC)liballoc_system\lib.rs $(OUTDIR)libcore.hir
+$(OUTDIR)liballoc_system.hir: $(RUSTSRC)liballoc_system\lib.rs $(MRUSTC) $(OUTDIR)libcore.hir
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)liballoc_system\lib.rs -l ..\output > $@_dbg.txt
 
-$(OUTDIR)hello-world.exe: $(RUSTSRC)test\run-pass\hello.rs $(OUTDIR)libstd.hir $(OUTDIR)liballoc_system.hir
+$(OUTDIR)hello-world.exe: $(RUSTSRC)test\run-pass\hello.rs $(MRUSTC) $(OUTDIR)libstd.hir $(OUTDIR)liballoc_system.hir
 	@echo [MRUSTC] $@
 	@$(MRUSTC) -o $@ $(RUSTSRC)test\run-pass\hello.rs -l ..\output > $@_dbg.txt

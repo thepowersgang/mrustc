@@ -399,6 +399,7 @@ namespace {
                 args.push_back(cache_str( detect_msvc().path_vcvarsall ));
                 args.push_back("&");
                 args.push_back("cl.exe");
+                args.push_back("/nologo");
                 args.push_back(m_outfile_path_c.c_str());
                 switch(opt.opt_level)
                 {
@@ -1125,7 +1126,18 @@ namespace {
 
             if( item.m_linkage.name != "" && m_compiler != Compiler::Gcc )
             {
-                m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    // Handled with asm() later
+                    break;
+                case Compiler::Msvc:
+                    m_of << "#pragma comment(linker, \"/alternatename:" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    break;
+                //case Compiler::Std11:
+                //    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                //    break;
+                }
             }
 
             auto type = params.monomorph(m_resolve, item.m_type);
@@ -1532,7 +1544,18 @@ namespace {
 
             if (item.m_linkage.name != "" && m_compiler != Compiler::Gcc)
             {
-                m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                switch (m_compiler)
+                {
+                case Compiler::Gcc:
+                    // Handled with asm() later
+                    break;
+                case Compiler::Msvc:
+                    m_of << "#pragma comment(linker, \"/alternatename:" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    break;
+                //case Compiler::Std11:
+                //    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                //    break;
+                }
             }
 
             m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";
