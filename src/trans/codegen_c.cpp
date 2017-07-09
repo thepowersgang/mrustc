@@ -2592,6 +2592,11 @@ namespace {
             ::HIR::TypeRef  tmp;
             const auto& ret_ty = monomorphise_fcn_return(tmp, item, params);
             emit_ctype( ret_ty, FMT_CB(ss,
+                // TODO: Cleaner ABI handling
+                if( item.m_abi == "system" && m_compiler == Compiler::Msvc )
+                {
+                    ss << " __stdcall";
+                }
                 ss << " " << Trans_Mangle(p) << "(";
                 if( item.m_args.size() == 0 )
                 {
@@ -3915,7 +3920,7 @@ namespace {
         void emit_ctype(const ::HIR::TypeRef& ty) {
             emit_ctype(ty, FMT_CB(_,));
         }
-        void emit_ctype(const ::HIR::TypeRef& ty, ::FmtLambda inner) {
+        void emit_ctype(const ::HIR::TypeRef& ty, ::FmtLambda inner, bool is_extern_c=false) {
             TU_MATCHA( (ty.m_data), (te),
             (Infer,
                 m_of << "@" << ty << "@" << inner;
