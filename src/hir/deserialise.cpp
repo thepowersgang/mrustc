@@ -471,8 +471,11 @@ namespace {
         {
             switch( m_in.read_tag() )
             {
-            case 0:
-                return ::HIR::TypeItem::make_Import({ deserialise_simplepath(), m_in.read_bool(), static_cast<unsigned int>(m_in.read_count()) });
+            case 0: {
+                auto spath = deserialise_simplepath();
+                auto is_variant = m_in.read_bool();
+                return ::HIR::TypeItem::make_Import({ mv$(spath), is_variant, static_cast<unsigned int>(m_in.read_count()) });
+                }
             case 1:
                 return ::HIR::TypeItem( deserialise_module() );
             case 2:
@@ -493,8 +496,11 @@ namespace {
         {
             switch( m_in.read_tag() )
             {
-            case 0:
-                return ::HIR::ValueItem::make_Import({ deserialise_simplepath(), m_in.read_bool(), static_cast<unsigned int>(m_in.read_count()) });
+            case 0: {
+                auto spath = deserialise_simplepath();
+                auto is_variant = m_in.read_bool();
+                return ::HIR::ValueItem::make_Import({ mv$(spath), is_variant, static_cast<unsigned int>(m_in.read_count()) });
+                }
             case 1:
                 return ::HIR::ValueItem( deserialise_constant() );
             case 2:
