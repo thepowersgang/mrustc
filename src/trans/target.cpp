@@ -13,7 +13,7 @@
 TargetArch ARCH_X86_64 = {
     "x86_64",
     64, false,
-    { false /*true*/, false, true, true,  true }
+    { /*atomic(u8)=*/true, false, true, true,  true }
     };
 TargetSpec  g_target;
 
