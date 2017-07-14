@@ -1103,18 +1103,29 @@ namespace {
             {
                 m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx;
 
-		if( ! e.empty() )
-		{
-			m_of << ", .DATA = { .var_" << var_idx << " = {";
-			for(unsigned int i = 0; i < e.size(); i ++)
-			{
-			    if(i != 0)
-				m_of << ",";
-			    m_of << "\n\t\t_" << i;
-			}
-			m_of << "\n\t\t}";
-		}
-	    	m_of << " }};\n";
+                if( e.empty() )
+                {
+                    if( m_options.disallow_empty_structs )
+                    {
+                        m_of << ", .DATA = { .var_" << var_idx << " = {0} }";
+                    }
+                    else
+                    {
+                        // No fields, don't initialise
+                    }
+                }
+                else
+                {
+                    m_of << ", .DATA = { .var_" << var_idx << " = {";
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        if(i != 0)
+                        m_of << ",";
+                        m_of << "\n\t\t_" << i;
+                    }
+                    m_of << "\n\t\t}";
+                }
+                m_of << " }};\n";
             }
             m_of << "\treturn rv;\n";
             m_of << "}\n";
@@ -1337,7 +1348,14 @@ namespace {
                 else
                 {
                     m_of << "{" << e.idx << ", { ";
-                    if( !e.vals.empty() )
+                    if( e.vals.empty() )
+                    {
+                        if( m_options.disallow_empty_structs && !enm.m_variants.at(e.idx).second.is_Unit() )
+                        {
+                            m_of << ".var_" << e.idx << " = {0} ";
+                        }
+                    }
+                    else
                     {
                         m_of << ".var_" << e.idx << " = {";
                         for(unsigned int i = 0; i < e.vals.size(); i ++) {
@@ -2298,6 +2316,7 @@ namespace {
                     }
                     ),
                 (Struct,
+                    bool is_val_enum = false;
                     if(ve.variant_idx != ~0u)
                     {
                         ::HIR::TypeRef  tmp;
@@ -2322,12 +2341,14 @@ namespace {
                         }
                         else if( enm_p->is_value() )
                         {
+                            is_val_enum = true;
                             emit_lvalue(e.dst);
                             m_of << ".TAG = " << enm_p->get_value(ve.variant_idx);
                             assert(ve.vals.size() == 0);
                         }
                         else
                         {
+                            is_val_enum = enm_p->m_variants.at(ve.variant_idx).second.is_Unit();
                             emit_lvalue(e.dst);
                             m_of << ".TAG = " << ve.variant_idx;
                         }
@@ -2335,19 +2356,34 @@ namespace {
                             m_of << ";\n" << indent;
                     }
 
-                    for(unsigned int j = 0; j < ve.vals.size(); j ++)
+                    if( ve.vals.empty() )
                     {
-                        // HACK: Don't emit assignment of PhantomData
-                        ::HIR::TypeRef  tmp;
-                        if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j].as_LValue())) )
-                            continue ;
+                        if( m_options.disallow_empty_structs && !is_val_enum)
+                        {
+                            if(ve.variant_idx != ~0u)
+                                m_of << ";\n" << indent;
+                            emit_lvalue(e.dst);
+                            if(ve.variant_idx != ~0u)
+                                m_of << ".DATA.var_" << ve.variant_idx;
+                            m_of << "._d = 0";
+                        }
+                    }
+                    else
+                    {
+                        for(unsigned int j = 0; j < ve.vals.size(); j ++)
+                        {
+                            // HACK: Don't emit assignment of PhantomData
+                            ::HIR::TypeRef  tmp;
+                            if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j].as_LValue())) )
+                                continue ;
 
-                        if( j != 0 )    m_of << ";\n" << indent;
-                        emit_lvalue(e.dst);
-                        if(ve.variant_idx != ~0u)
-                            m_of << ".DATA.var_" << ve.variant_idx;
-                        m_of << "._" << j << " = ";
-                        emit_param(ve.vals[j]);
+                            if( j != 0 )    m_of << ";\n" << indent;
+                            emit_lvalue(e.dst);
+                            if(ve.variant_idx != ~0u)
+                                m_of << ".DATA.var_" << ve.variant_idx;
+                            m_of << "._" << j << " = ";
+                            emit_param(ve.vals[j]);
+                        }
                     }
                     )
                 )
