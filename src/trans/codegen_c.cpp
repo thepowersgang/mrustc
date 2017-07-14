@@ -105,8 +105,8 @@ namespace {
         };
         enum class Mode {
             //FullStd,
-            Gcc,	// Use GCC/Clang extensions
-            Msvc,	// Use MSVC extensions
+            Gcc,    // Use GCC/Clang extensions
+            Msvc,   // Use MSVC extensions
         };
 
         enum class Compiler {
@@ -128,6 +128,7 @@ namespace {
         Compiler    m_compiler = Compiler::Gcc;
         struct {
             bool emulated_i128 = false;
+            bool disallow_empty_structs = false;
         } m_options;
 
         ::std::map<::HIR::GenericPath, ::std::vector<unsigned>> m_enum_repr_cache;
@@ -150,6 +151,7 @@ namespace {
             case CodegenMode::Msvc:
                 m_compiler = Compiler::Msvc;
                 m_options.emulated_i128 = true;
+                m_options.disallow_empty_structs = true;
                 break;
             }
 
@@ -179,12 +181,27 @@ namespace {
             }
             m_of
                 << "typedef uint32_t RUST_CHAR;\n"
-                << "typedef struct { char _d; } tUNIT;\n"
-                << "typedef struct { char _d; } tBANG;\n"
-                << "typedef struct { char _d; } tTYPEID;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
                 << "typedef struct { size_t size; size_t align; void (*drop)(void*); } VTABLE_HDR;\n"
+                ;
+            if( m_options.disallow_empty_structs )
+            {
+                m_of
+                    << "typedef struct { char _d; } tUNIT;\n"
+                    << "typedef struct { char _d; } tBANG;\n"
+                    << "typedef struct { char _d; } tTYPEID;\n"
+                    ;
+            }
+            else
+            {
+                m_of
+                    << "typedef struct { } tUNIT;\n"
+                    << "typedef struct { } tBANG;\n"
+                    << "typedef struct { } tTYPEID;\n"
+                    ;
+            }
+            m_of
                 << "\n"
                 ;
             switch(m_compiler)
@@ -660,28 +677,47 @@ namespace {
 
             TU_MATCHA( (item.m_data), (e),
             (Unit,
-                m_of << "\tchar _d;\n";
+                if( m_options.disallow_empty_structs )
+                {
+                    m_of << "\tchar _d;\n";
+                }
                 ),
             (Tuple,
                 if( e.empty() )
-                    m_of << "\tchar _d;\n";
-                for(unsigned int i = 0; i < e.size(); i ++)
                 {
-                    const auto& fld = e[i];
-                    m_of << "\t";
-                    emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
-                    m_of << ";\n";
+                    if( m_options.disallow_empty_structs )
+                    {
+                        m_of << "\tchar _d;\n";
+                    }
+                }
+                else
+                {
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        const auto& fld = e[i];
+                        m_of << "\t";
+                        emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
+                        m_of << ";\n";
+                    }
                 }
                 ),
             (Named,
-                if (e.empty())
-                    m_of << "\tchar _d;\n";
-                for(unsigned int i = 0; i < e.size(); i ++)
+                if( e.empty() )
                 {
-                    const auto& fld = e[i].second;
-                    m_of << "\t";
-                    emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
-                    m_of << ";\n";
+                    if( m_options.disallow_empty_structs )
+                    {
+                        m_of << "\tchar _d;\n";
+                    }
+                }
+                else
+                {
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        const auto& fld = e[i].second;
+                        m_of << "\t";
+                        emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
+                        m_of << ";\n";
+                    }
                 }
                 )
             )
@@ -2901,11 +2937,40 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
             }
             else if( name == "transmute" ) {
+                const auto& ty_dst = params.m_types.at(0);
+                const auto& ty_src = params.m_types.at(1);
+                auto is_ptr = [](const ::HIR::TypeRef& ty){ return ty.m_data.is_Borrow() || ty.m_data.is_Pointer(); };
                 if( e.args.at(0).is_Constant() )
                 {
-                    m_of << "{ "; emit_ctype(params.m_types.at(1), FMT_CB(s, s << "v";)); m_of << " = "; emit_param(e.args.at(0)); m_of << ";";
-                    m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &v, sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")); ";
+                    m_of << "{ "; emit_ctype(ty_src, FMT_CB(s, s << "v";)); m_of << " = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &v, sizeof("; emit_ctype(ty_dst); m_of << ")); ";
                     m_of << "}";
+                }
+                else if( is_ptr(ty_dst) && is_ptr(ty_src) )
+                {
+                    auto src_meta = metadata_type(ty_src.m_data.is_Pointer() ? *ty_src.m_data.as_Pointer().inner : *ty_src.m_data.as_Borrow().inner);
+                    auto dst_meta = metadata_type(ty_dst.m_data.is_Pointer() ? *ty_dst.m_data.as_Pointer().inner : *ty_dst.m_data.as_Borrow().inner);
+                    if( src_meta == MetadataType::None )
+                    {
+                        assert(dst_meta == MetadataType::None);
+                        emit_lvalue(e.ret_val); m_of << " = (void*)"; emit_param(e.args.at(0));
+                    }
+                    else if( src_meta != dst_meta )
+                    {
+                        emit_lvalue(e.ret_val); m_of << ".PTR = "; emit_param(e.args.at(0)); m_of << ".PTR; ";
+                        emit_lvalue(e.ret_val); m_of << ".META = ";
+                        switch(dst_meta)
+                        {
+                        case MetadataType::None: assert(!"Impossible");
+                        case MetadataType::Slice:   m_of << "(size_t)"; break;
+                        case MetadataType::TraitObject: m_of << "(const void*)"; break;
+                        }
+                        emit_param(e.args.at(0)); m_of << ".META";
+                    }
+                    else
+                    {
+                        emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0));
+                    }
                 }
                 else
                 {
