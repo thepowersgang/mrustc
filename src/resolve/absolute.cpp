@@ -1449,7 +1449,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         // ! type
         ),
     (Macro,
-        BUG(sp, "Resolve_Absolute_Type - Encountered an unexpanded macro");
+        BUG(sp, "Resolve_Absolute_Type - Encountered an unexpanded macro in type - " << type);
         ),
     (Primitive,
         ),

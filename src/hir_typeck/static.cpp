@@ -855,6 +855,18 @@ void StaticTraitResolve::expand_associated_types(const Span& sp, ::HIR::TypeRef&
     TRACE_FUNCTION_F(input);
     this->expand_associated_types_inner(sp, input);
 }
+bool StaticTraitResolve::expand_associated_types_single(const Span& sp, ::HIR::TypeRef& input) const
+{
+    TRACE_FUNCTION_F(input);
+    if( input.m_data.is_Path() && input.m_data.as_Path().path.m_data.is_UfcsKnown() )
+    {
+        return expand_associated_types__UfcsKnown(sp, input, /*recurse=*/false);
+    }
+    else
+    {
+        return false;
+    }
+}
 void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const
 {
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
@@ -889,7 +901,7 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
             return;
             ),
         (UfcsUnknown,
-            BUG(sp, "Encountered UfcsUnknown");
+            BUG(sp, "Encountered UfcsUnknown in EAT - " << e.path);
             )
         )
         ),
@@ -929,7 +941,7 @@ void StaticTraitResolve::expand_associated_types_inner(const Span& sp, ::HIR::Ty
         )
     )
 }
-void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input) const
+bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse/*=true*/) const
 {
     auto& e = input.m_data.as_Path();
     auto& e2 = e.path.m_data.as_UfcsKnown();
@@ -950,7 +962,7 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             if( e2.trait.m_path == trait_fn || e2.trait.m_path == trait_fn_mut || e2.trait.m_path == trait_fn_once  ) {
                 if( e2.item == "Output" ) {
                     input = te.m_rettype->clone();
-                    return ;
+                    return true;
                 }
                 else {
                     ERROR(sp, E0000, "No associated type " << e2.item << " for trait " << e2.trait);
@@ -977,7 +989,7 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                 }
 
                 input = it->second.clone();
-                return ;
+                return true;
             }
         }
     )
@@ -1061,10 +1073,16 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             input.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
             DEBUG("Assuming that " << input << " is an opaque name");
 
-            this->replace_equalities(input);
+            bool rv = this->replace_equalities(input);
+            if( recurse )
+                this->expand_associated_types_inner(sp, input);
+            return rv;
         }
-        this->expand_associated_types_inner(sp, input);
-        return;
+        else {
+            if( recurse )
+                this->expand_associated_types_inner(sp, input);
+            return true;
+        }
     }
 
     // If the type of this UfcsKnown is ALSO a UfcsKnown - Check if it's bounded by this trait with equality
@@ -1103,9 +1121,28 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                         else {
                             input = it->second.clone();
                         }
-                        this->expand_associated_types(sp, input);
-                        return ;
+                        if( recurse )
+                            this->expand_associated_types(sp, input);
+                        return true;
                     }
+                }
+
+                // Find trait in this trait.
+                const auto& bound_trait = m_crate.get_trait_by_path(sp, bound.m_path.m_path);
+                bool replaced = this->find_named_trait_in_trait(sp,
+                        e2.trait.m_path, e2.trait.m_params,
+                        bound_trait, bound.m_path.m_path,bound.m_path.m_params, *e2.type,
+                        [&](const auto& params, const auto& assoc){
+                            auto it = assoc.find(e2.item);
+                            if( it != assoc.end() ) {
+                                input = it->second.clone();
+                                return true;
+                            }
+                            return false;
+                        }
+                        );
+                if( replaced ) {
+                    return true;
                 }
             }
             DEBUG("e2 = " << *e2.type << ", input = " << input);
@@ -1120,6 +1157,7 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
         BUG(sp, "Cannot find associated type " << e2.item << " anywhere in trait " << e2.trait);
     //e2.trait = mv$(trait_path);
 
+    bool replacement_happened = true;
     ::ImplRef  best_impl;
     rv = this->find_impl(sp, trait_path.m_path, trait_path.m_params, *e2.type, [&](auto impl, bool fuzzy) {
         DEBUG("[expand_associated_types] Found " << impl);
@@ -1157,30 +1195,32 @@ void StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
             if( nt == ::HIR::TypeRef() ) {
                 DEBUG("Mark  " << e.path << " as opaque");
                 e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
-                this->replace_equalities(input);
+                replacement_happened = this->replace_equalities(input);
             }
             else {
                 DEBUG("Converted UfcsKnown - " << e.path << " = " << nt);
                 input = mv$(nt);
+                replacement_happened = true;
             }
             return true;
         }
         });
     if( rv ) {
-        this->expand_associated_types(sp, input);
-        return;
+        if( recurse )
+            this->expand_associated_types(sp, input);
+        return replacement_happened;
     }
     if( best_impl.is_valid() ) {
         e.binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
         this->replace_equalities(input);
         DEBUG("- Couldn't find a non-specialised impl of " << trait_path << " for " << *e2.type << " - treating as opaque");
-        return ;
+        return false;
     }
 
     ERROR(sp, E0000, "Cannot find an implementation of " << trait_path << " for " << *e2.type);
 }
 
-void StaticTraitResolve::replace_equalities(::HIR::TypeRef& input) const
+bool StaticTraitResolve::replace_equalities(::HIR::TypeRef& input) const
 {
     TRACE_FUNCTION_F("input="<<input);
     DEBUG("m_type_equalities = {" << m_type_equalities << "}");
@@ -1189,6 +1229,10 @@ void StaticTraitResolve::replace_equalities(::HIR::TypeRef& input) const
     if( a != m_type_equalities.end() ) {
         input = a->second.clone();
         DEBUG("- Replace with " << input);
+        return true;
+    }
+    else {
+        return false;
     }
 }
 
@@ -1422,10 +1466,34 @@ bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty)
         }
         ),
     (Path,
-        auto pp = ::HIR::PathParams();
-        // TODO: Destructure?
+        TU_MATCHA( (e.binding), (pbe),
+        (Unbound,
+            ),
+        (Opaque,
+            //auto pp = ::HIR::PathParams();
+            //return this->find_impl(sp, m_lang_Sized, &pp, ty, [&](auto , bool){ return true; }, true);
+            // TODO: This can only be with UfcsKnown, so check if the trait specifies ?Sized
+            return true;
+            ),
+        (Struct,
+            // TODO: Destructure?
+            switch( pbe->m_markings.dst_type )
+            {
+            case ::HIR::TraitMarkings::DstType::None:
+                return true;
+            case ::HIR::TraitMarkings::DstType::Possible:
+                return type_is_sized( sp, e.path.m_data.as_Generic().m_params.m_types.at(pbe->m_markings.unsized_param) );
+            case ::HIR::TraitMarkings::DstType::Slice:
+            case ::HIR::TraitMarkings::DstType::TraitObject:
+                return false;
+            }
+            ),
+        (Enum,
+            ),
+        (Union,
+            )
+        )
         return true;
-        //return this->find_impl(sp, m_lang_Sized, &pp, ty, [&](auto , bool){ return true; }, true);
         ),
     (Diverge,
         // The ! type is kinda Copy ...

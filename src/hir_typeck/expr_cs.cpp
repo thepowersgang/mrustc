@@ -2306,11 +2306,11 @@ namespace {
                 BUG(sp, "Encountered Noop _Emplace in typecheck");
             case ::HIR::ExprNode_Emplace::Type::Boxer:
                 //this->context.equate_types_assoc(sp, {}, ::HIR::SimplePath("core", { "ops", "Boxer" }), ::make_vec1(data_ty.clone()), *inner_ty, "");
-                this->context.equate_types_assoc(sp, data_ty, ::HIR::SimplePath("core", { "ops", "Boxed" }), {}, *inner_ty, "Data");
+                this->context.equate_types_assoc(sp, data_ty, this->context.m_crate.get_lang_item_path(sp, "boxed_trait"), {}, *inner_ty, "Data");
                 break;
             case ::HIR::ExprNode_Emplace::Type::Placer:
                 // TODO: Search for `Placer<T>`, not `Placer`
-                this->context.equate_types_assoc(sp, {}, ::HIR::SimplePath("core", { "ops", "Placer" }), ::make_vec1(data_ty.clone()), *inner_ty, "");
+                this->context.equate_types_assoc(sp, {}, this->context.m_crate.get_lang_item_path(sp, "placer_trait"), ::make_vec1(data_ty.clone()), *inner_ty, "");
                 break;
             }
 
@@ -3908,6 +3908,24 @@ void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l, bool 
 }
 void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams pp, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op)
 {
+    for(const auto& a : this->link_assoc)
+    {
+        if( a.left_ty != l )
+            continue ;
+        if( a.trait != trait )
+            continue ;
+        if( a.params != pp )
+            continue ;
+        if( a.impl_ty != impl_ty )
+            continue ;
+        if( a.name != name )
+            continue ;
+        if( a.is_operator != is_op )
+            continue ;
+
+        DEBUG("(DUPLICATE " << a << ")");
+        return ;
+    }
     this->link_assoc.push_back(Associated {
         sp,
         l.clone(),
@@ -5113,6 +5131,18 @@ namespace {
         if( found ) {
             // Fully-known impl
             if( v.name != "" ) {
+                // Stop this from just pushing the same rule again.
+                if( output_type.m_data.is_Path() && output_type.m_data.as_Path().path.m_data.is_UfcsKnown() )
+                {
+                    const auto& te = output_type.m_data.as_Path();
+                    const auto& pe = te.path.m_data.as_UfcsKnown();
+                    // If the target type is unbound, and is this rule exactly, don't return success
+                    if( te.binding.is_Unbound() && *pe.type == v.impl_ty && pe.item == v.name && pe.trait.m_path == v.trait && pe.trait.m_params == v.params)
+                    {
+                        DEBUG("Would re-create the same rule, returning unconsumed");
+                        return false;
+                    }
+                }
                 context.equate_types(sp, v.left_ty, output_type);
             }
             return true;
@@ -5883,6 +5913,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         }
         // 3. Check associated type rules
         DEBUG("--- Associated types");
+        unsigned int link_assoc_iter_limit = context.link_assoc.size() * 4;
         for(unsigned int i = 0; i < context.link_assoc.size(); ) {
             // - Move out (and back in later) to avoid holding a bad pointer if the list is updated
             auto rule = mv$(context.link_assoc[i]);
@@ -5900,6 +5931,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 DEBUG("- Consumed associated type rule " << i << "/" << context.link_assoc.size() << " - " << rule);
                 if( i != context.link_assoc.size()-1 )
                 {
+                    //assert( context.link_assoc[i] != context.link_assoc.back() );
                     context.link_assoc[i] = mv$( context.link_assoc.back() );
                 }
                 context.link_assoc.pop_back();
@@ -5908,6 +5940,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 context.link_assoc[i] = mv$(rule);
                 i ++;
             }
+
+            ASSERT_BUG(Span(), link_assoc_iter_limit -- > 0, "link_assoc iteration limit exceeded");
         }
         // 4. Revisit nodes that require revisiting
         DEBUG("--- Node revisits");

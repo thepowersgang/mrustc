@@ -73,7 +73,7 @@ namespace {
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
             m_current_trait = &trait;
             m_current_trait_path = &p;
-            //auto _ = m_resolve.set_item_generics(trait.m_params);
+            //auto _ = m_resolve.set_cur_trait(p, trait);
             auto _ = m_resolve.set_impl_generics(trait.m_params);
             ::HIR::Visitor::visit_trait(p, trait);
             m_current_trait = nullptr;
@@ -464,9 +464,38 @@ namespace {
             return false;
         }
 
+        void visit_type(::HIR::TypeRef& ty) override
+        {
+            // TODO: Add a span parameter.
+            static Span sp;
+
+            ::HIR::Visitor::visit_type(ty);
+
+            unsigned counter = 0;
+            while( m_resolve.expand_associated_types_single(sp, ty) )
+            {
+                ASSERT_BUG(sp, counter++ < 20, "Sanity limit exceeded when resolving UFCS in type " << ty);
+                // Invoke a special version of EAT that only processes a single item.
+                // - Keep recursing while this does replacements
+                ::HIR::Visitor::visit_type(ty);
+            }
+        }
+
         void visit_path(::HIR::Path& p, ::HIR::Visitor::PathContext pc) override
         {
             static Span sp;
+
+            if(auto* pe = p.m_data.opt_UfcsKnown())
+            {
+                // If the trait has missing type argumenst, replace them with the defaults
+                auto& tp = pe->trait;
+                const auto& trait = m_resolve.m_crate.get_trait_by_path(sp, tp.m_path);
+
+                if(tp.m_params.m_types.size() < trait.m_params.m_types.size())
+                {
+                    //TODO(sp, "Defaults in UfcsKnown - " << p);
+                }
+            }
 
             TU_IFLET(::HIR::Path::Data, p.m_data, UfcsUnknown, e,
                 TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);

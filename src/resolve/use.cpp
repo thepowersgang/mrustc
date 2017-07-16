@@ -135,6 +135,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 allow = Lookup::Value;
                 break;
             case ::AST::PathBinding::TAG_Struct:
+            case ::AST::PathBinding::TAG_Union:
                 allow = Lookup::Value;
                 break;
             case ::AST::PathBinding::TAG_EnumVar:

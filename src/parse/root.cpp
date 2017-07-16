@@ -140,6 +140,12 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
 
     do
     {
+        // If an item terminator is seen (end of item, start of body, list separator), return early.
+        //if( LOOK_AHEAD(lex) == TOK_SEMICOLON || LOOK_AHEAD(lex) == TOK_COMMA )
+        //{
+        //    return;
+        //}
+
         ::std::vector< ::std::string>   hrls;
         if(GET_TOK(tok, lex) == TOK_LIFETIME) {
             ret.add_bound(AST::GenericBound::make_TypeLifetime( {
@@ -624,6 +630,9 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
                 // TODO: Need a better way of indiciating 'static than just an invalid path
                 supertraits.push_back( make_spanned( Span(tok.get_pos()), AST::Path() ) );
+            }
+            else if( tok.type() == TOK_BRACE_OPEN ) {
+                break;
             }
             else {
                 PUTBACK(tok, lex);

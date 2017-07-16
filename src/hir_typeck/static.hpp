@@ -149,11 +149,12 @@ private:
 public:
 
     void expand_associated_types(const Span& sp, ::HIR::TypeRef& input) const;
+    bool expand_associated_types_single(const Span& sp, ::HIR::TypeRef& input) const;
 
 private:
     void expand_associated_types_inner(const Span& sp, ::HIR::TypeRef& input) const;
-    void expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input) const;
-    void replace_equalities(::HIR::TypeRef& input) const;
+    bool expand_associated_types__UfcsKnown(const Span& sp, ::HIR::TypeRef& input, bool recurse=true) const;
+    bool replace_equalities(::HIR::TypeRef& input) const;
 
 public:
     /// \}

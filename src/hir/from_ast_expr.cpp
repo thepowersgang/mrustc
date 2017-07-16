@@ -118,53 +118,10 @@ struct LowerHIR_ExprNode_Visitor:
         switch(v.m_type)
         {
         case ::AST::ExprNode_BinOp::RANGE: {
-            // NOTE: Not language items
-            auto path_Range     = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "Range"}) );
-            auto path_RangeFrom = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeFrom"}) );
-            auto path_RangeTo   = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeTo"}) );
-            auto path_RangeFull = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeFull"}) );
-
-            ::HIR::ExprNode_StructLiteral::t_values values;
-            if( v.m_left )
-                values.push_back( ::std::make_pair( ::std::string("start"), LowerHIR_ExprNode_Inner( *v.m_left ) ) );
-            if( v.m_right )
-                values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
-
-            if( v.m_left ) {
-                if( v.m_right ) {
-                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_Range), true, nullptr, mv$(values)) );
-                }
-                else {
-                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeFrom), true, nullptr, mv$(values)) );
-                }
-            }
-            else {
-                if( v.m_right ) {
-                    m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeTo), true, nullptr, mv$(values)) );
-                }
-                else {
-                    m_rv.reset( new ::HIR::ExprNode_UnitVariant(v.span(), mv$(path_RangeFull), true) );
-                }
-            }
+            BUG(v.span(), "Unexpected RANGE binop");
             break; }
         case ::AST::ExprNode_BinOp::RANGE_INC: {
-            // NOTE: Not language items
-            auto path_RangeInclusive_NonEmpty = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeInclusive", "NonEmpty"}) );
-            auto path_RangeToInclusive        = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"ops", "RangeToInclusive"}) );
-
-            if( v.m_left )
-            {
-                ::HIR::ExprNode_StructLiteral::t_values values;
-                values.push_back( ::std::make_pair( ::std::string("start"), LowerHIR_ExprNode_Inner( *v.m_left ) ) );
-                values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
-                m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeInclusive_NonEmpty), false, nullptr, mv$(values)) );
-            }
-            else
-            {
-                ::HIR::ExprNode_StructLiteral::t_values values;
-                values.push_back( ::std::make_pair( ::std::string("end")  , LowerHIR_ExprNode_Inner( *v.m_right ) ) );
-                m_rv.reset( new ::HIR::ExprNode_StructLiteral(v.span(), mv$(path_RangeToInclusive), true, nullptr, mv$(values)) );
-            }
+            BUG(v.span(), "Unexpected RANGE_INC binop");
             break; }
         case ::AST::ExprNode_BinOp::PLACE_IN:
             TODO(v.span(), "Desugar placement syntax");

@@ -272,6 +272,44 @@ void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         )
     )
 }
+void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Path& p)
+{
+    auto expand_nodes = [&](::std::vector<::AST::PathNode>& nodes) {
+        for(auto& node : nodes)
+        {
+            for(auto& typ : node.args().m_types)
+                Expand_Type(crate, modstack, mod, typ);
+            for(auto& aty : node.args().m_assoc)
+                Expand_Type(crate, modstack, mod, aty.second);
+        }
+        };
+
+    TU_MATCHA( (p.m_class), (pe),
+    (Invalid,
+        ),
+    (Local,
+        ),
+    (Relative,
+        expand_nodes(pe.nodes);
+        ),
+    (Self,
+        expand_nodes(pe.nodes);
+        ),
+    (Super,
+        expand_nodes(pe.nodes);
+        ),
+    (Absolute,
+        expand_nodes(pe.nodes);
+        ),
+    (UFCS,
+        Expand_Type(crate, modstack, mod, *pe.type);
+        if( pe.trait ) {
+            Expand_Path(crate, modstack, mod, *pe.trait);
+        }
+        expand_nodes(pe.nodes);
+        )
+    )
+}
 
 struct CExpandExpr:
     public ::AST::NodeVisitor
@@ -494,9 +532,11 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_value);
     }
     void visit(::AST::ExprNode_CallPath& node) override {
+        Expand_Path(crate, modstack, this->cur_mod(),  node.m_path);
         this->visit_vector(node.m_args);
     }
     void visit(::AST::ExprNode_CallMethod& node) override {
+        // TODO: Path params.
         this->visit_nodelete(node, node.m_val);
         this->visit_vector(node.m_args);
     }
@@ -627,7 +667,9 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_Tuple& node) override {
         this->visit_vector(node.m_values);
     }
-    void visit(::AST::ExprNode_NamedValue& node) override { }
+    void visit(::AST::ExprNode_NamedValue& node) override {
+        Expand_Path(crate, modstack, this->cur_mod(),  node.m_path);
+    }
     void visit(::AST::ExprNode_Field& node) override {
         this->visit_nodelete(node, node.m_obj);
     }
@@ -649,6 +691,64 @@ struct CExpandExpr:
     void visit(::AST::ExprNode_BinOp& node) override {
         this->visit_nodelete(node, node.m_left);
         this->visit_nodelete(node, node.m_right);
+
+        switch(node.m_type)
+        {
+        case ::AST::ExprNode_BinOp::RANGE: {
+            // NOTE: Not language items
+            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+            auto path_Range     = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Range") });
+            auto path_RangeFrom = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeFrom") });
+            auto path_RangeTo   = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeTo") });
+            auto path_RangeFull = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("RangeFull") });
+
+            ::AST::ExprNode_StructLiteral::t_values values;
+            if( node.m_left && node.m_right )
+            {
+                values.push_back( ::std::make_pair( ::std::string("start"), mv$(node.m_left ) ) );
+                values.push_back( ::std::make_pair( ::std::string("end")  , mv$(node.m_right) ) );
+                replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_Range), nullptr, mv$(values)) );
+            }
+            else if( node.m_left )
+            {
+                values.push_back( ::std::make_pair( ::std::string("start"), mv$(node.m_left ) ) );
+                replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeFrom), nullptr, mv$(values)) );
+            }
+            else if( node.m_right )
+            {
+                values.push_back( ::std::make_pair( ::std::string("end")  , mv$(node.m_right) ) );
+                replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeTo), nullptr, mv$(values)) );
+            }
+            else
+            {
+                replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeFull), nullptr, mv$(values)) );
+            }
+            replacement->set_span( node.span() );
+            break; }
+        case ::AST::ExprNode_BinOp::RANGE_INC: {
+            // NOTE: Not language items
+            auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+            auto path_RangeInclusive_NonEmpty = ::AST::Path(core_crate, { ::AST::PathNode("ops"), ::AST::PathNode("RangeInclusive") });
+            auto path_RangeToInclusive        = ::AST::Path(core_crate, { ::AST::PathNode("ops"), ::AST::PathNode("RangeToInclusive") });
+
+            if( node.m_left )
+            {
+                ::AST::ExprNode_StructLiteral::t_values values;
+                values.push_back( ::std::make_pair( ::std::string("start"), mv$(node.m_left) ) );
+                values.push_back( ::std::make_pair( ::std::string("end")  , mv$(node.m_right) ) );
+                replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeInclusive_NonEmpty), nullptr, mv$(values)) );
+            }
+            else
+            {
+                ::AST::ExprNode_StructLiteral::t_values values;
+                values.push_back( ::std::make_pair( ::std::string("end")  , mv$(node.m_right) ) );
+                replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeToInclusive), nullptr, mv$(values)) );
+            }
+            replacement->set_span( node.span() );
+            break; }
+        default:
+            break;
+        }
     }
     void visit(::AST::ExprNode_UniOp& node) override {
         this->visit_nodelete(node, node.m_value);

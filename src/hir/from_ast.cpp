@@ -894,7 +894,10 @@ namespace {
 
     if( const auto* attr_repr = attrs.get("repr") )
     {
-        const auto& repr_str = attr_repr->string();
+        ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
+        ASSERT_BUG(Span(), attr_repr->items().size() == 1, "#[repr] attribute malformed, " << *attr_repr);
+        ASSERT_BUG(Span(), attr_repr->items()[0].has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+        const auto& repr_str = attr_repr->items()[0].name();
         if( repr_str == "C" ) {
             repr = ::HIR::Union::Repr::C;
         }
@@ -1606,6 +1609,89 @@ public:
 
     // Set all pointers in the HIR to the correct (now fixed) locations
     IndexVisitor(rv).visit_crate( rv );
+
+    // TODO: If the current crate is libcore, store the paths to various non-lang ops items
+    if( crate.m_crate_name == "core" )
+    {
+        struct H {
+            static ::HIR::SimplePath resolve_path(const ::HIR::Crate& crate, bool is_value, ::std::initializer_list<const char*> n)
+            {
+                ::HIR::SimplePath   cur_path("", {});
+
+                const ::HIR::Module* mod = &crate.m_root_module;
+                assert(n.begin() != n.end());
+                for(auto it = n.begin(); it != n.end()-1; ++it)
+                {
+                    auto it2 = mod->m_mod_items.find(*it);
+                    if( it2 == mod->m_mod_items.end() )
+                        return ::HIR::SimplePath();
+                    const auto& e = it2->second;
+                    if(const auto* ip = e->ent.opt_Import())
+                    {
+                        // TODO: Handle module aliases?
+                        (void)ip;
+                        return ::HIR::SimplePath();
+                    }
+                    else if(const auto* ep = e->ent.opt_Module() )
+                    {
+                        cur_path.m_components.push_back(*it);
+                        mod = ep;
+                    }
+                    else
+                    {
+                        // Incorrect item type
+                        return ::HIR::SimplePath();
+                    }
+                }
+
+                auto last = *(n.end()-1);
+                if( is_value )
+                {
+                    throw "";
+                }
+                else
+                {
+                    auto it2 = mod->m_mod_items.find(last);
+                    if( it2 == mod->m_mod_items.end() )
+                        return ::HIR::SimplePath();
+
+                    // Found: Either return the current path, or return this alias.
+                    if(const auto* ip = it2->second->ent.opt_Import())
+                    {
+                        if(ip->is_variant)
+                            return ::HIR::SimplePath();
+                        return ip->path;
+                    }
+                    else
+                    {
+                        cur_path.m_components.push_back(last);
+                        return cur_path;
+                    }
+                }
+            }
+        };
+        // TODO: Check for existing defintions of lang items
+        if( rv.m_lang_items.count("boxed_trait") == 0 )
+        {
+            rv.m_lang_items.insert(::std::make_pair( ::std::string("boxed_trait"),  H::resolve_path(rv, false, {"ops", "Boxed"}) ));
+        }
+        if( rv.m_lang_items.count("placer_trait") == 0 )
+        {
+            rv.m_lang_items.insert(::std::make_pair( ::std::string("placer_trait"),  H::resolve_path(rv, false, {"ops", "Placer"}) ));
+        }
+        if( rv.m_lang_items.count("place_trait") == 0 )
+        {
+            rv.m_lang_items.insert(::std::make_pair( ::std::string("place_trait"),  H::resolve_path(rv, false, {"ops", "Place"}) ));
+        }
+        if( rv.m_lang_items.count("box_place_trait") == 0 )
+        {
+            rv.m_lang_items.insert(::std::make_pair( ::std::string("box_place_trait"),  H::resolve_path(rv, false, {"ops", "BoxPlace"}) ));
+        }
+        if( rv.m_lang_items.count("in_place_trait") == 0 )
+        {
+            rv.m_lang_items.insert(::std::make_pair( ::std::string("in_place_trait"),  H::resolve_path(rv, false, {"ops", "InPlace"}) ));
+        }
+    }
 
     g_crate_ptr = nullptr;
     return ::HIR::CratePtr( mv$(rv) );

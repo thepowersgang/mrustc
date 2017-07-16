@@ -359,6 +359,7 @@ int main(int argc, char *argv[])
         crate = ::AST::Crate();
 
         // Replace type aliases (`type`) into the actual type
+        // - Also inserts defaults in trait impls
         CompilePhaseV("Resolve Type Aliases", [&]() {
             ConvertHIR_ExpandAliases(*hir_crate);
             });
@@ -366,11 +367,13 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve Bind", [&]() {
             ConvertHIR_Bind(*hir_crate);
             });
-        CompilePhaseV("Resolve UFCS paths", [&]() {
-            ConvertHIR_ResolveUFCS(*hir_crate);
-            });
+        // Enumerate marker impls on types and other useful metadata
         CompilePhaseV("Resolve HIR Markings", [&]() {
             ConvertHIR_Markings(*hir_crate);
+            });
+        // Determine what trait to use for <T>::Foo (and does some associated type expansion)
+        CompilePhaseV("Resolve UFCS paths", [&]() {
+            ConvertHIR_ResolveUFCS(*hir_crate);
             });
         // Basic constant evalulation (intergers/floats only)
         CompilePhaseV("Constant Evaluate", [&]() {

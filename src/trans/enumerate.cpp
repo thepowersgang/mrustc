@@ -152,6 +152,7 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
     for(auto& impl : crate.m_trait_impls)
     {
         const auto& impl_ty = impl.second.m_type;
+        TRACE_FUNCTION_F("Impl " << impl.first << impl.second.m_trait_args << " for " << impl_ty);
         if( impl.second.m_params.m_types.size() == 0 )
         {
             auto cb_monomorph = monomorphise_type_get_cb(sp, &impl_ty, &impl.second.m_trait_args, nullptr);
@@ -160,10 +161,14 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
             const auto& trait = crate.get_trait_by_path(sp, impl.first);
             for(const auto& vi : trait.m_values)
             {
+                TRACE_FUNCTION_F("Item " << vi.first << " : " << vi.second.tag_str());
+                // Constant, no codegen
                 if( vi.second.is_Constant() )
                     ;
+                // Generic method, no codegen
                 else if( vi.second.is_Function() && vi.second.as_Function().m_params.m_types.size() > 0 )
                     ;
+                // VTable, magic
                 else if( vi.first == "#vtable" )
                     ;
                 else

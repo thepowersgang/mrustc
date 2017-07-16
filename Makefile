@@ -50,6 +50,8 @@ RUST_FLAGS := --cfg debug_assertions
 RUST_FLAGS += -g
 RUST_FLAGS += -O
 RUST_FLAGS += $(RUST_FLAGS_EXTRA)
+# > TODO: This is needed for anything that uses libstd. build.rs adds it with cargo magic, no idea how it gets to the rlib
+RUST_FLAGS += -lbacktrace
 
 SHELL = bash
 
@@ -113,7 +115,7 @@ OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
 OBJ += trans/trans_list.o trans/mangling.o
 OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o
 OBJ += trans/codegen_c.o trans/codegen_c_structured.o
-OBJ += trans/target.o
+OBJ += trans/target.o trans/allocator.o
 
 PCHS := ast/ast.hpp
 

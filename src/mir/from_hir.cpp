@@ -1505,11 +1505,11 @@ namespace {
             if( node.m_type == ::HIR::ExprNode_Emplace::Type::Noop ) {
                 return node.m_value->visit(*this);
             }
-            //auto path_Placer = ::HIR::SimplePath("core", {"ops", "Placer"});
-            auto path_BoxPlace = ::HIR::SimplePath("core", {"ops", "BoxPlace"});
-            auto path_Place = ::HIR::SimplePath("core", {"ops", "Place"});
-            auto path_Boxed = ::HIR::SimplePath("core", {"ops", "Boxed"});
-            //auto path_InPlace = ::HIR::SimplePath("core", {"ops", "InPlace"});
+            //const auto& path_Placer = m_builder.crate().get_lang_item_path(node.span(), "placer_trait");
+            const auto& path_Boxed = m_builder.crate().get_lang_item_path(node.span(), "boxed_trait");
+            const auto& path_Place = m_builder.crate().get_lang_item_path(node.span(), "place_trait");
+            const auto& path_BoxPlace = m_builder.crate().get_lang_item_path(node.span(), "box_place_trait");
+            //const auto& path_InPlace = m_builder.crate().get_lang_item_path(node.span(), "in_place_trait");
 
             const auto& data_ty = node.m_value->m_res_type;
 

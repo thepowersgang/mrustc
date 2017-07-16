@@ -1933,7 +1933,6 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             // - Does simplification of complex associated types
             const auto& trait_ptr = this->m_crate.get_trait_by_path(sp, pe_inner.trait.m_path);
             const auto& assoc_ty = trait_ptr.m_types.at(pe_inner.item);
-            DEBUG("TODO: Search bounds on associated type - " << assoc_ty.m_trait_bounds);
 
             // Resolve where Self=pe_inner.type (i.e. for the trait this inner UFCS is on)
             auto cb_placeholders_trait = [&](const auto& ty)->const ::HIR::TypeRef&{
@@ -1952,7 +1951,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             for(const auto& bound : assoc_ty.m_trait_bounds)
             {
                 // If the bound is for Self and the outer trait
-                // - TODO: Parameters?
+                // - TODO: Fuzzy check the parameters?
                 if( bound.m_path == pe.trait ) {
                     auto it = bound.m_type_bounds.find( pe.item );
                     if( it != bound.m_type_bounds.end() ) {
@@ -1966,6 +1965,24 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                         this->expand_associated_types_inplace(sp, input, stack);
                         return ;
                     }
+                }
+
+                // TODO: Find trait in this trait.
+                const auto& bound_trait = m_crate.get_trait_by_path(sp, bound.m_path.m_path);
+                bool replaced = this->find_named_trait_in_trait(sp,
+                        pe.trait.m_path,pe.trait.m_params,
+                        bound_trait, bound.m_path.m_path,bound.m_path.m_params, *pe.type,
+                        [&](const auto&, const auto& x, const auto& assoc){
+                            auto it = assoc.find(pe.item);
+                            if( it != assoc.end() ) {
+                                input = it->second.clone();
+                                return true;
+                            }
+                            return false;
+                        }
+                        );
+                if( replaced ) {
+                    return ;
                 }
             }
             DEBUG("pe = " << *pe.type << ", input = " << input);

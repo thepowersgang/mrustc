@@ -16,6 +16,7 @@
 #include <mir/helpers.hpp>
 #include "codegen_c.hpp"
 #include "target.hpp"
+#include "allocator.hpp"
 
 namespace {
     struct FmtShell
@@ -340,6 +341,96 @@ namespace {
                     m_of << "\treturn " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
                 }
                 m_of << "}\n";
+
+                // Emit allocator bindings
+                for(const auto& method : ALLOCATOR_METHODS)
+                {
+                    ::std::vector<const char*>  args;
+                    const char* ret_ty = nullptr;
+                    // TODO: Configurable between __rg_, __rdl_, and __rde_
+                    auto prefix = "__rdl_";
+
+                    for(size_t i = 0; i < method.n_args; i++)
+                    {
+                        switch(method.args[i])
+                        {
+                        case AllocatorDataTy::Never:
+                        case AllocatorDataTy::Unit:
+                        case AllocatorDataTy::ResultPtr:
+                        case AllocatorDataTy::ResultExcess:
+                        case AllocatorDataTy::UsizePair:
+                        case AllocatorDataTy::ResultUnit:
+                            BUG(Span(), "Invalid data type for allocator argument");
+                            break;
+                        case AllocatorDataTy::Layout:
+                            args.push_back("uintptr_t");
+                            args.push_back("uintptr_t");
+                            break;
+                        case AllocatorDataTy::LayoutRef:
+                            args.push_back("uint8_t*");
+                            break;
+                        case AllocatorDataTy::AllocError:
+                            args.push_back("uint8_t*");
+                            break;
+                        case AllocatorDataTy::Ptr:
+                            args.push_back("uint8_t*");
+                            break;
+                        }
+                    }
+                    switch(method.ret)
+                    {
+                    case AllocatorDataTy::Never:
+                    case AllocatorDataTy::Unit:
+                        ret_ty = "void";
+                        break;
+                    case AllocatorDataTy::ResultPtr:
+                        args.push_back("uint8_t*");
+                        ret_ty = "uint8_t*";
+                        break;
+                    case AllocatorDataTy::ResultExcess:
+                        args.push_back("uint8_t*");
+                        args.push_back("uint8_t*");
+                        ret_ty = "uint8_t*";
+                        break;
+                    case AllocatorDataTy::UsizePair:
+                        args.push_back("uintptr_t*");
+                        args.push_back("uintptr_t*");
+                        ret_ty = "void";
+                        break;
+                    case AllocatorDataTy::ResultUnit:
+                        ret_ty = "int8_t";
+                        break;
+                    case AllocatorDataTy::Layout:
+                    case AllocatorDataTy::AllocError:
+                    case AllocatorDataTy::Ptr:
+                    case AllocatorDataTy::LayoutRef:
+                        BUG(Span(), "Invalid data type for allocator return");
+                    }
+
+                    m_of << "extern " << ret_ty << " " << prefix << method.name << "(";
+                    for(size_t i = 0; i < args.size(); i++)
+                    {
+                        if(i > 0)   m_of << ", ";
+                        m_of << args[i] << " arg" << i;
+                    }
+                    m_of << ");\n";
+
+                    m_of << ret_ty << " __rust_" << method.name << "(";
+                    for(size_t i = 0; i < args.size(); i++)
+                    {
+                        if(i > 0)   m_of << ", ";
+                        m_of << args[i] << " arg" << i;
+                    }
+                    m_of << ") {\n";
+                    m_of << "\treturn " << prefix << method.name << "(";
+                    for(size_t i = 0; i < args.size(); i++)
+                    {
+                        if(i > 0)   m_of << ", ";
+                        m_of << "arg" << i;
+                    }
+                    m_of << ");\n";
+                    m_of << "}\n";
+                }
             }
 
             m_of.flush();
@@ -1956,7 +2047,29 @@ namespace {
                 if(is_volatile) m_of << "__volatile__";
                 // TODO: Convert format string?
                 // TODO: Use a C-specific escaper here.
-                m_of << "(\"" << (is_intel ? ".syntax intel; " : "") << FmtEscaped(e.tpl) << (is_intel ? ".syntax att; " : "") << "\"";
+                m_of << "(\"" << (is_intel ? ".syntax intel; " : "");
+                for(auto it = e.tpl.begin(); it != e.tpl.end(); ++it)
+                {
+                    if( *it == '\n' )
+                        m_of << ";\\n";
+                    else if( *it == '"' )
+                        m_of << "\\\"";
+                    else if( *it == '\\' )
+                        m_of << "\\\\";
+                    else if( *it == '/' && *(it+1) == '/' )
+                    {
+                        while( it != e.tpl.end() || *it == '\n' )
+                            ++it;
+                        -- it;
+                    }
+                    else if( *it == '%' && *(it+1) == '%' )
+                        m_of << "%";
+                    else if( *it == '%' && !isdigit(*(it+1)) )
+                        m_of << "%%";
+                    else
+                        m_of << *it;
+                }
+                m_of << (is_intel ? ".syntax att; " : "") << "\"";
                 m_of << ": ";
                 for(unsigned int i = 0; i < e.outputs.size(); i ++ )
                 {
@@ -2645,6 +2758,28 @@ namespace {
                         ),
                     (UfcsKnown,
                         // TODO: Check if the return type is !
+                        const auto& tr = m_resolve.m_crate.get_trait_by_path(sp, pe.trait.m_path);
+                        const auto& fcn = tr.m_values.find(pe.item)->second.as_Function();
+                        const auto& rv_tpl = fcn.m_return;
+                        if( rv_tpl.m_data.is_Diverge() )
+                        {
+                            is_diverge |= true;
+                        }
+                        else if( const auto* te = rv_tpl.m_data.opt_Generic() )
+                        {
+                            (void)te;
+                            // TODO: Generic lookup
+                        }
+                        else if( const auto* te = rv_tpl.m_data.opt_Path() )
+                        {
+                            if( te->binding.is_Opaque() ) {
+                                // TODO: Associated type lookup
+                            }
+                        }
+                        else
+                        {
+                            // Not a ! type
+                        }
                         )
                     )
                     if(!is_diverge)
@@ -3221,13 +3356,13 @@ namespace {
             // Bit Twiddling
             // - CounT Leading Zeroes
             // - CounT Trailing Zeroes
-            else if( name == "ctlz" || name == "cttz" ) {
+            else if( name == "ctlz" || name == "ctlz_nonzero" || name == "cttz" ) {
                 auto emit_arg0 = [&](){ emit_param(e.args.at(0)); };
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = (";
                 if( ty == ::HIR::CoreType::U128 )
                 {
-                    if( name == "ctlz" ) {
+                    if( name == "ctlz" || name == "ctlz_nonzero" ) {
                         m_of << "intrinsic_ctlz_u128("; emit_param(e.args.at(0)); m_of << ")";
                     }
                     else {
@@ -3239,7 +3374,7 @@ namespace {
                 else if( ty == ::HIR::CoreType::U64 || (ty == ::HIR::CoreType::Usize /*&& target_is_64_bit */) )
                 {
                     emit_param(e.args.at(0)); m_of << " != 0 ? ";
-                    if( name == "ctlz" ) {
+                    if( name == "ctlz" || name == "ctlz_nonzero" ) {
                         m_of << "__builtin_clz64("; emit_arg0(); m_of << ")";
                     }
                     else {
@@ -3249,7 +3384,7 @@ namespace {
                 else
                 {
                     emit_param(e.args.at(0)); m_of << " != 0 ? ";
-                    if( name == "ctlz" ) {
+                    if( name == "ctlz" || name == "ctlz_nonzero" ) {
                         m_of << "__builtin_clz("; emit_param(e.args.at(0)); m_of << ")";
                     }
                     else {

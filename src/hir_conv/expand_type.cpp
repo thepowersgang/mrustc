@@ -296,7 +296,23 @@ public:
     }
     void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
     {
+        static Span sp;
         m_impl_type = &impl.m_type;
+
+        // HACK: Expand defaults for parameters in trait names here.
+        {
+            const auto& trait = m_crate.get_trait_by_path(sp, trait_path);
+            auto monomorph_cb = monomorphise_type_get_cb(sp, &impl.m_type, &impl.m_trait_args, nullptr);
+
+            while( impl.m_trait_args.m_types.size() < trait.m_params.m_types.size() )
+            {
+                const auto& def = trait.m_params.m_types[ impl.m_trait_args.m_types.size() ];
+                auto ty = monomorphise_type_with(sp, def.m_default, monomorph_cb);
+                DEBUG("Add default trait arg " << ty << " from " << def.m_default);
+                impl.m_trait_args.m_types.push_back( mv$(ty) );
+            }
+        }
+
         ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         m_impl_type = nullptr;
     }
