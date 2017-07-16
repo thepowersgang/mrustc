@@ -55,12 +55,12 @@ void Expand_TestHarness(::AST::Crate& crate)
 
         ::AST::ExprNode_StructLiteral::t_values   desc_vals;
         // `name: "foo",`
-        desc_vals.push_back( ::std::make_pair("name", NEWNODE(_CallPath,
+        desc_vals.push_back({ {}, "name", NEWNODE(_CallPath,
                         ::AST::Path("test", { ::AST::PathNode("StaticTestName") }),
                         ::make_vec1( NEWNODE(_String,  test.name) )
-                        ) ));
+                        ) });
         // `ignore: false,`
-        desc_vals.push_back( ::std::make_pair("ignore", NEWNODE(_Bool,  test.ignore)) );
+        desc_vals.push_back({ {}, "ignore", NEWNODE(_Bool,  test.ignore) });
         // `should_panic: ShouldPanic::No,`
         {
             ::AST::ExprNodeP    should_panic_val;
@@ -79,18 +79,18 @@ void Expand_TestHarness(::AST::Crate& crate)
                         );
                 break;
             }
-            desc_vals.push_back( ::std::make_pair("should_panic", mv$(should_panic_val)) );
+            desc_vals.push_back({ {}, "should_panic", mv$(should_panic_val) });
         }
         auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path("test", { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
 
         ::AST::ExprNode_StructLiteral::t_values   descandfn_vals;
-        descandfn_vals.push_back( ::std::make_pair(::std::string("desc"), mv$(desc_expr)) );
+        descandfn_vals.push_back({ {}, ::std::string("desc"), mv$(desc_expr) });
 
         auto test_type_var_name  = test.is_benchmark ? "StaticBenchFn" : "StaticTestFn";
-        descandfn_vals.push_back( ::std::make_pair(::std::string("testfn"), NEWNODE(_CallPath,
+        descandfn_vals.push_back({ {}, ::std::string("testfn"), NEWNODE(_CallPath,
                         ::AST::Path("test", { ::AST::PathNode(test_type_var_name) }),
                         ::make_vec1( NEWNODE(_NamedValue, AST::Path(test.path)) )
-                        ) ) );
+                        ) });
 
         test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path("test", { ::AST::PathNode("TestDescAndFn")}), nullptr, mv$(descandfn_vals) ) );
     }

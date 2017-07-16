@@ -657,7 +657,7 @@ struct CExpandExpr:
         for(auto& val : node.m_values)
         {
             // TODO: Attributes on struct literal items (#[cfg] only?)
-            this->visit_nodelete(node, val.second);
+            this->visit_nodelete(node, val.value);
         }
     }
     void visit(::AST::ExprNode_Array& node) override {
@@ -705,18 +705,18 @@ struct CExpandExpr:
             ::AST::ExprNode_StructLiteral::t_values values;
             if( node.m_left && node.m_right )
             {
-                values.push_back( ::std::make_pair( ::std::string("start"), mv$(node.m_left ) ) );
-                values.push_back( ::std::make_pair( ::std::string("end")  , mv$(node.m_right) ) );
+                values.push_back({ {}, "start", mv$(node.m_left ) });
+                values.push_back({ {}, "end"  , mv$(node.m_right) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_Range), nullptr, mv$(values)) );
             }
             else if( node.m_left )
             {
-                values.push_back( ::std::make_pair( ::std::string("start"), mv$(node.m_left ) ) );
+                values.push_back({ {}, "start", mv$(node.m_left ) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeFrom), nullptr, mv$(values)) );
             }
             else if( node.m_right )
             {
-                values.push_back( ::std::make_pair( ::std::string("end")  , mv$(node.m_right) ) );
+                values.push_back({ {}, "end"  , mv$(node.m_right) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeTo), nullptr, mv$(values)) );
             }
             else
@@ -734,14 +734,14 @@ struct CExpandExpr:
             if( node.m_left )
             {
                 ::AST::ExprNode_StructLiteral::t_values values;
-                values.push_back( ::std::make_pair( ::std::string("start"), mv$(node.m_left) ) );
-                values.push_back( ::std::make_pair( ::std::string("end")  , mv$(node.m_right) ) );
+                values.push_back({ {}, "start", mv$(node.m_left)  });
+                values.push_back({ {}, "end"  , mv$(node.m_right) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeInclusive_NonEmpty), nullptr, mv$(values)) );
             }
             else
             {
                 ::AST::ExprNode_StructLiteral::t_values values;
-                values.push_back( ::std::make_pair( ::std::string("end")  , mv$(node.m_right) ) );
+                values.push_back({ {}, "end",  mv$(node.m_right) });
                 replacement.reset( new ::AST::ExprNode_StructLiteral(mv$(path_RangeToInclusive), nullptr, mv$(values)) );
             }
             replacement->set_span( node.span() );

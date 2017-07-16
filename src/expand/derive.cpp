@@ -1286,10 +1286,10 @@ public:
             nodes.push_back( NEWNODE(NamedValue, AST::Path(ty_path)) );
             ),
         (Struct,
-            ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP> >    vals;
+            ::AST::ExprNode_StructLiteral::t_values vals;
             for( const auto& fld : e.ents )
             {
-                vals.push_back( ::std::make_pair(fld.m_name, this->clone_val_ref(core_name, this->field(fld.m_name)) ) );
+                vals.push_back({ {}, fld.m_name, this->clone_val_ref(core_name, this->field(fld.m_name)) });
             }
             nodes.push_back( NEWNODE(StructLiteral, ty_path, nullptr, mv$(vals)) );
             ),
@@ -1338,13 +1338,13 @@ public:
                 ),
             (Struct,
                 ::std::vector< ::std::pair<std::string, AST::Pattern> > pats_a;
-                ::std::vector< ::std::pair<std::string, AST::ExprNodeP> >   vals;
+                ::AST::ExprNode_StructLiteral::t_values vals;
 
                 for( const auto& fld : e.m_fields )
                 {
                     auto name_a = FMT("a" << fld.m_name);
                     pats_a.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_a, ::AST::PatternBinding::Type::REF)) );
-                    vals.push_back( ::std::make_pair( fld.m_name, this->clone_val_direct(core_name, NEWNODE(NamedValue, AST::Path(name_a))) ) );
+                    vals.push_back({ {}, fld.m_name, this->clone_val_direct(core_name, NEWNODE(NamedValue, AST::Path(name_a))) });
                 }
 
                 pat_a = AST::Pattern(AST::Pattern::TagStruct(), base_path + v.m_name, mv$(pats_a), true);
@@ -1445,10 +1445,10 @@ public:
             nodes.push_back( NEWNODE(NamedValue, AST::Path(ty_path)) );
             ),
         (Struct,
-            ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP> >    vals;
+            ::AST::ExprNode_StructLiteral::t_values vals;
             for( const auto& fld : e.ents )
             {
-                vals.push_back( ::std::make_pair(fld.m_name, this->default_call(core_name)) );
+                vals.push_back({ {}, fld.m_name, this->default_call(core_name) });
             }
             nodes.push_back( NEWNODE(StructLiteral, ty_path, nullptr, mv$(vals)) );
             ),
@@ -1936,14 +1936,14 @@ public:
         (Unit,
             ),
         (Struct,
-            ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP > >   vals;
+            ::AST::ExprNode_StructLiteral::t_values vals;
             unsigned int idx = 0;
             for( const auto& fld : e.ents )
             {
-                vals.push_back(::std::make_pair(fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath,
+                vals.push_back({ {}, fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath,
                     this->get_trait_path_Decoder() + "read_struct_field",
                     vec$( NEWNODE(NamedValue, AST::Path("d")), NEWNODE(String, fld.m_name), NEWNODE(Integer, idx, CORETYPE_UINT), this->dec_closure( sp, this->dec_val() ) )
-                    )) ));
+                    )) });
                 idx ++;
             }
             node_v = NEWNODE(StructLiteral, base_path, nullptr, mv$(vals));
@@ -2021,21 +2021,21 @@ public:
                 code = NEWNODE(CallPath, base_path + v.m_name, mv$(args));
                 ),
             (Struct,
-                ::std::vector< ::std::pair< ::std::string, AST::ExprNodeP > >   vals;
+                ::AST::ExprNode_StructLiteral::t_values vals;
 
                 unsigned int idx = 0;
                 for( const auto& fld : e.m_fields )
                 {
                     auto name_a = FMT("a" << fld.m_name);
 
-                    vals.push_back(::std::make_pair(fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_struct_variant_field",
+                    vals.push_back({ {}, fld.m_name, NEWNODE(UniOp, ::AST::ExprNode_UniOp::QMARK, NEWNODE(CallPath, this->get_trait_path_Decoder() + "read_enum_struct_variant_field",
                         vec$(
                             NEWNODE(NamedValue, AST::Path("d")),
                             NEWNODE(String, fld.m_name),
                             NEWNODE(Integer, idx, CORETYPE_UINT),
                             this->dec_closure(sp, this->dec_val())
                             )
-                        ) )));
+                        ) )});
                     idx ++;
                 }
 

@@ -518,15 +518,15 @@ struct LowerHIR_ExprNode_Visitor:
 
             m_rv.reset( new ::HIR::ExprNode_UnionLiteral( v.span(),
                 LowerHIR_GenericPath(v.span(), v.m_path),
-                v.m_values[0].first,
-                LowerHIR_ExprNode_Inner(*v.m_values[0].second)
+                v.m_values[0].name,
+                LowerHIR_ExprNode_Inner(*v.m_values[0].value)
                 ) );
         }
         else
         {
             ::HIR::ExprNode_StructLiteral::t_values values;
             for(const auto& val : v.m_values)
-                values.push_back( ::std::make_pair(val.first, LowerHIR_ExprNode_Inner(*val.second)) );
+                values.push_back( ::std::make_pair(val.name, LowerHIR_ExprNode_Inner(*val.value)) );
             m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
                 LowerHIR_GenericPath(v.span(), v.m_path),
                 ! v.m_path.binding().is_EnumVar(),

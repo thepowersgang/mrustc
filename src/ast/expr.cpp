@@ -286,7 +286,7 @@ NODE(ExprNode_StructLiteral, {
     os << m_path << " { ";
     for(const auto& v : m_values)
     {
-        os << v.first << ": " << *v.second << ", ";
+        os << v.name << ": " << *v.value << ", ";
     }
     if(m_base_value)
     {
@@ -297,7 +297,7 @@ NODE(ExprNode_StructLiteral, {
     ExprNode_StructLiteral::t_values    vals;
 
     for(const auto& v : m_values) {
-        vals.push_back( ::std::make_pair(v.first, v.second->clone()) );
+        vals.push_back({ v.attrs.clone(), v.name, v.value->clone() });
     }
 
     return NEWNODE(ExprNode_StructLiteral, AST::Path(m_path), OPT_CLONE(m_base_value), mv$(vals) );
@@ -550,7 +550,7 @@ NV(ExprNode_StructLiteral,
 {
     visit(node.m_base_value);
     for( auto& val : node.m_values )
-        visit(val.second);
+        visit(val.value);
 })
 NV(ExprNode_Array,
 {

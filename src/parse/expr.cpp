@@ -996,22 +996,30 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     // Braced structure literal
     // - A series of 0 or more pairs of <ident>: <expr>,
     // - '..' <expr>
-    ::std::vector< ::std::pair< ::std::string, ::std::unique_ptr<AST::ExprNode>> >  items;
-    while( GET_TOK(tok, lex) == TOK_IDENT )
+    ::AST::ExprNode_StructLiteral::t_values items;
+    while( GET_TOK(tok, lex) == TOK_IDENT || tok.type() == TOK_ATTR_OPEN )
     {
+        ::AST::MetaItems    attrs;
+        while( tok.type() == TOK_ATTR_OPEN )
+        {
+            attrs.push_back( Parse_MetaItem(lex) );
+            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_IDENT);
         auto name = mv$(tok.str());
 
+        ExprNodeP   val;
         if( lex.lookahead(0) != TOK_COLON )
         {
-            ExprNodeP   val = NEWNODE( AST::ExprNode_NamedValue, ::AST::Path(name) );
-            items.push_back( ::std::make_pair(::std::move(name), ::std::move(val)) );
+            val = NEWNODE( AST::ExprNode_NamedValue, ::AST::Path(name) );
         }
         else
         {
             GET_CHECK_TOK(tok, lex, TOK_COLON);
-            ExprNodeP   val = Parse_Stmt(lex);
-            items.push_back( ::std::make_pair(::std::move(name), ::std::move(val)) );
+            val = Parse_Stmt(lex);
         }
+        items.push_back(::AST::ExprNode_StructLiteral::Ent { mv$(attrs), mv$(name), mv$(val) });
 
         if( GET_TOK(tok,lex) == TOK_BRACE_CLOSE )
             break;

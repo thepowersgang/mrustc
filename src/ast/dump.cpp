@@ -404,8 +404,9 @@ public:
         inc_indent();
         for( const auto& i : n.m_values )
         {
-            m_os << indent() << i.first << ": ";
-            AST::NodeVisitor::visit(i.second);
+            // TODO: Attributes
+            m_os << indent() << i.name << ": ";
+            AST::NodeVisitor::visit(i.value);
             m_os << ",\n";
         }
         if( n.m_base_value.get() )

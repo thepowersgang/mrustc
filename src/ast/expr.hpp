@@ -417,7 +417,12 @@ struct ExprNode_Closure:
 struct ExprNode_StructLiteral:
     public ExprNode
 {
-    typedef ::std::vector< ::std::pair< ::std::string, unique_ptr<ExprNode> > > t_values;
+    struct Ent {
+        MetaItems   attrs;
+        ::std::string   name;
+        unique_ptr<ExprNode>    value;
+    };
+    typedef ::std::vector<Ent> t_values;
     Path    m_path;
     unique_ptr<ExprNode>    m_base_value;
     t_values    m_values;
