@@ -198,6 +198,10 @@ output/libbuild_helper.hir: rustc-nightly/src/build_helper/lib.rs $(BIN) output/
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ --crate-type rlib --crate-name build_helper $(RUST_FLAGS) $(PIPECMD)
 
+output/libgetopts.hir: rustc-nightly/src/vendor/getopts/src/lib.rs $(BIN) output/libstd.hir
+	@echo "--- [MRUSTC] $@"
+	$(BIN) $< -o $@ --crate-type rlib --crate-name getopts $(RUST_FLAGS) $(PIPECMD)
+
 crates.io/%/src/lib.rs: crates.io/%.tar.gz
 	tar -xf $< -C crates.io/
 	@test -e $@ && touch $@
@@ -784,6 +788,9 @@ DISABLED_TESTS += run-pass/deriving-copyclone
 # - BUG: Unknown
 DISABLED_TESTS += run-pass/process-spawn-with-unicode-params	# Bad path for process spawn
 DISABLED_TESTS += run-pass/u128	# u128 not very good, unknown where error is
+# - TODO:
+DISABLED_TESTS += run-pass/align-struct	# Literals in attributes
+DISABLED_TESTS += run-pass/issue-42747	# Inifinite loop in _gcc_
 
 DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
 rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass) $(call DEF_RUST_TESTS,run-pass/union))
