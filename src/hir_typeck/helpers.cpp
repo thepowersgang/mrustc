@@ -2843,38 +2843,26 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
 }
 
 namespace {
-    bool trait_contains_method_(const ::HIR::Trait& trait_ptr, const ::std::string& name, TraitResolution::AllowedReceivers ar)
+    bool trait_contains_method_inner(const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::Function::Receiver& receiver)
     {
         auto it = trait_ptr.m_values.find(name);
         if( it != trait_ptr.m_values.end() )
         {
             if( it->second.is_Function() ) {
                 const auto& v = it->second.as_Function();
-                switch(v.m_receiver)
-                {
-                case ::HIR::Function::Receiver::Free:
-                    break;
-                case ::HIR::Function::Receiver::Value:
-                    if( ar != TraitResolution::AllowedReceivers::All && ar != TraitResolution::AllowedReceivers::Value )
-                        break;
-                    if(0)
-                case ::HIR::Function::Receiver::Box:
-                    if( ar != TraitResolution::AllowedReceivers::Box )
-                        break;
-                default:
-                    return true;
-                }
+                receiver = v.m_receiver;
+                return true;
             }
         }
         return false;
     }
 }
 
-bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, AllowedReceivers ar,  ::HIR::GenericPath& out_path) const
+bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name,  ::HIR::Function::Receiver& out_receiver, ::HIR::GenericPath& out_path) const
 {
-    TRACE_FUNCTION_FR("trait_path=" << trait_path << ",name=" << name << ",ar=" << ar, out_path);
+    TRACE_FUNCTION_FR("trait_path=" << trait_path << ",name=" << name, out_path);
 
-    if( trait_contains_method_(trait_ptr, name, ar) )
+    if( trait_contains_method_inner(trait_ptr, name, out_receiver) )
     {
         out_path = trait_path.clone();
         return true;
@@ -2883,7 +2871,7 @@ bool TraitResolution::trait_contains_method(const Span& sp, const ::HIR::Generic
     auto monomorph_cb = monomorphise_type_get_cb(sp, &self, &trait_path.m_params, nullptr);
     for(const auto& st : trait_ptr.m_all_parent_traits)
     {
-        if( trait_contains_method_(*st.m_trait_ptr, name, ar) )
+        if( trait_contains_method_inner(*st.m_trait_ptr, name, out_receiver) )
         {
             out_path.m_path = st.m_path.m_path;
             out_path.m_params = monomorphise_path_params_with(sp, st.m_path.m_params, monomorph_cb, false);
@@ -3387,143 +3375,86 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
 }
 unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path, AutoderefBorrow& borrow) const
 {
+    TRACE_FUNCTION_F("{" << top_ty << "}." << method_name);
     unsigned int deref_count = 0;
     ::HIR::TypeRef  tmp_type;   // Temporary type used for handling Deref
     const auto& top_ty_r = this->m_ivars.get_type(top_ty);
     const auto* current_ty = &top_ty_r;
 
-    bool unconditional_allow_move = true;
 
-    // If the top is a borrow, search dereferenced first.
-    TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Borrow, e,
-        if( e.type == ::HIR::BorrowType::Owned ) {
-            // Can move, because we have &move
-        }
-        // TODO: What if this returns Fuzzy?
-        else if( this->type_is_copy(sp, *e.inner) == ::HIR::Compare::Equal ) {
-            // Can move, because it's Copy
-        }
-        else {
-            unconditional_allow_move = false;
-        }
-        current_ty = &*e.inner;
-        deref_count += 1;
-    )
-
-    // TODO: This appears to dereference a &mut to call a `self: Self` method, where it should use the trait impl on &mut Self.
-    // - Shouldn't deref to get a by-value receiver.// unless it's via a &move.
-    bool can_move = unconditional_allow_move;
-    do {
-        // TODO: Update `unconditional_allow_move` based on the current type.
+    // Correct algorithm:
+    // - Find any available method with a receiver type of `T`
+    // - If no, try &T
+    // - If no, try &mut T
+    // - If no, try &move T
+    // - If no, dereference T and try again
+    auto cur_access = MethodAccess::Move; // Assume that the input value is movable
+    do
+    {
         const auto& ty = this->m_ivars.get_type(*current_ty);
-        if( type_is_unbounded_infer(ty) ) {
-            DEBUG("- Ivar, pausing");
+        auto should_pause = [](const auto& ty)->bool {
+            if( type_is_unbounded_infer(ty) ) {
+                DEBUG("- Ivar" << ty << ", pausing");
+                return true;
+            }
+            if(ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound()) {
+                DEBUG("- Unbound type path " << ty << ", pausing");
+                return true;
+            }
+            return false;
+            };
+        if( should_pause(ty) ) {
             return ~0u;
         }
-        if(ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound()) {
-            DEBUG("- Unbound type path " << ty << ", pausing");
+        if( ty.m_data.is_Borrow() && should_pause( this->m_ivars.get_type(*ty.m_data.as_Borrow().inner) ) ) {
             return ~0u;
         }
-        DEBUG("ty = " << ty);
+        // TODO: Pause on Box<_>
+        DEBUG(deref_count << ": " << ty);
 
-        auto allowed_receivers = (can_move ? AllowedReceivers::All : AllowedReceivers::AnyBorrow);
-        if( this->find_method(sp, traits, ivars, ty, method_name,  allowed_receivers, fcn_path) ) {
-            DEBUG("FOUND " << deref_count << ", fcn_path = " << fcn_path);
+        // Non-referenced
+        if( this->find_method(sp, traits, ivars, ty, method_name,  cur_access, fcn_path) )
+        {
             borrow = AutoderefBorrow::None;
             return deref_count;
         }
 
-        // Handle `self: Box<Self>` methods by detecting m_lang_Box and searchig for box receiver methods
-        // - Only possible if we can move the receiver
-        if( allowed_receivers == AllowedReceivers::All )
-        {
-            if( const auto* typ = this->type_is_owned_box(sp, ty) )
-            {
-                if( ! type_is_unbounded_infer(*typ) )
-                {
-                    // Search for methods on the inner type with Receiver::Box
-                    if( this->find_method(sp, traits, ivars, *typ, method_name, AllowedReceivers::Box, fcn_path) ) {
-                        DEBUG("FOUND Box, fcn_path = " << fcn_path);
-                        borrow = AutoderefBorrow::None;
-                        return deref_count+1;
-                    }
-                }
-            }
-        }
-
-
+        // Auto-ref
         auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone());
-        if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-            DEBUG("FOUND &*" << deref_count << ", fcn_path = " << fcn_path);
+        if( this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, fcn_path) )
+        {
+            DEBUG("FOUND & *{" << deref_count << "}, fcn_path = " << fcn_path);
             borrow = AutoderefBorrow::Shared;
             return deref_count;
         }
         borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Unique;
-        if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-            DEBUG("FOUND &mut*" << deref_count << ", fcn_path = " << fcn_path);
+        if( cur_access >= MethodAccess::Unique && this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, fcn_path) )
+        {
+            DEBUG("FOUND &mut *{" << deref_count << "}, fcn_path = " << fcn_path);
             borrow = AutoderefBorrow::Unique;
             return deref_count;
         }
         borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
-        if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-            DEBUG("FOUND &mut*" << deref_count << ", fcn_path = " << fcn_path);
+        if( cur_access >= MethodAccess::Move && this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, fcn_path) )
+        {
+            DEBUG("FOUND &move *{" << deref_count << "}, fcn_path = " << fcn_path);
             borrow = AutoderefBorrow::Owned;
             return deref_count;
         }
 
-        // 3. Dereference and try again
+        // Auto-dereference
         deref_count += 1;
         if( const auto* typ = this->type_is_owned_box(sp, ty) )
         {
+            // `cur_access` can stay as-is (Box can be moved out of)
             current_ty = typ;
         }
         else
         {
+            // TODO: Update `cur_access` based on the avaliable Deref impls
             current_ty = this->autoderef(sp, ty,  tmp_type);
-            if( current_ty )
-                can_move = this->type_is_copy(sp, *current_ty) == ::HIR::Compare::Equal;
         }
-    } while( current_ty );
-
-    // If the top is a borrow, search for methods on &/&mut
-    TU_IFLET(::HIR::TypeRef::Data, top_ty_r.m_data, Borrow, e,
-        const auto& ty = top_ty_r;
-
-        if( find_method(sp, traits, ivars, ty, method_name, AllowedReceivers::All, fcn_path) ) {
-            DEBUG("FOUND " << 0 << ", fcn_path = " << fcn_path);
-            borrow = AutoderefBorrow::None;
-            return 0;
-        }
-    )
-
-    // If there are ivars within the type, don't error (yet)
-    if( this->m_ivars.type_contains_ivars(top_ty) )
-    {
-        DEBUG("- Contains ivars, pausing");
-        return ~0u;
-    }
-
-    // Insert a single reference and try again (only allowing by-value methods), returning a magic value (e.g. ~1u)
-    // - Required for calling `(self[..]: str).into_searcher(haystack)` - Which invokes `<&str as Pattern>::into_searcher(&self[..], haystack)`
-    // - Have to do several tries, each with different borrow classes.
-    auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, top_ty.clone());
-    if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-        DEBUG("FOUND &, fcn_path = " << fcn_path);
-        borrow = AutoderefBorrow::Shared;
-        return 0;
-    }
-    borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Unique;
-    if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-        DEBUG("FOUND &mut, fcn_path = " << fcn_path);
-        borrow = AutoderefBorrow::Unique;
-        return 0;
-    }
-    borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
-    if( find_method(sp, traits, ivars, borrow_ty, method_name,  AllowedReceivers::Value, fcn_path) ) {
-        DEBUG("FOUND &move, fcn_path = " << fcn_path);
-        borrow = AutoderefBorrow::Owned;
-        return 0;
-    }
+    } while(current_ty);
 
     // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
     //this->m_ivars.dump();
@@ -3536,20 +3467,101 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     {
     case TraitResolution::AllowedReceivers::All: os << "All";    break;
     case TraitResolution::AllowedReceivers::AnyBorrow:   os << "AnyBorrow";  break;
+    case TraitResolution::AllowedReceivers::SharedBorrow:os << "SharedBorrow";  break;
     case TraitResolution::AllowedReceivers::Value:   os << "Value";  break;
     case TraitResolution::AllowedReceivers::Box: os << "Box";    break;
     }
     return os;
 }
+::std::ostream& operator<<(::std::ostream& os, const TraitResolution::MethodAccess& x)
+{
+    switch(x)
+    {
+    case TraitResolution::MethodAccess::Shared: os << "Shared"; break;
+    case TraitResolution::MethodAccess::Unique: os << "Unique"; break;
+    case TraitResolution::MethodAccess::Move:   os << "Move";   break;
+    }
+    return os;
+}
+
+// Checks that a given real receiver type matches a desired receiver type (with the correct access)
+// Returns the pointer to the `Self` type, or nullptr if there's a mismatch
+const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, ::HIR::Function::Receiver receiver, const ::HIR::TypeRef& ty, TraitResolution::MethodAccess access) const
+{
+    switch(receiver)
+    {
+    case ::HIR::Function::Receiver::Free:
+        // Free functions are never usable
+        return nullptr;
+    case ::HIR::Function::Receiver::Value:
+        if( access >= TraitResolution::MethodAccess::Move )
+        {
+            return &ty;
+        }
+        break;
+    case ::HIR::Function::Receiver::BorrowOwned:
+        if( !ty.m_data.is_Borrow() )
+            ;
+        else if( ty.m_data.as_Borrow().type != ::HIR::BorrowType::Owned )
+            ;
+        else if( access < TraitResolution::MethodAccess::Move )
+            ;
+        else
+        {
+            return &this->m_ivars.get_type(*ty.m_data.as_Borrow().inner);
+        }
+        break;
+    case ::HIR::Function::Receiver::BorrowUnique:
+        if( !ty.m_data.is_Borrow() )
+            ;
+        else if( ty.m_data.as_Borrow().type != ::HIR::BorrowType::Unique )
+            ;
+        else if( access < TraitResolution::MethodAccess::Unique )
+            ;
+        else
+        {
+            return &this->m_ivars.get_type(*ty.m_data.as_Borrow().inner);
+        }
+        break;
+    case ::HIR::Function::Receiver::BorrowShared:
+        if( !ty.m_data.is_Borrow() )
+            ;
+        else if( ty.m_data.as_Borrow().type != ::HIR::BorrowType::Shared )
+            ;
+        else if( access < TraitResolution::MethodAccess::Shared )
+            ;
+        else
+        {
+            return &this->m_ivars.get_type(*ty.m_data.as_Borrow().inner);
+        }
+        break;
+    case ::HIR::Function::Receiver::Box:
+        if(const auto* ity = this->type_is_owned_box(sp, ty))
+        {
+            if( access < TraitResolution::MethodAccess::Move )
+            {
+            }
+            else
+            {
+                return &this->m_ivars.get_type(*ity);
+            }
+        }
+        break;
+    }
+    return nullptr;
+}
 
 bool TraitResolution::find_method(
     const Span& sp,
     const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars,
-    const ::HIR::TypeRef& ty, const ::std::string& method_name, AllowedReceivers ar,
+    const ::HIR::TypeRef& ty, const ::std::string& method_name, MethodAccess access,
     /* Out -> */::HIR::Path& fcn_path) const
 {
-    TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name << ", ar=" << ar);
+    TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name << ", access=" << access);
+
     // 1. Search generic bounds for a match
+    // - If there is a bound on the receiver, then that bound is usable no-matter what
+    DEBUG("> Bounds");
     const ::HIR::GenericParams* v[2] = { m_item_params, m_impl_params };
     for(auto p : v)
     {
@@ -3557,69 +3569,90 @@ bool TraitResolution::find_method(
         for(const auto& b : p->m_bounds)
         {
             TU_IFLET(::HIR::GenericBound, b, TraitBound, e,
-                // TODO: Do a fuzzy match here?
-                if( e.type != ty )
-                    continue ;
 
-                // - Bound's type matches, check if the bounded trait has the method we're searching for
-                DEBUG("Bound `" << e.type << " : " << e.trait.m_path << "` - Type match " << ty);
-                ::HIR::GenericPath final_trait_path;
                 assert(e.trait.m_trait_ptr);
-                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, ty, method_name, ar,  final_trait_path) ) {
+                // 1. Find the named method in the trait.
+                ::HIR::GenericPath final_trait_path;
+                ::HIR::Function::Receiver   receiver;
+                if( !this->trait_contains_method(sp, e.trait.m_path, *e.trait.m_trait_ptr, e.type, method_name,  receiver, final_trait_path) ) {
                     DEBUG("- Method '" << method_name << "' missing");
                     continue ;
                 }
                 DEBUG("- Found trait " << final_trait_path);
-                // TODO: Re-monomorphise final trait using `ty`?
-                // - Could collide with legitimate uses of `Self`
 
-                // Found the method, return the UFCS path for it
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                    box$( ty.clone() ),
-                    mv$(final_trait_path),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+                // 2. Compare the receiver of the above to this type and the bound.
+                if(const auto* self_ty = check_method_receiver(sp, receiver, ty, access))
+                {
+                    // TODO: Do a fuzzy match here?
+                    if( *self_ty == e.type )
+                    {
+                        // TODO: Re-monomorphise final trait using `ty`?
+                        // - Could collide with legitimate uses of `Self`
+
+                        // Found the method, return the UFCS path for it
+                        fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                            box$( self_ty->clone() ),
+                            mv$(final_trait_path),
+                            method_name,
+                            {}
+                            }) );
+                        return true;
+                    }
+                    else
+                    {
+                        DEBUG("> Type mismatch - " << *self_ty << " != " << e.type);
+                    }
+                }
+                else
+                {
+                    DEBUG("> Receiver mismatch");
+                }
             )
         }
     }
 
-    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, e,
-        // TODO: This _Should_ be set, but almost needs a pass?
-        //assert( e.m_trait.m_trait_ptr );
-        //const auto& trait = *e.m_trait.m_trait_ptr;
+    auto get_inner_type = [this,sp](const ::HIR::TypeRef& ty, ::std::function<bool(const ::HIR::TypeRef&)> cb)->const ::HIR::TypeRef* {
+        if( cb(ty) ) {
+            return &ty;
+        }
+        else if( ty.m_data.is_Borrow() ) {
+            const auto& ity = this->m_ivars.get_type(*ty.m_data.as_Borrow().inner);
+            if( cb(ity) ) {
+                return &ity;
+            }
+            else {
+                return nullptr;
+            }
+        }
+        else {
+            auto tp = this->type_is_owned_box(sp, ty);
+            if( tp && cb(*tp) ) {
+                return tp;
+            }
+            else {
+                return nullptr;
+            }
+        }
+        };
+
+    DEBUG("> Special cases");
+    // 2. If the type is a trait object, search for methods on that trait object
+    // - NOTE: This isnt mutually exclusive with the below set (an inherent impl of `(Trait)` is valid)
+    if( const auto* ityp = get_inner_type(ty, [](const auto& t){ return t.m_data.is_TraitObject(); }) )
+    {
+        const auto& e = ityp->m_data.as_TraitObject();
         const auto& trait = this->m_crate.get_trait_by_path(sp, e.m_trait.m_path.m_path);
 
-
         ::HIR::GenericPath final_trait_path;
-        if( this->trait_contains_method(sp, e.m_trait.m_path, trait, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar,  final_trait_path) )
+        ::HIR::Function::Receiver   receiver;
+        if( this->trait_contains_method(sp, e.m_trait.m_path, trait, ::HIR::TypeRef("Self", 0xFFFF), method_name,  receiver, final_trait_path) )
         {
             DEBUG("- Found trait " << final_trait_path);
-
-            fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
-                box$( ty.clone() ),
-                mv$(final_trait_path),
-                method_name,
-                {}
-                }) );
-            return true;
-        }
-    )
-
-    // Erased type - `impl Trait`
-    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, ErasedType, e,
-        for(const auto& trait_path : e.m_traits)
-        {
-            const auto& trait = this->m_crate.get_trait_by_path(sp, trait_path.m_path.m_path);
-
-            ::HIR::GenericPath final_trait_path;
-            if( this->trait_contains_method(sp, trait_path.m_path, trait, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar,  final_trait_path) )
+            // - If the receiver is valid, then it's correct (no need to check the type again)
+            if(const auto* self_ty_p = check_method_receiver(sp, receiver, ty, access))
             {
-                DEBUG("- Found trait " << final_trait_path);
-
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
-                    box$( ty.clone() ),
+                    box$( self_ty_p->clone() ),
                     mv$(final_trait_path),
                     method_name,
                     {}
@@ -3627,15 +3660,44 @@ bool TraitResolution::find_method(
                 return true;
             }
         }
-    )
+    }
 
-    // Trait object - `(Trait)`
-    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
-        // No match, keep trying.
-    )
-    else if( ty.m_data.is_Path() && ty.m_data.as_Path().path.m_data.is_UfcsKnown() )
+    // 3. Mutually exclusive searches
+    // - Erased type - `impl Trait`
+    if( const auto* ityp = get_inner_type(ty, [](const auto& t){ return t.m_data.is_ErasedType(); }) )
     {
-        const auto& e = ty.m_data.as_Path().path.m_data.as_UfcsKnown();
+        const auto& e = ityp->m_data.as_ErasedType();
+        for(const auto& trait_path : e.m_traits)
+        {
+            const auto& trait = this->m_crate.get_trait_by_path(sp, trait_path.m_path.m_path);
+
+            ::HIR::GenericPath final_trait_path;
+            ::HIR::Function::Receiver   receiver;
+            if( this->trait_contains_method(sp, trait_path.m_path, trait, ::HIR::TypeRef("Self", 0xFFFF), method_name,  receiver, final_trait_path) )
+            {
+                DEBUG("- Found trait " << final_trait_path);
+
+                if(const auto* self_ty_p = check_method_receiver(sp, receiver, ty, access))
+                {
+                    fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
+                        box$( self_ty_p->clone() ),
+                        mv$(final_trait_path),
+                        method_name,
+                        {}
+                        }) );
+                    return true;
+                }
+            }
+        }
+    }
+    // Generics: Nothing except the bounds (Which have already been checked)
+    else if( get_inner_type(ty, [](const auto& t){ return t.m_data.is_Generic(); }) )
+    {
+    }
+    // UfcsKnown paths: Can have trait bounds added by the definer
+    else if( const auto* ityp = get_inner_type(ty, [](const auto& t){ return t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown(); }) )
+    {
+        const auto& e = ityp->m_data.as_Path().path.m_data.as_UfcsKnown();
         DEBUG("UfcsKnown - Search associated type bounds in trait - " << e.trait);
 
         // UFCS known - Assuming that it's reached the maximum resolvable level (i.e. a type within is generic), search for trait bounds on the type
@@ -3667,23 +3729,27 @@ bool TraitResolution::find_method(
         {
             ASSERT_BUG(sp, bound.m_trait_ptr, "Pointer to trait " << bound.m_path << " not set in " << e.trait.m_path);
             ::HIR::GenericPath final_trait_path;
-            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar,  final_trait_path) )
+            ::HIR::Function::Receiver   receiver;
+            if( !this->trait_contains_method(sp, bound.m_path, *bound.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name,  receiver, final_trait_path) )
                 continue ;
             DEBUG("- Found trait " << final_trait_path);
 
-            if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
-                final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
-                DEBUG("- Monomorph to " << final_trait_path);
-            }
+            if(const auto* self_ty_p = check_method_receiver(sp, receiver, ty, access))
+            {
+                if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
+                    final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
+                    DEBUG("- Monomorph to " << final_trait_path);
+                }
 
-            // Found the method, return the UFCS path for it
-            fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                box$( ty.clone() ),
-                mv$(final_trait_path),
-                method_name,
-                {}
-                }) );
-            return true;
+                // Found the method, return the UFCS path for it
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                    box$( self_ty_p->clone() ),
+                    mv$(final_trait_path),
+                    method_name,
+                    {}
+                    }) );
+                return true;
+            }
         }
 
         // Search `<Self as Trait>::Name` bounds on the trait itself
@@ -3703,101 +3769,96 @@ bool TraitResolution::find_method(
             if( be_type_pe.item != e.item )
                 continue ;
 
+            // Found such a bound, now to test if it is useful
+
             ::HIR::GenericPath final_trait_path;
-            if( !this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name, ar,  final_trait_path) )
+            ::HIR::Function::Receiver   receiver;
+            if( !this->trait_contains_method(sp, be.trait.m_path, *be.trait.m_trait_ptr, ::HIR::TypeRef("Self", 0xFFFF), method_name,  receiver, final_trait_path) )
                 continue ;
             DEBUG("- Found trait " << final_trait_path);
 
-            if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
-                final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
-                DEBUG("- Monomorph to " << final_trait_path);
-            }
+            if(const auto* self_ty_p = check_method_receiver(sp, receiver, ty, access))
+            {
+                if( monomorphise_pathparams_needed(final_trait_path.m_params) ) {
+                    final_trait_path.m_params = monomorphise_path_params_with(sp, final_trait_path.m_params, monomorph_cb, false);
+                    DEBUG("- Monomorph to " << final_trait_path);
+                }
 
-            // Found the method, return the UFCS path for it
-            fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                box$( ty.clone() ),
-                mv$(final_trait_path),
-                method_name,
-                {}
-                }) );
-            return true;
+                // Found the method, return the UFCS path for it
+                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                    box$( self_ty_p->clone() ),
+                    mv$(final_trait_path),
+                    method_name,
+                    {}
+                    }) );
+                return true;
+            }
         }
     }
-    else {
-        // 2. Search for inherent methods
-        bool rv = m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), [&](const auto& impl) {
+    else
+    {
+    }
+
+    // 4. Search for inherent methods
+    DEBUG("> Inherent methods");
+    {
+        const ::HIR::TypeRef*   cur_check_ty = &ty;
+        auto find_type_impls_cb = [&](const auto& impl) {
             // TODO: Should this take into account the actual suitability of this method? Or just that the name exists?
             // - If this impl matches fuzzily, it may not actually match
             auto it = impl.m_methods.find( method_name );
             if( it == impl.m_methods.end() )
                 return false ;
             const ::HIR::Function&  fcn = it->second.data;
-            switch(fcn.m_receiver)
+            if( const auto* self_ty_p = this->check_method_receiver(sp, fcn.m_receiver, ty, access) )
             {
-            case ::HIR::Function::Receiver::Free:
-                break;
-            case ::HIR::Function::Receiver::Value:
-                if( ar == AllowedReceivers::AnyBorrow )
-                    break;
-                if( 0 )
-            case ::HIR::Function::Receiver::Box:
-                if( ar != AllowedReceivers::Box )
-                    break;
-                if(0)
-            default:
-                if( ar == AllowedReceivers::Value || ar == AllowedReceivers::Box )
-                    break;
-                DEBUG("Matching `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "`"/* << " - " << top_ty*/);
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
-                    box$(ty.clone()),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+                DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
+                if( *self_ty_p == *cur_check_ty )
+                {
+                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
+                        box$(self_ty_p->clone()),
+                        method_name,
+                        {}
+                        }) );
+                    return true;
+                }
             }
+            DEBUG("[find_method] Method was present in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` but receiver mismatched");
             return false;
-            });
-        if( rv ) {
+            };
+        if( m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
+        {
+            return true;
+        }
+        cur_check_ty = (ty.m_data.is_Borrow() ? &*ty.m_data.as_Borrow().inner : nullptr);
+        if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
+        {
+            return true;
+        }
+        cur_check_ty = this->type_is_owned_box(sp, ty);
+        if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
+        {
             return true;
         }
     }
 
-    // 3. Search for trait methods (using currently in-scope traits)
+    // 5. Search for trait methods (using currently in-scope traits)
+    DEBUG("> Trait methods");
     for(const auto& trait_ref : ::reverse(traits))
     {
         if( trait_ref.first == nullptr )
             break;
-        DEBUG("Search " << *trait_ref.first);
 
-        //::HIR::GenericPath final_trait_path;
-        //if( !this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, method_name,  final_trait_path) )
-        //    continue ;
-        //DEBUG("- Found trait " << final_trait_path);
+        ::HIR::GenericPath final_trait_path;
+        ::HIR::Function::Receiver   receiver;
+        if( !this->trait_contains_method(sp, *trait_ref.first, *trait_ref.second, ::HIR::TypeRef("Self", 0xFFFF), method_name,  receiver, final_trait_path) )
+            continue ;
+        DEBUG("- Found trait " << final_trait_path);
 
-        // TODO: Shouldn't this use trait_contains_method?
-        // TODO: Search supertraits too
-        auto it = trait_ref.second->m_values.find(method_name);
-        if( it == trait_ref.second->m_values.end() )
-            continue ;
-        if( !it->second.is_Function() )
-            continue ;
-        const auto& v = it->second.as_Function();
-        switch(v.m_receiver)
+        if( const auto* self_ty_p = check_method_receiver(sp, receiver, ty, access) )
         {
-        case ::HIR::Function::Receiver::Free:
-            break;
-        case ::HIR::Function::Receiver::Value:
-            if( ar == AllowedReceivers::AnyBorrow )
-                break;
-            if(0)
-        case ::HIR::Function::Receiver::Box:
-            if( ar != AllowedReceivers::Box )
-                break;
-            if(0)
-        default:
-            if( ar == AllowedReceivers::Value || ar == AllowedReceivers::Box || (v.m_receiver == ::HIR::Function::Receiver::Box && ar != AllowedReceivers::AnyBorrow) )
-                break;
-            DEBUG("Search for impl of " << *trait_ref.first);
+            const auto& self_ty = *self_ty_p;
+            DEBUG("Search for impl of " << *trait_ref.first << " for " << self_ty);
 
             // Use the set of ivars we were given to populate the trait parameters
             unsigned int n_params = trait_ref.second->m_params.m_types.size();
@@ -3809,18 +3870,19 @@ bool TraitResolution::find_method(
                 ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
             }
 
-            //if( find_trait_impls(sp, *trait_ref.first, trait_params, ty,  [](auto , auto ) { return true; }) ) {
-            if( find_trait_impls_crate(sp, *trait_ref.first, &trait_params, ty,  [](auto , auto ) { return true; }) ) {
-                DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << ty << " ("<<m_ivars.fmt_type(ty)<<")");
+            // TODO: Re-monomorphise the trait path!
+
+            //if( find_trait_impls(sp, *trait_ref.first, trait_params, self_ty,  [](auto , auto ) { return true; }) ) {
+            if( find_trait_impls_crate(sp, *trait_ref.first, &trait_params, self_ty,  [](auto , auto ) { return true; }) ) {
+                DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << self_ty << " ("<<m_ivars.fmt_type(self_ty)<<")");
                 fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                    box$( ty.clone() ),
+                    box$( self_ty.clone() ),
                     ::HIR::GenericPath( *trait_ref.first, mv$(trait_params) ),
                     method_name,
                     {}
                     }) );
                 return true;
             }
-            break;
         }
     }
 

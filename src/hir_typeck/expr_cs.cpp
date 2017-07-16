@@ -2630,53 +2630,6 @@ namespace {
                 }
                 else
                 {
-                    auto receiver_class = node.m_cache.m_fcn->m_receiver;
-                    ::HIR::BorrowType   bt;
-
-                    auto& node_ptr = node.m_value;
-                    auto span = node_ptr->span();
-                    switch(receiver_class)
-                    {
-                    case ::HIR::Function::Receiver::Free:
-                        BUG(sp, "Method call resolved to a free function - " << node.m_method_path);
-                    case ::HIR::Function::Receiver::Value:
-                        // by value - nothing needs to be added
-                        break;
-                    case ::HIR::Function::Receiver::BorrowShared: bt = ::HIR::BorrowType::Shared; if(0)
-                    case ::HIR::Function::Receiver::BorrowUnique: bt = ::HIR::BorrowType::Unique; if(0)
-                    case ::HIR::Function::Receiver::BorrowOwned:  bt = ::HIR::BorrowType::Owned; {
-                        // - Add correct borrow operation
-                        auto ty = ::HIR::TypeRef::new_borrow(bt, node_ptr->m_res_type.clone());
-                        DEBUG("- Ref " << &*node_ptr << " -> " << ty);
-                        node_ptr = NEWNODE(mv$(ty), span, _Borrow,  bt, mv$(node_ptr) );
-                        } break;
-                    case ::HIR::Function::Receiver::Box: {
-                        // - Undo a deref (there must have been one?) and ensure that it leads to a Box<Self>
-                        // NOTE: Doesn't check deref_count, because this could have been calld as `(*somebox).method()`
-                        auto* deref_ptr = dynamic_cast< ::HIR::ExprNode_Deref*>(&*node_ptr);
-                        ASSERT_BUG(sp, deref_ptr != nullptr, "Calling Box receiver method but no deref happened");
-                        node_ptr = mv$(deref_ptr->m_value);
-                        DEBUG("- Undo deref " << deref_ptr << " -> " << node_ptr->m_res_type);
-
-                        // Triple-check that the input to the above Deref was a Box (lang="owned_box")
-                        const auto& box_ty = this->context.get_type(node_ptr->m_res_type);
-                        TU_IFLET(::HIR::TypeRef::Data, box_ty.m_data, Path, e,
-                            TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
-                                if( pe.m_path == context.m_lang_Box ) {
-                                }
-                                else {
-                                    ERROR(sp, E0000, "Calling Box receiver method on non-box - " << box_ty);
-                                }
-                            )
-                            else {
-                                ERROR(sp, E0000, "Calling Box receiver method on non-box - " << box_ty);
-                            }
-                        )
-                        else {
-                            ERROR(sp, E0000, "Calling Box receiver method on non-box - " << box_ty);
-                        }
-                        } break;
-                    }
                 }
 
                 // Equate the type for `self` (to ensure that Self's type params infer correctly)

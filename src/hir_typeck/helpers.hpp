@@ -252,17 +252,26 @@ public:
 
     bool find_field(const Span& sp, const ::HIR::TypeRef& ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
 
+    enum class MethodAccess {
+        Shared,
+        Unique,
+        Move,
+    };
+private:
+    const ::HIR::TypeRef* check_method_receiver(const Span& sp, ::HIR::Function::Receiver receiver, const ::HIR::TypeRef& ty, TraitResolution::MethodAccess access) const;
+public:
     enum class AllowedReceivers {
         All,
         AnyBorrow,
+        SharedBorrow,
         Value,
         Box,
     };
     friend ::std::ostream& operator<<(::std::ostream& os, const AllowedReceivers& x);
-    bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, AllowedReceivers ar,  /* Out -> */::HIR::Path& fcn_path) const;
+    bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, MethodAccess access,  /* Out -> */::HIR::Path& fcn_path) const;
 
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
-    bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name, AllowedReceivers ar,  ::HIR::GenericPath& out_path) const;
+    bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name,  ::HIR::Function::Receiver& out_receiver, ::HIR::GenericPath& out_path) const;
     bool trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const;
 
     ::HIR::Compare type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
