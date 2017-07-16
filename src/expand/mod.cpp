@@ -824,6 +824,40 @@ void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::E
     }
 }
 
+void Expand_GenericParams(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,  ::AST::GenericParams& params)
+{
+    for(auto& ty_def : params.ty_params())
+    {
+        Expand_Type(crate, modstack, mod,  ty_def.get_default());
+    }
+    for(auto& bound : params.bounds())
+    {
+        TU_MATCHA( (bound), (be),
+        (Lifetime,
+            ),
+        (TypeLifetime,
+            Expand_Type(crate, modstack, mod,  be.type);
+            ),
+        (IsTrait,
+            Expand_Type(crate, modstack, mod,  be.type);
+            Expand_Path(crate, modstack, mod,  be.trait);
+            ),
+        (MaybeTrait,
+            Expand_Type(crate, modstack, mod,  be.type);
+            Expand_Path(crate, modstack, mod,  be.trait);
+            ),
+        (NotTrait,
+            Expand_Type(crate, modstack, mod,  be.type);
+            Expand_Path(crate, modstack, mod,  be.trait);
+            ),
+        (Equality,
+            Expand_Type(crate, modstack, mod,  be.type);
+            Expand_Type(crate, modstack, mod,  be.replacement);
+            )
+        )
+    }
+}
+
 void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::std::unique_ptr<AST::ExprNode>& node)
 {
     Expand_Expr(const_cast< ::AST::Crate&>(crate), LList<const AST::Module*>(nullptr, &mod), node);
@@ -836,6 +870,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         DEBUG("Deleted");
         return ;
     }
+    Expand_GenericParams(crate, modstack, mod,  impl.def().params());
 
     Expand_Type(crate, modstack, mod,  impl.def().type());
     //Expand_Type(crate, modstack, mod,  impl.def().trait());
@@ -916,6 +951,7 @@ void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         DEBUG("Deleted");
         return ;
     }
+    Expand_GenericParams(crate, modstack, mod,  impl_def.params());
 
     Expand_Type(crate, modstack, mod,  impl_def.type());
     //Expand_Type(crate, modstack, mod,  impl_def.trait());
@@ -1006,6 +1042,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             ),
 
         (Struct,
+            Expand_GenericParams(crate, modstack, mod,  e.params());
             TU_MATCH(AST::StructData, (e.m_data), (sd),
             (Unit,
                 ),
@@ -1038,6 +1075,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             )
             ),
         (Enum,
+            Expand_GenericParams(crate, modstack, mod,  e.params());
             for(auto& var : e.variants()) {
                 Expand_Attrs(var.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
                 TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
@@ -1067,6 +1105,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
             ),
         (Union,
+            Expand_GenericParams(crate, modstack, mod,  e.m_params);
             for(auto it = e.m_variants.begin(); it != e.m_variants.end(); ) {
                 auto& si = *it;
                 Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
@@ -1080,6 +1119,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
             ),
         (Trait,
+            Expand_GenericParams(crate, modstack, mod,  e.params());
             for(auto& ti : e.items())
             {
                 auto attrs = mv$(ti.data.attrs);
@@ -1091,6 +1131,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     ),
                 (None, ),
                 (Function,
+                    Expand_GenericParams(crate, modstack, mod,  e.params());
                     for(auto& arg : e.args()) {
                         Expand_Pattern(crate, modstack, mod,  arg.first, false);
                         Expand_Type(crate, modstack, mod,  arg.second);
@@ -1117,6 +1158,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             ),
 
         (Function,
+            Expand_GenericParams(crate, modstack, mod,  e.params());
             for(auto& arg : e.args()) {
                 Expand_Pattern(crate, modstack, mod,  arg.first, false);
                 Expand_Type(crate, modstack, mod,  arg.second);

@@ -122,7 +122,8 @@ TypeRef TypeRef::clone() const
     _COPY(None)
     _COPY(Any)
     _COPY(Bang)
-    case TypeData::TAG_Macro:   assert( !"Copying an unexpanded type macro" );
+    _CLONE(Macro, { old.inv.clone() })
+    //case TypeData::TAG_Macro:   assert( !"Copying an unexpanded type macro" );
     _COPY(Unit)
     _COPY(Primitive)
     _COPY(Function)

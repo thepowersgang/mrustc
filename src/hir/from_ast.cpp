@@ -69,12 +69,13 @@
                 rv.m_bounds.back().as_TraitBound().trait.m_hrls = e.hrls;
                 ),
             (MaybeTrait,
-                if( ! e.type.m_data.is_Generic() )
-                    BUG(bound.span, "MaybeTrait on non-param");
-                const auto& ge = e.type.m_data.as_Generic();
+                auto type = LowerHIR_Type(e.type);
+                if( ! type.m_data.is_Generic() )
+                    BUG(bound.span, "MaybeTrait on non-param - " << type);
+                const auto& ge = type.m_data.as_Generic();
                 const auto& param_name = ge.name;
                 unsigned param_idx;
-                if( ge.index == 0xFFFF ) {
+                if( ge.binding == 0xFFFF ) {
                     if( !self_is_sized ) {
                         BUG(bound.span, "MaybeTrait on parameter on Self when not allowed");
                     }
@@ -83,7 +84,7 @@
                 else {
                     param_idx = ::std::find_if( rv.m_types.begin(), rv.m_types.end(), [&](const auto& x) { return x.m_name == param_name; } ) - rv.m_types.begin();
                     if( param_idx >= rv.m_types.size() ) {
-                        BUG(bound.span, "MaybeTrait on parameter not in parameter list (#" << ge.index << " " << param_name << ")");
+                        BUG(bound.span, "MaybeTrait on parameter not in parameter list (#" << ge.binding << " " << param_name << ")");
                     }
                 }
 
