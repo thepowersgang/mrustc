@@ -51,7 +51,7 @@ RUST_FLAGS += -g
 RUST_FLAGS += -O
 RUST_FLAGS += $(RUST_FLAGS_EXTRA)
 # > TODO: This is needed for anything that uses libstd. build.rs adds it with cargo magic, no idea how it gets to the rlib
-RUST_FLAGS += -lbacktrace
+RUST_FLAGS += -lbacktrace -ldl -lrt -lpthread
 
 SHELL = bash
 
@@ -151,6 +151,13 @@ output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
 	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
+output/lib%.hir: $(RUSTCSRC)src/vendor/%/src/lib.rs $(RUSTCSRC) $(BIN)
+	@echo "--- [MRUSTC] $@"
+	@mkdir -p output/
+	@rm -f $@
+	$(DBG) $(ENV_$@) $(BIN) $< --crate-type rlib --crate-name $* -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+#	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
 output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN) output/libtest.hir
 	@echo "--- [MRUSTC] --test -o $@"
 	@mkdir -p output/
@@ -194,7 +201,7 @@ output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs  $(call fcn
 output/libgcc.hir: crates.io/gcc-0.3.28/src/lib.rs $(BIN) output/libstd.hir
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ --crate-type rlib --crate-name gcc $(RUST_FLAGS) $(PIPECMD)
-output/libbuild_helper.hir: rustc-nightly/src/build_helper/lib.rs $(BIN) output/libstd.hir
+output/libbuild_helper.hir: rustc-nightly/src/build_helper/lib.rs $(BIN) output/libstd.hir output/libfiletime.hir
 	@echo "--- [MRUSTC] $@"
 	$(BIN) $< -o $@ --crate-type rlib --crate-name build_helper $(RUST_FLAGS) $(PIPECMD)
 
@@ -242,13 +249,13 @@ ENV_output/librustc.hir := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_HOST)
 output/libstd.hir: output/libs/libbacktrace.a
 
 output/libarena.hir: output/libstd.hir
-output/liballoc.hir: output/libcore.hir
+output/liballoc.hir: output/libcore.hir output/libstd_unicode.hir
 output/libstd_unicode.hir: output/libcore.hir
 output/libcollections.hir: output/libcore.hir output/liballoc.hir output/libstd_unicode.hir
 output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
 output/libcompiler_builtins.hir: output/libcore.hir
-output/libstd.hir: $(call fcn_extcrate, core collections rand libc unwind compiler_builtins)
+output/libstd.hir: $(call fcn_extcrate, core collections rand libc unwind compiler_builtins alloc_system)
 output/libunwind.hir: $(call fcn_extcrate, core libc)
 
 output/libterm.hir: $(call fcn_extcrate, std)
@@ -257,7 +264,8 @@ output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCS
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
 output/libflate.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs)) output/cargo_libflate/libminiz.a
-output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs))
+output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/liblog/lib.rs))
+output/libenv_logger.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/env_logger/src/lib.rs))
 
 output/liballoc_system.hir: $(call fcn_extcrate, core libc)
 output/liballoc_jemalloc.hir: $(call fcn_extcrate, core libc)
@@ -272,7 +280,7 @@ output/librustc_const_math.hir: $(call fcn_extcrate, std log syntax serialize)
 output/libfmt_macros.hir: $(call fcn_extcrate, std)
 output/libproc_macro.hir: $(call fcn_extcrate, std syntax)
 output/libsyntax_ext.hir: $(call fcn_extcrate, std fmt_macros log syntax syntax_pos proc_macro rustc_errors)
-output/librustc_metadata.hir: $(call fcn_extcrate, std log syntax syntax_pos flate serialize rustc_errors syntax_ext proc_macro rustc rustc_back rustc_const_math rustc_data_structures rustc_llvm)
+output/librustc_metadata.hir: $(call fcn_extcrate, std log syntax syntax_pos flate2 serialize rustc_errors syntax_ext proc_macro rustc rustc_back rustc_const_math rustc_data_structures rustc_llvm)
 output/librustc_borrowck.hir: $(call fcn_extcrate, std log syntax syntax_pos rustc_errors graphviz rustc rustc_data_structures rustc_mir core)
 output/librustc_mir.hir: $(call fcn_extcrate, std log graphviz rustc rustc_data_structures rustc_back rustc_bitflags syntax syntax_pos rustc_const_math rustc_const_eval)
 output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
