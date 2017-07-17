@@ -18,6 +18,7 @@
 #include <expand/cfg.hpp>   // check_cfg - for `mod nonexistant;`
 #include <fstream>  // Used by directory path
 #include "lex.hpp"  // New file lexer
+#include <ast/expr.hpp>
 
 template<typename T>
 Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
@@ -981,8 +982,25 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     switch(GET_TOK(tok, lex))
     {
     case TOK_EQUAL:
-        GET_CHECK_TOK(tok, lex, TOK_STRING);
-        return AST::MetaItem(name, tok.str());
+        switch(GET_TOK(tok, lex))
+        {
+        case TOK_STRING:
+            return AST::MetaItem(name, tok.str());
+        case TOK_INTERPOLATED_EXPR: {
+            auto n = tok.take_frag_node();
+            if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
+            {
+                return AST::MetaItem(name, mv$(v->m_value));
+            }
+            else
+            {
+                CHECK_TOK(tok, TOK_STRING);
+            }
+            break; }
+        default:
+            CHECK_TOK(tok, TOK_STRING);
+        }
+        throw "";
     case TOK_PAREN_OPEN: {
         ::std::vector<AST::MetaItem>    items;
         do {
