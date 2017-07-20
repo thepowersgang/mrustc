@@ -4719,15 +4719,18 @@ namespace {
                     ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Mutability not compatible");
                 }
 
-                // TODO: Can this can unsize as well as convert to raw?
-                // - It _can_ unsize, TODO:
-                context.equate_types(sp, *l_e.inner, *s_e.inner);
                 // Add downcast
                 auto span = node_ptr->span();
                 node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst.clone() ));
                 node_ptr->m_res_type = ty_dst.clone();
 
-                // TODO: Add a coerce of src->&dst_inner
+                // Add a coerce of src->&dst_inner
+                context.equate_types(sp, *l_e.inner, *s_e.inner);
+                //context.equate_types_coerce(
+                //    node_ptr->span(),
+                //    ::HIR::TypeRef::new_borrow(l_e.type, l_e.inner->clone()),
+                //    dynamic_cast<::HIR::ExprNode_Cast*>(&*node_ptr)->m_value
+                //    );
 
                 context.m_ivars.mark_change();
                 return true;
@@ -5637,6 +5640,8 @@ namespace {
 
             // TODO: If there is only a single option and it's from an Unsize, is it valid?
 
+            // TODO: Loop both lists and if there's T<_{int}> and T<uN/iN> unify those.
+
             // Same type on both sides, pick it.
             if( types_from == types_to && types_from.size() == 1 ) {
                 const auto& new_ty = types_from[0];
@@ -5841,27 +5846,28 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         // 2. (???) Locate coercions that cannot coerce (due to being the only way to know a type)
         // - Keep a list in the ivar of what types that ivar could be equated to.
         DEBUG("--- Coercion checking");
-        for(auto it = context.link_coerce.begin(); it != context.link_coerce.end(); ) {
-            const auto& src_ty = (**it->right_node_ptr).m_res_type;
-            it->left_ty = context.m_resolve.expand_associated_types( (*it->right_node_ptr)->span(), mv$(it->left_ty) );
-            if( check_coerce(context, *it) ) {
-                DEBUG("- Consumed coercion " << it->left_ty << " := " << src_ty);
+        for(size_t i = 0; i < context.link_coerce.size(); )
+        {
+            auto ent = mv$(context.link_coerce[i]);
+            const auto& src_ty = (**ent.right_node_ptr).m_res_type;
+            ent.left_ty = context.m_resolve.expand_associated_types( (*ent.right_node_ptr)->span(), mv$(ent.left_ty) );
+            if( check_coerce(context, ent) )
+            {
+                DEBUG("- Consumed coercion " << ent.left_ty << " := " << src_ty);
 
-                #if 1
-                unsigned int i = it - context.link_coerce.begin();
-                if( it != context.link_coerce.end()-1 )
+                // If this isn't the last item in the list
+                if( i != context.link_coerce.size() - 1 )
                 {
-                    *it = mv$(context.link_coerce.back());
-                    // TODO: Iterator position?
+                    // Swap with the last item
+                    context.link_coerce[i] = mv$(context.link_coerce.back());
                 }
+                // Remove the last item.
                 context.link_coerce.pop_back();
-                it = context.link_coerce.begin() + i;
-                #else
-                it = context.link_coerce.erase(it);
-                #endif
             }
-            else {
-                ++ it;
+            else
+            {
+                context.link_coerce[i] = mv$(ent);
+                ++ i;
             }
         }
         // 3. Check associated type rules
