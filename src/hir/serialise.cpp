@@ -873,15 +873,26 @@ namespace {
         {
             uint8_t bitflag_1 = 0;
             #define BIT(i,fld)  if(fld) bitflag_1 |= 1 << (i);
+            BIT(0, m.has_a_deref)
+            BIT(1, m.is_copy)
+            BIT(2, m.has_drop_impl)
+            #undef BIT
+            m_out.write_u8(bitflag_1);
+
+            // TODO: auto_impls
+        }
+        void serialise(const ::HIR::StructMarkings& m)
+        {
+            uint8_t bitflag_1 = 0;
+            #define BIT(i,fld)  if(fld) bitflag_1 |= 1 << (i);
             BIT(0, m.can_unsize)
-            BIT(1, m.has_a_deref)
-            BIT(2, m.is_copy)
-            BIT(3, m.has_drop_impl)
             #undef BIT
             m_out.write_u8(bitflag_1);
 
             m_out.write_tag( static_cast<unsigned int>(m.dst_type) );
+            m_out.write_tag( static_cast<unsigned int>(m.coerce_unsized) );
             m_out.write_count( m.coerce_unsized_index );
+            m_out.write_count( m.coerce_param );
             m_out.write_count( m.unsized_field );
             m_out.write_count( m.unsized_param );
             // TODO: auto_impls
@@ -907,6 +918,7 @@ namespace {
             )
 
             serialise(item.m_markings);
+            serialise(item.m_struct_markings);
         }
         void serialise(const ::HIR::Union& item)
         {

@@ -490,7 +490,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                     (Tuple,
                         for(unsigned int i = 0; i < se.size(); i ++ ) {
                             auto val = (i == se.size() - 1 ? mv$(lv) : lv.clone());
-                            if( i == str.m_markings.coerce_unsized_index ) {
+                            if( i == str.m_struct_markings.coerce_unsized_index ) {
                                 vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].ent), ::MIR::LValue::make_Field({ box$(val), i }) ) );
                             }
                             else {
@@ -501,7 +501,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                     (Named,
                         for(unsigned int i = 0; i < se.size(); i ++ ) {
                             auto val = (i == se.size() - 1 ? mv$(lv) : lv.clone());
-                            if( i == str.m_markings.coerce_unsized_index ) {
+                            if( i == str.m_struct_markings.coerce_unsized_index ) {
                                 vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].second.ent), ::MIR::LValue::make_Field({ box$(val), i }) ) );
                             }
                             else {
@@ -567,7 +567,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         MIR_ASSERT(state, de.binding.is_Struct(), "Unsize to non-struct - " << dst_ty);
         MIR_ASSERT(state, de.binding.as_Struct() == se.binding.as_Struct(), "Unsize between mismatched types - " << dst_ty << " and " << src_ty);
         const auto& str = *de.binding.as_Struct();
-        MIR_ASSERT(state, str.m_markings.unsized_field != ~0u, "Unsize on type that doesn't implement have a ?Sized field - " << dst_ty);
+        MIR_ASSERT(state, str.m_struct_markings.unsized_field != ~0u, "Unsize on type that doesn't implement have a ?Sized field - " << dst_ty);
 
         auto monomorph_cb_d = monomorphise_type_get_cb(state.sp, nullptr, &de.path.m_data.as_Generic().m_params, nullptr);
         auto monomorph_cb_s = monomorphise_type_get_cb(state.sp, nullptr, &se.path.m_data.as_Generic().m_params, nullptr);
@@ -578,14 +578,14 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             MIR_BUG(state, "Unit-like struct Unsize is impossible - " << src_ty);
             ),
         (Tuple,
-            const auto& ty_tpl = se.at( str.m_markings.unsized_field ).ent;
+            const auto& ty_tpl = se.at( str.m_struct_markings.unsized_field ).ent;
             auto ty_d = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_d, false);
             auto ty_s = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_s, false);
 
             return MIR_Cleanup_Unsize_GetMetadata(state, mutator,  ty_d, ty_s, ptr_value,  out_meta_val,out_meta_ty,out_src_is_dst);
             ),
         (Named,
-            const auto& ty_tpl = se.at( str.m_markings.unsized_field ).second.ent;
+            const auto& ty_tpl = se.at( str.m_struct_markings.unsized_field ).second.ent;
             auto ty_d = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_d, false);
             auto ty_s = monomorphise_type_with(state.sp, ty_tpl, monomorph_cb_s, false);
 
@@ -720,7 +720,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
         MIR_ASSERT(state, dte.binding.as_Struct() == ste.binding.as_Struct(),
             "Note, can't CoerceUnsized mismatched structs - " << src_ty << " to " << dst_ty);
         const auto& str = *dte.binding.as_Struct();
-        MIR_ASSERT(state, str.m_markings.coerce_unsized_index != ~0u,
+        MIR_ASSERT(state, str.m_struct_markings.coerce_unsized_index != ~0u,
             "Struct " << src_ty << " doesn't impl CoerceUnsized");
 
         auto monomorph_cb_d = monomorphise_type_get_cb(state.sp, nullptr, &dte.path.m_data.as_Generic().m_params, nullptr);
@@ -736,7 +736,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             ents.reserve( se.size() );
             for(unsigned int i = 0; i < se.size(); i++)
             {
-                if( i == str.m_markings.coerce_unsized_index )
+                if( i == str.m_struct_markings.coerce_unsized_index )
                 {
                     auto ty_d = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_d, false);
                     auto ty_s = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_s, false);
@@ -765,7 +765,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             ents.reserve( se.size() );
             for(unsigned int i = 0; i < se.size(); i++)
             {
-                if( i == str.m_markings.coerce_unsized_index )
+                if( i == str.m_struct_markings.coerce_unsized_index )
                 {
                     auto ty_d = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_d, false);
                     auto ty_s = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_s, false);

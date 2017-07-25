@@ -4302,39 +4302,44 @@ namespace {
             }
             else if( ty.m_data.is_Path() )
             {
-                const ::HIR::TraitMarkings* markings;
                 TU_MATCH_DEF( ::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (tpb),
                 (
                     MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
-                    ),
-                (Struct, markings = &tpb->m_markings; ),
-                (Union, markings = &tpb->m_markings; ),
-                (Enum, markings = &tpb->m_markings; )
-                )
-                switch( markings->dst_type )
-                {
-                case ::HIR::TraitMarkings::DstType::None:
-                    return ::HIR::TypeRef();
-                case ::HIR::TraitMarkings::DstType::Slice:
-                case ::HIR::TraitMarkings::DstType::TraitObject:
-                case ::HIR::TraitMarkings::DstType::Possible: {
-                    // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
-                    const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
-                    const auto& str = *ty.m_data.as_Path().binding.as_Struct();
-                    auto monomorph = [&](const auto& tpl) {
-                        // TODO: expand_associated_types
-                        auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
-                        m_resolve.expand_associated_types(sp, rv);
-                        return rv;
-                        };
-                    TU_MATCHA( (str.m_data), (se),
-                    (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
-                    (Tuple, return get_inner_unsized_type( monomorph(se.back().ent) ); ),
-                    (Named, return get_inner_unsized_type( monomorph(se.back().second.ent) ); )
-                    )
                     throw "";
+                    ),
+                (Struct,
+                    switch( tpb->m_struct_markings.dst_type )
+                    {
+                    case ::HIR::StructMarkings::DstType::None:
+                        return ::HIR::TypeRef();
+                    case ::HIR::StructMarkings::DstType::Slice:
+                    case ::HIR::StructMarkings::DstType::TraitObject:
+                    case ::HIR::StructMarkings::DstType::Possible: {
+                        // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
+                        const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
+                        const auto& str = *ty.m_data.as_Path().binding.as_Struct();
+                        auto monomorph = [&](const auto& tpl) {
+                            // TODO: expand_associated_types
+                            auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
+                            m_resolve.expand_associated_types(sp, rv);
+                            return rv;
+                            };
+                        TU_MATCHA( (str.m_data), (se),
+                        (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
+                        (Tuple, return get_inner_unsized_type( monomorph(se.back().ent) ); ),
+                        (Named, return get_inner_unsized_type( monomorph(se.back().second.ent) ); )
+                        )
+                        throw "";
+                        }
                     }
-                }
+                    ),
+                (Union,
+                    return ::HIR::TypeRef();
+                    ),
+                (Enum,
+                    return ::HIR::TypeRef();
+                    )
+                )
                 throw "";
             }
             else
@@ -4353,41 +4358,45 @@ namespace {
             }
             else if( ty.m_data.is_Path() )
             {
-                const ::HIR::TraitMarkings* markings;
                 TU_MATCH_DEF( ::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (tpb),
                 (
                     MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
                     ),
-                (Struct, markings = &tpb->m_markings; ),
-                (Union, markings = &tpb->m_markings; ),
-                (Enum, markings = &tpb->m_markings; )
-                )
-                switch( markings->dst_type )
-                {
-                case ::HIR::TraitMarkings::DstType::None:
-                    return MetadataType::None;
-                case ::HIR::TraitMarkings::DstType::Possible: {
-                    // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
-                    const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
-                    const auto& str = *ty.m_data.as_Path().binding.as_Struct();
-                    auto monomorph = [&](const auto& tpl) {
-                        auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
-                        m_resolve.expand_associated_types(sp, rv);
-                        return rv;
-                        };
-                    TU_MATCHA( (str.m_data), (se),
-                    (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
-                    (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
-                    (Named, return metadata_type( monomorph(se.back().second.ent) ); )
-                    )
-                    //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
-                    return MetadataType::None;
+                (Struct,
+                    switch( tpb->m_struct_markings.dst_type )
+                    {
+                    case ::HIR::StructMarkings::DstType::None:
+                        return MetadataType::None;
+                    case ::HIR::StructMarkings::DstType::Possible: {
+                        // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
+                        const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
+                        const auto& str = *ty.m_data.as_Path().binding.as_Struct();
+                        auto monomorph = [&](const auto& tpl) {
+                            auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
+                            m_resolve.expand_associated_types(sp, rv);
+                            return rv;
+                            };
+                        TU_MATCHA( (str.m_data), (se),
+                        (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
+                        (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
+                        (Named, return metadata_type( monomorph(se.back().second.ent) ); )
+                        )
+                        //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
+                        return MetadataType::None;
+                        }
+                    case ::HIR::StructMarkings::DstType::Slice:
+                        return MetadataType::Slice;
+                    case ::HIR::StructMarkings::DstType::TraitObject:
+                        return MetadataType::TraitObject;
                     }
-                case ::HIR::TraitMarkings::DstType::Slice:
-                    return MetadataType::Slice;
-                case ::HIR::TraitMarkings::DstType::TraitObject:
-                    return MetadataType::TraitObject;
-                }
+                    ),
+                (Union,
+                    return MetadataType::None;
+                    ),
+                (Enum,
+                    return MetadataType::None;
+                    )
+                )
                 throw "";
             }
             else {

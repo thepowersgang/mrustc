@@ -1477,14 +1477,14 @@ bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty)
             ),
         (Struct,
             // TODO: Destructure?
-            switch( pbe->m_markings.dst_type )
+            switch( pbe->m_struct_markings.dst_type )
             {
-            case ::HIR::TraitMarkings::DstType::None:
+            case ::HIR::StructMarkings::DstType::None:
                 return true;
-            case ::HIR::TraitMarkings::DstType::Possible:
-                return type_is_sized( sp, e.path.m_data.as_Generic().m_params.m_types.at(pbe->m_markings.unsized_param) );
-            case ::HIR::TraitMarkings::DstType::Slice:
-            case ::HIR::TraitMarkings::DstType::TraitObject:
+            case ::HIR::StructMarkings::DstType::Possible:
+                return type_is_sized( sp, e.path.m_data.as_Generic().m_params.m_types.at(pbe->m_struct_markings.unsized_param) );
+            case ::HIR::StructMarkings::DstType::Slice:
+            case ::HIR::StructMarkings::DstType::TraitObject:
                 return false;
             }
             ),
@@ -1598,8 +1598,8 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
     // Struct<..., T, ...>: Unsize<Struct<..., U, ...>>
     if( dst_ty.m_data.is_Path() && src_ty.m_data.is_Path() )
     {
-        bool dst_is_unsizable = dst_ty.m_data.as_Path().binding.is_Struct() && dst_ty.m_data.as_Path().binding.as_Struct()->m_markings.can_unsize;
-        bool src_is_unsizable = src_ty.m_data.as_Path().binding.is_Struct() && src_ty.m_data.as_Path().binding.as_Struct()->m_markings.can_unsize;
+        bool dst_is_unsizable = dst_ty.m_data.as_Path().binding.is_Struct() && dst_ty.m_data.as_Path().binding.as_Struct()->m_struct_markings.can_unsize;
+        bool src_is_unsizable = src_ty.m_data.as_Path().binding.is_Struct() && src_ty.m_data.as_Path().binding.as_Struct()->m_struct_markings.can_unsize;
         if( dst_is_unsizable || src_is_unsizable )
         {
             DEBUG("Struct unsize? " << dst_ty << " <- " << src_ty);
@@ -1616,8 +1616,8 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
             {
                 DEBUG("Checking for Unsize " << dst_gp << " <- " << src_gp);
                 // Structures are equal, add the requirement that the ?Sized parameter also impl Unsize
-                const auto& dst_inner = dst_gp.m_params.m_types.at(str.m_markings.unsized_param);
-                const auto& src_inner = src_gp.m_params.m_types.at(str.m_markings.unsized_param);
+                const auto& dst_inner = dst_gp.m_params.m_types.at(str.m_struct_markings.unsized_param);
+                const auto& src_inner = src_gp.m_params.m_types.at(str.m_struct_markings.unsized_param);
                 return this->can_unsize(sp, dst_inner, src_inner);
             }
             else

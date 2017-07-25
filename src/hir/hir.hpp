@@ -157,28 +157,12 @@ typedef ::std::vector< ::std::pair< ::std::string, VisEnt<::HIR::TypeRef> > >   
 /// Cache of the state of various language traits on an enum/struct
 struct TraitMarkings
 {
-    /// There is at least one Unsize impl for this type
-    bool    can_unsize = false;
-
     /// Indicates that there is at least one Deref impl
     bool    has_a_deref = false;
 
     /// Indicates that there is a Drop impl
     /// - If there is an impl, there must be an applicable impl to every instance.
     bool has_drop_impl = false;
-
-    // If populated, indicates the field that is the coercable pointer.
-    unsigned int coerce_unsized_index = ~0u;
-
-    // TODO: This would have to be changed for custom DSTs
-    enum class DstType {
-        None,   // Sized
-        Possible,   // Has a ?Sized field
-        Slice,  // [T]
-        TraitObject,    // (Trait)
-    }   dst_type;
-    unsigned int unsized_field = ~0u;
-    unsigned int unsized_param = ~0u;
 
     /// `true` if there is a Copy impl
     bool    is_copy = false;
@@ -192,6 +176,35 @@ struct TraitMarkings
 
     // General auto trait impls
     mutable ::std::map< ::HIR::SimplePath, AutoMarking>    auto_impls;
+};
+
+// Trait implementations relevant only to structs
+struct StructMarkings
+{
+    /// This type has a <T: ?Sized> parameter that is used directly
+    bool    can_unsize = false;
+    /// Index of the parameter that is ?Sized
+    unsigned int unsized_param = ~0u;
+
+    // TODO: This would have to be changed for custom DSTs
+    enum class DstType {
+        None,   // Sized
+        Possible,   // A ?Sized parameter
+        Slice,  // [T]
+        TraitObject,    // (Trait)
+    }   dst_type = DstType::None;
+    unsigned int unsized_field = ~0u;
+
+    enum class Coerce {
+        None,   // No CoerceUnsized impl
+        Passthrough,    // Is generic over T: CoerceUnsized
+        Pointer,    // Contains a pointer to a ?Sized type
+    } coerce_unsized = Coerce::None;
+
+    // If populated, indicates the field that is the coercable pointer.
+    unsigned int coerce_unsized_index = ~0u;
+    // Index of the parameter that controls the CoerceUnsized (either a T: ?Sized, or a T: CoerceUnsized)
+    unsigned int coerce_param = ~0u;
 };
 
 class Enum
@@ -247,6 +260,7 @@ public:
     Data    m_data;
 
     TraitMarkings   m_markings;
+    StructMarkings  m_struct_markings;
 };
 class Union
 {

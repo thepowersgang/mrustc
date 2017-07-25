@@ -4413,7 +4413,7 @@ namespace {
 
         struct H {
             // Check if a path type has or could have a CoerceUnsized impl
-            static bool type_has_coerce_path(const ::HIR::TypeRef& ty) {
+            static bool type_has_coerce_path(const Context& context, const ::HIR::TypeRef& ty, bool inner=false) {
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
                     TU_MATCHA( (e.binding), (pbe),
                     (Unbound,
@@ -4423,23 +4423,40 @@ namespace {
                         return true;
                         ),
                     (Struct,
-                        return pbe->m_markings.coerce_unsized_index != ~0u;
+                        //return pbe->m_struct_markings.coerce_unsized_index != ~0u;
+                        switch( pbe->m_struct_markings.coerce_unsized )
+                        {
+                        case ::HIR::StructMarkings::Coerce::None:
+                            return false;
+                        case ::HIR::StructMarkings::Coerce::Pointer:
+                            // If this contains a pointer (or something that acts like one), then assume it always coerces
+                            return true;
+                        case ::HIR::StructMarkings::Coerce::Passthrough:
+                            // TODO: If this generic over a CoerceUnsized type, then check if that type is CoerceUnsized
+                            return type_has_coerce_path( context, context.m_ivars.get_type(e.path.m_data.as_Generic().m_params.m_types.at( pbe->m_struct_markings.coerce_param)), true );
+                        }
                         ),
                     (Union,
-                        return pbe->m_markings.coerce_unsized_index != ~0u;
                         ),
                     (Enum,
-                        return pbe->m_markings.coerce_unsized_index != ~0u;
                         )
                     )
                 )
+                else if( inner ) {
+                   if( ty.m_data.is_Pointer() || ty.m_data.is_Borrow() ) {
+                        return true;
+                    }
+                    else if( ty.m_data.is_Infer() ) {
+                        return true;
+                    }
+                }
                 return false;
             }
         };
 
         // CoerceUnsized trait
         // - Only valid for generic or path destination types
-        if( ty_dst.m_data.is_Generic() || H::type_has_coerce_path(ty_dst) )
+        if( ty_dst.m_data.is_Generic() || H::type_has_coerce_path(context, ty_dst) )
         {
             // `CoerceUnsized<U> for T` means `T -> U`
 
@@ -4520,7 +4537,7 @@ namespace {
             ),
         (Path,
             // If there is an impl of CoerceUnsized<_> for this, don't equate (just return and wait for a while)
-            if( H::type_has_coerce_path(ty_src) ) {
+            if( H::type_has_coerce_path(context, ty_src) ) {
                 // - Fall through and check the destination.
             }
             else {
@@ -4599,7 +4616,7 @@ namespace {
             return true;
             ),
         (Path,
-            if( H::type_has_coerce_path(ty_dst) && ty_src.m_data.is_Infer() ) {
+            if( H::type_has_coerce_path(context, ty_dst) && ty_src.m_data.is_Infer() ) {
                 // If this type is coercble, and the source is _ (which means that the first check would have silently failed)
                 // - Keep the rule around until the ivar is known
                 // NOTE: This assumes that a type can only coerce to a variant of itself (which is usually true)
@@ -5300,7 +5317,6 @@ namespace {
                     (Path,
                         if( e_ia.binding.tag() != e_ib.binding.tag() )
                             return false;
-                        const ::HIR::TraitMarkings* tm = nullptr;
                         TU_MATCHA( (e_ia.binding, e_ib.binding), (pbe_a, pbe_b),
                         (Unbound,   return false; ),
                         (Opaque,
@@ -5309,22 +5325,18 @@ namespace {
                             ),
                         (Struct,
                             if(pbe_a != pbe_b)  return false;
-                            tm = &pbe_a->m_markings;
+                            if( !pbe_a->m_struct_markings.can_unsize )
+                                return true;
+                            // It _could_ unsize, so let it coexist
+                            return false;
                             ),
                         (Union,
-                            if(pbe_a != pbe_b)  return false;
-                            tm = &pbe_a->m_markings;
+                            return false;
                             ),
                         (Enum,
-                            if(pbe_a != pbe_b)  return false;
-                            tm = &pbe_a->m_markings;
+                            return false;
                             )
                         )
-                        assert(tm);
-                        if( !tm->can_unsize )
-                            return true;
-                        // It _could_ unsize, so let it coexist
-                        return false;
                         ),
                     (Slice,
                         const auto& ia2 = context.m_ivars.get_type(*e_ia.inner);

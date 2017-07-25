@@ -591,18 +591,30 @@ namespace {
             ::HIR::TraitMarkings    m;
             uint8_t bitflag_1 = m_in.read_u8();
             #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
-            BIT(0, m.can_unsize)
-            BIT(1, m.has_a_deref)
-            BIT(2, m.is_copy)
-            BIT(3, m.has_drop_impl)
+            BIT(0, m.has_a_deref)
+            BIT(1, m.is_copy)
+            BIT(2, m.has_drop_impl)
             #undef BIT
-            m.dst_type = static_cast< ::HIR::TraitMarkings::DstType>( m_in.read_tag() );
+            // TODO: auto_impls
+            return m;
+        }
+        ::HIR::StructMarkings deserialise_str_markings()
+        {
+            ::HIR::StructMarkings    m;
+            uint8_t bitflag_1 = m_in.read_u8();
+            #define BIT(i,fld)  fld = (bitflag_1 & (1 << (i))) != 0;
+            BIT(0, m.can_unsize)
+            #undef BIT
+            m.dst_type = static_cast< ::HIR::StructMarkings::DstType>( m_in.read_tag() );
+            m.coerce_unsized = static_cast<::HIR::StructMarkings::Coerce>( m_in.read_tag() );
             m.coerce_unsized_index = m_in.read_count( );
+            m.coerce_param = m_in.read_count( );
             m.unsized_field = m_in.read_count( );
             m.unsized_param = m_in.read_count();
             // TODO: auto_impls
             return m;
         }
+
 
         ::HIR::Enum deserialise_enum();
         ::HIR::Enum::Variant deserialise_enumvariant();
@@ -906,32 +918,30 @@ namespace {
         auto repr = static_cast< ::HIR::Struct::Repr>( m_in.read_tag() );
         DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
 
+        ::HIR::Struct::Data data;
         switch( m_in.read_tag() )
         {
         case ::HIR::Struct::Data::TAG_Unit:
             DEBUG("Unit");
-            return ::HIR::Struct {
-                mv$(params), repr,
-                ::HIR::Struct::Data::make_Unit( {} ),
-                deserialise_markings()
-                };
+            data = ::HIR::Struct::Data::make_Unit( {} );
+            break;
         case ::HIR::Struct::Data::TAG_Tuple:
             DEBUG("Tuple");
-            return ::HIR::Struct {
-                mv$(params), repr,
-                ::HIR::Struct::Data( deserialise_vec< ::HIR::VisEnt< ::HIR::TypeRef> >() ),
-                deserialise_markings()
-                };
+            data = ::HIR::Struct::Data( deserialise_vec< ::HIR::VisEnt< ::HIR::TypeRef> >() );
+            break;
         case ::HIR::Struct::Data::TAG_Named:
             DEBUG("Named");
-            return ::HIR::Struct {
-                mv$(params), repr,
-                ::HIR::Struct::Data( deserialise_vec< ::std::pair< ::std::string, ::HIR::VisEnt< ::HIR::TypeRef> > >() ),
-                deserialise_markings()
-                };
+            data = ::HIR::Struct::Data( deserialise_vec< ::std::pair< ::std::string, ::HIR::VisEnt< ::HIR::TypeRef> > >() );
+            break;
         default:
             throw "";
         }
+        auto markings = deserialise_markings();
+        auto str_markings = deserialise_str_markings();
+
+        return ::HIR::Struct {
+            mv$(params), repr, mv$(data), mv$(markings), mv$(str_markings)
+            };
     }
     ::HIR::Trait HirDeserialiser::deserialise_trait()
     {

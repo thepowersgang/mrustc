@@ -2950,15 +2950,15 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             ),
         (Struct,
             // Possibly not sized
-            switch( pb->m_markings.dst_type )
+            switch( pb->m_struct_markings.dst_type )
             {
-            case ::HIR::TraitMarkings::DstType::None:
+            case ::HIR::StructMarkings::DstType::None:
                 break;
-            case ::HIR::TraitMarkings::DstType::Possible:
+            case ::HIR::StructMarkings::DstType::Possible:
                 // TODO: Check sized-ness of the unsized param/field
                 break;
-            case ::HIR::TraitMarkings::DstType::Slice:
-            case ::HIR::TraitMarkings::DstType::TraitObject:
+            case ::HIR::StructMarkings::DstType::Slice:
+            case ::HIR::StructMarkings::DstType::TraitObject:
                 return ::HIR::Compare::Unequal;
             }
             )
@@ -3159,8 +3159,8 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
     // Struct<..., T, ...>: Unsize<Struct<..., U, ...>>
     if( dst_ty.m_data.is_Path() && src_ty.m_data.is_Path() )
     {
-        bool dst_is_unsizable = dst_ty.m_data.as_Path().binding.is_Struct() && dst_ty.m_data.as_Path().binding.as_Struct()->m_markings.can_unsize;
-        bool src_is_unsizable = src_ty.m_data.as_Path().binding.is_Struct() && src_ty.m_data.as_Path().binding.as_Struct()->m_markings.can_unsize;
+        bool dst_is_unsizable = dst_ty.m_data.as_Path().binding.is_Struct() && dst_ty.m_data.as_Path().binding.as_Struct()->m_struct_markings.can_unsize;
+        bool src_is_unsizable = src_ty.m_data.as_Path().binding.is_Struct() && src_ty.m_data.as_Path().binding.as_Struct()->m_struct_markings.can_unsize;
         if( dst_is_unsizable || src_is_unsizable )
         {
             DEBUG("Struct unsize? " << dst_ty << " <- " << src_ty);
@@ -3177,15 +3177,15 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             {
                 DEBUG("Checking for Unsize " << dst_gp << " <- " << src_gp);
                 // Structures are equal, add the requirement that the ?Sized parameter also impl Unsize
-                const auto& dst_inner = m_ivars.get_type( dst_gp.m_params.m_types.at(str.m_markings.unsized_param) );
-                const auto& src_inner = m_ivars.get_type( src_gp.m_params.m_types.at(str.m_markings.unsized_param) );
+                const auto& dst_inner = m_ivars.get_type( dst_gp.m_params.m_types.at(str.m_struct_markings.unsized_param) );
+                const auto& src_inner = m_ivars.get_type( src_gp.m_params.m_types.at(str.m_struct_markings.unsized_param) );
 
                 auto cb = [&](auto d){
                     assert(new_type_callback);
 
                     // Re-create structure with s/d
                     auto dst_gp_new = dst_gp.clone();
-                    dst_gp_new.m_params.m_types.at(str.m_markings.unsized_param) = mv$(d);
+                    dst_gp_new.m_params.m_types.at(str.m_struct_markings.unsized_param) = mv$(d);
                     (*new_type_callback)( ::HIR::TypeRef::new_path(mv$(dst_gp_new), &str) );
                     };
                 if( new_type_callback )

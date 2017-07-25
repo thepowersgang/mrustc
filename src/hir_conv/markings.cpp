@@ -38,10 +38,10 @@ public:
     {
         ::HIR::Visitor::visit_struct(ip, str);
 
-        str.m_markings.dst_type = get_struct_dst_type(str, str.m_params, {});
-        if( str.m_markings.dst_type != ::HIR::TraitMarkings::DstType::None )
+        str.m_struct_markings.dst_type = get_struct_dst_type(str, str.m_params, {});
+        if( str.m_struct_markings.dst_type != ::HIR::StructMarkings::DstType::None )
         {
-            str.m_markings.unsized_field = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().size()-1 : str.m_data.as_Named().size()-1);
+            str.m_struct_markings.unsized_field = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().size()-1 : str.m_data.as_Named().size()-1);
         }
 
         // Rules:
@@ -50,7 +50,7 @@ public:
         // - If the final field isn't the parameter, it must also impl Unsize
 
         // HACK: Just determine what ?Sized parameter is controlling the sized-ness
-        if( str.m_markings.dst_type == ::HIR::TraitMarkings::DstType::Possible )
+        if( str.m_struct_markings.dst_type == ::HIR::StructMarkings::DstType::Possible )
         {
             auto& last_field_ty = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().back().ent : str.m_data.as_Named().back().second.ent);
             auto    ty = ::HIR::TypeRef("", 0);
@@ -62,13 +62,13 @@ public:
                 {
                     if( visit_ty_with(last_field_ty, [&](const auto& t){ return t == ty; }) )
                     {
-                        assert(str.m_markings.unsized_param == ~0u);
-                        str.m_markings.unsized_param = i;
+                        assert(str.m_struct_markings.unsized_param == ~0u);
+                        str.m_struct_markings.unsized_param = i;
                     }
                 }
             }
-            ASSERT_BUG(Span(), str.m_markings.unsized_param != ~0u, "No unsized param for type " << ip);
-            str.m_markings.can_unsize = true;
+            ASSERT_BUG(Span(), str.m_struct_markings.unsized_param != ~0u, "No unsized param for type " << ip);
+            str.m_struct_markings.can_unsize = true;
         }
     }
 
@@ -237,7 +237,7 @@ public:
         tr.m_all_parent_traits = mv$(e.supertraits);
     }
 
-    ::HIR::TraitMarkings::DstType get_field_dst_type(const ::HIR::TypeRef& ty, const ::HIR::GenericParams& inner_def, const ::HIR::GenericParams& params_def, const ::HIR::PathParams* params)
+    ::HIR::StructMarkings::DstType get_field_dst_type(const ::HIR::TypeRef& ty, const ::HIR::GenericParams& inner_def, const ::HIR::GenericParams& params_def, const ::HIR::PathParams* params)
     {
         TRACE_FUNCTION_F("ty=" << ty);
         // If the type is generic, and the pointed-to parameters is ?Sized, record as needing unsize
@@ -245,7 +245,7 @@ public:
         {
             if( inner_def.m_types.at(te->binding).m_is_sized == true )
             {
-                return ::HIR::TraitMarkings::DstType::None;
+                return ::HIR::StructMarkings::DstType::None;
             }
             else if( params )
             {
@@ -254,23 +254,23 @@ public:
             }
             else
             {
-                return ::HIR::TraitMarkings::DstType::Possible;
+                return ::HIR::StructMarkings::DstType::Possible;
             }
         }
         else if( ty.m_data.is_Slice() )
         {
-            return ::HIR::TraitMarkings::DstType::Slice;
+            return ::HIR::StructMarkings::DstType::Slice;
         }
         else if( ty.m_data.is_TraitObject() )
         {
-            return ::HIR::TraitMarkings::DstType::TraitObject;
+            return ::HIR::StructMarkings::DstType::TraitObject;
         }
         else if( const auto* te = ty.m_data.opt_Path() )
         {
             // If the type is a struct, check it (recursively)
             if( ! te->path.m_data.is_Generic() ) {
                 // Associated type, TODO: Check this better.
-                return ::HIR::TraitMarkings::DstType::None;
+                return ::HIR::StructMarkings::DstType::None;
             }
             else if( te->binding.is_Struct() ) {
                 const auto& params_tpl = te->path.m_data.as_Generic().m_params;
@@ -285,15 +285,15 @@ public:
                 }
             }
             else {
-                return ::HIR::TraitMarkings::DstType::None;
+                return ::HIR::StructMarkings::DstType::None;
             }
         }
         else
         {
-            return ::HIR::TraitMarkings::DstType::None;
+            return ::HIR::StructMarkings::DstType::None;
         }
     }
-    ::HIR::TraitMarkings::DstType get_struct_dst_type(const ::HIR::Struct& str, const ::HIR::GenericParams& def, const ::HIR::PathParams* params)
+    ::HIR::StructMarkings::DstType get_struct_dst_type(const ::HIR::Struct& str, const ::HIR::GenericParams& def, const ::HIR::PathParams* params)
     {
         TU_MATCHA( (str.m_data), (se),
         (Unit,
@@ -318,7 +318,7 @@ public:
             }
             )
         )
-        return ::HIR::TraitMarkings::DstType::None;
+        return ::HIR::StructMarkings::DstType::None;
     }
 
     void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
@@ -351,7 +351,8 @@ public:
                     markings.has_drop_impl = true;
                 }
                 else if( trait_path == m_lang_CoerceUnsized ) {
-                    if( markings_ptr->coerce_unsized_index != ~0u )
+                    auto& struct_markings = const_cast<::HIR::Struct*>(te.binding.as_Struct())->m_struct_markings;
+                    if( struct_markings.coerce_unsized_index != ~0u )
                         ERROR(sp, E0000, "CoerceUnsized can only be implemented once per struct");
 
                     DEBUG("Type " << impl.m_type << " can Coerce");
@@ -380,6 +381,7 @@ public:
                     auto monomorph_cb_l = monomorphise_type_get_cb(sp, nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
                     auto monomorph_cb_r = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
 
+                    const ::HIR::TypeRef*   field_ty;
                     TU_MATCHA( (str->m_data), (se),
                     (Unit,
                         ),
@@ -400,6 +402,7 @@ public:
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
                                     field = i;
+                                    field_ty = &se[i].ent;
                                 }
                             }
                         }
@@ -421,6 +424,7 @@ public:
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
                                     field = i;
+                                    field_ty = &se[i].second.ent;
                                 }
                             }
                         }
@@ -428,7 +432,14 @@ public:
                     )
                     if( field == ~0u )
                         ERROR(sp, E0000, "CoerceUnsized requires a field to differ between source and destination");
-                    markings.coerce_unsized_index = field;
+                    struct_markings.coerce_unsized_index = field;
+                    if( const auto* te = field_ty->m_data.opt_Generic() ) {
+                        struct_markings.coerce_param = te->binding;
+                        struct_markings.coerce_unsized = ::HIR::StructMarkings::Coerce::Passthrough;
+                    }
+                    else {
+                        struct_markings.coerce_unsized = ::HIR::StructMarkings::Coerce::Pointer;
+                    }
                 }
                 else if( trait_path == m_lang_Deref ) {
                     DEBUG("Type " << impl.m_type << " can Deref");

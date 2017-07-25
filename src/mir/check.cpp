@@ -51,11 +51,11 @@ namespace {
         {
             if( tep->binding.is_Struct() )
             {
-                switch( tep->binding.as_Struct()->m_markings.dst_type )
+                switch( tep->binding.as_Struct()->m_struct_markings.dst_type )
                 {
-                case ::HIR::TraitMarkings::DstType::None:
+                case ::HIR::StructMarkings::DstType::None:
                     return ::HIR::TypeRef();
-                case ::HIR::TraitMarkings::DstType::Possible: {
+                case ::HIR::StructMarkings::DstType::Possible: {
                     const auto& path = tep->path.m_data.as_Generic();
                     const auto& str = *tep->binding.as_Struct();
                     auto monomorph = [&](const auto& tpl) {
@@ -69,9 +69,9 @@ namespace {
                     (Named, return get_metadata_type( state, monomorph(se.back().second.ent) ); )
                     )
                     throw ""; }
-                case ::HIR::TraitMarkings::DstType::Slice:
+                case ::HIR::StructMarkings::DstType::Slice:
                     return ::HIR::CoreType::Usize;
-                case ::HIR::TraitMarkings::DstType::TraitObject:
+                case ::HIR::StructMarkings::DstType::TraitObject:
                     return ::HIR::TypeRef::new_unit();  // TODO: Get the actual inner metadata type?
                 }
             }
