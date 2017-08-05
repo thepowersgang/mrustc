@@ -62,7 +62,7 @@ public:
                 {
                     if( visit_ty_with(last_field_ty, [&](const auto& t){ return t == ty; }) )
                     {
-                        assert(str.m_struct_markings.unsized_param == ~0u);
+                        ASSERT_BUG(Span(), str.m_struct_markings.unsized_param == ~0u, "Multiple unsized params to " << ip);
                         str.m_struct_markings.unsized_param = i;
                     }
                 }
@@ -381,7 +381,6 @@ public:
                     auto monomorph_cb_l = monomorphise_type_get_cb(sp, nullptr, &dst_te.path.m_data.as_Generic().m_params, nullptr);
                     auto monomorph_cb_r = monomorphise_type_get_cb(sp, nullptr, &te.path.m_data.as_Generic().m_params, nullptr);
 
-                    const ::HIR::TypeRef*   field_ty;
                     TU_MATCHA( (str->m_data), (se),
                     (Unit,
                         ),
@@ -402,7 +401,6 @@ public:
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
                                     field = i;
-                                    field_ty = &se[i].ent;
                                 }
                             }
                         }
@@ -424,7 +422,6 @@ public:
                                     if( field != ~0u )
                                         ERROR(sp, E0000, "CoerceUnsized impls can only differ by one field");
                                     field = i;
-                                    field_ty = &se[i].second.ent;
                                 }
                             }
                         }
@@ -433,13 +430,6 @@ public:
                     if( field == ~0u )
                         ERROR(sp, E0000, "CoerceUnsized requires a field to differ between source and destination");
                     struct_markings.coerce_unsized_index = field;
-                    if( const auto* te = field_ty->m_data.opt_Generic() ) {
-                        struct_markings.coerce_param = te->binding;
-                        struct_markings.coerce_unsized = ::HIR::StructMarkings::Coerce::Passthrough;
-                    }
-                    else {
-                        struct_markings.coerce_unsized = ::HIR::StructMarkings::Coerce::Pointer;
-                    }
                 }
                 else if( trait_path == m_lang_Deref ) {
                     DEBUG("Type " << impl.m_type << " can Deref");
@@ -453,11 +443,129 @@ public:
     }
 };
 
+class Visitor2:
+    public ::HIR::Visitor
+{
+public:
+    Visitor2()
+    {
+    }
+
+    size_t get_unsize_param_idx(const Span& sp, const ::HIR::TypeRef& pointee) const
+    {
+        if( const auto* te = pointee.m_data.opt_Generic() )
+        {
+            return te->binding;
+        }
+        else if( const auto* te = pointee.m_data.opt_Path() )
+        {
+            ASSERT_BUG(sp, te->binding.is_Struct(), "Pointer to non-Unsize type - " << pointee);
+            const auto& ism = te->binding.as_Struct()->m_struct_markings;
+            ASSERT_BUG(sp, ism.unsized_param != ~0u, "Pointer to non-Unsize type - " << pointee);
+            const auto& gp = te->path.m_data.as_Generic();
+            return get_unsize_param_idx(sp, gp.m_params.m_types.at(ism.unsized_param));
+        }
+        else
+        {
+            BUG(sp, "Pointer to non-Unsize type? - " << pointee);
+        }
+    }
+    ::HIR::StructMarkings::Coerce get_coerce_type(const Span& sp, ::HIR::ItemPath ip, const ::HIR::Struct& str, size_t& out_param_idx) const
+    {
+        if( str.m_struct_markings.coerce_unsized_index == ~0u )
+            return ::HIR::StructMarkings::Coerce::None;
+        if( str.m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None )
+        {
+            out_param_idx = str.m_struct_markings.coerce_param;
+            return str.m_struct_markings.coerce_unsized;
+        }
+
+        const ::HIR::TypeRef*   field_ty = nullptr;
+        TU_MATCHA( (str.m_data), (se),
+        (Unit,
+            ),
+        (Tuple,
+            field_ty = &se.at(str.m_struct_markings.coerce_unsized_index).ent;
+            ),
+        (Named,
+            field_ty = &se.at(str.m_struct_markings.coerce_unsized_index).second.ent;
+            )
+        )
+        assert(field_ty);
+    try_again:
+        DEBUG("field_ty = " << *field_ty);
+
+        if( const auto* te = field_ty->m_data.opt_Path() )
+        {
+            ASSERT_BUG(sp, te->binding.is_Struct(), "CoerceUnsized impl differs on Path that isn't a struct - " << ip << " fld=" << *field_ty);
+            const auto* istr = te->binding.as_Struct();
+            const auto& gp = te->path.m_data.as_Generic();
+
+            size_t inner_idx = 0;
+            auto inner_type = get_coerce_type(sp, {*field_ty}, *istr, inner_idx);
+            ASSERT_BUG(sp, inner_type != ::HIR::StructMarkings::Coerce::None, "CoerceUnsized impl differs on a non-CoerceUnsized type - " << ip << " fld=" << *field_ty);
+
+            const auto& param_ty = gp.m_params.m_types.at( inner_idx );
+            switch(inner_type)
+            {
+            case ::HIR::StructMarkings::Coerce::None:
+                throw "";
+            case ::HIR::StructMarkings::Coerce::Passthrough:
+                // Recurse on the generic type.
+                field_ty = &param_ty;
+                goto try_again;
+            case ::HIR::StructMarkings::Coerce::Pointer:
+                out_param_idx = get_unsize_param_idx(sp, param_ty);
+                return ::HIR::StructMarkings::Coerce::Pointer;
+            }
+        }
+        else if( const auto* te = field_ty->m_data.opt_Generic() )
+        {
+            out_param_idx = te->binding;
+            return ::HIR::StructMarkings::Coerce::Passthrough;
+        }
+        else if( const auto* te = field_ty->m_data.opt_Pointer() )
+        {
+            out_param_idx = get_unsize_param_idx(sp, *te->inner);
+            return ::HIR::StructMarkings::Coerce::Pointer;
+        }
+        else if( const auto* te = field_ty->m_data.opt_Borrow() )
+        {
+            out_param_idx = get_unsize_param_idx(sp, *te->inner);
+            return ::HIR::StructMarkings::Coerce::Pointer;
+        }
+        else
+        {
+            TODO(sp, "Handle CoerceUnsized type " << *field_ty);
+        }
+        BUG(sp, "Reached end of get_coerce_type - " << *field_ty);
+    }
+
+    void visit_struct(::HIR::ItemPath ip, ::HIR::Struct& str) override
+    {
+        static Span sp;
+
+        auto& struct_markings = str.m_struct_markings;
+        if( struct_markings.coerce_unsized_index == ~0u ) {
+            return ;
+        }
+
+        size_t  idx = 0;
+        auto cut = get_coerce_type(sp, ip, str, idx);
+        struct_markings.coerce_param = idx;
+        struct_markings.coerce_unsized = cut;
+    }
+};
+
 }   // namespace
 
 void ConvertHIR_Markings(::HIR::Crate& crate)
 {
     Visitor exp { crate };
     exp.visit_crate( crate );
+
+    // Visit again, visiting all structs and filling the coerce_unsized data
+    Visitor2 exp2 { /*crate*/ };
+    exp2.visit_crate( crate );
 }
 
