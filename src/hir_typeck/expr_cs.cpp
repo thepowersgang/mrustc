@@ -4452,7 +4452,37 @@ namespace {
                 }
                 return false;
             }
+
+            static ::HIR::TypeRef make_pruned(Context& context, const ::HIR::TypeRef& ty)
+            {
+                const auto& binding = ty.m_data.as_Path().binding;
+                const auto& sm = binding.as_Struct()->m_struct_markings;
+                ::HIR::GenericPath gp = ty.m_data.as_Path().path.m_data.as_Generic().clone();
+                if( sm.coerce_param == ~0u ) {
+                    for(size_t i = 0; i < gp.m_params.m_types.size(); i ++ )
+                        gp.m_params.m_types.at(i) = context.m_ivars.new_ivar_tr();
+                }
+                else {
+                    gp.m_params.m_types.at(sm.coerce_param) = context.m_ivars.new_ivar_tr();
+                }
+                return ::HIR::TypeRef::new_path(mv$(gp), binding.as_Struct());
+            }
         };
+
+        // Coercing to a CoerceUnsized type can only happen from something of the same generic type
+        // - Create a copy of the known type, but with the `Coerce` parameter set to a new ivar
+        if( ty_src.m_data.is_Infer() && H::type_has_coerce_path(context, ty_dst) && ty_dst.m_data.as_Path().binding.is_Struct() )
+        {
+            DEBUG("Create ivar filled version of " << ty_dst);
+            context.equate_types(sp, ty_src, H::make_pruned(context, ty_dst));
+            return false;
+        }
+        if( ty_dst.m_data.is_Infer() && H::type_has_coerce_path(context, ty_src) && ty_src.m_data.as_Path().binding.is_Struct() )
+        {
+            DEBUG("Create ivar filled version of " << ty_src);
+            context.equate_types(sp, ty_dst, H::make_pruned(context, ty_src));
+            return false;
+        }
 
         // CoerceUnsized trait
         // - Only valid for generic or path destination types
