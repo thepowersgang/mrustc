@@ -939,9 +939,16 @@ void TraitResolution::prep_indexes()
             ),
         (TraitBound,
             DEBUG("[prep_indexes] `" << be.type << " : " << be.trait);
+            // Explicitly listed bounds
             for( const auto& tb : be.trait.m_type_bounds ) {
                 DEBUG("[prep_indexes] Equality (TB) - <" << be.type << " as " << be.trait.m_path << ">::" << tb.first << " = " << tb.second);
-                auto ty_l = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), tb.first ) );
+
+                // Locate the source trait
+                ::HIR::GenericPath  source_trait_path;
+                bool rv = this->trait_contains_type(sp, be.trait.m_path, m_crate.get_trait_by_path(sp, be.trait.m_path.m_path), tb.first,  source_trait_path);
+                ASSERT_BUG(sp, rv, "Can't find `" << tb.first << "` in " << be.trait.m_path);
+
+                auto ty_l = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), mv$(source_trait_path), tb.first ) );
                 ty_l.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
 
                 add_equality( mv$(ty_l), tb.second.clone() );
@@ -964,20 +971,29 @@ void TraitResolution::prep_indexes()
                 };
 
             const auto& trait = m_crate.get_trait_by_path(sp, be.trait.m_path.m_path);
+            // Bounds implied by associated trait bounds on the parent trait
             for(const auto& a_ty : trait.m_types)
             {
                 ::HIR::TypeRef ty_a;
-                for( const auto& a_ty_b : a_ty.second.m_trait_bounds ) {
+                for( const auto& a_ty_b : a_ty.second.m_trait_bounds )
+                {
                     DEBUG("[prep_indexes] (Assoc) " << a_ty_b);
+                    const auto& itrait = m_crate.get_trait_by_path(sp, a_ty_b.m_path.m_path);
                     auto trait_mono = monomorphise_traitpath_with(sp, a_ty_b, cb_mono, false);
-                    for( auto& tb : trait_mono.m_type_bounds ) {
+                    for( auto& tb : trait_mono.m_type_bounds )
+                    {
                         if( ty_a == ::HIR::TypeRef() ) {
                             ty_a = ::HIR::TypeRef( ::HIR::Path( be.type.clone(), be.trait.m_path.clone(), a_ty.first ) );
                             ty_a.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
                         }
                         DEBUG("[prep_indexes] Equality (ATB) - <" << ty_a << " as " << a_ty_b.m_path << ">::" << tb.first << " = " << tb.second);
 
-                        auto ty_l = ::HIR::TypeRef( ::HIR::Path( ty_a.clone(), trait_mono.m_path.clone(), tb.first ) );
+                        // Find the source trait for this associated type
+                        ::HIR::GenericPath  source_trait_path;
+                        bool rv = this->trait_contains_type(sp, trait_mono.m_path, itrait, tb.first,  source_trait_path);
+                        ASSERT_BUG(sp, rv, "Can't find `" << tb.first << "` in " << trait_mono.m_path);
+
+                        auto ty_l = ::HIR::TypeRef( ::HIR::Path( ty_a.clone(), mv$(source_trait_path), tb.first ) );
                         ty_l.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
 
                         add_equality( mv$(ty_l), mv$(tb.second) );
@@ -1098,55 +1114,6 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         else {
             return false;
         }
-    }
-
-    // Magic Unsize impls to trait objects
-    if( trait == lang_Unsize )
-    {
-        ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
-        const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
-
-        if( find_trait_impls_bound(sp, trait, params, type, callback) )
-            return true;
-
-        bool rv = false;
-        auto cb = [&](auto new_dst) {
-            ::HIR::PathParams   real_params { mv$(new_dst) };
-            rv = callback( ImplRef(type.clone(), mv$(real_params), {}), ::HIR::Compare::Fuzzy );
-            };
-        //if( dst_ty.m_data.is_Infer() || type.m_data.is_Infer() )
-        //{
-        //    rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Fuzzy );
-        //    return rv;
-        //}
-        auto cmp = this->can_unsize(sp, dst_ty, type, cb);
-        if( cmp == ::HIR::Compare::Equal )
-        {
-            assert(!rv);
-            rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Equal );
-        }
-        return rv;
-    }
-
-    // Magical CoerceUnsized impls for various types
-    if( trait == lang_CoerceUnsized ) {
-        const auto& dst_ty = params.m_types.at(0);
-        // - `*mut T => *const T`
-        TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Pointer, e,
-            TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, Pointer, de,
-                if( de.type < e.type ) {
-                    auto cmp = e.inner->compare_with_placeholders(sp, *de.inner, this->m_ivars.callback_resolve_infer());
-                    if( cmp != ::HIR::Compare::Unequal )
-                    {
-                        ::HIR::PathParams   pp;
-                        pp.m_types.push_back( dst_ty.clone() );
-                        if( callback( ImplRef(type.clone(), mv$(pp), {}), cmp ) ) {
-                            return true;
-                        }
-                    }
-                }
-            )
-        )
     }
 
     // Magic impls of the Fn* traits for closure types
@@ -1417,6 +1384,55 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 return true;
         }
     )
+
+    // Magic Unsize impls to trait objects
+    if( trait == lang_Unsize )
+    {
+        ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
+        const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
+
+        if( find_trait_impls_bound(sp, trait, params, type, callback) )
+            return true;
+
+        bool rv = false;
+        auto cb = [&](auto new_dst) {
+            ::HIR::PathParams   real_params { mv$(new_dst) };
+            rv = callback( ImplRef(type.clone(), mv$(real_params), {}), ::HIR::Compare::Fuzzy );
+            };
+        //if( dst_ty.m_data.is_Infer() || type.m_data.is_Infer() )
+        //{
+        //    rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Fuzzy );
+        //    return rv;
+        //}
+        auto cmp = this->can_unsize(sp, dst_ty, type, cb);
+        if( cmp == ::HIR::Compare::Equal )
+        {
+            assert(!rv);
+            rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Equal );
+        }
+        return rv;
+    }
+
+    // Magical CoerceUnsized impls for various types
+    if( trait == lang_CoerceUnsized ) {
+        const auto& dst_ty = params.m_types.at(0);
+        // - `*mut T => *const T`
+        TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Pointer, e,
+            TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, Pointer, de,
+                if( de.type < e.type ) {
+                    auto cmp = e.inner->compare_with_placeholders(sp, *de.inner, this->m_ivars.callback_resolve_infer());
+                    if( cmp != ::HIR::Compare::Unequal )
+                    {
+                        ::HIR::PathParams   pp;
+                        pp.m_types.push_back( dst_ty.clone() );
+                        if( callback( ImplRef(type.clone(), mv$(pp), {}), cmp ) ) {
+                            return true;
+                        }
+                    }
+                }
+            )
+        )
+    }
 
     // 1. Search generic params
     if( find_trait_impls_bound(sp, trait, params, type, callback) )
@@ -3150,7 +3166,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
 
             if( cmp != ::HIR::Compare::Equal )
             {
-                DEBUG("> Found bound (fuzzy) " << dst_ty << "=" << be_dst << " <- " << src_ty);
+                DEBUG("[can_unsize] > Found bound (fuzzy) " << dst_ty << "=" << be_dst << " <- " << src_ty);
                 rv = ::HIR::Compare::Fuzzy;
             }
             return true;

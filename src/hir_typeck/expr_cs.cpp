@@ -4311,11 +4311,11 @@ namespace {
             {
                 const auto& trait = dep->m_trait.m_path;
 
-                ImplRef best_impl;
-                unsigned int count = 0;
                 // Check for trait impl
                 if( trait.m_path != ::HIR::SimplePath() )
                 {
+                    ImplRef best_impl;
+                    unsigned int count = 0;
                     bool found = context.m_resolve.find_trait_impls(sp, trait.m_path, trait.m_params, src, [&](auto impl, auto cmp) {
                         DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
                         count ++;
@@ -4395,17 +4395,37 @@ namespace {
         if( H::type_is_bounded(src) )
         {
             const auto& lang_Unsize = context.m_crate.get_lang_item_path(sp, "unsize");
+            DEBUG("Search for `Unsize<" << dst << ">` impl for `" << src << "`");
+
+            ImplRef best_impl;
+            unsigned int count = 0;
 
             ::HIR::PathParams   pp { dst.clone() };
-            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, src, [](auto , auto){ return true; });
+            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, src, [&best_impl,&count](auto impl, bool fuzzy){
+                    DEBUG("[check_unsize_tys] Found impl " << impl << (fuzzy ? " (fuzzy)" : ""));
+                    if( impl.more_specific_than(best_impl) )
+                    {
+                        best_impl = mv$(impl);
+                        count ++;
+                    }
+                    // TODO: Record the best impl (if fuzzy) and equate params
+                    return !fuzzy;
+                    });
             if( found )
             {
+                return CoerceResult::Unsize;
+            }
+            else if( count == 1 )
+            {
+                auto pp = best_impl.get_trait_params();
+                DEBUG("Fuzzy, best was Unsize" << pp);
+                context.equate_types(sp, dst, pp.m_types.at(0));
                 return CoerceResult::Unsize;
             }
             else
             {
                 // TODO: Fuzzy?
-                //this->context.equate_types(sp, *e.inner, *s_e.inner);
+                //context.equate_types(sp, *e.inner, *s_e.inner);
             }
         }
 
@@ -4613,14 +4633,12 @@ namespace {
 
         // Any other type, check for pointer
         // - If not a pointer, return Equality
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (src.m_data), (se),
-        (
-            // NOTE: ! should be handled above or in caller?
-            return CoerceResult::Equality;
-            ),
-        (Infer,
-            // If the other side isn't a pointer, equate
+        if(const auto* sep = src.m_data.opt_Infer())
+        {
+            const auto& se = *sep;
             ASSERT_BUG(sp, ! dst.m_data.is_Infer(), "Already handled?");
+
+            // If the other side isn't a pointer, equate
             if( dst.m_data.is_Pointer() || dst.m_data.is_Borrow() )
             {
                 context.possible_equate_type_coerce_to(se.index, dst);
@@ -4630,8 +4648,10 @@ namespace {
             {
                 return CoerceResult::Equality;
             }
-            ),
-        (Pointer,
+        }
+        else if(const auto* sep = src.m_data.opt_Pointer())
+        {
+            const auto& se = *sep;
             if( const auto* dep = dst.m_data.opt_Infer() )
             {
                 context.possible_equate_type_coerce_from(dep->index, src);
@@ -4660,7 +4680,7 @@ namespace {
                     auto& node_ptr = *node_ptr_ptr;
                     // Add cast down
                     auto span = node_ptr->span();
-                    node_ptr->m_res_type = src.clone();
+                    //node_ptr->m_res_type = src.clone();
                     node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
                     node_ptr->m_res_type = dst.clone();
 
@@ -4676,8 +4696,10 @@ namespace {
                 ERROR(sp, E0000, "Type mismatch between " << dst << " and " << src << " - Pointer mutability differs");
             }
             return CoerceResult::Equality;
-            ),
-        (Borrow,
+        }
+        else if(const auto* sep = src.m_data.opt_Borrow())
+        {
+            const auto& se = *sep;
             if( const auto* dep = dst.m_data.opt_Infer() )
             {
                 context.possible_equate_type_coerce_from(dep->index, src);
@@ -4747,7 +4769,7 @@ namespace {
                     if( node_ptr_ptr )
                     {
                         // > Goes from `src` -> `*src` -> `&`dep->type` `*src`
-                        const auto& inner_ty = *se.inner;
+                        const auto inner_ty = se.inner->clone();
                         auto dst_bt = dep->type;
                         auto new_type = ::HIR::TypeRef::new_borrow(dst_bt, inner_ty.clone());
 
@@ -4819,8 +4841,12 @@ namespace {
                 // TODO: Error here?
                 return CoerceResult::Equality;
             }
-            )
-        )
+        }
+        else
+        {
+            // TODO: ! should be handled above or in caller?
+            return CoerceResult::Equality;
+        }
     }
     bool check_coerce(Context& context, const Context::Coercion& v)
     {
@@ -5881,7 +5907,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         for(size_t i = 0; i < context.link_coerce.size(); )
         {
             auto ent = mv$(context.link_coerce[i]);
-            const auto& src_ty = (**ent.right_node_ptr).m_res_type;
+            auto& src_ty = (**ent.right_node_ptr).m_res_type;
+            //src_ty = context.m_resolve.expand_associated_types( (*ent.right_node_ptr)->span(), mv$(src_ty) );
             ent.left_ty = context.m_resolve.expand_associated_types( (*ent.right_node_ptr)->span(), mv$(ent.left_ty) );
             if( check_coerce(context, ent) )
             {
