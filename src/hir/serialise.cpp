@@ -832,7 +832,7 @@ namespace {
             m_out.write_bool(item.m_is_mut);
             serialise(item.m_type);
 
-            serialise(item.m_value_res);
+            // NOTE: Value not stored (What if the static is generic? It can't be.)
         }
 
         // - Type items
