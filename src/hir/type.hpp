@@ -127,6 +127,20 @@ public:
     (Infer, struct {
         unsigned int index;
         InferClass  ty_class;
+
+        /// Returns true if the ivar is a literal
+        bool is_lit() const {
+            switch(this->ty_class)
+            {
+            case InferClass::None:
+            case InferClass::Diverge:
+                return false;
+            case InferClass::Integer:
+            case InferClass::Float:
+                return true;
+            }
+            throw "";
+        }
         }),
     (Diverge, struct {}),
     (Primitive, ::HIR::CoreType),

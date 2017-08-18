@@ -109,6 +109,10 @@
 
 #define TU_IFLET(CLASS, VAR, TAG, NAME, ...) if(VAR.tag() == CLASS::TAG_##TAG) { auto& NAME = VAR.as_##TAG(); (void)&NAME; __VA_ARGS__ }
 
+//#define TU_TEST(VAL, ...)    (VAL.is_##TAG() && VAL.as_##TAG() TEST)
+#define TU_TEST1(VAL, TAG1, TEST)    (VAL.is_##TAG1() && VAL.as_##TAG1() TEST)
+#define TU_TEST2(VAL, TAG1, FLD1,TAG2, TEST)    (VAL.is_##TAG1() && VAL.as_##TAG1() FLD1.is_##TAG2() && VAL.as_##TAG1() FLD1.as_##TAG2() TEST)
+
 
 #define TU_DATANAME(name)   Data_##name
 // Internals of TU_CONS

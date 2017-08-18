@@ -4090,121 +4090,120 @@ namespace {
         context.m_ivars.mark_change();
     }
 
-    bool check_coerce_borrow(Context& context, ::HIR::BorrowType bt, const ::HIR::TypeRef& inner_l, const ::HIR::TypeRef& inner_r, ::HIR::ExprNodeP& node_ptr)
-    {
-        const auto& sp = node_ptr->span();
+    enum CoerceResult {
+        Unknown,    // Coercion still unknown.
+        Equality,   // Types should be equated
+        Custom, // An op was emitted, and rule is complete
+        Unsize, // Emits an _Unsize op
+    };
 
-        const auto& ty_dst = context.m_ivars.get_type(inner_l);
-        const auto& ty_src = context.m_ivars.get_type(inner_r);
+    // TODO: Add a (two?) callback(s) that handle type equalities (and possible equalities) so this function doesn't have to mutate the context
+    CoerceResult check_unsize_tys(Context& context, const Span& sp, const ::HIR::TypeRef& dst_raw, const ::HIR::TypeRef& src_raw, ::HIR::ExprNodeP* node_ptr_ptr=nullptr)
+    {
+        const auto& dst = context.m_ivars.get_type(dst_raw);
+        const auto& src = context.m_ivars.get_type(src_raw);
+        TRACE_FUNCTION_F("dst=" << dst << ", src=" << src);
 
         // If the types are already equal, no operation is required
-        if( context.m_ivars.types_equal(ty_dst, ty_src) ) {
-            return true;
+        if( context.m_ivars.types_equal(dst, src) ) {
+            DEBUG("Equal");
+            return CoerceResult::Equality;
         }
 
-
-        // If either side (or both) are ivars, then coercion can't be known yet - but they could be equal
-        // TODO: Fix and deduplicate the following code for InferClass::Diverge
-        if( ty_src.m_data.is_Infer() && ty_dst.m_data.is_Infer() ) {
-            const auto& r_e = ty_src.m_data.as_Infer();
-            const auto& l_e = ty_dst.m_data.as_Infer();
-
-            // TODO: Commented out - &-ptrs can infer to trait objects, and &-ptrs can infer from deref coercion
-            //if( r_e.ty_class != ::HIR::InferClass::None ) {
-            //    context.equate_types(sp, ty_dst, ty_src);
-            //    return true;
-            //}
-            //if( l_e.ty_class != ::HIR::InferClass::None ) {
-            //    context.equate_types(sp, ty_dst, ty_src);
-            //    return true;
-            //}
-            context.possible_equate_type_unsize_to(r_e.index, ty_dst);
-            context.possible_equate_type_unsize_from(l_e.index, ty_src);
-            DEBUG("- Both infer, add possibility");
-            return false;
-        }
-
-        // If the source is '_', we can't know yet
-        TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
-
-            // No avaliable information, add a possible unsize
-            if( r_e.ty_class == ::HIR::InferClass::None || r_e.ty_class == ::HIR::InferClass::Diverge )
-            {
-                // Possibility
-                context.possible_equate_type_unsize_to(r_e.index, ty_dst);
-                DEBUG("- Infer, add possibility");
-                return false;
-            }
-            // Destination is infer, fall through to next TU_IFLET
-            else if( ty_dst.m_data.is_Infer() )
-            {
-            }
-            // Destination is a TraitObject, fall through to doing an impl search
-            else if( ty_dst.m_data.is_TraitObject() )
-            {
-            }
-            // Otherwise, they have to be equal
-            else
-            {
-                context.equate_types(sp, ty_dst, ty_src);
-                return true;
-            }
-        )
-
-        TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, l_e,
-
-            // If the destination is known to be a primitive (integer or float) and the source is a primitive
-            // - Equate.
-            // - NOTE: The source can't be something that could deref coerce into the literal.
-            if( l_e.ty_class == ::HIR::InferClass::Integer && ty_src.m_data.is_Primitive() ) {
-                context.equate_types(sp, ty_dst, ty_src);
-                return true;
-            }
-            if( l_e.ty_class == ::HIR::InferClass::Float && ty_src.m_data.is_Primitive() ) {
-                context.equate_types(sp, ty_dst, ty_src);
-                return true;
-            }
-
-            // If the source can't unsize, equate
-            if( const auto* te = ty_src.m_data.opt_Slice() )
-            {
-                (void)te;
-                context.equate_types(sp, ty_dst, ty_src);
-                return true;
-            }
-
-            context.possible_equate_type_unsize_from(l_e.index, ty_src);
-            DEBUG("- Dest infer, add possibility");
-            return false;
-        )
-
-        // Fast hack for slices (avoids going via the Deref impl search)
-        if( ty_dst.m_data.is_Slice() && !ty_src.m_data.is_Slice() )
+        // Impossibilities
+        if( src.m_data.is_Slice() )
         {
-            const auto& dst_slice = ty_dst.m_data.as_Slice();
-            TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Array, src_array,
-                context.equate_types(sp, *dst_slice.inner, *src_array.inner);
+            // [T] can't unsize to anything
+            DEBUG("Slice can't unsize");
+            return CoerceResult::Equality;
+        }
 
-                auto ty_dst_b = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone());
-                auto ty_dst_b2 = ty_dst_b.clone();
-                auto span = node_ptr->span();
-                node_ptr = NEWNODE( mv$(ty_dst_b), span, _Unsize,  mv$(node_ptr), mv$(ty_dst_b2) );
+        // Handle ivars specially
+        if(dst.m_data.is_Infer() && src.m_data.is_Infer())
+        {
+            // If both are literals, equate
+            if( dst.m_data.as_Infer().is_lit() && src.m_data.as_Infer().is_lit() )
+            {
+                DEBUG("Literal ivars");
+                return CoerceResult::Equality;
+            }
+            context.possible_equate_type_coerce_to(src.m_data.as_Infer().index, dst);
+            context.possible_equate_type_coerce_from(dst.m_data.as_Infer().index, src);
+            DEBUG("Both ivars");
+            return CoerceResult::Unknown;
+        }
+        else if(const auto* dep = dst.m_data.opt_Infer())
+        {
+            // Literal from a primtive has to be equal
+            if( dep->is_lit() && src.m_data.is_Primitive() )
+            {
+                DEBUG("Literal with primitive");
+                return CoerceResult::Equality;
+            }
+            context.possible_equate_type_coerce_from(dep->index, src);
+            DEBUG("Dst ivar");
+            return CoerceResult::Unknown;
+        }
+        else if(const auto* sep = src.m_data.opt_Infer())
+        {
+            if(sep->is_lit() && !dst.m_data.is_TraitObject())
+            {
+                // Literal to anything other than a trait object must be an equality
+                DEBUG("Literal with primitive");
+                return CoerceResult::Equality;
+            }
+            context.possible_equate_type_coerce_to(sep->index, dst);
+            DEBUG("Src ivar");
+            return CoerceResult::Unknown;
+        }
+        else
+        {
+            // Neither side is an ivar, keep going.
+        }
 
-                context.m_ivars.mark_change();
-                return true;
-            )
+        // Array unsize (quicker than going into deref search)
+        if(dst.m_data.is_Slice() && src.m_data.is_Array())
+        {
+            context.equate_types(sp, *dst.m_data.as_Slice().inner, *src.m_data.as_Array().inner);
+            if(node_ptr_ptr)
+            {
+                // TODO: Insert deref (instead of leading to a _Unsize op)
+            }
             else
             {
-                // Apply deref coercions
+                // Just return Unsize
+            }
+            DEBUG("Array => Slice");
+            return CoerceResult::Unsize;
+        }
+
+        // Shortcut: Types that can't deref coerce (and can't coerce here because the target isn't a TraitObject)
+        if( ! dst.m_data.is_TraitObject() )
+        {
+            if( src.m_data.is_Generic() )
+            {
+            }
+            else if( src.m_data.is_Path() )
+            {
+            }
+            else if( src.m_data.is_Borrow() )
+            {
+            }
+            else
+            {
+                DEBUG("Target isn't a trait object, and sources can't Deref");
+                return CoerceResult::Equality;
             }
         }
 
         // Deref coercions
         // - If right can be dereferenced to left
-        DEBUG("-- Deref coercions");
+        if(node_ptr_ptr)
         {
+            DEBUG("-- Deref coercions");
+            auto& node_ptr = *node_ptr_ptr;
             ::HIR::TypeRef  tmp_ty;
-            const ::HIR::TypeRef*   out_ty_p = &ty_src;
+            const ::HIR::TypeRef*   out_ty_p = &src;
             unsigned int count = 0;
             ::std::vector< ::HIR::TypeRef>  types;
             while( (out_ty_p = context.m_resolve.autoderef(sp, *out_ty_p, tmp_ty)) )
@@ -4219,22 +4218,25 @@ namespace {
 
                 types.push_back( out_ty.clone() );
 
-                if( context.m_ivars.types_equal(ty_dst, out_ty) == false ) {
-                    // Check equivalence
-
-                    if( ty_dst.m_data.tag() == out_ty.m_data.tag() ) {
-                        TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_dst.m_data, out_ty.m_data), (d_e, s_e),
+                // Types aren't equal
+                if( context.m_ivars.types_equal(dst, out_ty) == false )
+                {
+                    // Check if they can be considered equivalent.
+                    // - E.g. a fuzzy match, or both are slices/arrays
+                    if( dst.m_data.tag() == out_ty.m_data.tag() )
+                    {
+                        TU_MATCH_DEF( ::HIR::TypeRef::Data, (dst.m_data, out_ty.m_data), (d_e, s_e),
                         (
-                            if( ty_dst .compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal ) {
+                            if( dst .compare_with_placeholders(sp, out_ty, context.m_ivars.callback_resolve_infer()) == ::HIR::Compare::Unequal ) {
                                 DEBUG("Same tag, but not fuzzy match");
                                 continue ;
                             }
-                            DEBUG("Same tag and fuzzy match - assuming " << ty_dst << " == " << out_ty);
-                            context.equate_types(sp, ty_dst, out_ty);
+                            DEBUG("Same tag and fuzzy match - assuming " << dst << " == " << out_ty);
+                            context.equate_types(sp, dst, out_ty);
                             ),
                         (Slice,
                             // Equate!
-                            context.equate_types(sp, ty_dst, out_ty);
+                            context.equate_types(sp, dst, out_ty);
                             // - Fall through
                             )
                         )
@@ -4260,243 +4262,282 @@ namespace {
                     }
                     });
 
-                return true;
+                return CoerceResult::Custom;
             }
             // Either ran out of deref, or hit a _
         }
 
-        // Desination coercions (Trait objects)
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_dst.m_data), (e),
-        (
-            ),
-        (TraitObject,
-            const auto& trait = e.m_trait.m_path;
-            ImplRef best_impl;
-            unsigned int count = 0;
-            // Check for trait impl
-            bool found = context.m_resolve.find_trait_impls(sp, trait.m_path, trait.m_params, ty_src, [&](auto impl, auto cmp) {
-                DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
-                count ++;
-                best_impl = mv$(impl);
-                return cmp == ::HIR::Compare::Equal;
-                });
-            if( count == 0 ) {
-                // TODO: Get a better idea of when there won't ever be an applicable impl
-                if( !context.m_ivars.type_contains_ivars(ty_src) ) {
-                    ERROR(sp, E0000, "The trait " << e.m_trait << " is not implemented for " << ty_src);
-                }
-                DEBUG("No impl, but there may eventaully be one");
-                return false;
-            }
-            if( !found )
-            {
-                if(count > 1)
-                {
-                    DEBUG("Defer as there are multiple applicable impls");
-                    return false;
-                }
-
-                if( best_impl.has_magic_params() ) {
-                    DEBUG("Defer as there were magic parameters");
-                    return false;
-                }
-
-                // TODO: Get a better way of equating these that doesn't require getting copies of the impl's types
-                context.equate_types(sp, ty_src, best_impl.get_impl_type());
-                auto args = best_impl.get_trait_params();
-                assert(trait.m_params.m_types.size() == args.m_types.size());
-                for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++)
-                {
-                    context.equate_types(sp, trait.m_params.m_types[i], args.m_types[i]);
-                }
-            }
-
-            for(const auto& marker : e.m_markers)
-            {
-                bool found = context.m_resolve.find_trait_impls(sp, marker.m_path, marker.m_params, ty_src, [&](auto impl, auto cmp) {
-                    DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
-                    return cmp == ::HIR::Compare::Equal;
-                    });
-                // TODO: Allow fuzz and equate same as above?
-                if( !found ) {
-                    // TODO: Get a better idea of when there won't ever be an applicable impl
-                    if( !context.m_ivars.type_contains_ivars(ty_src) ) {
-                        ERROR(sp, E0000, "The trait " << marker << " is not implemented for " << ty_src);
-                    }
-                    return false;
-                }
-            }
-
-            // Add _Unsize operator
-            auto ty_dst_b = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone());
-            auto ty_dst_b2 = ty_dst_b.clone();
-            auto span = node_ptr->span();
-            node_ptr = NEWNODE( mv$(ty_dst_b), span, _Unsize,  mv$(node_ptr), mv$(ty_dst_b2) );
-
-            return true;
-            )
-        )
-
-        TU_MATCH_DEF(::HIR::TypeRef::Data, (ty_src.m_data), (e),
-        (
-            ),
-        (Slice,
-            // NOTE: These can't even coerce to a TraitObject because of pointer size problems
-            context.equate_types(sp, ty_dst, ty_src);
-            return true;
-        //    ),
-        //(TraitObject,
-        //    // TODO: Could a trait object coerce and lose a trait?
-        //    context.equate_types(sp, ty_dst, ty_src);
-        //    return true;
-            )
-        )
-
-        // Search for Unsize
-        // - If `right`: ::core::marker::Unsize<`left`>
-        DEBUG("-- Unsize trait");
+        // Trait objects
+        if(const auto* dep = dst.m_data.opt_TraitObject())
         {
-            auto cmp = context.m_resolve.can_unsize(sp, ty_dst, ty_src, [&](auto new_dst) {
-                // Equate these two types
-                });
-            if(cmp == ::HIR::Compare::Equal)
+            if(const auto* sep = src.m_data.opt_TraitObject())
             {
-                DEBUG("- Unsize " << &*node_ptr << " -> " << ty_dst);
-                auto ty_dst_b = ::HIR::TypeRef::new_borrow(bt, ty_dst.clone());
-                auto ty_dst_b2 = ty_dst_b.clone();
-                auto span = node_ptr->span();
-                node_ptr = NEWNODE( mv$(ty_dst_b), span, _Unsize,  mv$(node_ptr), mv$(ty_dst_b2) );
+                DEBUG("TraitObject => TraitObject");
+                // Ensure that the trait list in the destination is a strict subset of the source
 
-                return true;
+                // TODO: Equate these two trait paths
+                if( dep->m_trait.m_path.m_path != sep->m_trait.m_path.m_path )
+                {
+                    // Trait mismatch!
+                    return CoerceResult::Equality;
+                }
+                const auto& tys_d = dep->m_trait.m_path.m_params.m_types;
+                const auto& tys_s = sep->m_trait.m_path.m_params.m_types;
+                for(size_t i = 0; i < tys_d.size(); i ++)
+                {
+                    context.equate_types(sp, tys_d[i], tys_s.at(i));
+                }
+
+                // 2. Destination markers must be a strict subset
+                for(const auto& mt : dep->m_markers)
+                {
+                    // TODO: Fuzzy match
+                    bool found = false;
+                    for(const auto& omt : sep->m_markers) {
+                        if( omt == mt ) {
+                            found = true;
+                            break;
+                        }
+                    }
+                    if( !found ) {
+                        // Return early.
+                        return CoerceResult::Equality;
+                    }
+                }
+
+                return CoerceResult::Unsize;
             }
-            if(cmp == ::HIR::Compare::Unequal)
+            else
             {
-                // No unsize possible, equate types
-                // - Only if they're not already fixed as unequal (that gets handled elsewhere)
-                if( ty_dst.m_data.is_Path() && ty_dst.m_data.as_Path().binding.is_Unbound() )
+                const auto& trait = dep->m_trait.m_path;
+
+                ImplRef best_impl;
+                unsigned int count = 0;
+                // Check for trait impl
+                if( trait.m_path != ::HIR::SimplePath() )
                 {
+                    bool found = context.m_resolve.find_trait_impls(sp, trait.m_path, trait.m_params, src, [&](auto impl, auto cmp) {
+                        DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
+                        count ++;
+                        best_impl = mv$(impl);
+                        return cmp == ::HIR::Compare::Equal;
+                        });
+                    if( count == 0 )
+                    {
+                        // TODO: Get a better idea of when there won't ever be an applicable impl
+                        if( !context.m_ivars.type_contains_ivars(src) ) {
+                            ERROR(sp, E0000, "The trait " << dep->m_trait << " is not implemented for " << src);
+                        }
+                        DEBUG("No impl, but there may eventaully be one");
+                        return CoerceResult::Unknown;
+                    }
+                    if( !found )
+                    {
+                        if(count > 1)
+                        {
+                            DEBUG("Defer as there are multiple applicable impls");
+                            return CoerceResult::Unknown;
+                        }
+
+                        if( best_impl.has_magic_params() ) {
+                            DEBUG("Defer as there were magic parameters");
+                            return CoerceResult::Unknown;
+                        }
+
+                        // TODO: Get a better way of equating these that doesn't require getting copies of the impl's types
+                        context.equate_types(sp, src, best_impl.get_impl_type());
+                        auto args = best_impl.get_trait_params();
+                        assert(trait.m_params.m_types.size() == args.m_types.size());
+                        for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++)
+                        {
+                            context.equate_types(sp, trait.m_params.m_types[i], args.m_types[i]);
+                        }
+                    }
                 }
-                else if( ty_src.m_data.is_Path() && ty_src.m_data.as_Path().binding.is_Unbound() )
+
+                for(const auto& marker : dep->m_markers)
                 {
+                    bool found = context.m_resolve.find_trait_impls(sp, marker.m_path, marker.m_params, src, [&](auto impl, auto cmp) {
+                        DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
+                        return cmp == ::HIR::Compare::Equal;
+                        });
+                    // TODO: Allow fuzz and equate same as above?
+                    if( !found )
+                    {
+                        // TODO: Get a better idea of when there won't ever be an applicable impl
+                        if( !context.m_ivars.type_contains_ivars(src) ) {
+                            ERROR(sp, E0000, "The trait " << marker << " is not implemented for " << src);
+                        }
+                        return CoerceResult::Unknown;
+                    }
                 }
-                else if( ty_dst.compare_with_placeholders(sp, ty_src, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
-                {
-                    context.equate_types(sp, ty_dst,  ty_src);
+
+                // Add _Unsize operator
+                return CoerceResult::Unsize;
+            }
+        }
+
+        // Find an Unsize impl?
+        struct H {
+            static bool type_is_bounded(const ::HIR::TypeRef& ty)
+            {
+                if( ty.m_data.is_Generic() ) {
                     return true;
                 }
+                else if( TU_TEST1(ty.m_data, Path, .binding.is_Opaque()) ) {
+                    return true;
+                }
+                else {
+                    return false;
+                }
             }
-            if(cmp == ::HIR::Compare::Fuzzy)
+        };
+        if( H::type_is_bounded(src) )
+        {
+            const auto& lang_Unsize = context.m_crate.get_lang_item_path(sp, "unsize");
+
+            ::HIR::PathParams   pp { dst.clone() };
+            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, src, [](auto , auto){ return true; });
+            if( found )
             {
-                // Not sure yet
-                return false;
+                return CoerceResult::Unsize;
+            }
+            else
+            {
+                // TODO: Fuzzy?
+                //this->context.equate_types(sp, *e.inner, *s_e.inner);
             }
         }
 
-        // Keep trying
-        // TODO: If both types are fully known, then error.
-        return false;
-    }
-    bool check_coerce(Context& context, const Context::Coercion& v)
-    {
-        ::HIR::ExprNodeP& node_ptr = *v.right_node_ptr;
-        const auto& sp = node_ptr->span();
-        const auto& ty_dst = context.m_ivars.get_type(v.left_ty);
-        const auto& ty_src = context.m_ivars.get_type(node_ptr->m_res_type);
-        TRACE_FUNCTION_F(v << " - " << ty_dst << " := " << ty_src);
-
-        if( context.m_ivars.types_equal(ty_dst, ty_src) ) {
-            DEBUG("Equal");
-            return true;
-        }
-
-        const auto& lang_CoerceUnsized = context.m_crate.get_lang_item_path(sp, "coerce_unsized");
-
-        struct H {
-            // Check if a path type has or could have a CoerceUnsized impl
-            static bool type_has_coerce_path(const Context& context, const ::HIR::TypeRef& ty, bool inner=false) {
-                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Path, e,
-                    TU_MATCHA( (e.binding), (pbe),
+        // Path types
+        if( src.m_data.tag() == dst.m_data.tag() )
+        {
+            TU_MATCH_DEF(::HIR::TypeRef::Data, (src.m_data, dst.m_data), (se, de),
+            (
+                return CoerceResult::Equality;
+                ),
+            (Path,
+                if( se.binding.tag() == de.binding.tag() )
+                {
+                    TU_MATCHA( (se.binding, de.binding), (sbe, dbe),
                     (Unbound,
+                        // Don't care
                         ),
                     (Opaque,
-                        // Assume true (could store something in the generic block)
-                        return true;
+                        // Handled above in bounded
                         ),
-                    (Struct,
-                        //return pbe->m_struct_markings.coerce_unsized_index != ~0u;
-                        switch( pbe->m_struct_markings.coerce_unsized )
+                    (Enum,
+                        // Must be equal
+                        if( sbe == dbe )
                         {
-                        case ::HIR::StructMarkings::Coerce::None:
-                            return false;
-                        case ::HIR::StructMarkings::Coerce::Pointer:
-                            // If this contains a pointer (or something that acts like one), then assume it always coerces
-                            return true;
-                        case ::HIR::StructMarkings::Coerce::Passthrough:
-                            // TODO: If this generic over a CoerceUnsized type, then check if that type is CoerceUnsized
-                            return type_has_coerce_path( context, context.m_ivars.get_type(e.path.m_data.as_Generic().m_params.m_types.at( pbe->m_struct_markings.coerce_param)), true );
+                            return CoerceResult::Equality;
                         }
                         ),
                     (Union,
+                        if( sbe == dbe )
+                        {
+                            // Must be equal
+                            return CoerceResult::Equality;
+                        }
                         ),
-                    (Enum,
+                    (Struct,
+                        if( sbe == dbe )
+                        {
+                            const auto& sm = sbe->m_struct_markings;
+                            if( sm.dst_type == ::HIR::StructMarkings::DstType::Possible )
+                            {
+                                const auto& isrc = se.path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
+                                const auto& idst = de.path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
+                                return check_unsize_tys(context, sp, isrc, idst, nullptr);
+                            }
+                            else
+                            {
+                                // Must be equal
+                                return CoerceResult::Equality;
+                            }
+                        }
                         )
                     )
-                )
-                else if( inner ) {
-                   if( ty.m_data.is_Pointer() || ty.m_data.is_Borrow() ) {
-                        return true;
-                    }
-                    else if( ty.m_data.is_Infer() ) {
-                        return true;
-                    }
                 }
-                return false;
-            }
+                )
+            )
+        }
 
+        DEBUG("Reached end of check_unsize_tys, return Unknown");
+        // TODO: Determine if this unsizing could ever happen.
+        return CoerceResult::Unknown;
+    }
+
+    /// Checks if two types can be a valid coercion
+    //
+    // General rules:
+    // - CoerceUnsized generics/associated types can only involve generics/associated types
+    // - CoerceUnsized structs only go between themselves (and either recurse or unsize a parameter)
+    // - No other path can implement CoerceUnsized
+    // - Pointers do unsizing (and maybe casting)
+    // - All other types equate
+    CoerceResult check_coerce_tys(Context& context, const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src, ::HIR::ExprNodeP* node_ptr_ptr=nullptr)
+    {
+        TRACE_FUNCTION_F(dst << " := " << src);
+        // If the types are equal, then return equality
+        if( context.m_ivars.types_equal(dst, src) ) {
+            return CoerceResult::Equality;
+        }
+        // If either side is a literal, then can't Coerce
+        if( TU_TEST1(dst.m_data, Infer, .is_lit()) ) {
+            return CoerceResult::Equality;
+        }
+        if( TU_TEST1(src.m_data, Infer, .is_lit()) ) {
+            return CoerceResult::Equality;
+        }
+        // If both sides are `_`, then can't know about coerce yet
+        if( dst.m_data.is_Infer() && src.m_data.is_Infer() ) {
+            // Add possibilities both ways
+            context.possible_equate_type_coerce_to(src.m_data.as_Infer().index, dst);
+            context.possible_equate_type_coerce_from(dst.m_data.as_Infer().index, src);
+            return CoerceResult::Unknown;
+        }
+
+        struct H {
+            static bool type_is_bounded(const ::HIR::TypeRef& ty)
+            {
+                if( ty.m_data.is_Generic() ) {
+                    return true;
+                }
+                else if( TU_TEST1(ty.m_data, Path, .binding.is_Opaque()) ) {
+                    return true;
+                }
+                else {
+                    return false;
+                }
+            }
             static ::HIR::TypeRef make_pruned(Context& context, const ::HIR::TypeRef& ty)
             {
                 const auto& binding = ty.m_data.as_Path().binding;
                 const auto& sm = binding.as_Struct()->m_struct_markings;
                 ::HIR::GenericPath gp = ty.m_data.as_Path().path.m_data.as_Generic().clone();
-                if( sm.coerce_param == ~0u ) {
-                    for(size_t i = 0; i < gp.m_params.m_types.size(); i ++ )
-                        gp.m_params.m_types.at(i) = context.m_ivars.new_ivar_tr();
-                }
-                else {
-                    gp.m_params.m_types.at(sm.coerce_param) = context.m_ivars.new_ivar_tr();
-                }
+                assert(sm.coerce_param != ~0u);
+                gp.m_params.m_types.at(sm.coerce_param) = context.m_ivars.new_ivar_tr();
                 return ::HIR::TypeRef::new_path(mv$(gp), binding.as_Struct());
             }
         };
-
-        // Coercing to a CoerceUnsized type can only happen from something of the same generic type
-        // - Create a copy of the known type, but with the `Coerce` parameter set to a new ivar
-        if( ty_src.m_data.is_Infer() && H::type_has_coerce_path(context, ty_dst) && ty_dst.m_data.as_Path().binding.is_Struct() )
+        // A CoerceUnsized generic/aty/erased on one side
+        // - If other side is an ivar, do a possible equality and return Unknown
+        // - If impl is found, emit _Unsize
+        // - Else, equate and return
+        // TODO: Should ErasedType be counted here? probably not.
+        if( H::type_is_bounded(src) || H::type_is_bounded(dst) )
         {
-            DEBUG("Create ivar filled version of " << ty_dst);
-            context.equate_types(sp, ty_src, H::make_pruned(context, ty_dst));
-            return false;
-        }
-        if( ty_dst.m_data.is_Infer() && H::type_has_coerce_path(context, ty_src) && ty_src.m_data.as_Path().binding.is_Struct() )
-        {
-            DEBUG("Create ivar filled version of " << ty_src);
-            context.equate_types(sp, ty_dst, H::make_pruned(context, ty_src));
-            return false;
-        }
-
-        // CoerceUnsized trait
-        // - Only valid for generic or path destination types
-        if( ty_dst.m_data.is_Generic() || H::type_has_coerce_path(context, ty_dst) )
-        {
+            const auto& lang_CoerceUnsized = context.m_crate.get_lang_item_path(sp, "coerce_unsized");
             // `CoerceUnsized<U> for T` means `T -> U`
 
-            ::HIR::PathParams   pp { ty_dst.clone() };
+            ::HIR::PathParams   pp { dst.clone() };
 
             // PROBLEM: This can false-negative leading to the types being falsely equated.
 
             bool fuzzy_match = false;
             ImplRef  best_impl;
-            bool found = context.m_resolve.find_trait_impls(sp, lang_CoerceUnsized, pp, ty_src, [&](auto impl, auto cmp)->bool {
+            bool found = context.m_resolve.find_trait_impls(sp, lang_CoerceUnsized, pp, src, [&](auto impl, auto cmp)->bool {
                 DEBUG("[check_coerce] cmp=" << cmp << ", impl=" << impl);
                 // TODO: Allow fuzzy match if it's the only matching possibility?
                 // - Recorded for now to know if there could be a matching impl later
@@ -4514,351 +4555,300 @@ namespace {
             // - Concretely found - emit the _Unsize op and remove this rule
             if( found )
             {
-                DEBUG("- NEWNODE _Unsize " << &*node_ptr << " -> " << ty_dst);
-
-                auto span = node_ptr->span();
-                node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
-                return true;
+                return CoerceResult::Unsize;
             }
             if( fuzzy_match )
             {
                 DEBUG("- best_impl = " << best_impl);
-                // Fuzzy match - Insert a CoerceUnsized bound and emit the _Unsize op
-                // - This could end up being a no-op _Unsize, and there's special logic in check_associated to handle `T: CoerceUnsized<T>` and `T: Unsize<T>`
-                context.add_trait_bound(sp, ty_src,  lang_CoerceUnsized, mv$(pp));
-                node_ptr = NEWNODE( ty_dst.clone(), sp, _Unsize,  mv$(node_ptr), ty_dst.clone() );
-                return true;
+                return CoerceResult::Unknown;
             }
             DEBUG("- No CoerceUnsized impl found");
         }
 
-        // 1. Check that the source type can coerce
-        TU_MATCH( ::HIR::TypeRef::Data, (ty_src.m_data), (e),
+        // CoerceUnsized struct paths
+        // - If one side is an ivar, create a type-pruned version of the other
+        // - Recurse/unsize inner value
+        if( src.m_data.is_Infer() && TU_TEST2(dst.m_data, Path, .binding, Struct, ->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None) )
+        {
+            auto new_src = H::make_pruned(context, dst);
+            context.equate_types(sp, src, new_src);
+            // TODO: Avoid needless loop return
+            return CoerceResult::Unknown;
+        }
+        if( dst.m_data.is_Infer() && TU_TEST2(src.m_data, Path, .binding, Struct, ->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None) )
+        {
+            auto new_dst = H::make_pruned(context, src);
+            context.equate_types(sp, dst, new_dst);
+            // TODO: Avoid needless loop return
+            return CoerceResult::Unknown;
+        }
+        if( TU_TEST1(dst.m_data, Path, .binding.is_Struct()) && TU_TEST1(src.m_data, Path, .binding.is_Struct()) )
+        {
+            const auto& spbe = src.m_data.as_Path().binding.as_Struct();
+            const auto& dpbe = dst.m_data.as_Path().binding.as_Struct();
+            if( spbe != dpbe )
+            {
+                // TODO: Error here? (equality in caller will cause an error)
+                return CoerceResult::Equality;
+            }
+            const auto& sm = spbe->m_struct_markings;
+            // Has to be equal?
+            if( sm.coerce_unsized == ::HIR::StructMarkings::Coerce::None )
+                return CoerceResult::Equality;
+            const auto& idst = dst.m_data.as_Path().path.m_data.as_Generic().m_params.m_types.at(sm.coerce_param);
+            const auto& isrc = src.m_data.as_Path().path.m_data.as_Generic().m_params.m_types.at(sm.coerce_param);
+            switch( sm.coerce_unsized )
+            {
+            case ::HIR::StructMarkings::Coerce::None:
+                throw "";
+            case ::HIR::StructMarkings::Coerce::Passthrough:
+                DEBUG("Passthough CoerceUnsized");
+                return check_coerce_tys(context, sp, idst, isrc, nullptr);
+            case ::HIR::StructMarkings::Coerce::Pointer:
+                DEBUG("Pointer CoerceUnsized");
+                return check_unsize_tys(context, sp, idst, isrc, nullptr);
+            }
+        }
+
+
+        // Any other type, check for pointer
+        // - If not a pointer, return Equality
+        TU_MATCH_DEF(::HIR::TypeRef::Data, (src.m_data), (se),
+        (
+            // NOTE: ! should be handled above or in caller?
+            return CoerceResult::Equality;
+            ),
         (Infer,
-            // If this ivar is of a primitive, equate (as primitives never coerce)
-            // TODO: InferClass::Diverge?
-            if( e.ty_class != ::HIR::InferClass::None ) {
-                context.equate_types(sp, ty_dst,  ty_src);
-                return true;
+            // If the other side isn't a pointer, equate
+            ASSERT_BUG(sp, ! dst.m_data.is_Infer(), "Already handled?");
+            if( dst.m_data.is_Pointer() || dst.m_data.is_Borrow() )
+            {
+                context.possible_equate_type_coerce_to(se.index, dst);
+                return CoerceResult::Unknown;
             }
-
-            TU_IFLET(::HIR::TypeRef::Data, ty_dst.m_data, Infer, e2,
-
-                if( e2.ty_class != ::HIR::InferClass::None ) {
-                    context.equate_types(sp, ty_dst,  ty_src);
-                    return true;
-                }
-
-                DEBUG("Both infer, add possibilities");
-                context.possible_equate_type_coerce_to(e.index, ty_dst);
-                context.possible_equate_type_coerce_from(e2.index, ty_src);
-                return false;
-            )
-
-            context.possible_equate_type_coerce_to(e.index, ty_dst);
-            DEBUG("Source infer, add possibility and continue");
-            ),
-        (Diverge,
-            return true;
-            ),
-        (Primitive,
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Path,
-            // If there is an impl of CoerceUnsized<_> for this, don't equate (just return and wait for a while)
-            if( H::type_has_coerce_path(context, ty_src) ) {
-                // - Fall through and check the destination.
+            else
+            {
+                return CoerceResult::Equality;
             }
-            else {
-                context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-                return true;
-            }
-            ),
-        (Generic,
-            // TODO: CoerceUnsized bound?
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            ),
-        (TraitObject,
-            // Raw trait objects shouldn't even be encountered here?...
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            ),
-        (ErasedType,
-            context.equate_types(sp, ty_dst,  ty_src);
-            return true;
-            ),
-        (Array,
-            // Raw [T; n] doesn't coerce, only borrows do
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Slice,
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Tuple,
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Borrow,
-            // Borrows can have unsizing and deref coercions applied
             ),
         (Pointer,
+            if( const auto* dep = dst.m_data.opt_Infer() )
+            {
+                context.possible_equate_type_coerce_from(dep->index, src);
+                return CoerceResult::Unknown;
+            }
+            if( ! dst.m_data.is_Pointer() )
+            {
+                // TODO: Error here? (leave to caller)
+                return CoerceResult::Equality;
+            }
             // Pointers coerce to similar pointers of higher restriction
-            if( e.type == ::HIR::BorrowType::Shared ) {
+            if( se.type == ::HIR::BorrowType::Shared )
+            {
                 // *const is the bottom of the tree, it doesn't coerce to anything
-                context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-                return true;
+                return CoerceResult::Equality;
             }
-            ),
-        (Function,
-            ),
-        (Closure,
-            // TODO: Can closures coerce to anything?
-            // - (eventually maybe fn() if they don't capture, but that's not rustc yet)
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            )
-        )
+            const auto* dep = &dst.m_data.as_Pointer();
+        
+            // If using `*mut T` where `*const T` is expected - add cast
+            if( dep->type == ::HIR::BorrowType::Shared && se.type == ::HIR::BorrowType::Unique )
+            {
+                context.equate_types(sp, *dep->inner, *se.inner);
 
-        // 2. Check target type is a valid coercion
-        // - Otherwise - Force equality
-        TU_MATCH( ::HIR::TypeRef::Data, (ty_dst.m_data), (l_e),
-        (Infer,
-            // If this ivar is of a primitive, equate (as primitives never coerce)
-            // TODO: Update for InferClass::Diverge ?
-            if( l_e.ty_class != ::HIR::InferClass::None ) {
-                context.equate_types(sp, ty_dst,  ty_src);
-                return true;
-            }
-
-            context.possible_equate_type_coerce_from(l_e.index,  ty_src);
-            DEBUG("- Infer, add possibility");
-            return false;
-            ),
-        (Diverge,
-            return true;
-            ),
-        (Primitive,
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            ),
-        (Path,
-            if( H::type_has_coerce_path(context, ty_dst) && ty_src.m_data.is_Infer() ) {
-                // If this type is coercble, and the source is _ (which means that the first check would have silently failed)
-                // - Keep the rule around until the ivar is known
-                // NOTE: This assumes that a type can only coerce to a variant of itself (which is usually true)
-                DEBUG("Can coerce and source is _, keep rule");
-                return false;
-            }
-            else if( l_e.binding.is_Unbound() ) {
-                DEBUG("Unbound path, keep rule");
-                return false;
-            }
-            else {
-                context.equate_types(sp, ty_dst, ty_src);
-                return true;
-            }
-            ),
-        (Generic,
-            // TODO: Determine if this generic has any CoerceUnsized impls possible.
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
-            ),
-        (TraitObject,
-            context.equate_types(sp, ty_dst,  ty_src);
-            return true;
-            ),
-        (ErasedType,
-            context.equate_types(sp, ty_dst,  ty_src);
-            return true;
-            ),
-        (Array,
-            context.equate_types(sp, ty_dst,  ty_src);
-            return true;
-            ),
-        (Slice,
-            context.equate_types(sp, ty_dst,  ty_src);
-            return true;
-            ),
-        (Tuple,
-            context.equate_types(sp, ty_dst,  ty_src);
-            return true;
-            ),
-        (Borrow,
-            TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, r_e,
-                // If using `&mut T` where `&const T` is expected - insert a reborrow (&*)
-                // TODO: &move reborrowing rules?
-                //if( l_e.type < r_e.type ) {
-                if( l_e.type == ::HIR::BorrowType::Shared && r_e.type == ::HIR::BorrowType::Unique ) {
-
-                    // > Goes from `ty_src` -> `*ty_src` -> `&`l_e.type` `*ty_src`
-                    const auto& inner_ty = *r_e.inner;
-                    auto dst_bt = l_e.type;
-                    auto new_type = ::HIR::TypeRef::new_borrow(dst_bt, inner_ty.clone());
-
-                    // If the coercion is of a block, do the reborrow on the last node of the block
-                    // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
-                    ::HIR::ExprNodeP* npp = &node_ptr;
-                    while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
-                    {
-                        DEBUG("- Propagate to the last node of a _Block");
-                        ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
-                            "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
-                        ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, ty_src),
-                            "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(ty_src)
-                            );
-                        p->m_res_type = new_type.clone();
-                        npp = &p->m_value_node;
-                    }
-                    ::HIR::ExprNodeP& node_ptr = *npp;
-
+                if( node_ptr_ptr )
+                {
+                    auto& node_ptr = *node_ptr_ptr;
                     // Add cast down
                     auto span = node_ptr->span();
-                    // *<inner>
-                    DEBUG("- Deref -> " << inner_ty);
-                    node_ptr = NEWNODE( inner_ty.clone(), span, _Deref,  mv$(node_ptr) );
-                    context.m_ivars.get_type(node_ptr->m_res_type);
-                    // &*<inner>
-                    DEBUG("- Borrow -> " << new_type);
-                    node_ptr = NEWNODE( mv$(new_type) , span, _Borrow,  dst_bt, mv$(node_ptr) );
-                    context.m_ivars.get_type(node_ptr->m_res_type);
+                    node_ptr->m_res_type = src.clone();
+                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
+                    node_ptr->m_res_type = dst.clone();
 
-                    context.m_ivars.mark_change();
-
-                    // Continue on with coercion (now that node_ptr is updated)
+                    return CoerceResult::Custom;
                 }
-                else if( l_e.type != r_e.type ) {
-                    ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Borrow classes differ");
+                else
+                {
+                    return CoerceResult::Unsize;
                 }
-                // - Check for coercions
-                return check_coerce_borrow(context, l_e.type, *l_e.inner, *r_e.inner, node_ptr);
-            )
-            else TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
-                // Leave for now
-                if( r_e.ty_class != ::HIR::InferClass::None ) {
-                    // ERROR: Must be compatible
-                    context.equate_types(sp, ty_dst,  ty_src);
-                    BUG(sp, "Type error expected " << ty_dst << " == " << ty_src);
-                }
-
-                context.possible_equate_type_coerce_to(r_e.index, ty_dst);
-                DEBUG("- Infer, add possibility");
-                return false;
-            )
-            // TODO: If the type is a UfcsKnown but contains ivars (i.e. would be destructured into an associated type rule)
-            //   don't equate, and instead return false.
-            else {
-                // Error: Must be compatible, hand over to the equate code.
-                // - If this returns early, it's because of a UFCS destructure
-                context.equate_types(sp, ty_dst,  ty_src);
-                //BUG(sp, "Type error expected " << ty << " == " << ty_src);
             }
+
+            if( dep->type != se.type ) {
+                ERROR(sp, E0000, "Type mismatch between " << dst << " and " << src << " - Pointer mutability differs");
+            }
+            return CoerceResult::Equality;
             ),
-        (Pointer,
-            // Pointers coerce from borrows and similar pointers
-            TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Borrow, s_e,
+        (Borrow,
+            if( const auto* dep = dst.m_data.opt_Infer() )
+            {
+                context.possible_equate_type_coerce_from(dep->index, src);
+                return CoerceResult::Unknown;
+            }
+            else if( const auto* dep = dst.m_data.opt_Pointer() )
+            {
+                // Add cast to the pointer (if valid strength reduction)
+                // Call unsizing code on casted value
+                
                 // Borrows can coerce to pointers while reducing in strength
                 // - Shared < Unique. If the destination is not weaker or equal to the source, it's an error
-                if( !(l_e.type <= s_e.type) ) {
-                    ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Mutability not compatible");
+                if( !(dep->type <= se.type) ) {
+                    ERROR(sp, E0000, "Type mismatch between " << dst << " and " << src << " - Mutability not compatible");
                 }
 
                 // Add downcast
-                auto span = node_ptr->span();
-                node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst.clone() ));
-                node_ptr->m_res_type = ty_dst.clone();
+                if( node_ptr_ptr )
+                {
+                    auto& node_ptr = *node_ptr_ptr;
 
-                // Add a coerce of src->&dst_inner
-                context.equate_types(sp, *l_e.inner, *s_e.inner);
-                //context.equate_types_coerce(
-                //    node_ptr->span(),
-                //    ::HIR::TypeRef::new_borrow(l_e.type, l_e.inner->clone()),
-                //    dynamic_cast<::HIR::ExprNode_Cast*>(&*node_ptr)->m_value
-                //    );
+                    switch( check_unsize_tys(context, sp, *dep->inner, *se.inner, node_ptr_ptr) )
+                    {
+                    case CoerceResult::Unknown:
+                        return CoerceResult::Unknown;
+                    case CoerceResult::Custom:
+                        return CoerceResult::Custom;
+                    case CoerceResult::Equality:
+                        DEBUG("- NEWNODE _Cast " << &*node_ptr << " -> " << dst);
+                        {
+                            auto span = node_ptr->span();
+                            node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
+                            node_ptr->m_res_type = dst.clone();
+                        }
 
-                context.m_ivars.mark_change();
-                return true;
-            )
-            else TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Pointer, r_e,
-                // If using `*mut T` where `*const T` is expected - add cast
-                if( l_e.type == ::HIR::BorrowType::Shared && r_e.type == ::HIR::BorrowType::Unique ) {
-                    context.equate_types(sp, *l_e.inner, *r_e.inner);
+                        context.equate_types(sp, *dep->inner, *se.inner);
+                        return CoerceResult::Custom;
+                    case CoerceResult::Unsize:
+                        auto dst_b = ::HIR::TypeRef::new_borrow(se.type, dep->inner->clone());
+                        DEBUG("- NEWNODE _Unsize " << &*node_ptr << " -> " << dst_b);
+                        {
+                            auto span = node_ptr->span();
+                            node_ptr = NEWNODE( dst_b.clone(), span, _Unsize,  mv$(node_ptr), dst_b.clone() );
+                        }
 
-                    // Add cast down
-                    auto span = node_ptr->span();
-                    node_ptr->m_res_type = ty_src.clone();
-                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst.clone() ));
-                    node_ptr->m_res_type = ty_dst.clone();
-
-                    context.m_ivars.mark_change();
-                    return true;
+                        DEBUG("- NEWNODE _Cast " << &*node_ptr << " -> " << dst);
+                        {
+                            auto span = node_ptr->span();
+                            node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), dst.clone() ));
+                            node_ptr->m_res_type = dst.clone();
+                        }
+                        return CoerceResult::Custom;
+                    }
+                    throw "";
                 }
-
-                if( l_e.type != r_e.type ) {
-                    ERROR(sp, E0000, "Type mismatch between " << ty_dst << " and " << ty_src << " - Pointer mutability differs");
+                else
+                {
+                    TODO(sp, "Inner coercion of borrow to pointer");
+                    return CoerceResult::Equality;
                 }
-                context.equate_types(sp, *l_e.inner, *r_e.inner);
-                return true;
-            )
-            else TU_IFLET(::HIR::TypeRef::Data, ty_src.m_data, Infer, r_e,
-                if( r_e.ty_class != ::HIR::InferClass::None ) {
-                    // ERROR: Must be compatible
-                    context.equate_types(sp, ty_dst,  ty_src);
-                    BUG(sp, "Type error expected " << ty_dst << " == " << ty_src);
-                }
-                // Can't do much for now
-                context.possible_equate_type_coerce_to(r_e.index, ty_dst);
-                DEBUG("- Infer, add possibility");
-                return false;
-            )
-            else {
-                // Error: Must be compatible, hand over to the equate code.
-                // - If this returns early, it's because of a UFCS destructure
-                context.equate_types(sp, ty_dst,  ty_src);
-                //BUG(sp, "Type error expected " << ty << " == " << ty_src);
             }
-            ),
-        (Function,
-            TU_IFLET( ::HIR::TypeRef::Data, ty_src.m_data, Function, r_e,
-                if(l_e.m_abi != r_e.m_abi && l_e.is_unsafe == true && r_e.is_unsafe == false ) {
-                    // LHS is unsafe, RHS is not - Insert a cast
+            else if( const auto* dep = dst.m_data.opt_Borrow() )
+            {
+                // Check strength reduction
+                if( dep->type < se.type )
+                {
+                    if( node_ptr_ptr )
+                    {
+                        // > Goes from `src` -> `*src` -> `&`dep->type` `*src`
+                        const auto& inner_ty = *se.inner;
+                        auto dst_bt = dep->type;
+                        auto new_type = ::HIR::TypeRef::new_borrow(dst_bt, inner_ty.clone());
 
-                    auto ty_dst_new = ty_src.clone();
-                    ty_dst_new.m_data.as_Function().is_unsafe = true;
-                    context.equate_types(sp, ty_dst, ty_dst_new);
+                        // If the coercion is of a block, do the reborrow on the last node of the block
+                        // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
+                        ::HIR::ExprNodeP* npp = node_ptr_ptr;
+                        while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
+                        {
+                            DEBUG("- Propagate to the last node of a _Block");
+                            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
+                                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
+                            ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, src),
+                                "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src)
+                                );
+                            p->m_res_type = new_type.clone();
+                            npp = &p->m_value_node;
+                        }
+                        ::HIR::ExprNodeP& node_ptr = *npp;
 
-                    // Add cast down
-                    auto span = node_ptr->span();
-                    node_ptr->m_res_type = ty_src.clone();
-                    node_ptr = ::HIR::ExprNodeP(new ::HIR::ExprNode_Cast( mv$(span), mv$(node_ptr), ty_dst_new.clone() ));
-                    node_ptr->m_res_type = mv$(ty_dst_new);
+                        // Add cast down
+                        auto span = node_ptr->span();
+                        // *<inner>
+                        DEBUG("- Deref -> " << inner_ty);
+                        node_ptr = NEWNODE( inner_ty.clone(), span, _Deref,  mv$(node_ptr) );
+                        context.m_ivars.get_type(node_ptr->m_res_type);
+                        // &*<inner>
+                        DEBUG("- Borrow -> " << new_type);
+                        node_ptr = NEWNODE( mv$(new_type) , span, _Borrow,  dst_bt, mv$(node_ptr) );
+                        context.m_ivars.get_type(node_ptr->m_res_type);
 
-                    context.m_ivars.mark_change();
-                    return true;
+                        context.m_ivars.mark_change();
+
+                        // Continue on with coercion (now that node_ptr is updated)
+                        switch( check_unsize_tys(context, sp, *dep->inner, *se.inner, node_ptr_ptr) )
+                        {
+                        case CoerceResult::Unknown:
+                            return CoerceResult::Unknown;
+                        case CoerceResult::Custom:
+                            return CoerceResult::Custom;
+                        case CoerceResult::Equality:
+                            context.equate_types(sp, *dep->inner, *se.inner);
+                            return CoerceResult::Custom;
+                        case CoerceResult::Unsize:
+                            DEBUG("- NEWNODE _Unsize " << &*node_ptr << " -> " << dst);
+                            auto span = node_ptr->span();
+                            node_ptr = NEWNODE( dst.clone(), span, _Unsize,  mv$(node_ptr), dst.clone() );
+                            return CoerceResult::Custom;
+                        }
+                        throw "";
+                    }
+                    else
+                    {
+                        TODO(sp, "Borrow strength reduction");
+                    }
                 }
-                context.equate_types(sp, ty_dst, ty_src);
-            )
-            else TU_IFLET( ::HIR::TypeRef::Data, ty_src.m_data, Closure, r_e,
-                // TODO: Could capture-less closures coerce to fn() types?
-                context.equate_types(sp, ty_dst, ty_src);
-            )
-            else {
-                context.equate_types(sp, ty_dst, ty_src);
+                else if( dep->type == se.type ) {
+                    // Valid.
+                }
+                else {
+                    ERROR(sp, E0000, "Type mismatch between " << dst << " and " << src << " - Borrow classes differ");
+                }
+                ASSERT_BUG(sp, dep->type == se.type, "Borrow strength mismatch");
+
+                // Call unsizing code
+                return check_unsize_tys(context, sp, *dep->inner, *se.inner, node_ptr_ptr);
             }
-            return true;
-            ),
-        (Closure,
-            context.equate_types(sp, ty_dst,  node_ptr->m_res_type);
-            return true;
+            else
+            {
+                // TODO: Error here?
+                return CoerceResult::Equality;
+            }
             )
         )
+    }
+    bool check_coerce(Context& context, const Context::Coercion& v)
+    {
+        ::HIR::ExprNodeP& node_ptr = *v.right_node_ptr;
+        const auto& sp = node_ptr->span();
+        const auto& ty_dst = context.m_ivars.get_type(v.left_ty);
+        const auto& ty_src = context.m_ivars.get_type(node_ptr->m_res_type);
+        TRACE_FUNCTION_F(v << " - " << context.m_ivars.fmt_type(ty_dst) << " := " << context.m_ivars.fmt_type(ty_src));
 
-        //TODO(sp, "Typecheck_Code_CS - Coercion " << context.m_ivars.fmt_type(ty) << " from " << context.m_ivars.fmt_type(node_ptr->m_res_type));
-        DEBUG("TODO - Coercion " << context.m_ivars.fmt_type(ty_dst) << " from " << context.m_ivars.fmt_type(node_ptr->m_res_type));
-        return false;
+        switch( check_coerce_tys(context, sp, ty_dst, ty_src, &node_ptr) )
+        {
+        case CoerceResult::Unknown:
+            DEBUG("Unknown - keep");
+            return false;
+        case CoerceResult::Custom:
+            DEBUG("Custom - Completed");
+            return true;
+        case CoerceResult::Equality:
+            DEBUG("Trigger equality - Completed");
+            context.equate_types(sp, ty_dst, ty_src);
+            return true;
+        case CoerceResult::Unsize:
+            DEBUG("Add _Unsize " << &*node_ptr << " -> " << ty_dst);
+            auto span = node_ptr->span();
+            node_ptr = NEWNODE( ty_dst.clone(), span, _Unsize,  mv$(node_ptr), ty_dst.clone() );
+            return true;
+        }
+        throw "";
     }
 
     bool check_associated(Context& context, const Context::Associated& v)

@@ -1114,6 +1114,11 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             ::HIR::PathParams   real_params { mv$(new_dst) };
             rv = callback( ImplRef(type.clone(), mv$(real_params), {}), ::HIR::Compare::Fuzzy );
             };
+        //if( dst_ty.m_data.is_Infer() || type.m_data.is_Infer() )
+        //{
+        //    rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Fuzzy );
+        //    return rv;
+        //}
         auto cmp = this->can_unsize(sp, dst_ty, type, cb);
         if( cmp == ::HIR::Compare::Equal )
         {
