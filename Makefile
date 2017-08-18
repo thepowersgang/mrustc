@@ -241,6 +241,7 @@ output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, 
 
 ARGS_output/libstd.hir := --cfg feature=backtrace
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86 --cfg cargobuild
+ARGS_output/liblog.hir := --cfg feature=use_std
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
 
 ENV_output/librustc.hir := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_HOST)
