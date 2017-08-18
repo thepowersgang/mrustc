@@ -51,6 +51,7 @@ void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function,
 void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& stat, TransList_Static& stat_out, Trans_Params pp={});
 void Trans_Enumerate_FillFrom_VTable (EnumState& state, ::HIR::Path vtable_path, const Trans_Params& pp);
 void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& lit, const Trans_Params& pp);
+void Trans_Enumerate_FillFrom_MIR(EnumState& state, const ::MIR::Function& code, const Trans_Params& pp);
 
 /// Enumerate trans items starting from `::main` (binary crate)
 TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
@@ -1181,7 +1182,7 @@ namespace {
                         ),
                     (Static,
                         auto it = impl.m_statics.find(e.item);
-                        if( it == impl.m_statics.end() ) {
+                        if( it == impl.m_statics.end() && e.item != "#vtable" ) {
                             DEBUG("Static " << e.item << " missing in trait " << e.trait << " for " << *e.type);
                             return false;
                         }
@@ -1231,14 +1232,17 @@ namespace {
                 TODO(sp, "Associated constant - " << path);
                 ),
             (Static,
+                if( e.item == "#vtable" )
+                {
+                    DEBUG("VTable, autogen");
+                    return EntPtr::make_AutoGenerate( {} );
+                }
                 auto it = impl.m_statics.find(e.item);
                 if( it != impl.m_statics.end() )
                 {
                     DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                     return EntPtr { &it->second.data };
                 }
-                if( e.item == "#vtable" )
-                    return EntPtr::make_AutoGenerate( {} );
                 TODO(sp, "Associated static - " << path);
                 ),
             (Function,

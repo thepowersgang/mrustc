@@ -1535,7 +1535,7 @@ namespace {
                     }
                     else
                     {
-                        if( ty.m_data.is_Borrow() && ty.m_data.as_Borrow().inner->m_data.is_Slice() )
+                        if( TU_TEST1(ty.m_data, Borrow, .inner->m_data.is_Slice()) )
                         {
                             // Since this is a borrow, it must be of an array.
                             MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &[T] not of a static - " << pe.m_path << " is " << vi.tag_str());
@@ -1545,8 +1545,20 @@ namespace {
                             m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", " << size << "}";
                             return ;
                         }
+                        else if( TU_TEST1(ty.m_data, Borrow, .inner->m_data.is_TraitObject()) || TU_TEST1(ty.m_data, Pointer, .inner->m_data.is_TraitObject()) )
+                        {
+                            const auto& to = (ty.m_data.is_Borrow() ? ty.m_data.as_Borrow().inner : ty.m_data.as_Pointer().inner)->m_data.as_TraitObject();
+                            const auto& trait_path = to.m_trait.m_path;
+                            MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &TraitObject not of a static - " << pe.m_path << " is " << vi.tag_str());
+                            const auto& stat = vi.as_Static();
+                            auto vtable_path = ::HIR::Path(stat.m_type.clone(), trait_path.clone(), "#vtable");
+                            m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", &" << Trans_Mangle(vtable_path) << "}";
+                            return ;
+                        }
                         else
+                        {
                             m_of << "&";
+                        }
                     }
                     ),
                 (UfcsUnknown,
