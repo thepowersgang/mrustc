@@ -494,6 +494,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
         ExprNodeP   val;
         switch(LOOK_AHEAD(lex))
         {
+        case TOK_EOF:
         case TOK_SEMICOLON:
         case TOK_COMMA:
         case TOK_BRACE_CLOSE:
@@ -525,6 +526,7 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
         ExprNodeP   val;
         switch(tok.type())
         {
+        case TOK_EOF:
         case TOK_SEMICOLON:
         case TOK_COMMA:
         case TOK_BRACE_OPEN:
