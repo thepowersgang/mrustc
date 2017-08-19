@@ -12,7 +12,7 @@
 const bool DEBUG_PRINT_TOKENS = false;
 //const bool DEBUG_PRINT_TOKENS = true;
 //#define DEBUG_PRINT_TOKENS  debug_enabled("Lexer Tokens")
-#define FULL_TRACE
+//#define FULL_TRACE
 
 TokenStream::TokenStream():
     m_cache_valid(false)

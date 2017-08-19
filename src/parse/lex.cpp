@@ -15,8 +15,8 @@
 #include <typeinfo>
 #include <algorithm>    // std::count
 #include <cctype>
-#define TRACE_CHARS
-#define TRACE_RAW_TOKENS
+//#define TRACE_CHARS
+//#define TRACE_RAW_TOKENS
 
 Lexer::Lexer(const ::std::string& filename):
     m_path(filename.c_str()),
