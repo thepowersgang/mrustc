@@ -239,6 +239,7 @@
     <ClCompile Include="..\src\resolve\use.cpp" />
     <ClCompile Include="..\src\serialise.cpp" />
     <ClCompile Include="..\src\span.cpp" />
+    <ClCompile Include="..\src\trans\allocator.cpp" />
     <ClCompile Include="..\src\trans\codegen.cpp" />
     <ClCompile Include="..\src\trans\codegen_c.cpp" />
     <ClCompile Include="..\src\trans\codegen_c_structured.cpp" />
