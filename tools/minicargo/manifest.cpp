@@ -227,13 +227,16 @@ namespace
 }
 
 
-void PackageManifest::build_lib() const
+bool PackageManifest::build_lib() const
 {
     auto it = ::std::find_if(m_targets.begin(), m_targets.end(), [](const auto& x) { return x.m_type == PackageTarget::Type::Lib; });
     if (it == m_targets.end())
     {
         throw ::std::runtime_error(::format("Package ", m_name, " doesn't have a library"));
     }
+
+    auto outfile = ::helpers::path("output") / ::format("lib", it->m_name, ".hir");
+
     ::std::vector<::std::string>    args;
     args.push_back( ::helpers::path(m_manmifest_path).parent() / ::helpers::path(it->m_path) );
     args.push_back("--crate-name"); args.push_back(it->m_name);
@@ -244,23 +247,41 @@ void PackageManifest::build_lib() const
     cmdline << "mrustc.exe";
     for(const auto& arg : args)
         cmdline << " " << arg;
-    DEBUG("Calling " << cmdline.str());
+    auto cmdline_str = cmdline.str();
+    DEBUG("Calling " << cmdline_str);
+
+    CreateDirectory(static_cast<::std::string>(outfile.parent()).c_str(), NULL);
 
     STARTUPINFO si = {0};
-    PROCESS_INFORMATION pi;
-    CreateProcessA("x64\\Release\\mrustc.exe", (LPSTR)cmdline.str().c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = NULL;
+    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    {
+        SECURITY_ATTRIBUTES sa = {0};
+        sa.nLength = sizeof(sa);
+        sa.bInheritHandle = TRUE;
+        si.hStdOutput = CreateFile( (static_cast<::std::string>(outfile) + "_dbg.txt").c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
+        DWORD   tmp;
+        WriteFile(si.hStdOutput, cmdline_str.data(), cmdline_str.size(), &tmp, NULL);
+        WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
+    }
+    PROCESS_INFORMATION pi = {0};
+    CreateProcessA("x64\\Release\\mrustc.exe", (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, CREATE_NO_WINDOW, "MRUSTC_DEBUG=Parse\0", NULL, &si, &pi);
+    CloseHandle(si.hStdOutput);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD status = 1;
     GetExitCodeProcess(pi.hProcess, &status);
     if(status != 0)
     {
         DEBUG("Compiler exited with non-zero exit status " << status);
-        throw "";
+        return false;
     }
 #elif defined(__posix__)
     //spawn();
 #else
 #endif
+    return true;
 }
 
 const PackageManifest& PackageRef::get_package() const

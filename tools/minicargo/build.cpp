@@ -54,10 +54,12 @@ void MiniCargo_Build(const PackageManifest& manifest)
     // Build dependencies
     for(const auto& p : list.iter())
     {
-        p.build_lib();
+        if( ! p.build_lib() )
+            return ;
     }
 
-    manifest.build_lib();
+    if( ! manifest.build_lib() )
+        return ;
     // TODO: If the manifest doesn't have a library, build the binary
 }
 

@@ -45,7 +45,8 @@ int main(int argc, const char* argv[])
     // 3. Build dependency tree
     MiniCargo_Build(m);
 
-    throw "";
+    ::std::cout << "Press any key to exit..." << ::std::endl;
+    ::std::cin.get();
     return 0;
 }
 

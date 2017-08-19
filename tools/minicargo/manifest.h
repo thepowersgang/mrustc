@@ -109,7 +109,7 @@ class PackageManifest
     PackageManifest();
 public:
     static PackageManifest load_from_toml(const ::std::string& path);
-    void build_lib() const;
+    bool build_lib() const;
 
     const ::std::vector<PackageRef>& dependencies() const {
         return m_dependencies;
