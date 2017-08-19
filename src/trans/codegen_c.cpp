@@ -2923,6 +2923,10 @@ namespace {
             auto emit_msvc_atomic_op = [&](const char* name, const char* ordering) {
                 switch (params.m_types.at(0).m_data.as_Primitive())
                 {
+                case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::I8:
+                    m_of << name << "8" << ordering << "(";
+                    break;
                 case ::HIR::CoreType::U16:
                     m_of << name << "16" << ordering << "(";
                     break;
