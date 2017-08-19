@@ -934,10 +934,9 @@ void TraitResolution::prep_indexes()
         };
 
     this->iterate_bounds([&](const auto& b)->bool {
-        TU_MATCH_DEF(::HIR::GenericBound, (b), (be),
-        (
-            ),
-        (TraitBound,
+        if(const auto* bep = b.opt_TraitBound())
+        {
+            const auto& be = *bep;
             DEBUG("[prep_indexes] `" << be.type << " : " << be.trait);
             // Explicitly listed bounds
             for( const auto& tb : be.trait.m_type_bounds ) {
@@ -1000,12 +999,16 @@ void TraitResolution::prep_indexes()
                     }
                 }
             }
-            ),
-        (TypeEquality,
+        }
+        else if(const auto* bep = b.opt_TypeEquality())
+        {
+            const auto& be = *bep;
             DEBUG("Equality - " << be.type << " = " << be.other_type);
             add_equality( be.type.clone(), be.other_type.clone() );
-            )
-        )
+        }
+        else
+        {
+        }
         return false;
         });
 }
