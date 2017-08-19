@@ -15,6 +15,8 @@
 #include <typeinfo>
 #include <algorithm>    // std::count
 #include <cctype>
+#define TRACE_CHARS
+#define TRACE_RAW_TOKENS
 
 Lexer::Lexer(const ::std::string& filename):
     m_path(filename.c_str()),
@@ -191,14 +193,14 @@ signed int Lexer::getSymbol()
     // 3. IF: a smaller character or, EOS is hit - Return current best
     unsigned ofs = 0;
     signed int best = 0;
+    bool hit_eof = false;
     for(unsigned i = 0; i < LEN(TOKENMAP); i ++)
     {
         const char* const chars = TOKENMAP[i].chars;
         const size_t len = TOKENMAP[i].len;
 
         if( ofs >= len || static_cast<uint32_t>(chars[ofs]) > ch.v ) {
-            this->ungetc();
-            return best;
+            break ;
         }
 
         while( chars[ofs] && ch == chars[ofs] )
@@ -208,6 +210,8 @@ signed int Lexer::getSymbol()
             }
             catch(Lexer::EndOfFile) {
                 ch = 0;
+                // Prevent `ungetc` if EOF was hit
+                hit_eof = true;
             }
             ofs ++;
         }
@@ -217,7 +221,10 @@ signed int Lexer::getSymbol()
         }
     }
 
-    this->ungetc();
+    if( !hit_eof )
+    {
+        this->ungetc();
+    }
     return best;
 }
 
@@ -247,7 +254,9 @@ Token Lexer::realGetToken()
     while(true)
     {
         Token tok = getTokenInt();
-        //::std::cout << "getTokenInt: tok = " << tok << ::std::endl;
+#ifdef TRACE_RAW_TOKENS
+        ::std::cout << "getTokenInt: tok = " << tok << ::std::endl;
+#endif
         switch(tok.type())
         {
         case TOK_NEWLINE:
@@ -272,7 +281,7 @@ Token Lexer::getTokenInt()
     {
         Codepoint ch = this->getc();
 
-        if( ch == '#' && m_line == 1 && m_line_ofs == 1 ) {
+        if( m_line == 1 && m_line_ofs == 1 && ch == '#') {
             switch( (ch = this->getc()).v )
             {
             case '!':
@@ -871,8 +880,8 @@ uint32_t Lexer::parseEscape(char enclosing)
 
 char Lexer::getc_byte()
 {
-    char rv = m_istream.get();
-    if( m_istream.eof() )
+    int rv = m_istream.get();
+    if( rv == EOF || m_istream.eof() )
         throw Lexer::EndOfFile();
 
     if( rv == '\n' )
@@ -888,13 +897,18 @@ Codepoint Lexer::getc()
     if( m_last_char_valid )
     {
         m_last_char_valid = false;
+#ifdef TRACE_CHARS
+        ::std::cout << "getc(): U+" << ::std::hex << m_last_char.v << " (cached)" << ::std::endl;
+#endif
     }
     else
     {
         m_last_char = this->getc_cp();
         m_line_ofs += 1;
+#ifdef TRACE_CHARS
+        ::std::cout << "getc(): U+" << ::std::hex << m_last_char.v << ::std::endl;
+#endif
     }
-    //::std::cout << "getc(): '" << m_last_char << "'" << ::std::endl;
     return m_last_char;
 }
 
@@ -965,7 +979,9 @@ Codepoint Lexer::getc_cp()
 
 void Lexer::ungetc()
 {
-//    ::std::cout << "ungetc(): " << m_last_char_valid << " '" << m_last_char << "'" << ::std::endl;
+#ifdef TRACE_CHARS
+    ::std::cout << "ungetc(): cache U+" << ::std::hex << m_last_char.v << ::std::endl;
+#endif
     assert(!m_last_char_valid);
     m_last_char_valid = true;
 }

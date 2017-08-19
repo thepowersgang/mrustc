@@ -12,6 +12,7 @@
 const bool DEBUG_PRINT_TOKENS = false;
 //const bool DEBUG_PRINT_TOKENS = true;
 //#define DEBUG_PRINT_TOKENS  debug_enabled("Lexer Tokens")
+#define FULL_TRACE
 
 TokenStream::TokenStream():
     m_cache_valid(false)
@@ -33,7 +34,9 @@ Token TokenStream::getToken()
 {
     if( m_cache_valid )
     {
-        //DEBUG("<<< " << m_cache << " (cache)");
+#ifdef FULL_TRACE
+        DEBUG("<<< " << m_cache << " (cache)");
+#endif
         m_cache_valid = false;
         return mv$(m_cache);
     }
@@ -42,7 +45,9 @@ Token TokenStream::getToken()
         Token ret = mv$( m_lookahead.front().first );
         m_hygiene = m_lookahead.front().second;
         m_lookahead.erase(m_lookahead.begin());
-        //DEBUG("<<< " << ret << " (lookahead)");
+#ifdef FULL_TRACE
+        DEBUG("<<< " << ret << " (lookahead)");
+#endif
         if( DEBUG_PRINT_TOKENS ) {
             ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret.get_pos() << "-" << ret << ::std::endl;
         }
@@ -52,7 +57,9 @@ Token TokenStream::getToken()
     {
         Token ret = this->innerGetToken();
         m_hygiene = this->realGetHygiene();
-        //DEBUG("<<< " << ret << " (new)");
+#ifdef FULL_TRACE
+        DEBUG("<<< " << ret << " (new)");
+#endif
         if( DEBUG_PRINT_TOKENS ) {
             ::std::cout << "getToken[" << typeid(*this).name() << "] - " << ret.get_pos() << "-" << ret << ::std::endl;
         }
@@ -68,7 +75,9 @@ void TokenStream::putback(Token tok)
     }
     else
     {
-        //DEBUG(">>> " << tok);
+#ifdef FULL_TRACE
+        DEBUG(">>> " << tok);
+#endif
         m_cache_valid = true;
         m_cache = mv$(tok);
     }
