@@ -371,6 +371,9 @@
     <ClCompile Include="..\src\trans\codegen_c_structured.cpp">
       <Filter>Source Files\trans</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\trans\allocator.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\common.hpp">

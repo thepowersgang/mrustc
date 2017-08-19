@@ -19,12 +19,17 @@
 /vsproject/x64
 /vsproject/tu_test/Win32
 /vsproject/tu_test/x64
+/vsproject/minicargo/Win32
+/vsproject/minicargo/x64
 /vsproject/packages
 /vsproject/*.sdf
 /vsproject/*.VC.db
 /vsproject/*.depend
 /vsproject/*.opendb
 /vsproject/*.user
+
+/vsproject/*/*.opendb
+/vsproject/*/*.user
 
 /run_rustc/output
 

@@ -4,6 +4,13 @@
  * main.cpp
  * - Entrypoint
  */
+#include <iostream>
+#include <cstring>  // strcmp
+#include "debug.h"
+#include "manifest.h"
+#include "helpers.h"
+
+extern void MiniCargo_Build(const PackageManifest& manifest);
 
 struct ProgramOptions
 {
@@ -16,6 +23,7 @@ struct ProgramOptions
     const char* output_directory = nullptr;
 
     int parse(int argc, const char* argv[]);
+    void usage() const;
 };
 
 int main(int argc, const char* argv[])
@@ -26,9 +34,19 @@ int main(int argc, const char* argv[])
     }
 
     // 1. Load the Cargo.toml file from the passed directory
-    // 2. Recursively load dependency manifests
-    // 3. Generate makefile for all dependencies
+    auto m = PackageManifest::load_from_toml( ::helpers::path(opts.directory ? opts.directory : ".") / "Cargo.toml" );
 
+    // 2. Recursively load dependency manifests
+    for(const auto& dep : m.dependencies())
+    {
+        throw "TODO: Deps";
+    }
+
+    // 3. Build dependency tree
+    MiniCargo_Build(m);
+
+    ::std::cout << "Press any key to exit..." << ::std::endl;
+    ::std::cin.get();
     return 0;
 }
 
@@ -44,17 +62,14 @@ int ProgramOptions::parse(int argc, const char* argv[])
             if( !this->directory ) {
                 this->directory = arg;
             }
-            else if( !this->outfile ) {
-                this->outfile = arg;
-            }
             else {
             }
         }
-        else if( argv[1] != '-' )
+        else if( arg[1] != '-' )
         {
             // Short arguments
         }
-        else if( argv[1] == '\0' )
+        else if( arg[1] == '\0' )
         {
             all_free = true;
         }
@@ -74,7 +89,7 @@ int ProgramOptions::parse(int argc, const char* argv[])
         }
     }
 
-    if( !this->directory || !this->outfile )
+    if( !this->directory /*|| !this->outfile*/ )
     {
         usage();
         exit(1);
@@ -83,3 +98,17 @@ int ProgramOptions::parse(int argc, const char* argv[])
     return 0;
 }
 
+void ProgramOptions::usage() const
+{
+    ::std::cerr
+        << "Usage: minicargo <package dir>" << ::std::endl
+        ;
+}
+
+
+
+void Debug_Print(::std::function<void(::std::ostream& os)> cb)
+{
+    cb(::std::cout);
+    ::std::cout << ::std::endl;
+}
