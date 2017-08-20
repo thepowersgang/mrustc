@@ -152,6 +152,7 @@ public:
     const ::std::string& name() const {
         return m_name;
     }
+    const ::std::string& build_script() const { return m_build_script; }
     const ::std::vector<PackageRef>& dependencies() const {
         return m_dependencies;
     }

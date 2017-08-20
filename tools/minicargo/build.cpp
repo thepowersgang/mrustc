@@ -160,17 +160,48 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     auto outdir = ::helpers::path("output");
     auto outfile = outdir / ::format("lib", target.m_name, ".hir");
 
+    // TODO: Determine if it needs re-running
+    // Rerun if:
+    // > `outfile` is missing
+    // > mrustc/minicargo is newer than `outfile`
+    // > build script has changed
+    // > any input file has changed (requires depfile from mrustc)
+
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back("rlib");
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(outdir);
+    //for(const auto& dir : manifest.build_script.rustc_link_search) {
+    //    args.push_back("-L"); args.push_back(dir.second.c_str());
+    //}
+    //for(const auto& lib : manifest.build_script.rustc_link_lib) {
+    //    args.push_back("-l"); args.push_back(lib.second.c_str());
+    //}
+    //for(const auto& cfg : manifest.build_script.rustc_cfg) {
+    //    args.push_back("--cfg"); args.push_back(cfg.c_str());
+    //}
+    //for(const auto& flag : manifest.build_script.rustc_flags) {
+    //    args.push_back(flag.c_str());
+    //}
+    // TODO: Environment variables (rustc_env)
 
     return this->spawn_process(args, outfile + "_dbg.txt");
 }
 bool Builder::build_library(const PackageManifest& manifest) const
 {
+    if( manifest.build_script() != "" )
+    {
+        // Locate a build script override file
+        // > Note, override file can specify a list of commands to run.
+        //manifest.script_output = BuildScript::load( override_file );
+        // Otherwise, compile and run build script
+        //manifest.script_output = BuildScript::load( ::helpers::path("output") / "build_" + manifest.name + ".txt" );
+        // Parse build script output.
+        throw ::std::runtime_error("TODO: Build script");
+    }
+
     return this->build_target(manifest, manifest.get_library());
 }
 bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfile) const
