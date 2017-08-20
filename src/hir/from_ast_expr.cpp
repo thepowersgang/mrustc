@@ -441,6 +441,8 @@ struct LowerHIR_ExprNode_Visitor:
                 case CORETYPE_U32:  return ::HIR::CoreType::U32;
                 case CORETYPE_I64:  return ::HIR::CoreType::I64;
                 case CORETYPE_U64:  return ::HIR::CoreType::U64;
+                case CORETYPE_I128: return ::HIR::CoreType::I128;
+                case CORETYPE_U128: return ::HIR::CoreType::U128;
 
                 case CORETYPE_INT:  return ::HIR::CoreType::Isize;
                 case CORETYPE_UINT: return ::HIR::CoreType::Usize;
