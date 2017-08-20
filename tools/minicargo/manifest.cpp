@@ -25,7 +25,7 @@ namespace
 PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
 {
     PackageManifest rv;
-    rv.m_manmifest_path = path;
+    rv.m_manifest_path = path;
 
     TomlFile    toml_file(path);
 
@@ -40,6 +40,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             if(key == "authors")
             {
                 // TODO: Use the `authors` key
+                // - Ignore ofr now.
             }
             else if( key == "name" )
             {
@@ -67,12 +68,12 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
         else if( section == "lib" )
         {
-            // TODO: Parse information related to use as a library
             // 1. Find (and add if needed) the `lib` descriptor
             auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; });
             if(it == rv.m_targets.end())
                 it = rv.m_targets.insert(it, PackageTarget { PackageTarget::Type::Lib });
 
+            // 2. Parse from the key-value pair
             target_edit_from_kv(*it, key_val, 1);
         }
         else if( section == "bin" )
@@ -94,6 +95,17 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [&idx](const auto& x) { return x.m_type == PackageTarget::Type::Test && idx-- == 0; });
             if (it == rv.m_targets.end())
                 it = rv.m_targets.insert(it, PackageTarget{ PackageTarget::Type::Test });
+
+            target_edit_from_kv(*it, key_val, 2);
+        }
+        else if (section == "bench")
+        {
+            assert(key_val.path.size() > 1);
+            unsigned idx = ::std::stoi(key_val.path[1]);
+
+            auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [&idx](const auto& x) { return x.m_type == PackageTarget::Type::Bench && idx-- == 0; });
+            if (it == rv.m_targets.end())
+                it = rv.m_targets.insert(it, PackageTarget{ PackageTarget::Type::Bench });
 
             target_edit_from_kv(*it, key_val, 2);
         }
@@ -159,10 +171,12 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         else if( section == "patch" )
         {
             //const auto& repo = key_val.path[1];
+            TODO("Support repository patches");
         }
         else
         {
             // Unknown manifest section
+            TODO("Unknown manifest section " << section);
         }
     }
 
@@ -226,66 +240,19 @@ namespace
     }
 }
 
-
-bool PackageManifest::build_lib() const
+const PackageTarget& PackageManifest::get_library() const
 {
     auto it = ::std::find_if(m_targets.begin(), m_targets.end(), [](const auto& x) { return x.m_type == PackageTarget::Type::Lib; });
     if (it == m_targets.end())
     {
         throw ::std::runtime_error(::format("Package ", m_name, " doesn't have a library"));
     }
-
-    auto outfile = ::helpers::path("output") / ::format("lib", it->m_name, ".hir");
-
-    ::std::vector<::std::string>    args;
-    args.push_back( ::helpers::path(m_manmifest_path).parent() / ::helpers::path(it->m_path) );
-    args.push_back("--crate-name"); args.push_back(it->m_name);
-    args.push_back("--crate-type"); args.push_back("rlib");
-    args.push_back("-o"); args.push_back( ::helpers::path("output") / ::format("lib", it->m_name, ".hir") );
-#ifdef _WIN32
-    ::std::stringstream cmdline;
-    cmdline << "mrustc.exe";
-    for(const auto& arg : args)
-        cmdline << " " << arg;
-    auto cmdline_str = cmdline.str();
-    DEBUG("Calling " << cmdline_str);
-
-    CreateDirectory(static_cast<::std::string>(outfile.parent()).c_str(), NULL);
-
-    STARTUPINFO si = {0};
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = NULL;
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    {
-        SECURITY_ATTRIBUTES sa = {0};
-        sa.nLength = sizeof(sa);
-        sa.bInheritHandle = TRUE;
-        si.hStdOutput = CreateFile( (static_cast<::std::string>(outfile) + "_dbg.txt").c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
-        DWORD   tmp;
-        WriteFile(si.hStdOutput, cmdline_str.data(), cmdline_str.size(), &tmp, NULL);
-        WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
-    }
-    PROCESS_INFORMATION pi = {0};
-    CreateProcessA("x64\\Release\\mrustc.exe", (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, CREATE_NO_WINDOW, "MRUSTC_DEBUG=Parse\0", NULL, &si, &pi);
-    CloseHandle(si.hStdOutput);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD status = 1;
-    GetExitCodeProcess(pi.hProcess, &status);
-    if(status != 0)
-    {
-        DEBUG("Compiler exited with non-zero exit status " << status);
-        return false;
-    }
-#elif defined(__posix__)
-    //spawn();
-#else
-#endif
-    return true;
+    return *it;
 }
 
 const PackageManifest& PackageRef::get_package() const
 {
+    DEBUG("TODO: PackageRef::get_package()");
     throw "";
 }
 

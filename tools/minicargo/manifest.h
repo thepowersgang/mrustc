@@ -93,7 +93,7 @@ struct PackageTarget
 
 class PackageManifest
 {
-    ::std::string   m_manmifest_path;
+    ::std::string   m_manifest_path;
 
     ::std::string   m_name;
     PackageVersion  m_version;
@@ -109,8 +109,16 @@ class PackageManifest
     PackageManifest();
 public:
     static PackageManifest load_from_toml(const ::std::string& path);
-    bool build_lib() const;
 
+    const PackageTarget& get_library() const;
+
+
+    const ::std::string& manifest_path() const {
+        return m_manifest_path;
+    }
+    const ::std::string& name() const {
+        return m_name;
+    }
     const ::std::vector<PackageRef>& dependencies() const {
         return m_dependencies;
     }

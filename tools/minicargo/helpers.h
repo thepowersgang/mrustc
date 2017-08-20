@@ -56,10 +56,22 @@ public:
             throw ::std::runtime_error("Appending an absolute path to another path");
         return *this / p.m_str.c_str();
     }
+    /// Append a relative path
     path operator/(const char* o) const
     {
+        if (o[0] == '/')
+            throw ::std::runtime_error("Appending an absolute path to another path");
         auto rv = *this;
         rv.m_str.push_back(SEP);
+        rv.m_str.append(o);
+        return rv;
+    }
+    /// Add an arbitary string to the final component
+    path operator+(const char* o) const
+    {
+        if( ::std::strchr(o, SEP) != nullptr )
+            throw ::std::runtime_error("Appending a string containing the path separator (with operator+)");
+        auto rv = *this;
         rv.m_str.append(o);
         return rv;
     }
