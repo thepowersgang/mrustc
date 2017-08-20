@@ -55,7 +55,7 @@ struct TomlValue
         {
         }
 
-        const char* what() const override {
+        const char* what() const noexcept override {
             return "toml type error";
         }
     };

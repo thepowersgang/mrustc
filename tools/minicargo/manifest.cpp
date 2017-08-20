@@ -190,6 +190,10 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         {
             // TODO: Build deps
         }
+        else if( section == "dev-dependencies" )
+        {
+            // TODO: Developemnt (test/bench) deps
+        }
         else if( section == "patch" )
         {
             //const auto& repo = key_val.path[1];

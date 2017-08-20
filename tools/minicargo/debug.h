@@ -10,10 +10,10 @@ extern void Debug_Print(::std::function<void(::std::ostream& os)> cb);
 #define TODO(fmt)   do { Debug_Print([&](auto& os){ os << "DEBUG: " << fmt; }); abort(); } while(0)
 
 namespace {
-    static void format_to_stream(::std::ostream& os) {
+    static inline void format_to_stream(::std::ostream& os) {
     }
     template<typename T, typename... A>
-    static void format_to_stream(::std::ostream& os, const T& v, const A&... a) {
+    static inline void format_to_stream(::std::ostream& os, const T& v, const A&... a) {
         os << v;
         format_to_stream(os, a...);
     }

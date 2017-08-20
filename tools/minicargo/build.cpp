@@ -7,7 +7,13 @@
 #include <sstream>  // stringstream
 #include "helpers.h"    // path
 #ifdef _WIN32
-#include <Windows.h>
+# include <Windows.h>
+#else
+# include <spawn.h>
+# include <sys/types.h>
+# include <sys/stat.h>
+# include <sys/wait.h>
+# include <fcntl.h>
 #endif
 
 struct BuildList
@@ -218,7 +224,6 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
 
     STARTUPINFO si = { 0 };
     si.cb = sizeof(si);
-#if 1
     si.dwFlags = STARTF_USESTDHANDLES;
     si.hStdInput = NULL;
     si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
@@ -231,7 +236,6 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
         WriteFile(si.hStdOutput, cmdline_str.data(), cmdline_str.size(), &tmp, NULL);
         WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
-#endif
     PROCESS_INFORMATION pi = { 0 };
     char env[] =
         "MRUSTC_DEBUG=""\0"
@@ -247,8 +251,49 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
         return false;
     }
 #else
-    // TODO: posix_spawn
-    return false;
+
+    // Create logfile output directory
+    mkdir(static_cast<::std::string>(logfile.parent()).c_str(), 0755);
+
+    // Create handles such that the log file is on stdout
+    ::std::string logfile_str = logfile;
+    pid_t pid;
+    posix_spawn_file_actions_t  fa;
+    {
+        posix_spawn_file_actions_init(&fa);
+        posix_spawn_file_actions_addopen(&fa, 1, logfile_str.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
+    }
+
+    // Generate `argv`
+    auto argv = args.get_vec();
+    argv.insert(argv.begin(), "mrustc");
+    DEBUG("Calling " << argv);
+    argv.push_back(nullptr);
+
+    // Generate `envp`
+    ::std::vector<const char*> envp;
+    extern char **environ;
+    for(auto p = environ; *p; p++)
+    {
+        envp.push_back(*p);
+    }
+    envp.push_back(nullptr);
+
+    if( posix_spawn(&pid, "../bin/mrustc", &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.data()) != 0 )
+    {
+        perror("posix_spawn");
+        DEBUG("Unable to spawn compiler");
+        posix_spawn_file_actions_destroy(&fa);
+        return false;
+    }
+    posix_spawn_file_actions_destroy(&fa);
+    int status = -1;
+    waitpid(pid, &status, 0);
+    if( WEXITSTATUS(status) != 0 )
+    {
+        DEBUG("Compiler exited with non-zero exit status " << WEXITSTATUS(status));
+        return false;
+    }
 #endif
     return true;
 }
