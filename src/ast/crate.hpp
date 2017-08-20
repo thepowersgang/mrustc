@@ -89,4 +89,7 @@ public:
     const MacroRules* find_macro_rules(const ::std::string& name) const;
 };
 
+extern ::std::vector<::std::string>    g_crate_load_dirs;
+extern ::std::map<::std::string, ::std::string>    g_crate_overrides;
+
 }   // namespace AST
