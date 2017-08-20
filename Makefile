@@ -251,8 +251,9 @@ output/libstd.hir: output/libs/libbacktrace.a
 
 output/libarena.hir: output/libstd.hir
 output/liballoc.hir: output/libcore.hir output/libstd_unicode.hir
-output/libstd_unicode.hir: output/libcore.hir
-output/libcollections.hir: output/libcore.hir output/liballoc.hir output/libstd_unicode.hir
+output/liballoc_system.hir: output/liballoc.hir
+output/libstd_unicode.hir: $(call fcn_extcrate, core)
+output/libcollections.hir: $(call fcn_extcrate, core alloc)
 output/librand.hir: output/libcore.hir
 output/liblibc.hir: output/libcore.hir
 output/libcompiler_builtins.hir: output/libcore.hir
@@ -264,8 +265,8 @@ output/libpanic_unwind.hir: $(call fcn_extcrate, core alloc libc unwind)
 output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/libpanic_abort/lib.rs))
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
-output/libflate.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libflate/lib.rs)) output/cargo_libflate/libminiz.a
-output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/liblog/lib.rs))
+output/libflate2.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/flate2/src/lib.rs))
+output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/log/src/lib.rs))
 output/libenv_logger.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/env_logger/src/lib.rs))
 
 output/liballoc_system.hir: $(call fcn_extcrate, core libc)
@@ -274,7 +275,11 @@ output/liballoc_jemalloc.hir: $(call fcn_extcrate, core libc)
 output/libserialize.hir: $(call fcn_extcrate, std log rustc_i128)
 output/librustc_llvm.hir: $(call fcn_extcrate, std rustc_bitflags)
 output/librustc_errors.hir: $(call fcn_extcrate, std syntax_pos term)
-output/libsyntax.hir: $(call fcn_extcrate, std core serialize term libc log rustc_bitflags rustc_errors syntax_pos rustc_data_structures)
+output/libsyntax.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libsyntax/lib.rs))
+# TODO libsyntax wants bitflags-0.8
+output/libbitflags.hir: $(RUSTCSRC)src/vendor/bitflags-0.8.2/src/lib.rs $(call fcn_extcrate, std)
+	$(DBG) $(ENV_$@) $(BIN) $< --crate-type rlib --crate-name bitflags -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+
 output/librustc_back.hir: $(call fcn_extcrate, std syntax)
 output/librustc_data_structures.hir: $(call fcn_extcrate, std log serialize libc)
 output/librustc_const_math.hir: $(call fcn_extcrate, std log syntax serialize)
@@ -286,6 +291,7 @@ output/librustc_borrowck.hir: $(call fcn_extcrate, std log syntax syntax_pos rus
 output/librustc_mir.hir: $(call fcn_extcrate, std log graphviz rustc rustc_data_structures rustc_back rustc_bitflags syntax syntax_pos rustc_const_math rustc_const_eval)
 output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
 output/libgraphviz.hir: $(call fcn_extcrate, std)
+output/libowning_ref.hir: $(call fcn_extcrate, std stable_deref_trait $(call fn_getdeps, $(RUSTCSRC)src/vendor/owning_ref/src/lib.rs))
 
 output/libsyntax_pos.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libsyntax_pos/lib.rs))
 
