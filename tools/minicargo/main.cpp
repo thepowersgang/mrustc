@@ -6,9 +6,11 @@
  */
 #include <iostream>
 #include <cstring>  // strcmp
+#include <map>
 #include "debug.h"
 #include "manifest.h"
 #include "helpers.h"
+#include "repository.h"
 
 extern void MiniCargo_Build(const PackageManifest& manifest);
 
@@ -22,6 +24,8 @@ struct ProgramOptions
 
     const char* output_directory = nullptr;
 
+    const char* vendor_dir = nullptr;
+
     int parse(int argc, const char* argv[]);
     void usage() const;
 };
@@ -33,19 +37,34 @@ int main(int argc, const char* argv[])
         return 1;
     }
 
-    // 1. Load the Cargo.toml file from the passed directory
-    auto m = PackageManifest::load_from_toml( ::helpers::path(opts.directory ? opts.directory : ".") / "Cargo.toml" );
-
-    // 2. Recursively load dependency manifests
-    for(const auto& dep : m.dependencies())
+    try
     {
-        throw "TODO: Deps";
+        // Load package database
+        Repository repo;
+        // TODO: load repository from a local cache
+        if( opts.vendor_dir )
+        {
+            repo.load_vendored(opts.vendor_dir);
+        }
+
+        // 1. Load the Cargo.toml file from the passed directory
+        auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
+        auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
+
+        m.load_dependencies(repo);
+
+        // 3. Build dependency tree
+        MiniCargo_Build(m);
+    }
+    catch(const ::std::exception& e)
+    {
+        ::std::cerr << "EXCEPTION: " << e.what() << ::std::endl;
+        ::std::cout << "Press enter to exit..." << ::std::endl;
+        ::std::cin.get();
+        return 1;
     }
 
-    // 3. Build dependency tree
-    MiniCargo_Build(m);
-
-    ::std::cout << "Press any key to exit..." << ::std::endl;
+    ::std::cout << "Press enter to exit..." << ::std::endl;
     ::std::cin.get();
     return 0;
 }
@@ -106,9 +125,9 @@ void ProgramOptions::usage() const
 }
 
 
-
 void Debug_Print(::std::function<void(::std::ostream& os)> cb)
 {
     cb(::std::cout);
     ::std::cout << ::std::endl;
 }
+

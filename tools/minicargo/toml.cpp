@@ -158,14 +158,14 @@ TomlKeyValue TomlFile::get_next_value()
     {
     case Token::Type::String:
         rv.path = m_current_block;
-        rv.path.insert(rv.path.begin(), m_current_composite.begin(), m_current_composite.end());
+        rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
         rv.path.push_back(key_name);
 
         rv.value = TomlValue { t.m_data };
         break;
     case Token::Type::SquareOpen:
         rv.path = m_current_block;
-        rv.path.insert(rv.path.begin(), m_current_composite.begin(), m_current_composite.end());
+        rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
         rv.path.push_back(key_name);
 
         rv.value.m_type = TomlValue::Type::List;
@@ -197,14 +197,14 @@ TomlKeyValue TomlFile::get_next_value()
         if( t.m_data == "true" )
         {
             rv.path = m_current_block;
-            rv.path.insert(rv.path.begin(), m_current_composite.begin(), m_current_composite.end());
+            rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
             rv.path.push_back(key_name);
             rv.value = TomlValue { true };
         }
         else if( t.m_data == "false" )
         {
             rv.path = m_current_block;
-            rv.path.insert(rv.path.begin(), m_current_composite.begin(), m_current_composite.end());
+            rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
             rv.path.push_back(key_name);
 
             rv.value = TomlValue { false };
@@ -242,7 +242,7 @@ TomlKeyValue TomlFile::get_next_value()
 Token Token::lex_from(::std::ifstream& is)
 {
     auto rv = Token::lex_from_inner(is);
-    DEBUG("lex_from: " << rv);
+    //DEBUG("lex_from: " << rv);
     return rv;
 }
 Token Token::lex_from_inner(::std::ifstream& is)
@@ -307,7 +307,7 @@ Token Token::lex_from_inner(::std::ifstream& is)
         if(isalpha(c))
         {
             // Identifier
-            while(isalnum(c) || c == '-')
+            while(isalnum(c) || c == '-' || c == '_')
             {
                 str += (char)c;
                 c = is.get();
@@ -317,6 +317,7 @@ Token Token::lex_from_inner(::std::ifstream& is)
         }
         else
         {
+            throw ::std::runtime_error(::format("Unexpected chracter '", (char)c, "' in file"));
             throw "";
         }
     }

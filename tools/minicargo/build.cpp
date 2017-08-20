@@ -18,6 +18,7 @@ struct BuildList
     };
     ::std::vector<BuildEnt>  m_list;
 
+    void add_dependencies(const PackageManifest& p, unsigned level);
     void add_package(const PackageManifest& p, unsigned level);
     void sort_list();
 
@@ -85,12 +86,15 @@ private:
 void MiniCargo_Build(const PackageManifest& manifest)
 {
     BuildList   list;
-    // Generate sorted dependency list
-    for (const auto& dep : manifest.dependencies())
-    {
-        list.add_package(dep.get_package(), 1);
-    }
 
+    list.add_dependencies(manifest, 0);
+
+    list.sort_list();
+    // dedup?
+    for(const auto& p : list.iter())
+    {
+        DEBUG("WILL BUILD " << p.name() << " from " << p.manifest_path());
+    }
 
     // Build dependencies
     Builder builder;
@@ -106,6 +110,17 @@ void MiniCargo_Build(const PackageManifest& manifest)
     builder.build_library(manifest);
 }
 
+void BuildList::add_dependencies(const PackageManifest& p, unsigned level)
+{
+    for (const auto& dep : p.dependencies())
+    {
+        if( dep.is_optional() )
+        {
+            continue ;
+        }
+        add_package(dep.get_package(), level+1);
+    }
+}
 void BuildList::add_package(const PackageManifest& p, unsigned level)
 {
     for(auto& ent : m_list)
@@ -125,17 +140,32 @@ void BuildList::add_package(const PackageManifest& p, unsigned level)
 void BuildList::sort_list()
 {
     ::std::sort(m_list.begin(), m_list.end(), [](const auto& a, const auto& b){ return a.level < b.level; });
+
+    for(auto it = m_list.begin(); it != m_list.end(); )
+    {
+        auto it2 = ::std::find_if(m_list.begin(), it, [&](const auto& x){ return x.package == it->package; });
+        if( it2 != it )
+        {
+            it = m_list.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
 }
 
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target) const
 {
-    auto outfile = ::helpers::path("output") / ::format("lib", target.m_name, ".hir");
+    auto outdir = ::helpers::path("output");
+    auto outfile = outdir / ::format("lib", target.m_name, ".hir");
 
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back("rlib");
     args.push_back("-o"); args.push_back(outfile);
+    args.push_back("-L"); args.push_back(outdir);
 
     return this->spawn_process(args, outfile + "_dbg.txt");
 }
@@ -157,6 +187,7 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
 
     STARTUPINFO si = { 0 };
     si.cb = sizeof(si);
+#if 1
     si.dwFlags = STARTF_USESTDHANDLES;
     si.hStdInput = NULL;
     si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
@@ -169,8 +200,12 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
         WriteFile(si.hStdOutput, cmdline_str.data(), cmdline_str.size(), &tmp, NULL);
         WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
+#endif
     PROCESS_INFORMATION pi = { 0 };
-    CreateProcessA("x64\\Release\\mrustc.exe", (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, "MRUSTC_DEBUG=\0", NULL, &si, &pi);
+    char env[] =
+        "MRUSTC_DEBUG=""\0"
+        ;
+    CreateProcessA("x64\\Release\\mrustc.exe", (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
     CloseHandle(si.hStdOutput);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD status = 1;
