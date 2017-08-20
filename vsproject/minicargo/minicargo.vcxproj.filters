@@ -27,6 +27,9 @@
     <ClCompile Include="..\..\tools\minicargo\toml.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\repository.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\minicargo\helpers.h">
@@ -39,6 +42,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\tools\minicargo\debug.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\tools\minicargo\repository.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

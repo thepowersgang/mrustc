@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <vector>
+#include <string>
 #include <unordered_map>
 
 class TomlFileIter;
@@ -54,7 +55,7 @@ struct TomlValue
         {
         }
 
-        const char* what() const override {
+        const char* what() const noexcept override {
             return "toml type error";
         }
     };
@@ -90,6 +91,24 @@ struct TomlValue
             throw TypeError { m_type, Type::Boolean };
         }
         return m_int_value != 0;
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const TomlValue& x) {
+        switch(x.m_type)
+        {
+        case Type::Boolean: os << (x.m_int_value != 0 ? "true" : "false");  break;
+        case Type::Integer: os << x.m_int_value; break;
+        case Type::List:
+            os << "[";
+            for(auto& e : x.m_sub_values)
+                os << e << ",";
+            os << "]";
+            break;
+        case Type::String:
+            os << "\"" << x.m_str_value << "\"";
+            break;
+        }
+        return os;
     }
 };
 

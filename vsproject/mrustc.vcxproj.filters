@@ -57,6 +57,18 @@
     <Filter Include="Header Files\mir">
       <UniqueIdentifier>{1233e2f6-7b44-4379-9f43-d572b8944ba0}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Header Files\parse">
+      <UniqueIdentifier>{3709226c-e95b-4da0-9735-42e2a5cad1a7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\expand">
+      <UniqueIdentifier>{c78c419b-2b25-4c6f-8f91-95a9d0142fff}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\trans">
+      <UniqueIdentifier>{6bbfdfb3-9557-43a9-bddd-07a243569fa3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\hir">
+      <UniqueIdentifier>{e3219c19-8898-418e-b2ba-84254977a792}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\debug.cpp">
@@ -382,46 +394,10 @@
     <ClInclude Include="..\src\coretypes.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\ast\crate.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\ast\pattern.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\expand\cfg.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\expand\macro_rules.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\hir\crate_ptr.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir\expr.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir\expr_ptr.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir\from_ast.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir\generic_params.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir\hir.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\hir\path.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir\pattern.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir\type.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir\visitor.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\hir_conv\main_bindings.hpp">
@@ -430,13 +406,7 @@
     <ClInclude Include="..\src\hir_expand\main_bindings.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\hir_typeck\expr_visit.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\hir_typeck\main_bindings.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\hir_typeck\static.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\include\cpp_unpack.h">
@@ -455,12 +425,6 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\include\rustic.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\include\serialise.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\include\serialiser_texttree.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\include\span.hpp">
@@ -487,55 +451,19 @@
     <ClInclude Include="..\src\macro_rules\pattern_checks.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\mir\from_hir.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\mir\main_bindings.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\parse\eTokenType.enum.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\parse\common.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\parse\interpolated_fragment.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\parse\lex.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\parse\parseerror.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\parse\token.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\parse\tokentree.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\resolve\main_bindings.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\parse\ttstream.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\parse\tokenstream.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\trans\codegen.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\trans\main_bindings.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\trans\mangling.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\trans\trans_list.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\mir\visit_crate_mir.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\ast\attrs.hpp">
@@ -582,6 +510,90 @@
     </ClInclude>
     <ClInclude Include="..\src\ast\types.hpp">
       <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\ast\crate.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parse\common.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\crate_ptr.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parse\eTokenType.enum.h">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\expr_ptr.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir_typeck\expr_visit.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\expr.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mir\main_bindings.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\include\serialise.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\include\serialiser_texttree.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\expand\cfg.hpp">
+      <Filter>Header Files\expand</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\trans\codegen.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\from_ast.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\hir.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mir\from_hir.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\generic_params.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parse\interpolated_fragment.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\pattern.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\ast\pattern.hpp">
+      <Filter>Header Files\ast</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir_typeck\static.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\type.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\visitor.hpp">
+      <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\mir\visit_crate_mir.hpp">
+      <Filter>Header Files\mir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parse\token.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parse\tokenstream.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\trans\trans_list.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parse\ttstream.hpp">
+      <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parse\tokentree.hpp">
+      <Filter>Header Files\parse</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

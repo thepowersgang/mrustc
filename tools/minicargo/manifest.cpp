@@ -6,10 +6,7 @@
 #include "helpers.h"
 #include <cassert>
 #include <algorithm>
-#include <sstream>
-#ifdef _WIN32
-#include <Windows.h>
-#endif
+#include "repository.h"
 
 static ::std::vector<::std::shared_ptr<PackageManifest>>    g_loaded_manifests;
 
@@ -25,13 +22,14 @@ namespace
 PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
 {
     PackageManifest rv;
-    rv.m_manmifest_path = path;
+    rv.m_manifest_path = path;
 
     TomlFile    toml_file(path);
 
     for(auto key_val : toml_file)
     {
         assert(key_val.path.size() > 0);
+        DEBUG(key_val.path << " = " << key_val.value);
         const auto& section = key_val.path[0];
         if( section == "package" )
         {
@@ -40,6 +38,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             if(key == "authors")
             {
                 // TODO: Use the `authors` key
+                // - Ignore ofr now.
             }
             else if( key == "name" )
             {
@@ -59,6 +58,20 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             {
                 rv.m_version = PackageVersion::from_string(key_val.value.as_string());
             }
+            else if( key == "build" )
+            {
+                if(rv.m_build_script != "" )
+                {
+                    // TODO: Warn/error
+                    throw ::std::runtime_error("Build script path set twice");
+                }
+                rv.m_build_script = key_val.value.as_string();
+                if(rv.m_build_script == "")
+                {
+                    // TODO: Error
+                    throw ::std::runtime_error("Build script path cannot be empty");
+                }
+            }
             else
             {
                 // Unknown value in `package`
@@ -67,12 +80,12 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
         else if( section == "lib" )
         {
-            // TODO: Parse information related to use as a library
             // 1. Find (and add if needed) the `lib` descriptor
             auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; });
             if(it == rv.m_targets.end())
                 it = rv.m_targets.insert(it, PackageTarget { PackageTarget::Type::Lib });
 
+            // 2. Parse from the key-value pair
             target_edit_from_kv(*it, key_val, 1);
         }
         else if( section == "bin" )
@@ -94,6 +107,17 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [&idx](const auto& x) { return x.m_type == PackageTarget::Type::Test && idx-- == 0; });
             if (it == rv.m_targets.end())
                 it = rv.m_targets.insert(it, PackageTarget{ PackageTarget::Type::Test });
+
+            target_edit_from_kv(*it, key_val, 2);
+        }
+        else if (section == "bench")
+        {
+            assert(key_val.path.size() > 1);
+            unsigned idx = ::std::stoi(key_val.path[1]);
+
+            auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [&idx](const auto& x) { return x.m_type == PackageTarget::Type::Bench && idx-- == 0; });
+            if (it == rv.m_targets.end())
+                it = rv.m_targets.insert(it, PackageTarget{ PackageTarget::Type::Bench });
 
             target_edit_from_kv(*it, key_val, 2);
         }
@@ -133,21 +157,27 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                     // Set path specification of the named depenency
                     ref.m_path = key_val.value.as_string();
                 }
-                else if (attr == "git")
+                else if( attr == "git" )
                 {
                     // Load from git repo.
                     TODO("Support git dependencies");
                 }
-                else if (attr == "branch")
+                else if( attr == "branch" )
                 {
                     // Specify git branch
                     TODO("Support git dependencies (branch)");
                 }
-                else if( attr == "version")
+                else if( attr == "version" )
                 {
                     assert(key_val.path.size() == 3);
                     // Parse version specifier
                     ref.m_version = PackageVersionSpec::from_string(key_val.value.as_string());
+                }
+                else if( attr == "optional" )
+                {
+                    assert(key_val.path.size() == 3);
+                    ref.m_optional = key_val.value.as_bool();
+                    // TODO: Add a feature with the same name as the dependency.
                 }
                 else
                 {
@@ -156,13 +186,31 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                 }
             }
         }
+        else if( section == "build-dependencies" )
+        {
+            // TODO: Build deps
+        }
+        else if( section == "dev-dependencies" )
+        {
+            // TODO: Developemnt (test/bench) deps
+        }
         else if( section == "patch" )
         {
             //const auto& repo = key_val.path[1];
+            TODO("Support repository patches");
+        }
+        else if( section == "target" )
+        {
+            // TODO: Target opts?
+        }
+        else if( section == "features" )
+        {
+            // TODO: Features
         }
         else
         {
             // Unknown manifest section
+            TODO("Unknown manifest section " << section);
         }
     }
 
@@ -189,35 +237,39 @@ namespace
             assert(kv.path.size() == base_idx + 1);
             target.m_enable_test = kv.value.as_bool();
         }
-        else if (key == "doctest")
+        else if( key == "doctest" )
         {
             assert(kv.path.size() == base_idx + 1);
             target.m_enable_doctest = kv.value.as_bool();
         }
-        else if (key == "bench")
+        else if( key == "bench" )
         {
             assert(kv.path.size() == base_idx + 1);
             target.m_enable_bench = kv.value.as_bool();
         }
-        else if (key == "doc")
+        else if( key == "doc" )
         {
             assert(kv.path.size() == base_idx + 1);
             target.m_enable_doc = kv.value.as_bool();
         }
-        else if (key == "plugin")
+        else if( key == "plugin" )
         {
             assert(kv.path.size() == base_idx + 1);
             target.m_is_plugin = kv.value.as_bool();
         }
-        else if (key == "proc-macro")
+        else if( key == "proc-macro" )
         {
             assert(kv.path.size() == base_idx + 1);
             target.m_is_proc_macro = kv.value.as_bool();
         }
-        else if (key == "harness")
+        else if( key == "harness" )
         {
             assert(kv.path.size() == base_idx + 1);
             target.m_is_own_harness = kv.value.as_bool();
+        }
+        else if( key == "crate-type" )
+        {
+            // TODO: Support crate types
         }
         else
         {
@@ -226,67 +278,59 @@ namespace
     }
 }
 
-
-bool PackageManifest::build_lib() const
+const PackageTarget& PackageManifest::get_library() const
 {
     auto it = ::std::find_if(m_targets.begin(), m_targets.end(), [](const auto& x) { return x.m_type == PackageTarget::Type::Lib; });
     if (it == m_targets.end())
     {
         throw ::std::runtime_error(::format("Package ", m_name, " doesn't have a library"));
     }
-
-    auto outfile = ::helpers::path("output") / ::format("lib", it->m_name, ".hir");
-
-    ::std::vector<::std::string>    args;
-    args.push_back( ::helpers::path(m_manmifest_path).parent() / ::helpers::path(it->m_path) );
-    args.push_back("--crate-name"); args.push_back(it->m_name);
-    args.push_back("--crate-type"); args.push_back("rlib");
-    args.push_back("-o"); args.push_back( ::helpers::path("output") / ::format("lib", it->m_name, ".hir") );
-#ifdef _WIN32
-    ::std::stringstream cmdline;
-    cmdline << "mrustc.exe";
-    for(const auto& arg : args)
-        cmdline << " " << arg;
-    auto cmdline_str = cmdline.str();
-    DEBUG("Calling " << cmdline_str);
-
-    CreateDirectory(static_cast<::std::string>(outfile.parent()).c_str(), NULL);
-
-    STARTUPINFO si = {0};
-    si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
-    si.hStdInput = NULL;
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    {
-        SECURITY_ATTRIBUTES sa = {0};
-        sa.nLength = sizeof(sa);
-        sa.bInheritHandle = TRUE;
-        si.hStdOutput = CreateFile( (static_cast<::std::string>(outfile) + "_dbg.txt").c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
-        DWORD   tmp;
-        WriteFile(si.hStdOutput, cmdline_str.data(), cmdline_str.size(), &tmp, NULL);
-        WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
-    }
-    PROCESS_INFORMATION pi = {0};
-    CreateProcessA("x64\\Release\\mrustc.exe", (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, CREATE_NO_WINDOW, "MRUSTC_DEBUG=Parse\0", NULL, &si, &pi);
-    CloseHandle(si.hStdOutput);
-    WaitForSingleObject(pi.hProcess, INFINITE);
-    DWORD status = 1;
-    GetExitCodeProcess(pi.hProcess, &status);
-    if(status != 0)
-    {
-        DEBUG("Compiler exited with non-zero exit status " << status);
-        return false;
-    }
-#elif defined(__posix__)
-    //spawn();
-#else
-#endif
-    return true;
+    return *it;
 }
 
-const PackageManifest& PackageRef::get_package() const
+void PackageManifest::load_dependencies(Repository& repo)
 {
-    throw "";
+    DEBUG("Loading depencencies for " << m_name);
+    auto base_path = ::helpers::path(m_manifest_path).parent();
+
+    // 2. Recursively load dependency manifests
+    for(auto& dep : m_dependencies)
+    {
+        if( dep.m_optional )
+        {
+            // TODO: Check for feature that enables this (option to a feature with no '/')
+            continue ;
+        }
+        dep.load_manifest(repo, base_path);
+    }
+}
+
+void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path)
+{
+    // If the path isn't set, check for:
+    // - Git (checkout and use)
+    // - Version and repository (check vendored, check cache, download into cache)
+    if( ! this->has_path() )
+    {
+        if( this->has_git() )
+        {
+            DEBUG("Load dependency " << this->name() << " from git");
+            throw "TODO: Git";
+        }
+        else
+        {
+            DEBUG("Load dependency " << this->name() << " from repo");
+            m_manifest = repo.find(this->name(), this->get_version());
+        }
+    }
+    else
+    {
+        DEBUG("Load dependency " << m_name << " from path " << m_path);
+        // Search for a copy of this already loaded
+        m_manifest = repo.from_path(base_path / ::helpers::path(m_path) / "Cargo.toml");
+    }
+
+    m_manifest->load_dependencies(repo);
 }
 
 PackageVersion PackageVersion::from_string(const ::std::string& s)
@@ -308,4 +352,8 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
     PackageVersionSpec  rv;
     throw "";
     return rv;
+}
+bool PackageVersionSpec::accepts(const PackageVersion& v) const
+{
+    throw "";
 }

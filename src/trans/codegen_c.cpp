@@ -499,7 +499,9 @@ namespace {
                 break;
             case Compiler::Msvc:
                 is_windows = true;
+                // TODO: Look up these paths in the registry and use CreateProcess instead of system
                 args.push_back(cache_str( detect_msvc().path_vcvarsall ));
+                //args.push_back("amd64");
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
@@ -568,8 +570,9 @@ namespace {
             }
             //DEBUG("- " << cmd_ss.str());
             ::std::cout << "Running comamnd - " << cmd_ss.str() << ::std::endl;
-            if( system(cmd_ss.str().c_str()) )
+            if( system(cmd_ss.str().c_str()) != 0 )
             {
+                ::std::cerr << "C Compiler failed to execute" << ::std::endl;
                 abort();
             }
         }
@@ -2036,82 +2039,17 @@ namespace {
                 if( e.flag_idx != ~0u )
                     m_of << indent << "}\n";
                 break; }
-            case ::MIR::Statement::TAG_Asm: {
-                const auto& e = stmt.as_Asm();
-
-                struct H {
-                    static bool has_flag(const ::std::vector<::std::string>& flags, const char* des) {
-                        return ::std::find_if(flags.begin(), flags.end(), [des](const auto&x){return x==des;}) != flags.end();
-                    }
-                    static const char* convert_reg(const char* r) {
-                        if( ::std::strcmp(r, "{eax}") == 0 || ::std::strcmp(r, "{rax}") == 0 ) {
-                            return "a";
-                        }
-                        else {
-                            return r;
-                        }
-                    }
-                };
-                bool is_volatile = H::has_flag(e.flags, "volatile");
-                bool is_intel = H::has_flag(e.flags, "intel");
-
-                m_of << indent << "__asm__ ";
-                if(is_volatile) m_of << "__volatile__";
-                // TODO: Convert format string?
-                // TODO: Use a C-specific escaper here.
-                m_of << "(\"" << (is_intel ? ".syntax intel; " : "");
-                for(auto it = e.tpl.begin(); it != e.tpl.end(); ++it)
+            case ::MIR::Statement::TAG_Asm:
+                switch(m_compiler)
                 {
-                    if( *it == '\n' )
-                        m_of << ";\\n";
-                    else if( *it == '"' )
-                        m_of << "\\\"";
-                    else if( *it == '\\' )
-                        m_of << "\\\\";
-                    else if( *it == '/' && *(it+1) == '/' )
-                    {
-                        while( it != e.tpl.end() || *it == '\n' )
-                            ++it;
-                        -- it;
-                    }
-                    else if( *it == '%' && *(it+1) == '%' )
-                        m_of << "%";
-                    else if( *it == '%' && !isdigit(*(it+1)) )
-                        m_of << "%%";
-                    else
-                        m_of << *it;
+                case Compiler::Gcc:
+                    this->emit_asm_gcc(mir_res, stmt.as_Asm(), indent_level);
+                    break;
+                case Compiler::Msvc:
+                    this->emit_asm_msvc(mir_res, stmt.as_Asm(), indent_level);
+                    break;
                 }
-                m_of << (is_intel ? ".syntax att; " : "") << "\"";
-                m_of << ": ";
-                for(unsigned int i = 0; i < e.outputs.size(); i ++ )
-                {
-                    const auto& v = e.outputs[i];
-                    if( i != 0 )    m_of << ", ";
-                    m_of << "\"";
-                    switch(v.first[0])
-                    {
-                    case '=':   m_of << "=";    break;
-                    case '+':   m_of << "+";    break;
-                    default:    MIR_TODO(mir_res, "Handle asm! output leader '" << v.first[0] << "'");
-                    }
-                    m_of << H::convert_reg(v.first.c_str()+1);
-                    m_of << "\"("; emit_lvalue(v.second); m_of << ")";
-                }
-                m_of << ": ";
-                for(unsigned int i = 0; i < e.inputs.size(); i ++ )
-                {
-                    const auto& v = e.inputs[i];
-                    if( i != 0 )    m_of << ", ";
-                    m_of << "\"" << v.first << "\"("; emit_lvalue(v.second); m_of << ")";
-                }
-                m_of << ": ";
-                for(unsigned int i = 0; i < e.clobbers.size(); i ++ )
-                {
-                    if( i != 0 )    m_of << ", ";
-                    m_of << "\"" << e.clobbers[i] << "\"";
-                }
-                m_of << ");\n";
-                break; }
+                break;
             case ::MIR::Statement::TAG_Assign: {
                 const auto& e = stmt.as_Assign();
                 DEBUG("- " << e.dst << " = " << e.src);
@@ -2815,6 +2753,121 @@ namespace {
             }
             m_of << " );\n";
         }
+        void emit_asm_gcc(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement::Data_Asm& e, unsigned indent_level)
+        {
+            auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
+            struct H {
+                static bool has_flag(const ::std::vector<::std::string>& flags, const char* des) {
+                    return ::std::find_if(flags.begin(), flags.end(), [des](const auto&x) {return x == des; }) != flags.end();
+                }
+                static const char* convert_reg(const char* r) {
+                    if (::std::strcmp(r, "{eax}") == 0 || ::std::strcmp(r, "{rax}") == 0) {
+                        return "a";
+                    }
+                    else {
+                        return r;
+                    }
+                }
+            };
+            bool is_volatile = H::has_flag(e.flags, "volatile");
+            bool is_intel = H::has_flag(e.flags, "intel");
+
+
+            m_of << indent << "__asm__ ";
+            if (is_volatile) m_of << "__volatile__";
+            // TODO: Convert format string?
+            // TODO: Use a C-specific escaper here.
+            m_of << "(\"" << (is_intel ? ".syntax intel; " : "");
+            for (auto it = e.tpl.begin(); it != e.tpl.end(); ++it)
+            {
+                if (*it == '\n')
+                    m_of << ";\\n";
+                else if (*it == '"')
+                    m_of << "\\\"";
+                else if (*it == '\\')
+                    m_of << "\\\\";
+                else if (*it == '/' && *(it + 1) == '/')
+                {
+                    while (it != e.tpl.end() || *it == '\n')
+                        ++it;
+                    --it;
+                }
+                else if (*it == '%' && *(it + 1) == '%')
+                    m_of << "%";
+                else if (*it == '%' && !isdigit(*(it + 1)))
+                    m_of << "%%";
+                else
+                    m_of << *it;
+            }
+            m_of << (is_intel ? ".syntax att; " : "") << "\"";
+            m_of << ": ";
+            for (unsigned int i = 0; i < e.outputs.size(); i++)
+            {
+                const auto& v = e.outputs[i];
+                if (i != 0)    m_of << ", ";
+                m_of << "\"";
+                switch (v.first[0])
+                {
+                case '=':   m_of << "=";    break;
+                case '+':   m_of << "+";    break;
+                default:    MIR_TODO(mir_res, "Handle asm! output leader '" << v.first[0] << "'");
+                }
+                m_of << H::convert_reg(v.first.c_str() + 1);
+                m_of << "\"("; emit_lvalue(v.second); m_of << ")";
+            }
+            m_of << ": ";
+            for (unsigned int i = 0; i < e.inputs.size(); i++)
+            {
+                const auto& v = e.inputs[i];
+                if (i != 0)    m_of << ", ";
+                m_of << "\"" << v.first << "\"("; emit_lvalue(v.second); m_of << ")";
+            }
+            m_of << ": ";
+            for (unsigned int i = 0; i < e.clobbers.size(); i++)
+            {
+                if (i != 0)    m_of << ", ";
+                m_of << "\"" << e.clobbers[i] << "\"";
+            }
+            m_of << ");\n";
+        }
+        void emit_asm_msvc(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement::Data_Asm& e, unsigned indent_level)
+        {
+            auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
+
+            if( !e.inputs.empty() || !e.outputs.empty() )
+            {
+                MIR_TODO(mir_res, "Inputs/outputs in msvc inline assembly");
+#if 0
+                m_of << indent << "{\n";
+                for(size_t i = 0; i < e.inputs.size(); i ++)
+                {
+                    m_of << indent << "auto asm_i_" << i << " = ";
+                    emit_lvalue(e.inputs[i]);
+                }
+#endif
+            }
+
+            m_of << indent << "__asm {\n";
+
+            m_of << indent << "\t";
+            for (auto it = e.tpl.begin(); it != e.tpl.end(); ++it)
+            {
+                if (*it == ';')
+                {
+                    m_of << "\n";
+                    m_of << indent << "\t";
+                }
+                else
+                    m_of << *it;
+            }
+
+            m_of << "\n" << indent << "}";
+            if (!e.inputs.empty() || !e.outputs.empty())
+            {
+                m_of << "}";
+            }
+            m_of << ";\n";
+        }
     private:
         const ::HIR::TypeRef& monomorphise_fcn_return(::HIR::TypeRef& tmp, const ::HIR::Function& item, const Trans_Params& params)
         {
@@ -2960,6 +3013,7 @@ namespace {
                         m_of << ", "<<o_succ<<", "<<o_fail<<")";
                     break;
                 case Compiler::Msvc:
+                    emit_lvalue(e.ret_val); m_of << "._0 = ";
                     emit_msvc_atomic_op("InterlockedCompareExchange", "");  // TODO: Use ordering
                     if(params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
                     {
@@ -2969,6 +3023,8 @@ namespace {
                     {
                         emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
                     }
+                    m_of << ";\n\t";
+                    emit_lvalue(e.ret_val); m_of << "._1 = ("; emit_lvalue(e.ret_val); m_of << "._0 == "; emit_param(e.args.at(2)); m_of << ")";
                     break;
                 }
                 };
@@ -3349,7 +3405,16 @@ namespace {
                 {
                     m_of << "shl128";
                     if(params.m_types.at(0) == ::HIR::CoreType::I128)   m_of << "s";
-                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", ";
+                    emit_param(e.args.at(1));
+                    // If the shift type is a u128/i128, get the inner
+                    ::HIR::TypeRef tmp;
+                    const auto& shift_ty = mir_res.get_param_type(tmp, e.args.at(1));
+                    if( shift_ty == ::HIR::CoreType::I128 || shift_ty == ::HIR::CoreType::U128 )
+                    {
+                        m_of << ".lo";
+                    }
+                    m_of << ")";
                 }
                 else
                 {
@@ -3362,7 +3427,16 @@ namespace {
                 {
                     m_of << "shr128";
                     if (params.m_types.at(0) == ::HIR::CoreType::I128)   m_of << "s";
-                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", ";
+                    emit_param(e.args.at(1));
+                    // If the shift type is a u128/i128, get the inner
+                    ::HIR::TypeRef tmp;
+                    const auto& shift_ty = mir_res.get_param_type(tmp, e.args.at(1));
+                    if( shift_ty == ::HIR::CoreType::I128 || shift_ty == ::HIR::CoreType::U128 )
+                    {
+                        m_of << ".lo";
+                    }
+                    m_of << ")";
                 }
                 else
                 {
@@ -4154,13 +4228,21 @@ namespace {
                 m_of << "\", " << ::std::dec << c.size() << ")";
                 ),
             (Const,
-                // TODO: This should have been eliminated?
-                // NOTE: GCC hack - statement expressions
+                // TODO: This should have been eliminated? ("MIR Cleanup" should have removed all inline Const references)
                 ::HIR::TypeRef  ty;
                 const auto& lit = get_literal_for_const(c.p, ty);
-                m_of << "({"; emit_ctype(ty, FMT_CB(ss, ss<<"v";)); m_of << "; ";
-                assign_from_literal([&](){ m_of << "v"; }, ty, lit);
-                m_of << "; v;})";
+                if(lit.is_Integer() || lit.is_Float() || lit.is_String())
+                {
+                    emit_literal(ty, lit, {});
+                }
+                else
+                {
+                    // NOTE: GCC hack - statement expressions
+                    MIR_ASSERT(*m_mir_res, m_compiler == Compiler::Gcc, "TODO: Support inline constants without statement expressions");
+                    m_of << "({"; emit_ctype(ty, FMT_CB(ss, ss<<"v";)); m_of << "; ";
+                    assign_from_literal([&](){ m_of << "v"; }, ty, lit);
+                    m_of << "; v;})";
+                }
                 ),
             (ItemAddr,
                 TU_MATCHA( (c.m_data), (pe),

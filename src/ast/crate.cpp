@@ -8,6 +8,9 @@
 #include <hir/main_bindings.hpp>    // HIR_Deserialise
 #include <fstream>
 
+::std::vector<::std::string>    AST::g_crate_load_dirs = { };
+::std::map<::std::string, ::std::string>    AST::g_crate_overrides;
+
 namespace {
     bool check_item_cfg(const ::AST::MetaItems& attrs)
     {
@@ -99,15 +102,23 @@ void Crate::load_externs()
 void Crate::load_extern_crate(Span sp, const ::std::string& name)
 {
     DEBUG("Loading crate '" << name << "'");
-    // TODO: Search a list of load paths for the crate
 
-    ::std::vector< ::std::string> paths { "output/", "output/test_deps/" };
     ::std::string   path;
-    for(const auto& p : paths){
-        path = p + "lib" + name + ".hir";
+    auto it = g_crate_overrides.find(name);
+    if(it != g_crate_overrides.end())
+    {
+        path = it->second;
+    }
+    else
+    {
+        // Search a list of load paths for the crate
+        for(const auto& p : g_crate_load_dirs)
+        {
+            path = p + "/lib" + name + ".hir";
 
-        if( ::std::ifstream(path).good() ) {
-            break ;
+            if( ::std::ifstream(path).good() ) {
+                break ;
+            }
         }
     }
     if( !::std::ifstream(path).good() ) {

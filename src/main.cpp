@@ -224,6 +224,11 @@ int main(int argc, char *argv[])
 
         // Load external crates.
         CompilePhaseV("LoadCrates", [&]() {
+            // Hacky!
+            for(const auto& ld : params.lib_search_dirs)
+            {
+                AST::g_crate_load_dirs.push_back(ld);
+            }
             crate.load_externs();
             });
 
@@ -570,6 +575,12 @@ int main(int argc, char *argv[])
     //    ::std::cerr << "Internal Compiler Error: " << e << ::std::endl;
     //    return 2;
     //}
+    
+    // TODO: Make this conditional
+#if 0
+    ::std::cout << "Press enter to exit..." << ::std::endl;
+    ::std::cin.get();
+#endif
     return 0;
 }
 

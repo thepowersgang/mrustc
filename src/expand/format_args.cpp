@@ -477,7 +477,7 @@ class CFormatArgsExpander:
 
                 auto expr_tt = TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, Parse_Expr0(lex).release()) ));
 
-                auto ins_rv = named_args_index.insert( ::std::make_pair(mv$(name), named_args.size()) );
+                auto ins_rv = named_args_index.insert( ::std::make_pair(mv$(name), static_cast<unsigned>(named_args.size())) );
                 if( ins_rv.second == false ) {
                     ERROR(sp, E0000, "Duplicate definition of named argument `" << ins_rv.first->first << "`");
                 }
