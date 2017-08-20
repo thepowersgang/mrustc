@@ -443,7 +443,15 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     }
                 }
                 else {
-                    TODO(span, "Look up '" << des_item_name << "' in wildcard of enum - HIR");
+                    const auto& enm = *e.hir;
+                    unsigned int i = 0;
+                    for(const auto& var : enm.m_variants)
+                    {
+                        if( var.first == des_item_name ) {
+                            return ::AST::PathBinding::make_EnumVar({ nullptr, i, &enm });
+                        }
+                        i ++;
+                    }
                 }
                 )
             )
