@@ -8,6 +8,9 @@ EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tu_test", "tu_test\tu_test.vcxproj", "{F0A80ABB-A11A-492C-B5FC-E26C29A988D8}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "minicargo", "minicargo\minicargo.vcxproj", "{15F3D38B-14FF-4872-805D-6D9C52920842}"
+	ProjectSection(ProjectDependencies) = postProject
+		{12AA9964-C1BD-406A-9545-43EE63230EBE} = {12AA9964-C1BD-406A-9545-43EE63230EBE}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
