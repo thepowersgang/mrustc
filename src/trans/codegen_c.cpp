@@ -499,7 +499,9 @@ namespace {
                 break;
             case Compiler::Msvc:
                 is_windows = true;
+                // TODO: Look up these paths in the registry and use CreateProcess instead of system
                 args.push_back(cache_str( detect_msvc().path_vcvarsall ));
+                //args.push_back("amd64");
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
@@ -568,8 +570,9 @@ namespace {
             }
             //DEBUG("- " << cmd_ss.str());
             ::std::cout << "Running comamnd - " << cmd_ss.str() << ::std::endl;
-            if( system(cmd_ss.str().c_str()) )
+            if( system(cmd_ss.str().c_str()) != 0 )
             {
+                ::std::cerr << "C Compiler failed to execute" << ::std::endl;
                 abort();
             }
         }
@@ -3010,6 +3013,7 @@ namespace {
                         m_of << ", "<<o_succ<<", "<<o_fail<<")";
                     break;
                 case Compiler::Msvc:
+                    emit_lvalue(e.ret_val); m_of << "._0 = ";
                     emit_msvc_atomic_op("InterlockedCompareExchange", "");  // TODO: Use ordering
                     if(params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
                     {
@@ -3019,6 +3023,8 @@ namespace {
                     {
                         emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
                     }
+                    m_of << ";\n\t";
+                    emit_lvalue(e.ret_val); m_of << "._1 = ("; emit_lvalue(e.ret_val); m_of << "._0 == "; emit_param(e.args.at(2)); m_of << ")";
                     break;
                 }
                 };
@@ -3399,7 +3405,16 @@ namespace {
                 {
                     m_of << "shl128";
                     if(params.m_types.at(0) == ::HIR::CoreType::I128)   m_of << "s";
-                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", ";
+                    emit_param(e.args.at(1));
+                    // If the shift type is a u128/i128, get the inner
+                    ::HIR::TypeRef tmp;
+                    const auto& shift_ty = mir_res.get_param_type(tmp, e.args.at(1));
+                    if( shift_ty == ::HIR::CoreType::I128 || shift_ty == ::HIR::CoreType::U128 )
+                    {
+                        m_of << ".lo";
+                    }
+                    m_of << ")";
                 }
                 else
                 {
@@ -3412,7 +3427,16 @@ namespace {
                 {
                     m_of << "shr128";
                     if (params.m_types.at(0) == ::HIR::CoreType::I128)   m_of << "s";
-                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", ";
+                    emit_param(e.args.at(1));
+                    // If the shift type is a u128/i128, get the inner
+                    ::HIR::TypeRef tmp;
+                    const auto& shift_ty = mir_res.get_param_type(tmp, e.args.at(1));
+                    if( shift_ty == ::HIR::CoreType::I128 || shift_ty == ::HIR::CoreType::U128 )
+                    {
+                        m_of << ".lo";
+                    }
+                    m_of << ")";
                 }
                 else
                 {
