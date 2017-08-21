@@ -81,6 +81,8 @@ class Builder
         }
     };
 
+    //::helpers::path m_build_script_overrides;
+
 public:
     bool build_target(const PackageManifest& manifest, const PackageTarget& target) const;
     bool build_library(const PackageManifest& manifest) const;
@@ -155,12 +157,12 @@ void BuildList::sort_list()
         auto it2 = ::std::find_if(m_list.begin(), it, [&](const auto& x){ return x.package == it->package; });
         if( it2 != it )
         {
-            DEBUG((it2 - m_list.begin()) << ": Duplicate " << it->package->name() << " - Already at pos " << (it2 - m_list.begin()));
+            DEBUG((it - m_list.begin()) << ": Duplicate " << it->package->name() << " - Already at pos " << (it2 - m_list.begin()));
             it = m_list.erase(it);
         }
         else
         {
-            DEBUG((it2 - m_list.begin()) << ": Keep " << it->package->name() << ", level = " << it->level);
+            DEBUG((it - m_list.begin()) << ": Keep " << it->package->name() << ", level = " << it->level);
             ++it;
         }
     }
@@ -177,6 +179,26 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     // > mrustc/minicargo is newer than `outfile`
     // > build script has changed
     // > any input file has changed (requires depfile from mrustc)
+    //auto ts_result = this->get_timestamp(outfile);
+    //if( force_rebuild ) {
+    //}
+    //else if( ts_result == Timestamp::infinite_past() ) {
+    //    // Rebuild (missing)
+    //}
+    //else if( ts_result < this->get_timestamp("../bin/mrustc") || ts_result < this->get_timestamp("bin/minicargo") ) {
+    //    // Rebuild (older than mrustc/minicargo)
+    //}
+    // TODO: Check dependencies.
+    //else {
+    //    // Don't rebuild (no need to)
+    //    return true;
+    //}
+    
+
+    for(const auto& cmd : manifest.build_script_output().pre_build_commands)
+    {
+        // TODO: Run commands specified by build script (override)
+    }
 
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
@@ -184,18 +206,18 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("--crate-type"); args.push_back("rlib");
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(outdir);
-    //for(const auto& dir : manifest.build_script.rustc_link_search) {
-    //    args.push_back("-L"); args.push_back(dir.second.c_str());
-    //}
-    //for(const auto& lib : manifest.build_script.rustc_link_lib) {
-    //    args.push_back("-l"); args.push_back(lib.second.c_str());
-    //}
-    //for(const auto& cfg : manifest.build_script.rustc_cfg) {
-    //    args.push_back("--cfg"); args.push_back(cfg.c_str());
-    //}
-    //for(const auto& flag : manifest.build_script.rustc_flags) {
-    //    args.push_back(flag.c_str());
-    //}
+    for(const auto& dir : manifest.build_script_output().rustc_link_search) {
+        args.push_back("-L"); args.push_back(dir.second.c_str());
+    }
+    for(const auto& lib : manifest.build_script_output().rustc_link_lib) {
+        args.push_back("-l"); args.push_back(lib.second.c_str());
+    }
+    for(const auto& cfg : manifest.build_script_output().rustc_cfg) {
+        args.push_back("--cfg"); args.push_back(cfg.c_str());
+    }
+    for(const auto& flag : manifest.build_script_output().rustc_flags) {
+        args.push_back(flag.c_str());
+    }
     // TODO: Environment variables (rustc_env)
 
     return this->spawn_process(args, outfile + "_dbg.txt");
@@ -205,11 +227,22 @@ bool Builder::build_library(const PackageManifest& manifest) const
     if( manifest.build_script() != "" )
     {
         // Locate a build script override file
-        // > Note, override file can specify a list of commands to run.
-        //manifest.script_output = BuildScript::load( override_file );
-        // Otherwise, compile and run build script
-        //manifest.script_output = BuildScript::load( ::helpers::path("output") / "build_" + manifest.name + ".txt" );
-        // Parse build script output.
+        //if(this->m_build_script_overrides.is_valid())
+        //{
+        //    auto override_file = this->m_build_script_overrides / "build_" + manifest.name + ".txt";
+        //
+        //    // > Note, override file can specify a list of commands to run.
+        //    manifest.load_build_script( override_file );
+        //}
+        //else
+        //{
+        //    // Otherwise, compile and run build script
+        //    // - Load dependencies for the build script
+        //    // - Build the script itself
+        //    this->build_build_script( manifest );
+        //    // - Run the script and put output in the right dir
+        //    manifest.load_build_script( ::helpers::path("output") / "build_" + manifest.name + ".txt" );
+        //}
         throw ::std::runtime_error("TODO: Build script for " + manifest.name());
     }
 
