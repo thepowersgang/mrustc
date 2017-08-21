@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <stdexcept>
 #include "helpers.h"
 
 namespace helpers {
@@ -81,6 +82,10 @@ public:
         }
     }
 
+    const ::std::string& str() const
+    {
+        return m_str;
+    }
     operator ::std::string() const
     {
         return m_str;

@@ -2,6 +2,7 @@
 
 #include <string>
 #include <cstring>
+#include <iostream>
 
 namespace helpers {
 
@@ -23,9 +24,16 @@ public:
             return false;
         return s[m_len] == '\0';
     }
+    operator ::std::string() const {
+        return ::std::string { m_start, m_start + m_len };
+    }
     friend ::std::string& operator+=(::std::string& x, const string_view& sv) {
         x.append(sv.m_start, sv.m_start+sv.m_len);
         return x;
+    }
+    friend ::std::ostream& operator<<(::std::ostream& os, const string_view& sv) {
+        os.write(sv.m_start, sv.m_len);
+        return os;
     }
 };
 

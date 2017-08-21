@@ -81,14 +81,22 @@ class Builder
         }
     };
 
-    //::helpers::path m_build_script_overrides;
+    ::helpers::path m_build_script_overrides;
 
 public:
+    Builder(::helpers::path override_dir):
+        m_build_script_overrides(override_dir)
+    {
+    }
+    
     bool build_target(const PackageManifest& manifest, const PackageTarget& target) const;
     bool build_library(const PackageManifest& manifest) const;
 
 private:
     bool spawn_process(const StringList& args, const ::helpers::path& logfile) const;
+
+
+    time_t get_timestamp(const ::helpers::path& path) const;
 };
 
 void MiniCargo_Build(const PackageManifest& manifest)
@@ -105,7 +113,8 @@ void MiniCargo_Build(const PackageManifest& manifest)
     }
 
     // Build dependencies
-    Builder builder;
+    // TODO: Take this path as input. (XXX HACK)
+    Builder builder { "overrides/nightly-2017-07-08" };
     for(const auto& p : list.iter())
     {
         if( ! builder.build_library(p) )
@@ -179,20 +188,22 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     // > mrustc/minicargo is newer than `outfile`
     // > build script has changed
     // > any input file has changed (requires depfile from mrustc)
-    //auto ts_result = this->get_timestamp(outfile);
-    //if( force_rebuild ) {
-    //}
-    //else if( ts_result == Timestamp::infinite_past() ) {
-    //    // Rebuild (missing)
-    //}
+    bool force_rebuild = false;
+    auto ts_result = this->get_timestamp(outfile);
+    if( force_rebuild ) {
+    }
+    else if( ts_result == 0/*Timestamp::infinite_past()*/ ) {
+        // Rebuild (missing)
+    }
     //else if( ts_result < this->get_timestamp("../bin/mrustc") || ts_result < this->get_timestamp("bin/minicargo") ) {
     //    // Rebuild (older than mrustc/minicargo)
     //}
-    // TODO: Check dependencies.
-    //else {
-    //    // Don't rebuild (no need to)
-    //    return true;
-    //}
+    else {
+        // TODO: Check dependencies. (from depfile)
+        // Don't rebuild (no need to)
+        DEBUG("Not building " << outfile << " - not out of date");
+        return true;
+    }
     
 
     for(const auto& cmd : manifest.build_script_output().pre_build_commands)
@@ -227,23 +238,24 @@ bool Builder::build_library(const PackageManifest& manifest) const
     if( manifest.build_script() != "" )
     {
         // Locate a build script override file
-        //if(this->m_build_script_overrides.is_valid())
-        //{
-        //    auto override_file = this->m_build_script_overrides / "build_" + manifest.name + ".txt";
-        //
-        //    // > Note, override file can specify a list of commands to run.
-        //    manifest.load_build_script( override_file );
-        //}
-        //else
-        //{
-        //    // Otherwise, compile and run build script
-        //    // - Load dependencies for the build script
-        //    // - Build the script itself
-        //    this->build_build_script( manifest );
-        //    // - Run the script and put output in the right dir
-        //    manifest.load_build_script( ::helpers::path("output") / "build_" + manifest.name + ".txt" );
-        //}
-        throw ::std::runtime_error("TODO: Build script for " + manifest.name());
+        if(this->m_build_script_overrides.is_valid())
+        {
+            auto override_file = this->m_build_script_overrides / "build_" + manifest.name().c_str() + ".txt";
+            // TODO: Should this test if it exists? or just assume and let it error?
+        
+            // > Note, override file can specify a list of commands to run.
+            const_cast<PackageManifest&>(manifest).load_build_script( override_file.str() );
+        }
+        else
+        {
+            // Otherwise, compile and run build script
+            // - Load dependencies for the build script
+            // - Build the script itself
+            //this->build_build_script( manifest );
+            // - Run the script and put output in the right dir
+            //manifest.load_build_script( ::helpers::path("output") / "build_" + manifest.name().c_str() + ".txt" );
+            throw ::std::runtime_error("TODO: Build script for " + manifest.name());
+        }
     }
 
     return this->build_target(manifest, manifest.get_library());
@@ -335,3 +347,20 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
 #endif
     return true;
 }
+
+time_t Builder::get_timestamp(const ::helpers::path& path) const
+{
+#if _WIN32
+#else
+    struct stat  s;
+    if( stat(path.str().c_str(), &s) == 0 )
+    {
+        return s.st_mtime;
+    }
+    else
+    {
+        return 0;
+    }
+#endif
+}
+

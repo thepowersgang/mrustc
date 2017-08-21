@@ -125,7 +125,7 @@ struct PackageTarget
 class BuildScriptOutput
 {
 public:
-    // `minicargo:pre-build=make -C bar/`
+    // `cargo:minicargo-pre-build=make -C bar/`
     // MiniCargo hack
     ::std::vector<::std::string>    pre_build_commands;
 
