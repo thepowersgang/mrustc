@@ -13,11 +13,11 @@ void Repository::load_vendored(const ::helpers::path& path)
     // Extract package name and version from each manifest
 }
 
-::std::shared_ptr<PackageManifest> Repository::from_path(::helpers::path path)
+::std::shared_ptr<PackageManifest> Repository::from_path(::helpers::path in_path)
 {
-    DEBUG("Repository::from_path(" << path << ")");
+    DEBUG("Repository::from_path(" << in_path << ")");
     // 1. Normalise path
-    path = path.normalise();
+    auto path = in_path.normalise();
     DEBUG("path = " << path);
 
     auto it = m_path_cache.find(path);

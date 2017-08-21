@@ -3,7 +3,7 @@
 #include "manifest.h"
 #include "toml.h"
 #include "debug.h"
-#include "helpers.h"
+#include "path.h"
 #include <cassert>
 #include <algorithm>
 #include "repository.h"
@@ -303,6 +303,66 @@ void PackageManifest::load_dependencies(Repository& repo)
         }
         dep.load_manifest(repo, base_path);
     }
+}
+
+void PackageManifest::load_build_script(const ::std::string& path)
+{
+    ::std::ifstream is( path );
+    if( !is.good() )
+        throw ::std::runtime_error("Unable to open build script file '" + path + "'");
+
+    BuildScriptOutput   rv;
+
+    while( !is.eof() )
+    {
+        ::std::string   line;
+        is >> line;
+        if( line.compare(0, 5+1, "cargo:") == 0 )
+        {
+            size_t start = 5+1;
+            size_t eq_pos = line.find_first_of('=');
+            ::helpers::string_view  key { line.c_str() + start, eq_pos - start };
+            ::helpers::string_view  value { line.c_str() + eq_pos + 1, line.size() - eq_pos - 1 };
+
+            if( key == "minicargo-pre-build" ) {
+                rv.pre_build_commands.push_back(value);
+            }
+            // cargo:rustc-link-search=foo/bar/baz
+            else if( key == "rustc-link-search" ) {
+                // TODO: Check for an = (otherwise default to dynamic)
+                throw ::std::runtime_error("TODO: rustc-link-search");
+            }
+            // cargo:rustc-link-lib=mysql
+            else if( key == "rustc-link-lib" ) {
+                // TODO: Check for an = (otherwise default to dynamic)
+                throw ::std::runtime_error("TODO: rustc-link-lib");
+            }
+            // cargo:rustc-cfg=foo
+            else if( key == "rustc-cfg" ) {
+                // TODO: Validate
+                rv.rustc_cfg.push_back( value );
+            }
+            // cargo:rustc-flags=-l foo
+            else if( key == "rustc-flags" ) {
+                // Split on space, then push each.
+                throw ::std::runtime_error("TODO: rustc-flags");
+            }
+            // cargo:rustc-env=FOO=BAR
+            else if( key == "rustc-env" ) {
+                rv.rustc_env.push_back( value );
+            }
+            // cargo:rerun-if-changed=foo.rs
+            else if( key == "rerun-if-changed" ) {
+                DEBUG("TODO: '" << key << "' = '" << value << "'");
+            }
+            // - Ignore
+            else {
+                DEBUG("TODO: '" << key << "' = '" << value << "'");
+            }
+        }
+    }
+
+    m_build_script_output = rv;
 }
 
 void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path)

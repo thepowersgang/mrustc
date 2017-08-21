@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "helpers.h"
+#include "path.h"
 
 class PackageManifest;
 class Repository;
@@ -122,6 +122,25 @@ struct PackageTarget
     }
 };
 
+class BuildScriptOutput
+{
+public:
+    // `cargo:minicargo-pre-build=make -C bar/`
+    // MiniCargo hack
+    ::std::vector<::std::string>    pre_build_commands;
+
+    // cargo:rustc-link-search=foo/bar/baz
+    ::std::vector<::std::pair<const char*,::std::string>>    rustc_link_search;
+    // cargo:rustc-link-lib=mysql
+    ::std::vector<::std::pair<const char*,::std::string>>    rustc_link_lib;
+    // cargo:rustc-cfg=foo
+    ::std::vector<::std::string>    rustc_cfg;
+    // cargo:rustc-flags=-l foo
+    ::std::vector<::std::string>    rustc_flags;
+    // cargo:rustc-env=FOO=BAR
+    ::std::vector<::std::string>    rustc_env;
+};
+
 class PackageManifest
 {
     ::std::string   m_manifest_path;
@@ -135,11 +154,10 @@ class PackageManifest
 
     ::std::vector<PackageTarget>    m_targets;
 
-    struct BuildScript
-    {
-    };
+    BuildScriptOutput   m_build_script_output;
 
     PackageManifest();
+
 public:
     static PackageManifest load_from_toml(const ::std::string& path);
 
@@ -152,10 +170,17 @@ public:
     const ::std::string& name() const {
         return m_name;
     }
-    const ::std::string& build_script() const { return m_build_script; }
+    const ::std::string& build_script() const {
+        return m_build_script;
+    }
+    const BuildScriptOutput& build_script_output() const {
+        return m_build_script_output;
+    }
     const ::std::vector<PackageRef>& dependencies() const {
         return m_dependencies;
     }
-    
+
     void load_dependencies(Repository& repo);
+
+    void load_build_script(const ::std::string& path);
 };
