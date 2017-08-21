@@ -33,7 +33,7 @@ struct BuildList
         size_t  i;
 
         const PackageManifest& operator*() const {
-            return *this->l.m_list[this->l.m_list.size() - this->i - 1].package;
+            return *this->l.m_list[this->i].package;
         }
         void operator++() {
             this->i++;
@@ -129,13 +129,15 @@ void BuildList::add_dependencies(const PackageManifest& p, unsigned level)
 }
 void BuildList::add_package(const PackageManifest& p, unsigned level)
 {
+    // If the package is already loaded
     for(auto& ent : m_list)
     {
-        if(ent.package == &p)
+        if(ent.package == &p && ent.level >= level)
         {
-            ent.level = level;
+            // NOTE: Only skip if this package will be built before we needed (i.e. the level is greater)
             return ;
         }
+        // Keep searching (might already have a higher entry)
     }
     m_list.push_back({ &p, level });
     for (const auto& dep : p.dependencies())
@@ -145,17 +147,20 @@ void BuildList::add_package(const PackageManifest& p, unsigned level)
 }
 void BuildList::sort_list()
 {
-    ::std::sort(m_list.begin(), m_list.end(), [](const auto& a, const auto& b){ return a.level < b.level; });
+    ::std::sort(m_list.begin(), m_list.end(), [](const auto& a, const auto& b){ return a.level > b.level; });
 
+    // Needed to deduplicate after sorting (`add_package` doesn't fully dedup)
     for(auto it = m_list.begin(); it != m_list.end(); )
     {
         auto it2 = ::std::find_if(m_list.begin(), it, [&](const auto& x){ return x.package == it->package; });
         if( it2 != it )
         {
+            DEBUG((it2 - m_list.begin()) << ": Duplicate " << it->package->name() << " - Already at pos " << (it2 - m_list.begin()));
             it = m_list.erase(it);
         }
         else
         {
+            DEBUG((it2 - m_list.begin()) << ": Keep " << it->package->name() << ", level = " << it->level);
             ++it;
         }
     }
@@ -205,7 +210,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
         // Otherwise, compile and run build script
         //manifest.script_output = BuildScript::load( ::helpers::path("output") / "build_" + manifest.name + ".txt" );
         // Parse build script output.
-        throw ::std::runtime_error("TODO: Build script");
+        throw ::std::runtime_error("TODO: Build script for " + manifest.name());
     }
 
     return this->build_target(manifest, manifest.get_library());
