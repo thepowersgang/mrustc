@@ -5,7 +5,7 @@
 #include <vector>
 #include <algorithm>
 #include <sstream>  // stringstream
-#include "helpers.h"    // path
+#include "path.h"
 #ifdef _WIN32
 # include <Windows.h>
 #else

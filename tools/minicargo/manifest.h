@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include "helpers.h"
+#include "path.h"
 
 class PackageManifest;
 class Repository;

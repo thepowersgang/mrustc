@@ -3,7 +3,7 @@
 #include "manifest.h"
 #include "toml.h"
 #include "debug.h"
-#include "helpers.h"
+#include "path.h"
 #include <cassert>
 #include <algorithm>
 #include "repository.h"
