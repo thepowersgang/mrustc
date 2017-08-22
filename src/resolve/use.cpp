@@ -688,7 +688,10 @@ namespace {
         auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes[i].name(), parent_modules, Lookup::Type);
         TU_MATCH_DEF(::AST::PathBinding, (b), (e),
         (
-            ERROR(span, E0000, "Unexpected item type in import");
+            ERROR(span, E0000, "Unexpected item type " << b.tag_str() << " in import of " << path);
+            ),
+        (Unbound,
+            ERROR(span, E0000, "Cannot find component " << i << " of " << path);
             ),
         (Crate,
             // TODO: Mangle the original path (or return a new path somehow)
