@@ -127,7 +127,7 @@ class Builder
 #if _WIN32
             return Timestamp { FILETIME { 0, 0 } };
 #else
-            return Timestamp { 0 }
+            return Timestamp { 0 };
 #endif
         }
 
