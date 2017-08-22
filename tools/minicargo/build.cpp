@@ -81,6 +81,37 @@ class Builder
         }
     };
 
+    struct Timestamp
+    {
+#if _WIN32
+        FILETIME    m_val;
+#else
+        time_t  m_val;
+#endif
+        static Timestamp infinite_past() {
+#if _WIN32
+            return Timestamp { FILETIME { 0, 0 } };
+#else
+            return Timestamp { 0 }
+#endif
+        }
+
+        bool operator==(const Timestamp& x) const {
+#if _WIN32
+            return m_val.dwHighDateTime == x.m_val.dwHighDateTime && m_val.dwLowDateTime == x.m_val.dwLowDateTime;
+#else
+            return m_val == x.m_val;
+#endif
+        }
+        bool operator<(const Timestamp& x) const {
+#if _WIN32
+            return m_val.dwHighDateTime == x.m_val.dwHighDateTime ? m_val.dwLowDateTime < x.m_val.dwLowDateTime : m_val.dwHighDateTime < x.m_val.dwHighDateTime;
+#else
+            return m_val < x.m_val;
+#endif
+        }
+    };
+
     ::helpers::path m_build_script_overrides;
 
 public:
@@ -96,10 +127,10 @@ private:
     bool spawn_process(const StringList& args, const ::helpers::path& logfile) const;
 
 
-    time_t get_timestamp(const ::helpers::path& path) const;
+    Timestamp get_timestamp(const ::helpers::path& path) const;
 };
 
-void MiniCargo_Build(const PackageManifest& manifest)
+void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path)
 {
     BuildList   list;
 
@@ -113,8 +144,7 @@ void MiniCargo_Build(const PackageManifest& manifest)
     }
 
     // Build dependencies
-    // TODO: Take this path as input. (XXX HACK)
-    Builder builder { "overrides/nightly-2017-07-08" };
+    Builder builder { override_path };
     for(const auto& p : list.iter())
     {
         if( ! builder.build_library(p) )
@@ -192,7 +222,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     auto ts_result = this->get_timestamp(outfile);
     if( force_rebuild ) {
     }
-    else if( ts_result == 0/*Timestamp::infinite_past()*/ ) {
+    else if( ts_result == Timestamp::infinite_past() ) {
         // Rebuild (missing)
     }
     //else if( ts_result < this->get_timestamp("../bin/mrustc") || ts_result < this->get_timestamp("bin/minicargo") ) {
@@ -348,18 +378,23 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
     return true;
 }
 
-time_t Builder::get_timestamp(const ::helpers::path& path) const
+Builder::Timestamp Builder::get_timestamp(const ::helpers::path& path) const
 {
 #if _WIN32
+    FILETIME    out;
+    auto handle = CreateFile(path.str().c_str(), GENERIC_READ, 0, nullptr, 0, 0, NULL);
+    if(handle == NULL)  return Timestamp::infinite_past();
+    GetFileTime(handle, nullptr, nullptr, &out);
+    return Timestamp { out };
 #else
     struct stat  s;
     if( stat(path.str().c_str(), &s) == 0 )
     {
-        return s.st_mtime;
+        return Timestamp { s.st_mtime };
     }
     else
     {
-        return 0;
+        return Timestamp::infinite_past();
     }
 #endif
 }
