@@ -343,7 +343,14 @@ void PackageManifest::load_build_script(const ::std::string& path)
             // cargo:rustc-link-lib=mysql
             else if( key == "rustc-link-lib" ) {
                 // TODO: Check for an = (otherwise default to dynamic)
-                throw ::std::runtime_error("TODO: rustc-link-lib");
+                ::std::string lazy = value;
+                auto pos = lazy.find_first_of('=');
+                if(pos == ::std::string::npos) {
+                    rv.rustc_link_lib.push_back(::std::make_pair("static", lazy));
+                }
+                else {
+                    throw ::std::runtime_error("TODO: rustc-link-lib");
+                }
             }
             // cargo:rustc-cfg=foo
             else if( key == "rustc-cfg" ) {
