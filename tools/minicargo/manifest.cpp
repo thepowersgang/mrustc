@@ -214,6 +214,14 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
     }
 
+    for(auto& tgt : rv.m_targets)
+    {
+        if(tgt.m_name == "")
+        {
+            tgt.m_name = rv.m_name;
+        }
+    }
+
     return rv;
 }
 

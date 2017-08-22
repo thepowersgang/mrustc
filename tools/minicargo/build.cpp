@@ -56,6 +56,8 @@ struct BuildList
 
 class Builder
 {
+    static const char* const MRUSTC_PATH;
+
     class StringList
     {
         ::std::vector<::std::string>    m_cached;
@@ -64,6 +66,7 @@ class Builder
         StringList()
         {
         }
+        StringList(const StringList&) = delete;
 
         const ::std::vector<const char*>& get_vec() const
         {
@@ -72,6 +75,33 @@ class Builder
 
         void push_back(::std::string s)
         {
+#if _WIN32
+            // NOTE: MSVC's STL changes the pointer on move it seems
+            if(m_cached.capacity() == m_cached.size())
+            {
+                ::std::vector<bool> b;
+                b.reserve(m_strings.size());
+                size_t j = 0;
+                for(const auto* s : m_strings)
+                {
+                    if(j == m_cached.size())
+                        break;
+                    if(s == m_cached[j].c_str())
+                        b.push_back(true);
+                    else
+                        b.push_back(false);
+                }
+
+                m_cached.push_back(::std::move(s));
+                j = 0;
+                for(size_t i = 0; i < b.size(); i ++)
+                {
+                    if(b[i])
+                        m_strings[i] = m_cached[j++].c_str();
+                }
+            }
+            else
+#endif
             m_cached.push_back(::std::move(s));
             m_strings.push_back(m_cached.back().c_str());
         }
@@ -84,7 +114,12 @@ class Builder
     struct Timestamp
     {
 #if _WIN32
-        FILETIME    m_val;
+        uint64_t m_val;
+
+        Timestamp(FILETIME ft):
+            m_val( (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | static_cast<uint64_t>(ft.dwLowDateTime) )
+        {
+        }
 #else
         time_t  m_val;
 #endif
@@ -97,18 +132,19 @@ class Builder
         }
 
         bool operator==(const Timestamp& x) const {
-#if _WIN32
-            return m_val.dwHighDateTime == x.m_val.dwHighDateTime && m_val.dwLowDateTime == x.m_val.dwLowDateTime;
-#else
             return m_val == x.m_val;
-#endif
         }
         bool operator<(const Timestamp& x) const {
-#if _WIN32
-            return m_val.dwHighDateTime == x.m_val.dwHighDateTime ? m_val.dwLowDateTime < x.m_val.dwLowDateTime : m_val.dwHighDateTime < x.m_val.dwHighDateTime;
-#else
             return m_val < x.m_val;
+        }
+
+        friend ::std::ostream& operator<<(::std::ostream& os, const Timestamp& x) {
+#if _WIN32
+            os << ::std::hex << x.m_val << ::std::dec;
+#else
+            os << x.m_val;
 #endif
+            return os;
         }
     };
 
@@ -129,6 +165,12 @@ private:
 
     Timestamp get_timestamp(const ::helpers::path& path) const;
 };
+
+#if _WIN32
+const char* const Builder::MRUSTC_PATH = "x64\\Release\\mrustc.exe";
+#else
+const char* const Builder::MRUSTC_PATH = "../bin/mrustc";
+#endif
 
 void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path)
 {
@@ -211,6 +253,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 {
     auto outdir = ::helpers::path("output");
     auto outfile = outdir / ::format("lib", target.m_name, ".hir");
+    //DEBUG("Building " << manifest.name() << ":" << target.m_name << " as " << outfile);
 
     // TODO: Determine if it needs re-running
     // Rerun if:
@@ -221,13 +264,16 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     bool force_rebuild = false;
     auto ts_result = this->get_timestamp(outfile);
     if( force_rebuild ) {
+        DEBUG("Building " << outfile << " - Force");
     }
     else if( ts_result == Timestamp::infinite_past() ) {
         // Rebuild (missing)
+        DEBUG("Building " << outfile << " - Missing");
     }
-    //else if( ts_result < this->get_timestamp("../bin/mrustc") || ts_result < this->get_timestamp("bin/minicargo") ) {
-    //    // Rebuild (older than mrustc/minicargo)
-    //}
+    else if( ts_result < this->get_timestamp(MRUSTC_PATH) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) {
+        // Rebuild (older than mrustc/minicargo)
+        DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(MRUSTC_PATH) << ")");
+    }
     else {
         // TODO: Check dependencies. (from depfile)
         // Don't rebuild (no need to)
@@ -320,7 +366,7 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
     char env[] =
         "MRUSTC_DEBUG=""\0"
         ;
-    CreateProcessA("x64\\Release\\mrustc.exe", (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    CreateProcessA(MRUSTC_PATH, (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
     CloseHandle(si.hStdOutput);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD status = 1;
@@ -382,9 +428,18 @@ Builder::Timestamp Builder::get_timestamp(const ::helpers::path& path) const
 {
 #if _WIN32
     FILETIME    out;
-    auto handle = CreateFile(path.str().c_str(), GENERIC_READ, 0, nullptr, 0, 0, NULL);
-    if(handle == NULL)  return Timestamp::infinite_past();
-    GetFileTime(handle, nullptr, nullptr, &out);
+    auto handle = CreateFile(path.str().c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if(handle == INVALID_HANDLE_VALUE) {
+        //DEBUG("Can't find " << path);
+        return Timestamp::infinite_past();
+    }
+    if( GetFileTime(handle, NULL, NULL, &out) == FALSE ) {
+        //DEBUG("Can't GetFileTime on " << path);
+        CloseHandle(handle);
+        return Timestamp::infinite_past();
+    }
+    CloseHandle(handle);
+    //DEBUG(Timestamp{out} << " " << path);
     return Timestamp { out };
 #else
     struct stat  s;
