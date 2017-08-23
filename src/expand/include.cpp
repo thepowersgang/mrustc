@@ -30,18 +30,19 @@ namespace {
 
     ::std::string get_path_relative_to(const ::std::string& base_path, ::std::string path)
     {
-        if( path[0] == '/' ) {
+        DEBUG(base_path << ", " << path);
+        if( path[0] == '/' || path[0] == '\\' ) {
             return path;
         }
         else if( base_path.size() == 0 ) {
             return path;
         }
-        else if( base_path[base_path.size()-1] == '/' ) {
+        else if( base_path.back() == '/' || base_path.back() == '\\' ) {
             return base_path + path;
         }
         else {
 
-            auto slash = base_path.find_last_of('/');
+            auto slash = ::std::min( base_path.find_last_of('/'), base_path.find_last_of('\\') );
             if( slash == ::std::string::npos )
             {
                 return path;
@@ -75,7 +76,13 @@ class CIncludeExpander:
 
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
 
-        return box$( Lexer(file_path) );
+        try {
+            return box$( Lexer(file_path) );
+        }
+        catch(::std::runtime_error& e)
+        {
+            ERROR(sp, E0000, e.what());
+        }
     }
 };
 

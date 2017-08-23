@@ -965,8 +965,16 @@ namespace {
                 (Constant,
                     auto cb = monomorphise_type_get_cb(sp, &*e.type, &e.trait.m_params, nullptr);
                     ::HIR::TypeRef  tmp;
-                    const auto& ty = ( monomorphise_type_needed(ie.m_type) ? tmp = monomorphise_type_with(sp, ie.m_type, cb) : ie.m_type );
-                    check_types_equal(sp, node.m_res_type, ty);
+                    const ::HIR::TypeRef* typ;
+                    if(monomorphise_type_needed(ie.m_type)) {
+                        tmp = monomorphise_type_with(sp, ie.m_type, cb);
+                        m_resolve.expand_associated_types(sp, tmp);
+                        typ = &tmp;
+                    }
+                    else {
+                        typ = &ie.m_type;
+                    }
+                    check_types_equal(sp, node.m_res_type, *typ);
                     ),
                 (Static,
                     TODO(sp, "Monomorpise associated static type - " << ie.m_type);

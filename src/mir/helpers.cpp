@@ -287,8 +287,11 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
         auto v = m_resolve.get_value(this->sp, e.p, p, /*signature_only=*/true);
         if( const auto* ve = v.opt_Constant() ) {
             const auto& ty = (*ve)->m_type;
-            if( monomorphise_type_needed(ty) )
-                MIR_TODO(*this, "get_const_type - Monomorphise type " << ty);
+            if( monomorphise_type_needed(ty) ) {
+                auto rv = p.monomorph(this->sp, ty);
+                m_resolve.expand_associated_types(this->sp, rv);
+                return rv;
+            }
             else
                 return ty.clone();
         }

@@ -12,7 +12,7 @@
 #include "helpers.h"
 #include "repository.h"
 
-extern void MiniCargo_Build(const PackageManifest& manifest);
+extern void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path);
 
 struct ProgramOptions
 {
@@ -54,7 +54,7 @@ int main(int argc, const char* argv[])
         m.load_dependencies(repo);
 
         // 3. Build dependency tree
-        MiniCargo_Build(m);
+        MiniCargo_Build(m, opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path() );
     }
     catch(const ::std::exception& e)
     {
@@ -100,7 +100,14 @@ int ProgramOptions::parse(int argc, const char* argv[])
                     ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
                     return 1;
                 }
-                //this->build_script_override_dir = argv[++i];
+                this->override_directory = argv[++i];
+            }
+            else if( ::std::strcmp(arg, "--vendor-dir") == 0 ) {
+                if(i+1 == argc) {
+                    ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                    return 1;
+                }
+                this->vendor_dir = argv[++i];
             }
             else {
                 ::std::cerr << "Unknown flag " << arg << ::std::endl;
