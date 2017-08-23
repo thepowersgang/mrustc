@@ -169,6 +169,13 @@ class CCfgHandler:
             i.m_name = "";
         }
     }
+
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& i) const override {
+        DEBUG("#[cfg] match arm - " << mi);
+        if( !check_cfg(sp, mi) ) {
+            i.m_patterns.clear();
+        }
+    }
     void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_StructLiteral::Ent& i) const override {
         DEBUG("#[cfg] struct lit - " << mi);
         if( !check_cfg(sp, mi) ) {
