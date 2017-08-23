@@ -403,13 +403,16 @@ public:
 
     ::HIR::SimplePath   m_src_module;
 
+    // 
+    //const TraitImpl*    m_parent_spec_impl;
+
     bool matches_type(const ::HIR::TypeRef& tr, t_cb_resolve_type ty_res) const;
     bool matches_type(const ::HIR::TypeRef& tr) const {
         return matches_type(tr, [](const auto& x)->const auto&{ return x; });
     }
 
     bool more_specific_than(const TraitImpl& x) const;
-    bool overlaps_with(const TraitImpl& other) const;
+    bool overlaps_with(const Crate& crate, const TraitImpl& other) const;
 };
 
 class MarkerImpl

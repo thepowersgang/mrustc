@@ -1710,13 +1710,21 @@ namespace {
                 // If the impl block has parameters, figure out what types they map to
                 // - The function params are already mapped (from fix_param_count)
                 auto& impl_params = e.impl_params;
-                if( impl_ptr->m_params.m_types.size() > 0 ) {
+                if( impl_ptr->m_params.m_types.size() > 0 )
+                {
                     impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
-                    impl_ptr->m_type.match_generics(sp, *e.type, this->context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                    // NOTE: Could be fuzzy.
+                    bool r = impl_ptr->m_type.match_test_generics(sp, *e.type, this->context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
                         assert( idx < impl_params.m_types.size() );
                         impl_params.m_types[idx] = ty.clone();
                         return ::HIR::Compare::Equal;
                         });
+                    if(!r)
+                    {
+                        auto cb = monomorphise_type_get_cb(sp, nullptr, &impl_params, nullptr);
+                        auto t = monomorphise_type_with(sp, impl_ptr->m_type, cb);
+                        this->context.equate_types(node.span(), t, *e.type);
+                    }
                     for(const auto& ty : impl_params.m_types)
                         assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
                 }
@@ -4943,6 +4951,7 @@ namespace {
             context.equate_types_from_shadow(sp, v.left_ty);
         }
 
+#if 0
         // HACK! If the trait is `Unsize` then pretend `impl<T> Unsize<T> for T` exists to possibly propagate the type through
         // - Also applies to CoerceUnsized (which may not get its impl detected because actually `T: !Unsize<T>`)
         // - This is needed because `check_coerce` will emit coercions where they're not actually needed in some cases.
@@ -5056,6 +5065,7 @@ namespace {
                 DEBUG("Found at least one impl of CoerceUnsized, running expensive code");
             }
         }
+#endif
 
         // Locate applicable trait impl
         unsigned int count = 0;
@@ -5112,7 +5122,7 @@ namespace {
                     // - If more specific, replace. If less, ignore.
                     #if 1
                     // NOTE: `overlaps_with` (should be) reflective
-                    else if( impl.overlaps_with(best_impl) )
+                    else if( impl.overlaps_with(context.m_crate, best_impl) )
                     {
                         DEBUG("[check_associated] - Overlaps with existing - " << best_impl);
                         // if not more specific than the existing best, ignore.
@@ -5149,6 +5159,7 @@ namespace {
             });
         if( found ) {
             // Fully-known impl
+            DEBUG("Fully-known impl located");
             if( v.name != "" ) {
                 // Stop this from just pushing the same rule again.
                 if( output_type.m_data.is_Path() && output_type.m_data.as_Path().path.m_data.is_UfcsKnown() )

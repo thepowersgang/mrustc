@@ -40,14 +40,14 @@ bool ImplRef::more_specific_than(const ImplRef& other) const
     )
     throw "";
 }
-bool ImplRef::overlaps_with(const ImplRef& other) const
+bool ImplRef::overlaps_with(const ::HIR::Crate& crate, const ImplRef& other) const
 {
     if( this->m_data.tag() != other.m_data.tag() )
         return false;
     TU_MATCH(Data, (this->m_data, other.m_data), (te, oe),
     (TraitImpl,
         if( te.impl != nullptr && oe.impl != nullptr )
-            return te.impl->overlaps_with( *oe.impl );
+            return te.impl->overlaps_with( crate, *oe.impl );
         ),
     (BoundedPtr,
         ),

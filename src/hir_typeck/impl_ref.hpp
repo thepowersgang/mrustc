@@ -3,6 +3,7 @@
 #pragma once
 
 #include <hir/type.hpp>
+#include <hir/hir.hpp>
 
 namespace HIR {
     class TraitImpl;
@@ -51,7 +52,7 @@ struct ImplRef
     }
 
     bool more_specific_than(const ImplRef& other) const;
-    bool overlaps_with(const ImplRef& other) const;
+    bool overlaps_with(const ::HIR::Crate& crate, const ImplRef& other) const;
 
     bool has_magic_params() const {
         TU_IFLET(Data, m_data, TraitImpl, e,

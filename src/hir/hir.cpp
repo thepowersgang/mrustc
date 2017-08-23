@@ -565,7 +565,7 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
         // 2. If any in te.impl->m_params is less specific than oe.impl->m_params: return false
         ord = typelist_ord_specific(sp, this->m_trait_args.m_types, other.m_trait_args.m_types);
         if( ord != ::OrdEqual ) {
-            DEBUG("- Trait arguments " << (ord == ::OrdLess ? "less" : "more") << "  specific");
+            DEBUG("- Trait arguments " << (ord == ::OrdLess ? "less" : "more") << " specific");
             return ord == ::OrdLess;
         }
     }
@@ -654,8 +654,9 @@ bool ::HIR::TraitImpl::more_specific_than(const ::HIR::TraitImpl& other) const
 }
 
 // Returns `true` if the two impls overlap in the types they will accept
-bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
+bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl& other) const
 {
+    // TODO: Pre-calculate impl trees (with pointers to parent impls)
     struct H {
         static bool types_overlap(const ::HIR::PathParams& a, const ::HIR::PathParams& b)
         {
@@ -803,6 +804,7 @@ bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
     // > Create values for impl params from the type, then check if the trait params are compatible
     // > Requires two lists, and telling which one to use by the end
     auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
+    bool is_reversed = false;
     ::std::vector<const ::HIR::TypeRef*>    impl_tys;
     auto cb_match = [&](unsigned int idx, const ::HIR::TypeRef& x)->::HIR::Compare {
         assert(idx < impl_tys.size());
@@ -821,6 +823,7 @@ bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
     if( ! this->m_type.match_test_generics(sp, other.m_type, cb_ident, cb_match) )
     {
         DEBUG("- Type mismatch, try other ordering");
+        is_reversed = true;
         impl_tys.clear(); impl_tys.resize( other.m_params.m_types.size() );
         if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, cb_match) )
         {
@@ -837,6 +840,7 @@ bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
     else if( this->m_trait_args.match_test_generics_fuzz(sp, other.m_trait_args, cb_ident, cb_match) != ::HIR::Compare::Equal )
     {
         DEBUG("- Param mismatch, try other ordering");
+        is_reversed = true;
         impl_tys.clear(); impl_tys.resize( other.m_params.m_types.size() );
         if( !other.m_type.match_test_generics(sp, this->m_type, cb_ident, cb_match) )
         {
@@ -855,7 +859,159 @@ bool ::HIR::TraitImpl::overlaps_with(const ::HIR::TraitImpl& other) const
         // Matched with first ordering
     }
 
-    return true;
+    struct H2 {
+        static const ::HIR::TypeRef& monomorph(const Span& sp, const ::HIR::TypeRef& in_ty, const ::std::vector<const ::HIR::TypeRef*>& args, ::HIR::TypeRef& tmp)
+        {
+            if( ! monomorphise_type_needed(in_ty) ) {
+                return in_ty;
+            }
+            else if( const auto* tep = in_ty.m_data.opt_Generic() ) {
+                ASSERT_BUG(sp, tep->binding < args.size(), "");
+                ASSERT_BUG(sp, args[tep->binding], "");
+                return *args[tep->binding];
+            }
+            else {
+                auto monomorph_cb = [&](const auto& t)->const auto& {
+                    const auto& te = t.m_data.as_Generic();
+                    assert(te.binding < args.size());
+                    ASSERT_BUG(sp, te.binding < args.size(), "");
+                    ASSERT_BUG(sp, args[te.binding], "");
+                    return *args[te.binding];
+                    };
+                tmp = monomorphise_type_with(sp, in_ty, monomorph_cb);
+                // TODO: EAT?
+                return tmp;
+            }
+        }
+        static const ::HIR::TraitPath& monomorph(const Span& sp, const ::HIR::TraitPath& in, const ::std::vector<const ::HIR::TypeRef*>& args, ::HIR::TraitPath& tmp)
+        {
+            if( ! monomorphise_traitpath_needed(in) ) {
+                return in;
+            }
+            else {
+                auto monomorph_cb = [&](const auto& t)->const auto& {
+                    const auto& te = t.m_data.as_Generic();
+                    assert(te.binding < args.size());
+                    ASSERT_BUG(sp, te.binding < args.size(), "");
+                    ASSERT_BUG(sp, args[te.binding], "");
+                    return *args[te.binding];
+                    };
+                tmp = monomorphise_traitpath_with(sp, in, monomorph_cb, true);
+                // TODO: EAT?
+                return tmp;
+            }
+        }
+        static bool check_bounds(const ::HIR::Crate& crate, const ::HIR::TraitImpl& id, const ::std::vector<const ::HIR::TypeRef*>& args, const ::HIR::TraitImpl& g_src)
+        {
+            TRACE_FUNCTION;
+            static Span sp;
+            for(const auto& tb : id.m_params.m_bounds)
+            {
+                if(tb.is_TraitBound())
+                {
+                    ::HIR::TypeRef  tmp_ty;
+                    ::HIR::TraitPath    tmp_tp;
+                    const auto& ty = H2::monomorph(sp, tb.as_TraitBound().type, args, tmp_ty);
+                    const auto& trait = H2::monomorph(sp, tb.as_TraitBound().trait, args, tmp_tp);;
+
+                    // Determine if `ty` would be bounded (it's an ATY or generic)
+                    if( ty.m_data.is_Generic() ) {
+                        TODO(Span(), "Check bound " << ty << " : " << trait << " in source bounds - " << g_src.m_params.fmt_bounds());
+                    }
+                    else if( TU_TEST1(ty.m_data, Path, .binding.is_Opaque()) ) {
+                        TODO(Span(), "Check bound " << ty << " : " << trait << " in source bounds or trait bounds");
+                    }
+                    else {
+                        // Search the crate for an impl
+                        bool rv = crate.find_trait_impls(trait.m_path.m_path, ty, [](const auto&t)->const auto&{ return t; }, [&](const ::HIR::TraitImpl& ti)->bool {
+                                DEBUG("impl" << ti.m_params.fmt_args() << " " << trait.m_path.m_path << ti.m_trait_args << " for " << ti.m_type << ti.m_params.fmt_bounds());
+
+                                ::std::vector<const ::HIR::TypeRef*>   impl_tys { ti.m_params.m_types.size() };
+                                auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
+                                auto cb_match = [&](unsigned int idx, const ::HIR::TypeRef& x)->::HIR::Compare {
+                                    assert(idx < impl_tys.size());
+                                    if( impl_tys.at(idx) )
+                                    {
+                                        DEBUG("Compare " << x << " and " << *impl_tys.at(idx));
+                                        return (x == *impl_tys.at(idx) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal);
+                                    }
+                                    else
+                                    {
+                                        impl_tys.at(idx) = &x;
+                                        return ::HIR::Compare::Equal;
+                                    }
+                                    };
+                                // 1. Triple-check the type matches (and get generics)
+                                if( ! ti.m_type.match_test_generics(sp, ty, cb_ident, cb_match) )
+                                    return false;
+                                // 2. Check trait params
+                                assert(trait.m_path.m_params.m_types.size() == ti.m_trait_args.m_types.size());
+                                for(size_t i = 0; i < trait.m_path.m_params.m_types.size(); i ++)
+                                {
+                                    if( !ti.m_trait_args.m_types[i].match_test_generics(sp, trait.m_path.m_params.m_types[i], cb_ident, cb_match) )
+                                        return false;
+                                }
+                                // 3. Check bounds on the impl
+                                if( !H2::check_bounds(crate, ti, impl_tys, g_src) )
+                                    return false;
+                                // 4. Check ATY bounds on the trait path
+                                for(const auto& atyb : trait.m_type_bounds)
+                                {
+                                    const auto& aty = ti.m_types.at(atyb.first);
+                                    if( !aty.data.match_test_generics(sp, atyb.second, cb_ident, cb_match) )
+                                        return false;
+                                }
+                                // All those pass? It's good.
+                                return true;
+                            });
+                        if( !rv )
+                        {
+                            return false;
+                        }
+                    }
+                }
+                else
+                {
+                    // TODO: Other bound types?
+                }
+            }
+            // No bounds failed, it's good
+            return true;
+        }
+    };
+
+    // The two impls could overlap, pending on trait bounds
+    if(is_reversed)
+    {
+        DEBUG("(reversed) impl params " << FMT_CB(os,
+                for(auto* p : impl_tys)
+                {
+                    if(p)
+                        os << *p;
+                    else
+                        os << "?";
+                    os << ",";
+                }
+                ));
+        // Check bounds on `other` using these params
+        // TODO: Take a callback that does the checks. Or somehow return a "maybe overlaps" result?
+        return H2::check_bounds(crate, other, impl_tys, *this);
+    }
+    else
+    {
+        DEBUG("impl params " << FMT_CB(os,
+                for(auto* p : impl_tys)
+                {
+                    if(p)
+                        os << *p;
+                    else
+                        os << "?";
+                    os << ",";
+                }
+                ));
+        // Check bounds on `*this`
+        return H2::check_bounds(crate, *this, impl_tys, other);
+    }
 }
 
 
