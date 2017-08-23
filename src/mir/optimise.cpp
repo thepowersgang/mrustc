@@ -567,6 +567,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Unify duplicate temporaries
         // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
+        // TODO: Only run this when nothing else happened. (It's VERY expensive)
         change_happened |= MIR_Optimise_UnifyTemporaries(state, fcn);
         #if CHECK_AFTER_ALL
         MIR_Validate(resolve, path, fcn, args, ret_type);
