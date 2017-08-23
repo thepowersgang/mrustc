@@ -381,8 +381,8 @@ namespace
                 void mark_from_state(const ValueStates& vss, const State& s) {
                     if(s.is_composite()) {
                         used.at(s.index-1) = true;
-                        for(const auto& s : vss.inner_states.at(s.index-1))
-                            mark_from_state(vss, s);
+                        for(const auto& is : vss.inner_states.at(s.index-1))
+                            mark_from_state(vss, is);
 
                         // TODO: Should this compact composites with all-equal inner states?
                     }
