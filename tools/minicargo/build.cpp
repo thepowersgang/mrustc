@@ -392,9 +392,14 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
     posix_spawn_file_actions_destroy(&fa);
     int status = -1;
     waitpid(pid, &status, 0);
-    if( WEXITSTATUS(status) != 0 )
+    if( status != 0 )
     {
-        DEBUG("Compiler exited with non-zero exit status " << WEXITSTATUS(status));
+        if( WIFEXITED(status) )
+            DEBUG("Compiler exited with non-zero exit status " << WEXITSTATUS(status));
+        else if( WIFSIGNALED(status) )
+            DEBUG("Compiler was terminated with signal " << WSTOPSIG(status));
+        else
+            DEBUG("Compiler terminated for unknown reason, status=" << status);
         return false;
     }
 #endif
