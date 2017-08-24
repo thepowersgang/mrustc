@@ -30,6 +30,22 @@ struct Token
     ::std::string   m_data;
     int64_t m_intval = 0;
 
+    Token(Type ty):
+        m_type(ty)
+    {
+    }
+    Token(Type ty, ::std::string s):
+        m_type(ty),
+        m_data(s)
+    {
+    }
+    Token(Type ty, int64_t i):
+        m_type(ty),
+        m_intval(i)
+    {
+    }
+
+
     static Token lex_from(::std::ifstream& is);
     static Token lex_from_inner(::std::ifstream& is);
 
@@ -387,7 +403,7 @@ Token Token::lex_from_inner(::std::ifstream& is)
                 c = is.get();
             }
             is.putback(c);
-            return Token { Type::Integer, "", val };
+            return Token { Type::Integer, val };
         }
         else
         {

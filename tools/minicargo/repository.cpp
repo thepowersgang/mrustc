@@ -4,6 +4,7 @@
 #include "debug.h"
 #include <fstream>
 #if _WIN32
+# include <Windows.h>
 #else
 # include <dirent.h>
 #endif
