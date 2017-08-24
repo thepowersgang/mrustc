@@ -74,6 +74,11 @@ struct TomlValue
         m_str_value(::std::move(s))
     {
     }
+    TomlValue(int64_t v):
+        m_type(Type::Integer),
+        m_int_value(v)
+    {
+    }
     TomlValue(bool v) :
         m_type(Type::Boolean),
         m_int_value(v ? 1 : 0)

@@ -23,10 +23,12 @@ struct Token
 
         Ident,
         String,
+        Integer,
     };
 
     Type    m_type;
     ::std::string   m_data;
+    int64_t m_intval = 0;
 
     static Token lex_from(::std::ifstream& is);
     static Token lex_from_inner(::std::ifstream& is);
@@ -50,6 +52,7 @@ struct Token
         case Type::Dot:         os << "Dot";      break;
         case Type::Ident:  os << "Ident(" << x.m_data << ")";  break;
         case Type::String: os << "String(" << x.m_data << ")"; break;
+        case Type::Integer: os << "Integer(" << x.m_intval << ")"; break;
         }
         return os;
     }
@@ -112,18 +115,19 @@ TomlKeyValue TomlFile::get_next_value()
             } while(t.m_type == Token::Type::Dot);
             if( t.m_type != Token::Type::SquareClose )
             {
-                throw "";
+                throw ::std::runtime_error(::format("Unexpected token in block header - ", t));
             }
             t = Token::lex_from(m_if);
             if (t.m_type != Token::Type::Newline)
             {
-                throw "";
+                throw ::std::runtime_error(::format("Unexpected token after block block - ", t));
             }
             DEBUG("Start block " << m_current_block);
             // TODO: Are empty sections allowed?
             //goto recurse;
 
-            t = Token::lex_from(m_if);
+            while( t.m_type == Token::Type::Newline )
+                t = Token::lex_from(m_if);
             break ;
         default:
             break;
@@ -135,7 +139,7 @@ TomlKeyValue TomlFile::get_next_value()
         if( t.m_type == Token::Type::Eof )
         {
             // EOF isn't allowed here
-            throw "";
+            throw ::std::runtime_error(::format("Unexpected EOF in composite"));
         }
     }
     switch (t.m_type)
@@ -144,13 +148,13 @@ TomlKeyValue TomlFile::get_next_value()
     case Token::Type::Ident:
         break;
     default:
-        throw "";
+        throw ::std::runtime_error(::format("Unexpected token for key - ", t));
     }
     ::std::string   key_name = t.as_string();
     t = Token::lex_from(m_if);
 
     if(t.m_type != Token::Type::Assign)
-        throw "";
+        throw ::std::runtime_error(::format("Unexpected token after key - ", t));
     t = Token::lex_from(m_if);
 
     TomlKeyValue    rv;
@@ -171,6 +175,11 @@ TomlKeyValue TomlFile::get_next_value()
         rv.value.m_type = TomlValue::Type::List;
         while( (t = Token::lex_from(m_if)).m_type != Token::Type::SquareClose )
         {
+            while( t.m_type == Token::Type::Newline )
+                t = Token::lex_from(m_if);
+            if( t.m_type == Token::Type::SquareClose )
+                break;
+
             // TODO: Recurse parse a value
             switch(t.m_type)
             {
@@ -178,7 +187,7 @@ TomlKeyValue TomlFile::get_next_value()
                 rv.value.m_sub_values.push_back(TomlValue { t.as_string() });
                 break;
             default:
-                throw "";
+                throw ::std::runtime_error(::format("Unexpected token in array value position - ", t));
             }
 
             t = Token::lex_from(m_if);
@@ -186,13 +195,19 @@ TomlKeyValue TomlFile::get_next_value()
                 break;
         }
         if(t.m_type != Token::Type::SquareClose)
-            throw "";
+            throw ::std::runtime_error(::format("Unexpected token after array - ", t));
         break;
     case Token::Type::BraceOpen:
         m_current_composite.push_back(key_name);
         DEBUG("Enter composite block " << m_current_block << ", " << m_current_composite);
         // Recurse to restart parse
         return get_next_value();
+    case Token::Type::Integer:
+        rv.path = m_current_block;
+        rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
+        rv.path.push_back(key_name);
+        rv.value = TomlValue { t.m_intval };
+        return rv;
     case Token::Type::Ident:
         if( t.m_data == "true" )
         {
@@ -211,11 +226,11 @@ TomlKeyValue TomlFile::get_next_value()
         }
         else
         {
-            throw "";
+            throw ::std::runtime_error(::format("Unexpected identifier in value position - ", t));
         }
         break;
     default:
-        throw "";
+        throw ::std::runtime_error(::format("Unexpected token in value position - ", t));
     }
 
     t = Token::lex_from(m_if);
@@ -229,12 +244,12 @@ TomlKeyValue TomlFile::get_next_value()
     {
         // TODO: Allow EOF?
         if(t.m_type != Token::Type::Newline)
-            throw "";
+            throw ::std::runtime_error(::format("Unexpected token in TOML file after entry - ", t));
     }
     else
     {
         if( t.m_type != Token::Type::Comma )
-            throw "";
+            throw ::std::runtime_error(::format("Unexpected token in TOML file after composite entry - ", t));
     }
     return rv;
 }
@@ -278,11 +293,11 @@ Token Token::lex_from_inner(::std::ifstream& is)
         while (c != '\'')
         {
             if (c == EOF)
-                throw "";
+                throw ::std::runtime_error("Unexpected EOF in single-quoted string");
             if (c == '\\')
             {
                 // TODO: Escaped strings
-                throw "";
+                throw ::std::runtime_error("TODO: Escaped sequences in strings (single)");
             }
             str += (char)c;
             c = is.get();
@@ -290,17 +305,68 @@ Token Token::lex_from_inner(::std::ifstream& is)
         return Token { Type::String, str };
     case '"':
         c = is.get();
-        while(c != '"')
+        if(c == '"')
         {
-            if (c == EOF)
-                throw "";
-            if (c == '\\')
-            {
-                // TODO: Escaped strings
-                throw "";
-            }
-            str += (char)c;
             c = is.get();
+            if( c != '"' )
+            {
+                is.putback(c);
+                return Token { Type::String, "" };
+            }
+            else
+            {
+                // Keep reading until """
+                for(;;)
+                {
+                    c = is.get();
+                    if(c == '"')
+                    {
+                        c = is.get();
+                        if(c == '"')
+                        {
+                            c = is.get();
+                            if(c == '"')
+                            {
+                                break;
+                            }
+                            str += '"';
+                        }
+                        str += '"';
+                    }
+                    if( c == EOF )
+                        throw ::std::runtime_error("Unexpected EOF in triple-quoted string");
+                    if(c == '\\')
+                    {
+                        // TODO: Escaped strings
+                        throw ::std::runtime_error("TODO: Escaped sequences in strings (triple)");
+                    }
+                    str += (char)c;
+                }
+            }
+        }
+        else
+        {
+            while(c != '"')
+            {
+                if (c == EOF)
+                    throw ::std::runtime_error("Unexpected EOF in double-quoted string");
+                if (c == '\\')
+                {
+                    // TODO: Escaped strings
+                    c = is.get();
+                    switch(c)
+                    {
+                    case '"':  str += '"'; break;
+                    case 'n':  str += '\n'; break;
+                    default:
+                        throw ::std::runtime_error("TODO: Escaped sequences in strings");
+                    }
+                    c = is.get();
+                    continue ;
+                }
+                str += (char)c;
+                c = is.get();
+            }
         }
         return Token { Type::String, str };
     default:
@@ -315,10 +381,21 @@ Token Token::lex_from_inner(::std::ifstream& is)
             is.putback(c);
             return Token { Type::Ident, str };
         }
+        else if( isdigit(c) )
+        {
+            int64_t val = 0;
+            while(isdigit(c))
+            {
+                val *= 10;
+                val += c - '0';
+                c = is.get();
+            }
+            is.putback(c);
+            return Token { Type::Integer, "", val };
+        }
         else
         {
             throw ::std::runtime_error(::format("Unexpected chracter '", (char)c, "' in file"));
-            throw "";
         }
     }
 }
