@@ -123,12 +123,8 @@ TomlKeyValue TomlFile::get_next_value()
                 throw ::std::runtime_error(::format("Unexpected token after block block - ", t));
             }
             DEBUG("Start block " << m_current_block);
-            // TODO: Are empty sections allowed?
-            //goto recurse;
-
-            while( t.m_type == Token::Type::Newline )
-                t = Token::lex_from(m_if);
-            break ;
+            // Recurse!
+            return get_next_value();
         default:
             break;
         }
