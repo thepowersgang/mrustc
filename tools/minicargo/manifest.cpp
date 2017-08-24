@@ -23,6 +23,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
 {
     PackageManifest rv;
     rv.m_manifest_path = path;
+    auto package_dir = ::helpers::path(path).parent();
 
     TomlFile    toml_file(path);
 
@@ -188,6 +189,19 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
     }
 
+    // Default targets
+    // - If there's no library section, but src/lib.rs exists, add one
+    if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; }) )
+    {
+        // No library, add one pointing to lib.rs
+        if( ::std::ifstream(package_dir / "src" / "lib.rs").good() )
+        {
+            DEBUG("- Implicit library");
+            rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Lib });
+        }
+    }
+
+    // Default target names
     for(auto& tgt : rv.m_targets)
     {
         if(tgt.m_name == "")
@@ -205,7 +219,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
     else if( rv.m_build_script != "" )
     {
         // Not set, check for a "build.rs" file
-        if( ::std::ifstream( ::helpers::path(path).parent() / "build.rs").good() )
+        if( ::std::ifstream( package_dir / "build.rs").good() )
         {
             DEBUG("- Implicit build.rs");
             rv.m_build_script = "build.rs";
