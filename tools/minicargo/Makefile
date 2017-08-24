@@ -34,5 +34,5 @@ $(OBJDIR)%.o: %.cpp
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
 
--include $(OBJS:%.o=%.dep)
+-include $(OBJS:%.o=%.o.dep)
 
