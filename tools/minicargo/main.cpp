@@ -22,9 +22,10 @@ struct ProgramOptions
     // Directory containing build script outputs
     const char* override_directory = nullptr;
 
-    const char* output_directory = nullptr;
-
+    // Directory containing "vendored" (packaged) copies of packages
     const char* vendor_dir = nullptr;
+
+    const char* output_directory = nullptr;
 
     int parse(int argc, const char* argv[]);
     void usage() const;
@@ -59,13 +60,17 @@ int main(int argc, const char* argv[])
     catch(const ::std::exception& e)
     {
         ::std::cerr << "EXCEPTION: " << e.what() << ::std::endl;
+#if _WIN32
         ::std::cout << "Press enter to exit..." << ::std::endl;
         ::std::cin.get();
+#endif
         return 1;
     }
 
+#if _WIN32
     ::std::cout << "Press enter to exit..." << ::std::endl;
     ::std::cin.get();
+#endif
     return 0;
 }
 
@@ -131,10 +136,28 @@ void ProgramOptions::usage() const
         ;
 }
 
-
+static int giIndentLevel = 0;
 void Debug_Print(::std::function<void(::std::ostream& os)> cb)
 {
+    for(auto i = giIndentLevel; i --; )
+        ::std::cout << " ";
     cb(::std::cout);
     ::std::cout << ::std::endl;
+}
+void Debug_EnterScope(const char* name, dbg_cb_t cb)
+{
+    for(auto i = giIndentLevel; i --; )
+        ::std::cout << " ";
+    ::std::cout << ">>> " << name << "(";
+    cb(::std::cout);
+    ::std::cout << ")" << ::std::endl;
+    giIndentLevel ++;
+}
+void Debug_LeaveScope(const char* name, dbg_cb_t cb)
+{
+    giIndentLevel --;
+    for(auto i = giIndentLevel; i --; )
+        ::std::cout << " ";
+    ::std::cout << "<<< " << name << ::std::endl;
 }
 

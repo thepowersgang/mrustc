@@ -4,10 +4,14 @@
 #include <vector>
 #include <sstream>
 
-extern void Debug_Print(::std::function<void(::std::ostream& os)> cb);
+typedef ::std::function<void(::std::ostream& os)> dbg_cb_t;
+extern void Debug_EnterScope(const char* name, dbg_cb_t );
+extern void Debug_LeaveScope(const char* name, dbg_cb_t );
+extern void Debug_Print(dbg_cb_t cb);
 
 #define DEBUG(fmt)  do { Debug_Print([&](auto& os){ os << "DEBUG: " << fmt; }); } while(0)
-#define TODO(fmt)   do { Debug_Print([&](auto& os){ os << "DEBUG: " << fmt; }); abort(); } while(0)
+#define TODO(fmt)   do { Debug_Print([&](auto& os){ os << "TODO: " << fmt; }); abort(); } while(0)
+#define TRACE_FUNCTION_F(fmt) DebugFunctionScope  trace_function_hdr { __FUNCTION__, [&](auto& os){ os << fmt; } }
 
 namespace {
     static inline void format_to_stream(::std::ostream& os) {
@@ -18,6 +22,19 @@ namespace {
         format_to_stream(os, a...);
     }
 }
+
+struct DebugFunctionScope {
+    const char* m_name;
+    DebugFunctionScope(const char* name, dbg_cb_t cb):
+        m_name(name)
+    {
+        Debug_EnterScope(m_name, cb);
+    }
+    ~DebugFunctionScope()
+    {
+        Debug_LeaveScope(m_name, [](auto& ){});
+    }
+};
 
 template<typename ...T>
 ::std::string format(const T&... v)
