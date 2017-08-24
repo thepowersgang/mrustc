@@ -223,7 +223,8 @@ NODE(ExprNode_If, {
     return NEWNODE(ExprNode_If, m_cond->clone(), m_true->clone(), OPT_CLONE(m_false));
 })
 NODE(ExprNode_IfLet, {
-    os << "if let " << m_pattern << " = (" << *m_value << ") { " << *m_true << " } else { " << *m_false << " }";
+    os << "if let " << m_pattern << " = (" << *m_value << ") { " << *m_true << " }";
+    if(m_false) os << " else { " << *m_false << " }";
 },{
     return NEWNODE(ExprNode_IfLet, m_pattern.clone(), m_value->clone(), m_true->clone(), OPT_CLONE(m_false));
 })

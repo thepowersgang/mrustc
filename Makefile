@@ -266,9 +266,11 @@ output/libpanic_unwind.hir: $(call fcn_extcrate, core alloc libc unwind)
 output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/libpanic_abort/lib.rs))
 output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
 output/libgetopts.hir: output/libstd.hir
-output/libflate2.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/flate2/src/lib.rs))
+output/libflate2.hir: $(call fcn_extcrate, std libc miniz_sys)
 output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/log/src/lib.rs))
 output/libenv_logger.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/env_logger/src/lib.rs))
+output/libminiz_sys.hir: $(RUSTCSRC)src/vendor/miniz-sys/lib.rs $(call fcn_extcrate, std)
+	$(DBG) $(ENV_$@) $(BIN) $< --crate-type rlib --crate-name miniz_sys -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 
 output/liballoc_system.hir: $(call fcn_extcrate, core libc)
 output/liballoc_jemalloc.hir: $(call fcn_extcrate, core libc)
