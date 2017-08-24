@@ -201,17 +201,20 @@ void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_p
 
 void BuildList::add_dependencies(const PackageManifest& p, unsigned level)
 {
+    TRACE_FUNCTION_F(p.name());
     for (const auto& dep : p.dependencies())
     {
         if( dep.is_optional() )
         {
             continue ;
         }
+        DEBUG("Depenency " << dep.name());
         add_package(dep.get_package(), level+1);
     }
 }
 void BuildList::add_package(const PackageManifest& p, unsigned level)
 {
+    TRACE_FUNCTION_F(p.name());
     // If the package is already loaded
     for(auto& ent : m_list)
     {
@@ -223,10 +226,7 @@ void BuildList::add_package(const PackageManifest& p, unsigned level)
         // Keep searching (might already have a higher entry)
     }
     m_list.push_back({ &p, level });
-    for (const auto& dep : p.dependencies())
-    {
-        add_package(dep.get_package(), level+1);
-    }
+    add_dependencies(p, level);
 }
 void BuildList::sort_list()
 {

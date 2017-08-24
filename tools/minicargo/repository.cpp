@@ -110,6 +110,7 @@ void Repository::load_vendored(const ::helpers::path& path)
 }
 ::std::shared_ptr<PackageManifest> Repository::find(const ::std::string& name, const PackageVersionSpec& version)
 {
+    DEBUG("FIND " << name << " matching " << version);
     auto itp = m_cache.equal_range(name);
 
     Entry* best = nullptr;
@@ -117,10 +118,15 @@ void Repository::load_vendored(const ::helpers::path& path)
     {
         if( version.accepts(i->second.version) )
         {
+            DEBUG("Accept " << i->second.version);
             if( !best || best->version < i->second.version )
             {
                 best = &i->second;
             }
+        }
+        else
+        {
+            DEBUG("Ignore " << i->second.version);
         }
     }
 
