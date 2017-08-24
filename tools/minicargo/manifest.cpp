@@ -35,12 +35,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         {
             assert(key_val.path.size() > 1);
             const auto& key = key_val.path[1];
-            if(key == "authors")
-            {
-                // TODO: Use the `authors` key
-                // - Ignore ofr now.
-            }
-            else if( key == "name" )
+            if( key == "name" )
             {
                 if(rv.m_name != "" )
                 {
@@ -71,6 +66,18 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                     // TODO: Error
                     throw ::std::runtime_error("Build script path cannot be empty");
                 }
+            }
+            else if( key == "authors"
+                  || key == "description"
+                  || key == "homepage"
+                  || key == "documentation"
+                  || key == "repository"
+                  || key == "readme"
+                  || key == "categories"
+                  || key == "license"
+                )
+            {
+                // Informational only, ignore
             }
             else
             {
@@ -206,6 +213,10 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         else if( section == "features" )
         {
             // TODO: Features
+        }
+        // crates.io metadata
+        else if( section == "badges" )
+        {
         }
         else
         {
@@ -396,6 +407,9 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
         {
             DEBUG("Load dependency " << this->name() << " from repo");
             m_manifest = repo.find(this->name(), this->get_version());
+            if( !m_manifest ) {
+                throw ::std::runtime_error(::format("Unable to load manifest for ", this->name(), ":", this->get_version()));
+            }
         }
     }
     else
@@ -403,6 +417,7 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
         DEBUG("Load dependency " << m_name << " from path " << m_path);
         // Search for a copy of this already loaded
         m_manifest = repo.from_path(base_path / ::helpers::path(m_path) / "Cargo.toml");
+        assert(m_manifest);
     }
 
     m_manifest->load_dependencies(repo);
@@ -424,11 +439,105 @@ PackageVersion PackageVersion::from_string(const ::std::string& s)
 
 PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
 {
+    struct H {
+        static unsigned parse_i(const ::std::string& istr, size_t& pos) {
+            char* out_ptr = nullptr;
+            long rv = ::std::strtol(istr.c_str() + pos, &out_ptr, 10);
+            if( out_ptr == istr.c_str() + pos )
+                throw ::std::invalid_argument(istr.c_str() + pos);
+            pos = out_ptr - istr.c_str();
+            return rv;
+        }
+    };
     PackageVersionSpec  rv;
-    throw "";
+    size_t pos = 0;
+    do
+    {
+        while( pos < s.size() && isblank(s[pos]) )
+            pos ++;
+        if(pos == s.size())
+            break ;
+        auto ty = PackageVersionSpec::Bound::Type::Compatible;
+        switch(s[pos])
+        {
+        case '^':
+            // Default, compatible
+            pos ++;
+            break;
+        case '=':
+            ty = PackageVersionSpec::Bound::Type::Equal;
+            pos ++;
+            break;
+        case '>':
+            ty = PackageVersionSpec::Bound::Type::Greater;
+            pos ++;
+            break;
+        case '<':
+            ty = PackageVersionSpec::Bound::Type::Greater;
+            pos ++;
+            break;
+        default:
+            break;
+        }
+        while( pos < s.size() && isblank(s[pos]) )
+            pos ++;
+        if( pos == s.size() )
+            throw ::std::runtime_error("Bad version string");
+
+        PackageVersion  v;
+        v.major = H::parse_i(s, pos);
+        if( s[pos] != '.' )
+            throw ::std::runtime_error("Bad version string");
+        pos ++;
+        v.minor = H::parse_i(s, pos);
+        if(s[pos] == '.')
+        {
+            pos ++;
+            v.patch = H::parse_i(s, pos);
+        }
+        else
+        {
+            v.patch = 0;
+        }
+
+        rv.m_bounds.push_back(PackageVersionSpec::Bound { ty, v });
+
+        while( pos < s.size() && isblank(s[pos]) )
+            pos ++;
+        if(pos == s.size())
+            break ;
+    } while(pos < s.size() && s[pos++] == ',');
+    if( pos != s.size() )
+        throw ::std::runtime_error(::format( "Bad version string, pos=", pos ));
     return rv;
 }
 bool PackageVersionSpec::accepts(const PackageVersion& v) const
 {
-    throw "";
+    for(const auto& b : m_bounds)
+    {
+        switch(b.ty)
+        {
+        case Bound::Type::Compatible:
+            // To be compatible, it has to be higher?
+            // - TODO: Isn't a patch version compatible?
+            if( !(v > b.ver) )
+                return false;
+            if( !(v < b.ver.next_breaking()) )
+                return false;
+            break;
+        case Bound::Type::Greater:
+            if( !(v > b.ver) )
+                return false;
+            break;
+        case Bound::Type::Equal:
+            if( v < b.ver || v > b.ver )
+                return false;
+            break;
+        case Bound::Type::Less:
+            if( !(v < b.ver) )
+                return false;
+            break;
+        }
+    }
+    return true;
 }

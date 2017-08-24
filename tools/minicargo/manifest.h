@@ -15,14 +15,50 @@ struct PackageVersion
     unsigned patch;
 
     static PackageVersion from_string(const ::std::string& s);
+
+    PackageVersion next_breaking() const {
+        if(major == 0) {
+            return PackageVersion { 0, minor + 1, 0 };
+        }
+        else {
+            return PackageVersion { major + 1, 0, 0 };
+        }
+    }
+    PackageVersion prev_compat() const {
+        if(major == 0) {
+            // Before 1.0, there's no patch levels
+            return *this;
+        }
+        else {
+            // Anything from the same patch series
+            return PackageVersion { major, minor, 0 };
+        }
+    }
+
+    bool operator==(const PackageVersion& x) const {
+        if( major != x.major )  return false;
+        if( minor != x.minor )  return false;
+        return patch == x.patch;
+    }
+    bool operator!=(const PackageVersion& x) const {
+        if( major != x.major )  return true;
+        if( minor != x.minor )  return true;
+        return patch != x.patch;
+    }
     bool operator<(const PackageVersion& x) const {
-        if( major < x.major )   return true;
-        if( major > x.major )   return false;
-        if( minor < x.minor )   return true;
-        if( minor > x.minor )   return false;
-        if( minor < x.patch )   return true;
-        if( patch > x.patch )   return false;
-        return false;
+        if( major != x.major )  return major < x.major;
+        if( minor != x.minor )  return minor < x.minor;
+        return patch < x.patch;
+    }
+    bool operator>(const PackageVersion& x) const {
+        if( major != x.major )  return major > x.major;
+        if( minor != x.minor )  return minor > x.minor;
+        return patch > x.patch;
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const PackageVersion& v) {
+        os << v.major << "." << v.minor << "." << v.patch;
+        return os;
     }
 };
 struct PackageVersionSpec
@@ -32,6 +68,7 @@ struct PackageVersionSpec
         enum class Type
         {
             Compatible,
+            Greater,
             Equal,
             Less,
         };
@@ -47,6 +84,24 @@ struct PackageVersionSpec
 
     /// Check if this spec accepts the passed version
     bool accepts(const PackageVersion& v) const;
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const PackageVersionSpec& v) {
+        bool first = true;
+        for(const auto& b : v.m_bounds) {
+            if(!first)
+                os << ",";
+            first = false;
+            switch(b.ty)
+            {
+            case Bound::Type::Compatible: os << "^";  break;
+            case Bound::Type::Greater:    os << ">";  break;
+            case Bound::Type::Equal:      os << "=";  break;
+            case Bound::Type::Less:       os << "<";  break;
+            }
+            os << b.ver;
+        }
+        return os;
+    }
 };
 
 class PackageRef
