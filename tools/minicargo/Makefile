@@ -12,8 +12,8 @@ BIN := ../bin/minicargo
 OBJS := main.o build.o manifest.o repository.o
 OBJS += toml.o path.o
 
-LINKFLAGS := 
-CXXFLAGS := -Wall -std=c++14
+LINKFLAGS := -g
+CXXFLAGS := -Wall -std=c++14 -g -O2
 
 OBJS := $(OBJS:%=$(OBJDIR)%)
 
