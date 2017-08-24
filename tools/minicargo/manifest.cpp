@@ -60,7 +60,14 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                     // TODO: Warn/error
                     throw ::std::runtime_error("Build script path set twice");
                 }
-                rv.m_build_script = key_val.value.as_string();
+                if( key_val.value.m_type == TomlValue::Type::Boolean ) {
+                    if( key_val.value.as_bool() )
+                        throw ::std::runtime_error("Build script set to 'true'?");
+                    rv.m_build_script = "-";
+                }
+                else {
+                    rv.m_build_script = key_val.value.as_string();
+                }
                 if(rv.m_build_script == "")
                 {
                     // TODO: Error
@@ -74,6 +81,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                   || key == "repository"
                   || key == "readme"
                   || key == "categories"
+                  || key == "keywords"
                   || key == "license"
                 )
             {
@@ -141,57 +149,8 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             {
                 it = rv.m_dependencies.insert(it, PackageRef{ depname });
             }
-            auto& ref = *it;
 
-            if( key_val.path.size() == 2 )
-            {
-                // Shorthand, picks a version from the package repository
-                if(!was_added)
-                {
-                    throw ::std::runtime_error(::format("ERROR: Duplicate dependency `", depname, "`"));
-                }
-
-                const auto& version_spec_str = key_val.value.as_string();
-                ref.m_version = PackageVersionSpec::from_string(version_spec_str);
-            }
-            else
-            {
-
-                // (part of a) Full dependency specification
-                const auto& attr = key_val.path[2];
-                if( attr == "path" )
-                {
-                    // Set path specification of the named depenency
-                    ref.m_path = key_val.value.as_string();
-                }
-                else if( attr == "git" )
-                {
-                    // Load from git repo.
-                    TODO("Support git dependencies");
-                }
-                else if( attr == "branch" )
-                {
-                    // Specify git branch
-                    TODO("Support git dependencies (branch)");
-                }
-                else if( attr == "version" )
-                {
-                    assert(key_val.path.size() == 3);
-                    // Parse version specifier
-                    ref.m_version = PackageVersionSpec::from_string(key_val.value.as_string());
-                }
-                else if( attr == "optional" )
-                {
-                    assert(key_val.path.size() == 3);
-                    ref.m_optional = key_val.value.as_bool();
-                    // TODO: Add a feature with the same name as the dependency.
-                }
-                else
-                {
-                    // TODO: Error
-                    throw ::std::runtime_error(::format("ERROR: Unkown depencency attribute `", attr, "` on dependency `", depname, "`"));
-                }
-            }
+            it->fill_from_kv(was_added, key_val, 2);
         }
         else if( section == "build-dependencies" )
         {
@@ -214,6 +173,10 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         {
             // TODO: Features
         }
+        else if( section == "workspace" )
+        {
+            // TODO: Workspaces?
+        }
         // crates.io metadata
         else if( section == "badges" )
         {
@@ -231,6 +194,26 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         {
             tgt.m_name = rv.m_name;
         }
+    }
+
+    // Auto-detect the build script if required
+    if( rv.m_build_script == "-" )
+    {
+        // Explicitly disabled `[package] build = false`
+        rv.m_build_script = "";
+    }
+    else if( rv.m_build_script != "" )
+    {
+        // Not set, check for a "build.rs" file
+        if( ::std::ifstream( ::helpers::path(path).parent() / "build.rs").good() )
+        {
+            DEBUG("- Implicit build.rs");
+            rv.m_build_script = "build.rs";
+        }
+    }
+    else
+    {
+        // Explicitly set
     }
 
     return rv;
@@ -290,9 +273,82 @@ namespace
         {
             // TODO: Support crate types
         }
+        else if( key == "required-features" )
+        {
+            assert(kv.path.size() == base_idx + 1);
+            for(const auto& sv : kv.value.m_sub_values)
+            {
+                target.m_required_features.push_back( sv.as_string() );
+            }
+        }
         else
         {
             throw ::std::runtime_error( ::format("TODO: Handle target option `", key, "`") );
+        }
+    }
+}
+
+void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_t base_idx)
+{
+    if( key_val.path.size() == base_idx )
+    {
+        // Shorthand, picks a version from the package repository
+        if(!was_added)
+        {
+            throw ::std::runtime_error(::format("ERROR: Duplicate dependency `", this->m_name, "`"));
+        }
+
+        const auto& version_spec_str = key_val.value.as_string();
+        this->m_version = PackageVersionSpec::from_string(version_spec_str);
+    }
+    else
+    {
+
+        // (part of a) Full dependency specification
+        const auto& attr = key_val.path[base_idx];
+        if( attr == "path" )
+        {
+            assert(key_val.path.size() == base_idx+1);
+            // Set path specification of the named depenency
+            this->m_path = key_val.value.as_string();
+        }
+        else if( attr == "git" )
+        {
+            // Load from git repo.
+            TODO("Support git dependencies");
+        }
+        else if( attr == "branch" )
+        {
+            // Specify git branch
+            TODO("Support git dependencies (branch)");
+        }
+        else if( attr == "version" )
+        {
+            assert(key_val.path.size() == base_idx+1);
+            // Parse version specifier
+            this->m_version = PackageVersionSpec::from_string(key_val.value.as_string());
+        }
+        else if( attr == "optional" )
+        {
+            assert(key_val.path.size() == base_idx+1);
+            this->m_optional = key_val.value.as_bool();
+        }
+        else if( attr == "default-features" )
+        {
+            assert(key_val.path.size() == base_idx+1);
+            //this->m_use_default_features = key_val.value.as_bool();
+        }
+        else if( attr == "features" )
+        {
+            for(const auto& sv : key_val.value.m_sub_values)
+            {
+                this->m_features.push_back( sv.as_string() );
+            }
+        }
+        else
+        {
+            // TODO: Error
+            throw ::std::runtime_error(::format("ERROR: Unkown depencency attribute `", attr, "` on dependency `", this->m_name, "`"));
         }
     }
 }
@@ -393,6 +449,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
 
 void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path)
 {
+    TRACE_FUNCTION_F(this->m_name);
     // If the path isn't set, check for:
     // - Git (checkout and use)
     // - Version and repository (check vendored, check cache, download into cache)
@@ -419,6 +476,8 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
         m_manifest = repo.from_path(base_path / ::helpers::path(m_path) / "Cargo.toml");
         assert(m_manifest);
     }
+
+    // TODO: Set features on this dependency
 
     m_manifest->load_dependencies(repo);
 }
@@ -520,7 +579,7 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
         case Bound::Type::Compatible:
             // To be compatible, it has to be higher?
             // - TODO: Isn't a patch version compatible?
-            if( !(v > b.ver) )
+            if( !(v >= b.ver) )
                 return false;
             if( !(v < b.ver.next_breaking()) )
                 return false;
@@ -530,7 +589,7 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
                 return false;
             break;
         case Bound::Type::Equal:
-            if( v < b.ver || v > b.ver )
+            if( v != b.ver )
                 return false;
             break;
         case Bound::Type::Less:

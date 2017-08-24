@@ -7,6 +7,7 @@
 
 class PackageManifest;
 class Repository;
+class TomlKeyValue;
 
 struct PackageVersion
 {
@@ -54,6 +55,11 @@ struct PackageVersion
         if( major != x.major )  return major > x.major;
         if( minor != x.minor )  return minor > x.minor;
         return patch > x.patch;
+    }
+    bool operator>=(const PackageVersion& x) const {
+        if( major != x.major )  return major > x.major;
+        if( minor != x.minor )  return minor > x.minor;
+        return patch >= x.patch;
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const PackageVersion& v) {
@@ -112,12 +118,19 @@ class PackageRef
 
     bool m_optional = false;
     ::std::string   m_path;
+
+    // Features requested by this reference
+    ::std::vector<::std::string>    m_features;
+    bool    m_use_default_features = true;
+
     ::std::shared_ptr<PackageManifest> m_manifest;
 
     PackageRef(const ::std::string& n) :
         m_name(n)
     {
     }
+
+    void fill_from_kv(bool was_created, const TomlKeyValue& kv, size_t ofs);
 
 public:
     const ::std::string& name() const { return m_name; }
@@ -159,6 +172,8 @@ struct PackageTarget
     bool    m_is_plugin = false;
     bool    m_is_proc_macro = false;
     bool    m_is_own_harness = false;
+
+    ::std::vector<::std::string>    m_required_features;
 
     PackageTarget(Type ty):
         m_type(ty)
