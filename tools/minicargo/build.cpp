@@ -370,7 +370,12 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
     // Generate `argv`
     auto argv = args.get_vec();
     argv.insert(argv.begin(), "mrustc");
-    DEBUG("Calling " << argv);
+    //DEBUG("Calling " << argv);
+    Debug_Print([&](auto& os){
+        os << "Calling";
+        for(const auto& p : argv)
+            os << " " << p;
+        });
     argv.push_back(nullptr);
 
     // Generate `envp`
