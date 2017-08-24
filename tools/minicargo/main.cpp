@@ -11,13 +11,11 @@
 #include "manifest.h"
 #include "helpers.h"
 #include "repository.h"
-
-extern void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path);
+#include "build.h"
 
 struct ProgramOptions
 {
     const char* directory = nullptr;
-    const char* outfile = nullptr;
 
     // Directory containing build script outputs
     const char* override_directory = nullptr;
@@ -52,9 +50,10 @@ int main(int argc, const char* argv[])
         auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
         auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
 
+        // 2. Load all dependencies
         m.load_dependencies(repo);
 
-        // 3. Build dependency tree
+        // 3. Build dependency tree and build program.
         MiniCargo_Build(m, opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path() );
     }
     catch(const ::std::exception& e)

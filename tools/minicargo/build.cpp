@@ -1,11 +1,11 @@
 /*
  */
 #include "manifest.h"
+#include "build.h"
 #include "debug.h"
 #include <vector>
 #include <algorithm>
 #include <sstream>  // stringstream
-#include "path.h"
 #ifdef _WIN32
 # include <Windows.h>
 #else
@@ -54,116 +54,94 @@ struct BuildList
     }
 };
 
-class Builder
+class StringList
 {
-    static const char* const MRUSTC_PATH;
-
-    class StringList
-    {
-        ::std::vector<::std::string>    m_cached;
-        ::std::vector<const char*>  m_strings;
-    public:
-        StringList()
-        {
-        }
-        StringList(const StringList&) = delete;
-
-        const ::std::vector<const char*>& get_vec() const
-        {
-            return m_strings;
-        }
-
-        void push_back(::std::string s)
-        {
-#if _WIN32
-            // NOTE: MSVC's STL changes the pointer on move it seems
-            if(m_cached.capacity() == m_cached.size())
-            {
-                ::std::vector<bool> b;
-                b.reserve(m_strings.size());
-                size_t j = 0;
-                for(const auto* s : m_strings)
-                {
-                    if(j == m_cached.size())
-                        break;
-                    if(s == m_cached[j].c_str())
-                        b.push_back(true);
-                    else
-                        b.push_back(false);
-                }
-
-                m_cached.push_back(::std::move(s));
-                j = 0;
-                for(size_t i = 0; i < b.size(); i ++)
-                {
-                    if(b[i])
-                        m_strings[i] = m_cached[j++].c_str();
-                }
-            }
-            else
-#endif
-            m_cached.push_back(::std::move(s));
-            m_strings.push_back(m_cached.back().c_str());
-        }
-        void push_back(const char* s)
-        {
-            m_strings.push_back(s);
-        }
-    };
-
-    struct Timestamp
-    {
-#if _WIN32
-        uint64_t m_val;
-
-        Timestamp(FILETIME ft):
-            m_val( (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | static_cast<uint64_t>(ft.dwLowDateTime) )
-        {
-        }
-#else
-        time_t  m_val;
-#endif
-        static Timestamp infinite_past() {
-#if _WIN32
-            return Timestamp { FILETIME { 0, 0 } };
-#else
-            return Timestamp { 0 };
-#endif
-        }
-
-        bool operator==(const Timestamp& x) const {
-            return m_val == x.m_val;
-        }
-        bool operator<(const Timestamp& x) const {
-            return m_val < x.m_val;
-        }
-
-        friend ::std::ostream& operator<<(::std::ostream& os, const Timestamp& x) {
-#if _WIN32
-            os << ::std::hex << x.m_val << ::std::dec;
-#else
-            os << x.m_val;
-#endif
-            return os;
-        }
-    };
-
-    ::helpers::path m_build_script_overrides;
-
+    ::std::vector<::std::string>    m_cached;
+    ::std::vector<const char*>  m_strings;
 public:
-    Builder(::helpers::path override_dir):
-        m_build_script_overrides(override_dir)
+    StringList()
     {
     }
-    
-    bool build_target(const PackageManifest& manifest, const PackageTarget& target) const;
-    bool build_library(const PackageManifest& manifest) const;
+    StringList(const StringList&) = delete;
 
-private:
-    bool spawn_process(const StringList& args, const ::helpers::path& logfile) const;
+    const ::std::vector<const char*>& get_vec() const
+    {
+        return m_strings;
+    }
 
+    void push_back(::std::string s)
+    {
+#if _WIN32
+        // NOTE: MSVC's STL changes the pointer on move it seems
+        if(m_cached.capacity() == m_cached.size())
+        {
+            ::std::vector<bool> b;
+            b.reserve(m_strings.size());
+            size_t j = 0;
+            for(const auto* s : m_strings)
+            {
+                if(j == m_cached.size())
+                    break;
+                if(s == m_cached[j].c_str())
+                    b.push_back(true);
+                else
+                    b.push_back(false);
+            }
 
-    Timestamp get_timestamp(const ::helpers::path& path) const;
+            m_cached.push_back(::std::move(s));
+            j = 0;
+            for(size_t i = 0; i < b.size(); i ++)
+            {
+                if(b[i])
+                    m_strings[i] = m_cached[j++].c_str();
+            }
+        }
+        else
+#endif
+        m_cached.push_back(::std::move(s));
+        m_strings.push_back(m_cached.back().c_str());
+    }
+    void push_back(const char* s)
+    {
+        m_strings.push_back(s);
+    }
+};
+
+struct Timestamp
+{
+#if _WIN32
+    uint64_t m_val;
+
+    Timestamp(FILETIME ft):
+        m_val( (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | static_cast<uint64_t>(ft.dwLowDateTime) )
+    {
+    }
+#else
+    time_t  m_val;
+#endif
+    static Timestamp infinite_past() {
+#if _WIN32
+        return Timestamp { FILETIME { 0, 0 } };
+#else
+        return Timestamp { 0 };
+#endif
+    }
+
+    bool operator==(const Timestamp& x) const {
+        return m_val == x.m_val;
+    }
+    bool operator<(const Timestamp& x) const {
+        return m_val < x.m_val;
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const Timestamp& x) {
+#if _WIN32
+        os << ::std::hex << x.m_val << ::std::dec;
+#else
+        os << x.m_val;
+#endif
+        return os;
+    }
 };
 
 #if _WIN32
@@ -186,7 +164,7 @@ void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_p
     }
 
     // Build dependencies
-    Builder builder { override_path };
+    Builder builder { "output", override_path };
     for(const auto& p : list.iter())
     {
         if( ! builder.build_library(p) )
@@ -251,8 +229,7 @@ void BuildList::sort_list()
 
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target) const
 {
-    auto outdir = ::helpers::path("output");
-    auto outfile = outdir / ::format("lib", target.m_name, ".hir");
+    auto outfile = m_output_dir / ::format("lib", target.m_name, ".hir");
     //DEBUG("Building " << manifest.name() << ":" << target.m_name << " as " << outfile);
 
     // TODO: Determine if it needs re-running
@@ -292,7 +269,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back("rlib");
     args.push_back("-o"); args.push_back(outfile);
-    args.push_back("-L"); args.push_back(outdir);
+    args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
         args.push_back("-L"); args.push_back(dir.second.c_str());
     }
@@ -329,7 +306,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
             // - Build the script itself
             //this->build_build_script( manifest );
             // - Run the script and put output in the right dir
-            //manifest.load_build_script( ::helpers::path("output") / "build_" + manifest.name().c_str() + ".txt" );
+            //manifest.load_build_script( m_output_dir / "build_" + manifest.name().c_str() + ".txt" );
             throw ::std::runtime_error("TODO: Build script for " + manifest.name());
         }
     }
@@ -424,7 +401,7 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
     return true;
 }
 
-Builder::Timestamp Builder::get_timestamp(const ::helpers::path& path) const
+Timestamp Builder::get_timestamp(const ::helpers::path& path) const
 {
 #if _WIN32
     FILETIME    out;
