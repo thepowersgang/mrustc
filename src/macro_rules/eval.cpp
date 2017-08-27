@@ -749,6 +749,1175 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     return ::std::unique_ptr<TokenStream>( ret_ptr );
 }
 
+#if 1
+// Collection of functions that consume a specific fragment type from a token stream
+// - Does very loose consuming
+namespace
+{
+    // Class that provides read-only iteration over a TokenTree
+    class TokenStreamRO
+    {
+        const TokenTree& m_tt;
+        ::std::vector<size_t>   m_offsets;
+        size_t  m_active_offset;
+
+        size_t  m_consume_count;
+    public:
+        TokenStreamRO(const TokenTree& tt):
+            m_tt(tt),
+            m_active_offset(0),
+            m_consume_count(0)
+        {
+            assert( ! m_tt.is_token() );
+            if( m_tt.size() == 0 )
+            {
+                m_active_offset = 0;
+                DEBUG("TOK_EOF");
+            }
+            else
+            {
+                const auto* cur_tree = &m_tt;
+                while( !cur_tree->is_token() )
+                {
+                    cur_tree = &(*cur_tree)[0];
+                    m_offsets.push_back(0);
+                }
+                assert(m_offsets.size() > 0);
+                m_offsets.pop_back();
+                m_active_offset = 0;
+                DEBUG(next_tok());
+            }
+        }
+        TokenStreamRO clone() const {
+            return TokenStreamRO(*this);
+        }
+
+        enum eTokenType next() const {
+            return next_tok().type();
+        }
+        const Token& next_tok() const {
+            static Token    eof_token = TOK_EOF;
+
+            if( m_offsets.empty() && m_active_offset == m_tt.size() )
+            {
+                //DEBUG(m_consume_count << " " << eof_token << "(EOF)");
+                return eof_token;
+            }
+            else
+            {
+                const auto* cur_tree = &m_tt;
+                for(auto idx : m_offsets)
+                    cur_tree = &(*cur_tree)[idx];
+                const auto& rv = (*cur_tree)[m_active_offset].tok();
+                //DEBUG(m_consume_count << " " << rv);
+                return rv;
+            }
+        }
+        void consume()
+        {
+            if( m_offsets.empty() && m_active_offset == m_tt.size() )
+                throw ::std::runtime_error("Attempting to consume EOS");
+            DEBUG(m_consume_count << " " << next_tok());
+            m_consume_count ++;
+            for(;;)
+            {
+                const auto* cur_tree = &m_tt;
+                for(auto idx : m_offsets)
+                    cur_tree = &(*cur_tree)[idx];
+
+                m_active_offset ++;
+                // If reached the end of a tree...
+                if(m_active_offset == cur_tree->size())
+                {
+                    // If the end of the root is reached, return (leaving the state indicating EOS0
+                    if( m_offsets.empty() )
+                        return ;
+                    // Pop and continue
+                    m_active_offset = m_offsets.back();
+                    m_offsets.pop_back();
+                }
+                else
+                {
+                    // Dig into nested trees
+                    while( !(*cur_tree)[m_active_offset].is_token() )
+                    {
+                        cur_tree = &(*cur_tree)[m_active_offset];
+                        m_offsets.push_back(m_active_offset);
+                        m_active_offset = 0;
+                    }
+                    DEBUG("-> " << next_tok());
+                    return ;
+                }
+            }
+        }
+
+        // Consumes if the current token is `ty`, otherwise doesn't and returns false
+        bool consume_if(eTokenType ty)
+        {
+            if(next() == ty) {
+                consume();
+                return true;
+            }
+            else {
+                return false;
+            }
+        }
+
+        /// Returns the position in the stream (number of tokens that have been consumed)
+        size_t position() const {
+            return m_consume_count;
+        }
+    };
+
+    // Consume an entire TT
+    bool consume_tt(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+        switch(lex.next())
+        {
+        case TOK_EOF:
+        case TOK_PAREN_CLOSE:
+        case TOK_BRACE_CLOSE:
+        case TOK_SQUARE_CLOSE:
+            return false;
+        case TOK_PAREN_OPEN:
+            lex.consume();
+            while(lex.next() != TOK_PAREN_CLOSE)
+                consume_tt(lex);
+            lex.consume();
+            break;
+        case TOK_ATTR_OPEN:
+        case TOK_CATTR_OPEN:
+        case TOK_SQUARE_OPEN:
+            lex.consume();
+            while(lex.next() != TOK_SQUARE_CLOSE)
+                consume_tt(lex);
+            lex.consume();
+            break;
+        case TOK_BRACE_OPEN:
+            lex.consume();
+            while(lex.next() != TOK_BRACE_CLOSE)
+                consume_tt(lex);
+            lex.consume();
+            break;
+        default:
+            lex.consume();
+            break;
+        }
+        return true;
+    }
+    bool consume_tt_angle(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+        unsigned int level = (lex.next() == TOK_DOUBLE_LT ? 2 : 1);
+        // Seek until enouh matching '>'s are seen
+        // TODO: Can expressions show up on this context?
+        lex.consume();
+        for(;;)
+        {
+            if( lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT )
+            {
+                level += (lex.next() == TOK_DOUBLE_LT ? 2 : 1);
+            }
+            else if( lex.next() == TOK_GT || lex.next() == TOK_DOUBLE_GT )
+            {
+                level -= (lex.next() == TOK_DOUBLE_GT ? 2 : 1);
+                if( level == 0 )
+                    break;
+            }
+            else if( lex.next() == TOK_EOF )
+            {
+                return false;
+            }
+            else
+            {
+            }
+
+            // Consume TTs separately
+            if( lex.next() == TOK_PAREN_OPEN )
+            {
+                consume_tt(lex);
+            }
+            else
+            {
+                lex.consume();
+            }
+        }
+        // Consume closing token
+        lex.consume();
+        return true;
+    }
+    // Consume a path
+    bool consume_path(TokenStreamRO& lex, bool type_mode=false)
+    {
+        TRACE_FUNCTION;
+        switch(lex.next())
+        {
+        case TOK_RWORD_SELF:
+            lex.consume();
+            // Allow a lone `self` (it's referring to the current object)
+            if( lex.next() != TOK_DOUBLE_COLON )
+                return true;
+            break;
+        case TOK_RWORD_SUPER:
+            lex.consume();
+            if( lex.next() != TOK_DOUBLE_COLON )
+                return false;
+            break;
+        case TOK_DOUBLE_COLON:
+            break;
+        case TOK_IDENT:
+            lex.consume();
+            if( type_mode && (lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT) )
+                ;
+            // Allow a lone ident
+            else if( lex.next() != TOK_DOUBLE_COLON )
+                return true;
+            else
+                ;
+            break;
+        case TOK_LT:
+        case TOK_DOUBLE_LT:
+            if( !consume_tt_angle(lex) )
+                return false;
+            if( lex.next() != TOK_DOUBLE_COLON )
+                return false;
+            break;
+        default:
+            return false;
+        }
+
+        if( type_mode && (lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT) )
+        {
+            if( !consume_tt_angle(lex) )
+                return false;
+        }
+
+        while(lex.next() == TOK_DOUBLE_COLON)
+        {
+            lex.consume();
+            if( lex.next() == TOK_STRING )
+            {
+                lex.consume();
+            }
+            else if( !type_mode && (lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT) )
+            {
+                if( !consume_tt_angle(lex) )
+                    return false;
+            }
+            else if( lex.next() == TOK_IDENT )
+            {
+                lex.consume();
+                if( type_mode && (lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT) )
+                {
+                    if( !consume_tt_angle(lex) )
+                        return false;
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    bool consume_type(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+        switch(lex.next())
+        {
+        case TOK_INTERPOLATED_TYPE:
+            lex.consume();
+            return true;
+        case TOK_PAREN_OPEN:
+        case TOK_SQUARE_OPEN:
+            return consume_tt(lex);
+        case TOK_RWORD_SUPER:
+        case TOK_RWORD_SELF:
+        case TOK_IDENT:
+        case TOK_DOUBLE_COLON:
+        case TOK_INTERPOLATED_IDENT:
+        case TOK_INTERPOLATED_PATH:
+            return consume_path(lex, true);
+        case TOK_AMP:
+        case TOK_DOUBLE_AMP:
+            lex.consume();
+            lex.consume_if(TOK_LIFETIME);
+            lex.consume_if(TOK_RWORD_MUT);
+            return consume_type(lex);
+        case TOK_STAR:
+            lex.consume();
+            if( lex.consume_if(TOK_RWORD_MUT) )
+                ;
+            else if( lex.consume_if(TOK_RWORD_CONST) )
+                ;
+            else
+                return false;
+            return consume_type(lex);
+        case TOK_EXCLAM:
+            lex.consume();
+            return true;
+
+        case TOK_RWORD_UNSAFE:
+            lex.consume();
+            if(lex.next() == TOK_RWORD_EXTERN) {
+        case TOK_RWORD_EXTERN:
+            lex.consume();
+            lex.consume_if(TOK_STRING);
+            }
+            if( lex.next() != TOK_RWORD_FN )
+                return false;
+        case TOK_RWORD_FN:
+            lex.consume();
+            if( lex.next() != TOK_PAREN_OPEN )
+                return false;
+            if( !consume_tt(lex) )
+                return false;
+            if( lex.consume_if(TOK_THINARROW) )
+            {
+                consume_type(lex);
+            }
+            return true;
+        default:
+            return false;
+        }
+    }
+    bool consume_pat(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+
+        if(lex.next() == TOK_RWORD_REF || lex.next() == TOK_RWORD_MUT )
+        {
+            lex.consume_if(TOK_RWORD_REF);
+            lex.consume_if(TOK_RWORD_MUT);
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+            if( !lex.consume_if(TOK_AT) )
+                return true;
+        }
+
+        for(;;)
+        {
+            switch(lex.next())
+            {
+            case TOK_IDENT:
+            case TOK_RWORD_SUPER:
+            case TOK_RWORD_SELF:
+            case TOK_DOUBLE_COLON:
+            case TOK_INTERPOLATED_PATH:
+                consume_path(lex);
+                break;
+            case TOK_AMP:
+            case TOK_DOUBLE_AMP:
+                lex.consume();
+                lex.consume_if(TOK_RWORD_MUT);
+                return consume_pat(lex);
+            case TOK_PAREN_OPEN:
+            case TOK_SQUARE_OPEN:
+                return consume_tt(lex);
+            case TOK_STRING:
+            case TOK_INTEGER:
+            case TOK_FLOAT:
+                lex.consume();
+                break;
+            default:
+                return false;
+            }
+            if(lex.consume_if(TOK_AT))
+                continue;
+            if( lex.consume_if(TOK_TRIPLE_DOT) )
+            {
+                switch(lex.next())
+                {
+                case TOK_IDENT:
+                case TOK_RWORD_SUPER:
+                case TOK_RWORD_SELF:
+                case TOK_DOUBLE_COLON:
+                case TOK_INTERPOLATED_PATH:
+                    consume_path(lex);
+                    break;
+                case TOK_STRING:
+                case TOK_INTEGER:
+                case TOK_FLOAT:
+                    lex.consume();
+                    break;
+                default:
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+    // Consume an expression
+    bool consume_expr(TokenStreamRO& lex, bool no_struct_lit=false)
+    {
+        TRACE_FUNCTION;
+        bool cont;
+
+        if( lex.next() == TOK_PIPE || lex.next() == TOK_DOUBLE_PIPE )
+        {
+            if( lex.consume_if(TOK_PIPE) )
+            {
+                do
+                {
+                    consume_pat(lex);
+                    if(lex.consume_if(TOK_COLON))
+                    {
+                        consume_type(lex);
+                    }
+                } while(lex.next() == TOK_COMMA);
+                if( !lex.consume_if(TOK_PIPE) )
+                    return false;
+            }
+            else
+            {
+                lex.consume();
+            }
+            if(lex.consume_if(TOK_THINARROW))
+            {
+                if( !consume_type(lex) )
+                    return false;
+            }
+            return consume_expr(lex);
+        }
+
+        do {
+            bool inner_cont;
+            do
+            {
+                inner_cont = true;
+                switch(lex.next())
+                {
+                case TOK_STAR:  // Deref
+                case TOK_DASH:  // Negate
+                case TOK_EXCLAM: // Invert
+                    lex.consume();
+                    break;
+                case TOK_AMP:
+                    lex.consume();
+                    lex.consume_if(TOK_RWORD_MUT);
+                    break;
+                default:
+                    inner_cont = false;
+                    break;
+                }
+            } while(inner_cont);
+
+            // :: -> path
+            // ident -> path
+            // '<' -> path
+            // '(' -> tt
+            // '[' -> tt
+            switch(lex.next())
+            {
+            case TOK_RWORD_CONTINUE:
+            case TOK_RWORD_RETURN:
+            case TOK_RWORD_BREAK:
+                lex.consume();
+                switch(lex.next())
+                {
+                case TOK_EOF:
+                case TOK_SEMICOLON:
+                case TOK_COMMA:
+                case TOK_PAREN_CLOSE:
+                case TOK_BRACE_CLOSE:
+                case TOK_SQUARE_CLOSE:
+                    break;
+                default:
+                    if( !consume_expr(lex) )
+                        return false;
+                    break;
+                }
+                break;
+            case TOK_IDENT:
+            case TOK_INTERPOLATED_IDENT:
+            case TOK_INTERPOLATED_PATH:
+            case TOK_DOUBLE_COLON:
+            case TOK_RWORD_SELF:
+            case TOK_RWORD_SUPER:
+            case TOK_LT:
+            case TOK_DOUBLE_LT:
+                if( !consume_path(lex) )
+                    return false;
+                if( lex.next() == TOK_BRACE_OPEN && !no_struct_lit )
+                    consume_tt(lex);
+                else if( lex.consume_if(TOK_EXCLAM) )
+                {
+                    if( lex.consume_if(TOK_IDENT) )
+                    {
+                        // yay?
+                    }
+                    consume_tt(lex);
+                }
+                break;
+
+            case TOK_INTERPOLATED_EXPR:
+                lex.consume();
+                break;
+            case TOK_INTEGER:
+            case TOK_FLOAT:
+            case TOK_STRING:
+            case TOK_BYTESTRING:
+            case TOK_RWORD_TRUE:
+            case TOK_RWORD_FALSE:
+                lex.consume();
+                break;
+
+
+            case TOK_RWORD_UNSAFE:
+                lex.consume();
+                if(lex.next() != TOK_BRACE_OPEN )
+                    return false;
+            case TOK_PAREN_OPEN:
+            case TOK_SQUARE_OPEN:
+            case TOK_BRACE_OPEN:
+                consume_tt(lex);
+                break;
+
+            // TODO: Do these count for "expr"?
+            case TOK_RWORD_FOR:
+                lex.consume();
+                if( !consume_pat(lex) )
+                    return false;
+                if( !lex.consume_if(TOK_RWORD_IN) )
+                    return false;
+                if( !consume_expr(lex, true) )
+                    return false;
+                if( lex.next() != TOK_BRACE_OPEN )
+                    return false;
+                if( !consume_tt(lex) )
+                    return false;
+                break;
+            case TOK_RWORD_MATCH:
+                lex.consume();
+                // TODO: Parse _without_ consuming a struct literal
+                if( !consume_expr(lex, true) )
+                    return false;
+                if( lex.next() != TOK_BRACE_OPEN )
+                    return false;
+                if( !consume_tt(lex) )
+                    return false;
+                break;
+            case TOK_RWORD_WHILE:
+                lex.consume();
+                if( !consume_expr(lex, true) )
+                    return false;
+                if( lex.next() != TOK_BRACE_OPEN )
+                    return false;
+                if( !consume_tt(lex) )
+                    return false;
+                break;
+            case TOK_RWORD_LOOP:
+                lex.consume();
+                if( lex.next() != TOK_BRACE_OPEN )
+                    return false;
+                consume_tt(lex);
+                break;
+            case TOK_RWORD_IF:
+                lex.consume();
+                consume_expr(lex, true);
+                if( lex.next() != TOK_BRACE_OPEN )
+                    return false;
+                consume_tt(lex);
+                if( lex.next() == TOK_RWORD_ELSE )
+                {
+                    lex.consume();
+                    if( lex.next() != TOK_BRACE_OPEN )
+                        return false;
+                    consume_tt(lex);
+                }
+                break;
+            default:
+                return false;
+            }
+
+            do
+            {
+                inner_cont = true;
+                // '.' ident/int
+                switch( lex.next() )
+                {
+                case TOK_DOT:
+                    lex.consume();
+                    if( lex.consume_if(TOK_IDENT) )
+                    {
+                        if( lex.consume_if(TOK_DOUBLE_COLON) )
+                        {
+                            if( !(lex.next() == TOK_LT || lex.next() == TOK_DOUBLE_LT) )
+                                return false;
+                            if( !consume_tt_angle(lex) )
+                                return false;
+                        }
+                    }
+                    else if( lex.consume_if(TOK_INTEGER) )
+                        ;
+                    else
+                        return false;
+                    break;
+                // '[' -> tt
+                case TOK_SQUARE_OPEN:
+                // '(' -> tt
+                case TOK_PAREN_OPEN:
+                    consume_tt(lex);
+                    break;
+                default:
+                    inner_cont = false;
+                    break ;
+                }
+            } while(inner_cont);
+
+            if( lex.consume_if(TOK_COLON) )
+            {
+                consume_type(lex);
+            }
+
+            while( lex.consume_if(TOK_RWORD_AS) )
+            {
+                consume_type(lex);
+            }
+
+            cont = true;
+            switch(lex.next())
+            {
+            case TOK_PLUS:
+            case TOK_DASH:
+            case TOK_SLASH:
+            case TOK_STAR:
+            case TOK_PERCENT:
+            case TOK_DOUBLE_LT:
+            case TOK_DOUBLE_GT:
+            case TOK_PIPE:
+            case TOK_AMP:
+            case TOK_CARET:
+            case TOK_LT:
+            case TOK_GT:
+            case TOK_LTE:
+            case TOK_GTE:
+            case TOK_DOUBLE_EQUAL:
+            case TOK_EXCLAM_EQUAL:
+            case TOK_DOUBLE_AMP:
+            case TOK_DOUBLE_PIPE:
+                lex.consume();
+                break;
+            case TOK_EQUAL:
+            case TOK_PLUS_EQUAL:
+            case TOK_DASH_EQUAL:
+            case TOK_SLASH_EQUAL:
+            case TOK_STAR_EQUAL:
+            case TOK_PERCENT_EQUAL:
+            case TOK_AMP_EQUAL:
+            case TOK_PIPE_EQUAL:
+                lex.consume();
+                break;
+            default:
+                cont = false;
+                break;
+            }
+        } while(cont);
+        return true;
+    }
+    bool consume_stmt(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+        if( lex.consume_if(TOK_RWORD_LET) )
+        {
+            if( !consume_pat(lex) )
+                return false;
+            if( lex.consume_if(TOK_COLON) )
+            {
+                if( !consume_type(lex) )
+                    return false;
+            }
+            if( lex.consume_if(TOK_EQUAL) )
+            {
+                if( !consume_expr(lex) )
+                    return false;
+            }
+            return true;
+        }
+        else
+        {
+            if( !consume_expr(lex) )
+                return false;
+            return true;
+        }
+    }
+    bool consume_item(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+
+        struct H {
+            static bool maybe_generics(TokenStreamRO& lex) {
+                if(lex.next() == TOK_LT)
+                {
+                    if( !consume_tt_angle(lex) )
+                        return false;
+                }
+                return true;
+            }
+            static bool maybe_where(TokenStreamRO& lex) {
+                if(lex.next() == TOK_RWORD_WHERE)
+                {
+                    TODO(Span(), "where in macro eval");
+                }
+                return true;
+            }
+        };
+
+        while( lex.next() == TOK_ATTR_OPEN )
+            consume_tt(lex);
+        if( lex.consume_if(TOK_INTERPOLATED_ITEM) )
+            return true;
+        if(lex.next() == TOK_RWORD_PUB)
+            lex.consume();
+        if(lex.next() == TOK_RWORD_UNSAFE)
+            lex.consume();
+        DEBUG("Check item: " << lex.next_tok());
+        switch(lex.next())
+        {
+        case TOK_RWORD_USE:
+            // Lazy mode
+            while( lex.next() != TOK_SEMICOLON )
+                lex.consume();
+            lex.consume();
+            break;
+        case TOK_RWORD_MOD:
+            lex.consume();
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+            if( lex.consume_if(TOK_SEMICOLON) )
+                ;
+            else if( lex.next() == TOK_BRACE_OPEN )
+            {
+                if( !consume_tt(lex) )
+                    return false;
+            }
+            else
+            {
+                return false;
+            }
+            break;
+        // impl [Foo for] Bar { ... }
+        case TOK_RWORD_IMPL:
+            lex.consume();
+            if( !H::maybe_generics(lex) )
+                return false;
+            if( !consume_type(lex) )
+                return false;
+            if( lex.consume_if(TOK_RWORD_FOR) )
+            {
+                if( !consume_type(lex) )
+                    return false;
+            }
+            if( !H::maybe_where(lex) )
+                return false;
+            if( lex.next() != TOK_BRACE_OPEN )
+                return false;
+            return consume_tt(lex);
+        // type Foo
+        case TOK_RWORD_TYPE:
+            lex.consume();
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+            if( !H::maybe_generics(lex) )
+                return false;
+
+            if( !lex.consume_if(TOK_EQUAL) )
+                return false;
+            if( !consume_type(lex) )
+                return false;
+            if( !lex.consume_if(TOK_SEMICOLON) )
+                return false;
+
+            break;
+        // static FOO
+        case TOK_RWORD_STATIC:
+            lex.consume();
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+            if( !lex.consume_if(TOK_COLON) )
+                return false;
+            if( !consume_type(lex) )
+                return false;
+            if( !lex.consume_if(TOK_EQUAL) )
+                return false;
+            if( !consume_expr(lex) )
+                return false;
+            if( !lex.consume_if(TOK_SEMICOLON) )
+                return false;
+            break;
+        case TOK_RWORD_STRUCT:
+            lex.consume();
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+            if( !H::maybe_generics(lex) )
+                return false;
+            if( !H::maybe_where(lex) )
+                return false;
+            if( lex.consume_if(TOK_SEMICOLON) )
+                ;
+            else if( lex.next() == TOK_PAREN_OPEN )
+            {
+                if( !consume_tt(lex) )
+                    return false;
+                if( !lex.consume_if(TOK_SEMICOLON) )
+                    return false;
+            }
+            else if( lex.next() == TOK_BRACE_OPEN )
+            {
+                if( !consume_tt(lex) )
+                    return false;
+            }
+            else
+                return false;
+            break;
+        case TOK_RWORD_ENUM:
+            lex.consume();
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+            if( !H::maybe_generics(lex) )
+                return false;
+            if( !H::maybe_where(lex) )
+                return false;
+            if( lex.next() != TOK_BRACE_OPEN )
+                return false;
+            return consume_tt(lex);
+        //case TOK_IDENT:
+        // const fn
+        // const FOO
+        case TOK_RWORD_CONST:
+            lex.consume();
+            if(lex.next() == TOK_RWORD_UNSAFE)
+                lex.consume();
+            if( lex.consume_if(TOK_RWORD_FN) )
+            {
+                goto fn;
+            }
+            else
+            {
+                if( !lex.consume_if(TOK_IDENT) )
+                    return false;
+                if( !lex.consume_if(TOK_COLON) )
+                    return false;
+                consume_type(lex);
+                if( !lex.consume_if(TOK_EQUAL) )
+                    return false;
+                consume_expr(lex);
+                if( !lex.consume_if(TOK_SEMICOLON) )
+                    return false;
+            }
+            break;
+        case TOK_RWORD_EXTERN:
+            lex.consume();
+            if( lex.consume_if(TOK_RWORD_CRATE) )
+            {
+                if( !lex.consume_if(TOK_IDENT) )
+                    return false;
+                if( !lex.consume_if(TOK_SEMICOLON) )
+                    return false;
+                break;
+            }
+
+            lex.consume_if(TOK_STRING);
+            if( lex.next() == TOK_BRACE_OPEN )
+            {
+                return consume_tt(lex);
+            }
+            if( ! lex.consume_if(TOK_RWORD_FN) )
+                return false;
+            goto fn;
+        case TOK_RWORD_FN:
+            lex.consume();
+        fn:
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+
+            if( !H::maybe_generics(lex) )
+                return false;
+            if(lex.next() != TOK_PAREN_OPEN)
+                return false;
+            if( !consume_tt(lex) )
+                return false;
+
+            if( lex.consume_if(TOK_THINARROW) )
+            {
+                if( !consume_type(lex) )
+                    return false;
+            }
+
+            if( !H::maybe_where(lex) )
+                return false;
+
+            if( lex.consume_if(TOK_SEMICOLON) )
+            {
+                // TODO: Is this actually valid?
+                break;
+            }
+            else if( lex.next() == TOK_BRACE_OPEN )
+            {
+                if( !consume_tt(lex) )
+                    return false;
+            }
+            else
+            {
+                return false;
+            }
+            break;
+        default:
+            return false;
+        }
+        return true;
+    }
+
+    bool consume_from_frag(TokenStreamRO& lex, MacroPatEnt::Type type)
+    {
+        TRACE_FUNCTION_F(type);
+        switch(type)
+        {
+        case MacroPatEnt::PAT_TOKEN:
+        case MacroPatEnt::PAT_LOOP:
+            throw "";
+        case MacroPatEnt::PAT_BLOCK:
+            if( lex.next() == TOK_BRACE_OPEN ) {
+                return consume_tt(lex);
+            }
+            else if( lex.next() == TOK_INTERPOLATED_BLOCK ) {
+                lex.consume();
+            }
+            else {
+                return false;
+            }
+            break;
+        case MacroPatEnt::PAT_IDENT:
+            if( lex.next() == TOK_IDENT || is_reserved_word(lex.next()) ) {
+                lex.consume();
+            }
+            else {
+                return false;
+            }
+            break;
+        case MacroPatEnt::PAT_TT:
+            return consume_tt(lex);
+        case MacroPatEnt::PAT_PATH:
+            return consume_path(lex, true);
+        case MacroPatEnt::PAT_TYPE:
+            return consume_type(lex);
+        case MacroPatEnt::PAT_EXPR:
+            return consume_expr(lex);
+        case MacroPatEnt::PAT_STMT:
+            return consume_stmt(lex);
+        case MacroPatEnt::PAT_PAT:
+            return consume_pat(lex);
+        case MacroPatEnt::PAT_META:
+            if( lex.next() == TOK_INTERPOLATED_META ) {
+                lex.consume();
+            }
+            else if( lex.next() == TOK_IDENT )
+            {
+                lex.consume();
+                switch(lex.next())
+                {
+                case TOK_PAREN_OPEN:
+                    return consume_tt(lex);
+                case TOK_EQUAL:
+                    lex.consume();
+                    switch(lex.next())
+                    {
+                    case TOK_INTEGER:
+                    case TOK_FLOAT:
+                    case TOK_STRING:
+                        lex.consume();
+                        break;
+                    default:
+                        return false;
+                    }
+                    break;
+                default:
+                    break;
+                }
+            }
+            else {
+                return false;
+            }
+            break;
+        case MacroPatEnt::PAT_ITEM:
+            return consume_item(lex);
+        }
+        return true;
+    }
+}
+
+unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
+{
+    TRACE_FUNCTION;
+    static Span sp;
+
+    struct ActiveArm {
+        unsigned int    index;
+        MacroPatternStream  pat_stream;
+        TokenStreamRO   in_stream;
+    };
+
+    ::std::vector<size_t>   matches;
+    for(size_t i = 0; i < rules.m_rules.size(); i ++)
+    {
+        auto lex = TokenStreamRO(input);
+        auto arm_stream = MacroPatternStream(rules.m_rules[i].m_pattern);
+
+        bool fail = false;
+        for(;;)
+        {
+            auto pat = arm_stream.next();
+            if(pat.is_End())
+            {
+                DEBUG(i << " End");
+                if( lex.next() != TOK_EOF )
+                    fail = true;
+                break;
+            }
+            else if( const auto* e = pat.opt_IfPat() )
+            {
+                DEBUG(i << " IfPat(" << (e->is_equal ? "==" : "!=") << " ?" << e->type << ")");
+                auto lc = lex.clone();
+                if( consume_from_frag(lc, e->type) == e->is_equal )
+                {
+                    DEBUG("- Succeeded");
+                    arm_stream.if_succeeded();
+                }
+            }
+            else if( const auto* e = pat.opt_IfTok() )
+            {
+                DEBUG(i << " IfTok(" << (e->is_equal ? "==" : "!=") << " ?" << e->tok << ")");
+                const auto& tok = lex.next_tok();
+                if( (tok == e->tok) == e->is_equal )
+                {
+                    DEBUG("- Succeeded");
+                    arm_stream.if_succeeded();
+                }
+            }
+            else if( const auto* e = pat.opt_ExpectTok() )
+            {
+                const auto& tok = lex.next_tok();
+                DEBUG(i << " ExpectTok(" << *e << ") == " << tok);
+                if( tok != *e )
+                {
+                    fail = true;
+                    break;
+                }
+                lex.consume();
+            }
+            else if( const auto* e = pat.opt_ExpectPat() )
+            {
+                DEBUG(i << " ExpectPat(" << e->type << " => $" << e->idx << ")");
+                if( !consume_from_frag(lex, e->type) )
+                {
+                    fail = true;
+                    break;
+                }
+            }
+            else
+            {
+                // Unreachable.
+            }
+        }
+
+
+        if( ! fail )
+        {
+            matches.push_back(i);
+            DEBUG(i << " MATCHED");
+        }
+        else
+        {
+            DEBUG(i << " FAILED");
+        }
+    }
+
+    if( matches.size() == 0 )
+    {
+        // ERROR!
+        TODO(sp, "No arm matched");
+    }
+    else
+    {
+        // yay!
+
+        // NOTE: There can be multiple arms active, take the first.
+        auto i = matches[0];
+
+        auto lex = TTStreamO(mv$(input));
+        SET_MODULE(lex, mod);
+        auto arm_stream = MacroPatternStream(rules.m_rules[i].m_pattern);
+
+        struct Capture {
+            unsigned int    binding_idx;
+            ::std::vector<unsigned int> iterations;
+            unsigned int    cap_idx;
+        };
+        ::std::vector<InterpolatedFragment> captures;
+        ::std::vector<Capture>  capture_info;
+
+        for(;;)
+        {
+            auto pat = arm_stream.next();
+            if(pat.is_End())
+            {
+                break;
+            }
+            else if( const auto* e = pat.opt_IfPat() )
+            {
+                DEBUG(i << " IfPat(" << (e->is_equal ? "==" : "!=") << " ?" << e->type << ")");
+                if( Macro_TryPatternCap(lex, e->type) == e->is_equal )
+                {
+                    DEBUG("- Succeeded");
+                    arm_stream.if_succeeded();
+                }
+            }
+            else if( const auto* e = pat.opt_IfTok() )
+            {
+                DEBUG(i << " IfTok(" << (e->is_equal ? "==" : "!=") << " ?" << e->tok << ")");
+                auto tok = lex.getToken();
+                if( (tok == e->tok) == e->is_equal )
+                {
+                    DEBUG("- Succeeded");
+                    arm_stream.if_succeeded();
+                }
+                lex.putback( mv$(tok) );
+            }
+            else if( const auto* e = pat.opt_ExpectTok() )
+            {
+                auto tok = lex.getToken();
+                DEBUG(i << " ExpectTok(" << *e << ") == " << tok);
+                if( tok != *e )
+                {
+                    ERROR(sp, E0000, "Expected token in match arm");
+                    break;
+                }
+            }
+            else if( const auto* e = pat.opt_ExpectPat() )
+            {
+                DEBUG(i << " ExpectPat(" << e->type << " => $" << e->idx << ")");
+
+                auto cap = Macro_HandlePatternCap(lex, e->type);
+
+                unsigned int cap_idx = captures.size();
+                captures.push_back( mv$(cap) );
+                capture_info.push_back( Capture { e->idx, arm_stream.get_loop_iters(), cap_idx } );
+            }
+            else
+            {
+                // Unreachable.
+            }
+        }
+
+        for(const auto& cap : capture_info)
+        {
+            bound_tts.insert( cap.binding_idx, cap.iterations, mv$(captures[cap.cap_idx]) );
+        }
+        return i;
+    }
+}
+#else
 unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
 {
     TRACE_FUNCTION;
@@ -1046,6 +2215,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
         // Keep looping - breakout is handled in 'End' above
     }
 }
+#endif
 
 void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents)
 {

@@ -48,7 +48,9 @@ public:
         case TOK_DOLLAR:
             switch( GET_TOK(tok, lex) )
             {
+            // TODO: Allow any reserved word
             case TOK_RWORD_TYPE:
+            case TOK_RWORD_PUB:
             case TOK_IDENT: {
                 ::std::string   name = tok.type() == TOK_IDENT ? mv$(tok.str()) : FMT(tok);
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
@@ -200,7 +202,7 @@ public:
                 }
 
             }
-            else if( tok.type() == TOK_IDENT || tok.type() == TOK_RWORD_TYPE )
+            else if( tok.type() == TOK_IDENT || tok.type() == TOK_RWORD_TYPE || tok.type() == TOK_RWORD_PUB )
             {
                 // Look up the named parameter in the list of param names for this arm
                 auto name = tok.type() == TOK_IDENT ? tok.str() : FMT(tok);
