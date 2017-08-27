@@ -24,19 +24,32 @@ TokenTree TokenTree::clone() const
 
 ::std::ostream& operator<<(::std::ostream& os, const TokenTree& tt)
 {
-    os << tt.m_hygiene;
     if( tt.m_subtrees.size() == 0 )
-        return os << tt.m_tok;
+    {
+        switch(tt.m_tok.type())
+        {
+        case TOK_IDENT:
+        case TOK_LIFETIME:
+            os << "/*" << tt.m_hygiene << "*/";
+            break;
+        case TOK_INTERPOLATED_IDENT ... TOK_INTERPOLATED_ITEM:
+            os << "/*int*/";
+            break;
+        default:
+            break;
+        }
+        return os << tt.m_tok.to_str();
+    }
     else {
-        os << "TT([";
+        os << "/*" << tt.m_hygiene << " TT*/";
+        // NOTE: All TTs (except the outer tt on a macro invocation) include the grouping
         bool first = true;
         for(const auto& i : tt.m_subtrees) {
             if(!first)
-                os << ", ";
+                os << " ";
             os << i;
             first = false;
         }
-        os << "])";
         return os;
     }
 }

@@ -49,8 +49,8 @@ public:
     unsigned int size() const {
         return m_subtrees.size();
     }
-    const TokenTree& operator[](unsigned int idx) const { return m_subtrees[idx]; }
-          TokenTree& operator[](unsigned int idx)       { return m_subtrees[idx]; }
+    const TokenTree& operator[](unsigned int idx) const { assert(idx < m_subtrees.size()); return m_subtrees[idx]; }
+          TokenTree& operator[](unsigned int idx)       { assert(idx < m_subtrees.size()); return m_subtrees[idx]; }
     const Token& tok() const { return m_tok; }
           Token& tok()       { return m_tok; }
     const Ident::Hygiene& hygiene() const { return m_hygiene; }
