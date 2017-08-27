@@ -248,6 +248,7 @@ namespace
             Type,
             Constant,
             Pattern,
+            PatternValue,
             Variable,
         };
         static const char* lookup_mode_msg(LookupMode mode) {
@@ -256,6 +257,7 @@ namespace
             case LookupMode::Namespace: return "path component";
             case LookupMode::Type:      return "type name";
             case LookupMode::Pattern:   return "pattern name";
+            case LookupMode::PatternValue: return "pattern constant";
             case LookupMode::Constant:  return "constant name";
             case LookupMode::Variable:  return "variable name";
             }
@@ -269,6 +271,7 @@ namespace
                 case LookupMode::Namespace: ERROR(sp, E0000, "Couldn't find path component '" << name << "'");
                 case LookupMode::Type:      ERROR(sp, E0000, "Couldn't find type name '" << name << "'");
                 case LookupMode::Pattern:   ERROR(sp, E0000, "Couldn't find pattern name '" << name << "'");
+                case LookupMode::PatternValue:   ERROR(sp, E0000, "Couldn't find pattern value '" << name << "'");
                 case LookupMode::Constant:  ERROR(sp, E0000, "Couldn't find constant name '" << name << "'");
                 case LookupMode::Variable:  ERROR(sp, E0000, "Couldn't find variable name '" << name << "'");
                 }
@@ -325,6 +328,7 @@ namespace
                         }
                     }
                 }
+            case LookupMode::PatternValue:
                 {
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
@@ -493,6 +497,7 @@ namespace
     case Context::LookupMode::Namespace:os << "Namespace";  break;
     case Context::LookupMode::Type:     os << "Type";       break;
     case Context::LookupMode::Pattern:  os << "Pattern";    break;
+    case Context::LookupMode::PatternValue:  os << "PatternValue";    break;
     case Context::LookupMode::Constant: os << "Constant";   break;
     case Context::LookupMode::Variable: os << "Variable";   break;
     }
@@ -574,6 +579,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
         switch(mode)
         {
         case Context::LookupMode::Pattern:
+        case Context::LookupMode::PatternValue:
             ERROR(sp, E0000, "Invalid use of UFCS in pattern");
             break;
         case Context::LookupMode::Namespace:
@@ -845,6 +851,7 @@ namespace {
                 case Context::LookupMode::Type:
                 case Context::LookupMode::Pattern:
                     found = (e.m_types.find( next_node.name() ) != e.m_types.end());
+                case Context::LookupMode::PatternValue:
                 case Context::LookupMode::Constant:
                 case Context::LookupMode::Variable:
                     found = (e.m_values.find( next_node.name() ) != e.m_values.end());
@@ -966,6 +973,7 @@ namespace {
                     )
                 }
             }
+        case Context::LookupMode::PatternValue:
             {
                 auto v = hmod->m_value_items.find(name);
                 if( v != hmod->m_value_items.end() ) {
@@ -1130,6 +1138,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                     case Context::LookupMode::Constant:
                     case Context::LookupMode::Pattern:
                     case Context::LookupMode::Variable:
+                    case Context::LookupMode::PatternValue:
                         found = (e.hir->m_values.count(item_name) != 0);
                         break;
                     case Context::LookupMode::Namespace:
@@ -1284,6 +1293,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                             }
                             break;
                         case Context::LookupMode::Pattern:
+                        case Context::LookupMode::PatternValue:
                             TODO(sp, "Check " << p << " for an item named " << name << " (Pattern)");
                         case Context::LookupMode::Constant:
                         case Context::LookupMode::Variable:
@@ -1308,6 +1318,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                             }
                             break;
                         case Context::LookupMode::Pattern:
+                        case Context::LookupMode::PatternValue:
                             TODO(sp, "Check " << p << " for an item named " << name << " (Pattern)");
                         case Context::LookupMode::Constant:
                         case Context::LookupMode::Variable:
@@ -1733,9 +1744,9 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         if( allow_refutable ) {
             auto name = mv$( e.name );
             // Attempt to resolve the name in the current namespace, and if it fails, it's a binding
-            auto p = context.lookup_opt( name.name, name.hygiene, Context::LookupMode::Pattern );
+            auto p = context.lookup_opt( name.name, name.hygiene, Context::LookupMode::PatternValue );
             if( p.is_valid() ) {
-                Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Pattern, p);
+                Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::PatternValue, p);
                 pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
                 DEBUG("MaybeBind resolved to " << pat);
             }
@@ -2028,7 +2039,7 @@ void Resolve_Absolute_Mod(const ::AST::Crate& crate, ::AST::Module& mod) {
 }
 void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 {
-    TRACE_FUNCTION_F("(mod="<<mod.path()<<")");
+    TRACE_FUNCTION_F("mod="<<mod.path());
 
     for( auto& i : mod.items() )
     {
@@ -2095,6 +2106,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (NegImpl,
             auto& impl_def = e;
+            DEBUG("impl ! " << impl_def.trait().ent << " for " << impl_def.type());
             item_context.push_self( impl_def.type() );
             item_context.push(impl_def.params(), GenericSlot::Level::Top);
             Resolve_Absolute_Generic(item_context,  impl_def.params());
@@ -2154,7 +2166,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 
     // - Run through the indexed items and fix up those paths
     static Span sp;
-    DEBUG("mod = " << mod.path());
+    DEBUG("Imports (mod = " << mod.path() << ")");
     for(auto& i : mod.m_namespace_items) {
         if( i.second.is_import ) {
             Resolve_Absolute_Path(item_context, sp, Context::LookupMode::Namespace, i.second.path);
