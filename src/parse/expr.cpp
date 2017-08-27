@@ -1009,12 +1009,13 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_IDENT);
+        auto h = lex.getHygiene();
         auto name = mv$(tok.str());
 
         ExprNodeP   val;
         if( lex.lookahead(0) != TOK_COLON )
         {
-            val = NEWNODE( AST::ExprNode_NamedValue, ::AST::Path(name) );
+            val = NEWNODE( AST::ExprNode_NamedValue, ::AST::Path(::AST::Path::TagRelative{}, h, { ::AST::PathNode(name) }) );
         }
         else
         {
