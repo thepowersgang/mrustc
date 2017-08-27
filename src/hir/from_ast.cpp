@@ -552,6 +552,21 @@
         return rv;
     )
     else {
+        if(const auto* e = path.m_class.opt_UFCS()) {
+            DEBUG(path);
+            if( !e->type ) {
+            }
+            //else if( e->trait ) {
+            //}
+            else if( ! e->nodes.empty() ) {
+            }
+            else if( !e->type->m_data.is_Path() ) {
+            }
+            else {
+                // HACK: `Self` replacement
+                return LowerHIR_GenericPath(sp, e->type->m_data.as_Path().path, false);
+            }
+        }
         BUG(sp, "Encountered non-Absolute path when creating ::HIR::GenericPath - " << path);
     }
 }
