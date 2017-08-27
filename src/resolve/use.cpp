@@ -47,9 +47,22 @@ void Resolve_Use(::AST::Crate& crate)
         BUG(span, "UFCS path class in use statement");
         ),
     (Relative,
-        return base_path + path;
+        // How can this happen?
+        DEBUG("Relative " << path);
+        // EVIL HACK: If the current module is an anon module, refer to the parent
+        if( base_path.nodes().size() > 0 && base_path.nodes().back().name()[0] == '#' ) {
+            AST::Path   np("", {});
+            for( unsigned int i = 0; i < base_path.nodes().size() - 1; i ++ )
+                np.nodes().push_back( base_path.nodes()[i] );
+            np += path;
+            return np;
+        }
+        else {
+            return base_path + path;
+        }
         ),
     (Self,
+        DEBUG("Self " << path);
         // EVIL HACK: If the current module is an anon module, refer to the parent
         if( base_path.nodes().size() > 0 && base_path.nodes().back().name()[0] == '#' ) {
             AST::Path   np("", {});
@@ -63,6 +76,7 @@ void Resolve_Use(::AST::Crate& crate)
         }
         ),
     (Super,
+        DEBUG("Super " << path);
         assert(e.count >= 1);
         AST::Path   np("", {});
         if( e.count > base_path.nodes().size() ) {
@@ -79,6 +93,7 @@ void Resolve_Use(::AST::Crate& crate)
         return np;
         ),
     (Absolute,
+        DEBUG("Absolute " << path);
         // Leave as is
         return path;
         )
