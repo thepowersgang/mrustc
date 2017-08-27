@@ -169,6 +169,12 @@ class CCfgHandler:
             i.m_name = "";
         }
     }
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_StructLiteral::Ent& i) const override {
+        DEBUG("#[cfg] struct lit - " << mi);
+        if( !check_cfg(sp, mi) ) {
+            i.value.reset();
+        }
+    }
 };
 
 STATIC_MACRO("cfg", CCfgExpander);

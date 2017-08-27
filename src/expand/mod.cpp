@@ -656,8 +656,18 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_base_value);
         for(auto& val : node.m_values)
         {
-            // TODO: Attributes on struct literal items (#[cfg] only?)
+            Expand_Attrs(val.attrs, AttrStage::Pre ,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  val); });
+            if( !val.value )
+                continue ;
             this->visit_nodelete(node, val.value);
+            Expand_Attrs(val.attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  val); });
+        }
+        for(auto it = node.m_values.begin(); it != node.m_values.end(); )
+        {
+            if( it->value )
+                ++it;
+            else
+                it = node.m_values.erase(it);
         }
     }
     void visit(::AST::ExprNode_Array& node) override {
