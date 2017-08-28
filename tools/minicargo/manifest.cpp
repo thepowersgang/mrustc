@@ -88,6 +88,10 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             {
                 // Informational only, ignore
             }
+            else if( key == "links" )
+            {
+                // TODO: Add "-l <thisname>" to command line
+            }
             else
             {
                 // Unknown value in `package`
@@ -146,7 +150,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             // Find/create dependency descriptor
             auto it = ::std::find_if(rv.m_dependencies.begin(), rv.m_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
             bool was_added = (it == rv.m_dependencies.end());
-            if (it == rv.m_dependencies.end())
+            if( was_added )
             {
                 it = rv.m_dependencies.insert(it, PackageRef{ depname });
             }
@@ -155,7 +159,19 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
         else if( section == "build-dependencies" )
         {
-            // TODO: Build deps
+            assert(key_val.path.size() > 1);
+
+            const auto& depname = key_val.path[1];
+
+            // Find/create dependency descriptor
+            auto it = ::std::find_if(rv.m_build_dependencies.begin(), rv.m_build_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
+            bool was_added = (it == rv.m_build_dependencies.end());
+            if(was_added)
+            {
+                it = rv.m_build_dependencies.insert(it, PackageRef{ depname });
+            }
+
+            it->fill_from_kv(was_added, key_val, 2);
         }
         else if( section == "dev-dependencies" )
         {
@@ -172,7 +188,21 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
         else if( section == "features" )
         {
+            const auto& name = key_val.path[1];
             // TODO: Features
+            ::std::vector<::std::string>*   list;
+            if(name == "default") {
+                list = &rv.m_default_features;
+            }
+            else {
+                auto tmp = rv.m_features.insert(::std::make_pair(name, ::std::vector<::std::string>()));
+                list = &tmp.first->second;
+            }
+
+            for(const auto& sv : key_val.value.m_sub_values)
+            {
+                list->push_back( sv.as_string() );
+            }
         }
         else if( section == "workspace" )
         {
@@ -206,7 +236,17 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
     {
         if(tgt.m_name == "")
         {
-            tgt.m_name = rv.m_name;
+            tgt.m_name.reserve(rv.m_name.size());
+            for(auto c : rv.m_name)
+                tgt.m_name += (c == '-' ? '_' : c);
+        }
+    }
+
+    for(const auto& dep : rv.m_dependencies)
+    {
+        if( dep.m_optional )
+        {
+            rv.m_features.insert(::std::make_pair( dep.m_name, ::std::vector<::std::string>() ));
         }
     }
 
@@ -350,7 +390,7 @@ void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_
         else if( attr == "default-features" )
         {
             assert(key_val.path.size() == base_idx+1);
-            //this->m_use_default_features = key_val.value.as_bool();
+            this->m_use_default_features = key_val.value.as_bool();
         }
         else if( attr == "features" )
         {
@@ -377,20 +417,73 @@ const PackageTarget& PackageManifest::get_library() const
     return *it;
 }
 
+void PackageManifest::set_features(const ::std::vector<::std::string>& features, bool enable_default)
+{
+    // TODO.
+    size_t start = m_active_features.size();
+    // 1. Install features
+    if(enable_default && start == 0)
+    {
+        DEBUG("Including default features [" << m_default_features << "]");
+        for(const auto& feat : m_default_features)
+        {
+            m_active_features.push_back(feat);
+        }
+    }
+
+    for(const auto& feat : features)
+    {
+        auto it = ::std::find(m_active_features.begin(), m_active_features.end(), feat);
+        if(it == m_active_features.end())
+            continue ;
+        m_active_features.push_back(feat);
+    }
+
+    for(size_t i = start; i < m_active_features.size(); i ++)
+    {
+        const auto& featname = m_active_features[i];
+        // Look up this feature
+        auto it = m_features.find(featname);
+        if( it != m_features.end() )
+        {
+            DEBUG("Activating feature " << featname << " = [" << it->second << "]");
+            for(const auto& sub_feat : it->second)
+            {
+                TODO("Activate feature flag " << sub_feat << " for feature " << featname);
+            }
+        }
+        auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
+        if(it2 != m_dependencies.end())
+        {
+            it2->m_optional_enabled = true;
+        }
+    }
+}
 void PackageManifest::load_dependencies(Repository& repo)
 {
+    TRACE_FUNCTION_F(m_name);
     DEBUG("Loading depencencies for " << m_name);
     auto base_path = ::helpers::path(m_manifest_path).parent();
 
     // 2. Recursively load dependency manifests
     for(auto& dep : m_dependencies)
     {
-        if( dep.m_optional )
+        if( dep.m_optional && !dep.m_optional_enabled )
         {
-            // TODO: Check for feature that enables this (option to a feature with no '/')
             continue ;
         }
         dep.load_manifest(repo, base_path);
+    }
+
+    // TODO: Only enable if build script overrides aren't enabled.
+    // - Loading it doesn't matter much
+    if( m_build_script != "" /*&& false*/ )
+    {
+        for(auto& dep : m_build_dependencies)
+        {
+            assert( !dep.m_optional );
+            dep.load_manifest(repo, base_path);
+        }
     }
 }
 
@@ -491,8 +584,7 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
         assert(m_manifest);
     }
 
-    // TODO: Set features on this dependency
-
+    m_manifest->set_features(this->m_features, this->m_use_default_features);
     m_manifest->load_dependencies(repo);
 }
 

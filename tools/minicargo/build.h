@@ -22,9 +22,11 @@ public:
 
     bool build_target(const PackageManifest& manifest, const PackageTarget& target) const;
     bool build_library(const PackageManifest& manifest) const;
+    ::std::string build_build_script(const PackageManifest& manifest) const;
 
 private:
-    bool spawn_process(const StringList& args, const ::helpers::path& logfile) const;
+    bool spawn_process(const char* exe_name, const StringList& args, const ::helpers::path& logfile) const;
+    bool spawn_process_mrustc(const StringList& args, const ::helpers::path& logfile) const;
 
 
     Timestamp get_timestamp(const ::helpers::path& path) const;

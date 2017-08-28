@@ -115,6 +115,7 @@ int ProgramOptions::parse(int argc, const char* argv[])
             }
             else {
                 ::std::cerr << "Unknown flag " << arg << ::std::endl;
+                return 1;
             }
         }
     }

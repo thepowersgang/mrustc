@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <memory>
 #include "path.h"
 
@@ -120,8 +121,9 @@ class PackageRef
     ::std::string   m_path;
 
     // Features requested by this reference
-    ::std::vector<::std::string>    m_features;
     bool    m_use_default_features = true;
+    ::std::vector<::std::string>    m_features;
+    bool    m_optional_enabled = false;
 
     ::std::shared_ptr<PackageManifest> m_manifest;
 
@@ -137,7 +139,7 @@ public:
     //const ::std::string& get_repo_name() const  { return m_repo; }
     const PackageVersionSpec& get_version() const { return m_version; }
 
-    bool is_optional() const { return m_optional; }
+    bool is_disabled() const { return m_optional && !m_optional_enabled; }
 
     const bool has_path() const { return m_path != ""; }
     const ::std::string& path() const { return m_path; }
@@ -221,10 +223,15 @@ class PackageManifest
     ::std::string   m_build_script;
 
     ::std::vector<PackageRef>   m_dependencies;
+    ::std::vector<PackageRef>   m_build_dependencies;
 
     ::std::vector<PackageTarget>    m_targets;
 
     BuildScriptOutput   m_build_script_output;
+
+    ::std::map<::std::string, ::std::vector<::std::string>>    m_features;
+    ::std::vector<::std::string>    m_default_features;
+    ::std::vector<::std::string>    m_active_features;
 
     PackageManifest();
 
@@ -249,7 +256,11 @@ public:
     const ::std::vector<PackageRef>& dependencies() const {
         return m_dependencies;
     }
+    const ::std::vector<PackageRef>& build_dependencies() const {
+        return m_build_dependencies;
+    }
 
+    void set_features(const ::std::vector<::std::string>& features, bool enable_default);
     void load_dependencies(Repository& repo);
 
     void load_build_script(const ::std::string& path);

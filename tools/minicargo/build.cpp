@@ -8,12 +8,14 @@
 #include <sstream>  // stringstream
 #ifdef _WIN32
 # include <Windows.h>
+# define EXESUF ".exe"
 #else
 # include <spawn.h>
 # include <sys/types.h>
 # include <sys/stat.h>
 # include <sys/wait.h>
 # include <fcntl.h>
+# define EXESUF ""
 #endif
 
 struct BuildList
@@ -24,8 +26,8 @@ struct BuildList
     };
     ::std::vector<BuildEnt>  m_list;
 
-    void add_dependencies(const PackageManifest& p, unsigned level);
-    void add_package(const PackageManifest& p, unsigned level);
+    void add_dependencies(const PackageManifest& p, unsigned level, bool include_build);
+    void add_package(const PackageManifest& p, unsigned level, bool include_build);
     void sort_list();
 
     struct Iter {
@@ -154,7 +156,7 @@ void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_p
 {
     BuildList   list;
 
-    list.add_dependencies(manifest, 0);
+    list.add_dependencies(manifest, 0, !override_path.is_valid());
 
     list.sort_list();
     // dedup?
@@ -177,20 +179,28 @@ void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_p
     builder.build_library(manifest);
 }
 
-void BuildList::add_dependencies(const PackageManifest& p, unsigned level)
+void BuildList::add_dependencies(const PackageManifest& p, unsigned level, bool include_build)
 {
     TRACE_FUNCTION_F(p.name());
     for (const auto& dep : p.dependencies())
     {
-        if( dep.is_optional() )
+        if( dep.is_disabled() )
         {
             continue ;
         }
         DEBUG("Depenency " << dep.name());
-        add_package(dep.get_package(), level+1);
+        add_package(dep.get_package(), level+1, include_build);
+    }
+
+    if( p.build_script() != "" && include_build )
+    {
+        for(const auto& dep : p.build_dependencies())
+        {
+            add_package(dep.get_package(), level+1, include_build);
+        }
     }
 }
-void BuildList::add_package(const PackageManifest& p, unsigned level)
+void BuildList::add_package(const PackageManifest& p, unsigned level, bool include_build)
 {
     TRACE_FUNCTION_F(p.name());
     // If the package is already loaded
@@ -204,7 +214,7 @@ void BuildList::add_package(const PackageManifest& p, unsigned level)
         // Keep searching (might already have a higher entry)
     }
     m_list.push_back({ &p, level });
-    add_dependencies(p, level);
+    add_dependencies(p, level, include_build);
 }
 void BuildList::sort_list()
 {
@@ -284,7 +294,23 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     }
     // TODO: Environment variables (rustc_env)
 
-    return this->spawn_process(args, outfile + "_dbg.txt");
+    return this->spawn_process_mrustc(args, outfile + "_dbg.txt");
+}
+::std::string Builder::build_build_script(const PackageManifest& manifest) const
+{
+    auto outfile = m_output_dir / manifest.name() + "_build" EXESUF;
+
+    StringList  args;
+    args.push_back( ::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(manifest.build_script()) );
+    args.push_back("--crate-name"); args.push_back("build");
+    //args.push_back("--crate-type"); args.push_back("bin");
+    args.push_back("-o"); args.push_back(outfile);
+    args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
+
+    if( this->spawn_process_mrustc(args, outfile + "_dbg.txt") )
+        return outfile;
+    else
+        return "";
 }
 bool Builder::build_library(const PackageManifest& manifest) const
 {
@@ -303,21 +329,31 @@ bool Builder::build_library(const PackageManifest& manifest) const
         {
             // Otherwise, compile and run build script
             // - Load dependencies for the build script
+            //  - TODO: Should this have already been done
             // - Build the script itself
-            //this->build_build_script( manifest );
+            auto script_exe = this->build_build_script( manifest );
+            if( script_exe == "" )
+                return false;
             // - Run the script and put output in the right dir
-            //manifest.load_build_script( m_output_dir / "build_" + manifest.name().c_str() + ".txt" );
-            throw ::std::runtime_error("TODO: Build script for " + manifest.name());
+            auto out_file = m_output_dir / "build_" + manifest.name().c_str() + ".txt";
+            if( !this->spawn_process(script_exe.c_str(), {}, out_file) )
+                return false;
+            // - Load
+            const_cast<PackageManifest&>(manifest).load_build_script( out_file.str() );
         }
     }
 
     return this->build_target(manifest, manifest.get_library());
 }
-bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfile) const
+bool Builder::spawn_process_mrustc(const StringList& args, const ::helpers::path& logfile) const
+{
+    return spawn_process(MRUSTC_PATH, args, logfile);
+}
+bool Builder::spawn_process(const char* exe_name, const StringList& args, const ::helpers::path& logfile) const
 {
 #ifdef _WIN32
     ::std::stringstream cmdline;
-    cmdline << "mrustc.exe";
+    cmdline << exe_name;
     for (const auto& arg : args.get_vec())
         cmdline << " " << arg;
     auto cmdline_str = cmdline.str();
@@ -340,9 +376,6 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
         WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
     PROCESS_INFORMATION pi = { 0 };
-    char env[] =
-        "MRUSTC_DEBUG=""\0"
-        ;
     CreateProcessA(MRUSTC_PATH, (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
     CloseHandle(si.hStdOutput);
     WaitForSingleObject(pi.hProcess, INFINITE);
@@ -369,7 +402,7 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
 
     // Generate `argv`
     auto argv = args.get_vec();
-    argv.insert(argv.begin(), "mrustc");
+    argv.insert(argv.begin(), exe_name);
     //DEBUG("Calling " << argv);
     Debug_Print([&](auto& os){
         os << "Calling";
@@ -387,7 +420,7 @@ bool Builder::spawn_process(const StringList& args, const ::helpers::path& logfi
     }
     envp.push_back(nullptr);
 
-    if( posix_spawn(&pid, "../bin/mrustc", &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.data()) != 0 )
+    if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.data()) != 0 )
     {
         perror("posix_spawn");
         DEBUG("Unable to spawn compiler");
