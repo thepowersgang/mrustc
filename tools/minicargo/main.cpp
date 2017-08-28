@@ -46,15 +46,17 @@ int main(int argc, const char* argv[])
             repo.load_vendored(opts.vendor_dir);
         }
 
+        auto bs_override_dir = opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path();
+
         // 1. Load the Cargo.toml file from the passed directory
         auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
         auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
 
         // 2. Load all dependencies
-        m.load_dependencies(repo);
+        m.load_dependencies(repo, !bs_override_dir.is_valid());
 
         // 3. Build dependency tree and build program.
-        MiniCargo_Build(m, opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path() );
+        MiniCargo_Build(m, bs_override_dir );
     }
     catch(const ::std::exception& e)
     {

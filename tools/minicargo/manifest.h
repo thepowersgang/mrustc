@@ -150,7 +150,7 @@ public:
         return *m_manifest;
     }
 
-    void load_manifest(Repository& repo, const ::helpers::path& base_path);
+    void load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps);
 };
 
 struct PackageTarget
@@ -261,7 +261,7 @@ public:
     }
 
     void set_features(const ::std::vector<::std::string>& features, bool enable_default);
-    void load_dependencies(Repository& repo);
+    void load_dependencies(Repository& repo, bool include_build);
 
     void load_build_script(const ::std::string& path);
 };

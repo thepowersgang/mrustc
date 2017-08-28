@@ -459,7 +459,7 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
         }
     }
 }
-void PackageManifest::load_dependencies(Repository& repo)
+void PackageManifest::load_dependencies(Repository& repo, bool include_build)
 {
     TRACE_FUNCTION_F(m_name);
     DEBUG("Loading depencencies for " << m_name);
@@ -472,17 +472,16 @@ void PackageManifest::load_dependencies(Repository& repo)
         {
             continue ;
         }
-        dep.load_manifest(repo, base_path);
+        dep.load_manifest(repo, base_path, include_build);
     }
 
     // TODO: Only enable if build script overrides aren't enabled.
-    // - Loading it doesn't matter much
-    if( m_build_script != "" /*&& false*/ )
+    if( m_build_script != "" && include_build )
     {
         for(auto& dep : m_build_dependencies)
         {
             assert( !dep.m_optional );
-            dep.load_manifest(repo, base_path);
+            dep.load_manifest(repo, base_path, true);
         }
     }
 }
@@ -554,7 +553,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
     m_build_script_output = rv;
 }
 
-void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path)
+void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps)
 {
     TRACE_FUNCTION_F(this->m_name);
     // If the path isn't set, check for:
@@ -585,7 +584,7 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
     }
 
     m_manifest->set_features(this->m_features, this->m_use_default_features);
-    m_manifest->load_dependencies(repo);
+    m_manifest->load_dependencies(repo, include_build_deps);
 }
 
 PackageVersion PackageVersion::from_string(const ::std::string& s)
