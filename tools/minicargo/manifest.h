@@ -241,6 +241,9 @@ public:
     const PackageTarget& get_library() const;
 
 
+    const ::helpers::path directory() const {
+        return ::helpers::path(m_manifest_path).parent();
+    }
     const ::std::string& manifest_path() const {
         return m_manifest_path;
     }

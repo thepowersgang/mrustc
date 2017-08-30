@@ -510,20 +510,50 @@ void PackageManifest::load_build_script(const ::std::string& path)
             }
             // cargo:rustc-link-search=foo/bar/baz
             else if( key == "rustc-link-search" ) {
-                // TODO: Check for an = (otherwise default to dynamic)
-                throw ::std::runtime_error("TODO: rustc-link-search");
+                // Check for an = (otherwise default to native)
+                ::std::string   value_str = value;
+                auto pos = value_str.find_first_of('=');
+                const char* type = "native";
+                ::std::string   name;
+                if(pos == ::std::string::npos) {
+                    name = ::std::move(value_str);
+                }
+                else {
+                    name = value_str.substr(pos+1);
+                    auto ty_str = value_str.substr(0, pos);
+                    if( ty_str == "native" ) {
+                        type = "native";
+                    }
+                    else {
+                        throw ::std::runtime_error(::format("TODO: rustc-link-search ", ty_str));
+                    }
+                }
+                rv.rustc_link_search.push_back(::std::make_pair(type, ::std::move(name)));
             }
             // cargo:rustc-link-lib=mysql
             else if( key == "rustc-link-lib" ) {
-                // TODO: Check for an = (otherwise default to dynamic)
-                ::std::string lazy = value;
-                auto pos = lazy.find_first_of('=');
+                // Check for an = (otherwise default to dynamic)
+                ::std::string   value_str = value;
+                auto pos = value_str.find_first_of('=');
+                const char* type = "static";
+                ::std::string   name;
                 if(pos == ::std::string::npos) {
-                    rv.rustc_link_lib.push_back(::std::make_pair("static", lazy));
+                    name = ::std::move(value_str);
                 }
                 else {
-                    throw ::std::runtime_error("TODO: rustc-link-lib");
+                    name = value_str.substr(pos+1);
+                    auto ty_str = value_str.substr(0, pos);
+                    if( ty_str == "static" ) {
+                        type = "static";
+                    }
+                    else if( ty_str == "dynamic" ) {
+                        type = "dynamic";
+                    }
+                    else {
+                        throw ::std::runtime_error(::format("TODO: rustc-link-lib ", ty_str));
+                    }
                 }
+                rv.rustc_link_lib.push_back(::std::make_pair(type, ::std::move(name)));
             }
             // cargo:rustc-cfg=foo
             else if( key == "rustc-cfg" ) {

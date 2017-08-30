@@ -8,14 +8,21 @@
 #include <sstream>  // stringstream
 #ifdef _WIN32
 # include <Windows.h>
-# define EXESUF ".exe"
 #else
+# include <unistd.h>    // getcwd/chdir
 # include <spawn.h>
 # include <sys/types.h>
 # include <sys/stat.h>
 # include <sys/wait.h>
 # include <fcntl.h>
+#endif
+
+#ifdef _WIN32
+# define EXESUF ".exe"
+# define TARGET "x86_64-windows-msvc"
+#else
 # define EXESUF ""
+# define TARGET "x86_64-unknown-linux-gnu"
 #endif
 
 struct BuildList
@@ -65,6 +72,7 @@ public:
     {
     }
     StringList(const StringList&) = delete;
+    StringList(StringList&&) = default;
 
     const ::std::vector<const char*>& get_vec() const
     {
@@ -106,6 +114,51 @@ public:
     void push_back(const char* s)
     {
         m_strings.push_back(s);
+    }
+};
+class StringListKV: private StringList
+{
+    ::std::vector<const char*>  m_keys;
+public:
+    StringListKV()
+    {
+    }
+    StringListKV(StringListKV&& x):
+        StringList(::std::move(x)),
+        m_keys(::std::move(x.m_keys))
+    {
+    }
+
+    void push_back(const char* k, ::std::string v)
+    {
+        m_keys.push_back(k);
+        StringList::push_back(v);
+    }
+    void push_back(const char* k, const char* v)
+    {
+        m_keys.push_back(k);
+        StringList::push_back(v);
+    }
+
+    struct Iter {
+        const StringListKV&   v;
+        size_t  i;
+        
+        void operator++() {
+            this->i++;
+        }
+        ::std::pair<const char*,const char*> operator*() {
+            return ::std::make_pair(this->v.m_keys[this->i], this->v.get_vec()[this->i]);
+        }
+        bool operator!=(const Iter& x) const {
+            return this->i != x.i;
+        }
+    };
+    Iter begin() const {
+        return Iter { *this, 0 };
+    }
+    Iter end() const {
+        return Iter { *this, m_keys.size() };
     }
 };
 
@@ -293,8 +346,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back(flag.c_str());
     }
     // TODO: Environment variables (rustc_env)
+    StringListKV    env;
 
-    return this->spawn_process_mrustc(args, outfile + "_dbg.txt");
+    return this->spawn_process_mrustc(args, ::std::move(env), outfile + "_dbg.txt");
 }
 ::std::string Builder::build_build_script(const PackageManifest& manifest) const
 {
@@ -307,7 +361,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
 
-    if( this->spawn_process_mrustc(args, outfile + "_dbg.txt") )
+    if( this->spawn_process_mrustc(args, {}, outfile + "_dbg.txt") )
         return outfile;
     else
         return "";
@@ -327,17 +381,68 @@ bool Builder::build_library(const PackageManifest& manifest) const
         }
         else
         {
-            // Otherwise, compile and run build script
-            // - Load dependencies for the build script
-            //  - TODO: Should this have already been done
-            // - Build the script itself
-            auto script_exe = this->build_build_script( manifest );
-            if( script_exe == "" )
-                return false;
-            // - Run the script and put output in the right dir
             auto out_file = m_output_dir / "build_" + manifest.name().c_str() + ".txt";
-            if( !this->spawn_process(script_exe.c_str(), {}, out_file) )
-                return false;
+            // If the build script output doesn't exist (TODO: Or is older than ...)
+            bool run_build_script = true;
+            auto ts_result = this->get_timestamp(out_file);
+            if( ts_result == Timestamp::infinite_past() ) {
+                DEBUG("Building " << out_file << " - Missing");
+            }
+            else if( ts_result < this->get_timestamp(MRUSTC_PATH) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) {
+                // Rebuild (older than mrustc/minicargo)
+                DEBUG("Building " << out_file << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(MRUSTC_PATH) << ")");
+            }
+            else
+            {
+                run_build_script = false;
+            }
+            if( run_build_script )
+            {
+                // Compile and run build script
+                // - Load dependencies for the build script
+                //  - TODO: Should this have already been done
+                // - Build the script itself
+                auto script_exe = this->build_build_script( manifest );
+                if( script_exe == "" )
+                    return false;
+                auto script_exe_abs = ::helpers::path(script_exe).to_absolute();
+
+                auto output_dir_abs = m_output_dir.to_absolute();
+        
+                // - Run the script and put output in the right dir
+                auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
+                // TODO: Environment variables (key-value list)
+                StringListKV    env;
+                env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
+                //env.push_back("CARGO_MANIFEST_LINKS", manifest.m_links);
+                //for(const auto& feat : manifest.m_active_features)
+                //{
+                //    ::std::string   fn = "CARGO_FEATURE_";
+                //    for(char c : feat)
+                //        fn += c == '-' ? '_' : tolower(c);
+                //    env.push_back(fn, manifest.m_links);
+                //}
+                //env.push_back("CARGO_CFG_RELEASE", "");
+                env.push_back("OUT_DIR", output_dir_abs / "build_" + manifest.name().c_str());
+                env.push_back("TARGET", TARGET);
+                env.push_back("HOST", TARGET);
+                env.push_back("NUM_JOBS", "1");
+                env.push_back("OPT_LEVEL", "2");
+                env.push_back("DEBUG", "0");
+                env.push_back("PROFILE", "release");
+                
+                #if _WIN32
+                #else
+                auto fd_cwd = open(".", O_DIRECTORY);
+                chdir(manifest.directory().str().c_str());
+                #endif
+                if( !this->spawn_process(script_exe_abs.str().c_str(), {}, env, out_file) )
+                    return false;
+                #if _WIN32
+                #else
+                fchdir(fd_cwd);
+                #endif
+            }
             // - Load
             const_cast<PackageManifest&>(manifest).load_build_script( out_file.str() );
         }
@@ -345,11 +450,12 @@ bool Builder::build_library(const PackageManifest& manifest) const
 
     return this->build_target(manifest, manifest.get_library());
 }
-bool Builder::spawn_process_mrustc(const StringList& args, const ::helpers::path& logfile) const
+bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
-    return spawn_process(MRUSTC_PATH, args, logfile);
+    env.push_back("MRUSTC_DEBUG", "");
+    return spawn_process(MRUSTC_PATH, args, env, logfile);
 }
-bool Builder::spawn_process(const char* exe_name, const StringList& args, const ::helpers::path& logfile) const
+bool Builder::spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile) const
 {
 #ifdef _WIN32
     ::std::stringstream cmdline;
@@ -358,6 +464,15 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
         cmdline << " " << arg;
     auto cmdline_str = cmdline.str();
     DEBUG("Calling " << cmdline_str);
+    
+    ::std::stringstream environ_str;
+    environ_str << "TEMP=" << getenv("TEMP") << '\0';
+    environ_str << "TMP=" << getenv("TMP") << '\0';
+    for(auto kv : env)
+    {
+        environ_str << kv.first << "=" << kv.second << '\0';
+    }
+    environ_str << '\0';
 
     CreateDirectory(static_cast<::std::string>(logfile.parent()).c_str(), NULL);
 
@@ -412,15 +527,19 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     argv.push_back(nullptr);
 
     // Generate `envp`
-    ::std::vector<const char*> envp;
+    StringList  envp;
     extern char **environ;
     for(auto p = environ; *p; p++)
     {
         envp.push_back(*p);
     }
+    for(auto kv : env)
+    {
+        envp.push_back(::format(kv.first, "=", kv.second));
+    }
     envp.push_back(nullptr);
 
-    if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.data()) != 0 )
+    if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.get_vec().data()) != 0 )
     {
         perror("posix_spawn");
         DEBUG("Unable to spawn compiler");

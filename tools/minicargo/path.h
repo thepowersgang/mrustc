@@ -31,26 +31,45 @@ public:
         return m_str != "";
     }
 
-    path operator/(const path& p) const
+    path& operator/=(const path& p)
+    {
+        if(!p.is_valid())
+            throw ::std::runtime_error("Appending from an invalid path");
+
+        return *this /= p.m_str.c_str();
+    }
+    path& operator/=(const char* o)
     {
         if(!this->is_valid())
             throw ::std::runtime_error("Appending to an invalid path");
-        if(!p.is_valid())
-            throw ::std::runtime_error("Appending from an invalid path");
-        if(p.m_str[0] == '/')
+        if(o[0] == '/')
             throw ::std::runtime_error("Appending an absolute path to another path");
-        return *this / p.m_str.c_str();
+        this->m_str.push_back(SEP);
+        this->m_str.append(o);
+        return *this;
+    }
+    path& operator/=(const string_view& o)
+    {
+        if(!this->is_valid())
+            throw ::std::runtime_error("Appending to an invalid path");
+        if(o[0] == '/')
+            throw ::std::runtime_error("Appending an absolute path to another path");
+        this->m_str.push_back(SEP);
+        this->m_str += o;
+        return *this;
+    }
+
+    path operator/(const path& p) const
+    {
+        auto rv = *this;
+        rv /= p;
+        return rv;
     }
     /// Append a relative path
     path operator/(const char* o) const
     {
-        if(!this->is_valid())
-            throw ::std::runtime_error("Appending to an invalid path");
-        if (o[0] == '/')
-            throw ::std::runtime_error("Appending an absolute path to another path");
         auto rv = *this;
-        rv.m_str.push_back(SEP);
-        rv.m_str.append(o);
+        rv /= o;
         return rv;
     }
     /// Add an arbitary string to the final component
@@ -65,6 +84,21 @@ public:
         return rv;
     }
 
+    bool pop_component()
+    {
+        if(!this->is_valid())
+            throw ::std::runtime_error("Calling pop_component() on an invalid path");
+        auto pos = m_str.find_last_of(SEP);
+        if(pos == ::std::string::npos || pos == 0)
+        {
+            return false;
+        }
+        else
+        {
+            this->m_str.resize(pos);
+            return true;
+        }
+    }
     path parent() const
     {
         if(!this->is_valid())
@@ -81,6 +115,7 @@ public:
             return rv;
         }
     }
+    path to_absolute() const;
 
     const ::std::string& str() const
     {

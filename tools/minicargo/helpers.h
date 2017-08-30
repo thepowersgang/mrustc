@@ -24,6 +24,11 @@ public:
             return false;
         return s[m_len] == '\0';
     }
+
+    char operator[](size_t n) const {
+        return m_start[n];
+    }
+
     operator ::std::string() const {
         return ::std::string { m_start, m_start + m_len };
     }

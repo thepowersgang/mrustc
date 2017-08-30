@@ -4,6 +4,7 @@
 #include "path.h"
 
 class StringList;
+class StringListKV;
 class Timestamp;
 
 class Builder
@@ -25,8 +26,8 @@ public:
     ::std::string build_build_script(const PackageManifest& manifest) const;
 
 private:
-    bool spawn_process(const char* exe_name, const StringList& args, const ::helpers::path& logfile) const;
-    bool spawn_process_mrustc(const StringList& args, const ::helpers::path& logfile) const;
+    bool spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const;
+    bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile) const;
 
 
     Timestamp get_timestamp(const ::helpers::path& path) const;

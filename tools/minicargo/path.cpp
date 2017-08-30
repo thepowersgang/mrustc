@@ -1,6 +1,10 @@
 /*
  */
 #include "path.h"
+#if _WIN32
+#else
+# include <unistd.h>    // getcwd/chdir
+#endif
 
 helpers::path::path(const char* s):
     m_str(s)
@@ -26,6 +30,36 @@ helpers::path::path(const char* s):
     {
         throw ::std::runtime_error("Empty path being constructed");
     }
+}
+
+helpers::path helpers::path::to_absolute() const
+{
+    if(!this->is_valid())
+        throw ::std::runtime_error("Calling to_absolute() on an invalid path");
+
+    if(this->m_str[0] == SEP)
+        return *this;
+
+    #if _WIN32
+    #else
+    char cwd[1024];
+    if( !getcwd(cwd, sizeof(cwd)) )
+        throw ::std::runtime_error("Calling getcwd() failed in path::to_absolute()");
+    #endif
+    auto rv = path(cwd);
+    for(auto comp : *this)
+    {
+        if(comp == ".")
+            ;
+        else if( comp == ".." )
+            rv.pop_component();
+        else
+            rv /= comp;
+    }
+    #if _WIN32
+    #else
+    #endif
+    return rv;
 }
 
 helpers::path helpers::path::normalise() const
