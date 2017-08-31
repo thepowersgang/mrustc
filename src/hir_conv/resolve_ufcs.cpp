@@ -106,6 +106,7 @@ namespace {
 
         void visit_expr(::HIR::ExprPtr& expr) override
         {
+#if 1
             struct ExprVisitor:
                 public ::HIR::ExprVisitorDef
             {
@@ -187,6 +188,7 @@ namespace {
                 (*expr).visit(v);
                 m_in_expr = false;
             }
+#endif
         }
 
         bool locate_trait_item_in_bounds(::HIR::Visitor::PathContext pc,  const ::HIR::TypeRef& tr, const ::HIR::GenericParams& params,  ::HIR::Path::Data& pd) {
@@ -319,12 +321,13 @@ namespace {
         {
             auto& e = pd.as_UfcsUnknown();
             const auto& type = *e.type;
+            TRACE_FUNCTION_F("trait_path=" << trait_path << ", p=<" << type << " as _>::" << e.item);
 
             // TODO: This is VERY arbitary and possibly nowhere near what rustc does.
             this->m_resolve.find_impl(sp,  trait_path.m_path, nullptr, type, [&](const auto& impl, bool fuzzy)->bool{
                 auto pp = impl.get_trait_params();
                 // Replace all placeholder parameters (group 2) with ivars (empty types)
-                pp = monomorphise_path_params_with(sp, pp, [&](const auto& gt)->const ::HIR::TypeRef& {
+                pp = monomorphise_path_params_with(sp, pp, [](const auto& gt)->const ::HIR::TypeRef& {
                     const auto& ge = gt.m_data.as_Generic();
                     if( (ge.binding >> 8) == 2 ) {
                         static ::HIR::TypeRef   empty_type;
@@ -584,6 +587,7 @@ namespace {
         }
         void visit_pattern_Value(const Span& sp, const ::HIR::Pattern& pat, ::HIR::Pattern::Value& val)
         {
+            TRACE_FUNCTION_F("pat=" << pat << ", val=" << val);
             TU_IFLET( ::HIR::Pattern::Value, val, Named, ve,
                 TRACE_FUNCTION_F(ve.path);
                 TU_MATCH( ::HIR::Path::Data, (ve.path.m_data), (pe),
