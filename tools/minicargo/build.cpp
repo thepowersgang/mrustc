@@ -490,7 +490,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
         sa.bInheritHandle = TRUE;
         si.hStdOutput = CreateFile( static_cast<::std::string>(logfile).c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
         DWORD   tmp;
-        WriteFile(si.hStdOutput, cmdline_str.data(), cmdline_str.size(), &tmp, NULL);
+        WriteFile(si.hStdOutput, cmdline_str.data(), static_cast<DWORD>(cmdline_str.size()), &tmp, NULL);
         WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
     PROCESS_INFORMATION pi = { 0 };

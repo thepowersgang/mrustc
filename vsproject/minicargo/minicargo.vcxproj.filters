@@ -53,5 +53,8 @@
     <ClInclude Include="..\..\tools\minicargo\path.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\tools\minicargo\build.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

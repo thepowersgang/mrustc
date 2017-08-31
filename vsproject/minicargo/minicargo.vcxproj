@@ -118,6 +118,7 @@
     <ClCompile Include="..\..\tools\minicargo\toml.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\tools\minicargo\build.h" />
     <ClInclude Include="..\..\tools\minicargo\debug.h" />
     <ClInclude Include="..\..\tools\minicargo\helpers.h" />
     <ClInclude Include="..\..\tools\minicargo\manifest.h" />
