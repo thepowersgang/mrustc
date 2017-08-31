@@ -4409,15 +4409,15 @@ namespace {
             unsigned int count = 0;
 
             ::HIR::PathParams   pp { dst.clone() };
-            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, src, [&best_impl,&count](auto impl, bool fuzzy){
-                    DEBUG("[check_unsize_tys] Found impl " << impl << (fuzzy ? " (fuzzy)" : ""));
+            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, src, [&best_impl,&count](auto impl, auto cmp){
+                    DEBUG("[check_unsize_tys] Found impl " << impl << (cmp == ::HIR::Compare::Fuzzy ? " (fuzzy)" : ""));
                     if( impl.more_specific_than(best_impl) )
                     {
                         best_impl = mv$(impl);
                         count ++;
                     }
                     // TODO: Record the best impl (if fuzzy) and equate params
-                    return !fuzzy;
+                    return cmp != ::HIR::Compare::Fuzzy;
                     });
             if( found )
             {
@@ -5480,6 +5480,8 @@ namespace {
                 TU_IFLET( ::HIR::TypeRef::Data, src.m_data, Borrow, se,
                     TU_IFLET( ::HIR::TypeRef::Data, dst.m_data, Borrow, de,
                     )
+                    else TU_IFLET( ::HIR::TypeRef::Data, dst.m_data, Pointer, de,
+                    )
                     else {
                         return true;
                     }
@@ -5657,13 +5659,14 @@ namespace {
                 if( l.m_data.is_Borrow() )
                 {
                     const auto& le = l.m_data.as_Borrow();
-                    const auto& re = r.m_data.as_Borrow();
+                    ASSERT_BUG(sp, r.m_data.is_Borrow() || r.m_data.is_Pointer(), "Coerce source for borrow isn't a borrow/pointert - " << r);
+                    const auto& re_inner = r.m_data.is_Borrow() ? r.m_data.as_Borrow().inner : r.m_data.as_Pointer().inner;
 
                     // Dereference `*re.inner` until it isn't possible or it equals `*le.inner`
                     // - Repeat going the other direction.
-                    if( H::type_derefs_from(sp, context, *le.inner, *re.inner) )
+                    if( H::type_derefs_from(sp, context, *le.inner, *re_inner) )
                         return DedupKeep::Left;
-                    if( H::type_derefs_from(sp, context, *re.inner, *le.inner) )
+                    if( H::type_derefs_from(sp, context, *re_inner, *le.inner) )
                         return DedupKeep::Right;
                 }
                 return DedupKeep::Both;
