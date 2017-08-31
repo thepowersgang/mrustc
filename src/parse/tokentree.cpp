@@ -32,10 +32,10 @@ TokenTree TokenTree::clone() const
         case TOK_LIFETIME:
             os << "/*" << tt.m_hygiene << "*/";
             break;
-        case TOK_INTERPOLATED_IDENT ... TOK_INTERPOLATED_ITEM:
-            os << "/*int*/";
-            break;
         default:
+            if( TOK_INTERPOLATED_IDENT <= tt.m_tok.type() && tt.m_tok.type() <= TOK_INTERPOLATED_ITEM ) {
+                os << "/*int*/";
+            }
             break;
         }
         return os << tt.m_tok.to_str();

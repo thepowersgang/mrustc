@@ -2,6 +2,7 @@
  */
 #include "path.h"
 #if _WIN32
+# include <Windows.h>
 #else
 # include <unistd.h>    // getcwd/chdir
 #endif
@@ -41,6 +42,8 @@ helpers::path helpers::path::to_absolute() const
         return *this;
 
     #if _WIN32
+    char cwd[1024];
+    GetCurrentDirectoryA(sizeof(cwd), cwd);
     #else
     char cwd[1024];
     if( !getcwd(cwd, sizeof(cwd)) )

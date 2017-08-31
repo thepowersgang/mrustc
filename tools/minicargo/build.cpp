@@ -1,5 +1,8 @@
 /*
  */
+#ifdef _WIN32
+# define _CRT_SECURE_NO_WARNINGS    // Allows use of getenv (this program doesn't set env vars)
+#endif
 #include "manifest.h"
 #include "build.h"
 #include "debug.h"
