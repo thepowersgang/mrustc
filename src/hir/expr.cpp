@@ -45,7 +45,11 @@ DEF_VISIT(ExprNode_Let, node,
 DEF_VISIT(ExprNode_Loop, node,
     visit_node_ptr(node.m_code);
 )
-DEF_VISIT(ExprNode_LoopControl, , )
+DEF_VISIT(ExprNode_LoopControl, node,
+    if( node.m_value ) {
+        visit_node_ptr(node.m_value);
+    }
+)
 DEF_VISIT(ExprNode_Match, node,
     visit_node_ptr(node.m_value);
     for(auto& arm : node.m_arms)

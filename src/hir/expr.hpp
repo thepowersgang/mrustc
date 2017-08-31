@@ -146,12 +146,13 @@ struct ExprNode_LoopControl:
 {
     ::std::string   m_label;
     bool    m_continue;
-    //::HIR::ExprNodeP    m_value;
+    ::HIR::ExprNodeP    m_value;
 
-    ExprNode_LoopControl(Span sp, ::std::string label, bool cont):
+    ExprNode_LoopControl(Span sp, ::std::string label, bool cont, ::HIR::ExprNodeP value={}):
         ExprNode(mv$(sp), ::HIR::TypeRef::new_diverge()),
         m_label( mv$(label) ),
-        m_continue( cont )
+        m_continue( cont ),
+        m_value( mv$(value) )
     {}
 
     NODE_METHODS();

@@ -71,9 +71,9 @@ struct LowerHIR_ExprNode_Visitor:
             break;
         case ::AST::ExprNode_Flow::CONTINUE:
         case ::AST::ExprNode_Flow::BREAK:
-            if( v.m_value )
-                TODO(v.span(), "Handle break/continue values in HIR");
-            m_rv.reset( new ::HIR::ExprNode_LoopControl( v.span(), v.m_target, (v.m_type == ::AST::ExprNode_Flow::CONTINUE) ) );
+            auto val = v.m_value ? LowerHIR_ExprNode_Inner(*v.m_value) : ::HIR::ExprNodeP();
+            ASSERT_BUG(v.span(), !(v.m_type == ::AST::ExprNode_Flow::CONTINUE && val), "Continue with a value isn't allowed");
+            m_rv.reset( new ::HIR::ExprNode_LoopControl( v.span(), v.m_target, (v.m_type == ::AST::ExprNode_Flow::CONTINUE), mv$(val) ) );
             break;
         }
     }
