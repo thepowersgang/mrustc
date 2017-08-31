@@ -1090,7 +1090,7 @@ namespace {
             assert(fields_ptr);
             const ::HIR::t_tuple_fields& fields = *fields_ptr;
             if( fields.size() != node.m_args.size() ) {
-                ERROR(node.span(), E0000, "");
+                ERROR(node.span(), E0000, "Tuple variant constructor argument count doesn't match type - " << ty);
             }
 
             const auto& ty_params = node.m_path.m_params.m_types;
