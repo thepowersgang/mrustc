@@ -503,8 +503,9 @@ int main(int argc, char *argv[])
         for(const char* libdir : params.lib_search_dirs ) {
             trans_opt.library_search_dirs.push_back( libdir );
         }
-        for(const char* libdir : params.libraries ) {
-            trans_opt.libraries.push_back( libdir );
+        for(const char* libname : params.libraries ) {
+            //trans_opt.libraries.push_back( libname );
+            hir_crate->m_ext_libs.push_back(::HIR::ExternLibrary { libname });
         }
         trans_opt.emit_debug_info = params.emit_debug_info;
 
