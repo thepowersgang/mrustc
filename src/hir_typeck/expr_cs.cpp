@@ -4135,8 +4135,8 @@ namespace {
                 DEBUG("Literal ivars");
                 return CoerceResult::Equality;
             }
-            context.possible_equate_type_coerce_to(src.m_data.as_Infer().index, dst);
-            context.possible_equate_type_coerce_from(dst.m_data.as_Infer().index, src);
+            context.possible_equate_type_unsize_to(src.m_data.as_Infer().index, dst);
+            context.possible_equate_type_unsize_from(dst.m_data.as_Infer().index, src);
             DEBUG("Both ivars");
             return CoerceResult::Unknown;
         }
@@ -4148,7 +4148,7 @@ namespace {
                 DEBUG("Literal with primitive");
                 return CoerceResult::Equality;
             }
-            context.possible_equate_type_coerce_from(dep->index, src);
+            context.possible_equate_type_unsize_from(dep->index, src);
             DEBUG("Dst ivar");
             return CoerceResult::Unknown;
         }
@@ -4160,7 +4160,7 @@ namespace {
                 DEBUG("Literal with primitive");
                 return CoerceResult::Equality;
             }
-            context.possible_equate_type_coerce_to(sep->index, dst);
+            context.possible_equate_type_unsize_to(sep->index, dst);
             DEBUG("Src ivar");
             return CoerceResult::Unknown;
         }
@@ -5811,6 +5811,13 @@ namespace {
                 }
             }
 
+            // De-duplicate lists (after unification) using strict equality
+            H::dedup_type_list_with(types_from, [&](const auto& l, const auto& r) {
+                    return context.m_ivars.types_equal(l, r) ? DedupKeep::Left : DedupKeep::Both;
+                    });
+            H::dedup_type_list_with(types_to, [&](const auto& l, const auto& r) {
+                    return context.m_ivars.types_equal(l, r) ? DedupKeep::Left : DedupKeep::Both;
+                    });
 
             // Prefer cases where this type is being created from a known type
             if( types_from.size() == 1 ) {
