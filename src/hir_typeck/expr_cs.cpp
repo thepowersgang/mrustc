@@ -681,9 +681,6 @@ namespace {
                     ERROR(node.span(), E0000, "Break statement with no acive loop");
                 }
 
-                // NOTE: There's an RFC proposal (that's on track to be accepted) that allows `break value;`
-                auto break_type = ::HIR::TypeRef::new_unit();
-
                 ::HIR::ExprNode_Loop*   loop_node_ptr;
                 if( node.m_label != "" )
                 {
@@ -701,7 +698,15 @@ namespace {
                 DEBUG("Break out of loop " << loop_node_ptr);
                 auto& loop_node = *loop_node_ptr;
                 loop_node.m_diverges = false;
-                this->context.equate_types(node.span(), loop_node.m_res_type, break_type);
+
+                if( node.m_value ) {
+                    this->context.add_ivars(node.m_value->m_res_type);
+                    node.m_value->visit(*this);
+                    this->context.equate_types(node.span(), loop_node.m_res_type, node.m_value->m_res_type);
+                }
+                else {
+                    this->context.equate_types(node.span(), loop_node.m_res_type, ::HIR::TypeRef::new_unit());
+                }
             }
         }
 
