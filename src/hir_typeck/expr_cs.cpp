@@ -5665,7 +5665,17 @@ namespace {
                 {
                     const auto& le = l.m_data.as_Borrow();
                     ASSERT_BUG(sp, r.m_data.is_Borrow() || r.m_data.is_Pointer(), "Coerce source for borrow isn't a borrow/pointert - " << r);
+                    const auto re_borrow_type = r.m_data.is_Borrow() ? r.m_data.as_Borrow().type : r.m_data.as_Pointer().type;
                     const auto& re_inner = r.m_data.is_Borrow() ? r.m_data.as_Borrow().inner : r.m_data.as_Pointer().inner;
+
+                    if( le.type < re_borrow_type ) {
+                        return DedupKeep::Left;
+                    }
+                    else if( le.type > re_borrow_type ) {
+                        return DedupKeep::Right;
+                    }
+                    else {
+                    }
 
                     // Dereference `*re.inner` until it isn't possible or it equals `*le.inner`
                     // - Repeat going the other direction.
