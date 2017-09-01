@@ -5539,8 +5539,8 @@ namespace {
             }
 
             /// Returns true if `dst` is found when dereferencing `src`
-            static bool type_derefs_from(const Span& sp, const Context& context, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) {
-
+            static bool type_derefs_from(const Span& sp, const Context& context, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src)
+            {
                 ::HIR::TypeRef  tmp;
                 const ::HIR::TypeRef* ty = &src;
                 do
@@ -5637,6 +5637,18 @@ namespace {
 
             // Find an entry in the `types_unsize_from` list that all other entries can unsize to
             H::dedup_type_list_with(ivar_ent.types_unsize_from, [&](const auto& l, const auto& r) {
+                if( l.m_data.is_Infer() || r.m_data.is_Infer() )
+                    return DedupKeep::Both;
+
+                // Check for fuzzy equality of types, and keep only one
+                // TODO: Ensure that whatever ivar differs can't be different (i.e. it wouldn't change the unsize/coerce)
+                // TODO: Use `check_unsize_tys` instead
+                if( l.compare_with_placeholders(sp, r, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
+                {
+                    DEBUG("Possible match, keep left");
+                    return DedupKeep::Left;
+                }
+
                 // &T and T
                 TU_IFLET( ::HIR::TypeRef::Data, l.m_data, Borrow, le,
                     TU_IFLET( ::HIR::TypeRef::Data, r.m_data, Borrow, re,
@@ -5660,6 +5672,15 @@ namespace {
             H::dedup_type_list_with(ivar_ent.types_coerce_from, [&](const auto& l, const auto& r) {
                 if( l.m_data.is_Infer() || r.m_data.is_Infer() )
                     return DedupKeep::Both;
+
+                // Check for fuzzy equality of types, and keep only one
+                // TODO: Ensure that whatever ivar differs can't be different (i.e. it wouldn't change the unsize/coerce)
+                // TODO: Use `check_coerce_tys` instead
+                if( l.compare_with_placeholders(sp, r, context.m_ivars.callback_resolve_infer()) != ::HIR::Compare::Unequal )
+                {
+                    DEBUG("Possible match, keep left");
+                    return DedupKeep::Left;
+                }
 
                 if( l.m_data.is_Borrow() )
                 {
