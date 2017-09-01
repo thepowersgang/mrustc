@@ -1089,6 +1089,14 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& type = this->m_ivars.get_type(ty);
     TRACE_FUNCTION_F("trait = " << trait << params  << ", type = " << type);
 
+    if( const auto* te = type.m_data.opt_Infer() )
+    {
+        if( !te->is_lit() ) {
+            // NOTE: Can't hope to find an impl if we know nothing about the type.
+            return false;
+        }
+    }
+
     const auto& lang_Sized = this->m_crate.get_lang_item_path(sp, "sized");
     const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
     const auto& lang_Unsize = this->m_crate.get_lang_item_path(sp, "unsize");
