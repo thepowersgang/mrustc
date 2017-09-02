@@ -152,6 +152,10 @@ public:
         ::std::string   name;
         // 0xFFFF = Self, 0-255 = Type/Trait, 256-511 = Method, 512-767 = Placeholder
         unsigned int    binding;
+
+        bool is_placeholder() const {
+            return (binding >> 8) == 2;
+        }
         }),
     (TraitObject, struct {
         ::HIR::TraitPath    m_trait;
