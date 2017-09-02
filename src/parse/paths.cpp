@@ -26,7 +26,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
 
     case TOK_RWORD_SELF:
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-        return Parse_Path(lex, false, generic_mode);
+        return AST::Path(AST::Path::TagSelf(), Parse_PathNodes(lex, generic_mode));
 
     case TOK_RWORD_SUPER: {
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);

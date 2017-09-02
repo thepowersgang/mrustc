@@ -804,6 +804,8 @@ public:
                 ));
         }
 
+        // TODO: Compare the discriminants using the `discriminant_value` intrinsic
+        // - Requires a way of emitting said intrinsic into the AST
         for(unsigned int a = 0; a < enm.variants().size(); a ++ )
         {
             for(unsigned int b = 0; b < enm.variants().size(); b ++ )

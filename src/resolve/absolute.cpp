@@ -1375,7 +1375,25 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         ),
     (Self,
         DEBUG("- Self");
-        TODO(sp, "Resolve_Absolute_Path - Self-relative paths - " << path);
+        const auto& mp_nodes = context.m_mod.path().nodes();
+        // Ignore any leading anon modules
+        unsigned int start_len = mp_nodes.size();
+        while( start_len > 0 && mp_nodes[start_len-1].name()[0] == '#' )
+            start_len --;
+
+        // - Create a new path
+        ::AST::Path np("", {});
+        auto& np_nodes = np.nodes();
+        np_nodes.reserve( start_len + e.nodes.size() );
+        for(unsigned int i = 0; i < start_len; i ++ )
+            np_nodes.push_back( mp_nodes[i] );
+        for(auto& en : e.nodes)
+            np_nodes.push_back( mv$(en) );
+
+        if( !path.is_trivial() )
+            Resolve_Absolute_PathNodes(context, sp,  np_nodes);
+
+        path = mv$(np);
         ),
     (Super,
         DEBUG("- Super");
