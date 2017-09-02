@@ -53,6 +53,7 @@ namespace {
             ::std::string   label;
             unsigned int    cur;
             unsigned int    next;
+            ::MIR::LValue   res_value;
         };
         ::std::vector<LoopDesc> m_loop_stack;
 
@@ -552,11 +553,13 @@ namespace {
             auto loop_body_scope = m_builder.new_scope_loop(node.span());
             auto loop_next = m_builder.new_bb_unlinked();
 
+            auto loop_result_lvaue = m_builder.new_temporary(node.m_res_type);
+
             auto loop_tmp_scope = m_builder.new_scope_temp(node.span());
             auto _ = save_and_edit(m_stmt_scope, &loop_tmp_scope);
 
             // TODO: `continue` in a loop should jump to the cleanup, not the top
-            m_loop_stack.push_back( LoopDesc { mv$(loop_body_scope), node.m_label, loop_block, loop_next } );
+            m_loop_stack.push_back( LoopDesc { mv$(loop_body_scope), node.m_label, loop_block, loop_next, loop_result_lvaue.clone() } );
             this->visit_node_ptr(node.m_code);
             auto loop_scope = mv$(m_loop_stack.back().scope);
             m_loop_stack.pop_back();
@@ -588,7 +591,7 @@ namespace {
             {
                 DEBUG("- Doesn't diverge");
                 m_builder.set_cur_block(loop_next);
-                m_builder.set_result(node.span(), ::MIR::RValue::make_Tuple({{}}));
+                m_builder.set_result(node.span(), mv$(loop_result_lvaue));
             }
             else
             {
@@ -620,10 +623,22 @@ namespace {
             }
 
             if( node.m_continue ) {
+                ASSERT_BUG(node.span(), !node.m_value, "Continue with a value isn't valid");
                 m_builder.terminate_scope_early( node.span(), target_block->scope, /*loop_exit=*/false );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->cur) );
             }
             else {
+                if( node.m_value )
+                {
+                    DEBUG("break value;");
+                    this->visit_node_ptr(node.m_value);
+                    m_builder.push_stmt_assign( node.span(), target_block->res_value.clone(),  m_builder.get_result(node.span()) );
+                }
+                else
+                {
+                    // Set result to ()
+                    m_builder.push_stmt_assign( node.span(), target_block->res_value.clone(), ::MIR::RValue::make_Tuple({{}}) );
+                }
                 m_builder.terminate_scope_early( node.span(), target_block->scope, /*loop_exit=*/true );
                 m_builder.end_block( ::MIR::Terminator::make_Goto(target_block->next) );
             }
@@ -720,6 +735,8 @@ namespace {
                 {
                 case ::HIR::ExprNode_BinOp::Op::BoolAnd: {
                     DEBUG("- Short-circuit BoolAnd");
+                    // TODO: Generate a SplitScope
+
                     // IF left false: go to false immediately
                     auto inner_true_branch = m_builder.new_bb_unlinked();
                     emit_if(cond_bin->m_left, inner_true_branch, false_branch);
@@ -729,6 +746,8 @@ namespace {
                     } return;
                 case ::HIR::ExprNode_BinOp::Op::BoolOr: {
                     DEBUG("- Short-circuit BoolOr");
+                    // TODO: Generate a SplitScope
+
                     // IF left true: got to true
                     auto inner_false_branch = m_builder.new_bb_unlinked();
                     emit_if(cond_bin->m_left, true_branch, inner_false_branch);
@@ -996,6 +1015,9 @@ namespace {
             // Short-circuiting boolean operations
             if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
             {
+                // TODO: Generate a SplitScope to handle the early breaks.
+                auto split_scope = m_builder.new_scope_split(node.span());
+
                 this->visit_node_ptr(node.m_left);
                 auto left = m_builder.get_result_in_lvalue(node.m_left->span(), ty_l);
 
@@ -1009,6 +1031,7 @@ namespace {
                     // If left is true, assign result true and return
                     m_builder.set_cur_block( bb_true );
                     m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool({true}) ));
+                    m_builder.end_split_arm(node.m_left->span(), split_scope, true);
                     m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
 
                     // If left is false, assign result to right
@@ -1019,6 +1042,7 @@ namespace {
                     // If left is false, assign result false and return
                     m_builder.set_cur_block( bb_false );
                     m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool({false}) ));
+                    m_builder.end_split_arm(node.m_left->span(), split_scope, true);
                     m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
 
                     // If left is true, assign result to right
@@ -1030,9 +1054,11 @@ namespace {
                 m_builder.push_stmt_assign(node.span(), res.clone(), m_builder.get_result(node.m_right->span()));
                 m_builder.terminate_scope(node.m_right->span(), mv$(tmp_scope));
 
+                m_builder.end_split_arm(node.m_left->span(), split_scope, true);
                 m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
 
                 m_builder.set_cur_block( bb_next );
+                m_builder.terminate_scope(node.span(), mv$(split_scope));
                 m_builder.set_result( node.span(), mv$(res) );
                 return ;
             }
