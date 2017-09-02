@@ -917,7 +917,21 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
 
                     // Determine if `ty` would be bounded (it's an ATY or generic)
                     if( ty.m_data.is_Generic() ) {
-                        TODO(Span(), "Check bound " << ty << " : " << trait << " in source bounds - " << g_src.m_params.fmt_bounds());
+                        bool found = false;
+                        for(const auto& bound : g_src.m_params.m_bounds)
+                        {
+                            if(const auto* be = bound.opt_TraitBound())
+                            {
+                                if( be->type != ty ) continue;
+                                if( be->trait != trait ) continue;
+                                found = true;
+                            }
+                        }
+                        if( !found )
+                        {
+                            DEBUG("No matching bound for " << ty << " : " << trait << " in source bounds - " << g_src.m_params.fmt_bounds());
+                            return false;
+                        }
                     }
                     else if( TU_TEST1(ty.m_data, Path, .binding.is_Opaque()) ) {
                         TODO(Span(), "Check bound " << ty << " : " << trait << " in source bounds or trait bounds");
