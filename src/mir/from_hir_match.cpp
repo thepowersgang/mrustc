@@ -2342,6 +2342,15 @@ class t_rules_subset
     ::std::vector<const ::std::vector<PatternRule>*>    rule_sets;
     bool is_arm_indexes;
     ::std::vector<size_t>   arm_idxes;
+
+    static ::std::pair<size_t,size_t> decode_arm_idx(size_t v) {
+        return ::std::make_pair(v & 0x3FFF, v >> 14);
+    }
+    static size_t encode_arm_idx(size_t arm_idx, size_t pat_idx) {
+        assert(arm_idx <= 0x3FFF);
+        assert(pat_idx <= 0x3FFF);
+        return arm_idx | (pat_idx << 14);
+    }
 public:
     t_rules_subset(size_t exp, bool is_arm_indexes):
         is_arm_indexes(is_arm_indexes)
@@ -2359,8 +2368,7 @@ public:
     bool is_arm() const { return is_arm_indexes; }
     ::std::pair<size_t,size_t> arm_idx(size_t n) const {
         assert(is_arm_indexes);
-        auto v = arm_idxes.at(n);
-        return ::std::make_pair(v & 0xFFF, v >> 12);
+        return decode_arm_idx( arm_idxes.at(n) );
     }
     ::MIR::BasicBlockId bb_idx(size_t n) const {
         assert(!is_arm_indexes);
@@ -2405,9 +2413,7 @@ public:
     {
         assert(is_arm_indexes);
         rule_sets.push_back(&x);
-        assert(arm_idx <= 0xFFF);
-        assert(pat_idx <= 0xFFF);
-        arm_idxes.push_back(arm_idx | (pat_idx << 12));
+        arm_idxes.push_back( encode_arm_idx(arm_idx, pat_idx) );
     }
     void push_bb(const ::std::vector<PatternRule>& x, ::MIR::BasicBlockId bb)
     {
@@ -2425,7 +2431,8 @@ public:
             os << "[";
             if(x.is_arm_indexes)
             {
-                os << (x.arm_idxes[i] & 0xFFF) << "," << (x.arm_idxes[i] >> 12);
+                auto v = decode_arm_idx(x.arm_idxes[i]);
+                os << v.first << "," << v.second;
             }
             else
             {
