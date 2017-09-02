@@ -6016,7 +6016,11 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 i ++;
             }
 
-            ASSERT_BUG(Span(), link_assoc_iter_limit -- > 0, "link_assoc iteration limit exceeded");
+            if( link_assoc_iter_limit -- == 0 )
+            {
+                DEBUG("link_assoc iteration limit exceeded");
+                break;
+            }
         }
         // 4. Revisit nodes that require revisiting
         DEBUG("--- Node revisits");
