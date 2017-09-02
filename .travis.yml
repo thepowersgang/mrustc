@@ -16,6 +16,7 @@ install:
  # Build mrustc
  - make RUSTCSRC
  - CC=gcc-6 CXX=g++-6 make
+ - CC=gcc-6 CXX=g++-6 make -C tools/minicargo
 
 script:
 # libstd and hello_world
