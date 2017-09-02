@@ -875,6 +875,7 @@ void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::std::u
 
 void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::Impl& impl)
 {
+    TRACE_FUNCTION_F(impl.def());
     Expand_Attrs(impl.def().attrs(), AttrStage::Pre,  crate, mod, impl.def());
     if( impl.def().type().is_wildcard() ) {
         DEBUG("Deleted");
@@ -926,6 +927,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             }
             ),
         (Function,
+            TRACE_FUNCTION_F("fn " << i.name);
             for(auto& arg : e.args()) {
                 Expand_Pattern(crate, modstack, mod,  arg.first, false);
                 Expand_Type(crate, modstack, mod,  arg.second);
@@ -934,10 +936,12 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             Expand_Expr(crate, modstack, e.code());
             ),
         (Static,
+            TRACE_FUNCTION_F("static " << i.name);
             Expand_Expr(crate, modstack, e.value());
             Expand_Type(crate, modstack, mod,  e.type());
             ),
         (Type,
+            TRACE_FUNCTION_F("type " << i.name);
             Expand_Type(crate, modstack, mod,  e.type());
             )
         )

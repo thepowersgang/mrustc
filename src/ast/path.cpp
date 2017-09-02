@@ -270,6 +270,7 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context) const
         os << ent.name;
         ),
     (Relative,
+        os << ent.hygiene;
         for(const auto& n : ent.nodes)
         {
             if( &n != &ent.nodes[0] ) {
