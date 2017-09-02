@@ -3971,7 +3971,7 @@ void Context::require_sized(const Span& sp, const ::HIR::TypeRef& ty_)
     }
     else if( const auto* e = ty.m_data.opt_Path() )
     {
-        const ::HIR::GenericParams* params_def;
+        const ::HIR::GenericParams* params_def = nullptr;
         TU_MATCHA( (e->binding), (pb),
         (Unbound,
             // TODO: Add a trait check rule
