@@ -104,6 +104,7 @@ struct Context
     /// Callback-based revisits (e.g. for slice patterns handling slices/arrays)
     ::std::vector< ::std::unique_ptr<Revisitor> >   adv_revisits;
 
+    ::std::vector<bool> m_ivars_sized;
     ::std::vector< IVarPossible>    possible_ivar_vals;
 
     const ::HIR::SimplePath m_lang_Box;
@@ -144,6 +145,9 @@ struct Context
         equate_types_assoc(sp, l, trait, mv$(pp), impl_ty, name, is_op);
     }
     void equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams params, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op);
+
+    /// Adds a `ty: Sized` bound to the contained ivars.
+    void require_sized(const Span& sp, const ::HIR::TypeRef& ty);
 
     // - Add a trait bound (gets encoded as an associated type bound)
     void add_trait_bound(const Span& sp, const ::HIR::TypeRef& impl_ty, const ::HIR::SimplePath& trait, ::HIR::PathParams params) {
@@ -568,6 +572,7 @@ namespace {
                 DEBUG("Block yields final value");
                 this->context.add_ivars( snp->m_res_type );
                 this->context.equate_types(snp->span(), node.m_res_type, snp->m_res_type);
+                this->context.require_sized(snp->span(), snp->m_res_type);
                 snp->visit(*this);
             }
             else if( node.m_nodes.size() > 0 )
@@ -703,6 +708,7 @@ namespace {
                     this->context.add_ivars(node.m_value->m_res_type);
                     node.m_value->visit(*this);
                     this->context.equate_types(node.span(), loop_node.m_res_type, node.m_value->m_res_type);
+                    this->context.require_sized(node.span(), node.m_value->m_res_type);
                 }
                 else {
                     this->context.equate_types(node.span(), loop_node.m_res_type, ::HIR::TypeRef::new_unit());
@@ -736,6 +742,7 @@ namespace {
                 }
 
                 node.m_value->visit( *this );
+                this->context.require_sized(node.span(), node.m_value->m_res_type);
                 this->pop_inner_coerce();
             }
         }
@@ -842,6 +849,7 @@ namespace {
 
             auto _2 = this->push_inner_coerce_scoped( node.m_op == ::HIR::ExprNode_Assign::Op::None );
             node.m_value->visit( *this );
+            this->context.require_sized(node.span(), node.m_value->m_res_type);
         }
         void visit(::HIR::ExprNode_BinOp& node) override
         {
@@ -1132,6 +1140,7 @@ namespace {
             auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
+                this->context.require_sized(node.span(), val->m_res_type);
             }
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override
@@ -1242,6 +1251,7 @@ namespace {
             auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_values ) {
                 val.second->visit( *this );
+                this->context.require_sized(node.span(), val.second->m_res_type);
             }
             if( node.m_base_value ) {
                 auto _ = this->push_inner_coerce_scoped(false);
@@ -1331,7 +1341,9 @@ namespace {
             auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
+                this->context.require_sized(node.span(), val->m_res_type);
             }
+            this->context.require_sized(node.span(), node.m_res_type);
         }
         void visit(::HIR::ExprNode_CallValue& node) override
         {
@@ -1353,7 +1365,9 @@ namespace {
                 auto& val = node.m_args[i];
                 this->context.equate_types_coerce(val->span(), node.m_arg_ivars[i],  val);
                 val->visit( *this );
+                this->context.require_sized(node.span(), val->m_res_type);
             }
+            this->context.require_sized(node.span(), node.m_res_type);
 
             // Nothing can be done until type is known
             this->context.add_revisit(node);
@@ -1405,7 +1419,9 @@ namespace {
             auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_args ) {
                 val->visit( *this );
+                this->context.require_sized(node.span(), val->m_res_type);
             }
+            this->context.require_sized(node.span(), node.m_res_type);
 
             // Resolution can't be done until lefthand type is known.
             // > Has to be done during iteraton
@@ -1469,6 +1485,7 @@ namespace {
 
             for( auto& val : node.m_vals ) {
                 val->visit( *this );
+                this->context.require_sized(node.span(), val->m_res_type);
             }
         }
         void visit(::HIR::ExprNode_ArrayList& node) override
@@ -3129,16 +3146,32 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
     TU_IFLET(::HIR::TypeRef::Data, r_t.m_data, Infer, r_e,
         TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
             // If both are infer, unify the two ivars (alias right to point to left)
+            // TODO: Unify sized flags
+
+            if( (r_e.index < m_ivars_sized.size() && m_ivars_sized.at(r_e.index))
+              ||(l_e.index < m_ivars_sized.size() && m_ivars_sized.at(l_e.index))
+                )
+            {
+                this->require_sized(sp, l_t);
+                this->require_sized(sp, r_t);
+            }
+
             this->m_ivars.ivar_unify(l_e.index, r_e.index);
         )
         else {
             // Righthand side is infer, alias it to the left
+            if( r_e.index < m_ivars_sized.size() && m_ivars_sized.at(r_e.index) ) {
+                this->require_sized(sp, l_t);
+            }
             this->m_ivars.set_ivar_to(r_e.index, l_t.clone());
         }
     )
     else {
         TU_IFLET(::HIR::TypeRef::Data, l_t.m_data, Infer, l_e,
             // Lefthand side is infer, alias it to the right
+            if( l_e.index < m_ivars_sized.size() && m_ivars_sized.at(l_e.index) ) {
+                this->require_sized(sp, r_t);
+            }
             this->m_ivars.set_ivar_to(l_e.index, r_t.clone());
         )
         else {
@@ -3910,6 +3943,86 @@ void Context::add_revisit(::HIR::ExprNode& node) {
 }
 void Context::add_revisit_adv(::std::unique_ptr<Revisitor> ent_ptr) {
     this->adv_revisits.push_back( mv$(ent_ptr) );
+}
+void Context::require_sized(const Span& sp, const ::HIR::TypeRef& ty_)
+{
+    const auto& ty = m_ivars.get_type(ty_);
+    TRACE_FUNCTION_F(ty_ << " -> " << ty);
+    if( m_resolve.type_is_sized(sp, ty) == ::HIR::Compare::Unequal )
+    {
+        ERROR(sp, E0000, "Unsized type not valid here - " << ty);
+    }
+    if( const auto* e = ty.m_data.opt_Infer() )
+    {
+        switch(e->ty_class)
+        {
+        case ::HIR::InferClass::Integer:
+        case ::HIR::InferClass::Float:
+            // Has to be.
+            break;
+        default:
+            // TODO: Flag for future checking
+            ASSERT_BUG(sp, e->index != ~0u, "Unbound ivar " << ty);
+            if(e->index >= m_ivars_sized.size())
+                m_ivars_sized.resize(e->index+1);
+            m_ivars_sized.at(e->index) = true;
+            break;
+        }
+    }
+    else if( const auto* e = ty.m_data.opt_Path() )
+    {
+        const ::HIR::GenericParams* params_def;
+        TU_MATCHA( (e->binding), (pb),
+        (Unbound,
+            // TODO: Add a trait check rule
+            params_def = nullptr;
+            ),
+        (Opaque,
+            // Already checked by type_is_sized
+            params_def = nullptr;
+            ),
+        (Enum,
+            params_def = &pb->m_params;
+            ),
+        (Union,
+            params_def = &pb->m_params;
+            ),
+        (Struct,
+            params_def = &pb->m_params;
+
+            if( pb->m_struct_markings.dst_type == ::HIR::StructMarkings::DstType::Possible )
+            {
+                // Check sized-ness of the unsized param
+                this->require_sized( sp, e->path.m_data.as_Generic().m_params.m_types.at(pb->m_struct_markings.unsized_param) );
+            }
+            )
+        )
+
+        if( params_def )
+        {
+            const auto& gp_tys = e->path.m_data.as_Generic().m_params.m_types;
+            for(size_t i = 0; i < gp_tys.size(); i ++)
+            {
+                if(params_def->m_types.at(i).m_is_sized)
+                {
+                    this->require_sized( sp, gp_tys[i] );
+                }
+            }
+        }
+    }
+    else if( const auto* e = ty.m_data.opt_Tuple() )
+    {
+        // All entries in a tuple must be Sized
+        for(const auto& ity : *e)
+        {
+            this->require_sized( sp, ity );
+        }
+    }
+    else if( const auto* e = ty.m_data.opt_Array() )
+    {
+        // Inner type of an array must be sized
+        this->require_sized(sp, *e->inner);
+    }
 }
 
 void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to, bool is_borrow) {
@@ -4869,6 +4982,16 @@ namespace {
         const auto& ty_src = context.m_ivars.get_type(node_ptr->m_res_type);
         TRACE_FUNCTION_F(v << " - " << context.m_ivars.fmt_type(ty_dst) << " := " << context.m_ivars.fmt_type(ty_src));
 
+        // NOTE: Coercions can happen on comparisons, which means that this check isn't valid (because you can compare unsized types)
+#if 0
+        if( context.m_resolve.type_is_sized(sp, ty_dst) == ::HIR::Compare::Unequal ) {
+            BUG(sp, "Coercing to unsized type is invalid (inferrence failed) - " << ty_dst << " := " << ty_src);
+        }
+        if( context.m_resolve.type_is_sized(sp, ty_src) == ::HIR::Compare::Unequal ) {
+            BUG(sp, "Coercing from unsized type is invalid (inferrence failed) - " << ty_dst << " := " << ty_src);
+        }
+#endif
+
         switch( check_coerce_tys(context, sp, ty_dst, ty_src, &node_ptr) )
         {
         case CoerceResult::Unknown:
@@ -5299,6 +5422,7 @@ namespace {
         ::HIR::TypeRef  ty_l_ivar;
         ty_l_ivar.m_data.as_Infer().index = i;
         const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
+        bool allow_unsized = !(i < context.m_ivars_sized.size() ? context.m_ivars_sized.at(i) : false);
 
         if( ty_l != ty_l_ivar ) {
             DEBUG("- IVar " << i << " had possibilities, but was known to be " << ty_l);
@@ -5809,6 +5933,15 @@ namespace {
                                 break ;
                             }
                         }
+
+                        if( !remove && !allow_unsized )
+                        {
+                            if( context.m_resolve.type_is_sized(sp, new_ty) == ::HIR::Compare::Unequal )
+                            {
+                                remove = true;
+                                DEBUG("Remove possibility " << new_ty << " because it isn't Sized");
+                            }
+                        }
                     }
 
                     if( remove ) {
@@ -5835,6 +5968,15 @@ namespace {
                             remove = true;
                             DEBUG("Remove target type " << *it << " because it cannot be created from a source type");
                             break;
+                        }
+                    }
+
+                    if( !remove && !allow_unsized )
+                    {
+                        if( context.m_resolve.type_is_sized(sp, *it) == ::HIR::Compare::Unequal )
+                        {
+                            remove = true;
+                            DEBUG("Remove possibility " << *it << " because it isn't Sized");
                         }
                     }
 
@@ -6028,6 +6170,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             ::HIR::ExprNode& node = **it;
             ExprVisitor_Revisit visitor { context };
+            DEBUG("> " << &node << " " << typeid(node).name() << " -> " << context.m_ivars.fmt_type(node.m_res_type));
             node.visit( visitor );
             //  - If the node is completed, remove it
             if( visitor.node_completed() ) {

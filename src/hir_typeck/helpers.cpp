@@ -2986,7 +2986,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         return ::HIR::Compare::Unequal;
         ),
     (Path,
-        // ... TODO (Search the innards or bounds)
+        // TODO: Check that only ?Sized parameters are !Sized
         TU_MATCHA( (e.binding), (pb),
         (Unbound,
             //
@@ -3007,8 +3007,8 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             case ::HIR::StructMarkings::DstType::None:
                 break;
             case ::HIR::StructMarkings::DstType::Possible:
-                // TODO: Check sized-ness of the unsized param/field
-                break;
+                // Check sized-ness of the unsized param
+                return type_is_sized(sp, e.path.m_data.as_Generic().m_params.m_types.at(pb->m_struct_markings.unsized_param));
             case ::HIR::StructMarkings::DstType::Slice:
             case ::HIR::StructMarkings::DstType::TraitObject:
                 return ::HIR::Compare::Unequal;
