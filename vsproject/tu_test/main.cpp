@@ -43,4 +43,14 @@ int main()
 	(Baz,
 		)
 	)
+
+#if 1
+    switch(tmp.tag())
+    {
+    TU_ARM(tmp, Baz, e) {
+        } break;
+    TU_ARM(tmp, Bar, e) {
+        } break;
+    }
+#endif
 }
