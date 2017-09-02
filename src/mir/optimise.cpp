@@ -1942,7 +1942,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     auto it = known_drop_flags.find(se->other);
                     if( it != known_drop_flags.end() )
                     {
-                        known_drop_flags.insert(::std::make_pair( se->idx, se->new_val ^ it->second ));
+                        known_drop_flags.insert(::std::make_pair( se->idx, se->new_val != it->second ));
                     }
                 }
             }

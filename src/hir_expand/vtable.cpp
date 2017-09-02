@@ -156,7 +156,7 @@ namespace {
 
                             trait_ptr->m_value_indexes.insert( ::std::make_pair(
                                 vi.first,
-                                ::std::make_pair(fields.size(), trait_path.clone())
+                                ::std::make_pair(static_cast<unsigned int>(fields.size()), trait_path.clone())
                                 ) );
                             DEBUG("- '" << vi.first << "' is @" << fields.size());
                             fields.push_back( ::std::make_pair(

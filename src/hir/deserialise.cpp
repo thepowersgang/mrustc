@@ -1064,7 +1064,7 @@ namespace {
             })
         _(Switch, {
             deserialise_mir_lvalue(),
-            deserialise_vec_c<unsigned int>([&](){ return m_in.read_count(); })
+            deserialise_vec_c<unsigned int>([&](){ return static_cast<unsigned int>(m_in.read_count()); })
             })
         _(Call, {
             static_cast<unsigned int>(m_in.read_count()),
