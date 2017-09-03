@@ -586,17 +586,29 @@ void PackageManifest::load_build_script(const ::std::string& path)
 void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_path, bool include_build_deps)
 {
     TRACE_FUNCTION_F(this->m_name);
-    // If the path isn't set, check for:
-    // - Git (checkout and use)
-    // - Version and repository (check vendored, check cache, download into cache)
-    if( ! this->has_path() )
+    if( !m_manifest )
     {
-        if( this->has_git() )
+        // If the path isn't set, check for:
+        // - Git (checkout and use)
+        // - Version and repository (check vendored, check cache, download into cache)
+        if( this->has_path() )
+        {
+            DEBUG("Load dependency " << m_name << " from path " << m_path);
+            // Search for a copy of this already loaded
+            auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
+            if( ::std::ifstream(path.str()).good() )
+            {
+                m_manifest = repo.from_path(path);
+            }
+        }
+
+        if( !m_manifest && this->has_git() )
         {
             DEBUG("Load dependency " << this->name() << " from git");
             throw "TODO: Git";
         }
-        else
+
+        if( !m_manifest )
         {
             DEBUG("Load dependency " << this->name() << " from repo");
             m_manifest = repo.find(this->name(), this->get_version());
@@ -604,13 +616,11 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
                 throw ::std::runtime_error(::format("Unable to load manifest for ", this->name(), ":", this->get_version()));
             }
         }
-    }
-    else
-    {
-        DEBUG("Load dependency " << m_name << " from path " << m_path);
-        // Search for a copy of this already loaded
-        m_manifest = repo.from_path(base_path / ::helpers::path(m_path) / "Cargo.toml");
-        assert(m_manifest);
+
+        if( !m_manifest )
+        {
+            throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name() ));
+        }
     }
 
     m_manifest->set_features(this->m_features, this->m_use_default_features);
