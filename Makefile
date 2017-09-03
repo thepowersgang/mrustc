@@ -138,6 +138,12 @@ output/%.ast: samples/%.rs $(BIN)
 RUSTCSRC := rustc-nightly/
 RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
+fn_build_lib =\
+  $Vecho "--- [MRUSTC] $@" ; \
+  mkdir -p $(dir $@); rm -f $@ ; \
+  $(DBG) $(ENV_$@) $(BIN) $1 --crate-type rlib --crate-name $2 -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD) ; \
+  test -e $@
+
 output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
@@ -159,6 +165,16 @@ output/lib%.hir: $(RUSTCSRC)src/vendor/%/src/lib.rs $(RUSTCSRC) $(BIN)
 	$(DBG) $(ENV_$@) $(BIN) $< --crate-type rlib --crate-name $* -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
+
+output/librustc_demangle.hir: $(RUSTCSRC)src/vendor/rustc-demangle/src/lib.rs $(RUSTCSRC) $(BIN)
+	$(call fn_build_lib, $<, rustc_demangle)
+output/librls_data.hir: $(RUSTCSRC)src/vendor/rls-data/src/lib.rs $(RUSTCSRC) $(BIN)
+	$(call fn_build_lib, $<, rls_data)
+output/librls_span.hir: $(RUSTCSRC)src/vendor/rls-span/src/lib.rs $(RUSTCSRC) $(BIN)
+	$(call fn_build_lib, $<, rls_span)
+output/librustc_serialize.hir: $(RUSTCSRC)src/vendor/rustc-serialize/src/lib.rs $(RUSTCSRC) $(BIN)
+	$(call fn_build_lib, $< rustc_serialize)
+
 output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN) output/libtest.hir
 	@echo "--- [MRUSTC] --test -o $@"
 	@mkdir -p output/
@@ -243,7 +259,8 @@ output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, 
 ARGS_output/libstd.hir := --cfg feature=backtrace
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86 --cfg cargobuild
 ARGS_output/liblog.hir := --cfg feature=use_std
-ARGS_output/libstable_deref_trait.hir := --cfg feature=std
+ARGS_output/libstable_deref_trait.hir := --cfg feature=stdR
+ARGS_output/librustc_allocator.hir := --crate-type rlib --crate-name rustc_allocator
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
 
 ENV_output/librustc.hir := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_HOST)
