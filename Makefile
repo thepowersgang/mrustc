@@ -243,6 +243,7 @@ output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, 
 ARGS_output/libstd.hir := --cfg feature=backtrace
 ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86 --cfg cargobuild
 ARGS_output/liblog.hir := --cfg feature=use_std
+ARGS_output/libstable_deref_trait.hir := --cfg feature=std
 ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
 
 ENV_output/librustc.hir := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_HOST)
@@ -288,13 +289,15 @@ output/librustc_data_structures.hir: $(call fcn_extcrate, std log serialize libc
 output/librustc_const_math.hir: $(call fcn_extcrate, std log syntax serialize)
 output/libfmt_macros.hir: $(call fcn_extcrate, std)
 output/libproc_macro.hir: $(call fcn_extcrate, std syntax)
-output/libsyntax_ext.hir: $(call fcn_extcrate, std fmt_macros log syntax syntax_pos proc_macro rustc_errors)
-output/librustc_metadata.hir: $(call fcn_extcrate, std log syntax syntax_pos flate2 serialize rustc_errors syntax_ext proc_macro rustc rustc_back rustc_const_math rustc_data_structures rustc_llvm)
+output/libsyntax_ext.hir: $(call fcn_extcrate, std fmt_macros log syntax syntax_pos rustc_errors proc_macro)
+output/librustc_metadata.hir: $(call fcn_extcrate, std log flate2 serialize rustc rustc_back rustc_const_math rustc_data_structures rustc_errors syntax syntax_pos syntax_ext)
 output/librustc_borrowck.hir: $(call fcn_extcrate, std log syntax syntax_pos rustc_errors graphviz rustc rustc_data_structures rustc_mir core)
 output/librustc_mir.hir: $(call fcn_extcrate, std log graphviz rustc rustc_data_structures rustc_back rustc_bitflags syntax syntax_pos rustc_const_math rustc_const_eval)
 output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
 output/libgraphviz.hir: $(call fcn_extcrate, std)
+output/libstable_deref_trait.hir: $(call fcn_extcrate, std)
 output/libowning_ref.hir: $(call fcn_extcrate, std stable_deref_trait $(call fn_getdeps, $(RUSTCSRC)src/vendor/owning_ref/src/lib.rs))
+output/libjobserver.hir: $(call fcn_extcrate, std)
 
 output/libsyntax_pos.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libsyntax_pos/lib.rs))
 
