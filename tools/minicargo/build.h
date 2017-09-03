@@ -9,17 +9,12 @@ struct Timestamp;
 
 class Builder
 {
-    static const char* const MRUSTC_PATH;
-
     ::helpers::path m_output_dir;
     ::helpers::path m_build_script_overrides;
+    ::helpers::path m_compiler_path;
 
 public:
-    Builder(::helpers::path output_dir, ::helpers::path override_dir):
-        m_output_dir(output_dir),
-        m_build_script_overrides(override_dir)
-    {
-    }
+    Builder(::helpers::path output_dir, ::helpers::path override_dir);
 
     bool build_target(const PackageManifest& manifest, const PackageTarget& target) const;
     bool build_library(const PackageManifest& manifest) const;

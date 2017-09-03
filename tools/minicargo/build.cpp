@@ -202,12 +202,6 @@ struct Timestamp
     }
 };
 
-#if _WIN32
-const char* const Builder::MRUSTC_PATH = "x64\\Release\\mrustc.exe";
-#else
-const char* const Builder::MRUSTC_PATH = "../bin/mrustc";
-#endif
-
 void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path)
 {
     BuildList   list;
@@ -293,6 +287,29 @@ void BuildList::sort_list()
     }
 }
 
+Builder::Builder(::helpers::path output_dir, ::helpers::path override_dir):
+    m_output_dir(output_dir),
+    m_build_script_overrides(override_dir)
+{
+#ifdef _WIN32
+    char buf[1024];
+    size_t s = GetModuleFileName(NULL, buf, sizeof(buf)-1);
+    buf[s] = 0;
+
+    ::helpers::path minicargo_path { buf };
+    minicargo_path.pop_component();
+    m_compiler_path = minicargo_path / "mrustc.exe";
+#else
+    char buf[1024];
+    size_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
+    buf[s] = 0;
+
+    ::helpers::path minicargo_path { buf };
+    minicargo_path.pop_component();
+    m_compiler_path = (minicargo_path / "../../bin/mrustc").normalise();
+#endif
+}
+
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target) const
 {
     auto outfile = m_output_dir / ::format("lib", target.m_name, ".hir");
@@ -313,9 +330,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         // Rebuild (missing)
         DEBUG("Building " << outfile << " - Missing");
     }
-    else if( ts_result < this->get_timestamp(MRUSTC_PATH) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) {
+    else if( ts_result < this->get_timestamp(m_compiler_path) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) {
         // Rebuild (older than mrustc/minicargo)
-        DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(MRUSTC_PATH) << ")");
+        DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(m_compiler_path) << ")");
     }
     else {
         // TODO: Check dependencies. (from depfile)
@@ -323,7 +340,6 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         DEBUG("Not building " << outfile << " - not out of date");
         return true;
     }
-    
 
     for(const auto& cmd : manifest.build_script_output().pre_build_commands)
     {
@@ -348,6 +364,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     for(const auto& flag : manifest.build_script_output().rustc_flags) {
         args.push_back(flag.c_str());
     }
+    // TODO: Feature flags
     // TODO: Environment variables (rustc_env)
     StringListKV    env;
 
@@ -391,9 +408,9 @@ bool Builder::build_library(const PackageManifest& manifest) const
             if( ts_result == Timestamp::infinite_past() ) {
                 DEBUG("Building " << out_file << " - Missing");
             }
-            else if( ts_result < this->get_timestamp(MRUSTC_PATH) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) {
+            else if( ts_result < this->get_timestamp(m_compiler_path) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) {
                 // Rebuild (older than mrustc/minicargo)
-                DEBUG("Building " << out_file << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(MRUSTC_PATH) << ")");
+                DEBUG("Building " << out_file << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(m_compiler_path) << ")");
             }
             else
             {
@@ -456,7 +473,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
 bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
     env.push_back("MRUSTC_DEBUG", "");
-    return spawn_process(MRUSTC_PATH, args, env, logfile);
+    return spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
 }
 bool Builder::spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile) const
 {
@@ -494,7 +511,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
         WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
     PROCESS_INFORMATION pi = { 0 };
-    CreateProcessA(MRUSTC_PATH, (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    CreateProcessA(exe_name, (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
     CloseHandle(si.hStdOutput);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD status = 1;
