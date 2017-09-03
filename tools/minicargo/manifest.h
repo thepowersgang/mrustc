@@ -262,6 +262,9 @@ public:
     const ::std::vector<PackageRef>& build_dependencies() const {
         return m_build_dependencies;
     }
+    const ::std::vector<::std::string>& active_features() const {
+        return m_active_features;
+    }
 
     void set_features(const ::std::vector<::std::string>& features, bool enable_default);
     void load_dependencies(Repository& repo, bool include_build);

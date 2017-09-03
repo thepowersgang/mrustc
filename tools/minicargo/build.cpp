@@ -364,7 +364,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     for(const auto& flag : manifest.build_script_output().rustc_flags) {
         args.push_back(flag.c_str());
     }
-    // TODO: Feature flags
+    for(const auto& feat : manifest.active_features()) {
+        args.push_back("--cfg"); args.push_back(::format("feature=", feat));
+    }
     // TODO: Environment variables (rustc_env)
     StringListKV    env;
 
