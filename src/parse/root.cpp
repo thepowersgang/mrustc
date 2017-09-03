@@ -52,8 +52,22 @@ bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
     if( LOOK_AHEAD(lex) == TOK_RWORD_PUB )
     {
         GET_TOK(tok, lex);
-        if( allow_restricted && LOOK_AHEAD(lex) == TOK_PAREN_OPEN )
+        if( LOOK_AHEAD(lex) == TOK_PAREN_OPEN )
         {
+            // HACK: tuple structs have a parsing ambiguity around `pub (self::Type,)`
+            if( !allow_restricted )
+            {
+                if( lex.lookahead(1) == TOK_RWORD_IN )
+                    ;
+                else if( lex.lookahead(1) == TOK_RWORD_CRATE && lex.lookahead(2) == TOK_PAREN_CLOSE )
+                    ;
+                else if( lex.lookahead(1) == TOK_RWORD_SUPER && lex.lookahead(2) == TOK_PAREN_CLOSE )
+                    ;
+                else if( lex.lookahead(1) == TOK_RWORD_SELF && lex.lookahead(2) == TOK_PAREN_CLOSE )
+                    ;
+                else
+                    return true;
+            }
             auto    path = AST::Path("", {});
             // Restricted publicity.
             GET_TOK(tok, lex);  // '('
@@ -80,7 +94,8 @@ bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
                     break;
                 GET_TOK(tok, lex);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            case TOK_IDENT:
+            case TOK_RWORD_IN:
+                GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 path.nodes().push_back( AST::PathNode(tok.str()) );
                 while( LOOK_AHEAD(lex) == TOK_DOUBLE_COLON )
                 {
