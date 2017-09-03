@@ -4478,6 +4478,19 @@ namespace {
                         {
                             context.equate_types(sp, trait.m_params.m_types[i], args.m_types[i]);
                         }
+                        for(const auto& tyb : dep->m_trait.m_type_bounds)
+                        {
+                            auto ty = best_impl.get_type(tyb.first.c_str());
+                            if( ty != ::HIR::TypeRef() )
+                            {
+                                context.equate_types(sp, tyb.second, ty);
+                            }
+                            else
+                            {
+                                // Error? Log? ...
+                                DEBUG("Associated type " << tyb.first << " not present in impl, can't equate");
+                            }
+                        }
                     }
                 }
 
