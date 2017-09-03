@@ -58,6 +58,13 @@ private:
     double parseFloat(uint64_t whole);
     uint32_t parseEscape(char enclosing);
 
+    void push_hygine() override {
+        m_hygiene = Ident::Hygiene::new_scope_chained(m_hygiene);
+    }
+    void pop_hygine() override {
+        m_hygiene = m_hygiene.get_parent();
+    }
+
     void ungetc();
     Codepoint getc_num();
     Codepoint getc();

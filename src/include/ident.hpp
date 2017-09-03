@@ -37,6 +37,13 @@ struct Ident
             rv.contexts.push_back( ++g_next_scope );
             return rv;
         }
+        Hygiene get_parent() const
+        {
+            //assert(this->contexts.size() > 1);
+            Hygiene rv;
+            rv.contexts.insert(rv.contexts.begin(),  this->contexts.begin(), this->contexts.end()-1);
+            return rv;
+        }
 
         Hygiene(Hygiene&& x) = default;
         Hygiene(const Hygiene& x) = default;

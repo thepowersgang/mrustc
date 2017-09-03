@@ -481,8 +481,11 @@ AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, boo
     Token   tok;
     auto ret = Parse_FunctionDef(lex, abi, allow_self, false,  is_unsafe, is_const);
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+    // Enter a new hygine scope (TODO: Should this be in Parse_ExprBlock?)
+    lex.push_hygine();
     PUTBACK(tok, lex);
     ret.set_code( Parse_ExprBlock(lex) );
+    lex.pop_hygine();
     return ret;
 }
 
@@ -775,7 +778,11 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
             {
                 PUTBACK(tok, lex);
+                // Enter a new hygine scope for the function body.
+                // - TODO: Should this just happen in Parse_ExprBlock?
+                lex.push_hygine();
                 fcn.set_code( Parse_ExprBlock(lex) );
+                lex.pop_hygine();
             }
             else if( tok.type() == TOK_SEMICOLON )
             {

@@ -61,6 +61,8 @@ public:
     eTokenType  lookahead(unsigned int count);
 
     Ident::Hygiene getHygiene() const;
+    virtual void push_hygine() {}
+    virtual void pop_hygine() {}
 
     ParseState& parse_state() { return m_parse_state; }
 
