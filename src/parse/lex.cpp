@@ -97,6 +97,7 @@ static const struct {
   TOKENT("::", TOK_DOUBLE_COLON),
   TOKENT(";",  TOK_SEMICOLON),
   TOKENT("<",  TOK_LT),
+  TOKENT("<-", TOK_THINARROW_LEFT),
   TOKENT("<<", TOK_DOUBLE_LT),
   TOKENT("<<=",TOK_DOUBLE_LT_EQUAL),
   TOKENT("<=", TOK_LTE),

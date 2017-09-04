@@ -698,14 +698,31 @@ bool Parse_IsTokValue(eTokenType tok_type)
     default:
         return false;
     }
-
 }
 ExprNodeP Parse_Expr1_1(TokenStream& lex);
-// Very evil handling for '..'
 ExprNodeP Parse_Expr1(TokenStream& lex)
 {
     Token   tok;
     ExprNodeP (*next)(TokenStream&) = Parse_Expr1_1;
+
+    auto dest = next(lex);
+    if( lex.lookahead(0) == TOK_THINARROW_LEFT )
+    {
+        GET_TOK(tok, lex);
+        auto val = Parse_Expr1(lex);
+        return NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::PLACE_IN, mv$(dest), mv$(val));
+    }
+    else
+    {
+        return dest;
+    }
+}
+ExprNodeP Parse_Expr1_2(TokenStream& lex);
+// Very evil handling for '..'
+ExprNodeP Parse_Expr1_1(TokenStream& lex)
+{
+    Token   tok;
+    ExprNodeP (*next)(TokenStream&) = Parse_Expr1_2;
     ExprNodeP   left, right;
 
     // Inclusive range to a value
@@ -746,7 +763,7 @@ ExprNodeP Parse_Expr1(TokenStream& lex)
     return NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE, ::std::move(left), ::std::move(right) );
 }
 // TODO: Is this left associative?
-LEFTASSOC(Parse_Expr1_1, Parse_Expr1_5,
+LEFTASSOC(Parse_Expr1_2, Parse_Expr1_5,
     case TOK_TRIPLE_DOT:
         rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, mv$(rv), next(lex) );
         break;

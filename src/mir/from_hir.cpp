@@ -1531,28 +1531,30 @@ namespace {
             if( node.m_type == ::HIR::ExprNode_Emplace::Type::Noop ) {
                 return node.m_value->visit(*this);
             }
-            //const auto& path_Placer = m_builder.crate().get_lang_item_path(node.span(), "placer_trait");
+            const auto& path_Placer = m_builder.crate().get_lang_item_path(node.span(), "placer_trait");
             const auto& path_Boxed = m_builder.crate().get_lang_item_path(node.span(), "boxed_trait");
             const auto& path_Place = m_builder.crate().get_lang_item_path(node.span(), "place_trait");
             const auto& path_BoxPlace = m_builder.crate().get_lang_item_path(node.span(), "box_place_trait");
-            //const auto& path_InPlace = m_builder.crate().get_lang_item_path(node.span(), "in_place_trait");
+            const auto& path_InPlace = m_builder.crate().get_lang_item_path(node.span(), "in_place_trait");
 
             const auto& data_ty = node.m_value->m_res_type;
 
+            ::HIR::PathParams   trait_params_data;
+            trait_params_data.m_types.push_back( data_ty.clone() );
             // 1. Obtain the type of the `place` variable
             ::HIR::TypeRef  place_type;
             switch( node.m_type )
             {
             case ::HIR::ExprNode_Emplace::Type::Noop:
                 throw "";
-            case ::HIR::ExprNode_Emplace::Type::Boxer: {
+            case ::HIR::ExprNode_Emplace::Type::Boxer:
                 place_type = ::HIR::TypeRef::new_path( ::HIR::Path(node.m_res_type.clone(), ::HIR::GenericPath(path_Boxed), "Place", {}), {} );
-                m_builder.resolve().expand_associated_types( node.span(), place_type );
-                break; }
+                break;
             case ::HIR::ExprNode_Emplace::Type::Placer:
-                TODO(node.span(), "_Emplace - Placer");
+                place_type = ::HIR::TypeRef::new_path( ::HIR::Path(node.m_place->m_res_type.clone(), ::HIR::GenericPath(path_Placer, trait_params_data.clone()), "Place", {}), {} );
                 break;
             }
+            m_builder.resolve().expand_associated_types( node.span(), place_type );
 
             // 2. Initialise the place
             auto place = m_builder.new_temporary( place_type );
@@ -1563,17 +1565,26 @@ namespace {
             case ::HIR::ExprNode_Emplace::Type::Noop:
                 throw "";
             case ::HIR::ExprNode_Emplace::Type::Boxer: {
-                ::HIR::PathParams   trait_params;
-                trait_params.m_types.push_back( data_ty.clone() );
                 m_builder.end_block(::MIR::Terminator::make_Call({
                     place__ok, place__panic,
-                    place.clone(), ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_BoxPlace, mv$(trait_params)), "make_place", {}),
+                    place.clone(), ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_BoxPlace, mv$(trait_params_data)), "make_place", {}),
                     {}
                     }));
                 break; }
-            case ::HIR::ExprNode_Emplace::Type::Placer:
-                TODO(node.span(), "_Emplace - Placer");
-                break;
+            case ::HIR::ExprNode_Emplace::Type::Placer: {
+                // Visit the place
+                node.m_place->visit(*this);
+                auto val = m_builder.get_result_in_param(node.m_place->span(), node.m_place->m_res_type);
+                if(const auto* e = val.opt_LValue() ) {
+                    m_builder.moved_lvalue( node.m_place->span(), *e );
+                }
+                // Extract the "Place" type
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    place__ok, place__panic,
+                    place.clone(), ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Placer, trait_params_data.clone()), "make_place", {}),
+                    ::make_vec1( mv$(val) )
+                    }));
+                break; }
             }
 
             // TODO: Proper panic handling, including scope destruction
@@ -1624,7 +1635,7 @@ namespace {
                 finalize_path = ::HIR::Path(node.m_res_type.clone(), ::HIR::GenericPath(path_Boxed), "finalize");
                 break;
             case ::HIR::ExprNode_Emplace::Type::Placer:
-                TODO(node.span(), "_Emplace - Placer");
+                finalize_path = ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_InPlace, trait_params_data.clone()), "finalize");
                 break;
             }
 

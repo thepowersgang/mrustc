@@ -2270,78 +2270,94 @@ namespace {
         void visit(::HIR::ExprNode_Emplace& node) override {
             const auto& sp = node.span();
             const auto& exp_ty = this->context.get_type(node.m_res_type);
-            const auto& data_ty = node.m_value->m_res_type;
+            const auto& data_ty = this->context.get_type(node.m_value->m_res_type);
+            const auto& placer_ty = this->context.get_type(node.m_place->m_res_type);
             auto node_ty = node.m_type;
-            TRACE_FUNCTION_F("_Emplace: exp_ty=" << exp_ty);
+            TRACE_FUNCTION_F("_Emplace: exp_ty=" << exp_ty << ", data_ty=" << data_ty << ", placer_ty" << placer_ty);
 
-            if( exp_ty.m_data.is_Infer() ) {
-                // If the expected result type is still an ivar, nothing can be done
-
-                // HACK: Add a possibility of the result type being ``Box<`data_ty`>``
-                // - This only happens if the `owned_box` lang item is present and this node is a `box` operation
-                const auto& lang_Boxed = this->context.m_lang_Box;
-                if( ! lang_Boxed.m_components.empty() && node_ty == ::HIR::ExprNode_Emplace::Type::Boxer )
-                {
-                    // NOTE: `owned_box` shouldn't point to anything but a struct
-                    const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
-                    // TODO: Store this type to avoid having to construct it every pass
-                    auto boxed_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_Boxed, {data_ty.clone()}), &str );
-                    this->context.possible_equate_type_coerce_from( exp_ty.m_data.as_Infer().index, boxed_ty );
-                }
-                return ;
-            }
-            // Assert that the expected result is a Path::Generic type.
-            if( ! exp_ty.m_data.is_Path() ) {
-                ERROR(sp, E0000, "box/in can only produce GenericPath types, got " << exp_ty);
-            }
-            const auto& path = exp_ty.m_data.as_Path().path;
-            if( ! path.m_data.is_Generic() ) {
-                ERROR(sp, E0000, "box/in can only produce GenericPath types, got " << exp_ty);
-            }
-            const auto& gpath = path.m_data.as_Generic();
-
-            const ::HIR::TypeRef* inner_ty;
-            if( gpath.m_params.m_types.size() > 0 )
-            {
-                // TODO: If there's only one, check if it's a valid coercion target, if not don't bother making the coercion.
-
-                // Take a copy of the type with all type parameters replaced with new ivars
-                auto newpath = ::HIR::GenericPath(gpath.m_path);
-                for( const auto& t : gpath.m_params.m_types )
-                {
-                    (void)t;
-                    newpath.m_params.m_types.push_back( this->context.m_ivars.new_ivar_tr() );
-                }
-                auto newty = ::HIR::TypeRef::new_path( mv$(newpath), exp_ty.m_data.as_Path().binding.clone() );
-
-                // Turn this revisit into a coercion point with the new result type
-                // - Mangle this node to be a passthrough to a copy of itself.
-
-                node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Emplace(node.span(), node.m_type, mv$(node.m_place), mv$(node.m_value)) );
-                node.m_type = ::HIR::ExprNode_Emplace::Type::Noop;
-                node.m_value->m_res_type = mv$(newty);
-                inner_ty = &node.m_value->m_res_type;
-
-                this->context.equate_types_coerce(sp, exp_ty, node.m_value);
-            }
-            else
-            {
-                inner_ty = &exp_ty;
-            }
-
-            // Insert a trait bound on the result type to impl `Placer/Boxer`
-            switch( node_ty )
+            switch(node_ty)
             {
             case ::HIR::ExprNode_Emplace::Type::Noop:
-                BUG(sp, "Encountered Noop _Emplace in typecheck");
-            case ::HIR::ExprNode_Emplace::Type::Boxer:
+                BUG(sp, "No-op _Emplace in typeck?");
+                break;
+            case ::HIR::ExprNode_Emplace::Type::Placer: {
+                if( placer_ty.m_data.is_Infer() )
+                {
+                    // Can't do anything, the place is still unknown
+                    DEBUG("Place unknown, wait");
+                    return ;
+                }
+
+                // Where P = `placer_ty` and D = `data_ty`
+                // Result type is <<P as Placer<D>>::Place as InPlace<D>>::Owner
+                const auto& lang_Placer = this->context.m_crate.get_lang_item_path(sp, "placer_trait");
+                const auto& lang_InPlace = this->context.m_crate.get_lang_item_path(sp, "in_place_trait");
+                // - Bound P: Placer<D>
+                this->context.equate_types_assoc(sp, {}, lang_Placer, ::make_vec1(data_ty.clone()), placer_ty, "");
+                // - 
+                auto place_ty = ::HIR::TypeRef( ::HIR::Path(placer_ty.clone(), ::HIR::GenericPath(lang_Placer, ::HIR::PathParams(data_ty.clone())), "Place") );
+                this->context.equate_types_assoc(sp, node.m_res_type, lang_InPlace, ::make_vec1(data_ty.clone()), place_ty, "Owner");
+                break; }
+            case ::HIR::ExprNode_Emplace::Type::Boxer: {
+                const ::HIR::TypeRef* inner_ty;
+                if( exp_ty.m_data.is_Infer() ) {
+                    // If the expected result type is still an ivar, nothing can be done
+
+                    // HACK: Add a possibility of the result type being ``Box<`data_ty`>``
+                    // - This only happens if the `owned_box` lang item is present and this node is a `box` operation
+                    const auto& lang_Boxed = this->context.m_lang_Box;
+                    if( ! lang_Boxed.m_components.empty() )
+                    {
+                        // NOTE: `owned_box` shouldn't point to anything but a struct
+                        const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
+                        // TODO: Store this type to avoid having to construct it every pass
+                        auto boxed_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_Boxed, {data_ty.clone()}), &str );
+                        this->context.possible_equate_type_coerce_from( exp_ty.m_data.as_Infer().index, boxed_ty );
+                    }
+                    return ;
+                }
+                // Assert that the expected result is a Path::Generic type.
+                if( ! exp_ty.m_data.is_Path() ) {
+                    ERROR(sp, E0000, "box/in can only produce GenericPath types, got " << exp_ty);
+                }
+                const auto& path = exp_ty.m_data.as_Path().path;
+                if( ! path.m_data.is_Generic() ) {
+                    ERROR(sp, E0000, "box/in can only produce GenericPath types, got " << exp_ty);
+                }
+                const auto& gpath = path.m_data.as_Generic();
+
+                if( gpath.m_params.m_types.size() > 0 )
+                {
+                    // TODO: If there's only one, check if it's a valid coercion target, if not don't bother making the coercion.
+
+                    // Take a copy of the type with all type parameters replaced with new ivars
+                    auto newpath = ::HIR::GenericPath(gpath.m_path);
+                    for( const auto& t : gpath.m_params.m_types )
+                    {
+                        (void)t;
+                        newpath.m_params.m_types.push_back( this->context.m_ivars.new_ivar_tr() );
+                    }
+                    auto newty = ::HIR::TypeRef::new_path( mv$(newpath), exp_ty.m_data.as_Path().binding.clone() );
+
+                    // Turn this revisit into a coercion point with the new result type
+                    // - Mangle this node to be a passthrough to a copy of itself.
+
+                    node.m_value = ::HIR::ExprNodeP( new ::HIR::ExprNode_Emplace(node.span(), node.m_type, mv$(node.m_place), mv$(node.m_value)) );
+                    node.m_type = ::HIR::ExprNode_Emplace::Type::Noop;
+                    node.m_value->m_res_type = mv$(newty);
+                    inner_ty = &node.m_value->m_res_type;
+
+                    this->context.equate_types_coerce(sp, exp_ty, node.m_value);
+                }
+                else
+                {
+                    inner_ty = &exp_ty;
+                }
+
+                // Insert a trait bound on the result type to impl `Placer/Boxer`
                 //this->context.equate_types_assoc(sp, {}, ::HIR::SimplePath("core", { "ops", "Boxer" }), ::make_vec1(data_ty.clone()), *inner_ty, "");
                 this->context.equate_types_assoc(sp, data_ty, this->context.m_crate.get_lang_item_path(sp, "boxed_trait"), {}, *inner_ty, "Data");
-                break;
-            case ::HIR::ExprNode_Emplace::Type::Placer:
-                // TODO: Search for `Placer<T>`, not `Placer`
-                this->context.equate_types_assoc(sp, {}, this->context.m_crate.get_lang_item_path(sp, "placer_trait"), ::make_vec1(data_ty.clone()), *inner_ty, "");
-                break;
+                break; }
             }
 
             this->m_completed = true;

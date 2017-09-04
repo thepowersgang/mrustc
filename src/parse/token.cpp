@@ -330,8 +330,9 @@ struct EscapedString {
     case TOK_AMP:   return "&";
     case TOK_PIPE:  return "|";
 
-    case TOK_FATARROW:  return "=>";       // =>
-    case TOK_THINARROW: return "->";      // ->
+    case TOK_FATARROW:  return "=>";
+    case TOK_THINARROW: return "->";
+    case TOK_THINARROW_LEFT: return "<-";
 
     case TOK_PLUS:  return "+";
     case TOK_DASH:  return "-";

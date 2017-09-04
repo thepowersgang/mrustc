@@ -43,6 +43,7 @@ _(TOK_PIPE)
 
 _(TOK_FATARROW)   // =>
 _(TOK_THINARROW)  // ->
+_(TOK_THINARROW_LEFT)   // <-
 
 _(TOK_PLUS) _(TOK_DASH)
 _(TOK_EXCLAM)

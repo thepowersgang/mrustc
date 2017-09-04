@@ -124,7 +124,11 @@ struct LowerHIR_ExprNode_Visitor:
             BUG(v.span(), "Unexpected RANGE_INC binop");
             break; }
         case ::AST::ExprNode_BinOp::PLACE_IN:
-            TODO(v.span(), "Desugar placement syntax");
+            m_rv.reset(new ::HIR::ExprNode_Emplace(v.span(),
+                ::HIR::ExprNode_Emplace::Type::Placer,
+                LowerHIR_ExprNode_Inner(*v.m_left),
+                LowerHIR_ExprNode_Inner(*v.m_right)
+                ));
             break;
 
         case ::AST::ExprNode_BinOp::CMPEQU :    op = ::HIR::ExprNode_BinOp::Op::CmpEqu ; if(0)
@@ -160,11 +164,8 @@ struct LowerHIR_ExprNode_Visitor:
         switch(v.m_type)
         {
         case ::AST::ExprNode_UniOp::BOX: {
-            // TODO: Emit a call to `<_ as "core"::default::Default>::default()` in place of the nullptr
-            auto path_Default   = ::HIR::GenericPath( ::HIR::SimplePath(g_core_crate, {"default", "Default"}) );
             m_rv.reset(new ::HIR::ExprNode_Emplace(v.span(),
                 ::HIR::ExprNode_Emplace::Type::Boxer,
-                //::HIR::ExprNodeP(new ::HIR::ExprNode_CallPath(v.span(), ::HIR::Path(::HIR::TypeRef(), mv$(path_Default), "default"), {} )),
                 ::HIR::ExprNodeP(new ::HIR::ExprNode_Tuple(v.span(), {})),
                 LowerHIR_ExprNode_Inner(*v.m_value)
                 ));
