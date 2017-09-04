@@ -13,6 +13,7 @@
 void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNode_Match& node, ::MIR::LValue match_val );
 
 #define FIELD_DEREF 255
+#define FIELD_INDEX_MAX 128
 
 struct field_path_t
 {
@@ -1374,6 +1375,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             PatternRulesetBuilder   sub_builder { this->m_resolve };
             sub_builder.m_field_path = m_field_path;
             sub_builder.m_field_path.push_back(0);
+            ASSERT_BUG(sp, pe.sub_patterns.size() < FIELD_INDEX_MAX, "Too many slice rules to fit encodng");
             for(const auto& subpat : pe.sub_patterns)
             {
                 sub_builder.append_from( sp, subpat, *e.inner );
@@ -1386,6 +1388,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         (SplitSlice,
             PatternRulesetBuilder   sub_builder { this->m_resolve };
             sub_builder.m_field_path = m_field_path;
+            ASSERT_BUG(sp, pe.leading.size() < FIELD_INDEX_MAX, "Too many leading slice rules to fit encodng");
             sub_builder.m_field_path.push_back(0);
             for(const auto& subpat : pe.leading)
             {
@@ -1394,11 +1397,17 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
             auto leading = mv$(sub_builder.m_rules);
 
-            sub_builder.m_field_path.back() = 0;
             if( pe.trailing.size() )
             {
                 // Needs a way of encoding the negative offset in the field path
-                TODO(sp, "SplitSlice on [T] with trailing - " << pat);
+                // - For now, just use a very high number (and assert that it's not more than 128)
+                ASSERT_BUG(sp, pe.trailing.size() < FIELD_INDEX_MAX, "Too many trailing slice rules to fit encodng");
+                sub_builder.m_field_path.back() = FIELD_INDEX_MAX + (FIELD_INDEX_MAX - pe.trailing.size());
+                for(const auto& subpat : pe.trailing)
+                {
+                    sub_builder.append_from( sp, subpat, *e.inner );
+                    sub_builder.m_field_path.back() ++;
+                }
             }
             auto trailing = mv$(sub_builder.m_rules);
 
@@ -1838,11 +1847,32 @@ namespace {
             (Array,
                 assert(idx < e.size_val);
                 cur_ty = &*e.inner;
-                lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                if( idx < FIELD_INDEX_MAX )
+                    lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                else {
+                    idx -= FIELD_INDEX_MAX;
+                    idx = FIELD_INDEX_MAX - idx;
+                    TODO(sp, "Index " << idx << " from end of array " << lval);
+                }
                 ),
             (Slice,
                 cur_ty = &*e.inner;
-                lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                if( idx < FIELD_INDEX_MAX )
+                    lval = ::MIR::LValue::make_Field({ box$(lval), idx });
+                else {
+                    idx -= FIELD_INDEX_MAX;
+                    idx = FIELD_INDEX_MAX - idx;
+                    TODO(sp, "Index " << idx << " from end of slice " << lval);
+                    // 1. Create an LValue containing the size of this slice subtract `idx`
+                    //  TODO: Requires access to the MIR generator
+#if 0
+                    auto len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval).clone() }));
+                    auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ idx, ::HIR::CoreType::Usize }));
+                    auto ofs_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
+                    // Return _Index with that value
+                    lval = ::MIR::LValue::make_Index({ box$(lval), box$(ofs_val) });
+#endif
+                }
                 ),
             (Borrow,
                 ASSERT_BUG(sp, idx == FIELD_DEREF, "Destructure of borrow doesn't correspond to a deref in the path");
@@ -2506,7 +2536,10 @@ namespace {
             for(auto& sr : leading)
                 push_flat_rules(out_rules, mv$(sr));
             // TODO: the trailing rules need a special path format.
-            ASSERT_BUG(Span(), trailing.size() == 0, "TODO: Handle SplitSlice with trailing");
+            if( !e.trailing.empty() )
+            {
+                TODO(Span(), "Handle SplitSlice with trailing");
+            }
             for(auto& sr : trailing)
                 push_flat_rules(out_rules, mv$(sr));
             ),
@@ -3290,9 +3323,16 @@ void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, co
         m_builder.set_cur_block(next);
     }
 
+    // 3. Recurse into trailing patterns
     if( e.trailing_len != 0 )
     {
-        TODO(sp, "Handle trailing rules in SplitSlice - " << e.trailing);
+        auto next = m_builder.new_bb_unlinked();
+        auto inner_set = t_rules_subset { 1, /*is_arm_indexes=*/false };
+        inner_set.push_bb( e.trailing, next );
+        auto inst = MatchGenGrouped { m_builder, sp, ty, val, {}, field_path.size() };
+        inst.gen_for_slice(inner_set, 0, def_blk);
+
+        m_builder.set_cur_block(next);
     }
 }
 

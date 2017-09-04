@@ -353,6 +353,21 @@ namespace {
                 {
                     ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
 
+                    struct H {
+                        static ::HIR::BorrowType get_borrow_type(const Span& sp, const ::HIR::PatternBinding& pb) {
+                            switch(pb.m_type)
+                            {
+                            case ::HIR::PatternBinding::Type::Move:
+                                BUG(sp, "By-value pattern binding of a slice");
+                            case ::HIR::PatternBinding::Type::Ref:
+                                return ::HIR::BorrowType::Shared;
+                            case ::HIR::PatternBinding::Type::MutRef:
+                                return ::HIR::BorrowType::Unique;
+                            }
+                            throw "";
+                        }
+                    };
+
                     // Acquire the slice size variable.
                     ::MIR::LValue   len_lval;
                     if( e.extra_bind.is_valid() || e.trailing.size() > 0 )
@@ -372,19 +387,7 @@ namespace {
                         ::MIR::LValue len_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
 
                         // 2. Obtain pointer to element
-                        ::HIR::BorrowType   bt = ::HIR::BorrowType::Owned;
-                        switch(e.extra_bind.m_type)
-                        {
-                        case ::HIR::PatternBinding::Type::Move:
-                            BUG(sp, "By-value pattern binding of a slice");
-                            throw "";
-                        case ::HIR::PatternBinding::Type::Ref:
-                            bt = ::HIR::BorrowType::Shared;
-                            break;
-                        case ::HIR::PatternBinding::Type::MutRef:
-                            bt = ::HIR::BorrowType::Unique;
-                            break;
-                        }
+                        ::HIR::BorrowType   bt = H::get_borrow_type(sp, e.extra_bind);
                         ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
                             ::HIR::TypeRef::new_pointer( bt, inner_type.clone() ),
                             ::MIR::RValue::make_Borrow({ 0, bt, ::MIR::LValue::make_Field({ box$(lval.clone()), static_cast<unsigned int>(e.leading.size()) }) })
@@ -395,7 +398,14 @@ namespace {
                     }
                     if( e.trailing.size() > 0 )
                     {
-                        TODO(sp, "Destructure slice using SplitSlice with trailing - " << pat);
+                        for(size_t i = 0; i < e.trailing.size(); i ++)
+                        {
+                            // Dynamically create an index
+                            auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ e.trailing.size() - i, ::HIR::CoreType::Usize }));
+                            ::MIR::LValue ofs_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
+                            // Recurse with the indexed value
+                            destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Index({ box$(lval.clone()), box$(ofs_val) }), allow_refutable);
+                        }
                     }
                 }
                 )
