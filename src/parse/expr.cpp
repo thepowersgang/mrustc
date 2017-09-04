@@ -53,15 +53,16 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
     TRACE_FUNCTION;
     Token   tok;
 
-    bool yields_final_value = true;
     ::std::vector<ExprNodeP> nodes;
 
     ::std::shared_ptr<AST::Module> local_mod;
 
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
+    bool last_value_yielded = false;
     while( LOOK_AHEAD(lex) != TOK_BRACE_CLOSE )
     {
+        last_value_yielded = false;
         DEBUG("tok = " << tok);
 
         // NOTE: Doc comments can appear within a function and apply to the function
@@ -76,25 +77,22 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
             break;
 
         bool    add_silence_if_end = false;
+        // `add_silence_if_end` indicates that the statement had a semicolon.
         auto rv = Parse_ExprBlockLine_WithItems(lex, local_mod, add_silence_if_end);
         if( rv )
         {
             // Set to TRUE if there was no semicolon after a statement
-            if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE && add_silence_if_end )
-            {
-                DEBUG("End of block, and add_silence_if_end == true - doesn't yeild");
-                yields_final_value = false;
-                // Since the next token is TOK_BRACE_CLOSE, the loop will terminate
-            }
+            last_value_yielded = !add_silence_if_end;
             nodes.push_back( mv$(rv) );
         }
         else {
             assert( !add_silence_if_end );
+            last_value_yielded = false;
         }
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
-    return NEWNODE( AST::ExprNode_Block, is_unsafe, yields_final_value, mv$(nodes), mv$(local_mod) );
+    return NEWNODE( AST::ExprNode_Block, is_unsafe, last_value_yielded, mv$(nodes), mv$(local_mod) );
 }
 
 /// Parse a single line in a block, handling items added to the local module
