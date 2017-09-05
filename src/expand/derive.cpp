@@ -1970,7 +1970,7 @@ public:
         ::AST::ExprNodeP    node;
         TU_MATCH(AST::StructData, (str.m_data), (e),
         (Unit,
-            node = NEWNODE(NamedValue, mv$(base_path));
+            node = this->get_val_ok(core_name, NEWNODE(NamedValue, mv$(base_path)));
             ),
         (Struct,
             assert( !args[2] );
