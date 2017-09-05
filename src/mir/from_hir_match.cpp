@@ -1699,12 +1699,13 @@ void sort_rulesets_inner(RulesetRef rulesets, size_t idx)
 
 namespace {
     void get_ty_and_val(
-        const Span& sp, const StaticTraitResolve& resolve,
+        const Span& sp, MirBuilder& builder,
         const ::HIR::TypeRef& top_ty, const ::MIR::LValue& top_val,
         const field_path_t& field_path, unsigned int field_path_ofs,
         /*Out ->*/ ::HIR::TypeRef& out_ty, ::MIR::LValue& out_val
         )
     {
+        const StaticTraitResolve& resolve = builder.resolve();
         ::MIR::LValue   lval = top_val.clone();
         ::HIR::TypeRef  tmp_ty;
         const ::HIR::TypeRef* cur_ty = &top_ty;
@@ -1862,16 +1863,12 @@ namespace {
                 else {
                     idx -= FIELD_INDEX_MAX;
                     idx = FIELD_INDEX_MAX - idx;
-                    TODO(sp, "Index " << idx << " from end of slice " << lval);
                     // 1. Create an LValue containing the size of this slice subtract `idx`
-                    //  TODO: Requires access to the MIR generator
-#if 0
-                    auto len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval).clone() }));
+                    auto len_lval = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ builder.get_ptr_to_dst(sp, lval).clone() }));
                     auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ idx, ::HIR::CoreType::Usize }));
-                    auto ofs_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
-                    // Return _Index with that value
+                    auto ofs_val = builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ mv$(len_lval), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
+                    // 2. Return _Index with that value
                     lval = ::MIR::LValue::make_Index({ box$(lval), box$(ofs_val) });
-#endif
                 }
                 ),
             (Borrow,
@@ -1985,7 +1982,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
         ::MIR::LValue   val;
         ::HIR::TypeRef  ity;
 
-        get_ty_and_val(sp, builder.resolve(), top_ty, top_val,  rule.field_path, field_path_ofs,  ity, val);
+        get_ty_and_val(sp, builder, top_ty, top_val,  rule.field_path, field_path_ofs,  ity, val);
         DEBUG("ty = " << ity << ", val = " << val);
 
         const auto& ty = ity;
@@ -2841,7 +2838,7 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
 
     ::MIR::LValue   val;
     ::HIR::TypeRef  ty;
-    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
+    get_ty_and_val(sp, m_builder, m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
     DEBUG("ty = " << ty << ", val = " << val);
 
     TU_MATCHA( (ty.m_data), (te),
@@ -3212,7 +3209,7 @@ void MatchGenGrouped::gen_dispatch_range(const field_path_t& field_path, const :
     TRACE_FUNCTION_F("field_path="<<field_path<<", " << first << " ... " << last);
     ::MIR::LValue   val;
     ::HIR::TypeRef  ty;
-    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
+    get_ty_and_val(sp, m_builder, m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
     DEBUG("ty = " << ty << ", val = " << val);
 
     if( const auto* tep = ty.m_data.opt_Primitive() )
@@ -3292,7 +3289,7 @@ void MatchGenGrouped::gen_dispatch_splitslice(const field_path_t& field_path, co
     TRACE_FUNCTION_F("field_path="<<field_path<<", [" << e.leading << ", .., " << e.trailing << "]");
     ::MIR::LValue   val;
     ::HIR::TypeRef  ty;
-    get_ty_and_val(sp, m_builder.resolve(), m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
+    get_ty_and_val(sp, m_builder, m_top_ty, m_top_val,  field_path, m_field_path_ofs,  ty, val);
     DEBUG("ty = " << ty << ", val = " << val);
 
     ASSERT_BUG(sp, e.leading.size() == 0, "Sub-rules in MatchGenGrouped");
