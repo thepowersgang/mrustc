@@ -943,6 +943,8 @@ namespace {
                 if( m_resolve.type_is_copy(sp, m_variable_types.at(slot)) ) {
                     usage = ::HIR::ValueUsage::Borrow;
                 }
+                // Wait, is this valid?
+                // - Maybe it's needed becuase reborrow is after this pass?
                 else if( m_variable_types.at(slot).m_data.is_Borrow() && m_variable_types.at(slot).m_data.as_Borrow().type == ::HIR::BorrowType::Unique ) {
                     usage = ::HIR::ValueUsage::Mutate;
                 }

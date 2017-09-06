@@ -87,6 +87,10 @@ namespace {
             return node_ptr;
         }
 
+        void visit(::HIR::ExprNode_Emplace& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            node.m_value = do_reborrow(mv$(node.m_value));
+        }
         void visit(::HIR::ExprNode_Assign& node) override {
             ::HIR::ExprVisitorDef::visit(node);
             node.m_value = do_reborrow(mv$(node.m_value));
