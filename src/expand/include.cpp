@@ -86,8 +86,68 @@ class CIncludeExpander:
     }
 };
 
+class CIncludeBytesExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    {
+        if( ident != "" )
+            ERROR(sp, E0000, "include_bytes! doesn't take an ident");
+
+        Token   tok;
+        auto lex = TTStream(tt);
+
+        auto path = get_string(sp, lex, crate, mod);
+        GET_CHECK_TOK(tok, lex, TOK_EOF);
+
+        ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+
+        ::std::ifstream is(file_path);
+        if( !is.good() ) {
+            ERROR(sp, E0000, "Cannot open file " << file_path << " for include_bytes!");
+        }
+        ::std::stringstream   ss;
+        ss << is.rdbuf();
+
+        ::std::vector<TokenTree>    toks;
+        toks.push_back(Token(TOK_BYTESTRING, mv$(ss.str())));
+        return box$( TTStreamO(TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+    }
+};
+
+class CIncludeStrExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    {
+        if( ident != "" )
+            ERROR(sp, E0000, "include_str! doesn't take an ident");
+
+        Token   tok;
+        auto lex = TTStream(tt);
+
+        auto path = get_string(sp, lex, crate, mod);
+        GET_CHECK_TOK(tok, lex, TOK_EOF);
+
+        ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+
+        ::std::ifstream is(file_path);
+        if( !is.good() ) {
+            ERROR(sp, E0000, "Cannot open file " << file_path << " for include_str!");
+        }
+        ::std::stringstream   ss;
+        ss << is.rdbuf();
+
+        ::std::vector<TokenTree>    toks;
+        toks.push_back(Token(TOK_STRING, mv$(ss.str())));
+        return box$( TTStreamO(TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+    }
+};
+
 // TODO: include_str! and include_bytes!
 
 STATIC_MACRO("include", CIncludeExpander);
+STATIC_MACRO("include_bytes", CIncludeBytesExpander);
+STATIC_MACRO("include_str", CIncludeStrExpander);
 
 
