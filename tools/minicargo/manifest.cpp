@@ -419,7 +419,8 @@ const PackageTarget& PackageManifest::get_library() const
 
 void PackageManifest::set_features(const ::std::vector<::std::string>& features, bool enable_default)
 {
-    // TODO.
+    TRACE_FUNCTION_F(m_name << " [" << features << "]");
+
     size_t start = m_active_features.size();
     // 1. Install features
     if(enable_default && start == 0)
@@ -431,12 +432,18 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
         }
     }
 
+    auto add_feature = [&](const auto& feat) {
+        auto it = ::std::find(m_active_features.begin(), m_active_features.end(), feat);
+        if(it != m_active_features.end()) {
+            DEBUG("`" << feat << "` already active");
+        }
+        else {
+            m_active_features.push_back(feat);
+        }
+        };
     for(const auto& feat : features)
     {
-        auto it = ::std::find(m_active_features.begin(), m_active_features.end(), feat);
-        if(it == m_active_features.end())
-            continue ;
-        m_active_features.push_back(feat);
+        add_feature(feat);
     }
 
     for(size_t i = start; i < m_active_features.size(); i ++)
@@ -449,7 +456,12 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
             DEBUG("Activating feature " << featname << " = [" << it->second << "]");
             for(const auto& sub_feat : it->second)
             {
-                TODO("Activate feature flag " << sub_feat << " for feature " << featname);
+                if( sub_feat.find('/') != ::std::string::npos ) {
+                    TODO("Activate dependency feature from '" << sub_feat << "'");
+                }
+                else {
+                    add_feature(sub_feat);
+                }
             }
         }
         auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
@@ -546,7 +558,7 @@ void PackageManifest::load_build_script(const ::std::string& path)
                     if( ty_str == "static" ) {
                         type = "static";
                     }
-                    else if( ty_str == "dynamic" ) {
+                    else if( ty_str == "dylib" ) {
                         type = "dynamic";
                     }
                     else {
