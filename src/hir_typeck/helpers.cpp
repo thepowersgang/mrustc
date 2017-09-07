@@ -2670,7 +2670,15 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         }
         else {
             DEBUG("[ftic_check_params] Param " << idx << " " << *impl_params[idx] << " == " << ty);
-            return impl_params[idx]->compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
+            auto rv = impl_params[idx]->compare_with_placeholders(sp, ty, this->m_ivars.callback_resolve_infer());
+            // If the existing is an ivar, replace with this.
+            // - TODO: Store the least fuzzy option, or store all fuzzy options?
+            if( rv == ::HIR::Compare::Fuzzy && impl_params[idx]->m_data.is_Infer() )
+            {
+                DEBUG("[ftic_check_params] Param " << idx << " fuzzy, use " << ty);
+                impl_params[idx] = &ty;
+            }
+            return rv;
         }
         };
 
