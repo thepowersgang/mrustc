@@ -202,7 +202,7 @@ struct Timestamp
     }
 };
 
-void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path)
+bool MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path)
 {
     BuildList   list;
 
@@ -221,12 +221,12 @@ void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_p
     {
         if( ! builder.build_library(p) )
         {
-            return;
+            return false;
         }
     }
 
     // TODO: If the manifest doesn't have a library, build the binary
-    builder.build_library(manifest);
+    return builder.build_library(manifest);
 }
 
 void BuildList::add_dependencies(const PackageManifest& p, unsigned level, bool include_build)

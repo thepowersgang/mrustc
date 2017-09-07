@@ -28,4 +28,4 @@ private:
     Timestamp get_timestamp(const ::helpers::path& path) const;
 };
 
-extern void MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path);
+extern bool MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path);

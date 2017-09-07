@@ -56,7 +56,15 @@ int main(int argc, const char* argv[])
         m.load_dependencies(repo, !bs_override_dir.is_valid());
 
         // 3. Build dependency tree and build program.
-        MiniCargo_Build(m, bs_override_dir );
+        if( !MiniCargo_Build(m, bs_override_dir ) )
+        {
+            ::std::cerr << "BUILD FAILED" << ::std::endl;
+#if _WIN32
+            ::std::cout << "Press enter to exit..." << ::std::endl;
+            ::std::cin.get();
+#endif
+            return 1;
+        }
     }
     catch(const ::std::exception& e)
     {
