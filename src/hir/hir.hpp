@@ -463,6 +463,7 @@ public:
 
     ::std::unordered_map< ::std::string, ExternCrate>  m_ext_crates;
     ::std::vector<ExternLibrary>    m_ext_libs;
+    ::std::vector<::std::string>    m_link_paths;
 
     /// Method called to populate runtime state after deserialisation
     /// See hir/crate_post_load.cpp

@@ -263,6 +263,7 @@ namespace {
             for(const auto& ext : crate.m_ext_crates)
                 m_out.write_string(ext.first);
             serialise_vec(crate.m_ext_libs);
+            serialise_vec(crate.m_link_paths);
         }
         void serialise(const ::HIR::ExternLibrary& lib)
         {

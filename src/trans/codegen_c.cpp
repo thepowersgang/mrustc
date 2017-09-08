@@ -480,6 +480,9 @@ namespace {
                     }
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
+                        for(const auto& path : crate.second.m_data->m_link_paths ) {
+                            args.push_back("-L"); args.push_back(path.c_str());
+                        }
                         for(const auto& lib : crate.second.m_data->m_ext_libs) {
                             ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
                             args.push_back("-l"); args.push_back(lib.name.c_str());
@@ -4213,7 +4216,11 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
+                    {
                         m_of << "\\" << ((unsigned int)v & 0xFF);
+                        if( isdigit( *(&v+1) ) )
+                            m_of << "\"\"";
+                    }
                 }
                 m_of << "\"" << ::std::dec;
                 ),
@@ -4223,7 +4230,11 @@ namespace {
                     if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
                         m_of << v;
                     else
+                    {
                         m_of << "\\" << ((unsigned int)v & 0xFF);
+                        if( isdigit( *(&v+1) ) )
+                            m_of << "\"\"";
+                    }
                 }
                 m_of << "\", " << ::std::dec << c.size() << ")";
                 ),
