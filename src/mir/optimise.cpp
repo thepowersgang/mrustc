@@ -24,7 +24,7 @@
 #define DUMP_AFTER_PASS     1
 
 #define DUMP_AFTER_DONE     0
-#define CHECK_AFTER_DONE    1
+#define CHECK_AFTER_DONE    2   // 1 = Check before GC, 2 = check before and after GC
 
 namespace {
     ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
@@ -520,6 +520,10 @@ void MIR_OptimiseMin(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
     MIR_Optimise_GarbageCollect(state, fcn);
     //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
     MIR_SortBlocks(resolve, path, fcn);
+
+#if CHECK_AFTER_DONE > 1
+    MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
     return ;
 }
 void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
@@ -631,6 +635,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
 
     MIR_SortBlocks(resolve, path, fcn);
+#if CHECK_AFTER_DONE > 1
+    MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
 }
 
 // --------------------------------------------------------------------
@@ -2720,11 +2727,11 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                     if( se->flag_idx != ~0u && df_rewrite_table[se->flag_idx] == ~0u)
                     {
                         if( fcn.drop_flags.at(se->flag_idx) ) {
-                            DEBUG(state << "Remove flag from " << stmt);
+                            DEBUG(state << "Remove flag from " << stmt << " - Flag never set and default true");
                             se->flag_idx = ~0u;
                         }
                         else {
-                            DEBUG(state << "Remove " << stmt);
+                            DEBUG(state << "Remove " << stmt << " - Flag never set and default false");
                             to_remove_statements[stmt_idx] = true;
                             continue ;
                         }

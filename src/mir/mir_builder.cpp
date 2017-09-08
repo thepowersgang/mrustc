@@ -2033,27 +2033,11 @@ VarState& MirBuilder::get_val_state_mut(const Span& sp, const ::MIR::LValue& lv)
 
         if( is_box )
         {
-            ::MIR::LValue   inner_lv;
-            // 1. If the inner lvalue isn't a slot with move information, move out of the lvalue into a temporary (with standard temp scope)
-            TU_MATCH_DEF( ::MIR::LValue, (*e.val), (ei),
-            (
-                with_val_type(sp, *e.val, [&](const auto& ty){ inner_lv = this->new_temporary(ty); });
-                this->push_stmt_assign(sp, inner_lv.clone(), ::MIR::RValue( mv$(*e.val) ));
-                *e.val = inner_lv.clone();
-                ),
-            (Argument,
-                inner_lv = ::MIR::LValue(ei);
-                ),
-            (Local,
-                inner_lv = ::MIR::LValue(ei);
-                )
-            )
-            // 2. Mark the slot as requiring only a shallow drop
-            ::std::vector<VarState> inner;
-            inner.push_back(VarState::make_Valid({}));
-            auto& ivs = get_val_state_mut(sp, inner_lv);
+            auto& ivs = get_val_state_mut(sp, *e.val);
             if( ! ivs.is_MovedOut() )
             {
+                ::std::vector<VarState> inner;
+                inner.push_back(VarState::make_Valid({}));
                 unsigned int drop_flag = (ivs.is_Optional() ? ivs.as_Optional() : ~0u);
                 ivs = VarState::make_MovedOut({ box$(VarState::make_Valid({})), drop_flag });
             }

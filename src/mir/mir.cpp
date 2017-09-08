@@ -490,7 +490,7 @@ namespace MIR {
             if(e.kind == ::MIR::eDropKind::SHALLOW)
                 os << " SHALLOW";
             if(e.flag_idx != ~0u)
-                os << "IF df$" << e.flag_idx;
+                os << " IF df$" << e.flag_idx;
             os << ")";
             ),
         (ScopeEnd,
