@@ -795,12 +795,17 @@ namespace {
             }
 
             this->context.add_ivars( node.m_true->m_res_type );
-            this->equate_types_inner_coerce(node.span(), node.m_res_type, node.m_true);
+            if( node.m_false ) {
+                this->context.equate_types_coerce(node.span(), node.m_res_type, node.m_true);
+            }
+            else {
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
+            }
             node.m_true->visit( *this );
 
             if( node.m_false ) {
                 this->context.add_ivars( node.m_false->m_res_type );
-                this->equate_types_inner_coerce(node.span(), node.m_res_type, node.m_false);
+                this->context.equate_types_coerce(node.span(), node.m_res_type, node.m_false);
                 node.m_false->visit( *this );
             }
             else {
