@@ -417,7 +417,7 @@ namespace {
             // Default-construct entires in the `impl_params` array
             impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
 
-            auto cmp = impl_ptr->m_type.match_test_generics_fuzz(sp, *e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+            auto cmp = impl_ptr->m_type.match_test_generics_fuzz(sp, *e.type, context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& /*name*/, const auto& ty) {
                 assert( idx < impl_params.m_types.size() );
                 impl_params.m_types[idx] = ty.clone();
                 return ::HIR::Compare::Equal;
@@ -1736,7 +1736,7 @@ namespace {
                 {
                     impl_params.m_types.resize( impl_ptr->m_params.m_types.size() );
                     // NOTE: Could be fuzzy.
-                    bool r = impl_ptr->m_type.match_test_generics(sp, *e.type, this->context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& ty) {
+                    bool r = impl_ptr->m_type.match_test_generics(sp, *e.type, this->context.m_ivars.callback_resolve_infer(), [&](auto idx, const auto& /*name*/, const auto& ty) {
                         assert( idx < impl_params.m_types.size() );
                         impl_params.m_types[idx] = ty.clone();
                         return ::HIR::Compare::Equal;
@@ -5376,6 +5376,8 @@ namespace {
             //  > Ideally, there should be a match_test_generics to resolve the magic impls.
             DEBUG("> best_impl=" << best_impl);
             if( best_impl.has_magic_params() ) {
+                // TODO: Pick this impl, and evaluate it (expanding the magic params out)
+                DEBUG("> Magic params present, wait");
                 return false;
             }
 

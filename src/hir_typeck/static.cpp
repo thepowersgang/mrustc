@@ -524,7 +524,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     ::std::vector< const ::HIR::TypeRef*> impl_params;
     impl_params.resize( impl_params_def.m_types.size() );
 
-    auto cb = [&impl_params,&sp,cb_ident](auto idx, const auto& ty) {
+    auto cb = [&impl_params,&sp,cb_ident](auto idx, const auto& /*name*/, const auto& ty) {
         assert( idx < impl_params.size() );
         if( ! impl_params[idx] ) {
             impl_params[idx] = &ty;
@@ -559,7 +559,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
         }
     }
     // Callback that matches placeholders to concrete types
-    auto cb_match = [&](unsigned int idx, const auto& ty)->::HIR::Compare {
+    auto cb_match = [&](unsigned int idx, const auto& /*name*/, const auto& ty)->::HIR::Compare {
         if( ty.m_data.is_Generic() && ty.m_data.as_Generic().binding == idx )
             return ::HIR::Compare::Equal;
         if( idx >> 8 == 2 ) {

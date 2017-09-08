@@ -132,9 +132,10 @@ namespace {
 
         // TODO: What indicates what out of ty_res?
 
-        if( right.m_data.is_Infer() ) {
+        if( const auto* re = right.m_data.opt_Infer() )
+        {
             //DEBUG("left = " << left << ", right = " << right);
-            switch(right.m_data.as_Infer().ty_class)
+            switch(re->ty_class)
             {
             case ::HIR::InferClass::None:
             case ::HIR::InferClass::Diverge:
@@ -162,20 +163,30 @@ namespace {
 
         // A local generic could match anything, leave that up to the caller
         if( left.m_data.is_Generic() ) {
+            DEBUG("> Generic left, success");
             return true;
         }
         // A local UfcsKnown can only be becuase it couldn't be expanded earlier, assume it could match
         if( left.m_data.is_Path() && left.m_data.as_Path().path.m_data.is_UfcsKnown() ) {
             // True?
+            //DEBUG("> UFCS Unknown left, success");
             return true;
         }
 
         // If the RHS (provided) is generic, it can only match if it binds to a local type parameter
         if( right.m_data.is_Generic() ) {
+            // TODO: This is handled above?
+            //DEBUG("> Generic right, only if left generic");
             return left.m_data.is_Generic();
+        }
+        // If the RHS (provided) is generic, it can only match if it binds to a local type parameter
+        if( TU_TEST1(right.m_data, Path, .binding.is_Unbound()) ) {
+            //DEBUG("> UFCS Unknown right, fuzzy");
+            return true;
         }
 
         if( left.m_data.tag() != right.m_data.tag() ) {
+            //DEBUG("> Tag mismatch, failure");
             return false;
         }
         TU_MATCH(::HIR::TypeRef::Data, (left.m_data, right.m_data), (le, re),
@@ -272,7 +283,9 @@ namespace {
                 return false;
         }
 
-        if( left.m_params.m_types.size() > 0 || right.m_params.m_types.size() > 0 ) {
+        if( left.m_params.m_types.size() > 0 || right.m_params.m_types.size() > 0 )
+        {
+            // Count mismatch. Allow due to defaults.
             if( left.m_params.m_types.size() != right.m_params.m_types.size() ) {
                 return true;
                 //TODO(Span(), "Match generic paths " << left << " and " << right << " - count mismatch");
@@ -318,21 +331,22 @@ namespace {
 bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
     // NOTE: Don't return any impls when the type is an unbouned ivar. Wouldn't be able to pick anything anyway
-    if( is_unbounded_infer(type) ) {
+    // TODO: For `Unbound`, it could be valid, if the target is a generic.
+    if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
         return false;
     }
     return matches_type_int(m_params, m_type, type, ty_res, true);
 }
 bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    if( is_unbounded_infer(type) ) {
+    if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
         return false;
     }
     return matches_type_int(m_params, m_type, type, ty_res, true);
 }
 bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
-    if( is_unbounded_infer(type) ) {
+    if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
         return false;
     }
     return matches_type_int(m_params, m_type, type, ty_res, true);
@@ -807,7 +821,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
     bool is_reversed = false;
     ::std::vector<const ::HIR::TypeRef*>    impl_tys;
-    auto cb_match = [&](unsigned int idx, const ::HIR::TypeRef& x)->::HIR::Compare {
+    auto cb_match = [&](unsigned int idx, const auto& /*name*/, const ::HIR::TypeRef& x)->::HIR::Compare {
         assert(idx < impl_tys.size());
         if( impl_tys.at(idx) )
         {
@@ -943,7 +957,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
 
                                 ::std::vector<const ::HIR::TypeRef*>   impl_tys { ti.m_params.m_types.size() };
                                 auto cb_ident = [](const ::HIR::TypeRef& x)->const ::HIR::TypeRef& { return x; };
-                                auto cb_match = [&](unsigned int idx, const ::HIR::TypeRef& x)->::HIR::Compare {
+                                auto cb_match = [&](unsigned int idx, const auto& /*name*/, const ::HIR::TypeRef& x)->::HIR::Compare {
                                     assert(idx < impl_tys.size());
                                     if( impl_tys.at(idx) )
                                     {

@@ -296,7 +296,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
                 return ty.clone();
         }
         else {
-            MIR_BUG(*this, "get_const_type - Not a constant");
+            MIR_BUG(*this, "get_const_type - Not a constant " << e.p);
         }
         ),
     (ItemAddr,

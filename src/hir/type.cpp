@@ -482,11 +482,12 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
 }
 ::HIR::Compare HIR::TypeRef::match_test_generics_fuzz(const Span& sp, const ::HIR::TypeRef& x_in, t_cb_resolve_type resolve_placeholder, t_cb_match_generics callback) const
 {
-    if( m_data.is_Generic() ) {
-        return callback(m_data.as_Generic().binding, x_in);
+    if( const auto* e = m_data.opt_Generic() ) {
+        return callback(e->binding, e->name, x_in);
     }
     const auto& v = (this->m_data.is_Infer() ? resolve_placeholder(*this) : *this);
     const auto& x = (x_in.m_data.is_Infer() || x_in.m_data.is_Generic() ? resolve_placeholder(x_in) : x_in);
+    TRACE_FUNCTION_F(*this << ", " << x_in << " -- " << v << ", " << x);
     // If `x` is an ivar - This can be a fuzzy match.
     TU_IFLET(::HIR::TypeRef::Data, x.m_data, Infer, xe,
         // - If type inferrence is active (i.e. this ivar has an index), AND both `v` and `x` refer to the same ivar slot
@@ -714,7 +715,9 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return cmp;
         ),
     (ErasedType,
-        TODO(sp, "ErasedType - match_test_generics_fuzz - " << v << " -- " << x);
+        if( te.m_origin != xe.m_origin )
+            return Compare::Unequal;
+        return Compare::Equal;
         ),
     (Array,
         if( te.size_val != xe.size_val ) {

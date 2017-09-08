@@ -517,7 +517,7 @@ namespace {
                             (Bytes, ),
                             (StaticString, ),  // String
                             (Const,
-                                // TODO: Should this trigger anything?
+                                upper_visitor.visit_path(ce.p, ::HIR::Visitor::PathContext::VALUE);
                                 ),
                             (ItemAddr,
                                 upper_visitor.visit_path(ce, ::HIR::Visitor::PathContext::VALUE);
@@ -548,7 +548,7 @@ namespace {
                                 (Bytes, ),
                                 (StaticString, ),  // String
                                 (Const,
-                                    // TODO: Should this trigger anything?
+                                    this->visit_path(ce.p, ::HIR::Visitor::PathContext::VALUE);
                                     ),
                                 (ItemAddr,
                                     this->visit_path(ce, ::HIR::Visitor::PathContext::VALUE);

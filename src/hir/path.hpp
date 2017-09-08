@@ -25,7 +25,7 @@ enum Compare {
 };
 
 typedef ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)> t_cb_resolve_type;
-typedef ::std::function< ::HIR::Compare(unsigned int, const ::HIR::TypeRef&) > t_cb_match_generics;
+typedef ::std::function< ::HIR::Compare(unsigned int, const ::std::string&, const ::HIR::TypeRef&) > t_cb_match_generics;
 
 static inline ::std::ostream& operator<<(::std::ostream& os, const Compare& x) {
     switch(x)

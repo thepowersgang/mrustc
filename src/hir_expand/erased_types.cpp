@@ -48,7 +48,7 @@ const ::HIR::Function& HIR_Expand_ErasedType_GetFunction(const Span& sp, const S
 
         // 2. Obtain monomorph_cb (including impl params)
         impl_params.m_types.resize(impl_ptr->m_params.m_types.size());
-        impl_ptr->m_type .match_test_generics(sp, *pe.type, [](const auto& x)->const auto&{return x;}, [&](auto idx, const auto& ty) {
+        impl_ptr->m_type .match_test_generics(sp, *pe.type, [](const auto& x)->const auto&{return x;}, [&](auto idx, const auto& /*name*/, const auto& ty) {
             assert( idx < impl_params.m_types.size() );
             impl_params.m_types[idx] = ty.clone();
             return ::HIR::Compare::Equal;
