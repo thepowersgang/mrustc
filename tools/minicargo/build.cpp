@@ -226,7 +226,17 @@ bool MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_p
     }
 
     // TODO: If the manifest doesn't have a library, build the binary
-    return builder.build_library(manifest);
+    if( manifest.has_library() )
+    {
+        if( ! builder.build_library(manifest) )
+        {
+            return false;
+        }
+    }
+
+    return manifest.foreach_binaries([&](const auto& bin_target) {
+        return builder.build_target(manifest, bin_target);
+        });
 }
 
 void BuildList::add_dependencies(const PackageManifest& p, unsigned level, bool include_build)
@@ -312,7 +322,21 @@ Builder::Builder(::helpers::path output_dir, ::helpers::path override_dir):
 
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target) const
 {
-    auto outfile = m_output_dir / ::format("lib", target.m_name, ".hir");
+    const char* crate_type;
+    auto outfile = m_output_dir;
+    switch(target.m_type)
+    {
+    case PackageTarget::Type::Lib:
+        crate_type = "rlib";
+        outfile /= ::format("lib", target.m_name, ".hir");
+        break;
+    case PackageTarget::Type::Bin:
+        crate_type = "bin";
+        outfile /= ::format(target.m_name, EXESUF);
+        break;
+    default:
+        throw ::std::runtime_error("Unknown target type being built");
+    }
     //DEBUG("Building " << manifest.name() << ":" << target.m_name << " as " << outfile);
 
     // TODO: Determine if it needs re-running
@@ -349,7 +373,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
-    args.push_back("--crate-type"); args.push_back("rlib");
+    args.push_back("--crate-type"); args.push_back(crate_type);
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {

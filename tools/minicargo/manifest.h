@@ -238,8 +238,18 @@ class PackageManifest
 public:
     static PackageManifest load_from_toml(const ::std::string& path);
 
+    bool has_library() const;
     const PackageTarget& get_library() const;
 
+    bool foreach_binaries(::std::function<bool(const PackageTarget&)> cb) const {
+        for(const auto& t : m_targets ) {
+            if( t.m_type == PackageTarget::Type::Bin ) {
+                if( !cb(t) )
+                    return false;
+            }
+        }
+        return true;
+    }
 
     const ::helpers::path directory() const {
         return ::helpers::path(m_manifest_path).parent();

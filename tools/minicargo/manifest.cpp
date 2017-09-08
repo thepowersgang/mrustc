@@ -407,6 +407,11 @@ void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_
     }
 }
 
+bool PackageManifest::has_library() const
+{
+    auto it = ::std::find_if(m_targets.begin(), m_targets.end(), [](const auto& x) { return x.m_type == PackageTarget::Type::Lib; });
+    return it != m_targets.end();
+}
 const PackageTarget& PackageManifest::get_library() const
 {
     auto it = ::std::find_if(m_targets.begin(), m_targets.end(), [](const auto& x) { return x.m_type == PackageTarget::Type::Lib; });
