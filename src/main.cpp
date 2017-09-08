@@ -726,6 +726,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 if( strcmp(type_str, "rlib") == 0 ) {
                     this->crate_type = ::AST::Crate::Type::RustLib;
                 }
+                else if( strcmp(type_str, "bin") == 0 ) {
+                    this->crate_type = ::AST::Crate::Type::Executable;
+                }
                 else {
                     ::std::cerr << "Unknown value for --crate-type" << ::std::endl;
                     exit(1);
