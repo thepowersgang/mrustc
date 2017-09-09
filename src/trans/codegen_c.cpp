@@ -1806,6 +1806,39 @@ namespace {
                 m_of << "\tbool df" << i << " = " << code->drop_flags[i] << ";\n";
             }
 
+            ::std::vector<unsigned> bb_use_counts( code->blocks.size() );
+            for(const auto& blk : code->blocks)
+            {
+                TU_MATCHA( (blk.terminator), (te),
+                (Incomplete,
+                    ),
+                (Return,
+                    ),
+                (Diverge,
+                    ),
+                (Goto,
+                    bb_use_counts[te] ++;
+                    ),
+                (Panic,
+                    bb_use_counts[te.dst] ++;
+                    ),
+                (If,
+                    bb_use_counts[te.bb0] ++;
+                    bb_use_counts[te.bb1] ++;
+                    ),
+                (Switch,
+                    for(const auto& t : te.targets)
+                        bb_use_counts[t] ++;
+                    ),
+                (SwitchValue,
+                    MIR_TODO(mir_res, "SwitchValue in C codegen");
+                    ),
+                (Call,
+                    bb_use_counts[te.ret_block] ++;
+                    )
+                )
+            }
+
             if( false )
             {
                 m_of << "#if 0\n";
@@ -1828,7 +1861,40 @@ namespace {
                     continue ;
                 }
 
+                // If the previous block is a goto/function call to this
+                // block, AND this block only has a single reference, omit the
+                // label.
+                #if 1
+                if( bb_use_counts.at(i) == 0 )
+                {
+                    if( i == 0 )
+                    {
+                        // First BB, don't print label
+                    }
+                    else
+                    {
+                        // Unused BB (likely part of unsupported panic path)
+                        continue ;
+                    }
+                }
+                else if( bb_use_counts.at(i) == 1 )
+                {
+                    if( i > 0 && (TU_TEST1(code->blocks[i-1].terminator, Goto, == i) || TU_TEST1(code->blocks[i-1].terminator, Call, .ret_block == i)) )
+                    {
+                        // Don't print the label, only use is previous block
+                    }
+                    else
+                    {
+                        m_of << "bb" << i << ":\n";
+                    }
+                }
+                else
+                {
+                    m_of << "bb" << i << ":\n";
+                }
+                #else
                 m_of << "bb" << i << ":\n";
+                #endif
 
                 for(const auto& stmt : code->blocks[i].statements)
                 {
@@ -1849,7 +1915,14 @@ namespace {
                     m_of << "\t_Unwind_Resume();\n";
                     ),
                 (Goto,
-                    m_of << "\tgoto bb" << e << ";\n";
+                    if( e == i+1 )
+                    {
+                        // Let it flow on to the next block
+                    }
+                    else
+                    {
+                        m_of << "\tgoto bb" << e << ";\n";
+                    }
                     ),
                 (Panic,
                     m_of << "\tgoto bb" << e << "; /* panic */\n";
@@ -1896,7 +1969,14 @@ namespace {
                     ),
                 (Call,
                     emit_term_call(mir_res, e, 1);
-                    m_of << "\tgoto bb" << e.ret_block << ";\n";
+                    if( e.ret_block == i+1 )
+                    {
+                        // Let it flow on to the next block
+                    }
+                    else
+                    {
+                        m_of << "\tgoto bb" << e.ret_block << ";\n";
+                    }
                     )
                 )
                 m_of << "\t// ^ " << code->blocks[i].terminator << "\n";
