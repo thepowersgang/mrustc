@@ -501,11 +501,10 @@ int main(int argc, char *argv[])
         TransOptions    trans_opt;
         trans_opt.opt_level = params.opt_level;
         for(const char* libdir : params.lib_search_dirs ) {
-            // TODO: Store these paths for use in final linking.
+            // Store these paths for use in final linking.
             hir_crate->m_link_paths.push_back( libdir );
         }
         for(const char* libname : params.libraries ) {
-            //trans_opt.libraries.push_back( libname );
             hir_crate->m_ext_libs.push_back(::HIR::ExternLibrary { libname });
         }
         trans_opt.emit_debug_info = params.emit_debug_info;

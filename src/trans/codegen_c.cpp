@@ -436,6 +436,25 @@ namespace {
             m_of.flush();
             m_of.close();
 
+            ::std::vector<const char*> link_dirs;
+            auto add_link_dir = [&link_dirs](const char* d) {
+                auto it = ::std::find_if(link_dirs.begin(), link_dirs.end(), [&](const char* s){ return ::std::strcmp(s, d) == 0; });
+                if(it == link_dirs.end())
+                    link_dirs.push_back(d);
+                };
+            for(const auto& path : opt.library_search_dirs ) {
+                add_link_dir(path.c_str());
+            }
+            for(const auto& path : m_crate.m_link_paths ) {
+                add_link_dir(path.c_str());
+            }
+            for( const auto& crate : m_crate.m_ext_crates )
+            {
+                for(const auto& path : crate.second.m_data->m_link_paths ) {
+                    add_link_dir(path.c_str());
+                }
+            }
+
             // Execute $CC with the required libraries
             ::std::vector<::std::string>    tmp;
             auto cache_str = [&](::std::string s){ tmp.push_back(::std::move(s)); return tmp.back().c_str(); };
@@ -470,9 +489,9 @@ namespace {
                     {
                         args.push_back(cache_str( crate.second.m_filename + ".o" ));
                     }
-                    for(const auto& path : opt.library_search_dirs )
+                    for(const auto& path : link_dirs )
                     {
-                        args.push_back("-L"); args.push_back(path.c_str());
+                        args.push_back("-L"); args.push_back(path);
                     }
                     for(const auto& lib : m_crate.m_ext_libs) {
                         ASSERT_BUG(Span(), lib.name != "", "");
@@ -480,9 +499,6 @@ namespace {
                     }
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        for(const auto& path : crate.second.m_data->m_link_paths ) {
-                            args.push_back("-L"); args.push_back(path.c_str());
-                        }
                         for(const auto& lib : crate.second.m_data->m_ext_libs) {
                             ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
                             args.push_back("-l"); args.push_back(lib.name.c_str());
@@ -526,11 +542,11 @@ namespace {
                         args.push_back(cache_str( crate.second.m_filename + ".o" ));
                     }
                     // Command-line specified linker search directories
-                    for(const auto& path : opt.library_search_dirs )
+                    for(const auto& path : link_dirs )
                     {
                         args.push_back("/link");
                         args.push_back("/LIBPATH");
-                        args.push_back(path.c_str());
+                        args.push_back(path);
                     }
                     // Crate-specified libraries
                     for(const auto& lib : m_crate.m_ext_libs) {
@@ -3276,7 +3292,8 @@ namespace {
                 m_of << "abort()";
             }
             else if( name == "try" ) {
-                emit_param(e.args.at(0)); m_of << "("; emit_param(e.args.at(1)); m_of << ")";
+                emit_param(e.args.at(0)); m_of << "("; emit_param(e.args.at(1)); m_of << "); ";
+                emit_lvalue(e.ret_val); m_of << " = 0";
             }
             else if( name == "offset" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
