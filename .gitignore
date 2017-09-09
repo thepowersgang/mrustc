@@ -21,6 +21,8 @@
 /vsproject/tu_test/x64
 /vsproject/minicargo/Win32
 /vsproject/minicargo/x64
+/vsproject/testrunner/Win32
+/vsproject/testrunner/x64
 /vsproject/packages
 /vsproject/*.sdf
 /vsproject/*.VC.db

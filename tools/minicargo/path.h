@@ -116,6 +116,21 @@ public:
         }
     }
     path to_absolute() const;
+    ::std::string basename() const
+    {
+        if(!this->is_valid())
+            throw ::std::runtime_error("Calling basename() on an invalid path");
+
+        auto pos = m_str.find_last_of(SEP);
+        if(pos == ::std::string::npos)
+        {
+            return m_str;
+        }
+        else
+        {
+            return m_str.substr(pos+1);
+        }
+    }
 
     const ::std::string& str() const
     {
