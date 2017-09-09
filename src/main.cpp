@@ -52,6 +52,8 @@ void init_debug_list()
     g_debug_disable_map.insert( "Parse" );
     g_debug_disable_map.insert( "LoadCrates" );
     g_debug_disable_map.insert( "Expand" );
+    g_debug_disable_map.insert( "Dump Expanded" );
+    g_debug_disable_map.insert( "Implicit Crates" );
 
     g_debug_disable_map.insert( "Resolve Use" );
     g_debug_disable_map.insert( "Resolve Index" );
@@ -308,7 +310,7 @@ int main(int argc, char *argv[])
         }
 
         // XXX: Dump crate before resolve
-        CompilePhaseV("Temp output - Parsed", [&]() {
+        CompilePhaseV("Dump Expanded", [&]() {
             Dump_Rust( FMT(params.outfile << "_0a_exp.rs").c_str(), crate );
             });
 
@@ -317,19 +319,21 @@ int main(int argc, char *argv[])
         }
 
         // Allocator and panic strategies
-        if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness )
-        {
-            // TODO: Detect if an allocator crate is already present.
-            crate.load_extern_crate(Span(), "alloc_system");
-            crate.load_extern_crate(Span(), "panic_abort");
+        CompilePhaseV("Implicit Crates", [&]() {
+            if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness )
+            {
+                // TODO: Detect if an allocator crate is already present.
+                crate.load_extern_crate(Span(), "alloc_system");
+                crate.load_extern_crate(Span(), "panic_abort");
 
-            // - `mrustc-main` lang item default
-            crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
-        }
-        if( params.test_harness )
-        {
-            crate.load_extern_crate(Span(), "test");
-        }
+                // - `mrustc-main` lang item default
+                crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
+            }
+            if( params.test_harness )
+            {
+                crate.load_extern_crate(Span(), "test");
+            }
+            });
 
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         // - This does name checking on types and free functions.
