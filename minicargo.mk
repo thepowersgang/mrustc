@@ -4,6 +4,7 @@ MINICARGO := tools/bin/minicargo
 RUSTCSRC := rustc-nightly/
 
 LLVM_CONFIG := rustc-nightly/build/bin/llvm-config
+RUSTC_TARGET := x86_64-unknown-linux-gnu
 
 .PHONY: bin/mrustc tools/bin/minicargo output/libsrc.hir output/libtest.hir output/libpanic_unwind.hir output/rustc
 
@@ -27,9 +28,18 @@ output/libtest.hir: $(MRUSTC) $(MINICARGO) output/libstd.hir output/libpanic_unw
 	$(MINICARGO) rustc-nightly/src/libtest --vendor-dir rustc-nightly/src/vendor
 	test -e $@
 
-output/rustc: $(MRUSTC) $(MINICARGO) output/libstd.hir output/libtest.hir $(LLVM_CONFIG)
-	LLVM_CONFIG=$(abspath $(LLVM_CONFIG)) $(MINICARGO) rustc-nightly/src/rustc --vendor-dir rustc-nightly/src/vendor
+RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
+RUSTC_ENV_VARS += LLVM_CONFIG=$(abspath $(LLVM_CONFIG))
+RUSTC_ENV_VARS += CFG_RELEASE=
+RUSTC_ENV_VARS += CFG_RELEASE_CHANNEL=nightly
+RUSTC_ENV_VARS += CFG_VERSION=2017-07-08-nightly-mrustc
+RUSTC_ENV_VARS += CFG_PREFIX=mrustc
+RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 
+output/rustc: $(MRUSTC) $(MINICARGO) output/libstd.hir output/libtest.hir $(LLVM_CONFIG)
+	$(RUSTC_ENV_VARS) $(MINICARGO) rustc-nightly/src/rustc --vendor-dir rustc-nightly/src/vendor
+
+# Reference rustc-nightly/src/bootstrap/native.rs for these values
 LLVM_CMAKE_OPTS := LLVM_TARGET_ARCH=$(firstword $(subst -, ,$(RUSTC_TARGET))) LLVM_DEFAULT_TARGET_TRIPLE=$(RUSTC_TARGET)
 LLVM_CMAKE_OPTS += LLVM_TARGETS_TO_BUILD=X86#;ARM;AArch64;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
 LLVM_CMAKE_OPTS += LLVM_ENABLE_ASSERTIONS=OFF
