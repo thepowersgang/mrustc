@@ -16,7 +16,7 @@
 #include <map>
 #include <set>
 
-::std::map< ::std::string, ::std::string>   g_cfg_values;
+::std::multimap< ::std::string, ::std::string>   g_cfg_values;
 ::std::map< ::std::string, ::std::function<bool(const ::std::string&)> >   g_cfg_value_fcns;
 ::std::set< ::std::string >   g_cfg_flags;
 
@@ -60,12 +60,15 @@ bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
     }
     else if( mi.has_string() ) {
         // Equaliy
-        auto it = g_cfg_values.find(mi.name());
-        if( it != g_cfg_values.end() )
+        auto its = g_cfg_values.equal_range(mi.name());
+        for(auto it = its.first; it != its.second; ++it)
         {
             DEBUG(""<<mi.name()<<": '"<<it->second<<"' == '"<<mi.string()<<"'");
-            return it->second == mi.string();
+            if( it->second == mi.string() )
+                return true;
         }
+        if( its.first != its.second )
+            return false;
 
         auto it2 = g_cfg_value_fcns.find(mi.name());
         if(it2 != g_cfg_value_fcns.end() )

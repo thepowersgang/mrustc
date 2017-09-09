@@ -744,11 +744,22 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     *p = '\0';
                     const char* opt = opt_and_val;
                     const char* val = p + 1;
+                    // TODO: Correctly parse the values.
+                    // - Value should be a double-quoted string.
                     if( ::std::strcmp(opt, "feature") == 0 ) {
                         this->features.insert( ::std::string(val) );
                     }
                     else {
-                        Cfg_SetValue(opt, val);
+                        if( val[0] == '"' ) {
+                            // TODO: Something cleaner than this.
+                            ::std::string   s = val+1;
+                            assert(s.back() == '"');
+                            s.pop_back();
+                            Cfg_SetValue(opt, s);
+                        }
+                        else {
+                            Cfg_SetValue(opt, val);
+                        }
                     }
                 }
                 else {
