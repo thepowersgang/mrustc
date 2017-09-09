@@ -3,7 +3,6 @@ TODO:
  - Lots of fixes to do here
 - Audit TODOs in codebase
 - MIR Optimisations
- - Dead code eliminiation
  - Remove variables that are just assigned from arguments
 - Convert enum variants to point to structs for the data type
  - Four types of variants: Unit, Value, Tuple1, Composite
@@ -19,10 +18,22 @@ TODO:
 - Optimise typecheck.
 
 
-- MIR: Unify Variable/Argument/Temporary LValue types
- - This should reduce the amount of code needed for validation, but will be a
-   BIG change.
+## Big change TODOs
+- Enum variant types
+- SwitchValue
+- Support MIR-only RLibs
+- Fix Span annotations
+- Refactor parse to use a consume model lexer
+- Optimise optimise (and typecheck)
+- Complete structed C codegen
 
+## Smaller changes
+- Only generate destructors if needed (removes C warnings)
+- Add `-j` support to minicargo
+- Cache specialisation tree
+- Dependency files from mrustc
+- Allow disabling C codegen (and/or emitting a makefile stub for it)
+- Simplified C code (remove useless BB labels)
 
 
 ## Optimisations
