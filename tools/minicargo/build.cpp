@@ -374,6 +374,13 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back(crate_type);
+    if( true /*this->enable_debug*/ ) {
+        args.push_back("-g");
+        //args.push_back("--cfg"); args.push_back("debug_assertions");
+    }
+    if( true /*this->enable_optimise*/ ) {
+        args.push_back("-O");
+    }
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
@@ -403,7 +410,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     StringList  args;
     args.push_back( ::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(manifest.build_script()) );
     args.push_back("--crate-name"); args.push_back("build");
-    //args.push_back("--crate-type"); args.push_back("bin");
+    args.push_back("--crate-type"); args.push_back("bin");
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
 
