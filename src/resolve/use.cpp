@@ -702,13 +702,18 @@ namespace {
 
     const AST::Module* mod = &crate.m_root_module;
     const auto& nodes = path.nodes();
+    if( nodes.size() == 0 ) {
+        // An import of the root.
+        return ::AST::PathBinding::make_Module({ mod, nullptr });
+    }
     for( unsigned int i = 0; i < nodes.size()-1; i ++ )
     {
         // TODO: If this came from an import, return the real path?
 
         //rv = Resolve_Use_CanoniseAndBind_Mod(span, crate, *mod, mv$(rv), nodes[i].name(), parent_modules, Lookup::Type);
         //const auto& b = rv.binding();
-        auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes[i].name(), parent_modules, Lookup::Type);
+        assert(mod);
+        auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.at(i).name(), parent_modules, Lookup::Type);
         TU_MATCH_DEF(::AST::PathBinding, (b), (e),
         (
             ERROR(span, E0000, "Unexpected item type " << b.tag_str() << " in import of " << path);
