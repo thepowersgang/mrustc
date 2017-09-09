@@ -398,8 +398,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     for(const auto& feat : manifest.active_features()) {
         args.push_back("--cfg"); args.push_back(::format("feature=", feat));
     }
+
     // TODO: Environment variables (rustc_env)
     StringListKV    env;
+    env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
+    env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
 
     return this->spawn_process_mrustc(args, ::std::move(env), outfile + "_dbg.txt");
 }
@@ -414,7 +417,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
 
-    if( this->spawn_process_mrustc(args, {}, outfile + "_dbg.txt") )
+    StringListKV    env;
+    env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
+    env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+
+    if( this->spawn_process_mrustc(args, ::std::move(env), outfile + "_dbg.txt") )
         return outfile;
     else
         return "";
@@ -464,6 +471,8 @@ bool Builder::build_library(const PackageManifest& manifest) const
         
                 // - Run the script and put output in the right dir
                 auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
+                auto out_dir = output_dir_abs / "build_" + manifest.name().c_str();
+                mkdir(out_dir.str().c_str(), 0755);
                 // TODO: Environment variables (key-value list)
                 StringListKV    env;
                 env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
@@ -476,7 +485,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
                 //    env.push_back(fn, manifest.m_links);
                 //}
                 //env.push_back("CARGO_CFG_RELEASE", "");
-                env.push_back("OUT_DIR", output_dir_abs / "build_" + manifest.name().c_str());
+                env.push_back("OUT_DIR", out_dir);
                 env.push_back("TARGET", TARGET);
                 env.push_back("HOST", TARGET);
                 env.push_back("NUM_JOBS", "1");
@@ -505,7 +514,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
 }
 bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
-    env.push_back("MRUSTC_DEBUG", "");
+    //env.push_back("MRUSTC_DEBUG", "");
     return spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
 }
 bool Builder::spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile) const
@@ -518,6 +527,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     auto cmdline_str = cmdline.str();
     DEBUG("Calling " << cmdline_str);
     
+#if 0
     ::std::stringstream environ_str;
     environ_str << "TEMP=" << getenv("TEMP") << '\0';
     environ_str << "TMP=" << getenv("TMP") << '\0';
@@ -526,6 +536,12 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
         environ_str << kv.first << "=" << kv.second << '\0';
     }
     environ_str << '\0';
+#else
+    for(auto kv : env)
+    {
+        setenv(kv.first, kv.second);
+    }
+#endif
 
     CreateDirectory(static_cast<::std::string>(logfile.parent()).c_str(), NULL);
 
@@ -607,7 +623,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
         if( WIFEXITED(status) )
             DEBUG("Compiler exited with non-zero exit status " << WEXITSTATUS(status));
         else if( WIFSIGNALED(status) )
-            DEBUG("Compiler was terminated with signal " << WSTOPSIG(status));
+            DEBUG("Compiler was terminated with signal " << WTERMSIG(status));
         else
             DEBUG("Compiler terminated for unknown reason, status=" << status);
         return false;

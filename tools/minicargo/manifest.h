@@ -52,6 +52,11 @@ struct PackageVersion
         if( minor != x.minor )  return minor < x.minor;
         return patch < x.patch;
     }
+    bool operator<=(const PackageVersion& x) const {
+        if( major != x.major )  return major < x.major;
+        if( minor != x.minor )  return minor < x.minor;
+        return patch <= x.patch;
+    }
     bool operator>(const PackageVersion& x) const {
         if( major != x.major )  return major > x.major;
         if( minor != x.minor )  return minor > x.minor;
@@ -76,7 +81,9 @@ struct PackageVersionSpec
         {
             Compatible,
             Greater,
+            GreaterEqual,
             Equal,
+            LessEqual,
             Less,
         };
 
@@ -102,7 +109,9 @@ struct PackageVersionSpec
             {
             case Bound::Type::Compatible: os << "^";  break;
             case Bound::Type::Greater:    os << ">";  break;
+            case Bound::Type::GreaterEqual: os << ">=";  break;
             case Bound::Type::Equal:      os << "=";  break;
+            case Bound::Type::LessEqual:  os << "<=";  break;
             case Bound::Type::Less:       os << "<";  break;
             }
             os << b.ver;
@@ -238,6 +247,7 @@ class PackageManifest
 public:
     static PackageManifest load_from_toml(const ::std::string& path);
 
+    const PackageVersion& version() const { return m_version; }
     bool has_library() const;
     const PackageTarget& get_library() const;
 

@@ -8,6 +8,16 @@
 #include <algorithm>
 #include "repository.h"
 
+
+#ifdef _WIN32
+# define CFG_UNIX   false
+# define CFG_WINDOWS true
+#else
+# define TARGET_NAME "x86_64-unknown-linux-gnu"
+# define CFG_UNIX   true
+# define CFG_WINDOWS false
+#endif
+
 static ::std::vector<::std::shared_ptr<PackageManifest>>    g_loaded_manifests;
 
 PackageManifest::PackageManifest()
@@ -88,9 +98,19 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             {
                 // Informational only, ignore
             }
+            else if( key == "exclude"
+                  || key == "include"
+                  )
+            {
+                // Packaging
+            }
+            else if( key == "metadata" )
+            {
+                // Unknown.
+            }
             else if( key == "links" )
             {
-                // TODO: Add "-l <thisname>" to command line
+                // Metadata only
             }
             else
             {
@@ -182,9 +202,75 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             //const auto& repo = key_val.path[1];
             TODO("Support repository patches");
         }
+        else if( section == "profile" )
+        {
+            // TODO: Various profiles (debug, release, ...)
+        }
         else if( section == "target" )
         {
             // TODO: Target opts?
+            if( key_val.path.size() < 3 ) {
+            }
+            const auto& cfg = key_val.path[1];
+            const auto& real_section = key_val.path[2];
+            // Check if `cfg` currently applies.
+            // - It can be a target spec, or a cfg(foo) same as rustc
+            bool success;
+            if( cfg.substr(0, 4) == "cfg(" ) {
+                // TODO: Parser?
+                if( cfg == "cfg(unix)" ) {
+                    success = CFG_UNIX;
+                }
+                else if( cfg == "cfg(all(unix, not(target_os = \"macos\")))" ) {
+                    success = CFG_UNIX;
+                }
+                else if( cfg == "cfg(all(unix, not(target_os = \"emscripten\"), not(target_os = \"macos\"), not(target_os = \"ios\")))" ) {
+                    success = CFG_UNIX;
+                }
+                else if( cfg == "cfg(windows)" ) {
+                    success = CFG_WINDOWS;
+                }
+                else if( cfg == "cfg(target_env = \"msvc\")" ) {
+                    success = CFG_WINDOWS;
+                }
+                else if( cfg == "cfg(not(windows))" ) {
+                    success = !CFG_WINDOWS;
+                }
+                else if( cfg == "cfg(not(stage0))" ) {
+                    success = true;
+                }
+                else {
+                    TODO("Target deps - " << cfg);
+                }
+            }
+            else {
+                // It's a target name
+                success = (cfg == TARGET_NAME);
+            }
+            // If so, parse as if the path was `real_section....`
+            if( success )
+            {
+                if( real_section == "dependencies" )
+                {
+                    assert(key_val.path.size() > 3);
+
+                    const auto& depname = key_val.path[3];
+
+                    // Find/create dependency descriptor
+                    auto it = ::std::find_if(rv.m_dependencies.begin(), rv.m_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
+                    bool was_added = (it == rv.m_dependencies.end());
+                    if( was_added )
+                    {
+                        it = rv.m_dependencies.insert(it, PackageRef{ depname });
+                    }
+
+                    it->fill_from_kv(was_added, key_val, 4);
+                }
+                else
+                {
+                    TODO("Unknown manifest section for target - " << real_section);
+                }
+            }
         }
         else if( section == "features" )
         {
@@ -461,8 +547,17 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
             DEBUG("Activating feature " << featname << " = [" << it->second << "]");
             for(const auto& sub_feat : it->second)
             {
-                if( sub_feat.find('/') != ::std::string::npos ) {
-                    TODO("Activate dependency feature from '" << sub_feat << "'");
+                auto slash_pos = sub_feat.find('/');
+                if( slash_pos != ::std::string::npos ) {
+                    ::std::string depname = sub_feat.substr(0, slash_pos);
+                    ::std::string depfeat = sub_feat.substr(slash_pos+1);
+                    DEBUG("Activate feature '" << depfeat << "' from dependency '" << depname << "'");
+                    auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_name == depname; });
+                    if(it2 != m_dependencies.end())
+                    {
+                        it2->m_features.push_back(depfeat);
+                        // TODO: Does this need to be set again?
+                    }
                 }
                 else {
                     add_feature(sub_feat);
@@ -665,7 +760,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             char* out_ptr = nullptr;
             long rv = ::std::strtol(istr.c_str() + pos, &out_ptr, 10);
             if( out_ptr == istr.c_str() + pos )
-                throw ::std::invalid_argument(istr.c_str() + pos);
+                throw ::std::invalid_argument(::format("Failed to parse integer from '", istr.c_str() + pos, "'"));
             pos = out_ptr - istr.c_str();
             return rv;
         }
@@ -690,12 +785,30 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             pos ++;
             break;
         case '>':
-            ty = PackageVersionSpec::Bound::Type::Greater;
             pos ++;
+            switch(s[pos])
+            {
+            case '=':
+                pos ++;
+                ty = PackageVersionSpec::Bound::Type::GreaterEqual;
+                break;
+            default:
+                ty = PackageVersionSpec::Bound::Type::Greater;
+                break;
+            }
             break;
         case '<':
-            ty = PackageVersionSpec::Bound::Type::Greater;
             pos ++;
+            switch(s[pos])
+            {
+            case '=':
+                pos ++;
+                ty = PackageVersionSpec::Bound::Type::LessEqual;
+                break;
+            default:
+                ty = PackageVersionSpec::Bound::Type::Less;
+                break;
+            }
             break;
         default:
             break;
@@ -703,21 +816,27 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
         while( pos < s.size() && isblank(s[pos]) )
             pos ++;
         if( pos == s.size() )
-            throw ::std::runtime_error("Bad version string");
+            throw ::std::runtime_error("Bad version string - Expected version number");
 
         PackageVersion  v;
         v.major = H::parse_i(s, pos);
-        if( s[pos] != '.' )
-            throw ::std::runtime_error("Bad version string");
-        pos ++;
-        v.minor = H::parse_i(s, pos);
-        if(s[pos] == '.')
+        if( s[pos] == '.' )
         {
             pos ++;
-            v.patch = H::parse_i(s, pos);
+            v.minor = H::parse_i(s, pos);
+            if(s[pos] == '.')
+            {
+                pos ++;
+                v.patch = H::parse_i(s, pos);
+            }
+            else
+            {
+                v.patch = 0;
+            }
         }
         else
         {
+            v.minor = 0;
             v.patch = 0;
         }
 
@@ -746,12 +865,20 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
             if( !(v < b.ver.next_breaking()) )
                 return false;
             break;
+        case Bound::Type::GreaterEqual:
+            if( !(v >= b.ver) )
+                return false;
+            break;
         case Bound::Type::Greater:
             if( !(v > b.ver) )
                 return false;
             break;
         case Bound::Type::Equal:
             if( v != b.ver )
+                return false;
+            break;
+        case Bound::Type::LessEqual:
+            if( !(v <= b.ver) )
                 return false;
             break;
         case Bound::Type::Less:
