@@ -520,7 +520,7 @@ namespace {
                 is_windows = true;
                 // TODO: Look up these paths in the registry and use CreateProcess instead of system
                 args.push_back(cache_str( detect_msvc().path_vcvarsall ));
-                //args.push_back("amd64");
+                //args.push_back("amd64");  // NOTE: Doesn't support inline assembly
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
@@ -584,6 +584,10 @@ namespace {
                     cmd_ss << "&";
                 }
                 else {
+                    if( is_windows && strchr(arg, ' ') == nullptr ) {
+                        cmd_ss << arg << " ";
+                        continue ;
+                    }
                     cmd_ss << "\"" << FmtShell(arg, is_windows) << "\" ";
                 }
             }
@@ -628,7 +632,15 @@ namespace {
 
         void emit_type_id(const ::HIR::TypeRef& ty) override
         {
-            m_of << "tTYPEID __typeid_" << Trans_Mangle(ty) << " __attribute__((weak));\n";
+            switch(m_compiler)
+            {
+            case Compiler::Gcc:
+                m_of << "tTYPEID __typeid_" << Trans_Mangle(ty) << " __attribute__((weak));\n";
+                break;
+            case Compiler::Msvc:
+                m_of << "__declspec(selectany) tTYPEID __typeid_" << Trans_Mangle(ty) << ";\n";
+                break;
+            }
         }
         void emit_type_proto(const ::HIR::TypeRef& ty) override
         {
@@ -673,7 +685,21 @@ namespace {
             m_of << "typedef ";
             // TODO: ABI marker, need an ABI enum?
             // TODO: Better emit_ctype call for return type.
-            emit_ctype(*te.m_rettype); m_of << " (*"; emit_ctype(ty); m_of << ")(";
+            emit_ctype(*te.m_rettype); m_of << " (";
+            if( m_compiler == Compiler::Msvc )
+            {
+                if( te.m_abi == ABI_RUST )
+                {
+                }
+                else if( te.m_abi == "system" )
+                {
+                    m_of << "__stdcall";
+                }
+                else
+                {
+                }
+            }
+            m_of << "*"; emit_ctype(ty); m_of << ")(";
             if( te.m_arg_types.size() == 0 )
             {
                 m_of << "void)";
@@ -1433,6 +1459,8 @@ namespace {
                     m_of << " ";
                     emit_literal(get_inner_type(0, i), e[i], params);
                 }
+                if(ty.m_data.is_Path() && e.size() == 0 && m_options.disallow_empty_structs)
+                    m_of << "0";
                 m_of << " }";
                 if( ty.m_data.is_Array() )
                     m_of << "}";

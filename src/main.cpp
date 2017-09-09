@@ -29,7 +29,7 @@
 
 // Hacky default target
 #ifdef _MSC_VER
-#define DEFAULT_TARGET_NAME "x86_64-windows-msvc"
+#define DEFAULT_TARGET_NAME "x86-windows-msvc"
 #elif defined(__GNU__)
 # if defined(__linux__)
 #define DEFAULT_TARGET_NAME "x86_64-linux-gnu"

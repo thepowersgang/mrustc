@@ -15,6 +15,11 @@ TargetArch ARCH_X86_64 = {
     64, false,
     { /*atomic(u8)=*/true, false, true, true,  true }
     };
+TargetArch ARCH_X86 = {
+    "x86",
+    32, false,
+    { /*atomic(u8)=*/true, false, true, false,  true }
+};
 TargetSpec  g_target;
 
 namespace
@@ -43,13 +48,20 @@ namespace
                 ARCH_X86_64
                 };
         }
-        else if (target_name == "x86_64-windows-msvc")
+        else if (target_name == "x86-windows-msvc")
         {
             return TargetSpec {
-                "windows", "windows", "msvd", CodegenMode::Msvc,
-                ARCH_X86_64
-                };
+                "windows", "windows", "msvc", CodegenMode::Msvc,
+                ARCH_X86
+            };
         }
+        //else if (target_name == "x86_64-windows-msvc")
+        //{
+        //    return TargetSpec {
+        //        "windows", "windows", "msvc", CodegenMode::Msvc,
+        //        ARCH_X86_64
+        //        };
+        //}
         else
         {
             ::std::cerr << "Unknown target name '" << target_name << "'" << ::std::endl;
