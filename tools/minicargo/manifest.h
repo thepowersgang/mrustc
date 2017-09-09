@@ -6,10 +6,11 @@
 #include <memory>
 #include <functional>
 #include "path.h"
+#include <functional>
 
 class PackageManifest;
 class Repository;
-class TomlKeyValue;
+struct TomlKeyValue;
 
 struct PackageVersion
 {

@@ -2826,7 +2826,6 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
                 DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", impl = " << impl);
                 auto cmp = impl_cmp;
-#if 1
                 if( cmp == ::HIR::Compare::Fuzzy )
                 {
                     // If the match was fuzzy, try again filling in with `cb_match`
@@ -2841,7 +2840,6 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     cmp &= real_trait_path.m_params .match_test_generics_fuzz(sp, i_tp, cb_infer, cb_match);
                     DEBUG("[ftic_check_params] - Re-check result: " << cmp);
                 }
-#endif
                 for(const auto& assoc_bound : real_trait.m_type_bounds) {
                     ::HIR::TypeRef  tmp;
                     const ::HIR::TypeRef*   ty_p;
