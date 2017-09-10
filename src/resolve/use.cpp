@@ -231,6 +231,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 (
                     BUG(Span(), "Unexpected item in trait - " << ti.data.tag_str());
                     ),
+                (None,
+                    // Deleted, ignore
+                    ),
                 (Type,
                     ),
                 (Function,

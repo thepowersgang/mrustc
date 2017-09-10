@@ -724,8 +724,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             }
             CHECK_TOK(tok, TOK_SEMICOLON);
 
-            // TODO: Attributes on associated statics
-            trait.add_static( mv$(name), ::AST::Static(AST::Static::STATIC, mv$(ty), val)/*, mv$(item_attrs)*/ );
+            trait.add_static( mv$(name), mv$(item_attrs), ::AST::Static(AST::Static::STATIC, mv$(ty), val) );
             break; }
         case TOK_RWORD_CONST: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -740,8 +739,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             }
             CHECK_TOK(tok, TOK_SEMICOLON);
 
-            // TODO: Attributes on associated constants
-            trait.add_static( mv$(name), ::AST::Static(AST::Static::CONST, mv$(ty), val)/*, mv$(item_attrs)*/ );
+            trait.add_static( mv$(name), mv$(item_attrs), ::AST::Static(AST::Static::CONST, mv$(ty), val) );
             break; }
         // Associated type
         case TOK_RWORD_TYPE: {
@@ -765,7 +763,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             }
 
             CHECK_TOK(tok, TOK_SEMICOLON);
-            trait.add_type( ::std::move(name), ::std::move(default_type) );
+            trait.add_type( ::std::move(name), mv$(item_attrs), ::std::move(default_type) );
             trait.items().back().data.as_Type().params() = mv$(atype_params);
             break; }
 
@@ -808,7 +806,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
                 throw ParseError::Unexpected(lex, tok);
             }
             // TODO: Store `item_attrs`
-            trait.add_function( ::std::move(name), /*mv$(item_attrs),*/ ::std::move(fcn) );
+            trait.add_function( ::std::move(name), mv$(item_attrs), ::std::move(fcn) );
             break; }
         default:
             throw ParseError::Unexpected(lex, tok);

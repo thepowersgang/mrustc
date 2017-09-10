@@ -976,6 +976,9 @@ namespace {
         (
             BUG(item.data.span, "Encountered unexpected item type in trait");
             ),
+        (None,
+            // Ignore.
+            ),
         (Type,
             bool is_sized = true;
             ::std::vector< ::HIR::TraitPath>    trait_bounds;

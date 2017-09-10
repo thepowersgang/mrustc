@@ -1136,6 +1136,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             Expand_GenericParams(crate, modstack, mod,  e.params());
             for(auto& ti : e.items())
             {
+                DEBUG(" - " << ti.name << " " << ti.data.tag_str());
                 auto attrs = mv$(ti.data.attrs);
                 Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, ti.data);
 

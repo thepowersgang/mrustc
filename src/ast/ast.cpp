@@ -109,15 +109,18 @@ Function Function::clone() const
     return rv;
 }
 
-void Trait::add_type(::std::string name, TypeRef type) {
+void Trait::add_type(::std::string name, MetaItems attrs, TypeRef type) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
+    m_items.back().data.attrs = mv$(attrs);
 }
-void Trait::add_function(::std::string name, Function fcn) {
+void Trait::add_function(::std::string name, MetaItems attrs, Function fcn) {
     DEBUG("trait fn " << name);
     m_items.push_back( Named<Item>(mv$(name), Item::make_Function({mv$(fcn)}), true) );
+    m_items.back().data.attrs = mv$(attrs);
 }
-void Trait::add_static(::std::string name, Static v) {
+void Trait::add_static(::std::string name, MetaItems attrs, Static v) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Static({mv$(v)}), true) );
+    m_items.back().data.attrs = mv$(attrs);
 }
 void Trait::set_is_marker() {
     m_is_marker = true;

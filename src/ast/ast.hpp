@@ -219,9 +219,9 @@ public:
     const NamedList<Item>& items() const { return m_items; }
           NamedList<Item>& items()       { return m_items; }
 
-    void add_type(::std::string name, TypeRef type);
-    void add_function(::std::string name, Function fcn);
-    void add_static(::std::string name, Static v);
+    void add_type(::std::string name, MetaItems attrs, TypeRef type);
+    void add_function(::std::string name, MetaItems attrs, Function fcn);
+    void add_static(::std::string name, MetaItems attrs, Static v);
 
     void set_is_marker();
     bool is_marker() const;
