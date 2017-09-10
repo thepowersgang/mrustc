@@ -1581,7 +1581,11 @@ namespace {
                         ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
                     }
 
+                    // Apply bounds
+                    apply_bounds_as_rules(this->context, sp, f.m_params, monomorph_cb);
+
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
+                    DEBUG("> " << node.m_path << " = " << ty);
                     this->context.equate_types(sp, node.m_res_type, ty);
                     } break;
                 case ::HIR::ExprNode_PathValue::STRUCT_CONSTR: {
@@ -1599,6 +1603,7 @@ namespace {
                     {
                         ft.m_arg_types.push_back( monomorphise_type(sp, s.m_params, e.m_params, arg.ent) );
                     }
+                    //apply_bounds_as_rules(this->context, sp, s.m_params, monomorph_cb);
 
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
                     this->context.equate_types(sp, node.m_res_type, ty);
@@ -1622,6 +1627,7 @@ namespace {
                     {
                         ft.m_arg_types.push_back( monomorphise_type(sp, enm.m_params, e.m_params, arg.ent) );
                     }
+                    //apply_bounds_as_rules(this->context, sp, enm.m_params, monomorph_cb);
 
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
                     this->context.equate_types(sp, node.m_res_type, ty);
@@ -1678,6 +1684,7 @@ namespace {
                         };
                     for(const auto& arg : ie.m_args)
                         ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
+                    apply_bounds_as_rules(this->context, sp, ie.m_params, monomorph_cb);
                     auto ty = ::HIR::TypeRef(mv$(ft));
 
                     this->context.equate_types(node.span(), node.m_res_type, ty);
@@ -1785,7 +1792,9 @@ namespace {
                             }
                         };
 
-                    // TODO: Impl/method type bounds
+                    // Bounds (both impl and fn)
+                    apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, monomorph_cb);
+                    apply_bounds_as_rules(this->context, sp, fcn_ptr->m_params, monomorph_cb);
 
                     ::HIR::FunctionType ft {
                         fcn_ptr->m_unsafe, fcn_ptr->m_abi,
@@ -1800,11 +1809,13 @@ namespace {
                 }
                 else    // !fcn_ptr, ergo const_ptr
                 {
+                    assert(const_ptr);
                     auto monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &impl_params,  &e.params);
 
                     ::HIR::TypeRef  tmp;
                     const auto& ty = ( monomorphise_type_needed(const_ptr->m_type) ? tmp = monomorphise_type_with(sp, const_ptr->m_type, monomorph_cb) : const_ptr->m_type );
 
+                    apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, monomorph_cb);
                     this->context.equate_types(node.span(), node.m_res_type, ty);
                 }
                 )
