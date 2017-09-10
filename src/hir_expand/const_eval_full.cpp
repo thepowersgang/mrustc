@@ -408,13 +408,21 @@ namespace {
                 // TODO: Monomorph the path? (Not needed... yet)
                 auto ent = get_ent_fullpath(sp, resolve.m_crate, e2.p, EntNS::Value,  const_ms);
                 ASSERT_BUG(sp, ent.is_Constant(), "MIR Constant::Const("<<e2.p<<") didn't point to a Constant - " << ent.tag_str());
-                auto val = clone_literal( ent.as_Constant()->m_value_res );
-                if( val.is_Invalid() ) {
+                const auto& c = *ent.as_Constant();
+                // Prefer re-evaluating the MIR.
+                // - Constants insert themselves directly, so this is
+                //   effectively the same thing.
+                // Avoids _BorrowData leftovers.
+                if( c.m_value ) {
                     return evaluate_constant(sp, resolve, newval_state, FMT_CB(ss, ss << e2.p;), ent.as_Constant()->m_value, {}, {});
                 }
-                // Monomorphise the value according to `const_ms`
-                monomorph_literal_inplace(sp, val, const_ms);
-                return val;
+                else {
+                    auto val = clone_literal( ent.as_Constant()->m_value_res );
+                    ASSERT_BUG(sp, !val.is_Invalid(), "MIR Constant::Const("<<e2.p<<") pointed to invalid Constant - (no mir, no literal)");
+                    // Monomorphise the value according to `const_ms`
+                    monomorph_literal_inplace(sp, val, const_ms);
+                    return val;
+                }
                 ),
             (ItemAddr,
                 return ::HIR::Literal::make_BorrowPath( ms.monomorph(sp, e2) );
@@ -477,7 +485,7 @@ namespace {
                     if( const auto* p = e.val.opt_Deref() ) {
                         if( p->val->is_Deref() )
                             MIR_TODO(state, "Undo nested deref coercion - " << *p->val);
-                        val =  read_lval(*p->val);
+                        val = read_lval(*p->val);
                     }
                     else if( const auto* p = e.val.opt_Static() ) {
                         // Borrow of a static, emit BorrowPath with the same path

@@ -1596,7 +1596,7 @@ namespace {
                 m_of << Trans_Mangle( params.monomorph(m_resolve, e));
                 ),
             (BorrowData,
-                MIR_TODO(*m_mir_res, "Handle BorrowData - " << *e);
+                MIR_TODO(*m_mir_res, "Handle BorrowData (emit_literal) - " << *e);
                 ),
             (String,
                 m_of << "{ ";
@@ -4096,7 +4096,7 @@ namespace {
                 }
                 ),
             (BorrowData,
-                MIR_TODO(*m_mir_res, "Handle BorrowData - " << *e);
+                MIR_TODO(*m_mir_res, "Handle BorrowData (assign_from_literal) - " << *e);
                 ),
             (String,
                 emit_dst(); m_of << ".PTR = ";
