@@ -84,10 +84,10 @@ public:
 
     void push_back(::std::string s)
     {
-#if _WIN32
-        // NOTE: MSVC's STL changes the pointer on move it seems
+        // If the cache list is about to move, update the pointers
         if(m_cached.capacity() == m_cached.size())
         {
+            // Make a bitmap of entries in `m_strings` that are pointers into `m_cached`
             ::std::vector<bool> b;
             b.reserve(m_strings.size());
             size_t j = 0;
@@ -96,22 +96,32 @@ public:
                 if(j == m_cached.size())
                     break;
                 if(s == m_cached[j].c_str())
+                {
+                    j ++;
                     b.push_back(true);
+                }
                 else
+                {
                     b.push_back(false);
+                }
             }
 
+            // Add the new one
             m_cached.push_back(::std::move(s));
+            // Update pointers
             j = 0;
             for(size_t i = 0; i < b.size(); i ++)
             {
                 if(b[i])
-                    m_strings[i] = m_cached[j++].c_str();
+                {
+                    m_strings[i] = m_cached.at(j++).c_str();
+                }
             }
         }
         else
-#endif
-        m_cached.push_back(::std::move(s));
+        {
+            m_cached.push_back(::std::move(s));
+        }
         m_strings.push_back(m_cached.back().c_str());
     }
     void push_back(const char* s)
@@ -162,6 +172,14 @@ public:
     }
     Iter end() const {
         return Iter { *this, m_keys.size() };
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const StringListKV& x) {
+        os << "{ ";
+        for(auto kv : x)
+            os << kv.first << "=" << kv.second << " ";
+        os << "}";
+        return os;
     }
 };
 
@@ -499,7 +517,10 @@ bool Builder::build_library(const PackageManifest& manifest) const
                 chdir(manifest.directory().str().c_str());
                 #endif
                 if( !this->spawn_process(script_exe_abs.str().c_str(), {}, env, out_file) )
+                {
+                    rename(out_file.str().c_str(), (out_file+"_failed").str().c_str());
                     return false;
+                }
                 #if _WIN32
                 #else
                 fchdir(fd_cwd);
@@ -593,6 +614,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
         for(const auto& p : argv)
             os << " " << p;
         });
+    DEBUG("Environment " << env);
     argv.push_back(nullptr);
 
     // Generate `envp`
@@ -606,6 +628,11 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     {
         envp.push_back(::format(kv.first, "=", kv.second));
     }
+    //Debug_Print([&](auto& os){
+    //    os << "ENVP=";
+    //    for(const auto& p : envp.get_vec())
+    //        os << "\n " << p;
+    //    });
     envp.push_back(nullptr);
 
     if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.get_vec().data()) != 0 )
