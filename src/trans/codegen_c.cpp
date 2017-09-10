@@ -1611,12 +1611,18 @@ namespace {
                         m_of << "\\n";
                         break;
                     default:
-                        if( ' ' <= v )
+                        if( ' ' <= v && static_cast<uint8_t>(v) < 0x7F )
                             m_of << v;
-                        else if( v < 16 )
-                            m_of << "\\x0" << (unsigned int)static_cast<uint8_t>(v) << "\"\"";
-                        else
-                            m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v) << "\"\"";
+                        else {
+                            if( static_cast<uint8_t>(v) < 16 )
+                                m_of << "\\x0" << (unsigned int)static_cast<uint8_t>(v);
+                            else
+                                m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v);
+                            // If the next character is a hex digit,
+                            // close/reopen the string.
+                            if( isxdigit(*(&v+1)) )
+                                m_of << "\"\"";
+                        }
                     }
                 }
                 m_of << "\"" << ::std::dec;
