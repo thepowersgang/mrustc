@@ -1544,7 +1544,7 @@ namespace {
             (Float,
                 this->emit_float(e);
                 ),
-            (BorrowOf,
+            (BorrowPath,
                 TU_MATCHA( (e.m_data), (pe),
                 (Generic,
                     const auto& vi = m_crate.get_valitem_by_path(sp, pe.m_path);
@@ -1594,6 +1594,9 @@ namespace {
                     )
                 )
                 m_of << Trans_Mangle( params.monomorph(m_resolve, e));
+                ),
+            (BorrowData,
+                MIR_TODO(*m_mir_res, "Handle BorrowData - " << *e);
                 ),
             (String,
                 m_of << "{ ";
@@ -4057,7 +4060,7 @@ namespace {
                 emit_dst(); m_of << " = ";
                 emit_literal(ty, lit, {});
                 ),
-            (BorrowOf,
+            (BorrowPath,
                 if( ty.m_data.is_Function() )
                 {
                     emit_dst(); m_of << " = " << Trans_Mangle(e);
@@ -4091,6 +4094,9 @@ namespace {
                 {
                     emit_dst(); m_of << " = &" << Trans_Mangle(e);
                 }
+                ),
+            (BorrowData,
+                MIR_TODO(*m_mir_res, "Handle BorrowData - " << *e);
                 ),
             (String,
                 emit_dst(); m_of << ".PTR = ";

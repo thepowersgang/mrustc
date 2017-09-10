@@ -75,8 +75,11 @@ namespace {
         (Float,
             return ::HIR::Literal(e);
             ),
-        (BorrowOf,
+        (BorrowPath,
             return ::HIR::Literal(e.clone());
+            ),
+        (BorrowData,
+            return ::HIR::Literal(box$( clone_literal(*e) ));
             ),
         (String,
             return ::HIR::Literal(e);
@@ -440,11 +443,6 @@ namespace {
             }
             void visit(::HIR::ExprNode_Borrow& node) override {
 
-                //m_rv_type = ::HIR::TypeRef();
-                //m_rv = ::HIR::Literal::make_BorrowOf( ::HIR::SimplePath() );
-                //return ;
-                //badnode(node);
-
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_exp_type.m_data), (te),
                 (
                     //ERROR(node.span(), E0000, "Invalid expected type for a &-ptr - " << m_exp_type);
@@ -468,12 +466,8 @@ namespace {
                     ERROR(node.span(), E0000, "Could not trivially infer type of referenced static - " << m_rv_type << ", lit = " << val);
                 }
 
-                // Create new static containing borrowed data
-                //auto path = m_newval_state.new_static( m_rv_type.clone(), mv$(val) );
-                auto path = m_newval_state.new_static( ::HIR::TypeRef(), mv$(val) );
-
                 m_rv_type = ::HIR::TypeRef::new_borrow( node.m_type, mv$(m_rv_type) );
-                m_rv = ::HIR::Literal::make_BorrowOf( mv$(path) );
+                m_rv = ::HIR::Literal::make_BorrowData( box$(val) );
             }
             void visit(::HIR::ExprNode_Cast& node) override {
                 TRACE_FUNCTION_F("_Cast");
@@ -1069,7 +1063,7 @@ namespace {
             (Invalid,
                 BUG(sp, "Read of invalid lvalue - " << lv);
                 ),
-            (BorrowOf,
+            (BorrowPath,
                 return ::HIR::Literal(e.clone());
                 ),
             (Integer,
@@ -1106,7 +1100,7 @@ namespace {
                 return clone_literal( ent.as_Constant()->m_value_res );
                 ),
             (ItemAddr,
-                return ::HIR::Literal::make_BorrowOf( e2.clone() );
+                return ::HIR::Literal::make_BorrowPath( e2.clone() );
                 )
             )
             throw "";
@@ -1165,14 +1159,8 @@ namespace {
 
                     auto inner_val = read_lval(e.val);
 
-                    ::HIR::TypeRef  inner_ty;
-                    const auto& inner_ty_r = state.get_lvalue_type(inner_ty, e.val);
-                    if( &inner_ty_r != &inner_ty )
-                        inner_ty = inner_ty_r.clone();
-
                     // Create new static containing borrowed data
-                    auto item_path = newval_state.new_static( mv$(inner_ty), mv$(inner_val) );
-                    val = ::HIR::Literal::make_BorrowOf( mv$(item_path) );
+                    val = ::HIR::Literal::make_BorrowData( box$(inner_val) );
                     ),
                 (Cast,
                     auto inval = read_lval(e.val);
@@ -1237,9 +1225,9 @@ namespace {
                         TU_IFLET( ::HIR::Literal, inval, Integer, i,
                             val = ::HIR::Literal(i);
                         )
-                        else TU_IFLET( ::HIR::Literal, inval, BorrowOf, i,
+                        else if( inval.is_BorrowPath() || inval.is_BorrowData() ) {
                             val = mv$(inval);
-                        )
+                        }
                         else {
                             BUG(sp, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                         }

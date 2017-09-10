@@ -78,8 +78,11 @@ namespace {
         (Float,
             return ::HIR::Literal(e);
             ),
-        (BorrowOf,
+        (BorrowPath,
             return ::HIR::Literal(e.clone());
+            ),
+        (BorrowData,
+            return ::HIR::Literal(box$(clone_literal(*e)));
             ),
         (String,
             return ::HIR::Literal(e);
@@ -107,10 +110,13 @@ namespace {
             ),
         (Float,
             ),
-        (BorrowOf,
+        (BorrowPath,
             DEBUG(e);
             e = ms.monomorph(sp, e);
             // TODO: expand associated types
+            ),
+        (BorrowData,
+            monomorph_literal_inplace(sp, *e, ms);
             ),
         (String,
             )
@@ -366,7 +372,7 @@ namespace {
             (Invalid,
                 BUG(sp, "Read of lvalue with Literal::Invalid - " << lv);
                 ),
-            (BorrowOf,
+            (BorrowPath,
                 return ::HIR::Literal(e.clone());
                 ),
             (Integer,
@@ -411,7 +417,7 @@ namespace {
                 return val;
                 ),
             (ItemAddr,
-                return ::HIR::Literal::make_BorrowOf( ms.monomorph(sp, e2) );
+                return ::HIR::Literal::make_BorrowPath( ms.monomorph(sp, e2) );
                 )
             )
             throw "";
@@ -474,8 +480,8 @@ namespace {
                         val =  read_lval(*p->val);
                     }
                     else if( const auto* p = e.val.opt_Static() ) {
-                        // Borrow of a static, emit BorrowOf with the same path
-                        val = ::HIR::Literal::make_BorrowOf( p->clone() );
+                        // Borrow of a static, emit BorrowPath with the same path
+                        val = ::HIR::Literal::make_BorrowPath( p->clone() );
                     }
                     else {
                         auto inner_val = read_lval(e.val);
@@ -486,8 +492,9 @@ namespace {
                             inner_ty = inner_ty_r.clone();
 
                         // Create new static containing borrowed data
+                        // NOTE: Doesn't use BorrowData
                         auto item_path = newval_state.new_static( mv$(inner_ty), mv$(inner_val) );
-                        val = ::HIR::Literal::make_BorrowOf( mv$(item_path) );
+                        val = ::HIR::Literal::make_BorrowPath( mv$(item_path) );
                     }
                     ),
                 (Cast,
@@ -554,17 +561,17 @@ namespace {
                         TU_IFLET( ::HIR::Literal, inval, Integer, i,
                             val = ::HIR::Literal(i);
                         )
-                        else TU_IFLET( ::HIR::Literal, inval, BorrowOf, i,
+                        else if( inval.is_BorrowData() || inval.is_BorrowPath() ) {
                             val = mv$(inval);
-                        )
+                        }
                         else {
                             BUG(sp, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                         }
                         ),
                     (Borrow,
-                        TU_IFLET( ::HIR::Literal, inval, BorrowOf, i,
+                        if( inval.is_BorrowData() || inval.is_BorrowPath() ) {
                             val = mv$(inval);
-                        )
+                        }
                         else {
                             BUG(sp, "Invalid cast of " << inval.tag_str() << " to " << e.type);
                         }

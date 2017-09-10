@@ -1559,8 +1559,11 @@ void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& li
         ),
     (Float,
         ),
-    (BorrowOf,
+    (BorrowPath,
         Trans_Enumerate_FillFrom_Path(state, e, pp);
+        ),
+    (BorrowData,
+        Trans_Enumerate_FillFrom_Literal(state, *e, pp);
         ),
     (String,
         )

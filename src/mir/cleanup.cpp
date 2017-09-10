@@ -360,7 +360,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         throw "";
         ),
     (Pointer,
-        if( lit.is_BorrowOf() ) {
+        if( lit.is_BorrowPath() || lit.is_BorrowData() ) {
             // TODO:
             MIR_TODO(state, "BorrowOf into pointer - " << lit << " into " << ty);
         }
@@ -370,9 +370,10 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         }
         ),
     (Borrow,
-        if( lit.is_BorrowOf() )
+        if( const auto* pp = lit.opt_BorrowPath() )
         {
-            const auto& path = lit.as_BorrowOf();
+            const auto& path = *pp;
+            auto ptr_val = ::MIR::Constant::make_ItemAddr(path.clone());
             // TODO: Get the metadata type (for !Sized wrapper types)
             if( te.inner->m_data.is_Slice() )
             {
@@ -381,9 +382,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                 MIR_ASSERT(state, ty.m_data.is_Array(), "BorrowOf returning slice not of an array, instead " << ty);
                 unsigned int size = ty.m_data.as_Array().size_val;
 
-                auto ptr_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(path.clone()) );
                 auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
-                return ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(size_val) });
+                return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(size_val) });
             }
             else if( const auto* tep = te.inner->m_data.opt_TraitObject() )
             {
@@ -392,14 +392,42 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
 
                 auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : ty.clone(), tep->m_trait.m_path.clone(), "#vtable");
 
-                auto ptr_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(path.clone()) );
                 auto vtable_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(mv$(vtable_path)) );
 
-                return ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(vtable_val) });
+                return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(vtable_val) });
             }
             else
             {
-                return ::MIR::Constant::make_ItemAddr( path.clone() );
+                return mv$(ptr_val);
+            }
+        }
+        else if( const auto* e = lit.opt_BorrowData() ) {
+            const auto& inner_lit = **e;
+            // 1. Make a new lvalue for the inner data
+            // 2. Borrow that slot
+            if( const auto* tie = te.inner->m_data.opt_Slice() )
+            {
+                MIR_ASSERT(state, inner_lit.is_List(), "BorrowData of non-list resulting in &[T]");
+                auto size = inner_lit.as_List().size();
+                auto inner_ty = ::HIR::TypeRef::new_array(tie->inner->clone(), size);
+                auto size_val = ::MIR::Param( ::MIR::Constant::make_Uint({ size, ::HIR::CoreType::Usize }) );
+                auto ptr_ty = ::HIR::TypeRef::new_borrow(te.type, inner_ty.clone());
+
+                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, inner_lit, inner_ty.clone(), ::HIR::GenericPath());
+
+                auto lval = mutator.in_temporary( mv$(inner_ty), mv$(rval) );
+                auto ptr_val = mutator.in_temporary( mv$(ptr_ty), ::MIR::RValue::make_Borrow({ 0, te.type, mv$(lval) }));
+                return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(size_val) });
+            }
+            else if( te.inner->m_data.is_TraitObject() )
+            {
+                MIR_BUG(state, "BorrowData returning TraitObject shouldn't be allowed - " << ty << " from " << inner_lit);
+            }
+            else
+            {
+                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, inner_lit, te.inner->clone(), ::HIR::GenericPath());
+                auto lval = mutator.in_temporary( te.inner->clone(), mv$(rval) );
+                return ::MIR::RValue::make_Borrow({ 0, te.type, mv$(lval) });
             }
         }
         else if( te.inner->m_data.is_Slice() && *te.inner->m_data.as_Slice().inner == ::HIR::CoreType::U8 ) {

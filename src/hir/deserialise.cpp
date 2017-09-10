@@ -974,7 +974,8 @@ namespace {
             })
         _(Integer, m_in.read_u64() )
         _(Float,   m_in.read_double() )
-        _(BorrowOf, deserialise_path() )
+        _(BorrowPath, deserialise_path() )
+        _(BorrowData, box$(deserialise_literal()) )
         _(String,  m_in.read_string() )
         #undef _
         default:

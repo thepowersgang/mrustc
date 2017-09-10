@@ -36,8 +36,11 @@ namespace HIR {
         (Float,
             os << e;
             ),
-        (BorrowOf,
+        (BorrowPath,
             os << "&" << e;
+            ),
+        (BorrowData,
+            os << "&" << *e;
             ),
         (String,
             os << "\"" << e << "\"";
@@ -75,8 +78,11 @@ namespace HIR {
         (Float,
             return le == re;
             ),
-        (BorrowOf,
+        (BorrowPath,
             return le == re;
+            ),
+        (BorrowData,
+            return *le == *re;
             ),
         (String,
             return le == re;

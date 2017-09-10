@@ -127,8 +127,11 @@ namespace {
                 ),
             (Float,
                 ),
-            (BorrowOf,
+            (BorrowPath,
                 visit_path(e, ::HIR::Visitor::PathContext::VALUE);
+                ),
+            (BorrowData,
+                visit_literal(sp, *e);
                 ),
             (String,
                 )

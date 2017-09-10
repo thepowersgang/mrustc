@@ -440,8 +440,11 @@ namespace {
             (Float,
                 m_out.write_double(e);
                 ),
-            (BorrowOf,
+            (BorrowPath,
                 serialise_path(e);
+                ),
+            (BorrowData,
+                serialise(*e);
                 ),
             (String,
                 m_out.write_string(e);

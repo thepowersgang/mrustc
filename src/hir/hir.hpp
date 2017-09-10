@@ -59,7 +59,10 @@ TAGGED_UNION(Literal, Invalid,
     // Literal values
     (Integer, uint64_t),
     (Float, double),
-    (BorrowOf, ::HIR::Path),
+    // Borrow of a path (existing item)
+    (BorrowPath, ::HIR::Path),
+    // Borrow of inline data
+    (BorrowData, ::std::unique_ptr<Literal>),
     // String = &'static str or &[u8; N]
     (String, ::std::string)
     );
