@@ -447,7 +447,7 @@ namespace {
 
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_exp_type.m_data), (te),
                 (
-                    ERROR(node.span(), E0000, "Invalid expected type for a &-ptr - " << m_exp_type);
+                    //ERROR(node.span(), E0000, "Invalid expected type for a &-ptr - " << m_exp_type);
                     ),
                 (Infer,
                     ),

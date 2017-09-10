@@ -93,11 +93,16 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 namespace {
     void Trans_Enumerate_Public_Mod(EnumState& state, ::HIR::Module& mod, ::HIR::SimplePath mod_path, bool is_visible)
     {
+        // TODO: Make this configurable, and debug cases where it breaks
+        // (needs to be `true` currently)
+        // - Errors likely caused by re-exports making items visible that
+        // aren't otherwise.
         const bool EMIT_ALL = true;
         for(auto& vi : mod.m_value_items)
         {
             TU_MATCHA( (vi.second->ent), (e),
             (Import,
+                // TODO: If visible, ensure that target is visited.
                 ),
             (StructConstant,
                 ),
@@ -108,6 +113,11 @@ namespace {
             (Static,
                 if( EMIT_ALL || (is_visible && vi.second->is_public) )
                 {
+                    // HACK: Refuse to emit unused generated statics
+                    // - Needed because all items are visited (regardless of
+                    // visibility)
+                    if(e.m_type.m_data.is_Infer())
+                        continue ;
                     //state.enum_static(mod_path + vi.first, *e);
                     auto* ptr = state.rv.add_static(mod_path + vi.first);
                     if(ptr)
@@ -1621,9 +1631,13 @@ void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Function& function,
 void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& item, TransList_Static& out_stat, Trans_Params pp)
 {
     TRACE_FUNCTION;
-    if( item.m_value.m_mir )
+    /*if( item.m_value.m_mir )
     {
         Trans_Enumerate_FillFrom_MIR(state, *item.m_value.m_mir, pp);
+    }
+    else*/ if( item.m_type.m_data.is_Infer() )
+    {
+        BUG(Span(), "Enumerating static with no assigned type (unused elevated literal)");
     }
     else if( ! item.m_value_res.is_Invalid() )
     {

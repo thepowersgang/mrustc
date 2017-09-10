@@ -468,10 +468,14 @@ namespace {
                     if( e.type != ::HIR::BorrowType::Shared ) {
                         MIR_BUG(state, "Only shared borrows are allowed in constants");
                     }
-
-                    if( e.val.is_Static() ) {
+                    if( const auto* p = e.val.opt_Deref() ) {
+                        if( p->val->is_Deref() )
+                            MIR_TODO(state, "Undo nested deref coercion - " << *p->val);
+                        val =  read_lval(*p->val);
+                    }
+                    else if( const auto* p = e.val.opt_Static() ) {
                         // Borrow of a static, emit BorrowOf with the same path
-                        val = ::HIR::Literal::make_BorrowOf( e.val.as_Static().clone() );
+                        val = ::HIR::Literal::make_BorrowOf( p->clone() );
                     }
                     else {
                         auto inner_val = read_lval(e.val);
