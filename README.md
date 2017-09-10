@@ -8,6 +8,15 @@ This project is an attempt at creating a simple rust compiler in C++, with the u
 
 The short-term goal is to compile pre-borrowchecked rust code into some intermediate form (e.g. LLVM IR, x86-64 assembly, or C code). Thankfully, (from what I have seen), the borrow checker is not needed to compile rust code (just to ensure that it's valid)
 
+Getting Started
+===============
+
+Linux
+-----
+
+- `make RUSTCSRC` - Downloads the rustc source tarball
+- `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc`
+
 
 Building Requirements
 =====================
@@ -22,6 +31,7 @@ Current Features
 - Supports just x86-64 linux
 - MIR optimisations
 - Optionally-enablable exhaustive MIR validation (set the `MRUSTC_FULL_VALIDATE` environment variable)
+- Functional cargo clone (minicargo)
 
 Short-Term Plans
 ===

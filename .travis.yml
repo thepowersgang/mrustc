@@ -19,10 +19,11 @@ install:
  - CC=gcc-6 CXX=g++-6 make -C tools/minicargo
 
 script:
+ - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/libtest.hir
 # libstd and hello_world
  - CC=gcc-6 make test TAIL_COUNT=2
 # rustc
-# - CC=gcc-6 make output/rustc TAIL_COUNT=15
+# - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/rustc
 # Tests
  - CC=gcc-6 make local_tests -k
 # - CC=gcc-6 make rust_tests -k
