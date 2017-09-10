@@ -17,6 +17,9 @@
 #include <iomanip>
 #include <trans/target.hpp>
 
+#include <hir/expr.hpp> // HACK
+
+
 #define DUMP_BEFORE_ALL 1
 #define DUMP_BEFORE_CONSTPROPAGATE 0
 #define CHECK_AFTER_PASS    1
@@ -2939,6 +2942,9 @@ void MIR_OptimiseCrate(::HIR::Crate& crate, bool do_minimal_optimisation)
 {
     ::MIR::OuterVisitor ov { crate, [do_minimal_optimisation](const auto& res, const auto& p, auto& expr, const auto& args, const auto& ty)
         {
+            if( ! dynamic_cast<::HIR::ExprNode_Block*>(expr.get()) ) {
+                return ;
+            }
             if( do_minimal_optimisation ) {
                 MIR_OptimiseMin(res, p, *expr.m_mir, args, ty);
             }
