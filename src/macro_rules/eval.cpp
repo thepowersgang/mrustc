@@ -1098,6 +1098,8 @@ namespace
 
         for(;;)
         {
+            if( lex.consume_if(TOK_UNDERSCORE) )
+                return true;
             switch(lex.next())
             {
             case TOK_IDENT:
@@ -1106,6 +1108,9 @@ namespace
             case TOK_DOUBLE_COLON:
             case TOK_INTERPOLATED_PATH:
                 consume_path(lex);
+                if( lex.next() == TOK_BRACE_OPEN ) {
+                    return consume_tt(lex);
+                }
                 break;
             case TOK_AMP:
             case TOK_DOUBLE_AMP:
@@ -1154,8 +1159,10 @@ namespace
         TRACE_FUNCTION;
         bool cont;
 
-        if( lex.next() == TOK_PIPE || lex.next() == TOK_DOUBLE_PIPE )
+        // Closures
+        if( lex.next() == TOK_RWORD_MOVE || lex.next() == TOK_PIPE || lex.next() == TOK_DOUBLE_PIPE )
         {
+            lex.consume_if(TOK_RWORD_MOVE);
             if( lex.consume_if(TOK_PIPE) )
             {
                 do
