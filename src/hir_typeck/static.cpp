@@ -582,8 +582,14 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
     // Callback that returns monomorpisation results
     auto cb_monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
             const auto& ge = gt.m_data.as_Generic();
-            ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
-            assert( ge.binding < impl_params.size() );
+            if( ge.binding == GENERIC_Self ) {
+                // TODO: `impl_type` or `des_type`
+                DEBUG("[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
+                //TODO(sp, "[find_impl__check_crate_raw] Self - " << impl_type << " or " << des_type);
+                return impl_type;
+            }
+            ASSERT_BUG(sp, ge.binding >> 8 != 2, "[find_impl__check_crate_raw] Placeholder param seen - " << gt);
+            ASSERT_BUG(sp, ge.binding < impl_params.size(), "[find_impl__check_crate_raw] Binding out of range - " << gt);
             if( !impl_params[ge.binding] ) {
                 return placeholders[ge.binding];
             }

@@ -289,13 +289,14 @@ namespace {
                 )
             )
         }
-        static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs,  ::HIR::PathParams& params) {
+        static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
+        {
             if( params.m_types.size() == param_defs.m_types.size() ) {
                 // Nothing to do, all good
                 return ;
             }
 
-            if( params.m_types.size() == 0 ) {
+            if( params.m_types.size() == 0 && fill_infer ) {
                 for(const auto& typ : param_defs.m_types) {
                     (void)typ;
                     params.m_types.push_back( ::HIR::TypeRef() );
@@ -311,11 +312,35 @@ namespace {
                         ERROR(sp, E0000, "Omitted type parameter with no default in " << path);
                     }
                     else {
-                        // TODO: What if this contains a generic param? (is that valid? Self maybe, what about others?)
-                        params.m_types.push_back( typ.m_default.clone() );
+                        // Clone, replacing `self` if a replacement was provided.
+                        auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
+                            if(const auto* te = ty.m_data.opt_Generic() )
+                            {
+                                if( te->binding != GENERIC_Self || !self_ty )
+                                    TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
+                                out = self_ty->clone();
+                                return true;
+                            }
+                            return false;
+                            });
+                        params.m_types.push_back( mv$(ty) );
                     }
                 }
             }
+        }
+        void visit_params(::HIR::GenericParams& params)
+        {
+            static Span sp;
+            for(auto& bound : params.m_bounds)
+            {
+                if(auto* be = bound.opt_TraitBound())
+                {
+                    const auto& trait = m_crate.get_trait_by_path(sp, be->trait.m_path.m_path);
+                    fix_param_count(sp, be->trait.m_path, trait.m_params, be->trait.m_path.m_params, /*fill_infer=*/false, &be->type);
+                }
+            }
+
+            ::HIR::Visitor::visit_params(params);
         }
         void visit_type(::HIR::TypeRef& ty) override
         {

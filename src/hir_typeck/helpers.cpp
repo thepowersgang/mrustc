@@ -2786,7 +2786,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
     auto monomorph = [&](const auto& gt)->const ::HIR::TypeRef& {
             const auto& ge = gt.m_data.as_Generic();
             ASSERT_BUG(sp, ge.binding >> 8 != 2, "");
-            assert( ge.binding < impl_params.size() );
+            ASSERT_BUG(sp, ge.binding != GENERIC_Self, "Unexpected Self");
+            ASSERT_BUG(sp, ge.binding < impl_params.size(), "OOB param in impl - " << gt );
             if( !impl_params[ge.binding] ) {
                 //BUG(sp, "Param " << ge.binding << " for `impl" << impl.m_params.fmt_args() << " " << trait << impl.m_trait_args << " for " << impl.m_type << "` wasn't constrained");
                 return placeholders[ge.binding];
