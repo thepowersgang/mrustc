@@ -655,6 +655,11 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
             }
             else {
                 PUTBACK(tok, lex);
+                if( LOOK_AHEAD(lex) == TOK_RWORD_FOR )
+                {
+                    GET_TOK(tok, lex);
+                    /*::std::vector< ::std::string>   lifetimes =*/ Parse_HRB(lex);
+                }
                 supertraits.push_back( GET_SPANNED(::AST::Path, lex, Parse_Path(lex, PATH_GENERIC_TYPE)) );
             }
         } while( GET_TOK(tok, lex) == TOK_PLUS );
