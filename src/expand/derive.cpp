@@ -64,8 +64,12 @@ static inline AST::ExprNodeP mk_exprnodep(AST::ExprNode* en){ return AST::ExprNo
 /// Interface for derive handlers
 struct Deriver
 {
+    virtual const char* trait_name() const = 0;
     virtual AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const = 0;
     virtual AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const = 0;
+    virtual AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Union& unn) const {
+        ERROR(sp, E0000, "Cannot derive(" << trait_name() << ") on union");
+    }
 
 
     AST::GenericParams get_params_with_bounds(const Span& sp, const AST::GenericParams& p, const AST::Path& trait_path, ::std::vector<TypeRef> additional_bounded_types) const
@@ -143,6 +147,15 @@ struct Deriver
             )
         }
 
+        return ret;
+    }
+    ::std::vector<TypeRef> get_field_bounds(const AST::Union& unn) const
+    {
+        ::std::vector<TypeRef>  ret;
+        for( const auto& fld : unn.m_variants )
+        {
+            add_field_bound_from_ty(unn.params(), ret, fld.m_type);
+        }
         return ret;
     }
 
@@ -294,6 +307,8 @@ class Deriver_Debug:
     }
 
 public:
+    const char* trait_name() const override { return "Debug"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         const ::std::string& name = type.path().nodes().back().name();
@@ -484,6 +499,8 @@ class Deriver_PartialEq:
             );
     }
 public:
+    const char* trait_name() const override { return "PartialEq"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         ::std::vector<AST::ExprNodeP>   nodes;
@@ -617,7 +634,6 @@ public:
 class Deriver_PartialOrd:
     public Deriver
 {
-
     AST::Path get_path(const ::std::string core_name, ::std::string c1, ::std::string c2) const
     {
         return AST::Path(core_name, { AST::PathNode(c1, {}), AST::PathNode(c2, {}) });
@@ -691,6 +707,8 @@ class Deriver_PartialOrd:
             );
     }
 public:
+    const char* trait_name() const override { return "PartialOrd"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         ::std::vector<AST::ExprNodeP>   nodes;
@@ -905,6 +923,8 @@ class Deriver_Eq:
     }
 
 public:
+    const char* trait_name() const override { return "Eq"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         const AST::Path    assert_method_path = this->get_trait_path(core_name) + "assert_receiver_is_total_eq";
@@ -993,12 +1013,25 @@ public:
             mv$(arms)
             ));
     }
+
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Union& unn) const override
+    {
+        // Eq is just a marker, so it's valid to derive for union
+        const AST::Path    assert_method_path = this->get_trait_path(core_name) + "assert_receiver_is_total_eq";
+        ::std::vector<AST::ExprNodeP>   nodes;
+
+        for( const auto& fld : unn.m_variants )
+        {
+            nodes.push_back( this->assert_is_eq(assert_method_path, this->field(fld.m_name)) );
+        }
+
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(unn), NEWNODE(Block, mv$(nodes)));
+    }
 } g_derive_eq;
 
 class Deriver_Ord:
     public Deriver
 {
-
     AST::Path get_path(const ::std::string core_name, ::std::string c1, ::std::string c2) const
     {
         return AST::Path(core_name, { AST::PathNode(c1, {}), AST::PathNode(c2, {}) });
@@ -1061,6 +1094,8 @@ class Deriver_Ord:
         return NEWNODE(NamedValue, this->get_path(core_name, "cmp", "Ordering", "Equal"));
     }
 public:
+    const char* trait_name() const override { return "Ord"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         ::std::vector<AST::ExprNodeP>   nodes;
@@ -1278,6 +1313,8 @@ class Deriver_Clone:
     }
 
 public:
+    const char* trait_name() const override { return "Clone"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         const AST::Path& ty_path = type.m_data.as_Path().path;
@@ -1369,6 +1406,22 @@ public:
             mv$(arms)
             ));
     }
+
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Union& unn) const override
+    {
+        // Clone on a union can only be a bitwise copy. (TODO: This requires Copy)
+        auto ret = this->make_ret(sp, core_name, p, type, this->get_field_bounds(unn), NEWNODE(Deref,
+            NEWNODE(NamedValue, AST::Path("self"))
+            ));
+
+        for(auto& b : ret.def().params().bounds())
+        {
+            auto& be = b.as_IsTrait();
+            be.trait = AST::Path(core_name, { AST::PathNode("marker", {}), AST::PathNode("Copy", {}) });
+        }
+
+        return ret;
+    }
 } g_derive_clone;
 
 class Deriver_Copy:
@@ -1389,6 +1442,8 @@ class Deriver_Copy:
     }
 
 public:
+    const char* trait_name() const override { return "Copy"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         return this->make_ret(sp, core_name, p, type, this->get_field_bounds(str), nullptr);
@@ -1397,6 +1452,10 @@ public:
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const override
     {
         return this->make_ret(sp, core_name, p, type, this->get_field_bounds(enm), nullptr);
+    }
+    AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Union& unn) const override
+    {
+        return this->make_ret(sp, core_name, p, type, this->get_field_bounds(unn), nullptr);
     }
 } g_derive_copy;
 
@@ -1437,6 +1496,8 @@ class Deriver_Default:
     }
 
 public:
+    const char* trait_name() const override { return "Default"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         const AST::Path& ty_path = type.m_data.as_Path().path;
@@ -1528,6 +1589,8 @@ class Deriver_Hash:
     }
 
 public:
+    const char* trait_name() const override { return "Hash"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         ::std::vector<AST::ExprNodeP>   nodes;
@@ -1687,6 +1750,8 @@ class Deriver_RustcEncodable:
     }
 
 public:
+    const char* trait_name() const override { return "RustcEncodable"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         const ::std::string& struct_name = type.m_data.as_Path().path.nodes().back().name();
@@ -1928,6 +1993,8 @@ class Deriver_RustcDecodable:
     }
 
 public:
+    const char* trait_name() const override { return "RustcDecodable"; }
+
     AST::Impl handle_item(Span sp, const ::std::string& core_name, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const override
     {
         AST::Path base_path = type.m_data.as_Path().path;
@@ -2099,30 +2166,20 @@ public:
 // --------------------------------------------------------------------
 static const Deriver* find_impl(const ::std::string& trait_name)
 {
-    if( trait_name == "Debug" )
-        return &g_derive_debug;
-    else if( trait_name == "PartialEq" )
-        return &g_derive_partialeq;
-    else if( trait_name == "PartialOrd" )
-        return &g_derive_partialord;
-    else if( trait_name == "Eq" )
-        return &g_derive_eq;
-    else if( trait_name == "Ord" )
-        return &g_derive_ord;
-    else if( trait_name == "Clone" )
-        return &g_derive_clone;
-    else if( trait_name == "Copy" )
-        return &g_derive_copy;
-    else if( trait_name == "Default" )
-        return &g_derive_default;
-    else if( trait_name == "Hash" )
-        return &g_derive_hash;
-    else if( trait_name == "RustcEncodable" )
-        return &g_derive_rustc_encodable;
-    else if( trait_name == "RustcDecodable" )
-        return &g_derive_rustc_decodable;
-    else
-        return nullptr;
+    #define _(obj)  if(trait_name == obj.trait_name()) return &obj;
+    _(g_derive_debug)
+    _(g_derive_partialeq)
+    _(g_derive_partialord)
+    _(g_derive_eq)
+    _(g_derive_ord)
+    _(g_derive_clone)
+    _(g_derive_copy)
+    _(g_derive_default)
+    _(g_derive_hash)
+    _(g_derive_rustc_encodable)
+    _(g_derive_rustc_decodable)
+    #undef _
+    return nullptr;
 }
 
 template<typename T>
@@ -2176,6 +2233,9 @@ public:
             ),
         (None,
             //
+            ),
+        (Union,
+            derive_item(sp, crate, mod, attr, path, e);
             ),
         (Enum,
             derive_item(sp, crate, mod, attr, path, e);

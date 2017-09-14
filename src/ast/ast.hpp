@@ -371,6 +371,9 @@ public:
         m_variants( mv$(fields) )
     {}
 
+    const GenericParams& params() const { return m_params; }
+          GenericParams& params()       { return m_params; }
+
     Union clone() const;
 };
 
