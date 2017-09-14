@@ -332,7 +332,12 @@ struct CExpandExpr:
 
     void visit(::std::unique_ptr<AST::ExprNode>& cnode) {
         if(cnode.get())
-            Expand_Attrs(cnode->attrs(), AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
+        {
+            auto attrs = mv$(cnode->attrs());
+            Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
+            if(cnode.get())
+                cnode->attrs() = mv$(attrs);
+        }
         if(cnode.get())
         {
             cnode->visit(*this);
