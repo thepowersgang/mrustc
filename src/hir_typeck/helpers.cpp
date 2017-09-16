@@ -3897,50 +3897,7 @@ bool TraitResolution::find_method(
     {
     }
 
-    // 4. Search for inherent methods
-    DEBUG("> Inherent methods");
-    {
-        const ::HIR::TypeRef*   cur_check_ty = &ty;
-        auto find_type_impls_cb = [&](const auto& impl) {
-            // TODO: Should this take into account the actual suitability of this method? Or just that the name exists?
-            // - If this impl matches fuzzily, it may not actually match
-            auto it = impl.m_methods.find( method_name );
-            if( it == impl.m_methods.end() )
-                return false ;
-            const ::HIR::Function&  fcn = it->second.data;
-            if( const auto* self_ty_p = this->check_method_receiver(sp, fcn.m_receiver, ty, access) )
-            {
-                DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
-                if( *self_ty_p == *cur_check_ty )
-                {
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
-                        box$(self_ty_p->clone()),
-                        method_name,
-                        {}
-                        }) );
-                    return true;
-                }
-            }
-            DEBUG("[find_method] Method was present in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` but receiver mismatched");
-            return false;
-            };
-        if( m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
-        {
-            return true;
-        }
-        cur_check_ty = (ty.m_data.is_Borrow() ? &*ty.m_data.as_Borrow().inner : nullptr);
-        if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
-        {
-            return true;
-        }
-        cur_check_ty = this->type_is_owned_box(sp, ty);
-        if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
-        {
-            return true;
-        }
-    }
-
-    // 5. Search for trait methods (using currently in-scope traits)
+    // 4. Search for trait methods (using currently in-scope traits)
     DEBUG("> Trait methods");
     for(const auto& trait_ref : ::reverse(traits))
     {
@@ -3985,6 +3942,49 @@ bool TraitResolution::find_method(
         else
         {
             DEBUG("> Incorrect receiver");
+        }
+    }
+
+    // 5. Search for inherent methods
+    DEBUG("> Inherent methods");
+    {
+        const ::HIR::TypeRef*   cur_check_ty = &ty;
+        auto find_type_impls_cb = [&](const auto& impl) {
+            // TODO: Should this take into account the actual suitability of this method? Or just that the name exists?
+            // - If this impl matches fuzzily, it may not actually match
+            auto it = impl.m_methods.find( method_name );
+            if( it == impl.m_methods.end() )
+                return false ;
+            const ::HIR::Function&  fcn = it->second.data;
+            if( const auto* self_ty_p = this->check_method_receiver(sp, fcn.m_receiver, ty, access) )
+            {
+                DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
+                if( *self_ty_p == *cur_check_ty )
+                {
+                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
+                        box$(self_ty_p->clone()),
+                        method_name,
+                        {}
+                        }) );
+                    return true;
+                }
+            }
+            DEBUG("[find_method] Method was present in `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` but receiver mismatched");
+            return false;
+            };
+        if( m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
+        {
+            return true;
+        }
+        cur_check_ty = (ty.m_data.is_Borrow() ? &*ty.m_data.as_Borrow().inner : nullptr);
+        if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
+        {
+            return true;
+        }
+        cur_check_ty = this->type_is_owned_box(sp, ty);
+        if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
+        {
+            return true;
         }
     }
 
