@@ -353,7 +353,8 @@ $(RUSTCSRC): rust-nightly-date rust_src.patch
 		rm -f rustc-nightly-src.tar.gz; \
 		rm -rf rustc-nightly; \
 		curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz; \
-		tar -xf rustc-nightly-src.tar.gz --transform 's~^rustc-nightly-src~rustc-nightly~'; \
+		tar -xf rustc-nightly-src.tar.gz; \
+		mv rustc-nightly-src rustc-nightly; \
 		patch -p0 < rust_src.patch; \
 		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
 	fi
