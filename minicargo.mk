@@ -6,7 +6,7 @@ RUSTCSRC := rustc-nightly/
 LLVM_CONFIG := rustc-nightly/build/bin/llvm-config
 RUSTC_TARGET := x86_64-unknown-linux-gnu
 
-.PHONY: bin/mrustc tools/bin/minicargo output/libsrc.hir output/libtest.hir output/libpanic_unwind.hir output/rustc
+.PHONY: bin/mrustc tools/bin/minicargo output/libsrc.hir output/libtest.hir output/libpanic_unwind.hir output/rustc output/cargo
 
 all: output/rustc
 
@@ -38,6 +38,8 @@ RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 
 output/rustc: $(MRUSTC) $(MINICARGO) output/libstd.hir output/libtest.hir $(LLVM_CONFIG)
 	$(RUSTC_ENV_VARS) $(MINICARGO) rustc-nightly/src/rustc --vendor-dir rustc-nightly/src/vendor
+output/cargo: $(MRUSTC) output/libstd.hir
+	$(MINICARGO) rustc-nightly/src/tools/cargo --vendor-dir rustc-nightly/src/vendor
 
 # Reference rustc-nightly/src/bootstrap/native.rs for these values
 LLVM_CMAKE_OPTS := LLVM_TARGET_ARCH=$(firstword $(subst -, ,$(RUSTC_TARGET))) LLVM_DEFAULT_TARGET_TRIPLE=$(RUSTC_TARGET)
