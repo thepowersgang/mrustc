@@ -2606,7 +2606,12 @@ namespace {
             // Using autoderef, locate this method on the type
             ::HIR::Path   fcn_path { ::HIR::SimplePath() };
             TraitResolution::AutoderefBorrow    ad_borrow;
+            // TODO: Obtain a list of avaliable methods at that level?
+            // - If running in a mode after stablise (before defaults), fall
+            // back to trait if the inherent is still ambigious.
             unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  fcn_path, ad_borrow);
+            //::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
+            //unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  possible_methods);
             if( deref_count != ~0u )
             {
                 DEBUG("- deref_count = " << deref_count << ", fcn_path = " << fcn_path);
@@ -2629,6 +2634,17 @@ namespace {
                 )
                 if( !visit_call_populate_cache(this->context, node.span(), node.m_method_path, node.m_cache) ) {
                     DEBUG("- AMBIGUOUS - Trying again later");
+                    // Move the params back
+                    TU_MATCH(::HIR::Path::Data, (node.m_method_path.m_data), (e),
+                    (Generic, ),
+                    (UfcsUnknown, ),
+                    (UfcsKnown,
+                        node.m_params = mv$(e.params);
+                        ),
+                    (UfcsInherent,
+                        node.m_params = mv$(e.params);
+                        )
+                    )
                     return ;
                 }
                 DEBUG("> m_method_path = " << node.m_method_path);
