@@ -231,6 +231,7 @@ public:
 
             void visit(::HIR::ExprNode_CallPath& node) override
             {
+                //TRACE_FUNCTION_F(node.m_path);
                 upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
                 ::HIR::ExprVisitorDef::visit(node);
             }

@@ -1181,6 +1181,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     {
         const auto& sp = item.data.span;
         auto item_path = ::HIR::ItemPath(path, item.name.c_str());
+        DEBUG(item_path << " " << item.data.tag_str());
         TU_MATCH(::AST::Item, (item.data), (e),
         (None,
             ),
