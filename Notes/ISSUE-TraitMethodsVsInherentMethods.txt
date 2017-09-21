@@ -1,0 +1,12 @@
+ISSUE: Trait method .powi not being considered because <f32>::powi is found
+
+Needs to search for trait methods first.
+- But that falls into problems when the trait method isn't the correct method!
+  - E.g. `impl Iterator for Parser` ... `impl Parser { fn position(&mut self) }`
+
+
+References:
+- `rustc-nightly/src/libfmt_macros/lib.rs` line 272
+  - Requires that `<Parser>::position` be called not `Iterator::position`
+- `rustc-nightly/src/vendor/num-traits/src/lib.rs` line 308
+  - Requires that `Float::powi` be chosen for inferrence to succeed

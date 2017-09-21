@@ -1,0 +1,30 @@
+Encountered while processing https://github.com/rust-lang/rust/blob/8c93a79e387f5197e8b8fe73b3d87d2b101b7c4a/src/test/run-pass/move-guard-const.rs
+- Value is moved in a match guard, which fails and falls to an arm where the value is still belived to be valid.
+
+Ideal 1: Model match common codegen as a else-if chain.
+ > For each arm: Make a split scope, expand patterns, codegen guard, then switch to the other scope and immediately complete it.
+- Problem: A move can be bypassed.
+- Solution: Treat a bypass path as a second arm to the `if`
+- Problem 2: Arms can be mutually exclusive, and hence can move in both with no lower-time error.
+- Post-validation can solve that.
+
+
+Idea 2: Refactor state tracking to instead store a COW state stack what can have the state removed for later use.
+- Push/pop state around each pattern
+- Unify apply after patterns in an arm
+- Pop state after processing the condition
+- Unify before processing each arm
+- Problem: Doens't concretely determine if something is moved? (Will use drop
+  flags when not needed)
+
+
+Idea 3: When processing a match guard, enter a mode where all moves of above values are conditional.
+ > Flag on the Scope::Split used for the match pattern
+ > Flag is set/cleared around processing the arm guard
+ > Mutating the state within this scope creates a drop flag
+- Problem: Structurally, allocating the drop flag is a challeng
+ > Solution: Use a new scope type (with no split, just applies backwards)
+
+
+Overall problem: Use-after-free still possible (but has to be invalid code with the above fixes)
+- Solution: Dump the entire concept and just add a "NoMutate" scope type that errors if state changes across it
