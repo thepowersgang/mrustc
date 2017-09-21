@@ -131,58 +131,23 @@ clean:
 
 PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n $(TAIL_COUNT) ; test $${PIPESTATUS[0]} -eq 0
 
-output/%.ast: samples/%.rs $(BIN)
-	@mkdir -p output/
-	$(DBG) $(BIN) $< -o $@ $(PIPECMD)
-
 RUSTCSRC := rustc-nightly/
 RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
-fn_build_lib =\
-  $Vecho "--- [MRUSTC] $@" ; \
-  mkdir -p $(dir $@); rm -f $@ ; \
-  $(DBG) $(ENV_$@) $(BIN) $1 --crate-type rlib --crate-name $2 -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD) ; \
-  test -e $@
 
-output/lib%.hir: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
-output/lib%.hir: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
-output/lib%.hir: $(RUSTCSRC)src/vendor/%/src/lib.rs $(RUSTCSRC) $(BIN)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) $< --crate-type rlib --crate-name $* -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
+output/libstd.hir output/libtest.hir output/rustc output/cargo output/libpanic_unwind.hir: $(BIN) $(RUSTCSRC)
+	$(MAKE) -f minicargo.mk $@
 
-output/librustc_demangle.hir: $(RUSTCSRC)src/vendor/rustc-demangle/src/lib.rs $(RUSTCSRC) $(BIN)
-	$(call fn_build_lib, $<, rustc_demangle)
-output/librls_data.hir: $(RUSTCSRC)src/vendor/rls-data/src/lib.rs $(RUSTCSRC) $(BIN)
-	$(call fn_build_lib, $<, rls_data)
-output/librls_span.hir: $(RUSTCSRC)src/vendor/rls-span/src/lib.rs $(RUSTCSRC) $(BIN)
-	$(call fn_build_lib, $<, rls_span)
-output/librustc_serialize.hir: $(RUSTCSRC)src/vendor/rustc-serialize/src/lib.rs $(RUSTCSRC) $(BIN)
-	$(call fn_build_lib, $< rustc_serialize)
+TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir
 
-output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(BIN) output/libtest.hir
+output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"
 	@mkdir -p output/
 	@rm -f $@
 	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(BIN) output/libtest.hir
+output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(TEST_DEPS)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
@@ -196,151 +161,6 @@ fn_getdeps = \
   | sed -n 's/.*extern crate \([a-zA-Z_0-9][a-zA-Z_0-9]*\)\( as .*\)\{0,1\};.*/\1/p' \
   | tr '\n' ' ')
 
-
-# --- rustc: librustc_llvm ---
-RUSTC_TARGET := x86_64-unknown-linux-gnu
-RUSTC_HOST := $(shell $(CC) --verbose 2>&1 | grep 'Target' | awk '{print $$2}')
-ifeq ($(RUSTC_HOST),x86_64-linux-gnu)
-	RUSTC_HOST := x86_64-unknown-linux-gnu
-endif
-LLVM_LINKAGE_FILE := $(abspath rustc-nightly/$(RUSTC_TARGET)/rt/llvmdeps.rs)
-LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
-
-output/librustc_llvm.hir: $(LLVM_LINKAGE_FILE)
-
-#
-# librustc_llvm build script
-#
-RUSTC_LLVM_LINKAGE: $(LLVM_LINKAGE_FILE)
-output/librustc_llvm_build: rustc-nightly/src/librustc_llvm/build.rs  $(call fcn_extcrate, std gcc build_helper alloc_system panic_abort)
-	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ -L output/libs $(RUST_FLAGS) $(PIPECMD)
-output/libgcc.hir: crates.io/gcc-0.3.28/src/lib.rs $(BIN) output/libstd.hir
-	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ --crate-type rlib --crate-name gcc $(RUST_FLAGS) $(PIPECMD)
-output/libbuild_helper.hir: rustc-nightly/src/build_helper/lib.rs $(BIN) output/libstd.hir output/libfiletime.hir
-	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ --crate-type rlib --crate-name build_helper $(RUST_FLAGS) $(PIPECMD)
-
-output/libgetopts.hir: rustc-nightly/src/vendor/getopts/src/lib.rs $(BIN) output/libstd.hir
-	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ --crate-type rlib --crate-name getopts $(RUST_FLAGS) $(PIPECMD)
-
-crates.io/%/src/lib.rs: crates.io/%.tar.gz
-	tar -xf $< -C crates.io/
-	@test -e $@ && touch $@
-crates.io/gcc-0.3.28.tar.gz:
-	@mkdir -p $(dir $@)
-	curl -LsS https://crates.io/api/v1/crates/gcc/0.3.28/download -o $@
-
-output/rustc_link_opts.txt: $(LLVM_LINKAGE_FILE)
-	@
-$(LLVM_LINKAGE_FILE): output/librustc_llvm_build $(LLVM_CONFIG)
-	@mkdir -p $(dir $@)
-	@mkdir -p rustc-nightly/$(RUSTC_TARGET)/cargo_out
-	@echo "--- [rustc-nightly/src/librustc_llvm]"
-	$Vcd rustc-nightly/src/librustc_llvm && (export OUT_DIR=$(abspath rustc-nightly/$(RUSTC_TARGET)/cargo_out) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST) LLVM_CONFIG=$(abspath $(LLVM_CONFIG)); $(DBG) ../../../output/librustc_llvm_build > ../../../output/librustc_llvm_build-output.txt)
-	$Vcat output/librustc_llvm_build-output.txt | grep '^cargo:' > output/librustc_llvm_build-output_cargo.txt
-	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-lib=.*=' | grep -v =rustllvm | awk -F = '{ print "-l" $$3 }' > output/rustc_link_opts.txt
-	$Vcat output/librustc_llvm_build-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' >> output/rustc_link_opts.txt
-	@touch $@
-
-output/cargo_libflate/libminiz.a: output/libflate_build
-	@echo "--- $<"
-	$Vmkdir -p $(abspath output/cargo_libflate)
-	$Vcd rustc-nightly/src/libflate && (export OUT_DIR=$(abspath output/cargo_libflate) OPT_LEVEL=1 PROFILE=release TARGET=$(RUSTC_TARGET) HOST=$(RUSTC_HOST); $(DBG) ../../../$< > ../../../$<-output.txt)
-	$Vcat $<-output.txt | grep '^cargo:' > $<-output_cargo.txt
-	$Vcat $<-output_cargo.txt | grep 'cargo:rustc-link-search=native=' | awk -F = '{ print "-L " $$3 }' > output/rustc_link_opts-libflate.txt
-
-output/libflate_build: rustc-nightly/src/libflate/build.rs $(call fcn_extcrate, std gcc alloc_system panic_abort)
-	@echo "--- [MRUSTC] $@"
-	$(BIN) $< -o $@ -L output/libs $(RUST_FLAGS) $(PIPECMD)
-
-ARGS_output/libstd.hir := --cfg feature=backtrace
-ARGS_output/librustc_llvm.hir := --cfg llvm_component=x86 --cfg cargobuild
-ARGS_output/liblog.hir := --cfg feature=use_std
-ARGS_output/libstable_deref_trait.hir := --cfg feature=stdR
-ARGS_output/librustc_allocator.hir := --crate-type rlib --crate-name rustc_allocator
-ENV_output/librustc_llvm.hir := CFG_LLVM_LINKAGE_FILE=$(LLVM_LINKAGE_FILE)
-
-ENV_output/librustc.hir := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_HOST)
-
-# Optional: linux only
-output/libstd.hir: output/libs/libbacktrace.a
-
-output/libarena.hir: output/libstd.hir
-output/liballoc.hir: output/libcore.hir output/libstd_unicode.hir
-output/liballoc_system.hir: output/liballoc.hir
-output/libstd_unicode.hir: $(call fcn_extcrate, core)
-output/libcollections.hir: $(call fcn_extcrate, core alloc)
-output/librand.hir: output/libcore.hir
-output/liblibc.hir: output/libcore.hir
-output/libcompiler_builtins.hir: output/libcore.hir
-output/libstd.hir: $(call fcn_extcrate, core collections rand libc unwind compiler_builtins alloc_system)
-output/libunwind.hir: $(call fcn_extcrate, core libc)
-
-output/libterm.hir: $(call fcn_extcrate, std)
-output/libpanic_unwind.hir: $(call fcn_extcrate, core alloc libc unwind)
-output/libpanic_abort.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/libpanic_abort/lib.rs))
-output/libtest.hir: $(call fcn_extcrate, std getopts term panic_unwind)
-output/libgetopts.hir: output/libstd.hir
-output/libflate2.hir: $(call fcn_extcrate, std libc miniz_sys)
-output/liblog.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/log/src/lib.rs))
-output/libenv_logger.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/vendor/env_logger/src/lib.rs))
-output/libminiz_sys.hir: $(RUSTCSRC)src/vendor/miniz-sys/lib.rs $(call fcn_extcrate, std)
-	$(DBG) $(ENV_$@) $(BIN) $< --crate-type rlib --crate-name miniz_sys -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-
-output/liballoc_system.hir: $(call fcn_extcrate, core libc)
-output/liballoc_jemalloc.hir: $(call fcn_extcrate, core libc)
-
-output/libserialize.hir: $(call fcn_extcrate, std log rustc_i128)
-output/librustc_llvm.hir: $(call fcn_extcrate, std rustc_bitflags)
-output/librustc_errors.hir: $(call fcn_extcrate, std syntax_pos term)
-output/libsyntax.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libsyntax/lib.rs))
-# TODO libsyntax wants bitflags-0.8
-output/libbitflags.hir: $(RUSTCSRC)src/vendor/bitflags-0.8.2/src/lib.rs $(call fcn_extcrate, std)
-	$(DBG) $(ENV_$@) $(BIN) $< --crate-type rlib --crate-name bitflags -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-
-output/librustc_back.hir: $(call fcn_extcrate, std syntax)
-output/librustc_data_structures.hir: $(call fcn_extcrate, std log serialize libc)
-output/librustc_const_math.hir: $(call fcn_extcrate, std log syntax serialize)
-output/libfmt_macros.hir: $(call fcn_extcrate, std)
-output/libproc_macro.hir: $(call fcn_extcrate, std syntax)
-output/libsyntax_ext.hir: $(call fcn_extcrate, std fmt_macros log syntax syntax_pos rustc_errors proc_macro)
-output/librustc_metadata.hir: $(call fcn_extcrate, std log flate2 serialize rustc rustc_back rustc_const_math rustc_data_structures rustc_errors syntax syntax_pos syntax_ext)
-output/librustc_borrowck.hir: $(call fcn_extcrate, std log syntax syntax_pos rustc_errors graphviz rustc rustc_data_structures rustc_mir core)
-output/librustc_mir.hir: $(call fcn_extcrate, std log graphviz rustc rustc_data_structures rustc_back rustc_bitflags syntax syntax_pos rustc_const_math rustc_const_eval)
-output/librustc_const_eval.hir: $(call fcn_extcrate, std arena syntax log rustc rustc_back rustc_const_math rustc_data_structures rustc_errors graphviz syntax_pos serialize)
-output/libgraphviz.hir: $(call fcn_extcrate, std)
-output/libstable_deref_trait.hir: $(call fcn_extcrate, std)
-output/libowning_ref.hir: $(call fcn_extcrate, std stable_deref_trait $(call fn_getdeps, $(RUSTCSRC)src/vendor/owning_ref/src/lib.rs))
-output/libjobserver.hir: $(call fcn_extcrate, std)
-
-output/libsyntax_pos.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/libsyntax_pos/lib.rs))
-
-output/librustc_i128.hir: output/libcore.hir
-output/librustc_plugin.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_plugin/lib.rs))
-output/librustc_save_analysis.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_save_analysis/lib.rs))
-output/librustc_resolve.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_resolve/lib.rs))
-output/librustc_plugin.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_plugin/lib.rs))
-output/librustc.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc/lib.rs))
-output/librustc_trans.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_trans/lib.rs))
-output/librustc_lint.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_lint/lib.rs))
-output/librustc_passes.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_passes/lib.rs))
-output/librustc_incremental.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_incremental/lib.rs))
-output/librustc_typeck.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_trans/lib.rs))
-output/librustc_driver.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_driver/lib.rs))
-output/librustc_bitflags.hir: $(call fcn_extcrate, core $(call fn_getdeps, $(RUSTCSRC)src/librustc_bitflags/lib.rs))
-output/librustc_privacy.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_privacy/lib.rs))
-output/librustc_platform_intrinsics.hir: $(call fcn_extcrate, std $(call fn_getdeps, $(RUSTCSRC)src/librustc_platform_intrinsics/lib.rs))
-
-output/rustc: $(RUSTCSRC)src/rustc/rustc.rs output/librustc_driver.hir output/rustc_link_opts.txt
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	@rm -f $@
-	$V$(DBG) $(BIN) $< -o $@ -L output/libs $$(cat output/rustc_link_opts.txt output/rustc_link_opts-libflate.txt) -l stdc++ $(RUST_FLAGS) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
 
 .PHONY: RUSTCSRC
 RUSTCSRC: $(RUSTCSRC)
@@ -359,29 +179,6 @@ $(RUSTCSRC): rust-nightly-date rust_src.patch
 		echo "$$DL_RUST_DATE" > $(RUSTC_SRC_DL); \
 	fi
 
-# - libbacktrace, needed for libstd on linux
-output/libs/libbacktrace.a: $(RUSTCSRC)src/libbacktrace/Makefile
-	@mkdir -p $(dir $@)
-	@cd $(RUSTCSRC)src/libbacktrace && $(MAKE) INCDIR=.
-	@cp $(RUSTCSRC)src/libbacktrace/.libs/libbacktrace.a $@
-$(RUSTCSRC)src/libbacktrace/Makefile:
-	@echo "[configure] $(RUSTCSRC)src/libbacktrace"
-	@cd $(RUSTCSRC)src/libbacktrace && ./configure --target=$(RUSTC_HOST) --host=$(RUSTC_HOST) --build=$(RUSTC_HOST)
-
-
-LLVM_CMAKE_OPTS := LLVM_TARGET_ARCH=$(firstword $(subst -, ,$(RUSTC_TARGET))) LLVM_DEFAULT_TARGET_TRIPLE=$(RUSTC_TARGET)
-LLVM_CMAKE_OPTS += LLVM_TARGETS_TO_BUILD=X86#;ARM;AArch64;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
-LLVM_CMAKE_OPTS += LLVM_ENABLE_ASSERTIONS=OFF
-LLVM_CMAKE_OPTS += LLVM_INCLUDE_EXAMPLES=OFF LLVM_INCLUDE_TESTS=OFF LLVM_INCLUDE_DOCS=OFF
-LLVM_CMAKE_OPTS += LLVM_ENABLE_ZLIB=OFF LLVM_ENABLE_TERMINFO=OFF LLVM_ENABLE_LIBEDIT=OFF WITH_POLLY=OFF
-LLVM_CMAKE_OPTS += CMAKE_CXX_COMPILER="g++" CMAKE_C_COMPILER="gcc"
-
-$(LLVM_CONFIG): $(RUSTCSRC)build/Makefile
-		$Vcd $(RUSTCSRC)build && $(MAKE)
-$(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
-		@mkdir -p $(RUSTCSRC)build
-		$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
-
 
 # MRUSTC-specific tests
 .PHONY: local_tests
@@ -389,7 +186,7 @@ local_tests: $(patsubst samples/test/%.rs,output/local_test/%_out.txt,$(wildcard
 
 output/local_test/%_out.txt: output/local_test/%
 	./$< > $@
-output/local_test/%: samples/test/%.rs $(BIN) output/libtest.hir output/libpanic_abort.hir output/liballoc_system.hir
+output/local_test/%: samples/test/%.rs $(TEST_DEPS)
 	mkdir -p $(dir $@)
 	$(BIN) -L output/libs -g $< -o $@ $(RUST_FLAGS) --test $(PIPECMD)
 
@@ -842,7 +639,7 @@ rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
 
 #rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
 
-output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs output/libstd.hir $(BIN) output/liballoc_system.hir output/libpanic_abort.hir
+output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
 	$(DBG) $(BIN) $< -L output/libs -o $@ $(RUST_FLAGS) $(PIPECMD)
@@ -859,7 +656,7 @@ TEST_ARGS_run-pass/macro-meta-items := --cfg foo
 TEST_ARGS_run-pass/issue-21361 := -g
 TEST_ARGS_run-pass/syntax-extension-cfg := --cfg foo --cfg 'qux=foo'
 
-output/rust/%: $(RUST_TESTS_DIR)%.rs $(RUSTCSRC) $(BIN) output/libstd.hir output/libtest.hir output/test_deps/librust_test_helpers.a
+output/rust/%: $(RUST_TESTS_DIR)%.rs $(TEST_DEPS)
 	@mkdir -p $(dir $@)
 	@echo "=== TEST $(patsubst output/rust/%,%,$@)"
 	@echo "--- [MRUSTC] -o $@"
@@ -900,7 +697,7 @@ test_deps_run-pass.mk: Makefile $(wildcard $(RUST_TESTS_DIR)run_pass/*.rs)
 #
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
-test: $(RUSTCSRC) output/libcore.hir output/liballoc.hir output/libcollections.hir output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
+test: $(RUSTCSRC) output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
 
 #
 # TEST: Attempt to compile rust_os (Tifflin) from ../rust_os

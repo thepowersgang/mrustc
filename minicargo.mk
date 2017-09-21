@@ -10,6 +10,8 @@ RUSTC_TARGET := x86_64-unknown-linux-gnu
 
 all: output/rustc
 
+mini: output/libpanic_unwind.hir output/libtest.hit
+
 $(MRUSTC):
 	$(MAKE) -f Makefile all
 	test -e $@
