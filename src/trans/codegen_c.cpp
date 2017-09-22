@@ -1488,25 +1488,25 @@ namespace {
                 }
                 else
                 {
-                    m_of << "{" << e.idx << ", { ";
+                    m_of << "{" << e.idx;
                     if( e.vals.empty() )
                     {
                         if( m_options.disallow_empty_structs && !enm.m_variants.at(e.idx).second.is_Unit() )
                         {
-                            m_of << ".var_" << e.idx << " = {0} ";
+                            m_of << ", { .var_" << e.idx << " = {0} }";
                         }
                     }
                     else
                     {
-                        m_of << ".var_" << e.idx << " = {";
+                        m_of << ", { .var_" << e.idx << " = {";
                         for(unsigned int i = 0; i < e.vals.size(); i ++) {
                             if(i != 0)  m_of << ",";
                             m_of << " ";
                             emit_literal(get_inner_type(e.idx, i), e.vals[i], params);
                         }
-                        m_of << "} ";
+                        m_of << "} }";
                     }
-                    m_of << "}}";
+                    m_of << "}";
                 }
                 ),
             (Integer,
@@ -2970,9 +2970,37 @@ namespace {
         {
             auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
 
+            if( e.tpl == "fnstcw $0" )
+            {
+                // HARD CODE: `fnstcw` -> _control87
+                if( !(e.inputs.size() == 0 && e.outputs.size() == 1 && e.outputs[0].first == "=*m") )
+                    MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
+                m_of << indent << "*("; emit_lvalue(e.outputs[0].second); m_of << ") = _control87(0,0);\n";
+                return ;
+            }
+            else if( e.tpl == "fldcw $0" )
+            {
+                // HARD CODE: `fldcw` -> _control87
+                if( !(e.inputs.size() == 1 && e.inputs[0].first == "m" && e.outputs.size() == 0) )
+                    MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
+                m_of << indent << "_control87("; emit_lvalue(e.inputs[0].second); m_of << ", 0xFFFF);\n";
+                return ;
+            }
+            else if( e.tpl == "int $$0x29" )
+            {
+                if( !(e.inputs.size() == 1 && e.inputs[0].first == "{ecx}" && e.outputs.size() == 0) )
+                    MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
+                m_of << indent << "__fastfail("; emit_lvalue(e.inputs[0].second); m_of << ");\n";
+                return ;
+            }
+            else
+            {
+                // No hard-coded translations.
+            }
+
             if( !e.inputs.empty() || !e.outputs.empty() )
             {
-                MIR_TODO(mir_res, "Inputs/outputs in msvc inline assembly");
+                MIR_TODO(mir_res, "Inputs/outputs in msvc inline assembly - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
 #if 0
                 m_of << indent << "{\n";
                 for(size_t i = 0; i < e.inputs.size(); i ++)

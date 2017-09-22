@@ -506,6 +506,7 @@ namespace {
             TRACE_FUNCTION_F("_Asm");
 
             ::std::vector< ::std::pair< ::std::string, ::MIR::LValue> > inputs;
+            // Inputs just need to be in lvalues
             for(auto& v : node.m_inputs) {
                 this->visit_node_ptr(v.value);
                 auto lv = m_builder.get_result_in_lvalue(v.value->span(), v.value->m_res_type);
@@ -513,9 +514,16 @@ namespace {
             }
 
             ::std::vector< ::std::pair< ::std::string, ::MIR::LValue> > outputs;
+            // Outputs can also (sometimes) be rvalues (only for `*m`?)
             for(auto& v : node.m_outputs) {
                 this->visit_node_ptr(v.value);
-                auto lv = m_builder.get_result_unwrap_lvalue(v.value->span());
+                if( v.spec[0] != '=' )
+                    ERROR(node.span(), E0000, "Assembly output specifiers must start with =");
+                ::MIR::LValue   lv;
+                if(v.spec[1] == '*')
+                    lv = m_builder.get_result_in_lvalue(v.value->span(), v.value->m_res_type);
+                else
+                    lv = m_builder.get_result_unwrap_lvalue(v.value->span());
                 outputs.push_back( ::std::make_pair(v.spec, mv$(lv)) );
             }
 

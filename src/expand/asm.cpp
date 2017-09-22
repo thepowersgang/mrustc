@@ -49,9 +49,12 @@ class CAsmExpander:
         ::std::vector<::std::string>    flags;
 
         // Outputs
-        if( lex.lookahead(0) == TOK_COLON )
+        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
+            if( tok.type() == TOK_DOUBLE_COLON ) {
+                lex.putback(Token(TOK_COLON));
+            }
 
             while( lex.lookahead(0) == TOK_STRING )
             {
@@ -73,9 +76,12 @@ class CAsmExpander:
         }
 
         // Inputs
-        if( lex.lookahead(0) == TOK_COLON )
+        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
+            if( tok.type() == TOK_DOUBLE_COLON ) {
+                lex.putback(Token(TOK_COLON));
+            }
 
             while( lex.lookahead(0) == TOK_STRING )
             {
@@ -95,9 +101,12 @@ class CAsmExpander:
         }
 
         // Clobbers
-        if( lex.lookahead(0) == TOK_COLON )
+        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
+            if( tok.type() == TOK_DOUBLE_COLON ) {
+                lex.putback(Token(TOK_COLON));
+            }
 
             while( lex.lookahead(0) == TOK_STRING )
             {
@@ -111,9 +120,12 @@ class CAsmExpander:
         }
 
         // Flags
-        if( lex.lookahead(0) == TOK_COLON )
+        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
+            if( tok.type() == TOK_DOUBLE_COLON ) {
+                lex.putback(Token(TOK_COLON));
+            }
 
             while( lex.lookahead(0) == TOK_STRING )
             {
@@ -124,6 +136,28 @@ class CAsmExpander:
                     break;
                 GET_TOK(tok, lex);
             }
+        }
+
+        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
+        {
+            GET_TOK(tok, lex);
+            if( tok.type() == TOK_DOUBLE_COLON ) {
+                lex.putback(Token(TOK_COLON));
+            }
+
+            if( GET_TOK(tok, lex) == TOK_IDENT && tok.str() == "volatile" )
+            {
+                flags.push_back( "volatile" );
+            }
+            else
+            {
+                PUTBACK(tok, lex);
+            }
+        }
+
+        if( lex.lookahead(0) != TOK_EOF )
+        {
+            ERROR(sp, E0000, "Unexpected token in asm! - " << lex.getToken());
         }
 
         ::AST::ExprNodeP rv = ::AST::ExprNodeP( new ::AST::ExprNode_Asm { mv$(template_text), mv$(outputs), mv$(inputs), mv$(clobbers), mv$(flags) } );
