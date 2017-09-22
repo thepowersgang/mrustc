@@ -9,6 +9,7 @@
 #include <vector>
 #include <algorithm>
 #include <sstream>  // stringstream
+#include <cstdlib>  // setenv
 #ifdef _WIN32
 # include <Windows.h>
 #else
@@ -490,7 +491,11 @@ bool Builder::build_library(const PackageManifest& manifest) const
                 // - Run the script and put output in the right dir
                 auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
                 auto out_dir = output_dir_abs / "build_" + manifest.name().c_str();
+#if _WIN32
+                CreateDirectoryA(out_dir.str().c_str(), NULL);
+#else
                 mkdir(out_dir.str().c_str(), 0755);
+#endif
                 // TODO: Environment variables (key-value list)
                 StringListKV    env;
                 env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
@@ -549,6 +554,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     DEBUG("Calling " << cmdline_str);
     
 #if 0
+    // TODO: Determine required minimal environment.
     ::std::stringstream environ_str;
     environ_str << "TEMP=" << getenv("TEMP") << '\0';
     environ_str << "TMP=" << getenv("TMP") << '\0';
@@ -560,7 +566,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
 #else
     for(auto kv : env)
     {
-        setenv(kv.first, kv.second);
+        _putenv_s(kv.first, kv.second);
     }
 #endif
 
