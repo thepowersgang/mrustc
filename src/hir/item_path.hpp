@@ -54,13 +54,17 @@ public:
         assert(parent);
         assert(name);
 
-        if( parent->name ) {
+        // If the parent has a name, or the parent is the crate root.
+        if( parent->name || !parent->ty ) {
             return get_simple_path();
         }
         else if( parent->trait ) {
+            assert(parent->ty);
+            assert(parent->trait_params);
             return ::HIR::Path( parent->ty->clone(), ::HIR::GenericPath(parent->trait->clone(), parent->trait_params->clone()), ::std::string(name) );
         }
         else {
+            assert(parent->ty);
             return ::HIR::Path( parent->ty->clone(), ::std::string(name) );
         }
     }

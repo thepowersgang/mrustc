@@ -291,6 +291,8 @@ namespace {
                     // If not, ensure taht we're checking a function return type, and error if not
                     if( ! m_fcn_path )
                         ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
+                    assert(m_fcn_ptr);
+                    DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
 
                     ::HIR::PathParams    params;
                     for(unsigned int i = 0; i < m_fcn_ptr->m_params.m_types.size(); i ++)
