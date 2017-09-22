@@ -67,12 +67,16 @@ int main(int argc, const char* argv[])
     {
         auto exceptions_list = ::helpers::path(opts.exceptions_file);
     }
+    auto outdir = opts.output_dir ? ::helpers::path(opts.output_dir) : throw "";
 
     ::std::vector<TestDesc> tests;
     
     // 1. Take input glob/folder and enumerate .rs files/matches
     // - If input path is a folder, find *.rs
     // - Otherwise, accept glob.
+    // 2. Open each file and extract the various flags required.
+    // 3. Build each test to its own output subdirectory
+    // 4. Run tests
     {
         auto input_path = ::helpers::path(opts.input_glob);
 #ifdef _WIN32
@@ -120,7 +124,20 @@ int main(int argc, const char* argv[])
             td.m_name.pop_back();
             td.m_path = test_file_path;
 
+
+            auto test = td;
+
             tests.push_back(td);
+            DEBUG(">> " << test.m_name);
+            auto depdir = outdir / "deps-" + test.m_name.c_str();
+
+            for(const auto& file : test.m_pre_build)
+            {
+                run_compiler(file, depdir);
+            }
+            run_compiler(test.m_path, outdir, outdir);
+            // - Run the test
+            run_executable(outdir / test.m_name, {});
 #ifndef _WIN32
         }
         closedir(dp);
@@ -129,25 +146,6 @@ int main(int argc, const char* argv[])
         FindClose(find_handle);
 #endif
     }
-
-    // 2. Open each file and extract the various flags required.
-
-    // 3. Build each test to its own output subdirectory
-    auto outdir = opts.output_dir ? ::helpers::path(opts.output_dir) : throw "";
-    for(const auto& test : tests)
-    {
-        DEBUG("> " << test.m_name);
-        auto depdir = outdir / "deps-" + test.m_name.c_str();
-
-        for(const auto& file : test.m_pre_build)
-        {
-            run_compiler(file, depdir);
-        }
-        run_compiler(test.m_path, outdir, outdir);
-        run_executable(outdir / test.m_name, {});
-    }
-
-    // 4. Run tests
 
     return 0;
 }
