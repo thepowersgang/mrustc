@@ -520,7 +520,10 @@ namespace {
                 is_windows = true;
                 // TODO: Look up these paths in the registry and use CreateProcess instead of system
                 args.push_back(cache_str( detect_msvc().path_vcvarsall ));
-                //args.push_back("amd64");  // NOTE: Doesn't support inline assembly
+                if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 )
+                {
+                    args.push_back("amd64");  // NOTE: Doesn't support inline assembly, only works with overrides
+                }
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
@@ -869,8 +872,16 @@ namespace {
 
             ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
             if( item.m_markings.has_drop_impl ) {
+                // If the type is defined outside the current crate, define as static (to avoid conflicts when we define it)
                 if( p.m_path.m_crate_name != m_crate.m_crate_name )
-                    m_of << "static ";
+                {
+                    if( item.m_params.m_types.size() > 0 ) {
+                        m_of << "static ";
+                    }
+                    else {
+                        m_of << "extern ";
+                    }
+                }
                 m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
             }
             else if( m_resolve.is_type_owned_box(struct_ty) )
@@ -1780,7 +1791,7 @@ namespace {
                 }
             }
 
-            m_of << "// extern \"" << item.m_abi << "\" " << p << "\n";
+            m_of << "// EXTERN extern \"" << item.m_abi << "\" " << p << "\n";
             m_of << "extern ";
             emit_function_header(p, item, params);
             if( item.m_linkage.name != "" && m_compiler == Compiler::Gcc)
@@ -1797,6 +1808,7 @@ namespace {
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
+            m_of << "// PROTO extern \"" << item.m_abi << "\" " << p << "\n";
             if( item.m_linkage.name != "" )
             {
                 m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
