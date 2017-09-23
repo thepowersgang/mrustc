@@ -39,13 +39,15 @@ bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& out
 {
     ::std::vector<const char*>  args;
     args.push_back("mrustc");
+    args.push_back("-L");
+    args.push_back("output");
     if(libdir.is_valid())
     {
         args.push_back("-L");
         args.push_back(libdir.str().c_str());
     }
     args.push_back(source_file.str().c_str());
-    args.push_back("--out-dir");
+    args.push_back("-o");
     args.push_back(output.str().c_str());
 
     run_executable(MRUSTC_PATH, args);
@@ -135,9 +137,10 @@ int main(int argc, const char* argv[])
             {
                 run_compiler(file, depdir);
             }
-            run_compiler(test.m_path, outdir, outdir);
+            auto outfile = outdir / test.m_name + ".exe";
+            run_compiler(test.m_path, outfile, outdir);
             // - Run the test
-            run_executable(outdir / test.m_name, {});
+            run_executable(outfile, {});
 #ifndef _WIN32
         }
         closedir(dp);
@@ -250,8 +253,8 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
     si.hStdInput = NULL;
+    si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
-    si.hStdError = GetStdHandle(STD_OUTPUT_HANDLE);
     PROCESS_INFORMATION pi = { 0 };
     CreateProcessA(exe_name.str().c_str(), (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
     CloseHandle(si.hStdOutput);
