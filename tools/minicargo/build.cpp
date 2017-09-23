@@ -220,11 +220,11 @@ struct Timestamp
     }
 };
 
-bool MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path)
+bool MiniCargo_Build(const PackageManifest& manifest, BuildOptions opts)
 {
     BuildList   list;
 
-    list.add_dependencies(manifest, 0, !override_path.is_valid());
+    list.add_dependencies(manifest, 0, !opts.build_script_overrides.is_valid());
 
     list.sort_list();
     // dedup?
@@ -234,7 +234,7 @@ bool MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_p
     }
 
     // Build dependencies
-    Builder builder { "output", override_path };
+    Builder builder { ::std::move(opts) };
     for(const auto& p : list.iter())
     {
         if( ! builder.build_library(p) )
@@ -315,9 +315,8 @@ void BuildList::sort_list()
     }
 }
 
-Builder::Builder(::helpers::path output_dir, ::helpers::path override_dir):
-    m_output_dir(output_dir),
-    m_build_script_overrides(override_dir)
+Builder::Builder(BuildOptions opts):
+    m_opts(::std::move(opts))
 {
 #ifdef _WIN32
     char buf[1024];
@@ -341,7 +340,7 @@ Builder::Builder(::helpers::path output_dir, ::helpers::path override_dir):
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target) const
 {
     const char* crate_type;
-    auto outfile = m_output_dir;
+    auto outfile = m_opts.output_dir;
     switch(target.m_type)
     {
     case PackageTarget::Type::Lib:
@@ -400,7 +399,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("-O");
     }
     args.push_back("-o"); args.push_back(outfile);
-    args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
+    args.push_back("-L"); args.push_back(m_opts.output_dir.str().c_str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
         args.push_back("-L"); args.push_back(dir.second.c_str());
     }
@@ -426,14 +425,14 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 }
 ::std::string Builder::build_build_script(const PackageManifest& manifest) const
 {
-    auto outfile = m_output_dir / manifest.name() + "_build" EXESUF;
+    auto outfile = m_opts.output_dir / manifest.name() + "_build" EXESUF;
 
     StringList  args;
     args.push_back( ::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(manifest.build_script()) );
     args.push_back("--crate-name"); args.push_back("build");
     args.push_back("--crate-type"); args.push_back("bin");
     args.push_back("-o"); args.push_back(outfile);
-    args.push_back("-L"); args.push_back(m_output_dir.str().c_str());
+    args.push_back("-L"); args.push_back(m_opts.output_dir.str().c_str());
 
     StringListKV    env;
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
@@ -449,17 +448,17 @@ bool Builder::build_library(const PackageManifest& manifest) const
     if( manifest.build_script() != "" )
     {
         // Locate a build script override file
-        if(this->m_build_script_overrides.is_valid())
+        if(this->m_opts.build_script_overrides.is_valid())
         {
-            auto override_file = this->m_build_script_overrides / "build_" + manifest.name().c_str() + ".txt";
+            auto override_file = this->m_opts.build_script_overrides / "build_" + manifest.name().c_str() + ".txt";
             // TODO: Should this test if it exists? or just assume and let it error?
-        
+
             // > Note, override file can specify a list of commands to run.
             const_cast<PackageManifest&>(manifest).load_build_script( override_file.str() );
         }
         else
         {
-            auto out_file = m_output_dir / "build_" + manifest.name().c_str() + ".txt";
+            auto out_file = m_opts.output_dir / "build_" + manifest.name().c_str() + ".txt";
             // If the build script output doesn't exist (TODO: Or is older than ...)
             bool run_build_script = true;
             auto ts_result = this->get_timestamp(out_file);
@@ -485,7 +484,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
                     return false;
                 auto script_exe_abs = ::helpers::path(script_exe).to_absolute();
 
-                auto output_dir_abs = m_output_dir.to_absolute();
+                auto output_dir_abs = m_opts.output_dir.to_absolute();
         
                 // - Run the script and put output in the right dir
                 auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";

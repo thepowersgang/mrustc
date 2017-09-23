@@ -7,14 +7,20 @@ class StringList;
 class StringListKV;
 struct Timestamp;
 
+struct BuildOptions
+{
+    ::helpers::path output_dir;
+    ::helpers::path build_script_overrides;
+    ::std::vector<::helpers::path>  lib_search_dirs;
+};
+
 class Builder
 {
-    ::helpers::path m_output_dir;
-    ::helpers::path m_build_script_overrides;
+    BuildOptions    m_opts;
     ::helpers::path m_compiler_path;
 
 public:
-    Builder(::helpers::path output_dir, ::helpers::path override_dir);
+    Builder(BuildOptions opts);
 
     bool build_target(const PackageManifest& manifest, const PackageTarget& target) const;
     bool build_library(const PackageManifest& manifest) const;
@@ -28,4 +34,4 @@ private:
     Timestamp get_timestamp(const ::helpers::path& path) const;
 };
 
-extern bool MiniCargo_Build(const PackageManifest& manifest, ::helpers::path override_path);
+extern bool MiniCargo_Build(const PackageManifest& manifest, BuildOptions opts);

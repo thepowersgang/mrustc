@@ -592,7 +592,9 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build)
     {
         for(auto& dep : m_build_dependencies)
         {
-            assert( !dep.m_optional );
+            if( dep.m_optional ) {
+                throw ::std::runtime_error(::format( "build-dependencies can't be optional - ", dep.m_name, " for ", m_name));
+            }
             dep.load_manifest(repo, base_path, true);
         }
     }
