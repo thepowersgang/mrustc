@@ -245,29 +245,29 @@ namespace {
                 m_of
                     << "typedef struct { uint64_t lo, hi; } uint128_t;\n"
                     << "typedef struct { uint64_t lo, hi; } int128_t;\n"
-                    << "int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
-                    << "int128_t add128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
-                    << "int128_t sub128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
-                    << "int128_t mul128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "int128_t div128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "int128_t mod128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "int128_t and128s(int128_t a, int128_t b) { int128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
-                    << "int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
-                    << "int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
-                    << "int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
-                    << "int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
-                    << "uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
-                    << "uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
-                    << "uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
-                    << "uint128_t mul128(uint128_t a, uint128_t b) { abort(); }\n"
-                    << "uint128_t div128(uint128_t a, uint128_t b) { abort(); }\n"
-                    << "uint128_t mod128(uint128_t a, uint128_t b) { abort(); }\n"
-                    << "uint128_t and128(uint128_t a, uint128_t b) { uint128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
-                    << "uint128_t or128 (uint128_t a, uint128_t b) { uint128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
-                    << "uint128_t xor128(uint128_t a, uint128_t b) { uint128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
-                    << "uint128_t shl128(uint128_t a, uint32_t b) { uint128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
-                    << "uint128_t shr128(uint128_t a, uint32_t b) { uint128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
-                    << "uint128_t popcount128(uint128_t a) { uint128_t v = { __builtin_popcount(a.lo) + __builtin_popcount(a.hi), 0 }; return v; }"
+                    << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
+                    << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
+                    << "static inline int128_t sub128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
+                    << "static inline int128_t mul128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t div128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t mod128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t and128s(int128_t a, int128_t b) { int128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
+                    << "static inline int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
+                    << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
+                    << "static inline int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
+                    << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
+                    << "static inline uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
+                    << "static inline uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
+                    << "static inline uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
+                    << "static inline uint128_t mul128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "static inline uint128_t div128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "static inline uint128_t mod128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "static inline uint128_t and128(uint128_t a, uint128_t b) { uint128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
+                    << "static inline uint128_t or128 (uint128_t a, uint128_t b) { uint128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
+                    << "static inline uint128_t xor128(uint128_t a, uint128_t b) { uint128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
+                    << "static inline uint128_t shl128(uint128_t a, uint32_t b) { uint128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
+                    << "static inline uint128_t shr128(uint128_t a, uint32_t b) { uint128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
+                    << "static inline uint128_t popcount128(uint128_t a) { uint128_t v = { __builtin_popcount(a.lo) + __builtin_popcount(a.hi), 0 }; return v; }\n"
                     << "static inline uint128_t __builtin_bswap128(uint128_t v) { uint128_t rv = { __builtin_bswap64(v.hi), __builtin_bswap64(v.lo) }; return rv; }\n"
                     << "static inline uint128_t intrinsic_ctlz_u128(uint128_t v) {\n"
                     << "\tuint128_t rv = { (v.hi != 0 ? __builtin_clz64(v.hi) : (v.lo != 0 ? 64 + __builtin_clz64(v.lo) : 128)), 0 };\n"
@@ -540,16 +540,11 @@ namespace {
                 }
                 if(is_executable)
                 {
+                    args.push_back(cache_str( FMT("/Fe" << m_outfile_path) ));
+
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
                         args.push_back(cache_str( crate.second.m_filename + ".o" ));
-                    }
-                    // Command-line specified linker search directories
-                    for(const auto& path : link_dirs )
-                    {
-                        args.push_back("/link");
-                        args.push_back("/LIBPATH");
-                        args.push_back(path);
                     }
                     // Crate-specified libraries
                     for(const auto& lib : m_crate.m_ext_libs) {
@@ -566,6 +561,13 @@ namespace {
                     for(const auto& path : opt.libraries )
                     {
                         args.push_back(path.c_str());
+                    }
+
+                    // Command-line specified linker search directories
+                    args.push_back("/link");
+                    for(const auto& path : link_dirs )
+                    {
+                        args.push_back(cache_str( FMT("/LIBPATH:" << path) ));
                     }
                 }
                 else
@@ -1726,6 +1728,12 @@ namespace {
                 }
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
                 ::HIR::TypeRef  vtable_ty( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
+
+                if( m_compiler == Compiler::Msvc )
+                {
+                    // Weak link for vtables
+                    m_of << "__declspec(selectany) ";
+                }
 
                 emit_ctype(vtable_ty);
                 m_of << " " << Trans_Mangle(p) << " = {\n";
