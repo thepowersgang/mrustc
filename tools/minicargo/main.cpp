@@ -137,7 +137,7 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 return 1;
             }
         }
-        else if( arg[1] == '\0' )
+        else if( arg[2] == '\0' )
         {
             all_free = true;
         }

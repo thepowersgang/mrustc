@@ -224,6 +224,9 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                 else if( cfg == "cfg(all(unix, not(target_os = \"macos\")))" ) {
                     success = CFG_UNIX;
                 }
+                else if( cfg == "cfg(not(target_os = \"emscripten\"))" ) {
+                    success = true;
+                }
                 else if( cfg == "cfg(all(unix, not(target_os = \"emscripten\"), not(target_os = \"macos\"), not(target_os = \"ios\")))" ) {
                     success = CFG_UNIX;
                 }
@@ -564,10 +567,21 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                 }
             }
         }
-        auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
-        if(it2 != m_dependencies.end())
+
         {
-            it2->m_optional_enabled = true;
+            auto it2 = ::std::find_if(m_dependencies.begin(), m_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
+            if(it2 != m_dependencies.end())
+            {
+                it2->m_optional_enabled = true;
+            }
+        }
+
+        {
+            auto it2 = ::std::find_if(m_build_dependencies.begin(), m_build_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
+            if(it2 != m_build_dependencies.end())
+            {
+                it2->m_optional_enabled = true;
+            }
         }
     }
 }
@@ -592,8 +606,9 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build)
     {
         for(auto& dep : m_build_dependencies)
         {
-            if( dep.m_optional ) {
-                throw ::std::runtime_error(::format( "build-dependencies can't be optional - ", dep.m_name, " for ", m_name));
+            if( dep.m_optional && !dep.m_optional_enabled )
+            {
+                continue ;
             }
             dep.load_manifest(repo, base_path, true);
         }

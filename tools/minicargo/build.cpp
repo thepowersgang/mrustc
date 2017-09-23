@@ -274,6 +274,10 @@ void BuildList::add_dependencies(const PackageManifest& p, unsigned level, bool 
     {
         for(const auto& dep : p.build_dependencies())
         {
+            if( dep.is_disabled() )
+            {
+                continue ;
+            }
             add_package(dep.get_package(), level+1, include_build);
         }
     }
