@@ -309,6 +309,11 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
     }
 
+    if( rv.m_name == "" )
+    {
+        throw ::std::runtime_error(format("Manifest file ",path," doesn't specify a package name"));
+    }
+
     // Default targets
     // - If there's no library section, but src/lib.rs exists, add one
     if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Lib; }) )
@@ -507,7 +512,7 @@ const PackageTarget& PackageManifest::get_library() const
     auto it = ::std::find_if(m_targets.begin(), m_targets.end(), [](const auto& x) { return x.m_type == PackageTarget::Type::Lib; });
     if (it == m_targets.end())
     {
-        throw ::std::runtime_error(::format("Package ", m_name, " doesn't have a library"));
+        throw ::std::runtime_error(::format("Package '", m_name, "' doesn't have a library"));
     }
     return *it;
 }
