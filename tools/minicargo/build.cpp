@@ -415,6 +415,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     for(const auto& feat : manifest.active_features()) {
         args.push_back("--cfg"); args.push_back(::format("feature=", feat));
     }
+    for(const auto& d : m_opts.lib_search_dirs)
+    {
+        args.push_back("-L");
+        args.push_back(d.str().c_str());
+    }
 
     // TODO: Environment variables (rustc_env)
     StringListKV    env;
@@ -433,6 +438,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("--crate-type"); args.push_back("bin");
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(m_opts.output_dir.str().c_str());
+    for(const auto& d : m_opts.lib_search_dirs)
+    {
+        args.push_back("-L");
+        args.push_back(d.str().c_str());
+    }
 
     StringListKV    env;
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
@@ -485,7 +495,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
                 auto script_exe_abs = ::helpers::path(script_exe).to_absolute();
 
                 auto output_dir_abs = m_opts.output_dir.to_absolute();
-        
+
                 // - Run the script and put output in the right dir
                 auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
                 auto out_dir = output_dir_abs / "build_" + manifest.name().c_str();
@@ -509,7 +519,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
                 env.push_back("OPT_LEVEL", "2");
                 env.push_back("DEBUG", "0");
                 env.push_back("PROFILE", "release");
-                
+
                 #if _WIN32
                 #else
                 auto fd_cwd = open(".", O_DIRECTORY);

@@ -116,7 +116,7 @@ int ProgramOptions::parse(int argc, const char* argv[])
             // Short arguments
             switch(arg[1])
             {
-            case 'l':
+            case 'L':
                 if(i+1 == argc) {
                     ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
                     return 1;
