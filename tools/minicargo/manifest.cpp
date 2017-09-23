@@ -726,17 +726,6 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
         // If the path isn't set, check for:
         // - Git (checkout and use)
         // - Version and repository (check vendored, check cache, download into cache)
-        if( this->has_path() )
-        {
-            DEBUG("Load dependency " << m_name << " from path " << m_path);
-            // Search for a copy of this already loaded
-            auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
-            if( ::std::ifstream(path.str()).good() )
-            {
-                m_manifest = repo.from_path(path);
-            }
-        }
-
         if( !m_manifest && this->has_git() )
         {
             DEBUG("Load dependency " << this->name() << " from git");
@@ -747,14 +736,22 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
         {
             DEBUG("Load dependency " << this->name() << " from repo");
             m_manifest = repo.find(this->name(), this->get_version());
-            if( !m_manifest ) {
-                throw ::std::runtime_error(::format("Unable to load manifest for ", this->name(), ":", this->get_version()));
+        }
+        if( !m_manifest && this->has_path() )
+        {
+            DEBUG("Load dependency " << m_name << " from path " << m_path);
+            // Search for a copy of this already loaded
+            auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
+            if( ::std::ifstream(path.str()).good() )
+            {
+                m_manifest = repo.from_path(path);
             }
         }
 
+
         if( !m_manifest )
         {
-            throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name() ));
+            throw ::std::runtime_error(::format( "Unable to find a manifest for ", this->name(), ":", this->get_version() ));
         }
     }
 
