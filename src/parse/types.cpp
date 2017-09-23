@@ -238,7 +238,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
             break;
         }
         // Handle `ident: `
-        if( lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_COLON ) {
+        if( (lex.lookahead(0) == TOK_IDENT || lex.lookahead(0) == TOK_UNDERSCORE) && lex.lookahead(1) == TOK_COLON ) {
             GET_TOK(tok, lex);
             GET_TOK(tok, lex);
         }
