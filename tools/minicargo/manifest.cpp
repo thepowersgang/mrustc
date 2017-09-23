@@ -732,7 +732,7 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
             throw "TODO: Git";
         }
 
-        if( !m_manifest )
+        if( !m_manifest && !this->get_version().m_bounds.empty() )
         {
             DEBUG("Load dependency " << this->name() << " from repo");
             m_manifest = repo.find(this->name(), this->get_version());
