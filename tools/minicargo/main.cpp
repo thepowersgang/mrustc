@@ -15,6 +15,7 @@
 
 struct ProgramOptions
 {
+    // Input (package) directory
     const char* directory = nullptr;
 
     // Directory containing build script outputs
@@ -23,7 +24,13 @@ struct ProgramOptions
     // Directory containing "vendored" (packaged) copies of packages
     const char* vendor_dir = nullptr;
 
+    // Output/build directory
     const char* output_directory = nullptr;
+
+    // Library search directories
+    ::std::vector<const char*>  lib_search_dirs;
+
+    bool pause_before_quit = false;
 
     int parse(int argc, const char* argv[]);
     void usage() const;
@@ -56,30 +63,36 @@ int main(int argc, const char* argv[])
         m.load_dependencies(repo, !bs_override_dir.is_valid());
 
         // 3. Build dependency tree and build program.
-        if( !MiniCargo_Build(m, bs_override_dir ) )
+        BuildOptions    build_opts;
+        build_opts.build_script_overrides = ::std::move(bs_override_dir);
+        build_opts.output_dir = opts.output_directory ? ::helpers::path(opts.output_directory) : ::helpers::path("output");
+        build_opts.lib_search_dirs.reserve(opts.lib_search_dirs.size());
+        for(const auto* d : opts.lib_search_dirs)
+            build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
+        if( !MiniCargo_Build(m, ::std::move(build_opts)) )
         {
             ::std::cerr << "BUILD FAILED" << ::std::endl;
-#if _WIN32
-            ::std::cout << "Press enter to exit..." << ::std::endl;
-            ::std::cin.get();
-#endif
+            if(opts.pause_before_quit) {
+                ::std::cout << "Press enter to exit..." << ::std::endl;
+                ::std::cin.get();
+            }
             return 1;
         }
     }
     catch(const ::std::exception& e)
     {
         ::std::cerr << "EXCEPTION: " << e.what() << ::std::endl;
-#if _WIN32
-        ::std::cout << "Press enter to exit..." << ::std::endl;
-        ::std::cin.get();
-#endif
+        if(opts.pause_before_quit) {
+            ::std::cout << "Press enter to exit..." << ::std::endl;
+            ::std::cin.get();
+        }
         return 1;
     }
 
-#if _WIN32
-    ::std::cout << "Press enter to exit..." << ::std::endl;
-    ::std::cin.get();
-#endif
+    if(opts.pause_before_quit) {
+        ::std::cout << "Press enter to exit..." << ::std::endl;
+        ::std::cin.get();
+    }
     return 0;
 }
 
@@ -101,8 +114,30 @@ int ProgramOptions::parse(int argc, const char* argv[])
         else if( arg[1] != '-' )
         {
             // Short arguments
+            switch(arg[1])
+            {
+            case 'L':
+                if(i+1 == argc) {
+                    ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                    return 1;
+                }
+                this->lib_search_dirs.push_back(argv[++i]);
+                break;
+            case 'o':
+                if(i+1 == argc) {
+                    ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                    return 1;
+                }
+                this->output_directory = argv[++i];
+                break;
+            case 'h':
+                break;
+            default:
+                ::std::cerr << "Unknown flag -" << arg[1] << ::std::endl;
+                return 1;
+            }
         }
-        else if( arg[1] == '\0' )
+        else if( arg[2] == '\0' )
         {
             all_free = true;
         }
@@ -122,6 +157,13 @@ int ProgramOptions::parse(int argc, const char* argv[])
                     return 1;
                 }
                 this->vendor_dir = argv[++i];
+            }
+            else if( ::std::strcmp(arg, "--output-dir") == 0 ) {
+                if(i+1 == argc) {
+                    ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                    return 1;
+                }
+                this->output_directory = argv[++i];
             }
             else {
                 ::std::cerr << "Unknown flag " << arg << ::std::endl;
