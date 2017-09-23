@@ -85,6 +85,9 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "range_to" ) { }
     else if( name == "unsafe_cell" ) { }
 
+    // Statics
+    else if( name == "msvc_try_filter" ) { }
+
     // Functions
     else if( name == "panic" ) { }
     else if( name == "panic_bounds_check" ) { }
@@ -138,6 +141,9 @@ public:
             else {
                 //handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_EXTERN_FN);
             }
+            ),
+        (Static,
+            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STATIC);
             ),
         (Struct,
             handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STRUCT);

@@ -46,6 +46,7 @@ enum eItemType
     ITEM_TRAIT,
     ITEM_STRUCT,
     ITEM_FN,
+    ITEM_STATIC,
 };
 
 struct StructItem

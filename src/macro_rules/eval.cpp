@@ -1026,6 +1026,9 @@ namespace
         TRACE_FUNCTION;
         switch(lex.next())
         {
+        case TOK_UNDERSCORE:
+            lex.consume();
+            return true;
         case TOK_INTERPOLATED_TYPE:
             lex.consume();
             return true;
