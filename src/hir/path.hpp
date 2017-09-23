@@ -110,6 +110,12 @@ struct PathParams
     Compare compare_with_placeholders(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder) const;
     Compare match_test_generics_fuzz(const Span& sp, const PathParams& x, t_cb_resolve_type resolve_placeholder, t_cb_match_generics) const;
 
+    /// Indicates that params exist (and thus the target requires monomorphisation)
+    /// - Ignores lifetime params
+    bool has_params() const {
+        return !m_types.empty();
+    }
+
     bool operator==(const PathParams& x) const;
     bool operator!=(const PathParams& x) const { return !(*this == x); }
     bool operator<(const PathParams& x) const { return ord(x) == OrdLess; }

@@ -1035,7 +1035,8 @@ void Trans_Enumerate_Types(EnumState& state)
                 )
                 ASSERT_BUG(Span(), markings_ptr, "Path binding not set correctly - " << ty);
 
-                if( markings_ptr->has_drop_impl )
+                // If the type has a drop impl, and it's either defined in this crate or has params (and thus was monomorphised)
+                if( markings_ptr->has_drop_impl && (te.path.m_data.as_Generic().m_path.m_crate_name == state.crate.m_crate_name || te.path.m_data.as_Generic().m_params.has_params()) )
                 {
                     // Add the Drop impl to the codegen list
                     Trans_Enumerate_FillFrom_Path(state,  ::HIR::Path( ty.clone(), state.crate.get_lang_item_path(sp, "drop"), "drop"), {});
