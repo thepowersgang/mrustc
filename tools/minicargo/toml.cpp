@@ -1,6 +1,7 @@
 /*
  * A very bad streaming TOML parser
  */
+#define NOLOG
 #include "toml.h"
 #include "debug.h"
 #include <cassert>
