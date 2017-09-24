@@ -1,16 +1,26 @@
 
+RUSTC_CHANNEL ?= nightly
+RUSTC_VERSION ?= 2017-07-08
+OVERRIDE_SUFFIX ?= # -linux
+OUTDIR := output/
+
 MRUSTC := bin/mrustc
 MINICARGO := tools/bin/minicargo
-RUSTCSRC := rustc-nightly/
+ifeq ($(RUSTC_CHANNEL),nightly)
+	RUSTCSRC := rustc-nightly/
+else
+	RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
+endif
 
-LLVM_CONFIG := rustc-nightly/build/bin/llvm-config
+LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 RUSTC_TARGET := x86_64-unknown-linux-gnu
+OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 
-.PHONY: bin/mrustc tools/bin/minicargo output/libsrc.hir output/libtest.hir output/libpanic_unwind.hir output/rustc output/cargo
+.PHONY: bin/mrustc tools/bin/minicargo $(OUTDIR)libsrc.hir $(OUTDIR)libtest.hir $(OUTDIR)libpanic_unwind.hir $(OUTDIR)rustc $(OUTDIR)cargo
 
-all: output/rustc
+all: $(OUTDIR)rustc
 
-mini: output/libpanic_unwind.hir output/libtest.hit
+mini: $(OUTDIR)libpanic_unwind.hir $(OUTDIR)libtest.hit
 
 $(MRUSTC):
 	$(MAKE) -f Makefile all
@@ -20,30 +30,30 @@ $(MINICARGO):
 	$(MAKE) -C tools/minicargo/
 	test -e $@
 
-output/libstd.hir: $(MRUSTC) $(MINICARGO)
-	$(MINICARGO) rustc-nightly/src/libstd --script-overrides script-overrides/nightly-2017-07-08/
+$(OUTDIR)libstd.hir: $(MRUSTC) $(MINICARGO)
+	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR)
 	test -e $@
-output/libpanic_unwind.hir: $(MRUSTC) $(MINICARGO) output/libstd.hir
-	$(MINICARGO) rustc-nightly/src/libpanic_unwind --script-overrides script-overrides/nightly-2017-07-08/
+$(OUTDIR)libpanic_unwind.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
+	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR)
 	test -e $@
-output/libtest.hir: $(MRUSTC) $(MINICARGO) output/libstd.hir output/libpanic_unwind.hir
-	$(MINICARGO) rustc-nightly/src/libtest --vendor-dir rustc-nightly/src/vendor
+$(OUTDIR)libtest.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libpanic_unwind.hir
+	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
 	test -e $@
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 RUSTC_ENV_VARS += LLVM_CONFIG=$(abspath $(LLVM_CONFIG))
 RUSTC_ENV_VARS += CFG_RELEASE=
-RUSTC_ENV_VARS += CFG_RELEASE_CHANNEL=nightly
-RUSTC_ENV_VARS += CFG_VERSION=2017-07-08-nightly-mrustc
+RUSTC_ENV_VARS += CFG_RELEASE_CHANNEL=$(RUSTC_CHANNEL)
+RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-$(RUSTC_CHANNEL)-mrustc
 RUSTC_ENV_VARS += CFG_PREFIX=mrustc
 RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 
-output/rustc: $(MRUSTC) $(MINICARGO) output/libstd.hir output/libtest.hir $(LLVM_CONFIG)
-	$(RUSTC_ENV_VARS) $(MINICARGO) rustc-nightly/src/rustc --vendor-dir rustc-nightly/src/vendor
-output/cargo: $(MRUSTC) output/libstd.hir
-	$(MINICARGO) rustc-nightly/src/tools/cargo --vendor-dir rustc-nightly/src/vendor
+$(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(LLVM_CONFIG)
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+$(OUTDIR)cargo: $(MRUSTC) $(OUTDIR)libstd.hir
+	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
 
-# Reference rustc-nightly/src/bootstrap/native.rs for these values
+# Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
 LLVM_CMAKE_OPTS := LLVM_TARGET_ARCH=$(firstword $(subst -, ,$(RUSTC_TARGET))) LLVM_DEFAULT_TARGET_TRIPLE=$(RUSTC_TARGET)
 LLVM_CMAKE_OPTS += LLVM_TARGETS_TO_BUILD=X86#;ARM;AArch64;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
 LLVM_CMAKE_OPTS += LLVM_ENABLE_ASSERTIONS=OFF
@@ -53,8 +63,8 @@ LLVM_CMAKE_OPTS += CMAKE_CXX_COMPILER="g++" CMAKE_C_COMPILER="gcc"
 
 
 $(LLVM_CONFIG): $(RUSTCSRC)build/Makefile
-	$Vcd rustc-nightly/build && $(MAKE)
+	$Vcd $(RUSTCSRC)build && $(MAKE)
 $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 	@mkdir -p $(RUSTCSRC)build
-	$Vcd rustc-nightly/build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
+	$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
 
