@@ -55,6 +55,7 @@ public:
         LOAD_CORE,
         LOAD_NONE,
     } m_load_std = LOAD_STD;
+    ::std::string   m_crate_name_suffix;
     ::std::string   m_crate_name;
     AST::Path   m_prelude_path;
 

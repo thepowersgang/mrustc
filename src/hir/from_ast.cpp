@@ -1550,6 +1550,11 @@ public:
     if(crate.m_crate_type != ::AST::Crate::Type::Executable)
     {
         rv.m_crate_name = crate.m_crate_name;
+        if(crate.m_crate_name_suffix != "")
+        {
+            rv.m_crate_name += "-";
+            rv.m_crate_name += crate.m_crate_name_suffix;
+        }
     }
 
     g_crate_ptr = &rv;
@@ -1625,7 +1630,7 @@ public:
     }
     path_Sized = rv.get_lang_item_path(sp, "sized");
 
-    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath(crate.m_crate_name) );
+    rv.m_root_module = LowerHIR_Module( crate.m_root_module, ::HIR::ItemPath(rv.m_crate_name) );
 
     LowerHIR_Module_Impls(crate.m_root_module,  rv);
 

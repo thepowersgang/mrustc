@@ -150,6 +150,7 @@ struct ProgramParams
 
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
     ::std::string   crate_name;
+    ::std::string   crate_name_suffix;
 
     unsigned opt_level = 0;
     bool emit_debug_info = false;
@@ -219,6 +220,7 @@ int main(int argc, char *argv[])
             return Parse_Crate(params.infile);
             });
         crate.m_test_harness = params.test_harness;
+        crate.m_crate_name_suffix = params.crate_name_suffix;
 
         if( params.last_stage == ProgramParams::STAGE_PARSE ) {
             return 0;
@@ -724,6 +726,15 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 auto name = ::std::string(desc, pos);
                 auto path = ::std::string(pos+1);
                 this->crate_overrides.insert(::std::make_pair( mv$(name), mv$(path) ));
+            }
+            // --crate-tag <name>  >> Specify a version/identifier suffix for the crate
+            else if( strcmp(arg, "--crate-tag") == 0 ) {
+                if( i == argc - 1 ) {
+                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                const char* name_str = argv[++i];
+                this->crate_name_suffix = name_str;
             }
             // --crate-name <name>  >> Specify the crate name (overrides `#![crate_name="<name>"]`)
             else if( strcmp(arg, "--crate-name") == 0 ) {

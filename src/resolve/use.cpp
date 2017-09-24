@@ -314,6 +314,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 ),
             (Crate,
                 if( allow != Lookup::Value )
+                    ASSERT_BUG(span, crate.m_extern_crates.count(e.name), "Crate '" << e.name << "' not loaded");
                     return ::AST::PathBinding::make_Crate({ &crate.m_extern_crates.at(e.name) });
                 ),
             (Type,
@@ -669,9 +670,11 @@ namespace {
                 ),
             // TODO: What happens if these two refer to an enum constructor?
             (StructConstant,
+                ASSERT_BUG(span, crate.m_extern_crates.count(e.ty.m_crate_name), "Crate '" << e.ty.m_crate_name << "' not loaded for " << e.ty);
                 return ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(span, e.ty, true).as_Struct() });
                 ),
             (StructConstructor,
+                ASSERT_BUG(span, crate.m_extern_crates.count(e.ty.m_crate_name), "Crate '" << e.ty.m_crate_name << "' not loaded for " << e.ty);
                 return ::AST::PathBinding::make_Struct({ nullptr, &crate.m_extern_crates.at(e.ty.m_crate_name).m_hir->get_typeitem_by_path(span, e.ty, true).as_Struct() });
                 ),
             (Function,
@@ -700,6 +703,7 @@ namespace {
     if( path.m_class.is_Absolute() && path.m_class.as_Absolute().crate != "" ) {
         const auto& path_abs = path.m_class.as_Absolute();
 
+        ASSERT_BUG(span, crate.m_extern_crates.count(path_abs.crate), "Crate '" << path_abs.crate << "' not loaded");
         return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate ), 0, allow);
     }
 

@@ -785,6 +785,7 @@ namespace {
 
     void Resolve_Absolute_Path_BindAbsolute__hir_from(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path, const AST::ExternCrate& crate, unsigned int start)
     {
+        assert(crate.m_hir->m_crate_name == crate.m_name);
         TRACE_FUNCTION_FR( crate.m_hir->m_crate_name << " - " << path << " start=" << start, path);
         auto& path_abs = path.m_class.as_Absolute();
 

@@ -54,7 +54,27 @@ namespace {
 ::FmtLambda Trans_Mangle(const ::HIR::SimplePath& path)
 {
     return FMT_CB(ss,
-        ss << "_ZN" << path.m_crate_name.size() << path.m_crate_name;
+        ss << "_ZN";
+        {
+            ::std::string   cn;
+            for(auto c : path.m_crate_name)
+            {
+                if(c == '-') {
+                    cn += "$$";
+                }
+                else if(  ('0' <= c && c <= '9')
+                       || ('A' <= c && c <= 'Z')
+                       || ('a' <= c && c <= 'z')
+                       || c == '_'
+                       )
+                {
+                    cn += c;
+                }
+                else {
+                }
+            }
+            ss << cn.size() << cn;
+        }
         for(const auto& comp : path.m_components) {
             auto v = escape_str(comp);
             ss << v.size() << v;

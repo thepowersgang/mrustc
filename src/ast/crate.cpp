@@ -52,13 +52,12 @@ Crate::Crate():
 void Crate::load_externs()
 {
     auto cb = [this](Module& mod) {
-        for( const auto& it : mod.items() )
+        for( /*const*/ auto& it : mod.items() )
         {
             TU_IFLET(AST::Item, it.data, Crate, c,
-                auto name = c.name;
                 if( check_item_cfg(it.data.attrs) )
                 {
-                    name = load_extern_crate( it.data.span, name );
+                    c.name = load_extern_crate( it.data.span, c.name );
                 }
             )
         }
@@ -142,7 +141,10 @@ void Crate::load_externs()
     }
 
     // NOTE: Creating `ExternCrate` loads the crate from the specified path
-    auto res = m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, path } ));
+    auto ec = ExternCrate { name, path };
+    auto real_name = ec.m_hir->m_crate_name;
+    assert(!real_name.empty());
+    auto res = m_extern_crates.insert(::std::make_pair( real_name, mv$(ec) ));
     if( !res.second ) {
         // Crate already loaded?
     }
@@ -164,9 +166,8 @@ void Crate::load_externs()
         }
     }
 
-    assert(!ext_crate.m_hir->m_crate_name.empty());
-    DEBUG("Loaded '" << name << "' from '" << basename << "' (actual name is '" << ext_crate.m_hir->m_crate_name << "')");
-    return ext_crate.m_hir->m_crate_name;
+    DEBUG("Loaded '" << name << "' from '" << basename << "' (actual name is '" << real_name << "')");
+    return real_name;
 }
 
 ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
@@ -177,6 +178,7 @@ ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
     m_hir = HIR_Deserialise(path, name);
 
     m_hir->post_load_update(name);
+    m_name = m_hir->m_crate_name;
 }
 
 void ExternCrate::with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const
