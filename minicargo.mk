@@ -68,3 +68,10 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 	@mkdir -p $(RUSTCSRC)build
 	$Vcd $(RUSTCSRC)build && cmake $(addprefix -D , $(LLVM_CMAKE_OPTS)) ../src/llvm
 
+
+#
+# Developement-only targets
+#
+$(OUTDIR)libnum.hir: $(MRUSTC) $(OUTDIR)libstd.hir
+	$(MINICARGO) $(RUSTCSRC)src/vendor/num --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+

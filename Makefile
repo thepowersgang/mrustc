@@ -177,9 +177,13 @@ rustc-nightly-src.tar.gz: rust-nightly-date
 	curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz
 
 $(RUSTCSRC): rustc-nightly-src.tar.gz rust_src.patch
-	@rm -rf rustc-nightly
-	tar -xf rustc-nightly-src.tar.gz; mv rustc-nightly-src rustc-nightly
-	patch -p0 < rust_src.patch;
+	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
+	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
+	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
+		rm -rf rustc-nightly; \
+		tar -xf rustc-nightly-src.tar.gz; mv rustc-nightly-src rustc-nightly; \
+		patch -p0 < rust_src.patch; \
+	fi
 	cat rust-nightly-date > $(RUSTC_SRC_DL);
 
 
