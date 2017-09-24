@@ -17,6 +17,10 @@ Linux
 - `make RUSTCSRC` - Downloads the rustc source tarball
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc`
 
+Windows
+--------
+(NOTE: Incomplete, doesn't yet compile executables and missing helper scripts)
+- Open `vsproject/mrustc.sln` and build minicargo
 
 Building Requirements
 =====================
@@ -37,6 +41,7 @@ Short-Term Plans
 ===
 - Fix currently-failing tests (mostly in type inferrence)
 - Fix all known TODOs in MIR generation (still some possible leaks)
+- Fix compilation errors encountered when compilin `cargo`
 
 Medium-Term Goals
 ===
@@ -48,4 +53,6 @@ Progress
 - Compiles static libraries into loadable HIR tree and MIR code
 - Generates working executables (most of the test suite)
 - Compiles `rustc` that can compile the standard library and "hello, world"
+
+Note: All progress is against the nightly build specified in `rust-nightly-date`
 
