@@ -135,7 +135,11 @@ RUSTCSRC := rustc-nightly/
 RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
 
-output/libstd.hir output/libtest.hir output/rustc output/cargo output/libpanic_unwind.hir: $(BIN) $(RUSTCSRC)
+output/libstd.hir: $(BIN) $(RUSTCSRC)
+	$(MAKE) -f minicargo.mk $@
+output/libtest.hir output/libpanic_unwind.hir: output/libstd.hir
+	$(MAKE) -f minicargo.mk $@
+output/rustc output/cargo: output/libtest.hir
 	$(MAKE) -f minicargo.mk $@
 
 TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir
