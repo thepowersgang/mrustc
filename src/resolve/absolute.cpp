@@ -785,7 +785,7 @@ namespace {
 
     void Resolve_Absolute_Path_BindAbsolute__hir_from(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path, const AST::ExternCrate& crate, unsigned int start)
     {
-        TRACE_FUNCTION_FR(path << " start=" << start, path);
+        TRACE_FUNCTION_FR( crate.m_hir->m_crate_name << " - " << path << " start=" << start, path);
         auto& path_abs = path.m_class.as_Absolute();
 
         if( path_abs.nodes.empty() ) {
@@ -1009,12 +1009,10 @@ namespace {
                         ),
                     (StructConstructor,
                         auto ty_path = e.ty;
-                        ty_path.m_crate_name = "";
                         path.bind( ::AST::PathBinding::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
                         ),
                     (StructConstant,
                         auto ty_path = e.ty;
-                        ty_path.m_crate_name = "";
                         path.bind( ::AST::PathBinding::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
                         ),
                     (Static,

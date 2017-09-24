@@ -23,11 +23,10 @@ namespace {
 
     class HirDeserialiser
     {
-        const ::std::string& m_crate_name;
+        ::std::string m_crate_name;
         ::HIR::serialise::Reader&   m_in;
     public:
-        HirDeserialiser(const ::std::string& crate_name, ::HIR::serialise::Reader& in):
-            m_crate_name( crate_name ),
+        HirDeserialiser(::HIR::serialise::Reader& in):
             m_in(in)
         {}
 
@@ -227,7 +226,10 @@ namespace {
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
             rv.m_source_crate = m_in.read_string();
             if(rv.m_source_crate == "")
+            {
+                assert(!m_crate_name.empty());
                 rv.m_source_crate = m_crate_name;
+            }
             return rv;
         }
         ::MacroPatEnt deserialise_macropatent() {
@@ -770,7 +772,10 @@ namespace {
         auto crate_name = m_in.read_string();
         auto components = deserialise_vec< ::std::string>();
         if( crate_name == "" && components.size() > 0)
+        {
+            assert(!m_crate_name.empty());
             crate_name = m_crate_name;
+        }
         return ::HIR::SimplePath {
             mv$(crate_name),
             mv$(components)
@@ -1119,6 +1124,9 @@ namespace {
     {
         ::HIR::Crate    rv;
 
+        this->m_crate_name = m_in.read_string();
+        assert(!this->m_crate_name.empty() && "Empty crate name loaded from metadata");
+        rv.m_crate_name = this->m_crate_name;
         rv.m_root_module = deserialise_module();
 
         rv.m_type_impls = deserialise_vec< ::HIR::TypeImpl>();
@@ -1148,7 +1156,10 @@ namespace {
             for(size_t i = 0; i < n; i ++)
             {
                 auto ext_crate_name = m_in.read_string();
-                rv.m_ext_crates.insert( ::std::make_pair(ext_crate_name, ::HIR::ExternCrate{}) );
+                auto ext_crate_file = m_in.read_string();
+                auto ext_crate = ::HIR::ExternCrate {};
+                ext_crate.m_basename = ext_crate_file;
+                rv.m_ext_crates.insert( ::std::make_pair( mv$(ext_crate_name), mv$(ext_crate) ) );
             }
         }
 
@@ -1164,7 +1175,7 @@ namespace {
     try
     {
         ::HIR::serialise::Reader    in{ filename };
-        HirDeserialiser  s { loaded_name, in };
+        HirDeserialiser  s { in };
 
         ::HIR::Crate    rv = s.deserialise_crate();
 

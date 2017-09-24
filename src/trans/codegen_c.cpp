@@ -487,7 +487,7 @@ namespace {
                 {
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        args.push_back(cache_str( crate.second.m_filename + ".o" ));
+                        args.push_back(cache_str( crate.second.m_path + ".o" ));
                     }
                     for(const auto& path : link_dirs )
                     {
@@ -544,7 +544,7 @@ namespace {
 
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        args.push_back(cache_str( crate.second.m_filename + ".o" ));
+                        args.push_back(cache_str( crate.second.m_path + ".o" ));
                     }
                     // Crate-specified libraries
                     for(const auto& lib : m_crate.m_ext_libs) {

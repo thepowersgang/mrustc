@@ -55,10 +55,10 @@ void Crate::load_externs()
         for( const auto& it : mod.items() )
         {
             TU_IFLET(AST::Item, it.data, Crate, c,
-                const auto& name = c.name;
+                auto name = c.name;
                 if( check_item_cfg(it.data.attrs) )
                 {
-                    load_extern_crate( it.data.span, name );
+                    name = load_extern_crate( it.data.span, name );
                 }
             )
         }
@@ -93,19 +93,23 @@ void Crate::load_externs()
         // Don't load anything
     }
     else if( no_std ) {
-        this->load_extern_crate(Span(), "core");
+        auto n = this->load_extern_crate(Span(), "core");
+        ASSERT_BUG(Span(), n == "core", "libcore wasn't loaded as `core`, instead `" << n << "`");
     }
     else {
-        this->load_extern_crate(Span(), "std");
+        auto n = this->load_extern_crate(Span(), "std");
+        ASSERT_BUG(Span(), n == "std", "libstd wasn't loaded as `std`, instead `" << n << "`");
     }
 }
-void Crate::load_extern_crate(Span sp, const ::std::string& name)
+// TODO: Handle disambiguating crates with the same name (e.g. libc in std and crates.io libc)
+// - Crates recorded in rlibs should specify a hash/tag that's passed in to this function.
+::std::string Crate::load_extern_crate(Span sp, const ::std::string& name, const ::std::string& basename/*=""*/)
 {
     DEBUG("Loading crate '" << name << "'");
 
     ::std::string   path;
     auto it = g_crate_overrides.find(name);
-    if(it != g_crate_overrides.end())
+    if(basename == "" && it != g_crate_overrides.end())
     {
         path = it->second;
     }
@@ -114,28 +118,55 @@ void Crate::load_extern_crate(Span sp, const ::std::string& name)
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
-            path = p + "/lib" + name + ".hir";
+            if( basename == "" )
+            {
+                path = p + "/lib" + name + ".hir";
+                // TODO: Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
+            }
+            else
+            {
+                path = p + "/" + basename;
+            }
 
             if( ::std::ifstream(path).good() ) {
                 break ;
             }
+            // TODO: Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
         }
     }
     if( !::std::ifstream(path).good() ) {
-        ERROR(sp, E0000, "Unable to locate crate '" << name << "'");
+        if( basename.empty() )
+            ERROR(sp, E0000, "Unable to locate crate '" << name << "'");
+        else
+            ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename);
     }
 
+    // NOTE: Creating `ExternCrate` loads the crate from the specified path
     auto res = m_extern_crates.insert(::std::make_pair( name, ExternCrate { name, path } ));
-    auto crate_ext_list = mv$( res.first->second.m_hir->m_ext_crates );
+    if( !res.second ) {
+        // Crate already loaded?
+    }
+    auto& ext_crate = res.first->second;
+    // Move the external list out (doesn't need to be kept in the nested crate)
+    auto crate_ext_list = mv$( ext_crate.m_hir->m_ext_crates );
 
     // Load referenced crates
     for( const auto& ext : crate_ext_list )
     {
         if( m_extern_crates.count(ext.first) == 0 )
         {
-            this->load_extern_crate(sp, ext.first);
+            const auto load_name = this->load_extern_crate(sp, ext.first, ext.second.m_basename);
+            if( load_name != ext.first )
+            {
+                // ERROR - The crate loaded wasn't the one that was used when compiling this crate.
+                ERROR(sp, E0000, "The crate file `" << ext.second.m_basename << "` didn't load the expected crate - have " << load_name << " != exp " << ext.first);
+            }
         }
     }
+
+    assert(!ext_crate.m_hir->m_crate_name.empty());
+    DEBUG("Loaded '" << name << "' from '" << basename << "' (actual name is '" << ext_crate.m_hir->m_crate_name << "')");
+    return ext_crate.m_hir->m_crate_name;
 }
 
 ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):

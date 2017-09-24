@@ -147,7 +147,6 @@ struct ProgramParams
     ::std::string   outfile;
     ::std::string   output_dir = "";
     ::std::string   target = DEFAULT_TARGET_NAME;
-    const char *crate_path = ".";
 
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
     ::std::string   crate_name;
@@ -159,6 +158,7 @@ struct ProgramParams
 
     ::std::vector<const char*> lib_search_dirs;
     ::std::vector<const char*> libraries;
+    ::std::map<::std::string, ::std::string>    crate_overrides;    // --extern name=path
 
     ::std::set< ::std::string> features;
 
@@ -227,6 +227,7 @@ int main(int argc, char *argv[])
         // Load external crates.
         CompilePhaseV("LoadCrates", [&]() {
             // Hacky!
+            AST::g_crate_overrides = params.crate_overrides;
             for(const auto& ld : params.lib_search_dirs)
             {
                 AST::g_crate_load_dirs.push_back(ld);
@@ -580,12 +581,7 @@ int main(int argc, char *argv[])
     //    ::std::cerr << "Internal Compiler Error: " << e << ::std::endl;
     //    return 2;
     //}
-    
-    // TODO: Make this conditional
-#if 0
-    ::std::cout << "Press enter to exit..." << ::std::endl;
-    ::std::cin.get();
-#endif
+
     return 0;
 }
 
@@ -605,6 +601,8 @@ ProgramParams::ProgramParams(int argc, char *argv[])
             else
             {
                 // TODO: Error
+                ::std::cerr << "Unexpected free argument" << ::std::endl;
+                exit(1);
             }
         }
         else if( arg[1] != '-' )
@@ -616,7 +614,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
             case 'L':
                 if( arg[1] == '\0' ) {
                     if( i == argc - 1 ) {
-                        // TODO: BAIL!
+                        ::std::cerr << "Option " << arg << " requires an argument" << ::std::endl;
                         exit(1);
                     }
                     this->lib_search_dirs.push_back( argv[++i] );
@@ -628,7 +626,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
             case 'l':
                 if( arg[1] == '\0' ) {
                     if( i == argc - 1 ) {
-                        // TODO: BAIL!
+                        ::std::cerr << "Option " << arg << " requires an argument" << ::std::endl;
                         exit(1);
                     }
                     this->libraries.push_back( argv[++i] );
@@ -641,6 +639,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 ::std::string optname;
                 if( arg[1] == '\0' ) {
                     if( i == argc - 1) {
+                        ::std::cerr << "Option " << arg << " requires an argument" << ::std::endl;
                         exit(1);
                     }
                     optname = argv[++i];
@@ -675,7 +674,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 // "-o <file>" : Set output file
                 case 'o':
                     if( i == argc - 1 ) {
-                        // TODO: BAIL!
+                        ::std::cerr << "Option -" << *arg << " requires an argument" << ::std::endl;
                         exit(1);
                     }
                     this->outfile = argv[++i];
@@ -693,13 +692,10 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         }
         else
         {
-            if( strcmp(arg, "--crate-path") == 0 ) {
-                if( i == argc - 1 ) {
-                    ::std::cerr << "Flag --crate-path requires an argument" << ::std::endl;
-                    exit(1);
-                }
-                this->crate_path = argv[++i];
+            if( strcmp(arg, "--help") == 0 ) {
+                // TODO: Help
             }
+            // --out-dir <dir>  >> Set the output directory for automatically-named files
             else if (strcmp(arg, "--out-dir") == 0) {
                 if (i == argc - 1) {
                     ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
@@ -712,6 +708,24 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 if( this->output_dir.back() != '/' )
                     this->output_dir += '/';
             }
+            // --extern <name>=<path>   >> Override the file to load for `extern crate <name>;`
+            else if( strcmp(arg, "--extern") == 0 ) {
+                if( i == argc - 1 ) {
+                    ::std::cerr << "Option " << arg << " requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                const char* desc = argv[++i];
+                auto* pos = ::std::strchr(desc, '=');
+                if( pos == nullptr ) {
+                    ::std::cerr << "--extern takes an argument of the format name=path" << ::std::endl;
+                    exit(1);
+                }
+
+                auto name = ::std::string(desc, pos);
+                auto path = ::std::string(pos+1);
+                this->crate_overrides.insert(::std::make_pair( mv$(name), mv$(path) ));
+            }
+            // --crate-name <name>  >> Specify the crate name (overrides `#![crate_name="<name>"]`)
             else if( strcmp(arg, "--crate-name") == 0 ) {
                 if( i == argc - 1 ) {
                     ::std::cerr << "Flag --crate-name requires an argument" << ::std::endl;
@@ -720,6 +734,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 const char* name_str = argv[++i];
                 this->crate_name = name_str;
             }
+            // `--crate-type <name>`    - Specify the crate type (overrides `#![crate_type="<name>"]`)
             else if( strcmp(arg, "--crate-type") == 0 ) {
                 if( i == argc - 1 ) {
                     ::std::cerr << "Flag --crate-type requires an argument" << ::std::endl;
@@ -738,6 +753,8 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     exit(1);
                 }
             }
+            // `--cfg <flag>`
+            // `--cfg <var>=<value>`
             else if( strcmp(arg, "--cfg") == 0 ) {
                 if( i == argc - 1 ) {
                     ::std::cerr << "Flag --cfg requires an argument" << ::std::endl;
@@ -770,6 +787,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     Cfg_SetFlag(opt_and_val);
                 }
             }
+            // `--target <triple>`  - Override the default compiler target
             else if( strcmp(arg, "--target") == 0 ) {
                 if (i == argc - 1) {
                     ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
@@ -777,6 +795,8 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 this->target = argv[++i];
             }
+            // `--stop-after <stage>`   - Stops the compiler after the specified stage
+            // TODO: Convert this to a `-Z` option
             else if( strcmp(arg, "--stop-after") == 0 ) {
                 if( i == argc - 1 ) {
                     ::std::cerr << "Flag --stop-after requires an argument" << ::std::endl;

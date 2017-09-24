@@ -438,7 +438,8 @@ class ExternCrate
 {
 public:
     ::HIR::CratePtr m_data;
-    ::std::string   m_filename;
+    ::std::string   m_basename; // Just the filename (serialised)
+    ::std::string   m_path; // The path used to load this crate
 };
 class ExternLibrary
 {

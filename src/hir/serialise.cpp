@@ -239,6 +239,7 @@ namespace {
 
         void serialise_crate(const ::HIR::Crate& crate)
         {
+            m_out.write_string(crate.m_crate_name);
             serialise_module(crate.m_root_module);
 
             m_out.write_count(crate.m_type_impls.size());
@@ -261,7 +262,10 @@ namespace {
 
             m_out.write_count(crate.m_ext_crates.size());
             for(const auto& ext : crate.m_ext_crates)
+            {
                 m_out.write_string(ext.first);
+                m_out.write_string(ext.second.m_basename);
+            }
             serialise_vec(crate.m_ext_libs);
             serialise_vec(crate.m_link_paths);
         }

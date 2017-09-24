@@ -67,7 +67,9 @@ public:
     /// Load referenced crates
     void load_externs();
 
-    void load_extern_crate(Span sp, const ::std::string& name);
+    /// Load the named crate and returns the crate's unique name
+    /// If the parameter `file` is non-empty, only that particular filename will be loaded (from any of the search paths)
+    ::std::string load_extern_crate(Span sp, const ::std::string& name, const ::std::string& file="");
 };
 
 /// Representation of an imported crate
