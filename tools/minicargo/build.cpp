@@ -342,24 +342,45 @@ Builder::Builder(BuildOptions opts):
 #endif
 }
 
-bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target) const
+::helpers::path Builder::get_crate_path(const PackageManifest& manifest, const PackageTarget& target, const char** crate_type, ::std::string* out_crate_suffix) const
 {
-    const char* crate_type;
     auto outfile = m_opts.output_dir;
+    // HACK: If there's no version, don't emit a version tag
+    ::std::string   crate_suffix;
+#if 1
+    if( manifest.version() != PackageVersion() ) {
+        crate_suffix = ::format("-", manifest.version());
+        for(auto& v : crate_suffix)
+            if(v == '.')
+                v = '_';
+    }
+#endif
+
     switch(target.m_type)
     {
     case PackageTarget::Type::Lib:
-        crate_type = "rlib";
-        outfile /= ::format("lib", target.m_name, ".hir");
+        if(crate_type)
+            *crate_type = "rlib";
+        outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");
         break;
     case PackageTarget::Type::Bin:
-        crate_type = "bin";
+        if(crate_type)
+            *crate_type = "bin";
         outfile /= ::format(target.m_name, EXESUF);
         break;
     default:
         throw ::std::runtime_error("Unknown target type being built");
     }
-    //DEBUG("Building " << manifest.name() << ":" << target.m_name << " as " << outfile);
+    if(out_crate_suffix)
+        *out_crate_suffix = crate_suffix;
+    return outfile;
+}
+
+bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target) const
+{
+    const char* crate_type;
+    ::std::string   crate_suffix;
+    auto outfile = this->get_crate_path(manifest, target,  &crate_type, &crate_suffix);
 
     // TODO: Determine if it needs re-running
     // Rerun if:
@@ -392,10 +413,14 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         // TODO: Run commands specified by build script (override)
     }
 
+    ::std::cout << "BUILDING " << target.m_name << " from " << manifest.name() << " v" << manifest.version() << ::std::endl;
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back(crate_type);
+    if( !crate_suffix.empty() ) {
+        args.push_back("--crate-tag"); args.push_back(crate_suffix.c_str() + 1);
+    }
     if( true /*this->enable_debug*/ ) {
         args.push_back("-g");
         //args.push_back("--cfg"); args.push_back("debug_assertions");
@@ -419,6 +444,16 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     }
     for(const auto& feat : manifest.active_features()) {
         args.push_back("--cfg"); args.push_back(::format("feature=", feat));
+    }
+    for(const auto& dep : manifest.dependencies())
+    {
+        if( ! dep.is_disabled() )
+        {
+            const auto& m = dep.get_package();
+            auto path = this->get_crate_path(m, m.get_library(), nullptr, nullptr);
+            args.push_back("--extern");
+            args.push_back(::format(m.get_library().m_name, "=", path));
+        }
     }
     for(const auto& d : m_opts.lib_search_dirs)
     {
@@ -447,6 +482,16 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     {
         args.push_back("-L");
         args.push_back(d.str().c_str());
+    }
+    for(const auto& dep : manifest.build_dependencies())
+    {
+        if( ! dep.is_disabled() )
+        {
+            const auto& m = dep.get_package();
+            auto path = this->get_crate_path(m, m.get_library(), nullptr, nullptr);
+            args.push_back("--extern");
+            args.push_back(::format(m.get_library().m_name, "=", path));
+        }
     }
 
     StringListKV    env;

@@ -27,6 +27,7 @@ public:
     ::std::string build_build_script(const PackageManifest& manifest) const;
 
 private:
+    ::helpers::path get_crate_path(const PackageManifest& manifest, const PackageTarget& target, const char** crate_type, ::std::string* out_crate_suffix) const;
     bool spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const;
     bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile) const;
 
