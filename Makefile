@@ -17,7 +17,7 @@ V ?= @
 
 TARGET_CC ?= clang
 
-TAIL_COUNT ?= 45
+TAIL_COUNT ?= 10
 
 # - Disable implicit rules
 .SUFFIXES:
@@ -183,8 +183,8 @@ $(RUSTCSRC): rustc-nightly-src.tar.gz rust_src.patch
 		rm -rf rustc-nightly; \
 		tar -xf rustc-nightly-src.tar.gz; mv rustc-nightly-src rustc-nightly; \
 		patch -p0 < rust_src.patch; \
+		cat rust-nightly-date > $(RUSTC_SRC_DL); \
 	fi
-	cat rust-nightly-date > $(RUSTC_SRC_DL);
 
 
 # MRUSTC-specific tests
