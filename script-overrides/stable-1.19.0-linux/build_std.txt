@@ -1,0 +1,5 @@
+# TODO: THis is the windows set
+cargo:rustc-link-lib=dl
+cargo:rustc-link-lib=rt
+cargo:rustc-link-lib=pthread
+
