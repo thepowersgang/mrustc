@@ -549,18 +549,18 @@ namespace {
                     // Crate-specified libraries
                     for(const auto& lib : m_crate.m_ext_libs) {
                         ASSERT_BUG(Span(), lib.name != "", "");
-                        args.push_back(lib.name.c_str());
+                        args.push_back(cache_str( lib.name + ".lib" ));
                     }
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
                         for(const auto& lib : crate.second.m_data->m_ext_libs) {
                             ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
-                            args.push_back(lib.name.c_str());
+                            args.push_back(cache_str( lib.name + ".lib" ));
                         }
                     }
                     for(const auto& path : opt.libraries )
                     {
-                        args.push_back(path.c_str());
+                        args.push_back(cache_str( path + ".lib" ));
                     }
 
                     // Command-line specified linker search directories
@@ -1323,7 +1323,7 @@ namespace {
                     // Handled with asm() later
                     break;
                 case Compiler::Msvc:
-                    m_of << "#pragma comment(linker, \"/alternatename:" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    m_of << "#pragma comment(linker, \"/alternatename:_" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
                     break;
                 //case Compiler::Std11:
                 //    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
