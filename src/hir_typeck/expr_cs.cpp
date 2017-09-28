@@ -1938,10 +1938,15 @@ namespace {
     {
         Context& context;
         bool m_completed;
+        /// Tells vistors that inferrence has stalled, and that they can take
+        /// more extreme actions (e.g. ignoring an ambigious inherent method
+        /// and using a trait method instead)
+        bool m_is_fallback;
     public:
-        ExprVisitor_Revisit(Context& context):
+        ExprVisitor_Revisit(Context& context, bool fallback=false):
             context(context),
-            m_completed(false)
+            m_completed(false),
+            m_is_fallback(fallback)
         {}
 
         bool node_completed() const {
@@ -2160,6 +2165,23 @@ namespace {
                     ),
                 (Pointer,
                     // Allow with no link?
+                    // TODO: In some rare cases, this ivar could be completely
+                    // unrestricted. If in fallback mode
+                    const auto& dst_inner = this->context.get_type(*e.inner);
+                    if(this->m_is_fallback)
+                    {
+                        if( dst_inner.m_data.is_Infer() )
+                        {
+                            this->context.equate_types(sp, *e.inner, *s_e.inner);
+                        }
+                    }
+                    else if( dst_inner.m_data.is_Infer() )
+                    {
+                        return ;
+                    }
+                    else
+                    {
+                    }
                     this->m_completed = true;
                     )
                 )
@@ -6292,6 +6314,38 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             {
                 ivar_ent = Context::IVarPossible {};
             }
+        }
+
+        if( !context.m_ivars.peek_changed() )
+        {
+            DEBUG("--- Node revisits (fallback)");
+            for( auto it = context.to_visit.begin(); it != context.to_visit.end(); )
+            {
+                ::HIR::ExprNode& node = **it;
+                ExprVisitor_Revisit visitor { context, true };
+                DEBUG("> " << &node << " " << typeid(node).name() << " -> " << context.m_ivars.fmt_type(node.m_res_type));
+                node.visit( visitor );
+                //  - If the node is completed, remove it
+                if( visitor.node_completed() ) {
+                    DEBUG("- Completed " << &node << " - " << typeid(node).name());
+                    it = context.to_visit.erase(it);
+                }
+                else {
+                    ++ it;
+                }
+            }
+            #if 0
+            for( auto it = context.adv_revisits.begin(); it != context.adv_revisits.end(); )
+            {
+                auto& ent = **it;
+                if( ent.revisit(context) ) {
+                    it = context.adv_revisits.erase(it);
+                }
+                else {
+                    ++ it;
+                }
+            }
+            #endif
         }
 
         // Finally. If nothing changed, apply ivar defaults
