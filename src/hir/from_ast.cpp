@@ -897,10 +897,12 @@ namespace {
         )
     }
 
+    auto repr = ::HIR::Enum::Repr::Rust;
+    // TODO: Get repr from attributes
+
     return ::HIR::Enum {
         LowerHIR_GenericParams(f.params(), nullptr),
-        // TODO: Get repr from attributes
-        ::HIR::Enum::Repr::Rust,
+        repr,
         mv$(variants)
         };
 }
