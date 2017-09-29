@@ -1058,6 +1058,10 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             ),
         (Crate,
             // Can't recurse into an `extern crate`
+            if(crate.m_extern_crates.count(e.name) == 0)
+            {
+                e.name = crate.load_extern_crate( i.data.span, e.name );
+            }
             ),
 
         (Struct,
