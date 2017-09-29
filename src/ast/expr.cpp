@@ -94,7 +94,7 @@ NODE(ExprNode_Macro, {
     {
         os << " " << m_ident << " ";
     }
-    os << "(" << ")";
+    os << "(" << " /*TODO*/ " << ")";
 },{
     return NEWNODE(ExprNode_Macro, m_name, m_ident, m_tokens.clone());
 })

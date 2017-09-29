@@ -253,7 +253,7 @@ Ordering Path::ord(const Path& x) const
     return OrdEqual;
 }
 
-void Path::print_pretty(::std::ostream& os, bool is_type_context) const
+void Path::print_pretty(::std::ostream& os, bool is_type_context, bool is_debug) const
 {
     TU_MATCH(Path::Class, (m_class), (ent),
     (Invalid,
@@ -264,13 +264,17 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context) const
     (Local,
         // Only print comment if there's no binding
         if( m_binding.is_Unbound() )
-            os << "/*var*/";
+        {
+            if( is_debug )
+                os << "/*var*/";
+        }
         else
             assert( m_binding.is_Variable() );
         os << ent.name;
         ),
     (Relative,
-        os << ent.hygiene;
+        if( is_debug )
+            os << ent.hygiene;
         for(const auto& n : ent.nodes)
         {
             if( &n != &ent.nodes[0] ) {
@@ -325,12 +329,13 @@ void Path::print_pretty(::std::ostream& os, bool is_type_context) const
         }
         )
     )
-    os << "/*" << m_binding << "*/";
+    if( is_debug )
+        os << "/*" << m_binding << "*/";
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Path& path)
 {
-    path.print_pretty(os, false);
+    path.print_pretty(os, false, true);
     return os;
 }
 

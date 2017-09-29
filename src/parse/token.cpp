@@ -281,6 +281,7 @@ struct EscapedString {
 
 ::std::string Token::to_str() const
 {
+    ::std::stringstream ss;
     switch(m_type)
     {
     case TOK_NULL:  return "/*null*/";
@@ -289,9 +290,15 @@ struct EscapedString {
     case TOK_NEWLINE:    return "\n";
     case TOK_WHITESPACE: return " ";
     case TOK_COMMENT:    return "/*" + m_data.as_String() + "*/";
-    case TOK_INTERPOLATED_TYPE: return FMT( *reinterpret_cast<const ::TypeRef*>(m_data.as_Fragment()) );
-    case TOK_INTERPOLATED_PATH: return FMT( *reinterpret_cast<const ::AST::Path*>(m_data.as_Fragment()) );
-    case TOK_INTERPOLATED_PATTERN: return FMT( *reinterpret_cast<const ::AST::Pattern*>(m_data.as_Fragment()) );
+    case TOK_INTERPOLATED_TYPE:
+        reinterpret_cast<const ::TypeRef*>(m_data.as_Fragment())->print(ss, false);
+        return ss.str();
+    case TOK_INTERPOLATED_PATH:
+        reinterpret_cast<const ::AST::Path*>(m_data.as_Fragment())->print_pretty(ss, true);
+        return ss.str();
+    case TOK_INTERPOLATED_PATTERN:
+        // TODO: Use a configurable print
+        return FMT( *reinterpret_cast<const ::AST::Pattern*>(m_data.as_Fragment()) );
     case TOK_INTERPOLATED_STMT:
     case TOK_INTERPOLATED_BLOCK:
     case TOK_INTERPOLATED_EXPR: {

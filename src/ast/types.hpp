@@ -266,6 +266,8 @@ public:
     bool operator!=(const TypeRef& x) const { return ord(x) != OrdEqual; }
     bool operator<(const TypeRef& x) const { return ord(x) == OrdLess; };
 
+    void print(::std::ostream& os, bool is_debug=false) const;
+
     PrettyPrintType print_pretty() const { return PrettyPrintType(*this); }
 
     friend class PrettyPrintType;

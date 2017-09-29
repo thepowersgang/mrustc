@@ -202,10 +202,11 @@ Ordering TypeRef::ord(const TypeRef& x) const
     return os << coretype_name(ct);
 }
 
-::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
+void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
+{
     //os << "TypeRef(";
-    #define _(VAR, ...) case TypeData::TAG_##VAR: { const auto &ent = tr.m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
-    switch(tr.m_data.tag())
+    #define _(VAR, ...) case TypeData::TAG_##VAR: { const auto &ent = this->m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
+    switch(this->m_data.tag())
     {
     case TypeData::TAGDEAD: throw "";
     _(None,
@@ -224,49 +225,59 @@ Ordering TypeRef::ord(const TypeRef& x) const
         os << "()";
         )
     _(Primitive,
-        os << tr.m_data.as_Primitive().core_type;
+        os << ent.core_type;
         )
     _(Function,
         if( ent.info.m_abi != "" )
             os << "extern \"" << ent.info.m_abi << "\" ";
         os << "fn (";
         for( const auto& arg : ent.info.m_arg_types )
-            os << arg << ", ";
+        {
+            arg.print(os, is_debug);
+            os << ", ";
+        }
         os << ") -> " << *ent.info.m_rettype;
         )
     _(Tuple,
-        //os << "TagTuple, {" << tr.m_inner_types << "}";
         os << "( ";
         for( const auto& it : ent.inner_types )
-            os << it << ", ";
+        {
+            it.print(os, is_debug);
+            os << ", ";
+        }
         os << ")";
         )
     _(Borrow,
-        //os << "TagReference, " << (tr.m_is_inner_mutable ? "mut" : "const") << ", " << tr.m_inner_types[0];
-        os << "&" << (ent.is_mut ? "mut " : "") << *ent.inner;
+        os << "&" << (ent.is_mut ? "mut " : "");
+        ent.inner->print(os, is_debug);
         )
     _(Pointer,
-        //os << "TagPointer, " << (tr.m_is_inner_mutable ? "mut" : "const") << ", " << tr.m_inner_types[0];
-        os << "*" << (ent.is_mut ? "mut" : "const") << " " << *ent.inner;
+        os << "*" << (ent.is_mut ? "mut" : "const");
+        ent.inner->print(os, is_debug);
         )
     _(Array,
-        os << "[" << *ent.inner;
+        os << "[";
+        ent.inner->print(os, is_debug);
         if( ent.size.get() )
             os << "; " << *ent.size;
         os << "]";
         )
     _(Generic,
-        os << "/* arg */ " << ent.name << "/*"<<ent.index<<"*/";
+        if(is_debug)
+            os << "/* arg */ ";
+        os << ent.name;
+        if(is_debug)
+            os << "/*"<<ent.index<<"*/";
         )
     _(Path,
-        os << ent.path;
+        ent.path.print_pretty(os, true, is_debug);
         )
     _(TraitObject,
         os << "(";
         for( const auto& it : ent.traits ) {
             if( &it != &ent.traits.front() )
                 os << "+";
-            os << it;
+            it.print_pretty(os, true, is_debug);
         }
         os << ")";
         )
@@ -275,71 +286,20 @@ Ordering TypeRef::ord(const TypeRef& x) const
         for( const auto& it : ent.traits ) {
             if( &it != &ent.traits.front() )
                 os << "+";
-            os << it;
+            it.print_pretty(os, true, is_debug);
         }
         os << "";
         )
     }
     #undef _
-    //os << ")";
+}
+
+::std::ostream& operator<<(::std::ostream& os, const TypeRef& tr) {
+    tr.print(os, true);
+    return os;
+}
+::std::ostream& operator<<(::std::ostream& os, const PrettyPrintType& x) {
+    x.m_type.print(os, false);
     return os;
 }
 
-
-void PrettyPrintType::print(::std::ostream& os) const
-{
-    #if 1
-    os << m_type;
-    #else
-    switch(m_type.m_class)
-    {
-    case TypeRef::ANY:
-        os << "_";
-        if( m_type.m_inner_types.size() ) {
-            os << "/* : " << m_type.m_inner_types << "*/";
-        }
-        break;
-    case TypeRef::UNIT:
-        os << "()";
-        break;
-    case TypeRef::PRIMITIVE:
-        os << m_type.m_core_type;
-        break;
-    case TypeRef::FUNCTION:
-        if( m_type.m_path[0].name() != "" )
-            os << "extern \"" << m_type.m_path[0].name() << "\" ";
-        os << "fn (";
-        for( unsigned int i = 0; i < m_type.m_inner_types.size()-1; i ++ )
-            os << m_type.m_inner_types[i].print_pretty() << ", ";
-        os << ") -> " << m_type.m_inner_types.back().print_pretty();
-        break;
-    case TypeRef::TUPLE:
-        os << "(";
-        for(const auto& t : m_type.m_inner_types)
-            os << t.print_pretty() << ",";
-        os << ")";
-        break;
-    case TypeRef::REFERENCE:
-        os << "&" << (m_type.m_is_inner_mutable ? "mut " : "") << m_type.m_inner_types[0].print_pretty();
-        break;
-    case TypeRef::POINTER:
-        os << "*" << (m_type.m_is_inner_mutable ? "mut" : "const") << " " << m_type.m_inner_types[0].print_pretty();
-        break;
-    case TypeRef::ARRAY:
-        os << "[" << m_type.m_inner_types[0].print_pretty() << ", " << m_type.m_size_expr << "]";
-        break;
-    case TypeRef::GENERIC:
-        os << m_type.m_path[0].name();
-        break;
-    case TypeRef::PATH:
-        os << m_type.m_path;
-        break;
-    }
-    #endif
-}
-
-::std::ostream& operator<<(::std::ostream& os, const PrettyPrintType& v)
-{
-    v.print(os);
-    return os;
-}

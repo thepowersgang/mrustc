@@ -337,7 +337,7 @@ public:
     bool operator!=(const Path& x) const { return ord(x) != OrdEqual; }
     bool operator<(const Path& x) const { return ord(x) != OrdLess; }
 
-    void print_pretty(::std::ostream& os, bool is_type_context) const;
+    void print_pretty(::std::ostream& os, bool is_type_context, bool is_debug=false) const;
     friend ::std::ostream& operator<<(::std::ostream& os, const Path& path);
 private:
     static void resolve_args_nl(::std::vector<PathNode>& nodes, ::std::function<TypeRef(const char*)> fcn);
