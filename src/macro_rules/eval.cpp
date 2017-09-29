@@ -886,8 +886,6 @@ namespace
                 consume_tt(lex);
             lex.consume();
             break;
-        case TOK_ATTR_OPEN:
-        case TOK_CATTR_OPEN:
         case TOK_SQUARE_OPEN:
             lex.consume();
             while(lex.next() != TOK_SQUARE_CLOSE)
@@ -1474,8 +1472,12 @@ namespace
             }
         };
 
-        while( lex.next() == TOK_ATTR_OPEN )
+        while( lex.next() == TOK_HASH )
+        {
+            lex.consume();
+            lex.consume_if(TOK_EXCLAM);
             consume_tt(lex);
+        }
         if( lex.consume_if(TOK_INTERPOLATED_ITEM) )
             return true;
         if(lex.next() == TOK_RWORD_PUB)

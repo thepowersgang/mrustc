@@ -129,7 +129,7 @@ bool is_token_stmt(eTokenType tt) {
 bool is_token_item(eTokenType tt) {
     switch( tt )
     {
-    case TOK_ATTR_OPEN:
+    case TOK_HASH:
 
     case TOK_RWORD_PUB:
     case TOK_RWORD_UNSAFE:

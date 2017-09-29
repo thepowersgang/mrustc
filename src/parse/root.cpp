@@ -41,6 +41,8 @@ Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
     return input;
 }
 
+AST::MetaItems Parse_ItemAttrs(TokenStream& lex);
+void Parse_ParentAttrs(TokenStream& lex, AST::MetaItems& out);
 AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs);
 bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv);
@@ -125,18 +127,10 @@ bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
     ::std::vector< ::std::string>   lifetimes;
     GET_CHECK_TOK(tok, lex, TOK_LT);
     do {
-        GET_TOK(tok, lex);
-
-        ::AST::MetaItems attrs;
-        while(tok.type() == TOK_ATTR_OPEN)
-        {
-            attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            GET_TOK(tok, lex);
-        }
+        ::AST::MetaItems attrs = Parse_ItemAttrs(lex);
         (void)attrs;    // TODO: Attributes on generic params
 
-        switch(tok.type())
+        switch(GET_TOK(tok, lex))
         {
         case TOK_LIFETIME:
             lifetimes.push_back(tok.str());
@@ -203,15 +197,11 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
             break ;
         }
 
-        ::AST::MetaItems attrs;
-        while(tok.type() == TOK_ATTR_OPEN)
-        {
-            attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            GET_TOK(tok, lex);
-        }
+        PUTBACK(tok, lex);
+        ::AST::MetaItems attrs = Parse_ItemAttrs(lex);
         (void)attrs;    // TODO: Attributes on generic params
 
+        GET_TOK(tok, lex);
         if( tok.type() == TOK_IDENT )
         {
             // TODO: Hygine
@@ -555,25 +545,20 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
     {
         // Tuple structs
         ::std::vector<AST::TupleItem>  refs;
-        while(GET_TOK(tok, lex) != TOK_PAREN_CLOSE)
+        while(lex.lookahead(0) != TOK_PAREN_CLOSE)
         {
-            AST::MetaItems  item_attrs;
-            while( tok.type() == TOK_ATTR_OPEN )
-            {
-                item_attrs.push_back( Parse_MetaItem(lex) );
-                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-                GET_TOK(tok, lex);
-            }
+            AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
             SET_ATTRS(lex, item_attrs);
 
-            PUTBACK(tok, lex);
             bool    is_pub = Parse_Publicity(lex, /*allow_restricted=*/false);  // HACK: Disable `pub(restricted)` syntax in tuple structs, due to ambiguity
 
             refs.push_back( AST::TupleItem( mv$(item_attrs), is_pub, Parse_Type(lex) ) );
-            if( GET_TOK(tok, lex) != TOK_COMMA )
+            if( GET_TOK(tok, lex) != TOK_COMMA ) {
+                PUTBACK(tok, lex);
                 break;
+            }
         }
-        CHECK_TOK(tok, TOK_PAREN_CLOSE);
+        GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
 
         if(LOOK_AHEAD(lex) == TOK_RWORD_WHERE)
         {
@@ -595,16 +580,11 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
         ::std::vector<AST::StructItem>  items;
         while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
         {
-            AST::MetaItems  item_attrs;
-            while( tok.type() == TOK_ATTR_OPEN )
-            {
-                item_attrs.push_back( Parse_MetaItem(lex) );
-                GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-                GET_TOK(tok, lex);
-            }
+            PUTBACK(tok, lex);
+
+            AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
             SET_ATTRS(lex, item_attrs);
 
-            PUTBACK(tok, lex);
             bool is_pub = Parse_Publicity(lex);
 
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -680,20 +660,14 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     CHECK_TOK(tok, TOK_BRACE_OPEN);
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
+        PUTBACK(tok, lex);
 
-        AST::MetaItems  item_attrs;
-        while( tok.type() == TOK_ATTR_OPEN )
-        {
-            item_attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            GET_TOK(tok, lex);
-        }
+        AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, item_attrs);
 
         auto ps = lex.start_span();
         {
             ::AST::MacroInvocation  inv;
-            PUTBACK(tok, lex);
             if( Parse_MacroInvocation_Opt(lex, inv) )
             {
                 trait.items().push_back( AST::Named<AST::Item>("", AST::Item(mv$(inv)), false) );
@@ -847,17 +821,12 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
         auto sp = lex.start_span();
+        PUTBACK(tok, lex);
 
-        AST::MetaItems  item_attrs;
-        while( tok.type() == TOK_ATTR_OPEN )
-        {
-            item_attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            GET_TOK(tok, lex);
-        }
+        AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, item_attrs);
 
-        CHECK_TOK(tok, TOK_IDENT);
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
         ::std::string   name = mv$(tok.str());
         // Tuple-like variants
         if( GET_TOK(tok, lex) == TOK_PAREN_OPEN )
@@ -872,13 +841,8 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
                     break;
                 }
 
-                AST::MetaItems  field_attrs;
-                while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN )
-                {
-                    GET_TOK(tok, lex);
-                    field_attrs.push_back( Parse_MetaItem(lex) );
-                    GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-                }
+                AST::MetaItems  field_attrs = Parse_ItemAttrs(lex);
+                (void)field_attrs;  // TODO^
 
                 types.push_back( Parse_Type(lex) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
@@ -898,13 +862,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
                     break;
                 }
 
-                AST::MetaItems  field_attrs;
-                while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN )
-                {
-                    GET_TOK(tok, lex);
-                    field_attrs.push_back( Parse_MetaItem(lex) );
-                    GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-                }
+                AST::MetaItems  field_attrs = Parse_ItemAttrs(lex);
 
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 auto name = mv$(tok.str());
@@ -966,13 +924,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
             break ;
         }
 
-        AST::MetaItems item_attrs;
-        while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN )
-        {
-            GET_TOK(tok, lex);
-            item_attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-        }
+        AST::MetaItems item_attrs = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, item_attrs);
 
         bool is_pub = Parse_Publicity(lex);
@@ -991,6 +943,31 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
     return ::AST::Union( mv$(params), mv$(variants) );
 }
 
+AST::MetaItems Parse_ItemAttrs(TokenStream& lex)
+{
+    AST::MetaItems  rv;
+    Token   tok;
+    while( lex.lookahead(0) == TOK_HASH )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_HASH);
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_OPEN);
+        rv.push_back( Parse_MetaItem(lex) );
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+    }
+    return rv;
+}
+void Parse_ParentAttrs(TokenStream& lex, AST::MetaItems& out)
+{
+    Token   tok;
+    while( lex.lookahead(0) == TOK_HASH && lex.lookahead(1) == TOK_EXCLAM )
+    {
+        GET_CHECK_TOK(tok, lex, TOK_HASH);
+        GET_CHECK_TOK(tok, lex, TOK_EXCLAM);
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_OPEN);
+        out.push_back( Parse_MetaItem(lex) );
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+    }
+}
 /// Parse a meta-item declaration (either #![ or #[)
 AST::MetaItem Parse_MetaItem(TokenStream& lex)
 {
@@ -1123,12 +1100,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
-    while( LOOK_AHEAD(lex) == TOK_CATTR_OPEN )
-    {
-        GET_TOK(tok, lex);
-        attrs.push_back( Parse_MetaItem(lex) );
-        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-    }
+    Parse_ParentAttrs(lex,  attrs);
 
     AST::Impl   impl( AST::ImplDef( lex.end_span(ps), mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ) );
 
@@ -1156,20 +1128,11 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     TRACE_FUNCTION;
     Token   tok;
 
-    GET_TOK(tok, lex);
-
-    AST::MetaItems  item_attrs;
-    while( tok.type() == TOK_ATTR_OPEN )
-    {
-        item_attrs.push_back( Parse_MetaItem(lex) );
-        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-        GET_TOK(tok, lex);
-    }
+    AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
     SET_ATTRS(lex, item_attrs);
 
     auto ps = lex.start_span();
 
-    PUTBACK(tok, lex);
     bool is_public = Parse_Publicity(lex);
     GET_TOK(tok, lex);
 
@@ -1257,29 +1220,18 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::M
     TRACE_FUNCTION;
     Token   tok;
 
-    while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
-    {
-        block_attrs.push_back( Parse_MetaItem(lex) );
-        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-    }
-    PUTBACK(tok, lex);
+    Parse_ParentAttrs(lex,  block_attrs);
 
     AST::ExternBlock    rv { abi };
 
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
-        AST::MetaItems  meta_items;
-        while( tok.type() == TOK_ATTR_OPEN )
-        {
-            meta_items.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            GET_TOK(tok, lex);
-        }
+        PUTBACK(tok, lex);
+        AST::MetaItems  meta_items = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, meta_items);
 
         auto ps = lex.start_span();
 
-        PUTBACK(tok, lex);
         bool is_public = Parse_Publicity(lex);
         switch( GET_TOK(tok, lex) )
         {
@@ -1501,10 +1453,12 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
     TRACE_FUNCTION_F("mod_path="<<mod_path<<", meta_items="<<meta_items);
     Token   tok;
 
-    while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN /* || LOOKAHEAD2(lex, TOK_HASH, TOK_SQUARE_OPEN) */ )
+    // NOTE: This assigns into a parameter, so can't use Parse_ItemAttrs
+    while( LOOKAHEAD2(lex, TOK_HASH, TOK_SQUARE_OPEN) )
     {
         // Attributes!
-        GET_CHECK_TOK(tok, lex, TOK_ATTR_OPEN);
+        GET_CHECK_TOK(tok, lex, TOK_HASH);
+        GET_CHECK_TOK(tok, lex, TOK_SQUARE_OPEN);
         meta_items.push_back( Parse_MetaItem(lex) );
         GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
     }
@@ -1941,13 +1895,7 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod)
         }
 
         // Attributes on the following item
-        AST::MetaItems  meta_items;
-        while( GET_TOK(tok, lex) == TOK_ATTR_OPEN )
-        {
-            meta_items.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-        }
-        PUTBACK(tok, lex);
+        AST::MetaItems  meta_items = Parse_ItemAttrs(lex);
         DEBUG("meta_items = " << meta_items);
 
         Parse_Mod_Item(lex, mod, mv$(meta_items));
@@ -1958,17 +1906,8 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs
 {
     TRACE_FUNCTION;
 
-    Token   tok;
-
     // Attributes on module/crate (will continue loop)
-    while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
-    {
-        AST::MetaItem item = Parse_MetaItem(lex);
-        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-
-        mod_attrs.push_back( mv$(item) );
-    }
-    PUTBACK(tok, lex);
+    Parse_ParentAttrs(lex,  mod_attrs);
 
     Parse_ModRoot_Items(lex, mod);
 }

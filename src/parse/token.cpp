@@ -310,8 +310,7 @@ struct EscapedString {
     case TOK_FLOAT:     return FMT(m_data.as_Float().m_floatval);
     case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"");
     case TOK_BYTESTRING:return FMT("b\"" << m_data.as_String() << "\"");
-    case TOK_CATTR_OPEN:return "#![";
-    case TOK_ATTR_OPEN: return "#[";
+    case TOK_HASH:  return "#";
     case TOK_UNDERSCORE:return "_";
     // Symbols
     case TOK_PAREN_OPEN:    return "(";

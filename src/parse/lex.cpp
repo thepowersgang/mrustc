@@ -64,10 +64,7 @@ static const struct {
   TOKENT("!" , TOK_EXCLAM),
   TOKENT("!=", TOK_EXCLAM_EQUAL),
   TOKENT("\"", DOUBLEQUOTE),
-  TOKENT("#",  0),
-  TOKENT("#!", SHEBANG),
-  TOKENT("#![",TOK_CATTR_OPEN),
-  TOKENT("#[", TOK_ATTR_OPEN),
+  TOKENT("#",  TOK_HASH),
   TOKENT("$",  TOK_DOLLAR),
   TOKENT("%" , TOK_PERCENT),
   TOKENT("%=", TOK_PERCENT_EQUAL),
@@ -294,12 +291,15 @@ Token Lexer::getTokenInt()
                         ch = this->getc();
                     return Token(TOK_NEWLINE);
                 case '[':
-                    return Token(TOK_CATTR_OPEN);
+                    this->ungetc();
+                    this->m_next_token = Token(TOK_EXCLAM);
+                    return Token(TOK_HASH);
                 default:
                     throw ParseError::BadChar(*this, ch.v);
                 }
             case '[':
-                return Token(TOK_ATTR_OPEN);
+                this->ungetc();
+                return Token(TOK_HASH);
             default:
                 this->ungetc();
                 //return Token(TOK_HASH);

@@ -41,6 +41,8 @@ extern AST::PathParams Parse_Path_GenericList(TokenStream& lex);
 
 
 extern ::std::vector< ::std::string> Parse_HRB(TokenStream& lex);
+extern AST::MetaItems  Parse_ItemAttrs(TokenStream& lex);
+extern void Parse_ParentAttrs(TokenStream& lex, AST::MetaItems& out);
 extern AST::MetaItem   Parse_MetaItem(TokenStream& lex);
 extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, ::std::string name, TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex, bool allow_trait_list = true);

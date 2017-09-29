@@ -66,13 +66,9 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
         DEBUG("tok = " << tok);
 
         // NOTE: Doc comments can appear within a function and apply to the function
-        // TODO: Use these attributes
-        while( GET_TOK(tok, lex) == TOK_CATTR_OPEN )
-        {
-            /*node_attrs.push_back(*/ Parse_MetaItem(lex) /*)*/;
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-        }
-        PUTBACK(tok, lex);
+        ::AST::MetaItems    node_attrs;
+        Parse_ParentAttrs(lex, node_attrs);
+        (void)node_attrs;   // TODO: Use these attributes
         if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE )
             break;
 
@@ -102,12 +98,8 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
 {
     Token   tok;
 
-    AST::MetaItems  item_attrs;
-    while( GET_TOK(tok, lex) == TOK_ATTR_OPEN )
-    {
-        item_attrs.push_back( Parse_MetaItem(lex) );
-        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-    }
+    AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
+    GET_TOK(tok, lex);
 
     // `union Ident` - contextual keyword
     if( tok.type() == TOK_IDENT && tok.str() == "union" && lex.lookahead(0) == TOK_IDENT ) {
@@ -439,13 +431,7 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
         PUTBACK(tok, lex);
         AST::ExprNode_Match_Arm    arm;
 
-        ::AST::MetaItems   arm_attrs;
-        while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN ) {
-            GET_TOK(tok, lex);
-            arm_attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-        }
-        arm.m_attrs = mv$(arm_attrs);
+        arm.m_attrs = Parse_ItemAttrs(lex);
 
         do {
             // Refutable pattern
@@ -598,13 +584,7 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
     //TRACE_FUNCTION;
     Token tok;
 
-    ::AST::MetaItems  expr_attrs;
-    while( LOOK_AHEAD(lex) == TOK_ATTR_OPEN )
-    {
-        GET_TOK(tok, lex);
-        expr_attrs.push_back( Parse_MetaItem(lex) );
-        GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-    }
+    ::AST::MetaItems  expr_attrs = Parse_ItemAttrs(lex);
 
     ExprNodeP rv = Parse_Expr1(lex);
     auto op = AST::ExprNode_Assign::NONE;
@@ -1014,13 +994,13 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     // - A series of 0 or more pairs of <ident>: <expr>,
     // - '..' <expr>
     ::AST::ExprNode_StructLiteral::t_values items;
-    while( GET_TOK(tok, lex) == TOK_IDENT || tok.type() == TOK_ATTR_OPEN )
+    while( GET_TOK(tok, lex) == TOK_IDENT || tok.type() == TOK_HASH )
     {
         ::AST::MetaItems    attrs;
-        while( tok.type() == TOK_ATTR_OPEN )
+        if( tok.type() == TOK_HASH )
         {
-            attrs.push_back( Parse_MetaItem(lex) );
-            GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
+            PUTBACK(tok, lex);
+            attrs = Parse_ItemAttrs(lex);
             GET_TOK(tok, lex);
         }
         CHECK_TOK(tok, TOK_IDENT);
@@ -1327,14 +1307,6 @@ TokenTree Parse_TT(TokenStream& lex, bool unwrapped)
         break;
     case TOK_BRACE_OPEN:
         closer = TOK_BRACE_CLOSE;
-        break;
-    // HACK! mrustc parses #[ and #![ as composite tokens
-    // TODO: Split these into their component tokens.
-    case TOK_ATTR_OPEN:
-    case TOK_CATTR_OPEN:
-        if( unwrapped )
-            throw ParseError::Unexpected(lex, tok);
-        closer = TOK_SQUARE_CLOSE;
         break;
 
     case TOK_EOF:
