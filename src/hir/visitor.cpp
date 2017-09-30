@@ -32,7 +32,7 @@ void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
 
 void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
 {
-    TRACE_FUNCTION;
+    TRACE_FUNCTION_FR(p,p);
     for( auto& named : mod.m_mod_items )
     {
         const auto& name = named.first;
