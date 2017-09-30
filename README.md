@@ -1,6 +1,6 @@
 Mutabah's Rust Compiler
 
-_In-progress_ alternative rust compiler.
+_In-progress_ alternative rust compiler. Not yet suitable for everyday use.
 
 Intro
 ===
@@ -20,13 +20,15 @@ Linux
 Windows
 --------
 (NOTE: Incomplete, doesn't yet compile executables and missing helper scripts)
+- Download and extract `rustc-1.19.0-src.tar.gz` to the repository root (such that the `rustc-1.19.0-src` directory is present)
+  - NOTE: I am open to suggestions for how to automate that step
 - Open `vsproject/mrustc.sln` and build minicargo
 
 Building Requirements
 =====================
 - C++14-compatible compiler (tested with gcc 5.4 and gcc 6)
 - C11 compatible C compiler (for output, see above)
-- `curl` (for downloading the rust source)
+- `curl` (for downloading the rust source, linux only)
 - `cmake` (at least 3.4.3, required for building llvm in rustc)
 
 Current Features
@@ -41,7 +43,7 @@ Short-Term Plans
 ===
 - Fix currently-failing tests (mostly in type inferrence)
 - Fix all known TODOs in MIR generation (still some possible leaks)
-- Fix compilation errors encountered when compilin `cargo`
+- Fix compilation errors encountered when compiling `cargo`
 
 Medium-Term Goals
 ===
@@ -54,5 +56,5 @@ Progress
 - Generates working executables (most of the test suite)
 - Compiles `rustc` that can compile the standard library and "hello, world"
 
-Note: All progress is against the nightly build specified in `rust-nightly-date`
+Note: All progress is against the source of rustc 1.19.0
 
