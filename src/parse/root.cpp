@@ -1107,16 +1107,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
     // A sequence of method implementations
     while( lex.lookahead(0) != TOK_BRACE_CLOSE )
     {
-        auto ps = lex.start_span();
-        ::AST::MacroInvocation  inv;
-        if( Parse_MacroInvocation_Opt(lex,  inv) )
-        {
-            impl.add_macro_invocation( mv$(inv) );
-        }
-        else
-        {
-            Parse_Impl_Item(lex, impl);
-        }
+        Parse_Impl_Item(lex, impl);
     }
     GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
@@ -1130,6 +1121,16 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
 
     AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
     SET_ATTRS(lex, item_attrs);
+
+    {
+        ::AST::MacroInvocation  inv;
+        if( Parse_MacroInvocation_Opt(lex,  inv) )
+        {
+            impl.add_macro_invocation( mv$(inv) );
+            impl.items().back().data->attrs = mv$(item_attrs);
+            return ;
+        }
+    }
 
     auto ps = lex.start_span();
 
