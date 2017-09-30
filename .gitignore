@@ -9,8 +9,8 @@
 /bin
 /mrustc.depend
 /mrustc.layout
-/rustc-nightly-src.tar.gz
-/rustc-nightly
+/rustc-*-src.tar.gz
+/rustc-*-src
 /crates.io
 /test_deps_run-pass.mk
 
