@@ -1,5 +1,5 @@
---- rustc-nightly/src/libcore/intrinsics.rs
-+++ rustc-nightly/src/libcore/intrinsics.rs
+--- src/libcore/intrinsics.rs
++++ src/libcore/intrinsics.rs
 @@ -678,5 +678,9 @@
      pub fn min_align_of_val<T: ?Sized>(_: &T) -> usize;
  
@@ -10,8 +10,8 @@
      /// Gets a static string slice containing the name of a type.
      pub fn type_name<T: ?Sized>() -> &'static str;
 
---- rustc-nightly/src/libcore/slice/mod.rs
-+++ rustc-nightly/src/libcore/slice/mod.rs
+--- src/libcore/slice/mod.rs
++++ src/libcore/slice/mod.rs
 @@ -413,6 +413,8 @@
      #[inline]
      fn len(&self) -> usize {

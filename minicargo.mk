@@ -1,13 +1,13 @@
 
 RUSTC_CHANNEL ?= nightly
 RUSTC_VERSION ?= 2017-07-08
-OVERRIDE_SUFFIX ?= # -linux
+OVERRIDE_SUFFIX ?= -linux
 OUTDIR := output/
 
 MRUSTC := bin/mrustc
 MINICARGO := tools/bin/minicargo
 ifeq ($(RUSTC_CHANNEL),nightly)
-	RUSTCSRC := rustc-nightly/
+	RUSTCSRC := rustc-nightly-src/
 else
 	RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
 endif
@@ -74,4 +74,5 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 #
 $(OUTDIR)libnum.hir: $(MRUSTC) $(OUTDIR)libstd.hir
 	$(MINICARGO) $(RUSTCSRC)src/vendor/num --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
-
+$(OUTDIR)libsocket2-0_2_1.hir: $(OUTDIR)libstd.hir
+	$(MINICARGO) $(RUSTCSRC)src/vendor/socket2 --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)

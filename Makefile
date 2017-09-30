@@ -131,27 +131,39 @@ clean:
 
 PIPECMD ?= 2>&1 | tee $@_dbg.txt | tail -n $(TAIL_COUNT) ; test $${PIPESTATUS[0]} -eq 0
 
-RUSTCSRC := rustc-nightly/
+#RUSTC_SRC_TY ?= nightly
+RUSTC_SRC_TY ?= stable
+ifeq ($(RUSTC_SRC_TY),nightly)
+RUSTC_SRC_DES := rust-nightly-date
+RUSTCSRC := rustc-nightly-src/
+else ifeq ($(RUSTC_SRC_TY),stable)
+RUSTC_SRC_DES := rust-version
+RUSTCSRC := rustc-$(shell cat $(RUSTC_SRC_DES))-src/
+else
+$(error Unknown rustc channel)
+endif
 RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
+MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(shell cat $(RUSTC_SRC_DES)) RUSTC_CHANNEL=$(RUSTC_SRC_TY)
 
-output/libstd.hir: $(BIN) $(RUSTCSRC)
-	$(MAKE) -f minicargo.mk $@
+
+output/libstd.hir: $(BIN) $(RUSTC_SRC_DL)
+	$(MAKE_MINICARGO) $@
 output/libtest.hir output/libpanic_unwind.hir: output/libstd.hir
-	$(MAKE) -f minicargo.mk $@
+	$(MAKE_MINICARGO) $@
 output/rustc output/cargo: output/libtest.hir
-	$(MAKE) -f minicargo.mk $@
+	$(MAKE_MINICARGO) $@
 
 TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir
 
-output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTCSRC) $(TEST_DEPS)
+output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"
 	@mkdir -p output/
 	@rm -f $@
 	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTCSRC) $(TEST_DEPS)
+output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
@@ -167,24 +179,37 @@ fn_getdeps = \
 
 
 .PHONY: RUSTCSRC
-RUSTCSRC: $(RUSTCSRC)
+RUSTCSRC: $(RUSTC_SRC_DL)
 
-rustc-nightly-src.tar.gz: rust-nightly-date
+ifeq ($(RUSTC_SRC_TY),nightly)
+rustc-nightly-src.tar.gz: $(RUSTC_SRC_DES)
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
 	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
 	echo "Rust version on disk is '$${DISK_RUST_DATE}'. Downloading $${DL_RUST_DATE}."; \
 	rm -f rustc-nightly-src.tar.gz; \
 	curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz
 
-$(RUSTCSRC): rustc-nightly-src.tar.gz rust_src.patch
+# TODO: Handle non-nightly download
+$(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rust_src.patch
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
 	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
 	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
-		rm -rf rustc-nightly; \
-		tar -xf rustc-nightly-src.tar.gz; mv rustc-nightly-src rustc-nightly; \
+		rm -rf rustc-nightly-src; \
+		tar -xf rustc-nightly-src.tar.gz; \
 		patch -p0 < rust_src.patch; \
-		cat rust-nightly-date > $(RUSTC_SRC_DL); \
 	fi
+	cat rust-nightly-date > $(RUSTC_SRC_DL)
+else
+RUSTC_SRC_TARBALL := rustc-$(shell cat $(RUSTC_SRC_DES))-src.tar.gz
+$(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
+	@echo [CURL] $@
+	@rm -f $@
+	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
+$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rust_src.patch
+	tar -xf $(RUSTC_SRC_TARBALL)
+	cd $(RUSTCSRC) && patch -p0 < ../rust_src.patch;
+	cat $(RUSTC_SRC_DES) > $(RUSTC_SRC_DL)
+endif
 
 
 # MRUSTC-specific tests
@@ -704,7 +729,7 @@ test_deps_run-pass.mk: Makefile $(wildcard $(RUST_TESTS_DIR)run_pass/*.rs)
 #
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
-test: $(RUSTCSRC) output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
+test: $(RUSTC_SRC_DL) output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
 
 #
 # TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
