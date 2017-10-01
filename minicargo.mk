@@ -75,7 +75,5 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 #
 # Developement-only targets
 #
-$(OUTDIR)libnum_traits-0_1_37.hir: $(MRUSTC) $(OUTDIR)libstd.hir
-	$(MINICARGO) $(RUSTCSRC)src/vendor/num-traits --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
-$(OUTDIR)libsocket2-0_2_1.hir: $(OUTDIR)libstd.hir
-	$(MINICARGO) $(RUSTCSRC)src/vendor/socket2 --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+#$(OUTDIR)libserde-1_0_6.hir: $(MRUSTC) $(OUTDIR)libstd.hir
+#	$(MINICARGO) $(RUSTCSRC)src/vendor/serde --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)

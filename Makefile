@@ -51,8 +51,6 @@ RUST_FLAGS += -g
 RUST_FLAGS += -O
 RUST_FLAGS += -L output/
 RUST_FLAGS += $(RUST_FLAGS_EXTRA)
-# > TODO: This is needed for anything that uses libstd. build.rs adds it with cargo magic, no idea how it gets to the rlib
-RUST_FLAGS += -lbacktrace -ldl -lrt -lpthread
 
 SHELL = bash
 
