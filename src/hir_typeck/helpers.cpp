@@ -3464,8 +3464,10 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
     }
 }
 
-//unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::std::vector<AutoderefBorrow,::HIR::Path>& possibilities) const
-unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path, AutoderefBorrow& borrow) const
+unsigned int TraitResolution::autoderef_find_method(const Span& sp,
+        const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,
+        /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
+        ) const
 {
     TRACE_FUNCTION_F("{" << top_ty << "}." << method_name);
     unsigned int deref_count = 0;
@@ -3505,32 +3507,29 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
         DEBUG(deref_count << ": " << ty);
 
         // Non-referenced
-        if( this->find_method(sp, traits, ivars, ty, method_name,  cur_access, fcn_path) )
+        if( this->find_method(sp, traits, ivars, ty, method_name,  cur_access, AutoderefBorrow::None, possibilities) )
         {
-            borrow = AutoderefBorrow::None;
-            return deref_count;
+            DEBUG("FOUND *{" << deref_count << "}, fcn_path = " << possibilities.back().second);
         }
 
         // Auto-ref
         auto borrow_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ty.clone());
-        if( this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, fcn_path) )
+        if( this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, AutoderefBorrow::Shared, possibilities) )
         {
-            DEBUG("FOUND & *{" << deref_count << "}, fcn_path = " << fcn_path);
-            borrow = AutoderefBorrow::Shared;
-            return deref_count;
+            DEBUG("FOUND & *{" << deref_count << "}, fcn_path = " << possibilities.back().second);
         }
         borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Unique;
-        if( cur_access >= MethodAccess::Unique && this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, fcn_path) )
+        if( cur_access >= MethodAccess::Unique && this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, AutoderefBorrow::Unique, possibilities) )
         {
-            DEBUG("FOUND &mut *{" << deref_count << "}, fcn_path = " << fcn_path);
-            borrow = AutoderefBorrow::Unique;
-            return deref_count;
+            DEBUG("FOUND &mut *{" << deref_count << "}, fcn_path = " << possibilities.back().second);
         }
         borrow_ty.m_data.as_Borrow().type = ::HIR::BorrowType::Owned;
-        if( cur_access >= MethodAccess::Move && this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, fcn_path) )
+        if( cur_access >= MethodAccess::Move && this->find_method(sp, traits, ivars, borrow_ty, method_name,  MethodAccess::Move, AutoderefBorrow::Owned, possibilities) )
         {
-            DEBUG("FOUND &move *{" << deref_count << "}, fcn_path = " << fcn_path);
-            borrow = AutoderefBorrow::Owned;
+            DEBUG("FOUND &move *{" << deref_count << "}, fcn_path = " << possibilities.back().second);
+        }
+        if( !possibilities.empty() )
+        {
             return deref_count;
         }
 
@@ -3553,6 +3552,17 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp, const HIR::t
     ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
 }
 
+::std::ostream& operator<<(::std::ostream& os, const TraitResolution::AutoderefBorrow& x)
+{
+    switch(x)
+    {
+    case TraitResolution::AutoderefBorrow::None:    os << "None";   break;
+    case TraitResolution::AutoderefBorrow::Shared:  os << "Shared"; break;
+    case TraitResolution::AutoderefBorrow::Unique:  os << "Unique"; break;
+    case TraitResolution::AutoderefBorrow::Owned:   os << "Owned";  break;
+    }
+    return os;
+}
 ::std::ostream& operator<<(::std::ostream& os, const TraitResolution::AllowedReceivers& x)
 {
     switch(x)
@@ -3643,12 +3653,12 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, ::H
     return nullptr;
 }
 
-bool TraitResolution::find_method(
-    const Span& sp,
-    const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars,
-    const ::HIR::TypeRef& ty, const ::std::string& method_name, MethodAccess access,
-    /* Out -> */::HIR::Path& fcn_path) const
+bool TraitResolution::find_method(const Span& sp,
+    const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, MethodAccess access,
+    AutoderefBorrow borrow_type, /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
+    ) const
 {
+    bool rv = false;
     TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name << ", access=" << access);
     auto cb_infer = m_ivars.callback_resolve_infer();
 
@@ -3684,13 +3694,15 @@ bool TraitResolution::find_method(
                         // - Could collide with legitimate uses of `Self`
 
                         // Found the method, return the UFCS path for it
-                        fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                            box$( self_ty->clone() ),
-                            mv$(final_trait_path),
-                            method_name,
-                            {}
-                            }) );
-                        return true;
+                        possibilities.push_back(::std::make_pair( borrow_type,
+                            ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                                box$( self_ty->clone() ),
+                                mv$(final_trait_path),
+                                method_name,
+                                {}
+                                }) ) ));
+                        rv = true;
+                        break;
                     }
                     else if( cmp == ::HIR::Compare::Fuzzy )
                     {
@@ -3749,13 +3761,8 @@ bool TraitResolution::find_method(
             // - If the receiver is valid, then it's correct (no need to check the type again)
             if(const auto* self_ty_p = check_method_receiver(sp, receiver, ty, access))
             {
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
-                    box$( self_ty_p->clone() ),
-                    mv$(final_trait_path),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+                possibilities.push_back(::std::make_pair(borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
+                rv = true;
             }
         }
     }
@@ -3777,13 +3784,8 @@ bool TraitResolution::find_method(
 
                 if(const auto* self_ty_p = check_method_receiver(sp, receiver, ty, access))
                 {
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown({
-                        box$( self_ty_p->clone() ),
-                        mv$(final_trait_path),
-                        method_name,
-                        {}
-                        }) );
-                    return true;
+                    possibilities.push_back(::std::make_pair(borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
+                    rv = true;
                 }
             }
         }
@@ -3840,13 +3842,8 @@ bool TraitResolution::find_method(
                 }
 
                 // Found the method, return the UFCS path for it
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                    box$( self_ty_p->clone() ),
-                    mv$(final_trait_path),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+                possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
+                rv = true;
             }
         }
 
@@ -3883,13 +3880,8 @@ bool TraitResolution::find_method(
                 }
 
                 // Found the method, return the UFCS path for it
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                    box$( self_ty_p->clone() ),
-                    mv$(final_trait_path),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+                possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
+                rv = true;
             }
         }
     }
@@ -3914,11 +3906,7 @@ bool TraitResolution::find_method(
                 DEBUG("Found `impl" << impl.m_params.fmt_args() << " " << impl.m_type << "` fn " << method_name/* << " - " << top_ty*/);
                 if( *self_ty_p == *cur_check_ty )
                 {
-                    fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsInherent({
-                        box$(self_ty_p->clone()),
-                        method_name,
-                        {}
-                        }) );
+                    possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), method_name, {}) ));
                     return true;
                 }
             }
@@ -3927,17 +3915,17 @@ bool TraitResolution::find_method(
             };
         if( m_crate.find_type_impls(ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
         {
-            return true;
+            rv = true;
         }
         cur_check_ty = (ty.m_data.is_Borrow() ? &*ty.m_data.as_Borrow().inner : nullptr);
         if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
         {
-            return true;
+            rv = true;
         }
         cur_check_ty = this->type_is_owned_box(sp, ty);
         if( cur_check_ty && m_crate.find_type_impls(*cur_check_ty, m_ivars.callback_resolve_infer(), find_type_impls_cb) )
         {
-            return true;
+            rv = true;
         }
     }
 
@@ -3974,13 +3962,8 @@ bool TraitResolution::find_method(
             //if( find_trait_impls(sp, *trait_ref.first, trait_params, self_ty,  [](auto , auto ) { return true; }) ) {
             if( find_trait_impls_crate(sp, *trait_ref.first, &trait_params, self_ty,  [](auto , auto ) { return true; }) ) {
                 DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << self_ty << " ("<<m_ivars.fmt_type(self_ty)<<")");
-                fcn_path = ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
-                    box$( self_ty.clone() ),
-                    ::HIR::GenericPath( *trait_ref.first, mv$(trait_params) ),
-                    method_name,
-                    {}
-                    }) );
-                return true;
+                possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty.clone(), ::HIR::GenericPath( *trait_ref.first, mv$(trait_params) ), method_name, {}) ));
+                rv = true;
             }
         }
         else
@@ -3989,7 +3972,7 @@ bool TraitResolution::find_method(
         }
     }
 
-    return false;
+    return rv;
 }
 
 unsigned int TraitResolution::autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& field_name,  /* Out -> */::HIR::TypeRef& field_type) const

@@ -240,9 +240,13 @@ public:
         Unique,
         Owned,
     };
+    friend ::std::ostream& operator<<(::std::ostream& os, const AutoderefBorrow& x);
     /// Locate the named method by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)
-    unsigned int autoderef_find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,  /* Out -> */::HIR::Path& fcn_path, AutoderefBorrow& borrow) const;
+    unsigned int autoderef_find_method(const Span& sp,
+            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& top_ty, const ::std::string& method_name,
+            /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
+            ) const;
     /// Locate the named field by applying auto-dereferencing.
     /// \return Number of times deref was applied (or ~0 if _ was hit)
     unsigned int autoderef_find_field(const Span& sp, const ::HIR::TypeRef& top_ty, const ::std::string& name,  /* Out -> */::HIR::TypeRef& field_type) const;
@@ -268,7 +272,10 @@ public:
         Box,
     };
     friend ::std::ostream& operator<<(::std::ostream& os, const AllowedReceivers& x);
-    bool find_method(const Span& sp, const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, MethodAccess access,  /* Out -> */::HIR::Path& fcn_path) const;
+    bool find_method(const Span& sp,
+            const HIR::t_trait_list& traits, const ::std::vector<unsigned>& ivars, const ::HIR::TypeRef& ty, const ::std::string& method_name, MethodAccess access,
+            AutoderefBorrow borrow_type, /* Out -> */::std::vector<::std::pair<AutoderefBorrow,::HIR::Path>>& possibilities
+            ) const;
 
     /// Locates a named method in a trait, and returns the path of the trait that contains it (with fixed parameters)
     bool trait_contains_method(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::HIR::TypeRef& self, const ::std::string& name,  ::HIR::Function::Receiver& out_receiver, ::HIR::GenericPath& out_path) const;

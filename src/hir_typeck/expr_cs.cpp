@@ -2626,16 +2626,21 @@ namespace {
             }
 
             // Using autoderef, locate this method on the type
-            ::HIR::Path   fcn_path { ::HIR::SimplePath() };
-            TraitResolution::AutoderefBorrow    ad_borrow;
             // TODO: Obtain a list of avaliable methods at that level?
             // - If running in a mode after stablise (before defaults), fall
             // back to trait if the inherent is still ambigious.
-            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  fcn_path, ad_borrow);
-            //::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
-            //unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  possible_methods);
+            ::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
+            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  possible_methods);
+        try_again:
             if( deref_count != ~0u )
             {
+                DEBUG("possible_methods = " << possible_methods);
+                if( possible_methods.empty() )
+                {
+                    ERROR(sp, E0000, "No applicable methods for {" << ty << "}." << node.m_method);
+                }
+                auto& ad_borrow = possible_methods.front().first;
+                auto& fcn_path = possible_methods.front().second;
                 DEBUG("- deref_count = " << deref_count << ", fcn_path = " << fcn_path);
 
                 node.m_method_path = mv$(fcn_path);
@@ -2654,6 +2659,8 @@ namespace {
                     //fix_param_count(sp, this->context, node.m_method_path, fcn.m_params, e.params);
                     )
                 )
+                
+                // TODO: If this is ambigious, and it's an inherent, and in fallback mode - fall down to the next trait method.
                 if( !visit_call_populate_cache(this->context, node.span(), node.m_method_path, node.m_cache) ) {
                     DEBUG("- AMBIGUOUS - Trying again later");
                     // Move the params back
@@ -2667,6 +2674,18 @@ namespace {
                         node.m_params = mv$(e.params);
                         )
                     )
+                    if( this->m_is_fallback && fcn_path.m_data.is_UfcsInherent() )
+                    {
+                        while( !possible_methods.empty() && possible_methods.front().second.m_data.is_UfcsInherent() )
+                        {
+                            possible_methods.erase(possible_methods.begin());
+                        }
+                        if( !possible_methods.empty() )
+                        {
+                            DEBUG("Infference stall, try again with " << possible_methods.front().second);
+                            goto try_again;
+                        }
+                    }
                     return ;
                 }
                 DEBUG("> m_method_path = " << node.m_method_path);
