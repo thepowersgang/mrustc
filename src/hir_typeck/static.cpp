@@ -1106,6 +1106,10 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                     if( e.binding == 0xFFFF )
                         return *pe_inner.type;
+                    else if( e.binding >> 8 == 0 ) {
+                        ASSERT_BUG(sp, e.binding < pe_inner.trait.m_params.m_types.size(), "");
+                        return pe_inner.trait.m_params.m_types.at(e.binding);
+                    }
                     else {
                         // TODO: Look in pe_inner.trait.m_params
                         TODO(sp, "Handle type params when expanding associated bound (#" << e.binding << " " << e.name);
@@ -1922,6 +1926,7 @@ const ::HIR::TypeRef* StaticTraitResolve::is_type_phantom_data(const ::HIR::Type
 
 StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const ::HIR::Path& p, MonomorphState& out_params, bool signature_only/*=false*/) const
 {
+    TRACE_FUNCTION_F(p << ", signature_only=" << signature_only);
     out_params = MonomorphState {};
     TU_MATCHA( (p.m_data), (pe),
     (Generic,
@@ -2007,12 +2012,14 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         ),
     (UfcsInherent,
         out_params.self_ty = &*pe.type;
-        out_params.pp_impl = &out_params.pp_impl_data;
+        //out_params.pp_impl = &out_params.pp_impl_data;
+        out_params.pp_impl = &pe.impl_params;
         out_params.pp_method = &pe.params;
         ValuePtr    rv;
         m_crate.find_type_impls(*pe.type, [](const auto&x)->const ::HIR::TypeRef& { return x; }, [&](const auto& impl) {
             DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             // TODO: Populate pp_impl
+            ASSERT_BUG(sp, impl.m_params.m_types.size() == pe.impl_params.m_types.size(), "");
             // TODO: Specialisation
             {
                 auto fit = impl.m_methods.find(pe.item);
