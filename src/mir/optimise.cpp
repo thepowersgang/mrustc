@@ -806,17 +806,20 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
         }
 
         ::HIR::TypeRef monomorph(const ::HIR::TypeRef& ty) const {
+            TRACE_FUNCTION_F(ty);
             auto rv = monomorphise_type_with(sp, ty, params.get_cb(sp));
             resolve.expand_associated_types(sp, rv);
             return rv;
         }
         ::HIR::GenericPath monomorph(const ::HIR::GenericPath& ty) const {
+            TRACE_FUNCTION_F(ty);
             auto rv = monomorphise_genericpath_with(sp, ty, params.get_cb(sp), false);
             for(auto& arg : rv.m_params.m_types)
                 resolve.expand_associated_types(sp, arg);
             return rv;
         }
         ::HIR::Path monomorph(const ::HIR::Path& ty) const {
+            TRACE_FUNCTION_F(ty);
             auto rv = monomorphise_path_with(sp, ty, params.get_cb(sp), false);
             TU_MATCH(::HIR::Path::Data, (rv.m_data), (e2),
             (Generic,
@@ -845,6 +848,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             return rv;
         }
         ::HIR::PathParams monomorph(const ::HIR::PathParams& ty) const {
+            TRACE_FUNCTION_F(ty);
             auto rv = monomorphise_path_params_with(sp, ty, params.get_cb(sp), false);
             for(auto& arg : rv.m_types)
                 resolve.expand_associated_types(sp, arg);
@@ -1191,6 +1195,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             }
 
             // > Append new temporaries
+            DEBUG("- Insert argument lval assignments");
             for(auto& val : cloner.const_assignments)
             {
                 ::HIR::TypeRef  tmp;
@@ -1205,6 +1210,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             cloner.const_assignments.clear();
 
             // Apply
+            DEBUG("- Append new blocks");
             fcn.blocks.reserve( fcn.blocks.size() + new_blocks.size() );
             for(auto& b : new_blocks)
             {
