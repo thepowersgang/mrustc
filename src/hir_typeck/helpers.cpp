@@ -2204,6 +2204,8 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
 
     if( m_ivars.get_type(type).m_data.is_Infer() )
         return false;
+    if( TU_TEST1(m_ivars.get_type(type).m_data, Path, .binding.is_Unbound()) )
+        return false;
 
     // TODO: A bound can imply something via its associated types. How deep can this go?
     // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
