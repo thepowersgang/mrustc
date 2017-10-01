@@ -1,6 +1,6 @@
 
-RUSTC_CHANNEL ?= nightly
-RUSTC_VERSION ?= 2017-07-08
+RUSTC_CHANNEL ?= stable
+RUSTC_VERSION ?= 1.19.0
 OVERRIDE_SUFFIX ?= -linux
 OUTDIR := output/
 
@@ -39,6 +39,9 @@ $(OUTDIR)libpanic_unwind.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
 $(OUTDIR)libtest.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libpanic_unwind.hir
 	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
 	test -e $@
+$(OUTDIR)libgetopts.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
+	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR)
+	test -e $@
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 RUSTC_ENV_VARS += LLVM_CONFIG=$(abspath $(LLVM_CONFIG))
@@ -48,7 +51,7 @@ RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-$(RUSTC_CHANNEL)-mrustc
 RUSTC_ENV_VARS += CFG_PREFIX=mrustc
 RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 
-$(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(LLVM_CONFIG)
+$(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(OUTDIR)libgetopts.hir $(LLVM_CONFIG)
 	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
 $(OUTDIR)cargo: $(MRUSTC) $(OUTDIR)libstd.hir
 	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
@@ -72,7 +75,7 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 #
 # Developement-only targets
 #
-$(OUTDIR)libnum.hir: $(MRUSTC) $(OUTDIR)libstd.hir
-	$(MINICARGO) $(RUSTCSRC)src/vendor/num --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+$(OUTDIR)libnum_traits-0_1_37.hir: $(MRUSTC) $(OUTDIR)libstd.hir
+	$(MINICARGO) $(RUSTCSRC)src/vendor/num-traits --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
 $(OUTDIR)libsocket2-0_2_1.hir: $(OUTDIR)libstd.hir
 	$(MINICARGO) $(RUSTCSRC)src/vendor/socket2 --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
