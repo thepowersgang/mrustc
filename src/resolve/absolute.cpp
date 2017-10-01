@@ -339,6 +339,18 @@ namespace
                         case ::AST::PathBinding::TAG_Static:
                             path = ::AST::Path( v->second.path );
                             return true;
+                        case ::AST::PathBinding::TAG_Struct:
+                            // TODO: Restrict this to unit-like structs
+                            if( b.as_Struct().struct_ && !b.as_Struct().struct_->m_data.is_Unit() )
+                                ;
+                            else if( b.as_Struct().hir && !b.as_Struct().hir->m_data.is_Unit() )
+                                ;
+                            else
+                            {
+                                path = ::AST::Path( v->second.path );
+                                return true;
+                            }
+                            break;
                         default:
                             break;
                         }
