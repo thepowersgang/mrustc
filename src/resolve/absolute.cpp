@@ -992,6 +992,13 @@ namespace {
                 if( v != hmod->m_value_items.end() ) {
                     TU_MATCH_DEF(::HIR::ValueItem, (v->second->ent), (e),
                     (
+                        DEBUG("Ignore - " << v->second->ent.tag_str());
+                        ),
+                    (StructConstant,
+                        auto ty_path = e.ty;
+                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
+                        path = split_into_crate(sp, mv$(path), start,  crate.m_name);
+                        return ;
                         ),
                     (Import,
                         Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, true,  path, e.path);
@@ -1004,6 +1011,9 @@ namespace {
                         return ;
                         )
                     )
+                }
+                else {
+                    DEBUG("No value item for " << name);
                 }
             }
             break;
