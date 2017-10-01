@@ -1,0 +1,42 @@
+Problem: Multiple crates with the same name can exist in one executable
+
+E.g.
+- `librustc` and `rustc`
+- rustc/src/libnum and vendor/num/
+- bitflags-0.7.0 and bitflags-0.8.2
+
+When a crate's source specfies `extern crate foo;`,
+- First `--extern foo=foo.hir` should be used (if present)
+- A search should be performed of the search directories for the specified crate name
+  - This might consider wildcard matches
+
+Once the crate is located, that crate's unique specifier should be stored for if/when the referencer is referenced itself.
+
+
+
+Cases:
+- Loading from `extern crate` with `--extern`
+  - Just use the specified path
+- Loading from `extern crate` and searching
+  - Search for a suitable crate
+- Loading from a crate's extern list
+  - Only use the specified crate
+
+TODO: How should the unique specifier be determined/obtained when loading?
+- It could just be the base filename (and do a path search for that exact filename)
+  - Requires encoding the filename in the item paths.
+- It could be extracted from the filename in a standard format.
+  - Ties to the filename format
+- It could be stored in the metadata
+  - Disconnect between filename and tag, possible lookup errors?
+  - Would require that the filename be exactly `lib<internalname>.hir` for external reference loading to work.
+  - Could store the internal name _and_ the base filename in the crate metadata? (and error if an incompatible file is picked)
+
+NOTE: The specifier should be present on the crate name used for internal lookups.
+- This requires `load_crate` to return the specifier/unique name
+
+
+
+Command line options:
+`--extern` - Override the path for a named crate
+`--crate-tag` - Specifies a string to append to the crate name (plus a `-`) during HIR lower
