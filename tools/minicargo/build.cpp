@@ -463,6 +463,8 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     // TODO: Environment variables (rustc_env)
     StringListKV    env;
+    auto out_dir = m_opts.output_dir.to_absolute() / "build_" + manifest.name().c_str();
+    env.push_back("OUT_DIR", out_dir.str());
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
     env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
 
