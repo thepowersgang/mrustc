@@ -2659,7 +2659,7 @@ namespace {
                     //fix_param_count(sp, this->context, node.m_method_path, fcn.m_params, e.params);
                     )
                 )
-                
+
                 // TODO: If this is ambigious, and it's an inherent, and in fallback mode - fall down to the next trait method.
                 if( !visit_call_populate_cache(this->context, node.span(), node.m_method_path, node.m_cache) ) {
                     DEBUG("- AMBIGUOUS - Trying again later");
