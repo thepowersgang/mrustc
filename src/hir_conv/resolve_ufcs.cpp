@@ -70,6 +70,13 @@ namespace {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_function(p, item);
         }
+        void visit_type_alias(::HIR::ItemPath p, ::HIR::TypeAlias& item) override {
+            // NOTE: Disabled, becuase generics in type aliases are never checked
+#if 0
+            auto _ = m_resolve.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_function(p, item);
+#endif
+        }
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& trait) override {
             m_current_trait = &trait;
             m_current_trait_path = &p;
