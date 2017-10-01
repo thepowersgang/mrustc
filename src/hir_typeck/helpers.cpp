@@ -1993,9 +1993,12 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Generic, e,
                     if( e.binding == 0xFFFF )
                         return *pe_inner.type;
+                    else if( e.binding >> 8 == 0 ) {
+                        ASSERT_BUG(sp, e.binding < pe_inner.trait.m_params.m_types.size(), "");
+                        return pe_inner.trait.m_params.m_types.at(e.binding);
+                    }
                     else {
-                        // TODO: Look in pe_inner.trait.m_params
-                        TODO(sp, "Handle type params when expanding associated bound (#" << e.binding << " " << e.name);
+                        TODO(sp, "Handle type params when expanding associated bound (#" << e.binding << " " << e.name << ")");
                     }
                 )
                 else {
