@@ -590,6 +590,9 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
             }
         }
     }
+
+    // Return true if any features were activated
+    //return start < m_active_features.size();
 }
 void PackageManifest::load_dependencies(Repository& repo, bool include_build)
 {

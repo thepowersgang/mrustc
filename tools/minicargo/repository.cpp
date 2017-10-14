@@ -37,7 +37,7 @@ void Repository::load_vendored(const ::helpers::path& path)
 
         if( ! ::std::ifstream(manifest_path.str()).good() )
             continue ;
-        DEBUG("Opening manifest " << manifest_path);
+        //DEBUG("Opening manifest " << manifest_path);
 
         // Scan the manifiest until both the name and version are set
         bool name_set = false;
@@ -70,7 +70,7 @@ void Repository::load_vendored(const ::helpers::path& path)
             }
         }
 
-        DEBUG("Package '" << name << "' v" << ver);
+        //DEBUG("Package '" << name << "' v" << ver);
         if(name == "")
             continue ;
 

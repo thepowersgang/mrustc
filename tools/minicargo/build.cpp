@@ -260,14 +260,13 @@ bool MiniCargo_Build(const PackageManifest& manifest, BuildOptions opts)
 
 void BuildList::add_dependencies(const PackageManifest& p, unsigned level, bool include_build)
 {
-    TRACE_FUNCTION_F(p.name());
     for (const auto& dep : p.dependencies())
     {
         if( dep.is_disabled() )
         {
             continue ;
         }
-        DEBUG("Depenency " << dep.name());
+        DEBUG(p.name() << ": Dependency " << dep.name());
         add_package(dep.get_package(), level+1, include_build);
     }
 
@@ -279,6 +278,7 @@ void BuildList::add_dependencies(const PackageManifest& p, unsigned level, bool 
             {
                 continue ;
             }
+            DEBUG(p.name() << ": Build Dependency " << dep.name());
             add_package(dep.get_package(), level+1, include_build);
         }
     }
@@ -413,7 +413,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         // TODO: Run commands specified by build script (override)
     }
 
-    ::std::cout << "BUILDING " << target.m_name << " from " << manifest.name() << " v" << manifest.version() << ::std::endl;
+    ::std::cout << "BUILDING " << target.m_name << " from " << manifest.name() << " v" << manifest.version() << " with features [" << manifest.active_features() << "]" << ::std::endl;
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
