@@ -1641,38 +1641,58 @@ namespace {
                 ),
             (String,
                 m_of << "{ ";
-                m_of << "\"" << ::std::hex;
-                for(const auto& v : e) {
-                    switch(v)
-                    {
-                    case '"':
-                        m_of << "\\\"";
-                        break;
-                    case '\\':
-                        m_of << "\\\\";
-                        break;
-                    case '\n':
-                        m_of << "\\n";
-                        break;
-                    default:
-                        if( ' ' <= v && static_cast<uint8_t>(v) < 0x7F )
-                            m_of << v;
-                        else {
-                            if( static_cast<uint8_t>(v) < 16 )
-                                m_of << "\\x0" << (unsigned int)static_cast<uint8_t>(v);
-                            else
-                                m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v);
-                            // If the next character is a hex digit,
-                            // close/reopen the string.
-                            if( isxdigit(*(&v+1)) )
-                                m_of << "\"\"";
-                        }
-                    }
-                }
-                m_of << "\"" << ::std::dec;
+                this->print_escaped_string(e);
                 m_of << ", " << e.size() << "}";
                 )
             )
+        }
+
+        //void print_escaped_string(const ::std::string& s)
+        template<typename T>
+        void print_escaped_string(const T& s)
+        {
+            m_of << "\"" << ::std::hex;
+            for(const auto& v : s)
+            {
+                switch(v)
+                {
+                case '"':
+                    m_of << "\\\"";
+                    break;
+                case '\\':
+                    m_of << "\\\\";
+                    break;
+                case '\n':
+                    m_of << "\\n";
+                    break;
+                case '?':
+                    if( *(&v + 1) == '?' )
+                    {
+                        if( *(&v + 2) == '!' )
+                        {
+                            // Trigraph! Needs an escape in it.
+                            m_of << v;
+                            m_of << "\"\"";
+                            break;
+                        }
+                    }
+                    // Fall through
+                default:
+                    if( ' ' <= v && static_cast<uint8_t>(v) < 0x7F )
+                        m_of << v;
+                    else {
+                        if( static_cast<uint8_t>(v) < 16 )
+                            m_of << "\\x0" << (unsigned int)static_cast<uint8_t>(v);
+                        else
+                            m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v);
+                        // If the next character is a hex digit,
+                        // close/reopen the string.
+                        if( isxdigit(*(&v+1)) )
+                            m_of << "\"\"";
+                    }
+                }
+            }
+            m_of << "\"" << ::std::dec;
         }
 
         void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
@@ -4176,18 +4196,7 @@ namespace {
                 ),
             (String,
                 emit_dst(); m_of << ".PTR = ";
-                m_of << "\"" << ::std::oct;
-                for(const auto& v : e) {
-                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                        m_of << v;
-                    else
-                    {
-                        m_of << "\\" << ((unsigned int)v & 0xFF);
-                        if( isdigit( *(&v+1) ) )
-                            m_of << "\"\"";
-                    }
-                }
-                m_of << "\"" << ::std::dec;
+                this->print_escaped_string(e);
                 m_of << ";\n\t";
                 emit_dst(); m_of << ".META = " << e.size();
                 )
@@ -4396,32 +4405,13 @@ namespace {
             (Bytes,
                 // Array borrow : Cast the C string to the array
                 // - Laziness
-                m_of << "(void*)\"" << ::std::oct;
-                for(const auto& v : c) {
-                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                        m_of << v;
-                    else
-                    {
-                        m_of << "\\" << ((unsigned int)v & 0xFF);
-                        if( isdigit( *(&v+1) ) )
-                            m_of << "\"\"";
-                    }
-                }
-                m_of << "\"" << ::std::dec;
+                m_of << "(void*)";
+                this->print_escaped_string(c);
                 ),
             (StaticString,
-                m_of << "make_sliceptr(\"" << ::std::oct;
-                for(const auto& v : c) {
-                    if( ' ' <= v && v < 0x7F && v != '"' && v != '\\' )
-                        m_of << v;
-                    else
-                    {
-                        m_of << "\\" << ((unsigned int)v & 0xFF);
-                        if( isdigit( *(&v+1) ) )
-                            m_of << "\"\"";
-                    }
-                }
-                m_of << "\", " << ::std::dec << c.size() << ")";
+                m_of << "make_sliceptr(";
+                this->print_escaped_string(c);
+                m_of << ", " << ::std::dec << c.size() << ")";
                 ),
             (Const,
                 // TODO: This should have been eliminated? ("MIR Cleanup" should have removed all inline Const references)
