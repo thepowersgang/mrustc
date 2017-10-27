@@ -1853,7 +1853,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
 void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items)
 {
     SET_MODULE(lex, mod);
-    lex.parse_state().parent_attrs = &meta_items;
+    lex.parse_state().parent_attrs = rc_new$(meta_items.clone());
 
     //TRACE_FUNCTION;
     Token   tok;

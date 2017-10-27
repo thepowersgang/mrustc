@@ -81,7 +81,7 @@ namespace {
         StaticTraitResolve  m_resolve;
 
         const ::HIR::Trait* m_current_trait = nullptr;
-        const ::HIR::ItemPath* m_current_trait_path = nullptr;
+        ::std::unique_ptr<const ::HIR::ItemPath> m_current_trait_path;
 
 
         ::HIR::ItemPath* m_fcn_path = nullptr;
@@ -591,7 +591,7 @@ namespace {
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             m_current_trait = &item;
-            m_current_trait_path = &p;
+            m_current_trait_path = ::std::make_unique<const ::HIR::ItemPath>(p);
 
             auto _ = m_resolve.set_impl_generics(item.m_params);
             ::HIR::TypeRef tr { "Self", 0xFFFF };
