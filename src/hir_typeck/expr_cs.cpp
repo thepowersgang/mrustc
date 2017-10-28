@@ -2190,7 +2190,10 @@ namespace {
                     ),
                 (Function,
                     // Check that the ABI and unsafety is correct
-                    ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
+                    if( s_e.m_abi != e.m_abi || s_e.is_unsafe != e.is_unsafe || s_e.m_arg_types.size() != e.m_arg_types.size() )
+                        ERROR(sp, E0000, "Non-scalar cast to " << this->context.m_ivars.fmt_type(tgt_ty) << " to " << this->context.m_ivars.fmt_type(src_ty));
+                    // TODO: Equate inner types
+                    this->context.equate_types(sp, tgt_ty, src_ty);
                     )
                 )
                 ),
