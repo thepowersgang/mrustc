@@ -4422,7 +4422,7 @@ namespace {
                 const auto& out_ty = context.m_ivars.get_type(*out_ty_p);
                 count += 1;
 
-                if( out_ty.m_data.is_Infer() && out_ty.m_data.as_Infer().ty_class == ::HIR::InferClass::None ) {
+                if( out_ty.m_data.is_Infer() && !out_ty.m_data.as_Infer().is_lit() ) {
                     // Hit a _, so can't keep going
                     break;
                 }
@@ -5325,11 +5325,22 @@ namespace {
                 DEBUG("> Magic params present, wait");
                 return false;
             }
-
+            const auto& impl_ty = context.m_ivars.get_type(v.impl_ty);
+            if( TU_TEST1(impl_ty.m_data, Path, .binding.is_Unbound()) )
+            {
+                DEBUG("Unbound UfcsKnown, waiting");
+                return false;
+            }
+            if( TU_TEST1(impl_ty.m_data, Infer, .is_lit() == false) )
+            {
+                DEBUG("Unbounded ivar, waiting - TODO: Add possibility " << impl_ty << " == " << possible_impl_ty);
+                return false;
+            }
             // Only one possible impl
-            if( v.name != "" ) {
+            if( v.name != "" )
+            {
                 // If the output type is just < v.impl_ty as v.trait >::v.name, return false
-                if( output_type.m_data.is_Path() && output_type.m_data.as_Path().path.m_data.is_UfcsKnown() )
+                if( TU_TEST1(output_type.m_data, Path, .path.m_data.is_UfcsKnown()) )
                 {
                     const auto& pe = output_type.m_data.as_Path().path.m_data.as_UfcsKnown();
                     if( *pe.type == v.impl_ty && pe.trait.m_path == v.trait && pe.trait.m_params == v.params && pe.item == v.name )

@@ -1091,6 +1091,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& type = this->m_ivars.get_type(ty);
     TRACE_FUNCTION_F("trait = " << trait << params  << ", type = " << type);
 
+#if 0
     if( const auto* te = type.m_data.opt_Infer() )
     {
         if( !te->is_lit() ) {
@@ -1098,6 +1099,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             return false;
         }
     }
+#endif
 
     const auto& lang_Sized = this->m_crate.get_lang_item_path(sp, "sized");
     const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
@@ -1131,7 +1133,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 
     // Magic impls of the Fn* traits for closure types
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Closure, e,
-        DEBUG("Closure, "<< trait <<"  " << trait_fn << " " << trait_fn_mut << " " << trait_fn_once);
+        DEBUG("Closure, " << trait << " ?= " << trait_fn << " " << trait_fn_mut << " " << trait_fn_once);
         if( trait == trait_fn || trait == trait_fn_mut || trait == trait_fn_once  ) {
             if( params.m_types.size() != 1 )
                 BUG(sp, "Fn* traits require a single tuple argument");
@@ -2202,10 +2204,12 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
         )
     )
 
+#if 0
     if( m_ivars.get_type(type).m_data.is_Infer() )
         return false;
     if( TU_TEST1(m_ivars.get_type(type).m_data, Path, .binding.is_Unbound()) )
         return false;
+#endif
 
     // TODO: A bound can imply something via its associated types. How deep can this go?
     // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
