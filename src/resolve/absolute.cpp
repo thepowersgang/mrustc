@@ -1803,7 +1803,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         }
         ),
     (Macro,
-        BUG(pat.span(), "Resolve_Absolute_Pattern - Encountered Macro");
+        BUG(pat.span(), "Resolve_Absolute_Pattern - Encountered Macro - " << pat);
         ),
     (Any,
         // Ignore '_'

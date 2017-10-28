@@ -173,6 +173,7 @@ void Expand_Pattern(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
         }
 
         pat = mv$(newpat);
+        Expand_Pattern(crate, modstack, mod, pat, is_refutable);
         ),
     (Any,
         ),
