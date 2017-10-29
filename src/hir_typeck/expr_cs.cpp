@@ -1448,6 +1448,7 @@ namespace {
 
             if( can_coerce_inner_result() )
             {
+                DEBUG("Tuple inner coerce");
                 const auto& ty = this->context.get_type(node.m_res_type);
                 TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Tuple, e,
                     if( e.size() != node.m_vals.size() ) {
@@ -1492,6 +1493,7 @@ namespace {
         void visit(::HIR::ExprNode_ArrayList& node) override
         {
             TRACE_FUNCTION_F(&node << " [...,]");
+            auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_vals ) {
                 this->context.add_ivars( val->m_res_type );
             }
