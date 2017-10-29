@@ -951,6 +951,9 @@ namespace
         TRACE_FUNCTION;
         switch(lex.next())
         {
+        case TOK_INTERPOLATED_PATH:
+            lex.consume();
+            return true;
         case TOK_RWORD_SELF:
             lex.consume();
             // Allow a lone `self` (it's referring to the current object)
