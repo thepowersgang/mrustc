@@ -202,13 +202,18 @@ public:
                 }
 
             }
+            //else if( tok.type() == TOK_IDENT || tok_is_rword(tok.type()) )
             else if( tok.type() == TOK_IDENT || tok.type() == TOK_RWORD_TYPE || tok.type() == TOK_RWORD_PUB )
             {
                 // Look up the named parameter in the list of param names for this arm
                 auto name = tok.type() == TOK_IDENT ? tok.str() : FMT(tok);
                 unsigned int idx = ::std::find(var_names.begin(), var_names.end(), name) - var_names.begin();
-                if( idx == var_names.size() )
-                    ERROR(lex.point_span(), E0000, "Macro variable $" << name << " not found");
+                if( idx == var_names.size() ) {
+                    // TODO: `error-chain`'s quick_error macro has an arm which refers to an undefined metavar.
+                    // - Maybe emit a warning and use a marker index.
+                    WARNING(lex.point_span(), W0000, "Macro variable $" << name << " not found");
+                    idx = (1<<30)-1;
+                }
                 if( var_set_ptr ) {
                     var_set_ptr->insert( ::std::make_pair(idx,true) );
                 }
