@@ -39,31 +39,38 @@ Span::Span():
     //filename = FMT(":" << __builtin_return_address(0));
 }
 
+namespace {
+    void print_span_message(const Span& sp, ::std::function<void(::std::ostream&)> tag, ::std::function<void(::std::ostream&)> msg)
+    {
+        auto& sink = ::std::cerr;
+        sink << sp.filename << ":" << sp.start_line << ": ";
+        tag(sink);
+        sink << ":";
+        msg(sink);
+        sink << ::std::endl;
+        const auto* parent = sp.outer_span.get();
+        while(parent)
+        {
+            sink << parent->filename << ":" << parent->start_line << ": note: From here" << ::std::endl;
+            parent = parent->outer_span.get();
+        }
+    }
+}
 void Span::bug(::std::function<void(::std::ostream&)> msg) const
 {
-    ::std::cerr << this->filename << ":" << this->start_line << ": BUG:";
-    msg(::std::cerr);
-    ::std::cerr << ::std::endl;
+    print_span_message(*this, [](auto& os){os << "BUG";}, msg);
     abort();
 }
 
 void Span::error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const {
-    ::std::cerr << this->filename << ":" << this->start_line << ": error:" << tag <<":";
-    msg(::std::cerr);
-    ::std::cerr << ::std::endl;
+    print_span_message(*this, [&](auto& os){os << "error:" << tag;}, msg);
     abort();
 }
 void Span::warning(WarningType tag, ::std::function<void(::std::ostream&)> msg) const {
-    ::std::cerr << this->filename << ":" << this->start_line << ": warning:" << tag << ":";
-    msg(::std::cerr);
-    ::std::cerr << ::std::endl;
-    //abort();
+    print_span_message(*this, [&](auto& os){os << "warning" << tag;}, msg);
 }
 void Span::note(::std::function<void(::std::ostream&)> msg) const {
-    ::std::cerr << this->filename << ":" << this->start_line << ": note:";
-    msg(::std::cerr);
-    ::std::cerr << ::std::endl;
-    //abort();
+    print_span_message(*this, [](auto& os){os << "note";}, msg);
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Span& sp)
