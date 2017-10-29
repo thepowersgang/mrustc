@@ -519,15 +519,19 @@ const PackageTarget& PackageManifest::get_library() const
 
 void PackageManifest::set_features(const ::std::vector<::std::string>& features, bool enable_default)
 {
-    TRACE_FUNCTION_F(m_name << " [" << features << "]");
+    TRACE_FUNCTION_F(m_name << " [" << features << "] " << enable_default);
 
     size_t start = m_active_features.size();
-    // 1. Install features
-    if(enable_default && start == 0)
+    // 1. Install default features.
+    if(enable_default)
     {
         DEBUG("Including default features [" << m_default_features << "]");
         for(const auto& feat : m_default_features)
         {
+            auto it = ::std::find(m_active_features.begin(), m_active_features.end(), feat);
+            if(it != m_active_features.end()) {
+                continue ;
+            }
             m_active_features.push_back(feat);
         }
     }
