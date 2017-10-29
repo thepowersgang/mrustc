@@ -311,7 +311,7 @@ namespace {
                     //}
                     ),
                 (Function,
-                    if( *de.inner != ::HIR::TypeRef::new_unit() && *de.inner != ::HIR::CoreType::U8 ) {
+                    if( *de.inner != ::HIR::TypeRef::new_unit() && *de.inner != ::HIR::CoreType::U8 && *de.inner != ::HIR::CoreType::I8 ) {
                         ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     }
                     ),
