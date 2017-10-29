@@ -341,7 +341,17 @@ namespace {
                     return vals[ e.field_index ];
                     ),
                 (Deref,
-                    MIR_TODO(state, "LValue::Deref - " << lv);
+                    auto& val = get_lval(*e.val);
+                    TU_MATCH_DEF( ::HIR::Literal, (val), (ve),
+                    (
+                        MIR_TODO(state, "LValue::Deref - " << lv << " { " << val << " }");
+                        ),
+                    (String,
+                        // Just clone the string (hack)
+                        // - TODO: Create a list?
+                        return val;
+                        )
+                    )
                     ),
                 (Index,
                     auto& val = get_lval(*e.val);
