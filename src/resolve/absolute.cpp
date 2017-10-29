@@ -549,7 +549,7 @@ void Resolve_Absolute_PathNodes(/*const*/ Context& context, const Span& sp, ::st
     }
 }
 
-void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path)
+void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::LookupMode mode, ::AST::Path& path)
 {
     while( path.m_class.as_UFCS().nodes.size() > 1 )
     {
@@ -986,6 +986,7 @@ namespace {
                     )
                 }
             }
+            break;
         case Context::LookupMode::PatternValue:
             {
                 auto v = hmod->m_value_items.find(name);

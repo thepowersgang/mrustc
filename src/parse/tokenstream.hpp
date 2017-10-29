@@ -28,7 +28,7 @@ struct ParseState
     bool no_expand_macros = false;
 
     ::AST::Module*  module = nullptr;
-    ::AST::MetaItems*   parent_attrs = nullptr;
+    ::std::shared_ptr<::AST::MetaItems> parent_attrs;
 
     ::AST::Module& get_current_mod() {
         assert(this->module);
@@ -99,7 +99,7 @@ public:
 };
 
 #define SET_MODULE(lex, mod)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().module = &(mod)
-#define SET_ATTRS(lex, attrs)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().parent_attrs = &(attrs)
+#define SET_ATTRS(lex, attrs)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().parent_attrs = rc_new$(attrs.clone())
 #define SET_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = true
 #define CLEAR_PARSE_FLAG(lex, flag)    SavedParseState _sps(lex, lex.parse_state()); lex.parse_state().flag = false
 #define CHECK_PARSE_FLAG(lex, flag) (lex.parse_state().flag == true)

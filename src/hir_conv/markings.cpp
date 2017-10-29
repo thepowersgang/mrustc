@@ -57,7 +57,7 @@ public:
             for(size_t i = 0; i < str.m_params.m_types.size(); i++)
             {
                 const auto& param = str.m_params.m_types[i];
-                auto ty = ::HIR::TypeRef(param.m_name, i);
+                ty = ::HIR::TypeRef(param.m_name, i);
                 if( !param.m_is_sized )
                 {
                     if( visit_ty_with(last_field_ty, [&](const auto& t){ return t == ty; }) )

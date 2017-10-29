@@ -35,6 +35,15 @@ public:
     ItemPath(const ::HIR::SimplePath& path):
         trait(&path)
     {}
+    ItemPath(const ::HIR::ItemPath& other) :
+        parent(other.parent),
+        ty(other.ty),
+        trait(other.trait),
+        trait_params(other.trait_params),
+        name(other.name),
+        crate_name(other.crate_name)
+    {}
+
 
     const ::HIR::SimplePath* trait_path() const { return trait; }
     const ::HIR::PathParams* trait_args() const { return trait_params; }

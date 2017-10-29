@@ -997,7 +997,7 @@ namespace {
         StaticTraitResolve  m_resolve;
         out_impls_t m_new_trait_impls;
         new_type_cb_t   m_new_type;
-        const ::HIR::SimplePath*  m_cur_mod_path;
+        ::std::unique_ptr<const ::HIR::SimplePath> m_cur_mod_path;
         const ::HIR::TypeRef*   m_self_type = nullptr;
     public:
         OuterVisitor(const ::HIR::Crate& crate):
@@ -1010,8 +1010,7 @@ namespace {
             Span    sp;
 
             unsigned int closure_count = 0;
-            ::HIR::SimplePath   root_mod_path(crate.m_crate_name,{});
-            m_cur_mod_path = &root_mod_path;
+            m_cur_mod_path = ::std::make_unique<const ::HIR::SimplePath>(crate.m_crate_name, ::std::vector< ::std::string>());
             m_new_type = [&](auto s)->auto {
                 auto name = FMT("closure_I_" << closure_count);
                 closure_count += 1;
@@ -1036,9 +1035,10 @@ namespace {
 
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
-            auto saved = m_cur_mod_path;
+            ::std::unique_ptr<const ::HIR::SimplePath> saved = mv$(m_cur_mod_path);
+			
             auto path = p.get_simple_path();
-            m_cur_mod_path = &path;
+            m_cur_mod_path.reset( new const ::HIR::SimplePath(path.m_crate_name, path.m_components) );
 
             unsigned int closure_count = 0;
             auto saved_nt = mv$(m_new_type);
@@ -1052,7 +1052,7 @@ namespace {
 
             ::HIR::Visitor::visit_module(p, mod);
 
-            m_cur_mod_path = saved;
+            m_cur_mod_path = mv$(saved);
             m_new_type = mv$(saved_nt);
         }
 
