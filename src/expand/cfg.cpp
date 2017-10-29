@@ -97,15 +97,15 @@ class CCfgExpander:
             ERROR(sp, E0000, "cfg! doesn't take an identifier");
         }
 
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
         auto attrs = Parse_MetaItem(lex);
         DEBUG("cfg!() - " << attrs);
 
         if( check_cfg(sp, attrs) ) {
-            return box$( TTStreamO(TokenTree({},TOK_RWORD_TRUE )) );
+            return box$( TTStreamO(sp, TokenTree({},TOK_RWORD_TRUE )) );
         }
         else {
-            return box$( TTStreamO(TokenTree({},TOK_RWORD_FALSE)) );
+            return box$( TTStreamO(sp, TokenTree({},TOK_RWORD_FALSE)) );
         }
     }
 };

@@ -169,7 +169,7 @@ private:
 };
 
 // === Prototypes ===
-unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts);
+unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts);
 void Macro_InvokeRules_CountSubstUses(ParameterMappings& bound_tts, const ::std::vector<MacroExpansionEnt>& contents);
 
 // ------------------------------------
@@ -730,7 +730,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     TRACE_FUNCTION_F("'" << name << "', " << input);
 
     ParameterMappings   bound_tts;
-    unsigned int    rule_index = Macro_InvokeRules_MatchPattern(rules, mv$(input), mod,  bound_tts);
+    unsigned int    rule_index = Macro_InvokeRules_MatchPattern(sp, rules, mv$(input), mod,  bound_tts);
 
     const auto& rule = rules.m_rules.at(rule_index);
 
@@ -1759,10 +1759,9 @@ namespace
     }
 }
 
-unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
+unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
 {
     TRACE_FUNCTION;
-    static Span sp;
 
     struct ActiveArm {
         unsigned int    index;
@@ -1857,7 +1856,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
         // NOTE: There can be multiple arms active, take the first.
         auto i = matches[0];
 
-        auto lex = TTStreamO(mv$(input));
+        auto lex = TTStreamO(sp, mv$(input));
         SET_MODULE(lex, mod);
         auto arm_stream = MacroPatternStream(rules.m_rules[i].m_pattern);
 
@@ -1930,7 +1929,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
     }
 }
 #else
-unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
+unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
 {
     TRACE_FUNCTION;
     Span    sp;// = input.span();
@@ -1956,7 +1955,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const MacroRules& rules, TokenTree i
     // - List of captured values
     ::std::vector<InterpolatedFragment> captures;
 
-    TTStreamO   lex( mv$(input) );
+    TTStreamO   lex(sp, mv$(input) );
     SET_MODULE(lex, mod);
     while(true)
     {
@@ -2321,11 +2320,11 @@ Token MacroExpander::realGetToken()
                 {
                     if( can_steal )
                     {
-                        m_ttstream.reset( new TTStreamO( mv$(frag->as_tt()) ) );
+                        m_ttstream.reset( new TTStreamO(*this->outerSpan(), mv$(frag->as_tt()) ) );
                     }
                     else
                     {
-                        m_ttstream.reset( new TTStreamO( frag->as_tt().clone() ) );
+                        m_ttstream.reset( new TTStreamO(*this->outerSpan(), frag->as_tt().clone() ) );
                     }
                     return m_ttstream->getToken();
                 }

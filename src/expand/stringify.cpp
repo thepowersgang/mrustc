@@ -17,7 +17,7 @@ class CExpander:
         Token   tok;
         ::std::string rv;
 
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
         while( GET_TOK(tok, lex) != TOK_EOF )
         {
             if(!rv.empty())
@@ -25,7 +25,7 @@ class CExpander:
             rv += tok.to_str();
         }
 
-        return box$( TTStreamO(TokenTree(Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, mv$(rv)))) );
     }
 };
 

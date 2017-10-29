@@ -69,7 +69,7 @@ class CIncludeExpander:
             ERROR(sp, E0000, "include! doesn't take an ident");
 
         Token   tok;
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
 
         auto path = get_string(sp, lex, crate, mod);
         GET_CHECK_TOK(tok, lex, TOK_EOF);
@@ -95,7 +95,7 @@ class CIncludeBytesExpander:
             ERROR(sp, E0000, "include_bytes! doesn't take an ident");
 
         Token   tok;
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
 
         auto path = get_string(sp, lex, crate, mod);
         GET_CHECK_TOK(tok, lex, TOK_EOF);
@@ -111,7 +111,7 @@ class CIncludeBytesExpander:
 
         ::std::vector<TokenTree>    toks;
         toks.push_back(Token(TOK_BYTESTRING, mv$(ss.str())));
-        return box$( TTStreamO(TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
 
@@ -124,7 +124,7 @@ class CIncludeStrExpander:
             ERROR(sp, E0000, "include_str! doesn't take an ident");
 
         Token   tok;
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
 
         auto path = get_string(sp, lex, crate, mod);
         GET_CHECK_TOK(tok, lex, TOK_EOF);
@@ -140,7 +140,7 @@ class CIncludeStrExpander:
 
         ::std::vector<TokenTree>    toks;
         toks.push_back(Token(TOK_STRING, mv$(ss.str())));
-        return box$( TTStreamO(TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
 

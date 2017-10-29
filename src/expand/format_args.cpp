@@ -440,7 +440,7 @@ class CFormatArgsExpander:
     {
         Token   tok;
 
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
         if( ident != "" )
             ERROR(sp, E0000, "format_args! doesn't take an ident");
 
@@ -716,7 +716,7 @@ class CFormatArgsExpander:
         toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
         toks.push_back( TokenTree(TOK_BRACE_CLOSE) );
 
-        return box$( TTStreamO(TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
+        return box$( TTStreamO(sp, TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
     }
 };
 

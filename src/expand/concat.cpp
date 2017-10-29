@@ -20,7 +20,7 @@ class CConcatExpander:
     {
         Token   tok;
 
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
         if( ident != "" )
             ERROR(sp, E0000, "format_args! doesn't take an ident");
 
@@ -64,7 +64,7 @@ class CConcatExpander:
         if( tok.type() != TOK_EOF )
             throw ParseError::Unexpected(lex, tok, {TOK_COMMA, TOK_EOF});
 
-        return box$( TTStreamO(TokenTree(Token(TOK_STRING, mv$(rv)))) );
+        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, mv$(rv)))) );
     }
 };
 

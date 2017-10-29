@@ -14,7 +14,7 @@
 namespace {
     // Read a string out of the input stream
     ::std::string get_string(const Span& sp, const AST::Crate& crate, AST::Module& mod, const TokenTree& tt) {
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
 
         auto n = Parse_ExprVal(lex);
         ASSERT_BUG(sp, n, "No expression returned");
@@ -44,7 +44,7 @@ class CExpanderEnv:
         if( !var_val_cstr ) {
             ERROR(sp, E0000, "Environment variable '" << varname << "' not defined");
         }
-        return box$( TTStreamO(TokenTree(Token(TOK_STRING, var_val_cstr))) );
+        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, var_val_cstr))) );
     }
 };
 
@@ -68,7 +68,7 @@ class CExpanderOptionEnv:
             rv.push_back( Token(TOK_LIFETIME, "static") );
             rv.push_back( Token(TOK_IDENT, "str") );
             rv.push_back( Token(TOK_GT) );
-            return box$( TTStreamO(TokenTree( {}, mv$(rv) )) );
+            return box$( TTStreamO(sp, TokenTree( {}, mv$(rv) )) );
         }
         else {
             ::std::vector< TokenTree>   rv;
@@ -77,7 +77,7 @@ class CExpanderOptionEnv:
             rv.push_back( Token(TOK_PAREN_OPEN) );
             rv.push_back( Token(TOK_STRING, var_val_cstr) );
             rv.push_back( Token(TOK_PAREN_CLOSE) );
-            return box$( TTStreamO(TokenTree( {}, mv$(rv) )) );
+            return box$( TTStreamO(sp, TokenTree( {}, mv$(rv) )) );
         }
     }
 };

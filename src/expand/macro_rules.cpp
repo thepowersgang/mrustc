@@ -28,11 +28,11 @@ class CMacroRulesExpander:
             ERROR(sp, E0000, "macro_rules! requires an identifier" );
 
         DEBUG("Parsing macro_rules! " << ident);
-        TTStream    lex(tt);
+        TTStream    lex(sp, tt);
         auto mac = Parse_MacroRules(lex);
         mod.add_macro( false, ident, mv$(mac) );
 
-        return ::std::unique_ptr<TokenStream>( new TTStreamO(TokenTree()) );
+        return ::std::unique_ptr<TokenStream>( new TTStreamO(sp, TokenTree()) );
     }
 };
 

@@ -8,7 +8,8 @@
 #include "ttstream.hpp"
 #include <common.hpp>
 
-TTStream::TTStream(const TokenTree& input_tt)
+TTStream::TTStream(Span parent, const TokenTree& input_tt):
+    m_parent_span( new Span(mv$(parent)) )
 {
     DEBUG("input_tt = [" << input_tt << "]");
     m_stack.push_back( ::std::make_pair(0, &input_tt) );
@@ -52,6 +53,7 @@ Token TTStream::realGetToken()
 }
 Position TTStream::getPosition() const
 {
+    // TODO: Position associated with the previous/next token?
     return Position("TTStream", 0,0);
 }
 Ident::Hygiene TTStream::realGetHygiene() const
@@ -63,8 +65,9 @@ Ident::Hygiene TTStream::realGetHygiene() const
 }
 
 
-TTStreamO::TTStreamO(TokenTree input_tt):
-    m_input_tt( mv$(input_tt) )
+TTStreamO::TTStreamO(Span parent, TokenTree input_tt):
+    m_input_tt( mv$(input_tt) ),
+    m_parent_span( new Span(mv$(parent)) )
 {
     m_stack.push_back( ::std::make_pair(0, nullptr) );
 }

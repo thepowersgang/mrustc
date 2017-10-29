@@ -38,7 +38,7 @@ class CAsmExpander:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
         if( ident != "" )
             ERROR(sp, E0000, "format_args! doesn't take an ident");
 
@@ -160,9 +160,9 @@ class CAsmExpander:
             ERROR(sp, E0000, "Unexpected token in asm! - " << lex.getToken());
         }
 
+        // Convert this into an AST node and insert as an intepolated expression
         ::AST::ExprNodeP rv = ::AST::ExprNodeP( new ::AST::ExprNode_Asm { mv$(template_text), mv$(outputs), mv$(inputs), mv$(clobbers), mv$(flags) } );
-        // TODO: Convert this into an AST node
-        return box$( TTStreamO(TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
+        return box$( TTStreamO(sp, TokenTree(Token( InterpolatedFragment(InterpolatedFragment::EXPR, rv.release()) ))));
     }
 };
 

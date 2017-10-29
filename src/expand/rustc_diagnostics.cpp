@@ -15,7 +15,7 @@ class CExpanderRegisterDiagnostic:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree()) );
+        return box$( TTStreamO(sp, TokenTree()) );
     }
 };
 class CExpanderDiagnosticUsed:
@@ -23,7 +23,7 @@ class CExpanderDiagnosticUsed:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree()) );
+        return box$( TTStreamO(sp, TokenTree()) );
     }
 };
 class CExpanderBuildDiagnosticArray:
@@ -33,7 +33,7 @@ class CExpanderBuildDiagnosticArray:
     {
         if( ident != "" )
             ERROR(sp, E0000, "__build_diagnostic_array! doesn't take an ident");
-        auto lex = TTStream(tt);
+        auto lex = TTStream(sp, tt);
 
         Token   tok;
 
@@ -64,7 +64,7 @@ class CExpanderBuildDiagnosticArray:
         toks.push_back( TOK_SQUARE_CLOSE );
         toks.push_back( TOK_SEMICOLON );
 
-        return box$( TTStreamO(TokenTree( lex.getHygiene(), mv$(toks) )) );
+        return box$( TTStreamO(sp, TokenTree( lex.getHygiene(), mv$(toks) )) );
     }
 };
 

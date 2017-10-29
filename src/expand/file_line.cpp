@@ -25,7 +25,7 @@ class CExpanderFile:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree(Token(TOK_STRING, get_top_span(sp).filename.c_str()))) );
+        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, get_top_span(sp).filename.c_str()))) );
     }
 };
 
@@ -34,7 +34,7 @@ class CExpanderLine:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree(Token((uint64_t)get_top_span(sp).start_line, CORETYPE_U32))) );
+        return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp).start_line, CORETYPE_U32))) );
     }
 };
 
@@ -43,7 +43,7 @@ class CExpanderColumn:
 {
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(TokenTree(Token((uint64_t)get_top_span(sp).start_ofs, CORETYPE_U32))) );
+        return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp).start_ofs, CORETYPE_U32))) );
     }
 };
 
@@ -58,7 +58,7 @@ class CExpanderModulePath:
                 path_str += "::";
             path_str += comp.name();
         }
-        return box$( TTStreamO(TokenTree( Token(TOK_STRING, mv$(path_str)) )) );
+        return box$( TTStreamO(sp, TokenTree( Token(TOK_STRING, mv$(path_str)) )) );
     }
 };
 
