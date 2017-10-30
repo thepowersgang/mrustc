@@ -147,12 +147,12 @@ MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(shell cat $(RUSTC_SRC_D
 
 output/libstd.hir: $(BIN) $(RUSTC_SRC_DL)
 	$(MAKE_MINICARGO) $@
-output/libtest.hir output/libpanic_unwind.hir: output/libstd.hir
+output/libtest.hir output/libpanic_unwind.hir output/libproc_macro.hir: output/libstd.hir
 	$(MAKE_MINICARGO) $@
 output/rustc output/cargo: output/libtest.hir
 	$(MAKE_MINICARGO) $@
 
-TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir
+TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir output/test_deps/librust_test_helpers.a
 
 output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"

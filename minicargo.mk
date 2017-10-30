@@ -16,11 +16,16 @@ LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 RUSTC_TARGET := x86_64-unknown-linux-gnu
 OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 
-.PHONY: bin/mrustc tools/bin/minicargo $(OUTDIR)libsrc.hir $(OUTDIR)libtest.hir $(OUTDIR)libpanic_unwind.hir $(OUTDIR)rustc $(OUTDIR)cargo
+.PHONY: bin/mrustc tools/bin/minicargo
+.PHONY: $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(OUTDIR)libpanic_unwind.hir $(OUTDIR)libproc_macro.hir
+.PHONY: $(OUTDIR)rustc $(OUTDIR)cargo
+
+.PHONY: all LIBS
+
 
 all: $(OUTDIR)rustc
 
-mini: $(OUTDIR)libpanic_unwind.hir $(OUTDIR)libtest.hit
+LIBS: $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(OUTDIR)libpanic_unwind.hir $(OUTDIR)libproc_macro.hir
 
 $(MRUSTC):
 	$(MAKE) -f Makefile all
@@ -42,6 +47,10 @@ $(OUTDIR)libtest.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libpan
 $(OUTDIR)libgetopts.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
 	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR)
 	test -e $@
+# MRustC custom version of libproc_macro
+$(OUTDIR)libproc_macro.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
+	$(MINICARGO) lib/libproc_macro --output-dir $(OUTDIR)
+	test -e $@
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 RUSTC_ENV_VARS += LLVM_CONFIG=$(abspath $(LLVM_CONFIG))
@@ -51,9 +60,9 @@ RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-$(RUSTC_CHANNEL)-mrustc
 RUSTC_ENV_VARS += CFG_PREFIX=mrustc
 RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 
-$(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(OUTDIR)libgetopts.hir $(LLVM_CONFIG)
+$(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
-$(OUTDIR)cargo: $(MRUSTC) $(OUTDIR)libstd.hir
+$(OUTDIR)cargo: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
@@ -77,3 +86,11 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 #
 #$(OUTDIR)libserde-1_0_6.hir: $(MRUSTC) $(OUTDIR)libstd.hir
 #	$(MINICARGO) $(RUSTCSRC)src/vendor/serde --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+$(OUTDIR)libgit2-0_6_6.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/git2 --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR) --features ssh,https,curl,openssl-sys,openssl-probe
+$(OUTDIR)libserde_json-1_0_2.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/serde_json --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+$(OUTDIR)libcurl-0_4_6.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/curl --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+$(OUTDIR)libterm-0_4_5.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/term --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
