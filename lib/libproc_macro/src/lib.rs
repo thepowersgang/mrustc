@@ -19,6 +19,20 @@ enum Token {
     UnsignedInt(u128, u8),    // Value, size (0=?,8,16,32,64,128)
     SignedInt(i128, u8),    // Value, size (0=?,8,16,32,64,128)
     Float(f64, u8), // Value, size (0, 32, 64)
+    Fragment(FragmentType, u64),    // Type and a key
+}
+#[repr(u8)]
+enum FragementType {
+    Ident = 0,
+    Tt = 1,
+
+    Path = 2,
+    Type = 3,
+
+    Expr = 4,
+    Statement = 5,
+    Block = 6,
+    Pattern = 7,
 }
 
 impl From<char> for Token {
@@ -312,10 +326,10 @@ impl fmt::Display for TokenStream {
                 if sz == 0 {
                 }
                 else if sz == 1 {
-                    f.write_str("usize")?;
+                    f.write_str("isize")?;
                 }
                 else {
-                    f.write_str("u")?;
+                    f.write_str("i")?;
                     sz.fmt(f)?;
                 }
                 },
@@ -327,6 +341,9 @@ impl fmt::Display for TokenStream {
                     f.write_str("f")?;
                     sz.fmt(f)?;
                 }
+                },
+            &Token::Fragment(ty, key) => {
+                write!(f, "_{}_{:x}", ty as u8, key)?;
                 },
             }
         }
@@ -488,6 +505,7 @@ pub fn send_token_stream(ts: TokenStream)
         &Token::UnsignedInt(v, sz) => { s.putb(6); s.putb(sz); s.put_u128v(v); },
         &Token::SignedInt(v, sz)   => { s.putb(7); s.putb(sz); s.put_i128v(v); },
         &Token::Float(v, sz)       => { s.putb(8); s.putb(sz); s.put_f64(v); },
+        &Token::Fragment(ty, key)  => { s.putb(9); s.putb(ty as u8); s.put_u128v(key as u128); },
         }
     }
 }
