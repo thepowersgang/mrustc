@@ -2212,6 +2212,9 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
             continue ;
         }
 
+        // TODO: Support macros 1.1 custom derive
+        // - Requires support all through the chain.
+
         mod.add_item(false, "", dp->handle_item(sp, (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core"), params, type, item), {} );
     }
 
