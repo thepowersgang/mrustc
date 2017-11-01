@@ -53,7 +53,6 @@ public:
         if( str.m_struct_markings.dst_type == ::HIR::StructMarkings::DstType::Possible )
         {
             auto& last_field_ty = (str.m_data.is_Tuple() ? str.m_data.as_Tuple().back().ent : str.m_data.as_Named().back().second.ent);
-            auto    ty = ::HIR::TypeRef("", 0);
             for(size_t i = 0; i < str.m_params.m_types.size(); i++)
             {
                 const auto& param = str.m_params.m_types[i];

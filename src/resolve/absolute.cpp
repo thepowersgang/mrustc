@@ -247,7 +247,6 @@ namespace
             Namespace,
             Type,
             Constant,
-            Pattern,
             PatternValue,
             Variable,
         };
@@ -256,7 +255,6 @@ namespace
             {
             case LookupMode::Namespace: return "path component";
             case LookupMode::Type:      return "type name";
-            case LookupMode::Pattern:   return "pattern name";
             case LookupMode::PatternValue: return "pattern constant";
             case LookupMode::Constant:  return "constant name";
             case LookupMode::Variable:  return "variable name";
@@ -270,7 +268,6 @@ namespace
                 {
                 case LookupMode::Namespace: ERROR(sp, E0000, "Couldn't find path component '" << name << "'");
                 case LookupMode::Type:      ERROR(sp, E0000, "Couldn't find type name '" << name << "'");
-                case LookupMode::Pattern:   ERROR(sp, E0000, "Couldn't find pattern name '" << name << "'");
                 case LookupMode::PatternValue:   ERROR(sp, E0000, "Couldn't find pattern value '" << name << "'");
                 case LookupMode::Constant:  ERROR(sp, E0000, "Couldn't find constant name '" << name << "'");
                 case LookupMode::Variable:  ERROR(sp, E0000, "Couldn't find variable name '" << name << "'");
@@ -313,21 +310,6 @@ namespace
                     }
                 }
                 break;
-            case LookupMode::Pattern:
-                {
-                    auto v = mod.m_type_items.find(name);
-                    if( v != mod.m_type_items.end() ) {
-                        const auto& b = v->second.path.binding();
-                        switch( b.tag() )
-                        {
-                        case ::AST::PathBinding::TAG_Struct:
-                            path = ::AST::Path( v->second.path );
-                            return true;
-                        default:
-                            break;
-                        }
-                    }
-                }
             case LookupMode::PatternValue:
                 {
                     auto v = mod.m_value_items.find(name);
@@ -508,7 +490,6 @@ namespace
     {
     case Context::LookupMode::Namespace:os << "Namespace";  break;
     case Context::LookupMode::Type:     os << "Type";       break;
-    case Context::LookupMode::Pattern:  os << "Pattern";    break;
     case Context::LookupMode::PatternValue:  os << "PatternValue";    break;
     case Context::LookupMode::Constant: os << "Constant";   break;
     case Context::LookupMode::Variable: os << "Variable";   break;
@@ -549,7 +530,7 @@ void Resolve_Absolute_PathNodes(/*const*/ Context& context, const Span& sp, ::st
     }
 }
 
-void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path)
+void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::LookupMode mode, ::AST::Path& path)
 {
     while( path.m_class.as_UFCS().nodes.size() > 1 )
     {
@@ -590,7 +571,6 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
 
         switch(mode)
         {
-        case Context::LookupMode::Pattern:
         case Context::LookupMode::PatternValue:
             ERROR(sp, E0000, "Invalid use of UFCS in pattern");
             break;
@@ -861,7 +841,6 @@ namespace {
                 {
                 case Context::LookupMode::Namespace:
                 case Context::LookupMode::Type:
-                case Context::LookupMode::Pattern:
                     found = (e.m_types.find( next_node.name() ) != e.m_types.end());
                 case Context::LookupMode::PatternValue:
                 case Context::LookupMode::Constant:
@@ -963,26 +942,6 @@ namespace {
             }
             break;
 
-        case Context::LookupMode::Pattern:
-            {
-                auto v = hmod->m_mod_items.find(name);
-                if( v != hmod->m_mod_items.end() ) {
-                    TU_MATCH_DEF(::HIR::TypeItem, (v->second->ent), (e),
-                    (
-                        ),
-                    (Import,
-                        Resolve_Absolute_Path_BindAbsolute__hir_from_import(context, sp, false,  path, e.path);
-                        return ;
-                        ),
-                    (Struct,
-                        // Bind and update path
-                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
-                        path = split_into_crate(sp, mv$(path), start,  crate.m_name);
-                        return ;
-                        )
-                    )
-                }
-            }
         case Context::LookupMode::PatternValue:
             {
                 auto v = hmod->m_value_items.find(name);
@@ -1154,7 +1113,6 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                     switch(mode)
                     {
                     case Context::LookupMode::Constant:
-                    case Context::LookupMode::Pattern:
                     case Context::LookupMode::Variable:
                     case Context::LookupMode::PatternValue:
                         found = (e.hir->m_values.count(item_name) != 0);
@@ -1310,7 +1268,6 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                                 found = true;
                             }
                             break;
-                        case Context::LookupMode::Pattern:
                         case Context::LookupMode::PatternValue:
                             TODO(sp, "Check " << p << " for an item named " << name << " (Pattern)");
                         case Context::LookupMode::Constant:
@@ -1335,7 +1292,6 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                                 found = true;
                             }
                             break;
-                        case Context::LookupMode::Pattern:
                         case Context::LookupMode::PatternValue:
                             TODO(sp, "Check " << p << " for an item named " << name << " (Pattern)");
                         case Context::LookupMode::Constant:
