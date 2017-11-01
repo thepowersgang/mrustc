@@ -54,7 +54,7 @@ TAGGED_UNION(Literal, Invalid,
     // Variant = Enum variant
     (Variant, struct {
         unsigned int    idx;
-        ::std::vector<Literal>  vals;
+        ::std::unique_ptr<Literal> val;
         }),
     // Literal values
     (Integer, uint64_t),
@@ -213,33 +213,43 @@ struct StructMarkings
 class Enum
 {
 public:
-    TAGGED_UNION(Variant, Unit,
-        (Unit, struct{}),
-        (Value, struct {
-            ::HIR::ExprPtr  expr;
-            Literal val;
-            }),
-        (Tuple, t_tuple_fields),
-        (Struct, t_struct_fields)
-        );
+    struct DataVariant {
+        ::std::string   name;
+        bool is_struct; // Indicates that the variant does not show up in the value namespace
+        ::HIR::TypeRef  type;
+    };
     enum class Repr
     {
         Rust,
         C,
         U8, U16, U32,
     };
+    struct ValueVariant {
+        ::std::string   name;
+        ::HIR::ExprPtr  expr;
+        uint64_t val;
+    };
+    TAGGED_UNION(Class, Data,
+        (Data, ::std::vector<DataVariant>),
+        (Value, struct {
+            Repr    repr;
+            ::std::vector<ValueVariant> variants;
+            })
+        );
 
     GenericParams   m_params;
-    Repr    m_repr;
-    ::std::vector< ::std::pair< ::std::string, Variant > >    m_variants;
+    Class   m_data;
 
     TraitMarkings   m_markings;
 
-    const Variant* get_variant(const ::std::string& ) const;
+    size_t num_variants() const {
+        return (m_data.is_Data() ? m_data.as_Data().size() : m_data.as_Value().variants.size());
+    }
+    size_t find_variant(const ::std::string& ) const;
 
     /// Returns true if this enum is a C-like enum (has values only)
     bool is_value() const;
-    /// Returns the value for the given variant
+    /// Returns the value for the given variant (onlu for value enums)
     uint32_t get_value(size_t variant) const;
 };
 class Struct

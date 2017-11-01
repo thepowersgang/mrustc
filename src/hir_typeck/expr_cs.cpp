@@ -1088,10 +1088,11 @@ namespace {
             (Enum,
                 const auto& var_name = node.m_path.m_path.m_components.back();
                 const auto& enm = *e;
-                auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
-                assert(it != enm.m_variants.end());
-                ASSERT_BUG(sp, it->second.is_Tuple(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
-                fields_ptr = &it->second.as_Tuple();
+                size_t idx = enm.find_variant(var_name);
+                const auto& var_ty = enm.m_data.as_Data()[idx].type;
+                const auto& str = *var_ty.m_data.as_Path().binding.as_Struct();
+                ASSERT_BUG(sp, str.m_data.is_Tuple(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
+                fields_ptr = &str.m_data.as_Tuple();
                 ),
             (Struct,
                 ASSERT_BUG(sp, e->m_data.is_Tuple(), "Pointed struct in TupleVariant (" << node.m_path << ") isn't a Tuple");
@@ -1146,6 +1147,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
+            const auto& sp = node.span();
             TRACE_FUNCTION_F(&node << " " << node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
             this->add_ivars_generic_path(node.span(), node.m_path);
             for( auto& val : node.m_values ) {
@@ -1170,15 +1172,22 @@ namespace {
             (Enum,
                 const auto& var_name = node.m_path.m_path.m_components.back();
                 const auto& enm = *e;
-                auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
-                assert(it != enm.m_variants.end());
-                if( it->second.is_Unit() || it->second.is_Value() || it->second.is_Tuple() ) {
+                auto idx = enm.find_variant(var_name);
+                ASSERT_BUG(sp, idx != SIZE_MAX, "");
+                ASSERT_BUG(sp, enm.m_data.is_Data(), "");
+                const auto& var = enm.m_data.as_Data()[idx];
+                if( var.type == ::HIR::TypeRef::new_unit() ) {
                     ASSERT_BUG(node.span(), node.m_values.size() == 0, "Values provided for unit-like variant");
                     ASSERT_BUG(node.span(), ! node.m_base_value, "Values provided for unit-like variant");
                     return ;
                 }
-                ASSERT_BUG(node.span(), it->second.is_Struct(), "_StructLiteral for non-struct variant - " << node.m_path);
-                fields_ptr = &it->second.as_Struct();
+                const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                /*
+                if( it->second.is_Unit() || it->second.is_Value() || it->second.is_Tuple() ) {
+                }
+                */
+                ASSERT_BUG(sp, var.is_struct, "Struct literal for enum on non-struct variant");
+                fields_ptr = &str.m_data.as_Named();
                 generics = &enm.m_params;
                 ),
             (Union,
@@ -1612,8 +1621,12 @@ namespace {
                     enum_path.m_components.pop_back();
                     const auto& enm = this->context.m_crate.get_enum_by_path(sp, enum_path);
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, enm.m_params, e.m_params);
-                    const auto& var = *::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == var_name; });
-                    const auto& var_data = var.second.as_Tuple();
+                    size_t idx = enm.find_variant(var_name);
+                    ASSERT_BUG(sp, idx != SIZE_MAX, "Missing variant - " << e.m_path);
+                    ASSERT_BUG(sp, enm.m_data.is_Data(), "Enum " << enum_path << " isn't a data-holding enum");
+                    const auto& var_ty = enm.m_data.as_Data()[idx].type;
+                    const auto& str = *var_ty.m_data.as_Path().binding.as_Struct();
+                    const auto& var_data = str.m_data.as_Tuple();
 
                     ::HIR::FunctionType ft {
                         false,
@@ -3879,8 +3892,11 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
 
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
-        const auto& var = enm.m_variants[e.binding_idx].second;
-        assert(var.is_Value() || var.is_Unit());
+        if( enm.m_data.is_Data() )
+        {
+            //const auto& var = enm.m_data.as_Data()[e.binding_idx];
+            //assert(var.is_Value() || var.is_Unit());
+        }
         ),
     (EnumTuple,
         this->add_ivars_params( e.path.m_params );
@@ -3892,9 +3908,8 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         }
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
-        const auto& var = enm.m_variants[e.binding_idx].second;
-        assert(var.is_Tuple());
-        const auto& tup_var = var.as_Tuple();
+        const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.m_data.as_Path().binding.as_Struct();
+        const auto& tup_var = str.m_data.as_Tuple();
 
         const auto& params = e.path.m_params;
 
@@ -3927,9 +3942,8 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
 
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
-        const auto& var = enm.m_variants[e.binding_idx].second;
-        assert(var.is_Struct());
-        const auto& tup_var = var.as_Struct();
+        const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.m_data.as_Path().binding.as_Struct();
+        const auto& tup_var = str.m_data.as_Named();
         const auto& params = e.path.m_params;
 
         for( auto& field_pat : e.sub_patterns )

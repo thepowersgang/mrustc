@@ -354,19 +354,24 @@ namespace {
 
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
+            const auto& sp = node.span();
             if( node.m_base_value ) {
                 bool is_moved = false;
                 const auto& tpb = node.m_base_value->m_res_type.m_data.as_Path().binding;
-                const ::HIR::t_struct_fields*   fields_ptr;
+                const ::HIR::Struct* str;
                 if( tpb.is_Enum() ) {
-                    const auto* var = tpb.as_Enum()->get_variant( node.m_path.m_path.m_components.back() );
-                    ASSERT_BUG(node.span(), var, "");
-                    fields_ptr = &var->as_Struct();
+                    const auto& enm = *tpb.as_Enum();
+                    auto idx = enm.find_variant(node.m_path.m_path.m_components.back());
+                    ASSERT_BUG(sp, idx != SIZE_MAX, "");
+                    const auto& var_ty = enm.m_data.as_Data()[idx].type;
+                    str = var_ty.m_data.as_Path().binding.as_Struct();
                 }
                 else {
-                    fields_ptr = &tpb.as_Struct()->m_data.as_Named();
+                    str = tpb.as_Struct();
                 }
-                const auto& fields = *fields_ptr;
+                ASSERT_BUG(sp, str->m_data.is_Named(), "");
+                const auto& fields = str->m_data.as_Named();
+
                 ::std::vector<bool> provided_mask( fields.size() );
                 for( const auto& fld : node.m_values ) {
                     unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == fld.first; }) - fields.begin();
@@ -529,8 +534,11 @@ namespace {
                 ),
             (EnumTuple,
                 const auto& enm = *pe.binding_ptr;
-                const auto& var = enm.m_variants.at(pe.binding_idx);
-                const auto& flds = var.second.as_Tuple();
+                ASSERT_BUG(sp, enm.m_data.is_Data(), "");
+                const auto& var = enm.m_data.as_Data().at(pe.binding_idx);
+                const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
+                const auto& flds = str.m_data.as_Tuple();
                 assert(pe.sub_patterns.size() == flds.size());
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
 
@@ -543,8 +551,11 @@ namespace {
                 ),
             (EnumStruct,
                 const auto& enm = *pe.binding_ptr;
-                const auto& var = enm.m_variants.at(pe.binding_idx);
-                const auto& flds = var.second.as_Struct();
+                ASSERT_BUG(sp, enm.m_data.is_Data(), "");
+                const auto& var = enm.m_data.as_Data().at(pe.binding_idx);
+                const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                ASSERT_BUG(sp, str.m_data.is_Named(), "");
+                const auto& flds = str.m_data.as_Named();
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
 
                 auto rv = ::HIR::ValueUsage::Borrow;

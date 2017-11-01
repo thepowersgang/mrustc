@@ -217,8 +217,12 @@
                 field_count = var.as_Tuple().m_sub_types.size();
             }
             else {
-                const auto& var = pb.hir->m_variants.at(pb.idx).second;
-                field_count = var.as_Tuple().size();
+                const auto& var = pb.hir->m_data.as_Data().at(pb.idx);
+                // Need to be able to look up the type's actual definition
+                // - Either a name lookup, or have binding be done before this pass.
+                const auto& str = g_crate_ptr->get_struct_by_path(pat.span(), var.type.m_data.as_Path().path.m_data.as_Generic().m_path);
+                field_count = str.m_data.as_Tuple().size();
+                //field_count = var.type.m_data.as_Path().binding.as_Struct()->m_data.as_Tuple().size();
             }
             ::std::vector<HIR::Pattern> sub_patterns;
 
@@ -862,48 +866,139 @@ namespace {
         };
 }
 
-::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& f)
+::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::MetaItems& attrs, ::std::function<void(::std::string, ::HIR::Struct)> push_struct)
 {
-    ::std::vector< ::std::pair< ::std::string, ::HIR::Enum::Variant> >  variants;
 
-    for(const auto& var : f.variants())
+    // 1. Figure out what sort of enum this is (value or data)
+    bool has_value = false;
+    bool has_data = false;
+    for(const auto& var : ent.variants())
     {
-        TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
-        (Value,
-            if( e.m_value.is_valid() )
-            {
-                variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Value({
-                    LowerHIR_Expr(e.m_value),
-                    ::HIR::Literal {}
-                    }) ) );
-            }
-            else
-            {
-                variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Unit({})) );
-            }
-            ),
-        (Tuple,
-            ::HIR::Enum::Variant::Data_Tuple    types;
-            for(const auto& st : e.m_sub_types)
-                types.push_back( new_visent(true, LowerHIR_Type(st)) );
-            variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Tuple(mv$(types))) );
-            ),
-        (Struct,
-            ::HIR::Enum::Variant::Data_Struct ents;
-            for( const auto& ent : e.m_fields )
-                ents.push_back( ::std::make_pair( ent.m_name, new_visent(true, LowerHIR_Type(ent.m_type)) ) );
-            variants.push_back( ::std::make_pair(var.m_name, ::HIR::Enum::Variant::make_Struct(mv$(ents))) );
-            )
-        )
+        if( TU_TEST1(var.m_data, Value, .m_value.is_valid()) )
+        {
+            has_value = true;
+        }
+        else if( var.m_data.is_Tuple() || var.m_data.is_Struct() )
+        {
+            has_data = true;
+        }
+        else
+        {
+            // Unit-like
+            assert(var.m_data.is_Value());
+        }
     }
 
-    auto repr = ::HIR::Enum::Repr::Rust;
-    // TODO: Get repr from attributes
+    if( has_value && has_data )
+    {
+        ERROR(Span(), E0000, "Enum " << path << " has both value and data variants");
+    }
+
+    ::HIR::Enum::Class  data;
+    if( ent.variants().size() > 0 && !has_data )
+    {
+        ::std::vector<::HIR::Enum::ValueVariant>    variants;
+        for(const auto& var : ent.variants())
+        {
+            const auto& ve = var.m_data.as_Value();
+            // TODO: Quick consteval on the expression?
+            variants.push_back({
+                var.m_name, LowerHIR_Expr(ve.m_value), 0
+                });
+        }
+
+        auto repr = ::HIR::Enum::Repr::Rust;
+        if( const auto* attr_repr = attrs.get("repr") )
+        {
+            ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
+            ASSERT_BUG(Span(), attr_repr->items().size() == 1, "#[repr] attribute malformed, " << *attr_repr);
+            ASSERT_BUG(Span(), attr_repr->items()[0].has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+            const auto& repr_str = attr_repr->items()[0].name();
+            if( repr_str == "C" ) {
+                repr = ::HIR::Enum::Repr::C;
+            }
+            else {
+                // TODO: Other repr types
+            }
+        }
+        data = ::HIR::Enum::Class::make_Value({ repr, mv$(variants) });
+    }
+    // NOTE: empty enums are encoded as empty Data enums
+    else
+    {
+        ::std::vector<::HIR::Enum::DataVariant>    variants;
+        for(const auto& var : ent.variants())
+        {
+            if( var.m_data.is_Value() )
+            {
+                // TODO: Should this make its own unit-like struct?
+                variants.push_back({ var.m_name, false, ::HIR::TypeRef::new_unit() });
+            }
+            //else if( TU_TEST1(var.m_data, Tuple, m_sub_types.size() == 0) )
+            //{
+            //    variants.push_back({ var.m_name, false, ::HIR::TypeRef::new_unit() });
+            //}
+            //else if( TU_TEST1(var.m_data, Tuple, m_sub_types.size() == 1) )
+            //{
+            //    const auto& ty = var.m_data.as_Tuple().m_sub_types[0];
+            //    variants.push_back({ var.m_name, false, LowerHIR_Type(ty) });
+            //}
+            else
+            {
+                ::HIR::Struct::Data data;
+                if( const auto* ve = var.m_data.opt_Tuple() )
+                {
+                    ::HIR::Struct::Data::Data_Tuple fields;
+                    for(const auto& field : ve->m_sub_types)
+                        fields.push_back( new_visent(true, LowerHIR_Type(field)) );
+                    data = ::HIR::Struct::Data::make_Tuple( mv$(fields) );
+                }
+                else if( const auto* ve = var.m_data.opt_Struct() )
+                {
+                    ::HIR::Struct::Data::Data_Named fields;
+                    for(const auto& field : ve->m_fields)
+                        fields.push_back( ::std::make_pair( field.m_name, new_visent(true, LowerHIR_Type(field.m_type)) ) );
+                    data = ::HIR::Struct::Data::make_Named( mv$(fields) );
+                }
+                else
+                {
+                    throw "";
+                }
+
+                auto ty_name = FMT(path.name << "#" << var.m_name);
+                push_struct(
+                    ty_name,
+                    ::HIR::Struct {
+                        LowerHIR_GenericParams(ent.params(), nullptr),
+                        ::HIR::Struct::Repr::Rust,
+                        mv$(data)
+                        }
+                    );
+                auto ty_ipath = path;
+                ty_ipath.name = ty_name.c_str();
+                auto ty_path = ty_ipath.get_full_path();
+                // Add type params
+                {
+                    auto& params = ty_path.m_data.as_Generic().m_params;
+                    unsigned int i = 0;
+                    for(const auto& typ : ent.params().ty_params())
+                        params.m_types.push_back( ::HIR::TypeRef/*::new_generic*/(typ.name(), i++) );
+                }
+                variants.push_back({ var.m_name, var.m_data.is_Struct(), ::HIR::TypeRef::new_path( mv$(ty_path), {} ) });
+            }
+        }
+
+        if( /*const auto* attr_repr =*/ attrs.get("repr") )
+        {
+            // NOTE: librustc_llvm has `#[repr(C)] enum AttributePlace { Argument(u32), Function }`
+            //ERROR(Span(), E0000, "#[repr] not allowed on enums with data");
+        }
+        data = ::HIR::Enum::Class::make_Data( mv$(variants) );
+    }
 
     return ::HIR::Enum {
-        LowerHIR_GenericParams(f.params(), nullptr),
-        repr,
-        mv$(variants)
+        LowerHIR_GenericParams(ent.params(), nullptr),
+        mv$(data)
         };
 }
 ::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f, const ::AST::MetaItems& attrs)
@@ -1252,7 +1347,8 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(item_path, e) );
             ),
         (Enum,
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Enum(item_path, e) );
+            auto enm = LowerHIR_Enum(item_path, e, item.data.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, item.is_pub, mv$(str)); });
+            _add_mod_ns_item( mod,  item.name, item.is_pub, mv$(enm) );
             ),
         (Union,
             _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Union(item_path, e, item.data.attrs) );

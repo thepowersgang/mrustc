@@ -223,8 +223,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                             is_struct = e.enum_->variants().at(e.idx).m_data.is_Struct();
                         }
                         else {
-                            ASSERT_BUG(sp, e.idx < e.hir->m_variants.size(), "Variant out of range for " << i_data.path);
-                            is_struct = e.hir->m_variants.at(e.idx).second.is_Struct();
+                            //ASSERT_BUG(sp, e.idx < e.hir->m_variants.size(), "Variant out of range for " << i_data.path);
+                            is_struct = TU_TEST1(e.hir->m_data, Data, .at(e.idx).is_struct);
                         }
                         if( is_struct )
                             _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
@@ -457,19 +457,36 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
         {
             DEBUG("Glob enum " << i_data.path << " (HIR)");
             unsigned int idx = 0;
-            for( const auto& ev : e.hir->m_variants )
+            if( e.hir->m_data.is_Value() )
             {
-                ::AST::Path p = i_data.path + ev.first;
-                p.bind( ::AST::PathBinding::make_EnumVar({nullptr, idx, e.hir}) );
+                const auto* de = e.hir->m_data.opt_Value();
+                for(const auto& ev : de->variants)
+                {
+                    ::AST::Path p = i_data.path + ev.name;
+                    p.bind( ::AST::PathBinding::make_EnumVar({nullptr, idx, e.hir}) );
 
-                if( ev.second.is_Struct() ) {
-                    _add_item_type ( sp, dst_mod, ev.first, is_pub, mv$(p), false );
-                }
-                else {
-                    _add_item_value( sp, dst_mod, ev.first, is_pub, mv$(p), false );
-                }
+                    _add_item_value( sp, dst_mod, ev.name, is_pub, mv$(p), false );
 
-                idx += 1;
+                    idx += 1;
+                }
+            }
+            else
+            {
+                const auto* de = &e.hir->m_data.as_Data();
+                for(const auto& ev : *de)
+                {
+                    ::AST::Path p = i_data.path + ev.name;
+                    p.bind( ::AST::PathBinding::make_EnumVar({nullptr, idx, e.hir}) );
+
+                    if( ev.is_struct ) {
+                        _add_item_type ( sp, dst_mod, ev.name, is_pub, mv$(p), false );
+                    }
+                    else {
+                        _add_item_value( sp, dst_mod, ev.name, is_pub, mv$(p), false );
+                    }
+
+                    idx += 1;
+                }
             }
         }
     )

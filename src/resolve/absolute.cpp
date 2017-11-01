@@ -702,10 +702,9 @@ namespace {
                     ERROR(sp, E0000, "Enum as path component in unexpected location - " << p);
                 }
                 const auto& varname = p.m_components.back();
-                auto it = ::std::find_if( e.m_variants.begin(), e.m_variants.end(), [&](const auto&x){return x.first == varname;} );
-                ASSERT_BUG(sp, it != e.m_variants.end(), "Extern crate import path points to non-present variant - " << p);
-                unsigned int var_idx = it - e.m_variants.begin();
-                auto pb = ::AST::PathBinding::make_EnumVar({nullptr, var_idx, &e});
+                auto var_idx = e.find_variant(varname);
+                ASSERT_BUG(sp, var_idx != SIZE_MAX, "Extern crate import path points to non-present variant - " << p);
+                auto pb = ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e});
 
                 // Construct output path (with same set of parameters)
                 AST::Path   rv( p.m_crate_name, {} );
@@ -901,22 +900,20 @@ namespace {
             (Enum,
                 const auto& last_node = path_abs.nodes.back();
                 // If this refers to an enum variant, return the full path
-                for( const auto& var : e.m_variants )
+                auto idx = e.find_variant(last_node.name());
+                if( idx != SIZE_MAX )
                 {
-                    if( var.first == last_node.name() ) {
-
-                        if( i != path_abs.nodes.size() - 2 ) {
-                            ERROR(sp, E0000, "Unexpected enum in path " << path);
-                        }
-                        // NOTE: Type parameters for enums go after the _variant_
-                        if( ! n.args().is_empty() ) {
-                            ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
-                        }
-
-                        path.bind( ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned int>(&var - &*e.m_variants.begin()), &e}) );
-                        path = split_into_crate(sp, mv$(path), start,  crate.m_name);
-                        return;
+                    if( i != path_abs.nodes.size() - 2 ) {
+                        ERROR(sp, E0000, "Unexpected enum in path " << path);
                     }
+                    // NOTE: Type parameters for enums go after the _variant_
+                    if( ! n.args().is_empty() ) {
+                        ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
+                    }
+
+                    path.bind( ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned int>(idx), &e}) );
+                    path = split_into_crate(sp, mv$(path), start,  crate.m_name);
+                    return;
                 }
                 path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                 path = split_into_ufcs_ty(sp, mv$(path), i-start);

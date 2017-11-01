@@ -806,57 +806,24 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         (Enum,
             ASSERT_BUG(sp, lit.is_Variant(), "Matching enum non-variant literal - " << lit);
             auto var_idx = lit.as_Variant().idx;
-            const auto& list = lit.as_Variant().vals;
+            const auto& subval = *lit.as_Variant().val;
             auto monomorph = [&](const auto& ty) {
                 auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
                 return rv;
                 };
 
-            ASSERT_BUG(sp, var_idx < pbe->m_variants.size(), "Literal refers to a variant out of range");
-            const auto& var_def = pbe->m_variants.at(var_idx);
-
+            ASSERT_BUG(sp, var_idx < pbe->num_variants(), "Literal refers to a variant out of range");
             PatternRulesetBuilder   sub_builder { this->m_resolve };
-            sub_builder.m_field_path = m_field_path;
-            sub_builder.m_field_path.push_back(var_idx);
-            sub_builder.m_field_path.push_back(0);
+            if( const auto* e = pbe->m_data.opt_Data() )
+            {
+                const auto& var_def = e->at(var_idx);
 
-            TU_MATCH( ::HIR::Enum::Variant, (var_def.second), (fields_def),
-            (Unit,
-                ),
-            (Value,
-                ),
-            (Tuple,
-                ASSERT_BUG(sp, fields_def.size() == list.size(), "");
+                sub_builder.m_field_path = m_field_path;
+                sub_builder.m_field_path.push_back(var_idx);
 
-                for( unsigned int i = 0; i < list.size(); i ++ )
-                {
-                    sub_builder.m_field_path.back() = i;
-                    const auto& val = list[i];
-                    const auto& ty_tpl = fields_def[i].ent;
-
-                    ::HIR::TypeRef  tmp;
-                    const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
-
-                    sub_builder.append_from_lit( sp, val, subty );
-                }
-                ),
-            (Struct,
-                ASSERT_BUG(sp, fields_def.size() == list.size(), "");
-
-                for( unsigned int i = 0; i < list.size(); i ++ )
-                {
-                    sub_builder.m_field_path.back() = i;
-                    const auto& val = list[i];
-                    const auto& ty_tpl = fields_def[i].second.ent;
-
-                    ::HIR::TypeRef  tmp;
-                    const auto& subty = (monomorphise_type_needed(ty_tpl) ? tmp = monomorph(ty_tpl) : ty_tpl);
-
-                    sub_builder.append_from_lit( sp, val, subty );
-                }
-                )
-            )
+                sub_builder.append_from_lit(sp, subval, monomorph(var_def.type));
+            }
 
             this->push_rule( PatternRule::make_Variant({ var_idx, mv$(sub_builder.m_rules) }) );
             )
@@ -1253,9 +1220,12 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 this->push_rule( PatternRule::make_Variant( {pe.binding_idx, {} } ) );
                 ),
             (EnumTuple,
-                const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
+                const auto& variants = pe.binding_ptr->m_data.as_Data();
+                const auto& var_def = variants.at(pe.binding_idx);
+                const auto& str = *var_def.type.m_data.as_Path().binding.as_Struct();
+                const auto& fields_def = str.m_data.as_Tuple();
 
-                const auto& fields_def = var_def.second.as_Tuple();
+                // TODO: Unify with the struct pattern code?
                 PatternRulesetBuilder   sub_builder { this->m_resolve };
                 sub_builder.m_field_path = m_field_path;
                 sub_builder.m_field_path.push_back(pe.binding_idx);
@@ -1276,8 +1246,11 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
                 ),
             (EnumStruct,
-                const auto& var_def = pe.binding_ptr->m_variants.at(pe.binding_idx);
-                const auto& fields_def = var_def.second.as_Struct();
+                const auto& variants = pe.binding_ptr->m_data.as_Data();
+                const auto& var_def = variants.at(pe.binding_idx);
+                const auto& str = *var_def.type.m_data.as_Path().binding.as_Struct();
+                const auto& fields_def = str.m_data.as_Named();
+
                 // 1. Create a vector of pattern indexes for each field in the variant.
                 ::std::vector<unsigned int> tmp;
                 tmp.resize( fields_def.size(), ~0u );
@@ -1807,32 +1780,13 @@ namespace {
                             return &ty;
                         }
                         };
-                    ASSERT_BUG(sp, idx < pbe->m_variants.size(), "Variant index (" << idx << ") out of range (" << pbe->m_variants.size() <<  ") for enum " << *cur_ty);
-                    const auto& var = pbe->m_variants[idx];
+                    ASSERT_BUG(sp, pbe->m_data.is_Data(), "Value enum being destructured - " << *cur_ty);
+                    const auto& variants = pbe->m_data.as_Data();
+                    ASSERT_BUG(sp, idx < variants.size(), "Variant index (" << idx << ") out of range (" << variants.size() <<  ") for enum " << *cur_ty);
+                    const auto& var = variants[idx];
 
-                    i++;
-                    assert(i < field_path.data.size());
-                    unsigned fld_idx = field_path.data[i];
-
-                    TU_MATCHA( (var.second), (e),
-                    (Unit,
-                        BUG(sp, "Unit variant being destructured");
-                        ),
-                    (Value,
-                        BUG(sp, "Value variant being destructured");
-                        ),
-                    (Tuple,
-                        ASSERT_BUG(sp, fld_idx < e.size(), "Variant field index (" << fld_idx << ") out of range (" << e.size() <<  ") for enum " << *cur_ty << "::" << var.first);
-                        cur_ty = monomorph_to_ptr(e[fld_idx].ent);
-                        ),
-                    (Struct,
-                        ASSERT_BUG(sp, fld_idx < e.size(), "Variant field index (" << fld_idx << ") out of range (" << e.size() <<  ") for enum " << *cur_ty << "::" << var.first);
-                        cur_ty = monomorph_to_ptr(e[fld_idx].second.ent);
-                        )
-                    )
-                    DEBUG("*cur_ty = " << *cur_ty);
+                    cur_ty = monomorph_to_ptr(var.type);
                     lval = ::MIR::LValue::make_Downcast({ box$(lval), idx });
-                    lval = ::MIR::LValue::make_Field({ box$(lval), fld_idx });
                     )
                 )
                 ),
@@ -2206,7 +2160,7 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 unsigned int var_idx = re.idx;
 
                 auto next_bb = builder.new_bb_unlinked();
-                auto var_count = pbe->m_variants.size();
+                auto var_count = pbe->num_variants();
 
                 // Generate a switch with only one option different.
                 ::std::vector< ::MIR::BasicBlockId> arms(var_count, fail_bb);
@@ -2217,49 +2171,18 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
 
                 if( re.sub_rules.size() > 0 )
                 {
-                    const auto& var_data = pbe->m_variants.at(re.idx).second;
-                    TU_MATCHA( (var_data), (ve),
-                    (Unit,
-                        // Nothing to recurse
-                        ),
-                    (Value,
-                        // Nothing to recurse
-                        ),
-                    (Tuple,
-                        // Create a dummy tuple to contain the inner types.
-                        ::std::vector< ::HIR::TypeRef>  fake_ty_ents;
-                        fake_ty_ents.reserve( ve.size() );
-                        for(unsigned int i = 0; i < ve.size(); i ++)
-                        {
-                            fake_ty_ents.push_back( monomorph(ve[i].ent) );
-                        }
-                        ::HIR::TypeRef fake_tup = ::HIR::TypeRef( mv$(fake_ty_ents) );
+                    ASSERT_BUG(sp, pbe->m_data.is_Data(), "Sub-rules present for non-data enum");
+                    const auto& variants = pbe->m_data.as_Data();
+                    const auto& var_ty = variants.at(re.idx).type;
+                    ::HIR::TypeRef  tmp;
+                    const auto& var_ty_m = (monomorphise_type_needed(var_ty) ? tmp = monomorph(var_ty) : var_ty);
 
-                        // Recurse with the new ruleset
-                        MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
-                            re.sub_rules.data(), re.sub_rules.size(),
-                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size()+1,
-                            fail_bb
-                            );
-                        ),
-                    (Struct,
-                        // Create a dummy tuple to contain the inner types.
-                        ::std::vector< ::HIR::TypeRef>  fake_ty_ents;
-                        fake_ty_ents.reserve( ve.size() );
-                        for(unsigned int i = 0; i < ve.size(); i ++)
-                        {
-                            fake_ty_ents.push_back( monomorph(ve[i].second.ent) );
-                        }
-                        ::HIR::TypeRef fake_tup = ::HIR::TypeRef( mv$(fake_ty_ents) );
-
-                        // Recurse with the new ruleset
-                        MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
-                            re.sub_rules.data(), re.sub_rules.size(),
-                            fake_tup, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size()+1,
-                            fail_bb
-                            );
-                        )
-                    )
+                    // Recurse with the new ruleset
+                    MIR_LowerHIR_Match_Simple__GeneratePattern(builder, sp,
+                        re.sub_rules.data(), re.sub_rules.size(),
+                        var_ty_m, ::MIR::LValue::make_Downcast({ box$(val.clone()), var_idx }), rule.field_path.size()+1,
+                        fail_bb
+                        );
                 }
                 )   // TypePathBinding::Enum
             )
@@ -3098,7 +3021,7 @@ void MatchGenGrouped::gen_dispatch__enum(::HIR::TypeRef ty, ::MIR::LValue val, c
 
     auto decison_arm = m_builder.pause_cur_block();
 
-    auto var_count = pbe->m_variants.size();
+    auto var_count = pbe->num_variants();
     ::std::vector< ::MIR::BasicBlockId> arms(var_count, def_blk);
     size_t  arm_idx = 0;
     for(size_t i = 0; i < rules.size(); i ++)

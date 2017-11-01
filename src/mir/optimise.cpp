@@ -1120,7 +1120,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 return ::MIR::RValue::make_Variant({ this->monomorph(se.path), se.index, this->clone_param(se.val) });
                 ),
             (Struct,
-                return ::MIR::RValue::make_Struct({ this->monomorph(se.path), se.variant_idx, this->clone_param_vec(se.vals) });
+                return ::MIR::RValue::make_Struct({ this->monomorph(se.path), this->clone_param_vec(se.vals) });
                 )
             )
             throw "";

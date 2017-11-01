@@ -80,8 +80,8 @@ namespace {
     ::std::pair< const ::HIR::Enum*, unsigned int> get_enum_ptr(const Span& sp, const ::HIR::Crate& crate, ::HIR::GenericPath& path) {
         const auto& enm = *reinterpret_cast< const ::HIR::Enum*>( get_type_pointer(sp, crate, path.m_path, Target::EnumVariant) );
         const auto& des_name = path.m_path.m_components.back();
-        unsigned int idx = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x) { return x.first == des_name; }) - enm.m_variants.begin();
-        if( idx == enm.m_variants.size() ) {
+        auto idx = enm.find_variant(des_name);
+        if( idx == SIZE_MAX ) {
             ERROR(sp, E0000, "Couldn't find enum variant " << path);
         }
 
@@ -119,9 +119,7 @@ namespace {
                 }
                 ),
             (Variant,
-                for(auto& val : e.vals) {
-                    visit_literal(sp, val);
-                }
+                visit_literal(sp, *e.val);
                 ),
             (Integer,
                 ),
@@ -161,17 +159,16 @@ namespace {
                             }
 
                             // Enum variant
-                            auto it = ::std::find_if( enm->m_variants.begin(), enm->m_variants.end(), [&](const auto&v){ return v.first == pc; });
-                            if( it == enm->m_variants.end() ) {
+                            auto idx = enm->find_variant(pc);
+                            if( idx == SIZE_MAX ) {
                                 BUG(sp, "'" << pc << "' isn't a variant in path " << path);
                             }
-                            unsigned int index = it - enm->m_variants.begin();
                             auto path = mv$(pe);
                             fix_type_params(sp, enm->m_params,  path.m_params);
                             pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
                                 mv$(path),
                                 enm,
-                                index
+                                static_cast<unsigned>(idx)
                                 });
                         }
                         else if( (mod = ti.opt_Module()) )
@@ -263,27 +260,21 @@ namespace {
                 ),
             (EnumTuple,
                 auto p = get_enum_ptr(sp, m_crate, e.path);
-                const auto& var = p.first->m_variants[p.second].second;
-                if( var.is_Tuple() ) {
-                }
-                else {
+                if( !p.first->m_data.is_Data() )
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
-                }
+                const auto& var = p.first->m_data.as_Data()[p.second];
+                if( var.is_struct )
+                    ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
                 ),
             (EnumStruct,
                 auto p = get_enum_ptr(sp, m_crate, e.path);
-                const auto& var = p.first->m_variants[p.second].second;
-                if( var.is_Struct() ) {
-                }
-                else if( var.is_Unit() && e.sub_patterns.empty() ) {
-                }
-                else if( var.is_Tuple() && var.as_Tuple().empty() && e.sub_patterns.empty() ) {
-                }
-                else {
+                if( !p.first->m_data.is_Data() )
                     ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
-                }
+                const auto& var = p.first->m_data.as_Data()[p.second];
+                if( !var.is_struct )
+                    ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
                 )

@@ -795,14 +795,18 @@ namespace {
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            for(auto& var : item.m_variants)
+            if(auto* e = item.m_data.opt_Value())
             {
-                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    DEBUG("Enum value " << p << " - " << var.first);
+                for(auto& var : e->variants)
+                {
+                    DEBUG("Enum value " << p << " - " << var.name);
 
-                    ExprVisitor_Mutate  ev(m_crate);
-                    ev.visit_node_ptr(e.expr);
-                )
+                    if( var.expr )
+                    {
+                        ExprVisitor_Mutate  ev(m_crate);
+                        ev.visit_node_ptr(var.expr);
+                    }
+                }
             }
         }
     };

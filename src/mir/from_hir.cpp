@@ -261,14 +261,14 @@ namespace {
                 ),
             (EnumValue,
                 const auto& enm = *e.binding_ptr;
-                if( enm.m_variants.size() > 1 )
+                if( enm.num_variants() > 1 )
                 {
                     ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
                 }
                 ),
             (EnumTuple,
                 const auto& enm = *e.binding_ptr;
-                ASSERT_BUG(sp, enm.m_variants.size() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
+                ASSERT_BUG(sp, enm.num_variants() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
                 auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
@@ -277,8 +277,11 @@ namespace {
                 ),
             (EnumStruct,
                 const auto& enm = *e.binding_ptr;
-                ASSERT_BUG(sp, enm.m_variants.size() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
-                const auto& fields = enm.m_variants[e.binding_idx].second.as_Struct();
+                ASSERT_BUG(sp, enm.num_variants() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
+                ASSERT_BUG(sp, enm.m_data.is_Data(), "Expected struct variant - " << pat);
+                const auto& var = enm.m_data.as_Data()[e.binding_idx];;
+                const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                const auto& fields = str.m_data.as_Named();
                 auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
                 for(const auto& fld_pat : e.sub_patterns)
                 {
@@ -1691,25 +1694,47 @@ namespace {
                 values.push_back( m_builder.get_result_in_param(arg->span(), arg->m_res_type) );
             }
 
-            unsigned int variant_index = ~0u;
-            if( !node.m_is_struct )
+            if( node.m_is_struct )
+            {
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
+                    node.m_path.clone(),
+                    mv$(values)
+                    }) );
+            }
+            else
             {
                 // Get the variant index from the enum.
                 auto enum_path = node.m_path.m_path;
                 enum_path.m_components.pop_back();
                 const auto& var_name = node.m_path.m_path.m_components.back();
                 const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
-                auto var_it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
-                ASSERT_BUG(sp, var_it != enm.m_variants.end(), "Variant " << node.m_path.m_path << " isn't present");
 
-                variant_index = var_it - enm.m_variants.begin();
+                size_t idx = enm.find_variant(var_name);
+                ASSERT_BUG(sp, idx != SIZE_MAX, "Variant " << node.m_path.m_path << " isn't present");
+
+                // TODO: Validation?
+                ASSERT_BUG(sp, enm.m_data.is_Data(), "TupleVariant on non-data enum - " << node.m_path.m_path);
+                const auto& var_ty = enm.m_data.as_Data()[idx].type;
+
+                // Take advantage of the identical generics to cheaply clone/monomorph the path.
+                const auto& str = *var_ty.m_data.as_Path().binding.as_Struct();
+                ::HIR::GenericPath struct_path = node.m_path.clone();
+                struct_path.m_path = var_ty.m_data.as_Path().path.m_data.as_Generic().m_path;
+
+                // Create struct instance
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
+                    struct_path.clone(),
+                    mv$(values)
+                    }) );
+
+                auto ty = ::HIR::TypeRef::new_path( mv$(struct_path), &str );
+                auto v = m_builder.get_result_in_param(node.span(), ty);
+                m_builder.set_result(node.span(), ::MIR::RValue::make_Variant({
+                    mv$(enum_path),
+                    static_cast<unsigned>(idx),
+                    mv$(v)
+                    }) );
             }
-
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                node.m_path.clone(),
-                variant_index,
-                mv$(values)
-                }) );
         }
 
         ::std::vector< ::MIR::Param> get_args(/*const*/ ::std::vector<::HIR::ExprNodeP>& args)
@@ -1949,24 +1974,40 @@ namespace {
         {
             const Span& sp = node.span();
             TRACE_FUNCTION_F("_UnitVariant");
-            unsigned int variant_index = ~0u;
             if( !node.m_is_struct )
             {
                 // Get the variant index from the enum.
                 auto enum_path = node.m_path.m_path;
                 enum_path.m_components.pop_back();
                 const auto& var_name = node.m_path.m_path.m_components.back();
-                const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
-                auto var_it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
-                ASSERT_BUG(sp, var_it != enm.m_variants.end(), "Variant " << node.m_path.m_path << " isn't present");
 
-                variant_index = var_it - enm.m_variants.begin();
+                const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
+
+                auto idx = enm.find_variant(var_name);
+                ASSERT_BUG(sp, idx != SIZE_MAX, "Variant " << node.m_path.m_path << " isn't present");
+
+                // VALIDATION
+                if( const auto* e = enm.m_data.opt_Data() )
+                {
+                    const auto& var = (*e)[idx];
+                    ASSERT_BUG(sp, !var.is_struct, "Variant " << node.m_path.m_path << " isn't a unit variant");
+                }
+
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Tuple({}) );
+                auto v = m_builder.get_result_in_param(node.span(), ::HIR::TypeRef::new_unit());
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Variant({
+                    mv$(enum_path),
+                    static_cast<unsigned>(idx),
+                    mv$(v)
+                    }) );
             }
-            m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                node.m_path.clone(),
-                variant_index,
-                {}
-                }) );
+            else
+            {
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
+                    node.m_path.clone(),
+                    {}
+                    }) );
+            }
         }
         void visit(::HIR::ExprNode_PathValue& node) override
         {
@@ -1974,18 +2015,23 @@ namespace {
             TRACE_FUNCTION_F("_PathValue - " << node.m_path);
             TU_MATCH( ::HIR::Path::Data, (node.m_path.m_data), (pe),
             (Generic,
+                // Enum variant constructor.
                 if( node.m_target == ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR ) {
                     auto enum_path = pe.m_path;
                     enum_path.m_components.pop_back();
                     const auto& var_name = pe.m_path.m_components.back();
 
+                    // Validation only.
                     const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
-                    auto var_it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
-                    ASSERT_BUG(sp, var_it != enm.m_variants.end(), "Variant " << pe.m_path << " isn't present");
-                    const auto& var = var_it->second;
-                    ASSERT_BUG(sp, var.is_Tuple(), "Variant " << pe.m_path << " isn't a tuple variant");
+                    ASSERT_BUG(sp, enm.m_data.is_Data(), "Getting variant constructor of value varianta");
+                    size_t idx = enm.find_variant(var_name);
+                    ASSERT_BUG(sp, idx != SIZE_MAX, "Variant " << pe.m_path << " isn't present");
+                    const auto& var = enm.m_data.as_Data()[idx];
+                    ASSERT_BUG(sp, var.type.m_data.is_Path(), "Variant " << pe.m_path << " isn't a tuple");
+                    const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                    ASSERT_BUG(sp, str.m_data.is_Tuple(), "Variant " << pe.m_path << " isn't a tuple");
 
-                    // TODO: Ideally, the creation of the wrapper function would happen somewhere before this?
+                    // TODO: Ideally, the creation of the wrapper function would happen somewhere before trans?
                     auto tmp = m_builder.new_temporary( node.m_res_type );
                     m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
                     m_builder.set_result( sp, mv$(tmp) );
@@ -2008,7 +2054,6 @@ namespace {
                     // TODO: Why is this still a PathValue?
                     m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                         pe.clone(),
-                        ~0u,
                         {}
                         }) );
                     ),
@@ -2115,9 +2160,13 @@ namespace {
             m_builder.set_result( node.span(), m_builder.get_variable(node.span(), node.m_slot) );
         }
 
-        void visit(::HIR::ExprNode_StructLiteral& node) override
+        void visit_sl_inner(::HIR::ExprNode_StructLiteral& node, const ::HIR::Struct& str, const ::HIR::GenericPath& path)
         {
-            TRACE_FUNCTION_F("_StructLiteral");
+            const Span& sp = node.span();
+
+            ASSERT_BUG(sp, str.m_data.is_Named(), "");
+            const ::HIR::t_struct_fields& fields = str.m_data.as_Named();
+
             ::MIR::LValue   base_val;
             if( node.m_base_value )
             {
@@ -2125,37 +2174,6 @@ namespace {
                 this->visit_node_ptr(node.m_base_value);
                 base_val = m_builder.get_result_in_lvalue(node.m_base_value->span(), node.m_base_value->m_res_type);
             }
-
-            unsigned int variant_index = ~0u;
-            const ::HIR::t_struct_fields* fields_ptr = nullptr;
-            TU_MATCH(::HIR::TypeRef::TypePathBinding, (node.m_res_type.m_data.as_Path().binding), (e),
-            (Unbound, ),
-            (Opaque, ),
-            (Enum,
-                const auto& var_name = node.m_path.m_path.m_components.back();
-                const auto& enm = *e;
-                auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
-                assert(it != enm.m_variants.end());
-                variant_index = it - enm.m_variants.begin();
-                fields_ptr = &it->second.as_Struct();
-                ),
-            (Union,
-                BUG(node.span(), "_StructLiteral Union");
-                ),
-            (Struct,
-                if(e->m_data.is_Unit()) {
-                    m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                        node.m_path.clone(),
-                        variant_index,
-                        {}
-                        }) );
-                    return ;
-                }
-                fields_ptr = &e->m_data.as_Named();
-                )
-            )
-            assert(fields_ptr);
-            const ::HIR::t_struct_fields& fields = *fields_ptr;
 
             ::std::vector<bool> values_set;
             ::std::vector< ::MIR::Param>   values;
@@ -2198,10 +2216,62 @@ namespace {
             }
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                node.m_path.clone(),
-                variant_index,
+                path.clone(),
                 mv$(values)
                 }) );
+        }
+
+        void visit(::HIR::ExprNode_StructLiteral& node) override
+        {
+            TRACE_FUNCTION_F("_StructLiteral");
+
+            TU_MATCH(::HIR::TypeRef::TypePathBinding, (node.m_res_type.m_data.as_Path().binding), (e),
+            (Unbound, ),
+            (Opaque, ),
+            (Enum,
+                auto enum_path = node.m_path.m_path;
+                enum_path.m_components.pop_back();
+                const auto& var_name = node.m_path.m_path.m_components.back();
+
+                const auto& enm = *e;
+                size_t idx = enm.find_variant(var_name);
+                ASSERT_BUG(node.span(), idx != SIZE_MAX, "");
+                ASSERT_BUG(node.span(), enm.m_data.is_Data(), "");
+                const auto& var_ty = enm.m_data.as_Data()[idx].type;
+                const auto& str = *var_ty.m_data.as_Path().binding.as_Struct();
+
+                // Take advantage of the identical generics to cheaply clone/monomorph the path.
+                ::HIR::GenericPath struct_path = node.m_path.clone();
+                struct_path.m_path = var_ty.m_data.as_Path().path.m_data.as_Generic().m_path;
+
+                this->visit_sl_inner(node, str, struct_path);
+
+                // Create type of result from the above path
+                auto ty = ::HIR::TypeRef::new_path( mv$(struct_path), &str );
+                // Obtain in a param
+                auto v = m_builder.get_result_in_param(node.span(), ty);
+                // And create Variant
+                m_builder.set_result( node.span(), ::MIR::RValue::make_Variant({
+                    mv$(enum_path),
+                    static_cast<unsigned>(idx),
+                    mv$(v)
+                    }) );
+                ),
+            (Union,
+                BUG(node.span(), "_StructLiteral Union isn't valid?");
+                ),
+            (Struct,
+                if(e->m_data.is_Unit()) {
+                    m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
+                        node.m_path.clone(),
+                        {}
+                        }) );
+                    return ;
+                }
+
+                this->visit_sl_inner(node, *e, node.m_path);
+                )
+            )
         }
         void visit(::HIR::ExprNode_UnionLiteral& node) override
         {
@@ -2281,7 +2351,6 @@ namespace {
 
             m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
                 node.m_obj_path.clone(),
-                ~0u,
                 mv$(vals)
                 }) );
         }

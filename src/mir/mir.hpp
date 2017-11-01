@@ -187,10 +187,9 @@ TAGGED_UNION_EX(RValue, (), Use, (
         unsigned int index;
         Param   val;
         }),
-    // Create a new instance of a struct (or enum)
+    // Create a new instance of a struct
     (Struct, struct {
         ::HIR::GenericPath  path;
-        unsigned int variant_idx;   // if ~0, it's a struct
         ::std::vector<Param>   vals;
         })
     ), (),(), (

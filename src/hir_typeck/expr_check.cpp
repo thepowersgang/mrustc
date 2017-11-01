@@ -426,10 +426,11 @@ namespace {
             (Enum,
                 const auto& var_name = node.m_path.m_path.m_components.back();
                 const auto& enm = *e;
-                auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
-                assert(it != enm.m_variants.end());
-                ASSERT_BUG(sp, it->second.is_Tuple(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
-                fields_ptr = &it->second.as_Tuple();
+                size_t idx = enm.find_variant(var_name);
+                const auto& var_ty = enm.m_data.as_Data()[idx].type;
+                const auto& str = *var_ty.m_data.as_Path().binding.as_Struct();
+                ASSERT_BUG(sp, str.m_data.is_Tuple(), "Pointed variant of TupleVariant (" << node.m_path << ") isn't a Tuple");
+                fields_ptr = &str.m_data.as_Tuple();
                 ),
             (Union,
                 BUG(sp, "Union in TupleVariant");
@@ -480,9 +481,14 @@ namespace {
             (Enum,
                 const auto& var_name = node.m_path.m_path.m_components.back();
                 const auto& enm = *e;
-                auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
-                assert(it != enm.m_variants.end());
-                fields_ptr = &it->second.as_Struct();
+                auto idx = enm.find_variant(var_name);
+                ASSERT_BUG(sp, idx != SIZE_MAX, "");
+                ASSERT_BUG(sp, enm.m_data.is_Data(), "");
+                const auto& var = enm.m_data.as_Data()[idx];
+
+                const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                ASSERT_BUG(sp, var.is_struct, "Struct literal for enum on non-struct variant");
+                fields_ptr = &str.m_data.as_Named();
                 ),
             (Union,
                 TODO(sp, "Union in StructLiteral");
@@ -566,9 +572,12 @@ namespace {
             (Enum,
                 const auto& var_name = node.m_path.m_path.m_components.back();
                 const auto& enm = *e;
-                auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&v)->auto{ return v.first == var_name; });
-                assert(it != enm.m_variants.end());
-                assert( it->second.is_Unit() || it->second.is_Value() );
+                if(const auto* e = enm.m_data.opt_Data())
+                {
+                    auto idx = enm.find_variant(var_name);
+                    ASSERT_BUG(sp, idx != SIZE_MAX, "");
+                    ASSERT_BUG(sp, (*e)[idx].type == ::HIR::TypeRef::new_unit(), "");
+                }
                 ),
             (Union,
                 BUG(sp, "Union with _UnitVariant");
@@ -1133,18 +1142,22 @@ namespace {
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             //auto _ = this->m_ms.set_item_generics(item.m_params);
-            // TODO: Use a different type depding on repr()
-            auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
 
-            for(auto& var : item.m_variants)
+            if( auto* e = item.m_data.opt_Value() )
             {
-                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    DEBUG("Enum value " << p << " - " << var.first);
+                // TODO: Use a different type depding on repr()
+                auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
+                for(auto& var : e->variants)
+                {
+                    DEBUG("Enum value " << p << " - " << var.name);
 
-                    t_args  tmp;
-                    ExprVisitor_Validate    ev(m_resolve, tmp, enum_type);
-                    ev.visit_root(e.expr);
-                )
+                    if( var.expr )
+                    {
+                        t_args  tmp;
+                        ExprVisitor_Validate    ev(m_resolve, tmp, enum_type);
+                        ev.visit_root(var.expr);
+                    }
+                }
             }
         }
 

@@ -66,11 +66,7 @@ namespace {
             return ::HIR::Literal( mv$(vals) );
             ),
         (Variant,
-            ::std::vector< ::HIR::Literal>  vals;
-            for(const auto& val : e.vals) {
-                vals.push_back( clone_literal(val) );
-            }
-            return ::HIR::Literal::make_Variant({ e.idx, mv$(vals) });
+            return ::HIR::Literal::make_Variant({ e.idx, box$(clone_literal(*e.val)) });
             ),
         (Integer,
             return ::HIR::Literal(e);
@@ -102,9 +98,7 @@ namespace {
             }
             ),
         (Variant,
-            for(auto& val : e.vals) {
-                monomorph_literal_inplace(sp, val, ms);
-            }
+            monomorph_literal_inplace(sp, *e.val, ms);
             ),
         (Integer,
             ),
@@ -722,17 +716,15 @@ namespace {
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     ),
                 (Variant,
-                    TODO(sp, "MIR _Variant");
+                    auto ival = read_param(e.val);
+                    val = ::HIR::Literal::make_Variant({ e.index, box$(ival) });
                     ),
                 (Struct,
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
                     for(const auto& v : e.vals)
                         vals.push_back( read_param(v) );
-                    if( e.variant_idx == ~0u )
-                        val = ::HIR::Literal::make_List( mv$(vals) );
-                    else
-                        val = ::HIR::Literal::make_Variant({ e.variant_idx, mv$(vals) });
+                    val = ::HIR::Literal::make_List( mv$(vals) );
                     )
                 )
 
@@ -932,13 +924,19 @@ namespace {
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            for(auto& var : item.m_variants)
+            if(auto* e = item.m_data.opt_Value())
             {
-                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.first << "$") };
-                    e.val = evaluate_constant(e.expr->span(), m_resolve, mv$(nvs), FMT_CB(ss, ss << p;), e.expr, {}, {});
-                    DEBUG("enum variant: " << p << "::" << var.first << " = " << e.val);
-                )
+                for(auto& var : e->variants)
+                {
+                    if( var.expr )
+                    {
+                        auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.name << "$") };
+                        auto val = evaluate_constant(var.expr->span(), m_resolve, mv$(nvs), FMT_CB(ss, ss << p;), var.expr, {}, {});
+                        DEBUG("Enum value " << p << " - " << var.name << " = " << val);
+                        // TODO: Save this value? Or just do the above to
+                        // validate?
+                    }
+                }
             }
             ::HIR::Visitor::visit_enum(p, item);
         }

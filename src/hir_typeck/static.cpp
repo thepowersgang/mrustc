@@ -785,37 +785,16 @@ bool StaticTraitResolve::find_impl__check_crate(
                 )
                 ),
             (Enum,
-                const auto& enm = *tpb;
-
-                for(const auto& var : enm.m_variants)
+                if( const auto* e = tpb->m_data.opt_Data() )
                 {
-                    TU_MATCH(::HIR::Enum::Variant, (var.second), (ve),
-                    (Unit,
-                        ),
-                    (Value,
-                        ),
-                    (Tuple,
-                        for(const auto& fld : ve)
-                        {
-                            const auto& fld_ty_mono = monomorph_get(fld.ent);
-                            DEBUG("Enum '" << var.first << "'::Tuple " << fld_ty_mono);
-                            res &= type_impls_trait(fld_ty_mono);
-                            if( res == ::HIR::Compare::Unequal )
-                                return ::HIR::Compare::Unequal;
-                        }
-                        ),
-                    (Struct,
-                        for(const auto& fld : ve)
-                        {
-                            const auto& fld_ty_mono = monomorph_get(fld.second.ent);
-                            DEBUG("Enum '" << var.first << "'::Struct '" << fld.first << "' " << fld_ty_mono);
-
-                            res &= type_impls_trait(fld_ty_mono);
-                            if( res == ::HIR::Compare::Unequal )
-                                return ::HIR::Compare::Unequal;
-                        }
-                        )
-                    )
+                    for(const auto& var : *e )
+                    {
+                        const auto& fld_ty_mono = monomorph_get(var.type);
+                        DEBUG("Enum '" << var.name << "' " << fld_ty_mono);
+                        res &= type_impls_trait(fld_ty_mono);
+                        if( res == ::HIR::Compare::Unequal )
+                            return ::HIR::Compare::Unequal;
+                    }
                 }
                 ),
             (Union,
@@ -1804,28 +1783,13 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
             return false;
             ),
         (Enum,
-            for(const auto& e : pbe->m_variants)
+            if(const auto* e = pbe->m_data.opt_Data())
             {
-                TU_MATCHA( (e.second), (ve),
-                (Unit,
-                    ),
-                (Value,
-                    ),
-                (Tuple,
-                    for(const auto& e : ve)
-                    {
-                        if( type_needs_drop_glue(sp, monomorph(e.ent)) )
-                            return true;
-                    }
-                    ),
-                (Struct,
-                    for(const auto& e : ve)
-                    {
-                        if( type_needs_drop_glue(sp, monomorph(e.second.ent)) )
-                            return true;
-                    }
-                    )
-                )
+                for(const auto& var : *e)
+                {
+                    if( type_needs_drop_glue(sp, monomorph(var.type)) )
+                        return true;
+                }
             }
             return false;
             ),

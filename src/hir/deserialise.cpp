@@ -424,7 +424,6 @@ namespace {
                 })
             _(Struct, {
                 deserialise_genericpath(),
-                static_cast<unsigned int>( m_in.read_count() ),
                 deserialise_vec< ::MIR::Param>()
                 })
             #undef _
@@ -619,7 +618,8 @@ namespace {
 
 
         ::HIR::Enum deserialise_enum();
-        ::HIR::Enum::Variant deserialise_enumvariant();
+        ::HIR::Enum::DataVariant deserialise_enumdatavariant();
+        ::HIR::Enum::ValueVariant deserialise_enumvaluevariant();
 
         ::HIR::Struct deserialise_struct();
         ::HIR::Union deserialise_union();
@@ -685,7 +685,8 @@ namespace {
     template<> DEF_D( ::HIR::ValueItem, return d.deserialise_valueitem(); )
     template<> DEF_D( ::HIR::TypeItem, return d.deserialise_typeitem(); )
 
-    template<> DEF_D( ::HIR::Enum::Variant, return d.deserialise_enumvariant(); )
+    template<> DEF_D( ::HIR::Enum::ValueVariant, return d.deserialise_enumvaluevariant(); )
+    template<> DEF_D( ::HIR::Enum::DataVariant, return d.deserialise_enumdatavariant(); )
     template<> DEF_D( ::HIR::Literal, return d.deserialise_literal(); )
 
     template<> DEF_D( ::HIR::AssociatedType, return d.deserialise_associatedtype(); )
@@ -878,31 +879,47 @@ namespace {
     ::HIR::Enum HirDeserialiser::deserialise_enum()
     {
         TRACE_FUNCTION;
+        struct H {
+            static ::HIR::Enum::Class deserialise_enumclass(HirDeserialiser& des) {
+                switch( des.m_in.read_tag() )
+                {
+                case ::HIR::Enum::Class::TAG_Data:
+                    return ::HIR::Enum::Class::make_Data( des.deserialise_vec<::HIR::Enum::DataVariant>() );
+                case ::HIR::Enum::Class::TAG_Value:
+                    return ::HIR::Enum::Class::make_Value({
+                        static_cast< ::HIR::Enum::Repr>(des.m_in.read_tag()),
+                        des.deserialise_vec<::HIR::Enum::ValueVariant>()
+                        });
+                default:
+                    throw "";
+                }
+            }
+        };
         return ::HIR::Enum {
             deserialise_genericparams(),
-            static_cast< ::HIR::Enum::Repr>(m_in.read_tag()),
-            deserialise_vec< ::std::pair< ::std::string, ::HIR::Enum::Variant> >(),
+            H::deserialise_enumclass(*this),
             deserialise_markings()
             };
     }
-    ::HIR::Enum::Variant HirDeserialiser::deserialise_enumvariant()
+    ::HIR::Enum::DataVariant HirDeserialiser::deserialise_enumdatavariant()
     {
-        switch( m_in.read_tag() )
-        {
-        case ::HIR::Enum::Variant::TAG_Unit:
-            return ::HIR::Enum::Variant::make_Unit({});
-        case ::HIR::Enum::Variant::TAG_Value:
-            return ::HIR::Enum::Variant::make_Value({
-                ::HIR::ExprPtr {},
-                deserialise_literal()
-                });
-        case ::HIR::Enum::Variant::TAG_Tuple:
-            return ::HIR::Enum::Variant( deserialise_vec< ::HIR::VisEnt< ::HIR::TypeRef> >() );
-        case ::HIR::Enum::Variant::TAG_Struct:
-            return ::HIR::Enum::Variant( deserialise_vec< ::std::pair< ::std::string, ::HIR::VisEnt< ::HIR::TypeRef> > >() );
-        default:
-            throw "";
-        }
+        auto name = m_in.read_string();
+        DEBUG("Enum::DataVariant " << name);
+        return ::HIR::Enum::DataVariant {
+            mv$(name),
+            m_in.read_bool(),
+            deserialise_type()
+            };
+    }
+    ::HIR::Enum::ValueVariant HirDeserialiser::deserialise_enumvaluevariant()
+    {
+        auto name = m_in.read_string();
+        DEBUG("Enum::ValueVariant " << name);
+        return ::HIR::Enum::ValueVariant {
+            mv$(name),
+            ::HIR::ExprPtr {},
+            m_in.read_u64()
+            };
     }
     ::HIR::Union HirDeserialiser::deserialise_union()
     {
@@ -975,7 +992,7 @@ namespace {
         _(List,   deserialise_vec< ::HIR::Literal>() )
         _(Variant, {
             static_cast<unsigned int>(m_in.read_count()),
-            deserialise_vec< ::HIR::Literal>()
+            box$( deserialise_literal() )
             })
         _(Integer, m_in.read_u64() )
         _(Float,   m_in.read_double() )

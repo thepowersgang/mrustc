@@ -234,7 +234,6 @@ namespace {
                 (Struct,
                     rval = ::MIR::RValue::make_Struct({
                         params.monomorph(resolve, se.path),
-                        se.variant_idx,
                         monomorph_Param_list(resolve, params, se.vals)
                         });
                     )

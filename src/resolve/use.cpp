@@ -463,13 +463,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 }
                 else {
                     const auto& enm = *e.hir;
-                    unsigned int i = 0;
-                    for(const auto& var : enm.m_variants)
+                    auto idx = enm.find_variant(des_item_name);
+                    if( idx != SIZE_MAX )
                     {
-                        if( var.first == des_item_name ) {
-                            return ::AST::PathBinding::make_EnumVar({ nullptr, i, &enm });
-                        }
-                        i ++;
+                        return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
                     }
                 }
                 )
@@ -564,11 +561,11 @@ namespace {
                 }
                 const auto& name = nodes[i].name();
 
-                auto it2 = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == name; } );
-                if( it2 == enm.m_variants.end() ) {
+                auto idx = enm.find_variant(name);
+                if( idx == SIZE_MAX ) {
                     ERROR(span, E0000, "Unable to find variant " << path);
                 }
-                return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(it2 - enm.m_variants.begin()), &enm });
+                return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(idx), &enm });
             }
             else {
                 hmod = reinterpret_cast<const ::HIR::Module*>(ptr);
@@ -584,11 +581,11 @@ namespace {
             }
             const auto& name = nodes[i].name();
 
-            auto it2 = ::std::find_if( e.m_variants.begin(), e.m_variants.end(), [&](const auto& x){ return x.first == name; } );
-            if( it2 == e.m_variants.end() ) {
+            auto idx = e.find_variant(name);
+            if(idx == SIZE_MAX) {
                 ERROR(span, E0000, "Unable to find variant " << path);
             }
-            return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(it2 - e.m_variants.begin()), &e });
+            return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned int>(idx), &e });
             )
         )
     }
@@ -606,7 +603,7 @@ namespace {
                     auto p = e.path;
                     p.m_components.pop_back();
                     const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
-                    assert(e.idx < enm.m_variants.size());
+                    assert(e.idx < enm.num_variants());
                     return ::AST::PathBinding::make_EnumVar({ nullptr, e.idx, &enm });
                 }
                 if( e.path.m_components.empty() )
@@ -653,7 +650,7 @@ namespace {
                     auto p = e.path;
                     p.m_components.pop_back();
                     const auto& enm = ec.m_hir->get_typeitem_by_path(span, p, true).as_Enum();
-                    assert(e.idx < enm.m_variants.size());
+                    assert(e.idx < enm.num_variants());
                     return ::AST::PathBinding::make_EnumVar({ nullptr, e.idx, &enm });
                 }
                 item_ptr = &ec.m_hir->get_valitem_by_path(span, e.path, true);    // ignore_crate_name=true

@@ -436,7 +436,7 @@ namespace {
                 ),
             (Variant,
                 m_out.write_count(e.idx);
-                serialise_vec(e.vals);
+                serialise(*e.val);
                 ),
             (Integer,
                 m_out.write_u64(e);
@@ -685,7 +685,6 @@ namespace {
                 ),
             (Struct,
                 serialise_genericpath(e.path);
-                m_out.write_count(e.variant_idx);
                 serialise_vec(e.vals);
                 )
             )
@@ -852,29 +851,34 @@ namespace {
         void serialise(const ::HIR::Enum& item)
         {
             serialise_generics(item.m_params);
-            m_out.write_tag( static_cast<int>(item.m_repr) );
-
-            serialise_vec( item.m_variants );
+            serialise( item.m_data );
 
             serialise(item.m_markings);
         }
-        void serialise(const ::HIR::Enum::Variant& v)
+        void serialise(const ::HIR::Enum::Class& v)
         {
             m_out.write_tag( v.tag() );
             TU_MATCHA( (v), (e),
-            (Unit,
-                ),
             (Value,
-                // NOTE: e.expr skipped as it's not needed anymore
-                serialise(e.val);
+                m_out.write_tag( static_cast<int>(e.repr) );
+                serialise_vec(e.variants);
                 ),
-            (Tuple,
-                serialise_vec(e);
-                ),
-            (Struct,
+            (Data,
                 serialise_vec(e);
                 )
             )
+        }
+        void serialise(const ::HIR::Enum::ValueVariant& v)
+        {
+            m_out.write_string(v.name);
+            // NOTE: No expr, no longer needed
+            m_out.write_u64(v.val);
+        }
+        void serialise(const ::HIR::Enum::DataVariant& v)
+        {
+            m_out.write_string(v.name);
+            m_out.write_bool(v.is_struct);
+            serialise(v.type);
         }
 
         void serialise(const ::HIR::TraitMarkings& m)

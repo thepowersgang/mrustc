@@ -1121,16 +1121,19 @@ namespace {
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             //auto _ = this->m_ms.set_item_generics(item.m_params);
 
-            //auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
-            for(auto& var : item.m_variants)
+            /*
+            if(const auto* e = item.m_data.opt_Value())
             {
-                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    //DEBUG("Enum value " << p << " - " << var.first);
-                    //::std::vector< ::HIR::TypeRef>  tmp;
-                    //ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
-                    //ev.visit_root(*e);
-                )
+                auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
+                for(auto& var : e->variants)
+                {
+                    DEBUG("Enum value " << p << " - " << var.name);
+                    ::std::vector< ::HIR::TypeRef>  tmp;
+                    ExprVisitor_Extract    ev(m_resolve, tmp, m_new_trait_impls);
+                    ev.visit_root(var.expr);
+                }
             }
+            */
         }
 
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override

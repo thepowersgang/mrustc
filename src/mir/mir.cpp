@@ -384,8 +384,6 @@ namespace MIR {
         (Struct,
             if( are.path != bre.path )
                 return false;
-            if( are.variant_idx != bre.variant_idx )
-                return false;
             return are.vals == bre.vals;
             )
         )
@@ -610,13 +608,13 @@ namespace MIR {
     (Variant,
         return ::MIR::RValue::make_Variant({ e.path.clone(), e.index, e.val.clone() });
         ),
-    // Create a new instance of a struct (or enum)
+    // Create a new instance of a struct
     (Struct,
         decltype(e.vals)    ret;
         ret.reserve(e.vals.size());
         for(const auto& v : e.vals)
             ret.push_back( v.clone() );
-        return ::MIR::RValue::make_Struct({ e.path.clone(), e.variant_idx, mv$(ret) });
+        return ::MIR::RValue::make_Struct({ e.path.clone(), mv$(ret) });
         )
     )
     throw "";

@@ -2599,37 +2599,16 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 )
                 ),
             (Enum,
-                const auto& enm = *tpb;
-
-                for(const auto& var : enm.m_variants)
+                if( const auto* e = tpb->m_data.opt_Data() )
                 {
-                    TU_MATCH(::HIR::Enum::Variant, (var.second), (ve),
-                    (Unit,
-                        ),
-                    (Value,
-                        ),
-                    (Tuple,
-                        for(const auto& fld : ve)
-                        {
-                            const auto& fld_ty_mono = monomorph_get(fld.ent);
-                            DEBUG("Enum '" << var.first << "'::Tuple " << fld_ty_mono);
-                            res &= type_impls_trait(fld_ty_mono);
-                            if( res == ::HIR::Compare::Unequal )
-                                return ::HIR::Compare::Unequal;
-                        }
-                        ),
-                    (Struct,
-                        for(const auto& fld : ve)
-                        {
-                            const auto& fld_ty_mono = monomorph_get(fld.second.ent);
-                            DEBUG("Enum '" << var.first << "'::Struct '" << fld.first << "' " << fld_ty_mono);
-
-                            res &= type_impls_trait(fld_ty_mono);
-                            if( res == ::HIR::Compare::Unequal )
-                                return ::HIR::Compare::Unequal;
-                        }
-                        )
-                    )
+                    for(const auto& var : *e)
+                    {
+                        const auto& fld_ty_mono = monomorph_get(var.type);
+                        DEBUG("Enum '" << var.name << "'" << fld_ty_mono);
+                        res &= type_impls_trait(fld_ty_mono);
+                        if( res == ::HIR::Compare::Unequal )
+                            return ::HIR::Compare::Unequal;
+                    }
                 }
                 ),
             (Union,

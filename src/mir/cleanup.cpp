@@ -289,7 +289,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                 }
                 )
             )
-            return ::MIR::RValue::make_Struct({ te.path.m_data.as_Generic().clone(), ~0u, mv$(lvals) });
+            return ::MIR::RValue::make_Struct({ te.path.m_data.as_Generic().clone(), mv$(lvals) });
         }
         else if( te.binding.is_Enum() )
         {
@@ -298,33 +298,19 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
 
             auto monomorph = [&](const auto& tpl) { return monomorphise_type(state.sp, enm.m_params, te.path.m_data.as_Generic().m_params, tpl); };
 
-            ::std::vector< ::MIR::Param>   lvals;
-            MIR_ASSERT(state, lit_var.idx < enm.m_variants.size(), "Variant index out of range");
-            TU_MATCHA( (enm.m_variants[lit_var.idx].second), (ve),
-            (Unit,
-                ),
-            (Value,
-                ),
-            (Tuple,
-                MIR_ASSERT(state, lit_var.vals.size() == ve.size(), "Value count mismatch in literal for " << ty << " #" << lit_var.idx << " - exp " << ve.size() << ", " << lit);
-                for(unsigned int i = 0; i < ve.size(); i ++)
-                {
-                    auto ent_ty = monomorph(ve[i].ent);
-                    auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit_var.vals[i], ent_ty.clone(), ::HIR::GenericPath());
-                    lvals.push_back( mutator.in_temporary(mv$(ent_ty), mv$(rval)) );
-                }
-                ),
-            (Struct,
-                MIR_ASSERT(state, lit_var.vals.size() == ve.size(), "Value count mismatch in literal for " << ty << " #" << lit_var.idx << " - exp " << ve.size() << ", " << lit);
-                for(unsigned int i = 0; i < ve.size(); i ++)
-                {
-                    auto ent_ty = monomorph(ve[i].second.ent);
-                    auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, lit_var.vals[i], ent_ty.clone(), ::HIR::GenericPath());
-                    lvals.push_back( mutator.in_temporary(mv$(ent_ty), mv$(rval)) );
-                }
-                )
-            )
-            return ::MIR::RValue::make_Struct({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(lvals) });
+            MIR_ASSERT(state, lit_var.idx < enm.num_variants(), "Variant index out of range");
+            ::MIR::Param    p;
+            if( const auto* e = enm.m_data.opt_Data() )
+            {
+                auto ty = monomorph( e->at(lit_var.idx).type );
+                auto rval = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_var.val, ty.clone(), ::HIR::GenericPath());
+                p = mutator.in_temporary(mv$(ty), mv$(rval));
+            }
+            else
+            {
+                p = mutator.in_temporary(::HIR::TypeRef::new_unit(), ::MIR::RValue::make_Tuple({}));
+            }
+            return ::MIR::RValue::make_Variant({ te.path.m_data.as_Generic().clone(), lit_var.idx, mv$(p) });
         }
         else
         {
@@ -540,7 +526,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                     )
 
                     auto new_path = ty_path.clone();
-                    return mutator.in_temporary( mv$(ty), ::MIR::RValue::make_Struct({ mv$(new_path), ~0u, mv$(vals) }) );
+                    return mutator.in_temporary( mv$(ty), ::MIR::RValue::make_Struct({ mv$(new_path), mv$(vals) }) );
                 }
                 else if( ty.m_data.is_Pointer() )
                 {
@@ -820,7 +806,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             }
             )
         )
-        return ::MIR::RValue::make_Struct({ dte.path.m_data.as_Generic().clone(), ~0u, mv$(ents) });
+        return ::MIR::RValue::make_Struct({ dte.path.m_data.as_Generic().clone(), mv$(ents) });
     }
 
     if( dst_ty.m_data.is_Borrow() )

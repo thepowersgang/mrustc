@@ -65,8 +65,7 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
             const auto& nse = crate.get_typeitem_by_path(sp, path.m_path, false, true);
             if(const auto* e = nse.opt_Enum())
             {
-                auto it = ::std::find_if(e->m_variants.begin(), e->m_variants.end(), [&](const auto& x){ return x.first == path.m_path.m_components.back(); });
-                auto var_idx = it - e->m_variants.begin();
+                auto var_idx = e->find_variant(path.m_path.m_components.back());
                 codegen->emit_constructor_enum(sp, path, *e, var_idx);
                 continue ;
             }

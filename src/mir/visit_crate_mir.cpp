@@ -72,14 +72,17 @@ void MIR::OuterVisitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 {
     auto _ = this->m_resolve.set_item_generics(item.m_params);
 
-    // TODO: Use a different type depding on repr()
-    auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
-
-    for(auto& var : item.m_variants)
+    if( auto* e = item.m_data.opt_Value() )
     {
-        TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-            m_cb(m_resolve, p + var.first, e.expr, {}, enum_type);
-        )
+        // TODO: Use a different type depding on repr()
+        auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
+
+        for(auto& var : e->variants)
+        {
+            if( var.expr ) {
+                m_cb(m_resolve, p + var.name, var.expr, {}, enum_type);
+            }
+        }
     }
 }
 

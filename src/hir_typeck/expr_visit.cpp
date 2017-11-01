@@ -125,17 +125,20 @@ namespace {
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             auto _ = this->m_ms.set_item_generics(item.m_params);
 
-            // TODO: Use a different type depding on repr()
-            auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
-
-            // TODO: Check types too?
-            for(auto& var : item.m_variants)
+            if( auto* e = item.m_data.opt_Value() )
             {
-                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    DEBUG("Enum value " << p << " - " << var.first);
-                    t_args  tmp;
-                    Typecheck_Code(m_ms, tmp, enum_type, e.expr);
-                )
+                // TODO: Use a different type depding on repr()
+                auto enum_type = ::HIR::TypeRef(::HIR::CoreType::Isize);
+
+                for(auto& var : e->variants)
+                {
+                    DEBUG("Enum value " << p << " - " << var.name);
+                    if( var.expr )
+                    {
+                        t_args  tmp;
+                        Typecheck_Code(m_ms, tmp, enum_type, var.expr);
+                    }
+                }
             }
         }
     };

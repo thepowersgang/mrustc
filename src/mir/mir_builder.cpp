@@ -1722,41 +1722,22 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 BUG(sp, "Downcast on unexpected type - " << ty);
                 ),
             (Path,
-                // TODO: Union?
                 if( const auto* pbe = te.binding.opt_Enum() )
                 {
                     const auto& enm = **pbe;
-                    const auto& variants = enm.m_variants;
+                    ASSERT_BUG(sp, enm.m_data.is_Data(), "Downcast on non-data enum");
+                    const auto& variants = enm.m_data.as_Data();
                     ASSERT_BUG(sp, e.variant_index < variants.size(), "Variant index out of range");
                     const auto& variant = variants[e.variant_index];
-                    // TODO: Make data variants refer to associated types (unify enum and struct handling)
-                    TU_MATCHA( (variant.second), (ve),
-                    (Value,
-                        DEBUG("");
-                        cb(::HIR::TypeRef::new_unit());
-                        ),
-                    (Unit,
-                        cb(::HIR::TypeRef::new_unit());
-                        ),
-                    (Tuple,
-                        // HACK! Create tuple.
-                        ::std::vector< ::HIR::TypeRef>  tys;
-                        for(const auto& fld : ve)
-                            tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
-                        ::HIR::TypeRef  tup( mv$(tys) );
-                        m_resolve.expand_associated_types(sp, tup);
-                        cb(tup);
-                        ),
-                    (Struct,
-                        // HACK! Create tuple.
-                        ::std::vector< ::HIR::TypeRef>  tys;
-                        for(const auto& fld : ve)
-                            tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
-                        ::HIR::TypeRef  tup( mv$(tys) );
-                        m_resolve.expand_associated_types(sp, tup);
-                        cb(tup);
-                        )
-                    )
+
+                    if( monomorphise_type_needed(variant.type) ) {
+                        auto tmp = monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, variant.type);
+                        m_resolve.expand_associated_types(sp, tmp);
+                        cb(tmp);
+                    }
+                    else {
+                        cb(variant.type);
+                    }
                 }
                 else if( const auto* pbe = te.binding.opt_Union() )
                 {
@@ -2070,7 +2051,7 @@ VarState& MirBuilder::get_val_state_mut(const Span& sp, const ::MIR::LValue& lv)
                 if( pb.is_Enum() )
                 {
                     const auto& enm = *pb.as_Enum();
-                    var_count = enm.m_variants.size();
+                    var_count = enm.num_variants();
                 }
                 else if( const auto* pbe = pb.opt_Union() )
                 {

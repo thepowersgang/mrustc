@@ -629,14 +629,19 @@ struct LowerHIR_ExprNode_Visitor:
                 else
                 {
                     const auto& enm = *e.hir;
-                    auto it = ::std::find_if(enm.m_variants.begin(), enm.m_variants.end(), [&](const auto& x){ return x.first == var_name; });
-                    assert(it != enm.m_variants.end());
+                    auto idx = enm.find_variant(var_name);
+                    assert(idx != SIZE_MAX);
 
-                    var_idx = static_cast<unsigned int>(it - enm.m_variants.begin());
-                    if( it->second.is_Struct() ) {
-                        ERROR(v.span(), E0000, "Named value referring to an enum that isn't tuple-like or unit-like - " << v.m_path);
+                    var_idx = idx;
+                    if( const auto* ee = enm.m_data.opt_Data() )
+                    {
+                        if( ee->at(idx).type == ::HIR::TypeRef::new_unit() ) {
+                        }
+                        // TODO: Assert that it's not a struct-like
+                        else {
+                            is_tuple_constructor = true;
+                        }
                     }
-                    is_tuple_constructor = it->second.is_Tuple();
                 }
                 (void)var_idx;  // TODO: Save time later by saving this.
                 if( is_tuple_constructor ) {

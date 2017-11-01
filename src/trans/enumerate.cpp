@@ -424,22 +424,12 @@ namespace {
                     return x;
                 }
                 };
-            for(const auto& variant : item.m_variants)
+            if( const auto* e = item.m_data.opt_Data() )
             {
-                TU_MATCHA( (variant.second), (e),
-                (Unit,
-                    ),
-                (Value,
-                    ),
-                (Tuple,
-                    for(const auto& ty : e)
-                        visit_type( monomorph(ty.ent) );
-                    ),
-                (Struct,
-                    for(const auto& fld : e)
-                        visit_type( monomorph(fld.second.ent) );
-                    )
-                )
+                for(const auto& variant : *e)
+                {
+                    visit_type( monomorph(variant.type) );
+                }
             }
         }
 
@@ -810,30 +800,16 @@ void Trans_Enumerate_Types(EnumState& state)
                                                 tv.m_resolve.expand_associated_types(sp, rv);
                                                 return rv;
                                                 };
-                                            const auto& variants = enm.m_variants;
+                                            ASSERT_BUG(Span(), enm.m_data.is_Data(), "");
+                                            const auto& variants = enm.m_data.as_Data();
                                             ASSERT_BUG(Span(), e.variant_index < variants.size(), "Variant index out of range");
-                                            const auto& variant = variants[e.variant_index];
-                                            // TODO: Make data variants refer to associated types (unify enum and struct handling)
-                                            TU_MATCHA( (variant.second), (ve),
-                                            (Value,
-                                                ),
-                                            (Unit,
-                                                ),
-                                            (Tuple,
-                                                // HACK! Create tuple.
-                                                ::std::vector< ::HIR::TypeRef>  tys;
-                                                for(const auto& fld : ve)
-                                                    tys.push_back( monomorph(fld.ent) );
-                                                return *tmp_ty_ptr = ::HIR::TypeRef( mv$(tys) );
-                                                ),
-                                            (Struct,
-                                                // HACK! Create tuple.
-                                                ::std::vector< ::HIR::TypeRef>  tys;
-                                                for(const auto& fld : ve)
-                                                    tys.push_back( monomorph(fld.second.ent) );
-                                                return *tmp_ty_ptr = ::HIR::TypeRef( mv$(tys) );
-                                                )
-                                            )
+                                            const auto& raw_ty = variants[e.variant_index].type;
+                                            if( monomorphise_type_needed(raw_ty) ) {
+                                                return *tmp_ty_ptr = monomorph(raw_ty);
+                                            }
+                                            else {
+                                                return raw_ty;
+                                            }
                                         }
                                         else
                                         {
@@ -1553,8 +1529,7 @@ void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& li
             Trans_Enumerate_FillFrom_Literal(state, v, pp);
         ),
     (Variant,
-        for(const auto& v : e.vals)
-            Trans_Enumerate_FillFrom_Literal(state, v, pp);
+        Trans_Enumerate_FillFrom_Literal(state, *e.val, pp);
         ),
     (Integer,
         ),

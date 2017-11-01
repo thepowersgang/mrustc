@@ -25,10 +25,7 @@ namespace HIR {
             os << " ]";
             ),
         (Variant,
-            os << "#" << e.idx << ":[";
-            for(const auto& val : e.vals)
-                os << " " << val << ",";
-            os << " ]";
+            os << "#" << e.idx << ":" << *e.val;
             ),
         (Integer,
             os << e;
@@ -66,11 +63,7 @@ namespace HIR {
         (Variant,
             if( le.idx != re.idx )
                 return false;
-            if( le.vals.size() != re.vals.size() )
-                return false;
-            for(unsigned int i = 0; i < le.vals.size(); i ++)
-                if( le.vals[i] != re.vals[i] )
-                    return false;
+            return *le.val == *re.val;
             ),
         (Integer,
             return le == re;
@@ -92,36 +85,43 @@ namespace HIR {
     }
 }
 
-const ::HIR::Enum::Variant* ::HIR::Enum::get_variant(const ::std::string& name) const
+size_t ::HIR::Enum::find_variant(const ::std::string& name) const
 {
-    auto it = ::std::find_if(m_variants.begin(), m_variants.end(), [&](const auto& x){ return x.first == name; });
-    if( it == m_variants.end() )
-        return nullptr;
-    return &it->second;
+    if( m_data.is_Value() )
+    {
+        const auto& e = m_data.as_Value();
+        auto it = ::std::find_if(e.variants.begin(), e.variants.end(), [&](const auto& x){ return x.name == name; });
+        if( it == e.variants.end() )
+            return SIZE_MAX;
+        return it - e.variants.begin();
+    }
+    else
+    {
+        const auto& e = m_data.as_Data();
+
+        auto it = ::std::find_if(e.begin(), e.end(), [&](const auto& x){ return x.name == name; });
+        if( it == e.end() )
+            return SIZE_MAX;
+        return it - e.begin();
+    }
 }
 bool HIR::Enum::is_value() const
 {
-    return this->m_repr != ::HIR::Enum::Repr::Rust || ::std::all_of(m_variants.begin(), m_variants.end(), [](const auto& x){return x.second.is_Unit() || x.second.is_Value();});
+    return this->m_data.is_Value();
 }
 uint32_t HIR::Enum::get_value(size_t idx) const
 {
-    assert(idx < m_variants.size());
-
-    if( const auto* e = m_variants[idx].second.opt_Value() )
+    if( m_data.is_Value() )
     {
-        return e->val.as_Integer();
-    }
+        const auto& e = m_data.as_Value();
+        assert(idx < e.variants.size());
 
-    uint32_t    val = 0;
-    for(size_t i = 0; i < idx; i ++)
-    {
-        if( const auto* e = m_variants[i].second.opt_Value() )
-        {
-            val = e->val.as_Integer();
-        }
-        val ++;
+        return e.variants[idx].val;
     }
-    return val;
+    else
+    {
+        assert(!"TODO: Enum::get_value on non-value enum?");
+    }
 }
 
 namespace {
@@ -1214,7 +1214,7 @@ const ::HIR::Function& ::HIR::Crate::get_function_by_path(const Span& sp, const 
         return e;
     )
     else {
-        BUG(sp, "Enum path " << path << " didn't point to an enum");
+        BUG(sp, "Function path " << path << " didn't point to an function");
     }
 }
 

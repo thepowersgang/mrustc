@@ -158,38 +158,27 @@ namespace {
             }
             m_os << indent() << "{\n";
             inc_indent();
-            for(const auto& var : item.m_variants)
+            if(const auto* e = item.m_data.opt_Value())
             {
-                m_os << indent() << var.first;
-                TU_MATCHA( (var.second), (e),
-                (Unit,
-                    ),
-                (Value,
-                    m_os << " = ";
-                    if( e.val.is_Invalid() ) {
-                        m_os << "?";
-                    }
-                    else {
-                        m_os << e.val;
-                    }
-                    ),
-                (Tuple,
-                    m_os << "(";
-                    for(const auto& fld : e)
-                        m_os << fld.ent << ", ";
-                    m_os << ")";
-                    ),
-                (Struct,
-                    m_os << "{\n";
-                    inc_indent();
-                    for(const auto& fld : e)
+                for(const auto& var : e->variants)
+                {
+                    m_os << indent() << var.name;
+                }
+            }
+            else
+            {
+                for(const auto& var : item.m_data.as_Data())
+                {
+                    m_os << indent() << var.name;
+                    if( var.type == ::HIR::TypeRef::new_unit() )
                     {
-                        m_os << indent() << fld.first << ": " << fld.second.ent << ",\n";
+
                     }
-                    m_os << indent() << "}";
-                    dec_indent();
-                    )
-                )
+                    else
+                    {
+                        m_os << " " << var.type << (var.is_struct ? "/*struct*/" : "");
+                    }
+                }
                 m_os << ",\n";
             }
             dec_indent();

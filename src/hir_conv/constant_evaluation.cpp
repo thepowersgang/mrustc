@@ -63,11 +63,7 @@ namespace {
             return ::HIR::Literal( mv$(vals) );
             ),
         (Variant,
-            ::std::vector< ::HIR::Literal>  vals;
-            for(const auto& val : e.vals) {
-                vals.push_back( clone_literal(val) );
-            }
-            return ::HIR::Literal::make_Variant({ e.idx, mv$(vals) });
+            return ::HIR::Literal::make_Variant({ e.idx, box$(clone_literal(*e.val)) });
             ),
         (Integer,
             return ::HIR::Literal(e);
@@ -595,11 +591,11 @@ namespace {
                     ASSERT_BUG(node.span(), ent.is_Enum(), "_TupleVariant with m_is_struct clear pointing to " << ent.tag_str());
                     const auto& enm = ent.as_Enum();
 
-                    auto it = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == varname; } );
-                    ASSERT_BUG(node.span(), it != enm.m_variants.end(), "_TupleVariant points to unknown variant - " << node.m_path);
-                    unsigned int var_idx = it - enm.m_variants.begin();
+                    auto var_idx = enm.find_variant(varname);
+                    ASSERT_BUG(node.span(), var_idx != SIZE_MAX, "_TupleVariant points to unknown variant - " << node.m_path);
 
-                    m_rv = ::HIR::Literal::make_Variant({var_idx, mv$(vals)});
+                    auto inner = box$( ::HIR::Literal::make_List(mv$(vals)) );
+                    m_rv = ::HIR::Literal::make_Variant({ static_cast<unsigned>(var_idx), mv$(inner) });
                     m_rv_type = ::HIR::TypeRef::new_path( mv$(tmp_path), ::HIR::TypeRef::TypePathBinding(&enm) );
                 }
             }
@@ -766,11 +762,10 @@ namespace {
                     ASSERT_BUG(node.span(), ent.is_Enum(), "_UnitVariant with m_is_struct clear pointing to " << ent.tag_str());
                     const auto& enm = ent.as_Enum();
 
-                    auto it = ::std::find_if( enm.m_variants.begin(), enm.m_variants.end(), [&](const auto&x){ return x.first == varname; } );
-                    ASSERT_BUG(node.span(), it != enm.m_variants.end(), "_UnitVariant points to unknown variant - " << node.m_path);
-                    unsigned int var_idx = it - enm.m_variants.begin();
+                    auto var_idx = enm.find_variant(varname);
+                    ASSERT_BUG(node.span(), var_idx != SIZE_MAX, "_UnitVariant points to unknown variant - " << node.m_path);
 
-                    m_rv = ::HIR::Literal::make_Variant({var_idx, {}});
+                    m_rv = ::HIR::Literal::make_Variant({ static_cast<unsigned>(var_idx), box$(::HIR::Literal::make_List({})) });
                     m_rv_type = ::HIR::TypeRef::new_path( mv$(tmp_path), ::HIR::TypeRef::TypePathBinding(&enm) );
                 }
             }
@@ -1604,12 +1599,20 @@ namespace {
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
-            for(auto& var : item.m_variants)
+            if( auto* e = item.m_data.opt_Value() )
             {
-                TU_IFLET(::HIR::Enum::Variant, var.second, Value, e,
-                    e.val = evaluate_constant(e.expr->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.first << "$") }, e.expr, {});
-                    DEBUG("enum variant: " << p << "::" << var.first << " = " << e.val);
-                )
+                uint64_t i = 0;
+                for(auto& var : e->variants)
+                {
+                    if( var.expr )
+                    {
+                        auto val = evaluate_constant(var.expr->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.name << "$") }, var.expr, {});
+                        DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
+                        i = val.as_Integer();
+                    }
+                    var.val = i;
+                    i ++;
+                }
             }
             ::HIR::Visitor::visit_enum(p, item);
         }

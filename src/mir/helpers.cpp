@@ -200,34 +200,20 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
             if( te.binding.is_Enum() )
             {
                 const auto& enm = *te.binding.as_Enum();
-                const auto& variants = enm.m_variants;
-                MIR_ASSERT(*this, e.variant_index < variants.size(), "Variant index out of range");
+                MIR_ASSERT(*this, enm.m_data.is_Data(), "Downcast on non-data enum - " << ty);
+                const auto& variants = enm.m_data.as_Data();
+                MIR_ASSERT(*this, e.variant_index < variants.size(), "Variant index out of range for " << ty);
                 const auto& variant = variants[e.variant_index];
-                // TODO: Make data variants refer to associated types (unify enum and struct handling)
-                TU_MATCHA( (variant.second), (ve),
-                (Value,
-                    ),
-                (Unit,
-                    ),
-                (Tuple,
-                    // HACK! Create tuple.
-                    ::std::vector< ::HIR::TypeRef>  tys;
-                    for(const auto& fld : ve)
-                        tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.ent) );
-                    tmp = ::HIR::TypeRef( mv$(tys) );
+
+                const auto& var_ty = variant.type;
+                if( monomorphise_type_needed(var_ty) ) {
+                    tmp = monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
                     m_resolve.expand_associated_types(sp, tmp);
                     return tmp;
-                    ),
-                (Struct,
-                    // HACK! Create tuple.
-                    ::std::vector< ::HIR::TypeRef>  tys;
-                    for(const auto& fld : ve)
-                        tys.push_back( monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, fld.second.ent) );
-                    tmp = ::HIR::TypeRef( mv$(tys) );
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                    )
-                )
+                }
+                else {
+                    return var_ty;
+                }
             }
             else
             {

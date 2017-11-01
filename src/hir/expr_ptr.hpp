@@ -8,6 +8,7 @@
 #pragma once
 #include <memory>
 #include <vector>
+#include <cassert>
 
 #include <mir/mir_ptr.hpp>
 
@@ -47,10 +48,10 @@ public:
         this->ptr = p;
     }
 
-          ::HIR::ExprNode& operator*()       { return *ptr; }
-    const ::HIR::ExprNode& operator*() const { return *ptr; }
-          ::HIR::ExprNode* operator->()       { return ptr; }
-    const ::HIR::ExprNode* operator->() const { return ptr; }
+          ::HIR::ExprNode& operator*()       { assert(ptr); return *ptr; }
+    const ::HIR::ExprNode& operator*() const { assert(ptr); return *ptr; }
+          ::HIR::ExprNode* operator->()       { assert(ptr); return ptr; }
+    const ::HIR::ExprNode* operator->() const { assert(ptr); return ptr; }
 };
 
 class ExprPtr
