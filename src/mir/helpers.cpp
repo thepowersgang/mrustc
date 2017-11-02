@@ -557,7 +557,7 @@ namespace
 #if 1
 void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, const ::MIR::Function& fcn,  size_t bb_idx, size_t stmt_idx,  const ::MIR::LValue& lv, const ::std::vector<size_t>& block_offsets, ValueLifetime& vl);
 
-::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, const ::MIR::Function& fcn, bool dump_debug)
+::MIR::ValueLifetimes MIR_Helper_GetLifetimes(::MIR::TypeResolve& state, const ::MIR::Function& fcn, bool dump_debug, const ::std::vector<bool>* mask/*=nullptr*/)
 {
     TRACE_FUNCTION_F(state);
 
@@ -580,8 +580,11 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
                 // NOTE: Fills the first statement after running, just to ensure that any assigned value has _a_ lifetime
                 if( const auto* de = lv.opt_Local() )
                 {
-                    MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[*de]);
-                    slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
+                    if( !mask || mask->at(*de) )
+                    {
+                        MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[*de]);
+                        slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
+                    }
                 }
                 else
                 {
@@ -591,8 +594,11 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
                         {
                             if( vu == ValUsage::Write )
                             {
-                                MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[*de]);
-                                slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
+                                if( !mask || mask->at(*de) )
+                                {
+                                    MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[*de]);
+                                    slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
+                                }
                             }
                         }
                         return false;
@@ -622,7 +628,10 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
                 // HACK: Mark values as valid wherever there's a drop (prevents confusion by simple validator)
                 if( const auto* de = se->slot.opt_Local() )
                 {
-                    slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx,stmt_idx);
+                    if( !mask || mask->at(*de) )
+                    {
+                        slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx,stmt_idx);
+                    }
                 }
             }
         }

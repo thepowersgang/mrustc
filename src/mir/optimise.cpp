@@ -574,11 +574,16 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
         // >> Unify duplicate temporaries
         // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
-        // TODO: Only run this when nothing else happened. (It's VERY expensive)
-        change_happened |= MIR_Optimise_UnifyTemporaries(state, fcn);
-        #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
+        // Only run this when nothing else happened. (It's VERY expensive)
+#if 1
+        if( !change_happened )
+        {
+            change_happened |= MIR_Optimise_UnifyTemporaries(state, fcn);
+# if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+# endif
+        }
+#endif
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
@@ -1254,7 +1259,8 @@ bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& f
             return false;
     }
 
-    auto lifetimes = MIR_Helper_GetLifetimes(state, fcn, /*dump_debug=*/true);
+    // TODO: Only calculate lifetimes for replacable locals
+    auto lifetimes = MIR_Helper_GetLifetimes(state, fcn, /*dump_debug=*/true, /*mask=*/&replacable);
     ::std::vector<::MIR::ValueLifetime>  slot_lifetimes = mv$(lifetimes.m_slots);
 
     // 2. Unify variables of the same type with distinct non-overlapping lifetimes
