@@ -35,6 +35,9 @@ $(MINICARGO):
 	$(MAKE) -C tools/minicargo/
 	test -e $@
 
+# Standard library crates
+# - libstd, libpanic_unwind, libtest and libgetopts
+# - libproc_macro (mrustc)
 $(OUTDIR)libstd.hir: $(MRUSTC) $(MINICARGO)
 	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR)
 	test -e $@
@@ -61,9 +64,13 @@ RUSTC_ENV_VARS += CFG_PREFIX=mrustc
 RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+	mkdir -p $(OUTDIR)rustc-build
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)rustc-build -L $(OUTDIR)
+	cp $(OUTDIR)rustc-build/rustc $(OUTDIR)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+	mkdir -p $(OUTDIR)cargo-build
+	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)cargo-build -L $(OUTDIR)
+	cp $(OUTDIR)cargo-build/cargo $(OUTDIR)
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
 LLVM_CMAKE_OPTS := LLVM_TARGET_ARCH=$(firstword $(subst -, ,$(RUSTC_TARGET))) LLVM_DEFAULT_TARGET_TRIPLE=$(RUSTC_TARGET)
@@ -84,13 +91,13 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 #
 # Developement-only targets
 #
-#$(OUTDIR)libserde-1_0_6.hir: $(MRUSTC) $(OUTDIR)libstd.hir
-#	$(MINICARGO) $(RUSTCSRC)src/vendor/serde --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
-$(OUTDIR)libgit2-0_6_6.hir: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/git2 --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR) --features ssh,https,curl,openssl-sys,openssl-probe
-$(OUTDIR)libserde_json-1_0_2.hir: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/serde_json --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
-$(OUTDIR)libcurl-0_4_6.hir: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/curl --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
-$(OUTDIR)libterm-0_4_5.hir: $(MRUSTC) LIBS
-	$(MINICARGO) $(RUSTCSRC)src/vendor/term --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+#$(OUTDIR)cargo-build/libserde-1_0_6.hir: $(MRUSTC) LIBS
+#	$(MINICARGO) $(RUSTCSRC)src/vendor/serde --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
+$(OUTDIR)cargo-build/libgit2-0_6_6.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/git2 --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) --features ssh,https,curl,openssl-sys,openssl-probe
+$(OUTDIR)cargo-build/libserde_json-1_0_2.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/serde_json --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
+$(OUTDIR)cargo-build/libcurl-0_4_6.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/curl --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
+$(OUTDIR)cargo-build/libterm-0_4_5.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/term --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
