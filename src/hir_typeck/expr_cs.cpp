@@ -221,7 +221,7 @@ static void fix_param_count(const Span& sp, Context& context, const ::HIR::TypeR
 
 namespace {
 
-    void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, t_cb_generic monomorph_cb)
+    void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, t_cb_generic monomorph_cb, bool is_impl_level)
     {
         for(const auto& bound : params_def.m_bounds)
         {
@@ -263,6 +263,15 @@ namespace {
                 context.equate_types(sp, real_type_left, real_type_right);
                 )
             )
+        }
+
+        for(size_t i = 0; i < params_def.m_types.size(); i++)
+        {
+            if( params_def.m_types[i].m_is_sized )
+            {
+                ::HIR::TypeRef  ty("", (is_impl_level ? 0 : 256) + i);
+                context.require_sized(sp, monomorph_cb(ty));
+            }
         }
     }
 
@@ -374,7 +383,7 @@ namespace {
         cache.m_arg_types.push_back( monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false) );
 
         // --- Apply bounds by adding them to the associated type ruleset
-        apply_bounds_as_rules(context, sp, *cache.m_fcn_params, cache.m_monomorph_cb);
+        apply_bounds_as_rules(context, sp, *cache.m_fcn_params, cache.m_monomorph_cb, /*is_impl_level=*/false);
 
         return true;
     }
@@ -497,7 +506,7 @@ namespace {
             };
 
         // Add trait bounds for all impl and function bounds
-        apply_bounds_as_rules(context, sp, impl_ptr->m_params, cache.m_monomorph_cb);
+        apply_bounds_as_rules(context, sp, impl_ptr->m_params, cache.m_monomorph_cb, /*is_impl_level=*/true);
 
         // Equate `Self` and `impl_ptr->m_type` (after monomorph)
         {
@@ -1256,7 +1265,7 @@ namespace {
             }
 
             // Convert bounds on the type into rules
-            apply_bounds_as_rules(context, node.span(), *generics, monomorph_cb);
+            apply_bounds_as_rules(context, node.span(), *generics, monomorph_cb, /*is_impl_level=*/true);
 
             auto _ = this->push_inner_coerce_scoped(true);
             for( auto& val : node.m_values ) {
@@ -1283,7 +1292,7 @@ namespace {
             auto monomorph_cb = monomorphise_type_get_cb(node.span(), &ty, &node.m_path.m_params, nullptr);
 
             // Convert bounds on the type into rules
-            apply_bounds_as_rules(context, node.span(), unm.m_params, monomorph_cb);
+            apply_bounds_as_rules(context, node.span(), unm.m_params, monomorph_cb, /*is_impl_level=*/true);
 
             auto it = ::std::find_if(unm.m_variants.begin(), unm.m_variants.end(), [&](const auto& v)->bool{ return v.first == node.m_variant_name; });
             assert(it != unm.m_variants.end());
@@ -1589,7 +1598,7 @@ namespace {
                     }
 
                     // Apply bounds
-                    apply_bounds_as_rules(this->context, sp, f.m_params, monomorph_cb);
+                    apply_bounds_as_rules(this->context, sp, f.m_params, monomorph_cb, /*is_impl_level=*/false);
 
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
                     DEBUG("> " << node.m_path << " = " << ty);
@@ -1610,7 +1619,7 @@ namespace {
                     {
                         ft.m_arg_types.push_back( monomorphise_type(sp, s.m_params, e.m_params, arg.ent) );
                     }
-                    //apply_bounds_as_rules(this->context, sp, s.m_params, monomorph_cb);
+                    //apply_bounds_as_rules(this->context, sp, s.m_params, monomorph_cb, /*is_impl_level=*/true);
 
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
                     this->context.equate_types(sp, node.m_res_type, ty);
@@ -1638,7 +1647,7 @@ namespace {
                     {
                         ft.m_arg_types.push_back( monomorphise_type(sp, enm.m_params, e.m_params, arg.ent) );
                     }
-                    //apply_bounds_as_rules(this->context, sp, enm.m_params, monomorph_cb);
+                    //apply_bounds_as_rules(this->context, sp, enm.m_params, monomorph_cb, /*is_impl_level=*/true);
 
                     auto ty = ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Function(mv$(ft)) );
                     this->context.equate_types(sp, node.m_res_type, ty);
@@ -1695,7 +1704,7 @@ namespace {
                         };
                     for(const auto& arg : ie.m_args)
                         ft.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb) );
-                    apply_bounds_as_rules(this->context, sp, ie.m_params, monomorph_cb);
+                    apply_bounds_as_rules(this->context, sp, ie.m_params, monomorph_cb, /*is_impl_level=*/false);
                     auto ty = ::HIR::TypeRef(mv$(ft));
 
                     this->context.equate_types(node.span(), node.m_res_type, ty);
@@ -1804,8 +1813,8 @@ namespace {
                         };
 
                     // Bounds (both impl and fn)
-                    apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, monomorph_cb);
-                    apply_bounds_as_rules(this->context, sp, fcn_ptr->m_params, monomorph_cb);
+                    apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, monomorph_cb, /*is_impl_level=*/true);
+                    apply_bounds_as_rules(this->context, sp, fcn_ptr->m_params, monomorph_cb, /*is_impl_level=*/false);
 
                     ::HIR::FunctionType ft {
                         fcn_ptr->m_unsafe, fcn_ptr->m_abi,
@@ -1826,7 +1835,7 @@ namespace {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = ( monomorphise_type_needed(const_ptr->m_type) ? tmp = monomorphise_type_with(sp, const_ptr->m_type, monomorph_cb) : const_ptr->m_type );
 
-                    apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, monomorph_cb);
+                    apply_bounds_as_rules(this->context, sp, impl_ptr->m_params, monomorph_cb, /*is_impl_level=*/true);
                     this->context.equate_types(node.span(), node.m_res_type, ty);
                 }
                 )
@@ -4222,10 +4231,8 @@ void fix_param_count_(const Span& sp, Context& context, const ::HIR::TypeRef& se
 {
     if( params.m_types.size() == param_defs.m_types.size() ) {
         // Nothing to do, all good
-        return ;
     }
-
-    if( params.m_types.size() > param_defs.m_types.size() ) {
+    else if( params.m_types.size() > param_defs.m_types.size() ) {
         ERROR(sp, E0000, "Too many type parameters passed to " << path);
     }
     else {
@@ -4349,6 +4356,13 @@ namespace {
         {
             // [T] can't unsize to anything
             DEBUG("Slice can't unsize");
+            return CoerceResult::Equality;
+        }
+
+        // Can't Unsize to a known-Sized type.
+        if( dst.m_data.is_Infer() && dst.m_data.as_Infer().index < context.m_ivars_sized.size() && context.m_ivars_sized.at( dst.m_data.as_Infer().index ) )
+        {
+            DEBUG("Can't unsize to known-Sized type");
             return CoerceResult::Equality;
         }
 
@@ -4757,6 +4771,8 @@ namespace {
         if( TU_TEST1(src.m_data, Infer, .is_lit()) ) {
             return CoerceResult::Equality;
         }
+
+        // TODO: If the destination is bounded to be Sized, equate and return.
         // If both sides are `_`, then can't know about coerce yet
         if( dst.m_data.is_Infer() && src.m_data.is_Infer() ) {
             // Add possibilities both ways
@@ -6183,12 +6199,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             // Check the possible equations
             DEBUG("--- IVar possibilities");
-            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            for(unsigned int i = context.possible_ivar_vals.size(); i --; )
+            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i]) ) {
                     static Span sp;
                     assert( context.possible_ivar_vals[i].has_rules() );
-                    // TODO: Disable all metioned ivars in the possibilities
+                    // Disable all metioned ivars in the possibilities
                     for(const auto& ty : context.possible_ivar_vals[i].types_coerce_to)
                         context.equate_types_from_shadow(sp,ty);
                     for(const auto& ty : context.possible_ivar_vals[i].types_unsize_to)
@@ -6197,6 +6214,26 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                         context.equate_types_to_shadow(sp,ty);
                     for(const auto& ty : context.possible_ivar_vals[i].types_unsize_from)
                         context.equate_types_to_shadow(sp,ty);
+
+                    // Also disable inferrence (for this pass) for all ivars in affected bounds
+                    for(const auto& la : context.link_assoc)
+                    {
+                        bool found = false;
+                        auto cb = [&](const auto& t) { return TU_TEST1(t.m_data, Infer, .index == i); };
+                        if( la.left_ty != ::HIR::TypeRef() )
+                            found |= visit_ty_with( la.left_ty, cb );
+                        found |= visit_ty_with( la.impl_ty, cb );
+                        for(const auto& t : la.params.m_types)
+                            found |= visit_ty_with( t, cb );
+                        if( found )
+                        {
+                            if(la.left_ty != ::HIR::TypeRef())
+                                context.equate_types_shadow(sp, la.left_ty, false);
+                            context.equate_types_shadow(sp, la.impl_ty, false);
+                            for(const auto& t : la.params.m_types)
+                                context.equate_types_shadow(sp, t, false);
+                        }
+                    }
                 }
                 else {
                     //assert( !context.m_ivars.peek_changed() );
