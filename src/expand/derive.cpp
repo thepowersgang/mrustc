@@ -772,8 +772,8 @@ public:
                     pats_b.push_back( ::AST::Pattern(::AST::Pattern::TagBind(), name_b, ::AST::PatternBinding::Type::REF) );
 
                     nodes.push_back(this->make_compare_and_ret( sp, core_name,
-                        NEWNODE(NamedValue, AST::Path(name_a)),
-                        NEWNODE(NamedValue, AST::Path(name_b))
+                        NEWNODE(Deref, NEWNODE(NamedValue, AST::Path(name_a))),
+                        NEWNODE(Deref, NEWNODE(NamedValue, AST::Path(name_b)))
                         ));
                 }
 
@@ -795,8 +795,8 @@ public:
                     pats_b.push_back( ::std::make_pair(fld.m_name, ::AST::Pattern(::AST::Pattern::TagBind(), name_b, ::AST::PatternBinding::Type::REF)) );
 
                     nodes.push_back(this->make_compare_and_ret( sp, core_name,
-                        NEWNODE(NamedValue, AST::Path(name_a)),
-                        NEWNODE(NamedValue, AST::Path(name_b))
+                        NEWNODE(Deref, NEWNODE(NamedValue, AST::Path(name_a))),
+                        NEWNODE(Deref, NEWNODE(NamedValue, AST::Path(name_b)))
                         ));
                 }
 
