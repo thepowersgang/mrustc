@@ -1100,17 +1100,18 @@ namespace {
         TRACE_FUNCTION_F(path);
         StaticTraitResolve  resolve { crate };
 
-        TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
-        (Generic,
-            return get_ent_simplepath(sp, crate, e.m_path);
-            ),
-        (UfcsInherent,
+        if( const auto* pe = path.m_data.opt_Generic() )
+        {
+            return get_ent_simplepath(sp, crate, pe->m_path);
+        }
+        else if( const auto* pe = path.m_data.opt_UfcsInherent() )
+        {
             // Easy (ish)
             EntPtr rv;
-            crate.find_type_impls(*e.type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
+            crate.find_type_impls(*pe->type, [](const auto&x)->const auto& { return x; }, [&](const auto& impl) {
                 DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                 {
-                    auto fit = impl.m_methods.find(e.item);
+                    auto fit = impl.m_methods.find(pe->item);
                     if( fit != impl.m_methods.end() )
                     {
                         DEBUG("- Contains method, good");
@@ -1129,20 +1130,21 @@ namespace {
                 return false;
                 });
             return rv;
-            ),
-        (UfcsKnown,
+        }
+        else if( const auto* pe = path.m_data.opt_UfcsKnown() )
+        {
             EntPtr rv;
 
             // Obtain trait pointer (for default impl and to know what the item type is)
-            const auto& trait_ref = crate.get_trait_by_path(sp, e.trait.m_path);
-            auto trait_vi_it = trait_ref.m_values.find(e.item);
-            ASSERT_BUG(sp, trait_vi_it != trait_ref.m_values.end(), "Couldn't find item " << e.item << " in trait " << e.trait.m_path);
+            const auto& trait_ref = crate.get_trait_by_path(sp, pe->trait.m_path);
+            auto trait_vi_it = trait_ref.m_values.find(pe->item);
+            ASSERT_BUG(sp, trait_vi_it != trait_ref.m_values.end(), "Couldn't find item " << pe->item << " in trait " << pe->trait.m_path);
             const auto& trait_vi = trait_vi_it->second;
 
             bool is_dynamic = false;
             ::std::vector<::HIR::TypeRef>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
-            resolve.find_impl(sp, e.trait.m_path, e.trait.m_params, *e.type, [&](auto impl_ref, auto is_fuzz) {
+            resolve.find_impl(sp, pe->trait.m_path, pe->trait.m_params, *pe->type, [&](auto impl_ref, auto is_fuzz) {
                 DEBUG("[get_ent_fullpath] Found " << impl_ref);
                 //ASSERT_BUG(sp, !is_fuzz, "Fuzzy match not allowed here");
                 if( ! impl_ref.m_data.is_TraitImpl() ) {
@@ -1153,32 +1155,32 @@ namespace {
                 }
                 const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
                 const auto& impl = *impl_ref_e.impl;
-                ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == e.trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << e.trait.m_params);
+                ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == pe->trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe->trait.m_params);
 
                 if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
                     best_impl = &impl;
                     bool is_spec = false;
                     TU_MATCHA( (trait_vi), (ve),
                     (Constant,
-                        auto it = impl.m_constants.find(e.item);
+                        auto it = impl.m_constants.find(pe->item);
                         if( it == impl.m_constants.end() ) {
-                            DEBUG("Constant " << e.item << " missing in trait " << e.trait << " for " << *e.type);
+                            DEBUG("Constant " << pe->item << " missing in trait " << pe->trait << " for " << *pe->type);
                             return false;
                         }
                         is_spec = it->second.is_specialisable;
                         ),
                     (Static,
-                        auto it = impl.m_statics.find(e.item);
-                        if( it == impl.m_statics.end() && e.item != "#vtable" ) {
-                            DEBUG("Static " << e.item << " missing in trait " << e.trait << " for " << *e.type);
+                        auto it = impl.m_statics.find(pe->item);
+                        if( it == impl.m_statics.end() && pe->item != "#vtable" ) {
+                            DEBUG("Static " << pe->item << " missing in trait " << pe->trait << " for " << *pe->type);
                             return false;
                         }
                         is_spec = it->second.is_specialisable;
                         ),
                     (Function,
-                        auto fit = impl.m_methods.find(e.item);
+                        auto fit = impl.m_methods.find(pe->item);
                         if( fit == impl.m_methods.end() ) {
-                            DEBUG("Method " << e.item << " missing in trait " << e.trait << " for " << *e.type);
+                            DEBUG("Method " << pe->item << " missing in trait " << pe->trait << " for " << *pe->type);
                             return false;
                         }
                         is_spec = fit->second.is_specialisable;
@@ -1210,7 +1212,7 @@ namespace {
 
             TU_MATCHA( (trait_vi), (ve),
             (Constant,
-                auto it = impl.m_constants.find(e.item);
+                auto it = impl.m_constants.find(pe->item);
                 if( it != impl.m_constants.end() )
                 {
                     DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
@@ -1219,12 +1221,12 @@ namespace {
                 TODO(sp, "Associated constant - " << path);
                 ),
             (Static,
-                if( e.item == "#vtable" )
+                if( pe->item == "#vtable" )
                 {
                     DEBUG("VTable, autogen");
                     return EntPtr::make_AutoGenerate( {} );
                 }
-                auto it = impl.m_statics.find(e.item);
+                auto it = impl.m_statics.find(pe->item);
                 if( it != impl.m_statics.end() )
                 {
                     DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
@@ -1233,25 +1235,25 @@ namespace {
                 TODO(sp, "Associated static - " << path);
                 ),
             (Function,
-                auto fit = impl.m_methods.find(e.item);
+                auto fit = impl.m_methods.find(pe->item);
                 if( fit != impl.m_methods.end() )
                 {
                     DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                     return EntPtr { &fit->second.data };
                 }
-                impl_pp = e.trait.m_params.clone();
+                impl_pp = pe->trait.m_params.clone();
                 // HACK! By adding a new parameter here, the MIR will always be monomorphised
                 impl_pp.m_types.push_back( ::HIR::TypeRef() );
                 return EntPtr { &ve };
                 )
             )
             BUG(sp, "");
-            ),
-        (UfcsUnknown,
+        }
+        else
+        {
             // TODO: Are these valid at this point in compilation?
             TODO(sp, "get_ent_fullpath(path = " << path << ")");
-            )
-        )
+        }
         throw "";
     }
 }
