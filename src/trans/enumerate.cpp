@@ -1170,8 +1170,12 @@ namespace {
                         is_spec = it->second.is_specialisable;
                         ),
                     (Static,
+                        if( pe->item == "#vtable" ) {
+                            is_spec = true;
+                            break;
+                        }
                         auto it = impl.m_statics.find(pe->item);
-                        if( it == impl.m_statics.end() && pe->item != "#vtable" ) {
+                        if( it == impl.m_statics.end() ) {
                             DEBUG("Static " << pe->item << " missing in trait " << pe->trait << " for " << *pe->type);
                             return false;
                         }
