@@ -22,7 +22,8 @@ enum Token {
     Fragment(FragmentType, u64),    // Type and a key
 }
 #[repr(u8)]
-enum FragementType {
+#[derive(Copy,Clone)] // TODO: Is this just a mrustc thing?
+enum FragmentType {
     Ident = 0,
     Tt = 1,
 
@@ -73,6 +74,11 @@ impl<T: Iterator<Item=char>> CharStream<T> {
 
 pub struct LexError {
     _inner: (),
+}
+impl ::std::fmt::Debug for LexError {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        f.write_str("LexError")
+    }
 }
 impl FromStr for TokenStream {
     type Err = LexError;
