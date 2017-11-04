@@ -26,4 +26,4 @@ script:
 # Tests
  - CC=gcc-6 make local_tests -k
 # - CC=gcc-6 make rust_tests -k
- - CC=gcc-6 valgrind ./bin/mrustc rustc-1.19.0-src/src/libstd/lib.rs --crate-name std --crate-type rlib -g -O -o output/libstd.hir -L output -l dl -l rt -l pthread
+ - CC=gcc-6 valgrind --track-origins=yes ./bin/mrustc rustc-1.19.0-src/src/libstd/lib.rs --crate-name std --crate-type rlib -g -O -o output/libstd.hir -L output -l dl -l rt -l pthread
