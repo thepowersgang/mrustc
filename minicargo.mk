@@ -91,6 +91,8 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 #
 # Developement-only targets
 #
+$(OUTDIR)rustc-build/librustdoc.hir: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/librustdoc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
 #$(OUTDIR)cargo-build/libserde-1_0_6.hir: $(MRUSTC) LIBS
 #	$(MINICARGO) $(RUSTCSRC)src/vendor/serde --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
 $(OUTDIR)cargo-build/libgit2-0_6_6.hir: $(MRUSTC) LIBS
