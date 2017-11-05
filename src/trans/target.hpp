@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <hir/type.hpp>
+#include <hir_typeck/static.hpp>
 
 enum class CodegenMode
 {
@@ -40,9 +41,22 @@ struct TargetSpec
     TargetArch  m_arch;
 };
 
+struct StructRepr
+{
+    struct Ent {
+        unsigned int    field_idx;
+        size_t  size;
+        size_t  align;
+        ::HIR::TypeRef  ty;
+    };
+    // List of types, including padding (indicated by a UINT_MAX field idx)
+    // Ordered as they would be emitted
+    ::std::vector<Ent>  ents;
+};
 
 extern const TargetSpec& Target_GetCurSpec();
 extern void Target_SetCfg(const ::std::string& target_name);
-extern bool Target_GetSizeOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_size);
-extern bool Target_GetAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_align);
+extern bool Target_GetSizeOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size);
+extern bool Target_GetAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_align);
+extern const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& struct_ty);
 

@@ -260,7 +260,6 @@ public:
         Rust,
         C,
         Packed,
-        //Union,
     };
     TAGGED_UNION(Data, Unit,
         (Unit, struct {}),

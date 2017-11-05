@@ -1699,7 +1699,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         if( tef.name == "size_of" )
         {
             size_t size_val = 0;
-            if( Target_GetSizeOf(state.sp, tef.params.m_types.at(0), size_val) )
+            if( Target_GetSizeOf(state.sp, state.m_resolve, tef.params.m_types.at(0), size_val) )
             {
                 auto val = ::MIR::Constant::make_Uint({ size_val, ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
@@ -1710,7 +1710,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         else if( tef.name == "align_of" )
         {
             size_t align_val = 0;
-            if( Target_GetAlignOf(state.sp, tef.params.m_types.at(0), align_val) )
+            if( Target_GetAlignOf(state.sp, state.m_resolve, tef.params.m_types.at(0), align_val) )
             {
                 auto val = ::MIR::Constant::make_Uint({ align_val, ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));

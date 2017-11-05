@@ -9,6 +9,9 @@
 #include <algorithm>
 #include "../expand/cfg.hpp"
 #include <fstream>
+#include <map>
+#include <hir/hir.hpp>
+#include <hir_typeck/helpers.hpp>
 
 TargetArch ARCH_X86_64 = {
     "x86_64",
@@ -21,6 +24,9 @@ TargetArch ARCH_X86 = {
     { /*atomic(u8)=*/true, false, true, false,  true }
 };
 TargetSpec  g_target;
+
+
+bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align);
 
 namespace
 {
@@ -107,7 +113,124 @@ void Target_SetCfg(const ::std::string& target_name)
         });
 }
 
-bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
+namespace {
+    // Returns NULL when the repr can't be determined
+    ::std::unique_ptr<StructRepr> make_struct_repr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
+    {
+        ::std::vector<StructRepr::Ent>  ents;
+        bool packed = false;
+        bool allow_sort = false;
+        if( const auto* te = ty.m_data.opt_Path() )
+        {
+            const auto& str = *te->binding.as_Struct();
+            auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te->path.m_data.as_Generic().m_params, nullptr);
+            auto monomorph = [&](const auto& tpl) {
+                auto rv = monomorphise_type_with(sp, tpl, monomorph_cb);
+                resolve.expand_associated_types(sp, rv);
+                return rv;
+                };
+            TU_MATCHA( (str.m_data), (se),
+            (Unit,
+                ),
+            (Tuple,
+                unsigned int idx = 0;
+                for(const auto& e : se)
+                {
+                    auto ty = monomorph(e.ent);
+                    size_t  size, align;
+                    if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
+                        return nullptr;
+                    ents.push_back(StructRepr::Ent { idx++, size, align, mv$(ty) });
+                }
+                ),
+            (Named,
+                unsigned int idx = 0;
+                for(const auto& e : se)
+                {
+                    auto ty = monomorph(e.second.ent);
+                    size_t  size, align;
+                    if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
+                        return nullptr;
+                    ents.push_back(StructRepr::Ent { idx++, size, align, mv$(ty) });
+                }
+                )
+            )
+            switch(str.m_repr)
+            {
+            case ::HIR::Struct::Repr::Packed:
+                packed = true;
+                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen help
+                break;
+            case ::HIR::Struct::Repr::C:
+                // No sorting, no packing
+                break;
+            case ::HIR::Struct::Repr::Rust:
+                allow_sort = true;
+                break;
+            }
+        }
+        else if( const auto* te = ty.m_data.opt_Tuple() )
+        {
+            unsigned int idx = 0;
+            for(const auto& t : *te)
+            {
+                size_t  size, align;
+                if( !Target_GetSizeAndAlignOf(sp, resolve, t, size,align) )
+                    return nullptr;
+                ents.push_back(StructRepr::Ent { idx++, size, align, t.clone() });
+            }
+        }
+        else
+        {
+            BUG(sp, "Unexpected type in creating struct repr");
+        }
+
+
+        if( allow_sort )
+        {
+            // TODO: Sort by alignment then size (largest first)
+            // - Requires codegen to use this information
+        }
+
+        StructRepr  rv;
+        size_t  cur_ofs = 0;
+        for(auto& e : ents)
+        {
+            // Increase offset to fit alignment
+            if( !packed )
+            {
+                while( cur_ofs % e.align != 0 )
+                {
+                    rv.ents.push_back({ ~0u, 1, 1, ::HIR::TypeRef( ::HIR::CoreType::U8 ) });
+                    cur_ofs ++;
+                }
+            }
+
+            rv.ents.push_back(mv$(e));
+            cur_ofs += e.size;
+        }
+        return box$(rv);
+    }
+}
+const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
+{
+    // TODO: Thread safety
+    // Map of generic paths to struct representations.
+    static ::std::map<::HIR::TypeRef, ::std::unique_ptr<StructRepr>>  s_cache;
+
+    auto it = s_cache.find(ty);
+    if( it != s_cache.end() )
+    {
+        return it->second.get();
+    }
+
+    auto ires = s_cache.insert(::std::make_pair( ty.clone(), make_struct_repr(sp, resolve, ty) ));
+    return ires.first->second.get();
+}
+
+// TODO: Include NonZero and other repr optimisations here
+
+bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
     TU_MATCHA( (ty.m_data), (te),
     (Infer,
@@ -167,8 +290,41 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& 
         }
         ),
     (Path,
-        // TODO:
-        return false;
+        TU_MATCHA( (te.binding), (be),
+        (Unbound,
+            BUG(sp, "Unbound type path " << ty << " encountered");
+            ),
+        (Opaque,
+            return false;
+            ),
+        (Struct,
+            if( const auto* repr = Target_GetStructRepr(sp, resolve, ty) )
+            {
+                out_size = 0;
+                out_align = 1;
+                for(const auto& e : repr->ents)
+                {
+                    out_size += e.size;
+                    out_align = ::std::max(out_align, e.align);
+                }
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+            ),
+        (Enum,
+            // Search for alternate repr
+            // If not found, determine the variant size
+            // Get data size and alignment.
+            return false;
+            ),
+        (Union,
+            // Max alignment and max data size
+            return false;
+            )
+        )
         ),
     (Generic,
         // Unknown - return false
@@ -181,9 +337,8 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& 
         BUG(sp, "sizeof on an erased type - shouldn't exist");
         ),
     (Array,
-        // TODO: 
         size_t  size;
-        if( !Target_GetSizeAndAlignOf(sp, *te.inner, size,out_align) )
+        if( !Target_GetSizeAndAlignOf(sp, resolve, *te.inner, size,out_align) )
             return false;
         size *= te.size_val;
         ),
@@ -191,29 +346,44 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& 
         BUG(sp, "sizeof on a slice - unsized");
         ),
     (Tuple,
-        out_size = 0;
-        out_align = 0;
-
-        // TODO: Struct reordering
-        for(const auto& t : te)
+        // Same code as structs :)
+        if( const auto* repr = Target_GetStructRepr(sp, resolve, ty) )
         {
-            size_t  size, align;
-            if( !Target_GetSizeAndAlignOf(sp, t, size,align) )
-                return false;
-            if( out_size % align != 0 )
+            out_size = 0;
+            out_align = 1;
+            for(const auto& e : repr->ents)
             {
-                out_size += align;
-                out_size %= align;
+                out_size += e.size;
+                out_align = ::std::max(out_align, e.align);
             }
-            out_size += size;
-            out_align = ::std::max(out_align, align);
+            return true;
+        }
+        else
+        {
+            return false;
         }
         ),
     (Borrow,
-        // TODO
+        // - Alignment is machine native
+        out_align = g_target.m_arch.m_pointer_bits / 8;
+        // - Size depends on Sized-nes of the parameter
+        if( resolve.type_is_sized(sp, *te.inner) )
+        {
+            out_size = g_target.m_arch.m_pointer_bits / 8;
+            return true;
+        }
+        // TODO: Handle different types of Unsized
         ),
     (Pointer,
-        // TODO
+        // - Alignment is machine native
+        out_align = g_target.m_arch.m_pointer_bits / 8;
+        // - Size depends on Sized-nes of the parameter
+        if( resolve.type_is_sized(sp, *te.inner) )
+        {
+            out_size = g_target.m_arch.m_pointer_bits / 8;
+            return true;
+        }
+        // TODO: Handle different types of Unsized
         ),
     (Function,
         // Pointer size
@@ -227,13 +397,13 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& 
     )
     return false;
 }
-bool Target_GetSizeOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_size)
+bool Target_GetSizeOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size)
 {
     size_t  ignore_align;
-    return Target_GetSizeAndAlignOf(sp, ty, out_size, ignore_align);
+    return Target_GetSizeAndAlignOf(sp, resolve, ty, out_size, ignore_align);
 }
-bool Target_GetAlignOf(const Span& sp, const ::HIR::TypeRef& ty, size_t& out_align)
+bool Target_GetAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_align)
 {
     size_t  ignore_size;
-    return Target_GetSizeAndAlignOf(sp, ty, ignore_size, out_align);
+    return Target_GetSizeAndAlignOf(sp, resolve, ty, ignore_size, out_align);
 }

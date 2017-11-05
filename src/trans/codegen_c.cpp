@@ -2009,19 +2009,18 @@ namespace {
                 (SwitchValue,
                     if( const auto* ve = e.values.opt_String() ) {
                         assert(ve->size() == e.targets.size());
-                        m_of << "\t{\n";
-                        m_of << "\t\tint cmp;\n";
-                        m_of << "\t\t";
+                        m_of << "\t{ int cmp;\n";
+                        m_of << "\t";
                         for(size_t i = 0; i < e.targets.size(); i++)
                         {
                             const auto& v = (*ve)[i];
                             m_of << "if( (cmp = slice_cmp("; emit_lvalue(e.val); m_of << ", make_sliceptr("; this->print_escaped_string(v); m_of << "," << v.size() << "))) < 0)\n";
-                            m_of << "\t\t\tgoto bb" << e.def_target << ";\n";
-                            m_of << "\t\telse if( cmp == 0 )\n";
-                            m_of << "\t\t\tgoto bb" << e.targets[i] << ";\n";
-                            m_of << "\t\telse ";
+                            m_of << "\t\tgoto bb" << e.def_target << ";\n";
+                            m_of << "\telse if( cmp == 0 )\n";
+                            m_of << "\t\tgoto bb" << e.targets[i] << ";\n";
+                            m_of << "\telse ";
                         }
-                        m_of << "\n\t\t\tgoto bb" << e.def_target << ";\n";
+                        m_of << "\n\t\tgoto bb" << e.def_target << ";\n";
 
                         m_of << "\t}\n";
                     }
