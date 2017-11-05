@@ -4360,11 +4360,14 @@ namespace {
         }
 
         // Can't Unsize to a known-Sized type.
+        // BUT! Can do a Deref coercion to a Sized type.
+        #if 0
         if( dst.m_data.is_Infer() && dst.m_data.as_Infer().index < context.m_ivars_sized.size() && context.m_ivars_sized.at( dst.m_data.as_Infer().index ) )
         {
             DEBUG("Can't unsize to known-Sized type");
             return CoerceResult::Equality;
         }
+        #endif
 
         // Handle ivars specially
         if(dst.m_data.is_Infer() && src.m_data.is_Infer())

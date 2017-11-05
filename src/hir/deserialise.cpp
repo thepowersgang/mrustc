@@ -325,6 +325,8 @@ namespace {
         ::MIR::BasicBlock deserialise_mir_basicblock();
         ::MIR::Statement deserialise_mir_statement();
         ::MIR::Terminator deserialise_mir_terminator();
+        ::MIR::Terminator deserialise_mir_terminator_();
+        ::MIR::SwitchValues deserialise_mir_switchvalues();
         ::MIR::CallTarget deserialise_mir_calltarget();
 
         ::MIR::Param deserialise_mir_param()
@@ -1070,8 +1072,13 @@ namespace {
     }
     ::MIR::Terminator HirDeserialiser::deserialise_mir_terminator()
     {
-        TRACE_FUNCTION;
-
+        ::MIR::Terminator   rv;
+        TRACE_FUNCTION_FR("", rv);
+        rv = this->deserialise_mir_terminator_();
+        return rv;
+    }
+    ::MIR::Terminator HirDeserialiser::deserialise_mir_terminator_()
+    {
         switch( m_in.read_tag() )
         {
         #define _(x, ...)    case ::MIR::Terminator::TAG_##x: return ::MIR::Terminator::make_##x( __VA_ARGS__ );
@@ -1089,6 +1096,12 @@ namespace {
             deserialise_mir_lvalue(),
             deserialise_vec_c<unsigned int>([&](){ return static_cast<unsigned int>(m_in.read_count()); })
             })
+        _(SwitchValue, {
+            deserialise_mir_lvalue(),
+            static_cast<unsigned int>(m_in.read_count()),
+            deserialise_vec_c<unsigned int>([&](){ return static_cast<unsigned int>(m_in.read_count()); }),
+            deserialise_mir_switchvalues()
+            })
         _(Call, {
             static_cast<unsigned int>(m_in.read_count()),
             static_cast<unsigned int>(m_in.read_count()),
@@ -1096,6 +1109,20 @@ namespace {
             deserialise_mir_calltarget(),
             deserialise_vec< ::MIR::Param>()
             })
+        #undef _
+        default:
+            throw "";
+        }
+    }
+    ::MIR::SwitchValues HirDeserialiser::deserialise_mir_switchvalues()
+    {
+        TRACE_FUNCTION;
+        switch(m_in.read_tag())
+        {
+        #define _(x, ...)    case ::MIR::SwitchValues::TAG_##x: return ::MIR::SwitchValues::make_##x( __VA_ARGS__ );
+        _(Unsigned, deserialise_vec_c<uint64_t>([&](){ return m_in.read_u64c(); }))
+        _(Signed  , deserialise_vec_c< int64_t>([&](){ return m_in.read_i64c(); }))
+        _(String  , deserialise_vec<::std::string>())
         #undef _
         default:
             throw "";

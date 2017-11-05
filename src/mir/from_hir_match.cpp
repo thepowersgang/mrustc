@@ -2871,13 +2871,6 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
     case ::HIR::CoreType::U128:
     case ::HIR::CoreType::Usize:
 
-    case ::HIR::CoreType::I8:
-    case ::HIR::CoreType::I16:
-    case ::HIR::CoreType::I32:
-    case ::HIR::CoreType::I64:
-    case ::HIR::CoreType::I128:
-    case ::HIR::CoreType::Isize:
-
     case ::HIR::CoreType::Char:
         if( rules.size() == 1 )
         {
@@ -2891,12 +2884,11 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
         }
         else
         {
-            // TODO: Add a SwitchInt terminator for use with this. (Or just a SwitchVal terminator?)
-
             // NOTE: Rules are currently sorted
             // TODO: If there are Constant::Const values in the list, they need to come first! (with equality checks)
 
-            // Does a sorted linear search. Binary search would be nicer but is harder to implement.
+            ::std::vector< uint64_t>  values;
+            ::std::vector< ::MIR::BasicBlockId> targets;
             size_t tgt_ofs = 0;
             for(size_t i = 0; i < rules.size(); i++)
             {
@@ -2909,33 +2901,63 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
                 if(re.is_Const())
                     TODO(sp, "Handle Constant::Const in match");
 
-                // IF v < tst : def_blk
-                // Skip if the previous value was the imediat predecesor
-                bool is_succ = i != 0 && (re.is_Uint()
-                    ? re.as_Uint().v == rules[i-1][0][ofs].as_Value().as_Uint().v + 1
-                    : re.as_Int().v == rules[i-1][0][ofs].as_Value().as_Int().v + 1
-                    );
-                if( !is_succ )
-                {
-                    auto cmp_eq_blk = m_builder.new_bb_unlinked();
-                    auto cmp_lval_lt = this->push_compare(val.clone(), ::MIR::eBinOp::LT, ::MIR::Param(re.clone()));
-                    m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
-                    m_builder.set_cur_block(cmp_eq_blk);
-                }
-
-                // IF v == tst : target
-                {
-                    auto next_cmp_blk = m_builder.new_bb_unlinked();
-                    auto cmp_lval_eq = this->push_compare( val.clone(), ::MIR::eBinOp::EQ, ::MIR::Param(re.clone()) );
-                    m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
-                    m_builder.set_cur_block(next_cmp_blk);
-                }
+                values.push_back( re.as_Uint().v );
+                targets.push_back( arm_targets[tgt_ofs] );
 
                 tgt_ofs += rules[i].size();
             }
-            m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+            m_builder.end_block( ::MIR::Terminator::make_SwitchValue({
+                mv$(val), def_blk, mv$(targets), ::MIR::SwitchValues(mv$(values))
+                }) );
         }
         break;
+
+    case ::HIR::CoreType::I8:
+    case ::HIR::CoreType::I16:
+    case ::HIR::CoreType::I32:
+    case ::HIR::CoreType::I64:
+    case ::HIR::CoreType::I128:
+    case ::HIR::CoreType::Isize:
+        if( rules.size() == 1 )
+        {
+            // Special case, single option, equality only
+            const auto& r = rules[0][0][ofs];
+            ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+            const auto& re = r.as_Value();
+            auto test_val = ::MIR::Param(re.clone());
+            auto cmp_lval = m_builder.get_rval_in_if_cond(sp, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, mv$(test_val) }));
+            m_builder.end_block( ::MIR::Terminator::make_If({  mv$(cmp_lval), arm_targets[0], def_blk }) );
+        }
+        else
+        {
+            // NOTE: Rules are currently sorted
+            // TODO: If there are Constant::Const values in the list, they need to come first! (with equality checks)
+
+            ::std::vector< int64_t>  values;
+            ::std::vector< ::MIR::BasicBlockId> targets;
+            size_t tgt_ofs = 0;
+            for(size_t i = 0; i < rules.size(); i++)
+            {
+                for(size_t j = 1; j < rules[i].size(); j ++)
+                    ASSERT_BUG(sp, arm_targets[tgt_ofs] == arm_targets[tgt_ofs+j], "Mismatched target blocks for Value match");
+
+                const auto& r = rules[i][0][ofs];
+                ASSERT_BUG(sp, r.is_Value(), "Matching without _Value pattern - " << r.tag_str());
+                const auto& re = r.as_Value();
+                if(re.is_Const())
+                    TODO(sp, "Handle Constant::Const in match");
+
+                values.push_back( re.as_Int().v );
+                targets.push_back( arm_targets[tgt_ofs] );
+
+                tgt_ofs += rules[i].size();
+            }
+            m_builder.end_block( ::MIR::Terminator::make_SwitchValue({
+                mv$(val), def_blk, mv$(targets), ::MIR::SwitchValues(mv$(values))
+                }) );
+        }
+        break;
+
     case ::HIR::CoreType::F32:
     case ::HIR::CoreType::F64: {
         // NOTE: Rules are currently sorted
@@ -2976,8 +2998,9 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
         // Remove the deref on the &str
         auto oval = mv$(val);
         auto val = mv$(*oval.as_Deref().val);
-        // NOTE: Rules are currently sorted
-        // TODO: If there are Constant::Const values in the list, they need to come first!
+
+        ::std::vector< ::MIR::BasicBlockId> targets;
+        ::std::vector< ::std::string>   values;
         size_t tgt_ofs = 0;
         for(size_t i = 0; i < rules.size(); i++)
         {
@@ -2990,25 +3013,14 @@ void MatchGenGrouped::gen_dispatch__primitive(::HIR::TypeRef ty, ::MIR::LValue v
             if(re.is_Const())
                 TODO(sp, "Handle Constant::Const in match");
 
-            // IF v < tst : def_blk
-            {
-                auto cmp_eq_blk = m_builder.new_bb_unlinked();
-                auto cmp_lval_lt = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::LT, ::MIR::Param(re.clone()) }));
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_lt), def_blk, cmp_eq_blk }) );
-                m_builder.set_cur_block(cmp_eq_blk);
-            }
-
-            // IF v == tst : target
-            {
-                auto next_cmp_blk = m_builder.new_bb_unlinked();
-                auto cmp_lval_eq = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Bool, ::MIR::RValue::make_BinOp({ val.clone(), ::MIR::eBinOp::EQ, ::MIR::Param(re.clone()) }));
-                m_builder.end_block( ::MIR::Terminator::make_If({ mv$(cmp_lval_eq), arm_targets[tgt_ofs], next_cmp_blk }) );
-                m_builder.set_cur_block(next_cmp_blk);
-            }
+            targets.push_back( arm_targets[tgt_ofs] );
+            values.push_back( re.as_StaticString() );
 
             tgt_ofs += rules[i].size();
         }
-        m_builder.end_block( ::MIR::Terminator::make_Goto(def_blk) );
+        m_builder.end_block( ::MIR::Terminator::make_SwitchValue({
+            mv$(val), def_blk, mv$(targets), ::MIR::SwitchValues(mv$(values))
+            }) );
         break;
     }
 }

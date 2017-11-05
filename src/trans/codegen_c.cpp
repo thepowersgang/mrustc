@@ -1871,7 +1871,9 @@ namespace {
                         bb_use_counts[t] ++;
                     ),
                 (SwitchValue,
-                    MIR_TODO(mir_res, "SwitchValue in C codegen");
+                    for(const auto& t : te.targets)
+                        bb_use_counts[t] ++;
+                    bb_use_counts[te.def_target] ++;
                     ),
                 (Call,
                     bb_use_counts[te.ret_block] ++;
@@ -2005,7 +2007,52 @@ namespace {
                     }
                     ),
                 (SwitchValue,
-                    MIR_TODO(mir_res, "SwitchValue in C codegen");
+                    if( const auto* ve = e.values.opt_String() ) {
+                        assert(ve->size() == e.targets.size());
+                        m_of << "\t{\n";
+                        m_of << "\t\tint cmp;\n";
+                        m_of << "\t\t";
+                        for(size_t i = 0; i < e.targets.size(); i++)
+                        {
+                            const auto& v = (*ve)[i];
+                            m_of << "if( (cmp = slice_cmp("; emit_lvalue(e.val); m_of << ", make_sliceptr("; this->print_escaped_string(v); m_of << "," << v.size() << "))) < 0)\n";
+                            m_of << "\t\t\tgoto bb" << e.def_target << ";\n";
+                            m_of << "\t\telse if( cmp == 0 )\n";
+                            m_of << "\t\t\tgoto bb" << e.targets[i] << ";\n";
+                            m_of << "\t\telse ";
+                        }
+                        m_of << "\n\t\t\tgoto bb" << e.def_target << ";\n";
+
+                        m_of << "\t}\n";
+                    }
+                    else if( const auto* ve = e.values.opt_Unsigned() ) {
+                        assert(ve->size() == e.targets.size());
+                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ") {\n";
+                        for(size_t i = 0; i < e.targets.size(); i++)
+                        {
+                            m_of << "\t\tcase " << (*ve)[i] << "ull: goto bb" << e.targets[i] << ";\n";
+                        }
+                        m_of << "\t\tdefault: goto bb" << e.def_target << ";\n";
+                        m_of << "\t}\n";
+                    }
+                    else if( const auto* ve = e.values.opt_Signed() ) {
+                        assert(ve->size() == e.targets.size());
+                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ") {\n";
+                        for(size_t i = 0; i < e.targets.size(); i++)
+                        {
+                            m_of << "\t\tcase ";
+                            if( (*ve)[i] == INT64_MIN )
+                                m_of << "INT64_MIN";
+                            else
+                                m_of << (*ve)[i] << "ull";
+                            m_of << ": goto bb" << e.targets[i] << ";\n";
+                        }
+                        m_of << "\t\tdefault: goto bb" << e.def_target << ";\n";
+                        m_of << "\t}\n";
+                    }
+                    else {
+                        MIR_BUG(mir_res, "SwitchValue with unknown value type - " << e.values.tag_str());
+                    }
                     ),
                 (Call,
                     emit_term_call(mir_res, e, 1);

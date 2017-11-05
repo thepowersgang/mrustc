@@ -81,6 +81,11 @@ namespace {
         //    m_out.write_count(val);
         //}
 
+        void serialise(bool v) { m_out.write_bool(v); };
+        void serialise(unsigned int v) { m_out.write_count(v); };
+        void serialise(uint64_t v) { m_out.write_u64c(v); };
+        void serialise(int64_t v) { m_out.write_i64c(v); };
+
         void serialise_type(const ::HIR::TypeRef& ty)
         {
             m_out.write_tag( ty.m_data.tag() );
@@ -790,8 +795,6 @@ namespace {
                 )
             )
         }
-
-        void serialise(unsigned int v) { m_out.write_count(v); };
 
         void serialise(const ::HIR::Linkage& linkage)
         {

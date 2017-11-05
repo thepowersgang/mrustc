@@ -49,6 +49,9 @@ public:
             };
         this->write(buf, 8);
     }
+    void write_i64(int64_t v) {
+        write_u64(static_cast<uint64_t>(v));
+    }
     // Variable-length encoded u64 (for array sizes)
     void write_u64c(uint64_t v) {
         if( v < (1<<7) ) {
@@ -183,6 +186,9 @@ public:
             | (static_cast<uint64_t>(buf[6]) << 48)
             | (static_cast<uint64_t>(buf[7]) << 56)
             ;
+    }
+    int64_t read_i64() {
+        return static_cast<int64_t>(read_u64());
     }
     // Variable-length encoded u64 (for array sizes)
     uint64_t read_u64c() {
