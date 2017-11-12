@@ -359,8 +359,9 @@ Builder::Builder(BuildOptions opts):
     switch(target.m_type)
     {
     case PackageTarget::Type::Lib:
-        if(crate_type)
-            *crate_type = "rlib";
+        if(crate_type) {
+            *crate_type = target.m_is_proc_macro ? "proc-macro" : "rlib";
+        }
         outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");
         break;
     case PackageTarget::Type::Bin:

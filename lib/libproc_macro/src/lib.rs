@@ -515,3 +515,14 @@ pub fn send_token_stream(ts: TokenStream)
         }
     }
 }
+
+pub struct MacroDesc
+{
+    name: &'static str,
+    handler: fn(TokenStream)->TokenStream,
+}
+
+pub fn main(macros: &[MacroDesc])
+{
+}
+

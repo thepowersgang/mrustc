@@ -1702,6 +1702,19 @@ public:
             }
         }
     }
+    // - Proc Macros
+    if( crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
+    {
+        for(const auto& ent : crate.m_proc_macros)
+        {
+            // Register under an invalid simplepath
+            rv.m_proc_macros.push_back( ::HIR::SimplePath("", { ent.first }) );
+        }
+    }
+    else
+    {
+        ASSERT_BUG(Span(), crate.m_proc_macros.size() == 0, "Procedural macros defined in non proc-macro crate");
+    }
 
     auto sp = Span();
     // - Store the lang item paths so conversion code can use them.

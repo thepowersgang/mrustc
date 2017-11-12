@@ -60,6 +60,11 @@ class CMacroUseHandler:
                     DEBUG("Imported " << name << "!");
                     mod.add_macro_import( name, mac );
                     });
+                for(const auto& p : ec.m_hir->m_proc_macros)
+                {
+                    mod.m_macro_imports.push_back(::std::make_pair( p.m_components, nullptr ));
+                    mod.m_macro_imports.back().first.insert( mod.m_macro_imports.back().first.begin(), p.m_crate_name );
+                }
             }
         )
         else TU_IFLET( ::AST::Item, i, Module, submod,

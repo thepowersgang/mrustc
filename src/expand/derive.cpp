@@ -2213,7 +2213,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         }
 
         // Support custom derive
-        auto mac_name = FMT("deriving#" << trait.name());
+        auto mac_name = FMT("derive#" << trait.name());
         // - Requires support all through the chain.
         for(const auto& mac_path : mod.m_macro_imports)
         {

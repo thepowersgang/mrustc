@@ -273,6 +273,8 @@ namespace {
             }
             serialise_vec(crate.m_ext_libs);
             serialise_vec(crate.m_link_paths);
+
+            serialise_vec(crate.m_proc_macros);
         }
         void serialise(const ::HIR::ExternLibrary& lib)
         {

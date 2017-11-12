@@ -328,7 +328,7 @@ int main(int argc, char *argv[])
 
         // Allocator and panic strategies
         CompilePhaseV("Implicit Crates", [&]() {
-            if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness )
+            if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness || crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
             {
                 // TODO: Detect if an allocator crate is already present.
                 crate.load_extern_crate(Span(), "alloc_system");

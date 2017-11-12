@@ -1210,6 +1210,8 @@ namespace {
         rv.m_ext_libs = deserialise_vec< ::HIR::ExternLibrary>();
         rv.m_link_paths = deserialise_vec< ::std::string>();
 
+        rv.m_proc_macros = deserialise_vec< ::HIR::SimplePath>();
+
         return rv;
     }
 }
