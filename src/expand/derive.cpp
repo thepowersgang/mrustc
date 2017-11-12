@@ -2215,6 +2215,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         // Support custom derive
         auto mac_name = FMT("derive#" << trait.name());
         // - Requires support all through the chain.
+        bool found = false;
         for(const auto& mac_path : mod.m_macro_imports)
         {
             if( mac_path.first.back() == mac_name )
@@ -2227,9 +2228,13 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
                     // proc_macro - Invoke the handler.
                     auto lex = ProcMacro_Invoke(sp, crate, mac_path.first, path.nodes().back().name(), item);
                     Parse_ModRoot_Items(*lex, mod);
+                    found = true;
+                    break;
                 }
             }
         }
+        if( found )
+            continue ;
 
         DEBUG("> No handler for " << trait.name());
         missing_handlers.push_back( trait.name() );
