@@ -470,12 +470,17 @@ public:
 
     /// Macros exported by this crate
     ::std::unordered_map< ::std::string, ::MacroRulesPtr >  m_exported_macros;
+    /// Procedural macros presented
+    ::std::vector<::HIR::SimplePath>    m_proc_macros;
 
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
 
+    /// Referenced crates
     ::std::unordered_map< ::std::string, ExternCrate>  m_ext_crates;
+    /// Referenced system libraries
     ::std::vector<ExternLibrary>    m_ext_libs;
+    /// Extra paths for the linker
     ::std::vector<::std::string>    m_link_paths;
 
     /// Method called to populate runtime state after deserialisation

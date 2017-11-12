@@ -43,12 +43,16 @@ public:
     bool    m_test_harness = false;
     ::std::vector<TestDesc>   m_tests;
 
+    // Procedural macros!
+    ::std::vector<::std::pair< ::std::string, ::AST::Path>> m_proc_macros;
+
     enum class Type {
         Unknown,
         RustLib,
         RustDylib,
         CDylib,
         Executable,
+        ProcMacro,   // Procedural macro
     } m_crate_type = Type::Unknown;
     enum LoadStd {
         LOAD_STD,

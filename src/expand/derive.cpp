@@ -11,6 +11,8 @@
 #include "../ast/expr.hpp"
 #include "../ast/crate.hpp"
 #include <hir/hir.hpp>  // ABI_RUST
+#include <parse/common.hpp>    // Parse_ModRoot_Items
+#include "proc_macro.hpp"
 
 template<typename T>
 static inline ::std::vector<T> vec$(T v1) {
@@ -2205,17 +2207,33 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
     {
         DEBUG("- " << trait.name());
         auto dp = find_impl(trait.name());
-        if( !dp ) {
-            DEBUG("> No handler for " << trait.name());
-            missing_handlers.push_back( trait.name() );
-            fail = true;
+        if( dp ) {
+            mod.add_item(false, "", dp->handle_item(sp, (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core"), params, type, item), {} );
             continue ;
         }
 
-        // TODO: Support macros 1.1 custom derive
+        // Support custom derive
+        auto mac_name = FMT("deriving#" << trait.name());
         // - Requires support all through the chain.
+        for(const auto& mac_path : mod.m_macro_imports)
+        {
+            if( mac_path.first.back() == mac_name )
+            {
+                if( mac_path.second ) {
+                    // macro_rules! based derive?
+                    TODO(sp, "Custom derive using macro_rules?");
+                }
+                else {
+                    // proc_macro - Invoke the handler.
+                    auto lex = ProcMacro_Invoke(sp, crate, mac_path.first, path.nodes().back().name(), item);
+                    Parse_ModRoot_Items(*lex, mod);
+                }
+            }
+        }
 
-        mod.add_item(false, "", dp->handle_item(sp, (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core"), params, type, item), {} );
+        DEBUG("> No handler for " << trait.name());
+        missing_handlers.push_back( trait.name() );
+        fail = true;
     }
 
     if( fail ) {

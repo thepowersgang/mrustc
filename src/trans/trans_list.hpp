@@ -55,6 +55,12 @@ struct TransList_Static
 class TransList
 {
 public:
+    TransList() = default;
+    TransList(TransList&&) = default;
+    TransList(const TransList&) = delete;
+    TransList& operator=(TransList&&) = default;
+    TransList& operator=(const TransList&) = delete;
+
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Function> > m_functions;
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Static> > m_statics;
     ::std::map< ::HIR::Path, Trans_Params> m_vtables;

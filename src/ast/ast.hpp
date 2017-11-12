@@ -534,6 +534,10 @@ public:
     ::std::unordered_map< ::std::string, IndexEnt >    m_type_items;
     ::std::unordered_map< ::std::string, IndexEnt >    m_value_items;
 
+    // List of macros imported from other modules (via #[macro_use], includes proc macros)
+    // - First value is an absolute path to the macro (including crate name)
+    ::std::vector<::std::pair< ::std::vector<::std::string>, const MacroRules* >>  m_macro_imports;
+
 public:
     Module() {}
     Module(::AST::Path path):

@@ -258,6 +258,11 @@ int main(int argc, char *argv[])
         }
         crate.m_crate_type = crate_type;
 
+        if( crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
+        {
+            Expand_ProcMacro(crate);
+        }
+
         auto crate_name = params.crate_name;
         if( crate_name == "" )
         {
@@ -557,6 +562,18 @@ int main(int argc, char *argv[])
         case ::AST::Crate::Type::CDylib:
             // Generate a .so/.dll
             break;
+        case ::AST::Crate::Type::ProcMacro: {
+            // Needs: An executable (the actual macro handler), metadata (for `extern crate foo;`)
+            // Can just emit the metadata and do miri?
+            // - Requires MIR for EVERYTHING, not feasable.
+            TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
+
+            TransList items2 = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + "-plugin", trans_opt, *hir_crate, items2, true); });
+
+            CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
+            break; }
         case ::AST::Crate::Type::Executable:
             // Generate a binary
             // - Enumerate items for translation
@@ -759,6 +776,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 else if( strcmp(type_str, "bin") == 0 ) {
                     this->crate_type = ::AST::Crate::Type::Executable;
                 }
+                else if( strcmp(type_str, "proc-macro") == 0 ) {
+                    this->crate_type = ::AST::Crate::Type::ProcMacro;
+                }
                 else {
                     ::std::cerr << "Unknown value for --crate-type" << ::std::endl;
                     exit(1);
@@ -897,4 +917,3 @@ ProgramParams::ProgramParams(int argc, char *argv[])
     os << ::std::dec;
     return os;
 }
-
