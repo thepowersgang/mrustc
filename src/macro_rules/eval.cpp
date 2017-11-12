@@ -1348,6 +1348,9 @@ namespace
                 // '.' ident/int
                 switch( lex.next() )
                 {
+                case TOK_QMARK:
+                    lex.consume();
+                    break;
                 case TOK_DOT:
                     lex.consume();
                     if( lex.consume_if(TOK_IDENT) )
