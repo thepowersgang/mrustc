@@ -9,6 +9,7 @@ pub struct TokenStream {
     inner: Vec<Token>,
 }
 
+#[derive(Debug)]
 enum Token {
     Symbol(String),
     Ident(String),
@@ -22,7 +23,7 @@ enum Token {
     Fragment(FragmentType, u64),    // Type and a key
 }
 #[repr(u8)]
-#[derive(Copy,Clone)] // TODO: Is this just a mrustc thing?
+#[derive(Copy,Clone,Debug)] // TODO: Is this just a mrustc thing?
 enum FragmentType {
     Ident = 0,
     Tt = 1,
@@ -73,21 +74,33 @@ impl<T: Iterator<Item=char>> CharStream<T> {
 }
 
 pub struct LexError {
-    _inner: (),
+    inner: &'static str,
 }
 impl ::std::fmt::Debug for LexError {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        f.write_str("LexError")
+        write!(f, "LexError({})", self.inner)
     }
 }
 impl FromStr for TokenStream {
     type Err = LexError;
     fn from_str(src: &str) -> Result<TokenStream, LexError> {
+        //eprintln!("TokenStream::from_str({:?})\r", src);
         let rv = Vec::new();
         let mut it = CharStream::new(src.chars());
 
-        fn err() -> Result<TokenStream,LexError> {
-            Err(LexError { _inner: () })
+        fn err(s: &'static str) -> Result<TokenStream,LexError> {
+            Err(LexError { inner: s })
+        }
+
+        fn get_ident<T: Iterator<Item=char>>(it: &mut CharStream<T>, mut s: String) -> String
+        {
+            let mut c = it.cur();
+            while c.is_xid_continue() || c.is_digit(10)
+            {
+                s.push(c);
+                c = some_else!(it.consume() => break);
+            }
+            s
         }
 
         'outer: while ! it.is_complete()
@@ -95,6 +108,7 @@ impl FromStr for TokenStream {
             let c = it.cur();
 
             if c.is_whitespace() {
+                it.consume();
                 continue ;
             }
 
@@ -132,8 +146,17 @@ impl FromStr for TokenStream {
                 ];
             if c == '\''
             {
-                // Lifetime or char lit
-                panic!("TODO: Lifetime / char literal");
+                it.consume();
+                c = it.cur();
+                if c.is_xid_start() && it.next().map(|x| x != '\'').unwrap_or(true) {
+                    // Lifetime
+                    let ident = get_ident(&mut it, String::new());
+                    rv.push(Token::Lifetime(ident))
+                }
+                else {
+                    // Char lit
+                    panic!("TODO: char literal");
+                }
             }
             else if c == '/' && it.next() == Some('/')
             {
@@ -160,27 +183,39 @@ impl FromStr for TokenStream {
 
                     if c == 'r'
                     {
+                        // TODO: If this isn't a string, start parsing an ident instead.
                         let ident_str = if is_byte { "br" } else { "r" };
                         c = some_else!(it.consume() => { rv.push(Token::Ident(ident_str.into())); break });
                         let mut hashes = 0;
                         while c == '#' {
                             hashes += 1;
-                            c = some_else!(it.consume() => return err());
+                            c = some_else!(it.consume() => return err("rawstr eof"));
                         }
 
                         if c != '"' {
-                            return err();
+                            if hashes == 0 {
+                                let s = get_ident(&mut it, ident_str.to_string());
+                                rv.push(Token::Ident(s));
+                            }
+                            else {
+                                rv.push(Token::Ident(ident_str.into()));
+                            }
+                            while hashes > 0 {
+                                rv.push(Token::Symbol("#".into()));
+                                hashes -= 1;
+                            }
+                            continue 'outer;
                         }
 
                         let req_hashes = hashes;
                         let mut rawstr = String::new();
                         loop
                         {
-                            c = some_else!(it.consume() => return err());
+                            c = some_else!(it.consume() => return err("Rawstr eof"));
                             if c == '"' {
                                 let mut hashes = 0;
                                 while hashes < req_hashes {
-                                    c = some_else!(it.consume() => return err());
+                                    c = some_else!(it.consume() => return err("rawstr eof"));
                                     if c != '#' { break ; }
                                     hashes += 1;
                                 }
@@ -214,7 +249,26 @@ impl FromStr for TokenStream {
                     else if c == '\"'
                     {
                         // String literal
-                        panic!("TODO: Escaped string literal");
+                        let mut s = String::new();
+                        loop
+                        {
+                            c = some_else!(it.consume() => return err("str eof"));
+                            if c == '"' {
+                                it.consume();
+                                break ;
+                            }
+                            else if c == '\\' {
+                                match some_else!(it.consume() => return err("str eof"))
+                                {
+                                c @ _ => panic!("Unknown escape in string {}", c),
+                                }
+                            }
+                            else {
+                                s.push(c);
+                            }
+                        }
+                        rv.push(Token::String(s));
+                        continue 'outer;
                     }
                     else
                     {
@@ -224,23 +278,77 @@ impl FromStr for TokenStream {
                 }
 
                 // Identifier.
-                if c.is_xid_start()
+                if c.is_xid_start() || c == '_'
                 {
-                    let mut ident = String::new();
-                    while c.is_xid_continue()
-                    {
-                        ident.push(c);
-                        c = some_else!(it.consume() => break);
+                    let ident = get_ident(&mut it, String::new());
+                    if ident == "_" {
+                        rv.push(Token::Symbol(ident));
                     }
-                    rv.push(Token::Ident(ident));
+                    else {
+                        rv.push(Token::Ident(ident));
+                    }
+                }
+                else if c.is_digit(10)
+                {
+                    let base =
+                        if c == '0' {
+                            match it.consume()
+                            {
+                            Some('x') => { it.consume(); 16 },
+                            Some('o') => { it.consume(); 8 },
+                            Some('b') => { it.consume(); 2 },
+                            _ => 10,
+                            }
+                        }
+                        else {
+                            10
+                        };
+                    let mut v = 0;
+                    let mut c = it.cur();
+                    'int: loop
+                    {
+                        while c == '_' {
+                            c = some_else!( it.consume() => { break 'int; } );
+                        }
+                        if c == 'u' || c == 'i' {
+                            let s = get_ident(&mut it, String::new());
+                            match &*s
+                            {
+                            "u8"    => rv.push(Token::UnsignedInt(v,   8)), "i8"    => rv.push(Token::SignedInt(v as i128,   8)),
+                            "u16"   => rv.push(Token::UnsignedInt(v,  16)), "i16"   => rv.push(Token::SignedInt(v as i128,  16)),
+                            "u32"   => rv.push(Token::UnsignedInt(v,  32)), "i32"   => rv.push(Token::SignedInt(v as i128,  32)),
+                            "u64"   => rv.push(Token::UnsignedInt(v,  64)), "i64"   => rv.push(Token::SignedInt(v as i128,  64)),
+                            "u128"  => rv.push(Token::UnsignedInt(v, 128)), "i128"  => rv.push(Token::SignedInt(v as i128, 128)),
+                            "usize" => rv.push(Token::UnsignedInt(v,   1)), "isize" => rv.push(Token::SignedInt(v as i128,   1)),
+                            _ => return err("Unexpected integer suffix"),
+                            }
+                            continue 'outer;
+                        }
+                        else if let Some(d) = c.to_digit(base) {
+                            v *= base as u128;
+                            v += d as u128;
+                            c = some_else!( it.consume() => { break 'int; } );
+                        }
+                        else if c == '.' {
+                            panic!("TODO: Floating point");
+                        }
+                        else {
+                            break;
+                        }
+                    }
+                    rv.push(Token::UnsignedInt(v, 0));
+                    continue 'outer;
                 }
                 // Punctuation?
                 else if c as u32 <= 0xFF
                 {
-                    let mut start = match syms.binary_search_by(|v| Ord::cmp(&v[0], &(c as u8)))
+                    let mut start = match syms.iter().position(|v| v[0] == (c as u8))
                         {
-                        Ok(start) => start,
-                        Err(_) => return err(),
+                        Some(start) => start,
+                        None => {
+                            eprint!("Unknown operator character '{}'\r\n", c);
+                            return err("Unknown operator")
+                            },
                         };
                     let mut end = start+1;
                     while end < syms.len() && syms[end][0] == c as u8 {
@@ -251,12 +359,12 @@ impl FromStr for TokenStream {
                     loop
                     {
                         let syms = &syms[start..end];
-                        assert!(ofs == syms[0].len());
+                        assert_eq!(ofs, syms[0].len(), "{:?}", syms[0]);
                         c = some_else!(it.consume() => break);
-                        let step = match syms[1..].binary_search_by(|v| Ord::cmp(&v[ofs], &(c as u8)))
+                        let step = match syms[1..].iter().position(|v| v[ofs] == (c as u8))
                             {
-                            Ok(s) => s+1,
-                            Err(_) => break,
+                            Some(s) => s+1,
+                            None => break,
                             };
                         start += step;
                         end = start+1;
@@ -265,12 +373,12 @@ impl FromStr for TokenStream {
                         }
                         ofs += 1;
                     }
-                    assert!(syms[start].len() == ofs);
+                    assert_eq!(syms[start].len(), ofs);
                     rv.push(Token::Symbol(::std::str::from_utf8(syms[start]).unwrap().into()));
                 }
                 else
                 {
-                    return err();
+                    return err("Unexpectec character");
                 }
             }
         }
@@ -369,7 +477,7 @@ pub fn recv_token_stream() -> TokenStream
             match self.inner.read(&mut b)
             {
             Ok(1) => Some(b[0]),
-            Ok(0) => None,
+            Ok(0) => panic!("Unexpected EOF reading from stdin"),
             Ok(_) => panic!("Bad byte count"),
             Err(e) => panic!("Error reading from stdin - {}", e),
             }
@@ -407,7 +515,7 @@ pub fn recv_token_stream() -> TokenStream
             match self.inner.read_exact(&mut buf)
             {
             Ok(_) => {},
-            Err(e) => panic!("Error reading from stdin - {}", e),
+            Err(e) => panic!("Error reading from stdin get_byte_vec({}) - {}", size, e),
             }
 
             buf
@@ -436,7 +544,11 @@ pub fn recv_token_stream() -> TokenStream
         let hdr_b = some_else!( s.getb() => break );
         toks.push(match hdr_b
             {
-            0 => Token::Symbol( s.get_string() ),
+            0 => {
+                let sym = s.get_string();
+                if sym == "" { break ; }
+                Token::Symbol( sym )
+                },
             1 => Token::Ident( s.get_string() ),
             2 => Token::Lifetime( s.get_string() ),
             3 => Token::String( s.get_string() ),
@@ -455,6 +567,7 @@ pub fn recv_token_stream() -> TokenStream
                 Token::Float(s.get_f64(), ty)
                 }
             });
+        eprintln!("> {:?}\r", toks.last().unwrap());
     }
     TokenStream {
         inner: toks,
@@ -500,6 +613,7 @@ pub fn send_token_stream(ts: TokenStream)
 
     for t in &ts.inner
     {
+        //eprintln!("{:?}\r", t);
         match t
         {
         &Token::Symbol(ref v)   => { s.putb(0); s.put_bytes(v.as_bytes()); },
@@ -514,6 +628,11 @@ pub fn send_token_stream(ts: TokenStream)
         &Token::Fragment(ty, key)  => { s.putb(9); s.putb(ty as u8); s.put_u128v(key as u128); },
         }
     }
+
+    // Empty symbol indicates EOF
+    s.putb(0); s.putb(0);
+    drop(s);
+    ::std::io::Write::flush(&mut ::std::io::stdout());
 }
 
 pub struct MacroDesc
@@ -524,5 +643,24 @@ pub struct MacroDesc
 
 pub fn main(macros: &[MacroDesc])
 {
+    let mac_name = ::std::env::args().nth(1).expect("Was not passed a macro name");
+    eprintln!("Searching for macro {}\r", mac_name);
+    for m in macros
+    {
+        if m.name == mac_name {
+            use std::io::Write;
+            ::std::io::stdout().write(&[0]);
+            ::std::io::stdout().flush();
+            eprintln!("Waiting for input\r");
+            let input = recv_token_stream();
+            eprintln!("INPUT = `{}`\r", input);
+            let output = (m.handler)( input );
+            eprintln!("OUTPUT = `{}`\r", output);
+            send_token_stream(output);
+            eprintln!("Done");
+            return ;
+        }
+    }
+    panic!("Unknown macro name '{}'", mac_name);
 }
 

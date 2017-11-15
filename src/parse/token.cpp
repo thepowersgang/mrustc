@@ -331,7 +331,7 @@ struct EscapedString {
     case TOK_COMMA:     return ",";
     case TOK_SEMICOLON: return ";";
     case TOK_COLON:     return ":";
-    case TOK_DOUBLE_COLON:  return ":";
+    case TOK_DOUBLE_COLON:  return "::";
     case TOK_STAR:  return "*";
     case TOK_AMP:   return "&";
     case TOK_PIPE:  return "|";

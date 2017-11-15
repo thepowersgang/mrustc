@@ -1066,3 +1066,37 @@ bool Codepoint::isxdigit() const {
     }
     return os;
 }
+
+Token Lex_FindOperator(const ::std::string& s)
+{
+    if( s == "_" )
+        return TOK_UNDERSCORE;
+    for(size_t i = 0; i < LEN(TOKENMAP); i++)
+    {
+        const auto& e = TOKENMAP[i];
+        if( s < e.chars )
+            break;
+        if( s == e.chars )
+        {
+            if( e.type < 0 )
+                break ;
+            return static_cast<eTokenType>(e.type);
+        }
+    }
+    return TOK_NULL;
+}
+Token Lex_FindReservedWord(const ::std::string& s)
+{
+    for(size_t i = 0; i < LEN(RWORDS); i++)
+    {
+        const auto& e = RWORDS[i];
+        if( s < e.chars )
+            break;
+        if( s == e.chars )
+        {
+            assert(e.type > 0);
+            return static_cast<eTokenType>(e.type);
+        }
+    }
+    return TOK_NULL;
+}

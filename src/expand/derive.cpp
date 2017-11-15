@@ -2227,8 +2227,14 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
                 else {
                     // proc_macro - Invoke the handler.
                     auto lex = ProcMacro_Invoke(sp, crate, mac_path.first, path.nodes().back().name(), item);
-                    Parse_ModRoot_Items(*lex, mod);
-                    found = true;
+                    if( lex )
+                    {
+                        Parse_ModRoot_Items(*lex, mod);
+                        found = true;
+                    }
+                    else {
+                        ERROR(sp, E0000, "proc_macro derive failed");
+                    }
                     break;
                 }
             }
