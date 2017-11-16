@@ -241,8 +241,10 @@ namespace {
     struct Visitor/*:
         public AST::NodeVisitor*/
     {
+        const Span& sp;
         ProcMacroInv&   m_pmi;
-        Visitor(ProcMacroInv& pmi):
+        Visitor(const Span& sp, ProcMacroInv& pmi):
+            sp(sp),
             m_pmi(pmi)
         {
         }
@@ -250,10 +252,187 @@ namespace {
         void visit_type(const ::TypeRef& ty)
         {
             // TODO: Correct handling of visit_type
-            m_pmi.send_symbol("(");
-            m_pmi.send_symbol(")");
+            TU_MATCHA( (ty.m_data), (te),
+            (None,
+                BUG(sp, ty);
+                ),
+            (Any,
+                m_pmi.send_symbol("_");
+                ),
+            (Bang,
+                m_pmi.send_symbol("!");
+                ),
+            (Unit,
+                m_pmi.send_symbol("(");
+                m_pmi.send_symbol(")");
+                ),
+            (Macro,
+                TODO(sp, "proc_macro send macro type - " << ty);
+                ),
+            (Primitive,
+                TODO(sp, "proc_macro send primitive - " << ty);
+                ),
+            (Function,
+                TODO(sp, "proc_macro send function - " << ty);
+                ),
+            (Tuple,
+                m_pmi.send_symbol("(");
+                for(const auto& st : te.inner_types)
+                {
+                    this->visit_type(st);
+                    m_pmi.send_symbol(",");
+                }
+                m_pmi.send_symbol(")");
+                ),
+            (Borrow,
+                m_pmi.send_symbol("&");
+                if( te.is_mut )
+                    m_pmi.send_ident("mut");
+                this->visit_type(*te.inner);
+                ),
+            (Pointer,
+                m_pmi.send_symbol("*");
+                if( te.is_mut )
+                    m_pmi.send_ident("mut");
+                else
+                    m_pmi.send_ident("const");
+                this->visit_type(*te.inner);
+                ),
+            (Array,
+                m_pmi.send_symbol("[");
+                this->visit_type(*te.inner);
+                m_pmi.send_symbol(";");
+                this->visit_node(*te.size);
+                m_pmi.send_symbol("]");
+                ),
+            (Generic,
+                // TODO: This may already be resolved?... Wait, how?
+                m_pmi.send_ident(te.name.c_str());
+                ),
+            (Path,
+                this->visit_path(te.path);
+                ),
+            (TraitObject,
+                m_pmi.send_symbol("(");
+                if( te.hrls.size() > 0 )
+                {
+                    m_pmi.send_ident("for");
+                    m_pmi.send_symbol("<");
+                    for(const auto& v : te.hrls)
+                    {
+                        m_pmi.send_lifetime(v.c_str());
+                        m_pmi.send_symbol(",");
+                    }
+                    m_pmi.send_symbol(">");
+                }
+                for(const auto& t : te.traits)
+                {
+                    this->visit_path(t);
+                    m_pmi.send_symbol("+");
+                }
+                m_pmi.send_symbol(")");
+                ),
+            (ErasedType,
+                m_pmi.send_ident("impl");
+                if( te.hrls.size() > 0 )
+                {
+                    m_pmi.send_ident("for");
+                    m_pmi.send_symbol("<");
+                    for(const auto& v : te.hrls)
+                    {
+                        m_pmi.send_lifetime(v.c_str());
+                        m_pmi.send_symbol(",");
+                    }
+                    m_pmi.send_symbol(">");
+                }
+                for(const auto& t : te.traits)
+                {
+                    this->visit_path(t);
+                    m_pmi.send_symbol("+");
+                }
+                )
+            )
         }
 
+        void visit_path(const AST::Path& path, bool is_expr=false)
+        {
+            const ::std::vector<AST::PathNode>*  nodes = nullptr;
+            TU_MATCHA( (path.m_class), (pe),
+            (Invalid,
+                BUG(sp, "Invalid path");
+                ),
+            (Local,
+                m_pmi.send_ident(pe.name.c_str());
+                ),
+            (Relative,
+                // TODO: Send hygiene information
+                nodes = &pe.nodes;
+                ),
+            (Self,
+                m_pmi.send_ident("self");
+                m_pmi.send_symbol("::");
+                nodes = &pe.nodes;
+                ),
+            (Super,
+                for(unsigned i = 0; i < pe.count; i ++)
+                {
+                    m_pmi.send_ident("super");
+                    m_pmi.send_symbol("::");
+                }
+                nodes = &pe.nodes;
+                ),
+            (Absolute,
+                m_pmi.send_symbol("::");
+                m_pmi.send_string(pe.crate.c_str());
+                m_pmi.send_symbol("::");
+                nodes = &pe.nodes;
+                ),
+            (UFCS,
+                m_pmi.send_symbol("<");
+                this->visit_type(*pe.type);
+                if( pe.trait )
+                {
+                    m_pmi.send_ident("as");
+                    this->visit_path(*pe.trait);
+                }
+                m_pmi.send_symbol(">");
+                m_pmi.send_symbol("::");
+                nodes = &pe.nodes;
+                )
+            )
+            bool first = true;
+            for(const auto& e : *nodes)
+            {
+                if(!first)
+                    m_pmi.send_symbol("::");
+                first = false;
+                m_pmi.send_ident(e.name().c_str());
+                if( ! e.args().is_empty() )
+                {
+                    if( is_expr )
+                        m_pmi.send_symbol("::");
+                    m_pmi.send_symbol("<");
+                    for(const auto& l : e.args().m_lifetimes)
+                    {
+                        m_pmi.send_lifetime(l.c_str());
+                        m_pmi.send_symbol(",");
+                    }
+                    for(const auto& t : e.args().m_types)
+                    {
+                        this->visit_type(t);
+                        m_pmi.send_symbol(",");
+                    }
+                    for(const auto& a : e.args().m_assoc)
+                    {
+                        m_pmi.send_ident(a.first.c_str());
+                        m_pmi.send_symbol("=");
+                        this->visit_type(a.second);
+                        m_pmi.send_symbol(",");
+                    }
+                    m_pmi.send_symbol(">");
+                }
+            }
+        }
         void visit_params(const AST::GenericParams& params)
         {
             if( params.ty_params().size() > 0 || params.lft_params().size() > 0 )
@@ -286,10 +465,20 @@ namespace {
         }
         void visit_bounds(const AST::GenericParams& params)
         {
+            if( params.bounds().size() > 0 )
+            {
+                // TODO:
+                TODO(Span(), "visit_bounds");
+            }
+        }
+        void visit_node(const ::AST::ExprNode& e)
+        {
+            TODO(Span(), "visit_node");
         }
         void visit_nodes(const ::AST::Expr& e)
         {
-            //e.visit_nodes(*this);
+            // TODO: Expressions!
+            TODO(Span(), "visit_nodes");
         }
         void visit_struct(const ::std::string& name, bool is_pub, const ::AST::Struct& str)
         {
@@ -350,7 +539,7 @@ namespace {
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
-    Visitor(pmi).visit_struct(item_name, false, i);
+    Visitor(sp, pmi).visit_struct(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
@@ -362,7 +551,7 @@ namespace {
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
-    Visitor(pmi).visit_enum(item_name, false, i);
+    Visitor(sp, pmi).visit_enum(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
@@ -374,7 +563,7 @@ namespace {
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
-    Visitor(pmi).visit_union(item_name, false, i);
+    Visitor(sp, pmi).visit_union(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
