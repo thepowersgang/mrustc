@@ -267,7 +267,7 @@ impl FromStr for TokenStream {
                                 s.push(c);
                             }
                         }
-                        rv.push(Token::String(s));
+                        rv.push(if is_byte { Token::ByteString(s.into_bytes()) } else { Token::String(s) });
                         continue 'outer;
                     }
                     else
@@ -570,7 +570,7 @@ pub fn recv_token_stream() -> TokenStream
                 Token::Float(s.get_f64(), ty)
                 }
             });
-        eprintln!("> {:?}\r", toks.last().unwrap());
+        //eprintln!("> {:?}\r", toks.last().unwrap());
     }
     TokenStream {
         inner: toks,
@@ -647,20 +647,20 @@ pub struct MacroDesc
 pub fn main(macros: &[MacroDesc])
 {
     let mac_name = ::std::env::args().nth(1).expect("Was not passed a macro name");
-    eprintln!("Searching for macro {}\r", mac_name);
+    //eprintln!("Searching for macro {}\r", mac_name);
     for m in macros
     {
         if m.name == mac_name {
             use std::io::Write;
             ::std::io::stdout().write(&[0]);
             ::std::io::stdout().flush();
-            eprintln!("Waiting for input\r");
+            //eprintln!("Waiting for input\r");
             let input = recv_token_stream();
-            eprintln!("INPUT = `{}`\r", input);
+            //eprintln!("INPUT = `{}`\r", input);
             let output = (m.handler)( input );
-            eprintln!("OUTPUT = `{}`\r", output);
+            //eprintln!("OUTPUT = `{}`\r", output);
             send_token_stream(output);
-            eprintln!("Done");
+            //eprintln!("Done");
             return ;
         }
     }
