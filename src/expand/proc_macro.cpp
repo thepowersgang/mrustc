@@ -238,8 +238,8 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
 
 
 namespace {
-    struct Visitor/*:
-        public AST::NodeVisitor*/
+    struct Visitor:
+        public AST::NodeVisitor
     {
         const Span& sp;
         ProcMacroInv&   m_pmi;
@@ -301,8 +301,11 @@ namespace {
             (Array,
                 m_pmi.send_symbol("[");
                 this->visit_type(*te.inner);
-                m_pmi.send_symbol(";");
-                this->visit_node(*te.size);
+                if( te.size )
+                {
+                    m_pmi.send_symbol(";");
+                    this->visit_node(*te.size);
+                }
                 m_pmi.send_symbol("]");
                 ),
             (Generic,
@@ -473,13 +476,111 @@ namespace {
         }
         void visit_node(const ::AST::ExprNode& e)
         {
-            TODO(Span(), "visit_node");
+            const_cast<::AST::ExprNode&>(e).visit(*this);
         }
         void visit_nodes(const ::AST::Expr& e)
         {
-            // TODO: Expressions!
-            TODO(Span(), "visit_nodes");
+            this->visit_node(e.node());
         }
+
+        // === Expressions ====
+        void visit(::AST::ExprNode_Block& node) {
+            if( node.m_is_unsafe )
+                m_pmi.send_ident("unsafe");
+            m_pmi.send_symbol("{");
+            TODO(sp, "");
+            m_pmi.send_symbol("}");
+        }
+        void visit(::AST::ExprNode_Macro& node) {
+            TODO(sp, "ExprNode_Macro");
+        }
+        void visit(::AST::ExprNode_Asm& node) {
+            TODO(sp, "ExprNode_Asm");
+        }
+        void visit(::AST::ExprNode_Flow& node) {
+            TODO(sp, "ExprNode_Flow");
+        }
+        void visit(::AST::ExprNode_LetBinding& node) {
+            TODO(sp, "ExprNode_LetBinding");
+        }
+        void visit(::AST::ExprNode_Assign& node) {
+            TODO(sp, "ExprNode_Assign");
+        }
+        void visit(::AST::ExprNode_CallPath& node) {
+            TODO(sp, "ExprNode_CallPath");
+        }
+        void visit(::AST::ExprNode_CallMethod& node) {
+            TODO(sp, "ExprNode_CallMethod");
+        }
+        void visit(::AST::ExprNode_CallObject& node) {
+            TODO(sp, "ExprNode_CallObject");
+        }
+        void visit(::AST::ExprNode_Loop& node) {
+            TODO(sp, "ExprNode_Loop");
+        }
+        void visit(::AST::ExprNode_Match& node) {
+            TODO(sp, "ExprNode_Match");
+        }
+        void visit(::AST::ExprNode_If& node) {
+            TODO(sp, "ExprNode_If");
+        }
+        void visit(::AST::ExprNode_IfLet& node) {
+            TODO(sp, "ExprNode_IfLet");
+        }
+
+        void visit(::AST::ExprNode_Integer& node) {
+            TODO(sp, "ExprNode_Integer");
+        }
+        void visit(::AST::ExprNode_Float& node) {
+            TODO(sp, "ExprNode_Float");
+        }
+        void visit(::AST::ExprNode_Bool& node) {
+            TODO(sp, "ExprNode_Bool");
+        }
+        void visit(::AST::ExprNode_String& node) {
+            TODO(sp, "ExprNode_String");
+        }
+        void visit(::AST::ExprNode_ByteString& node) {
+            TODO(sp, "ExprNode_ByteString");
+        }
+        void visit(::AST::ExprNode_Closure& node) {
+            TODO(sp, "ExprNode_Closure");
+        }
+        void visit(::AST::ExprNode_StructLiteral& node) {
+            TODO(sp, "ExprNode_StructLiteral");
+        }
+        void visit(::AST::ExprNode_Array& node) {
+            TODO(sp, "ExprNode_Array");
+        }
+        void visit(::AST::ExprNode_Tuple& node) {
+            TODO(sp, "ExprNode_Tuple");
+        }
+        void visit(::AST::ExprNode_NamedValue& node) {
+            TODO(sp, "ExprNode_NamedValue");
+        }
+
+        void visit(::AST::ExprNode_Field& node) {
+            TODO(sp, "ExprNode_Field");
+        }
+        void visit(::AST::ExprNode_Index& node) {
+            TODO(sp, "ExprNode_Index");
+        }
+        void visit(::AST::ExprNode_Deref& node) {
+            TODO(sp, "ExprNode_Deref");
+        }
+        void visit(::AST::ExprNode_Cast& node) {
+            TODO(sp, "ExprNode_Cast");
+        }
+        void visit(::AST::ExprNode_TypeAnnotation& node) {
+            TODO(sp, "ExprNode_TypeAnnotation");
+        }
+        void visit(::AST::ExprNode_BinOp& node) {
+            TODO(sp, "ExprNode_BinOp");
+        }
+        void visit(::AST::ExprNode_UniOp& node) {
+            TODO(sp, "ExprNode_UniOp");
+        }
+
         void visit_struct(const ::std::string& name, bool is_pub, const ::AST::Struct& str)
         {
             if( is_pub ) {

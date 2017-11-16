@@ -274,6 +274,9 @@ impl FromStr for TokenStream {
                     {
                         // Could be an ident starting with 'b', or it's just 'b'
                         // - Fall through
+                        let ident = get_ident(&mut it, "b".into());
+                        rv.push(Token::Ident(ident));
+                        continue 'outer;
                     }
                 }
 
