@@ -1001,7 +1001,8 @@ namespace {
         const_cast<::HIR::ExprNode&>(expr).visit(v);
 
         if( v.m_rv.is_Invalid() ) {
-            BUG(sp, "Expression did not yeild a literal");
+            // NOTE: Removed, because of tricks serde_derive does
+            //BUG(sp, "Expression did not yeild a literal");
         }
 
         return mv$(v.m_rv);
