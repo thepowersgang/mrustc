@@ -4732,7 +4732,7 @@ namespace {
                             {
                                 const auto& isrc = se.path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
                                 const auto& idst = de.path.m_data.as_Generic().m_params.m_types.at(sm.unsized_param);
-                                return check_unsize_tys(context, sp, isrc, idst, nullptr);
+                                return check_unsize_tys(context, sp, idst, isrc, nullptr);
                             }
                             else
                             {
