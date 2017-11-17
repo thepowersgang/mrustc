@@ -40,6 +40,13 @@ public:
         os.write(sv.m_start, sv.m_len);
         return os;
     }
+
+    const char* begin() const {
+        return m_start;
+    }
+    const char* end() const {
+        return m_start+m_len;
+    }
 };
 
 

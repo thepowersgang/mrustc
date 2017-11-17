@@ -111,7 +111,12 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             }
             else if( key == "links" )
             {
-                // Metadata only
+                if(rv.m_links != "" )
+                {
+                    // TODO: Warn/error
+                    throw ::std::runtime_error("Package 'links' attribute set twice");
+                }
+                rv.m_links = key_val.value.as_string();
             }
             else
             {
@@ -717,7 +722,19 @@ void PackageManifest::load_build_script(const ::std::string& path)
             }
             // - Ignore
             else {
-                DEBUG("TODO: '" << key << "' = '" << value << "'");
+                if( this->m_links != "" && line.find_first_of('-') == ::std::string::npos ) {
+                    ::std::string   varname;
+                    varname += "DEP_";
+                    for(auto c : this->m_links)
+                        varname += ::std::toupper(c);
+                    varname += "_";
+                    for(auto c : key)
+                        varname += ::std::toupper(c);
+                    rv.downstream_env.push_back(::std::make_pair( varname, static_cast<::std::string>(value) ));
+                }
+                else {
+                    DEBUG("TODO: '" << key << "' = '" << value << "'");
+                }
             }
         }
     }

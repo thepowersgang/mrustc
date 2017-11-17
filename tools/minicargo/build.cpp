@@ -468,6 +468,17 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     env.push_back("OUT_DIR", out_dir.str());
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
     env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+    for(const auto& dep : manifest.dependencies())
+    {
+        if( ! dep.is_disabled() )
+        {
+            const auto& m = dep.get_package();
+            for(const auto& p : m.build_script_output().downstream_env)
+            {
+                env.push_back(p.first.c_str(), p.second.c_str());
+            }
+        }
+    }
 
     return this->spawn_process_mrustc(args, ::std::move(env), outfile + "_dbg.txt");
 }
@@ -500,6 +511,8 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     StringListKV    env;
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
     env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+    // TODO: If there's any dependencies marked as `links = foo` then grab `DEP_FOO_<varname>` from its metadata
+    // (build script output)
 
     if( this->spawn_process_mrustc(args, ::std::move(env), outfile + "_dbg.txt") )
         return outfile;
@@ -576,6 +589,17 @@ bool Builder::build_library(const PackageManifest& manifest) const
                 env.push_back("OPT_LEVEL", "2");
                 env.push_back("DEBUG", "0");
                 env.push_back("PROFILE", "release");
+                for(const auto& dep : manifest.dependencies())
+                {
+                    if( ! dep.is_disabled() )
+                    {
+                        const auto& m = dep.get_package();
+                        for(const auto& p : m.build_script_output().downstream_env)
+                        {
+                            env.push_back(p.first.c_str(), p.second.c_str());
+                        }
+                    }
+                }
 
                 #if _WIN32
                 #else

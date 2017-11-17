@@ -222,6 +222,9 @@ public:
     ::std::vector<::std::string>    rustc_flags;
     // cargo:rustc-env=FOO=BAR
     ::std::vector<::std::string>    rustc_env;
+
+    // cargo:foo=bar when [package]links=baz
+    ::std::vector<::std::pair<::std::string, ::std::string>>    downstream_env;
 };
 
 class PackageManifest
@@ -230,6 +233,7 @@ class PackageManifest
 
     ::std::string   m_name;
     PackageVersion  m_version;
+    ::std::string   m_links;
 
     ::std::string   m_build_script;
 
