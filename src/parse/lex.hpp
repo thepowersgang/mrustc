@@ -42,7 +42,7 @@ class Lexer:
     ::std::ifstream m_istream;
     bool    m_last_char_valid;
     Codepoint   m_last_char;
-    Token   m_next_token;   // Used when lexing generated two tokens
+    ::std::vector<Token>    m_next_tokens;
 
     Ident::Hygiene m_hygiene;
 public:

@@ -271,9 +271,11 @@ Token Lexer::realGetToken()
 
 Token Lexer::getTokenInt()
 {
-    if( this->m_next_token.type() != TOK_NULL )
+    if( ! this->m_next_tokens.empty() )
     {
-        return ::std::move(this->m_next_token);
+        auto rv = ::std::move(this->m_next_tokens.back());
+        m_next_tokens.pop_back();
+        return rv;
     }
     try
     {
@@ -292,7 +294,7 @@ Token Lexer::getTokenInt()
                     return Token(TOK_NEWLINE);
                 case '[':
                     this->ungetc();
-                    this->m_next_token = Token(TOK_EXCLAM);
+                    this->m_next_tokens.push_back(TOK_EXCLAM);
                     return Token(TOK_HASH);
                 default:
                     throw ParseError::BadChar(*this, ch.v);
@@ -401,11 +403,11 @@ Token Lexer::getTokenInt()
                         if( ch == '.' )
                         {
                             if( this->getc() == '.') {
-                                this->m_next_token = Token(TOK_TRIPLE_DOT);
+                                this->m_next_tokens.push_back(TOK_TRIPLE_DOT);
                             }
                             else {
                                 this->ungetc();
-                                this->m_next_token = Token(TOK_DOUBLE_DOT);
+                                this->m_next_tokens.push_back(TOK_DOUBLE_DOT);
                             }
                             return Token(val, CORETYPE_ANY);
                         }
@@ -416,7 +418,7 @@ Token Lexer::getTokenInt()
                             this->ungetc();
                             if( issym(ch) )
                             {
-                                this->m_next_token = Token(TOK_DOT);
+                                this->m_next_tokens.push_back(TOK_DOT);
                                 return Token(val, CORETYPE_ANY);
                             }
                             else
@@ -574,20 +576,59 @@ Token Lexer::getTokenInt()
                 // Line comment
                 ::std::string   str;
                 auto ch = this->getc();
+                bool is_doc = false;
+                bool is_pdoc = false;
+                if( ch == '/' ) {
+                    ch = this->getc();
+                    if( ch == '/' )
+                        str += "/";
+                    else
+                        is_doc = true;
+                }
+                else if( ch == '!' ) {
+                    is_pdoc = true;
+                    ch = this->getc();
+                }
                 while(ch != '\n' && ch != '\r')
                 {
                     str += ch;
                     ch = this->getc();
                 }
                 this->ungetc();
+                if( is_doc || is_pdoc )
+                {
+                    //# [ doc = "commment data" ]
+                    m_next_tokens.push_back(TOK_SQUARE_CLOSE);
+                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
+                    m_next_tokens.push_back(TOK_EQUAL);
+                    m_next_tokens.push_back(Token(TOK_IDENT, "doc"));
+                    m_next_tokens.push_back(TOK_SQUARE_OPEN);
+                    if(is_pdoc)
+                        m_next_tokens.push_back(TOK_EXCLAM);
+                    return TOK_HASH;
+                }
                 return Token(TOK_COMMENT, str); }
             case BLOCKCOMMENT: {
                 ::std::string   str;
+                bool is_doc = false;
+                bool is_pdoc = false;
+                ch = this->getc();
+                if( ch == '*' ) {
+                    ch = this->getc();
+                    if( ch == '*' )
+                    {
+                        str += "*";
+                    }
+                    else
+                        is_doc = true;
+                }
+                else if( ch == '!' ) {
+                    is_pdoc = true;
+                    ch = this->getc();
+                }
                 unsigned int level = 0;
                 while(true)
                 {
-                    ch = this->getc();
-
                     if( ch == '/' ) {
                         str += ch;
                         ch = this->getc();
@@ -615,6 +656,19 @@ Token Lexer::getTokenInt()
                             str += ch;
                         }
                     }
+                    ch = this->getc();
+                }
+                if( is_doc || is_pdoc )
+                {
+                    //# [ doc = "commment data" ]
+                    m_next_tokens.push_back(TOK_SQUARE_CLOSE);
+                    m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
+                    m_next_tokens.push_back(TOK_EQUAL);
+                    m_next_tokens.push_back(Token(TOK_IDENT, "doc"));
+                    m_next_tokens.push_back(TOK_SQUARE_OPEN);
+                    if(is_pdoc)
+                        m_next_tokens.push_back(TOK_EXCLAM);
+                    return TOK_HASH;
                 }
                 return Token(TOK_COMMENT, str); }
             case SINGLEQUOTE: {
