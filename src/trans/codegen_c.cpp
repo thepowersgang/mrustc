@@ -29,6 +29,69 @@ namespace {
         {
         }
     };
+    class StringList
+    {
+        ::std::vector<::std::string>    m_cached;
+        ::std::vector<const char*>  m_strings;
+    public:
+        StringList()
+        {
+        }
+        StringList(const StringList&) = delete;
+        StringList(StringList&&) = default;
+
+        const ::std::vector<const char*>& get_vec() const
+        {
+            return m_strings;
+        }
+
+        void push_back(::std::string s)
+        {
+            // If the cache list is about to move, update the pointers
+            if(m_cached.capacity() == m_cached.size())
+            {
+                // Make a bitmap of entries in `m_strings` that are pointers into `m_cached`
+                ::std::vector<bool> b;
+                b.reserve(m_strings.size());
+                size_t j = 0;
+                for(const auto* s : m_strings)
+                {
+                    if(j == m_cached.size())
+                        break;
+                    if(s == m_cached[j].c_str())
+                    {
+                        j ++;
+                        b.push_back(true);
+                    }
+                    else
+                    {
+                        b.push_back(false);
+                    }
+                }
+
+                // Add the new one
+                m_cached.push_back(::std::move(s));
+                // Update pointers
+                j = 0;
+                for(size_t i = 0; i < b.size(); i ++)
+                {
+                    if(b[i])
+                    {
+                        m_strings[i] = m_cached.at(j++).c_str();
+                    }
+                }
+            }
+            else
+            {
+                m_cached.push_back(::std::move(s));
+            }
+            m_strings.push_back(m_cached.back().c_str());
+        }
+        void push_back(const char* s)
+        {
+            m_strings.push_back(s);
+        }
+    };
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const FmtShell& x)
@@ -163,20 +226,22 @@ namespace {
                 << "#include <stddef.h>\n"
                 << "#include <stdint.h>\n"
                 << "#include <stdbool.h>\n"
-                << "#include <stdlib.h>\n"  // abort
-                << "#include <string.h>\n"  // mem*
-                << "#include <math.h>\n"  // round, ...
                 ;
             switch(m_compiler)
             {
             case Compiler::Gcc:
                 m_of
                     << "#include <stdatomic.h>\n"   // atomic_*
+                    << "#include <stdlib.h>\n"  // abort
+                    << "#include <string.h>\n"  // mem*
+                    << "#include <math.h>\n"  // round, ...
                     ;
                 break;
             case Compiler::Msvc:
                 m_of
-                    << "#include <Windows.h>\n" // Interlocked*
+                    << "#define INFINITY    ((float)(1e300*1e300))\n"
+                    << "#define NAN ((float)(INFINITY*0.0))\n"
+                    << "void abort(void);"
                     ;
                 break;
             }
@@ -217,7 +282,7 @@ namespace {
                 break;
             case Compiler::Msvc:
                 m_of
-                    << "__declspec(noreturn) extern void _Unwind_Resume(void);\n"
+                    << "__declspec(noreturn) void _Unwind_Resume(void) { abort(); }\n"
                     << "#define ALIGNOF(t) __alignof(t)\n"
                     ;
                 break;
@@ -456,9 +521,7 @@ namespace {
             }
 
             // Execute $CC with the required libraries
-            ::std::vector<::std::string>    tmp;
-            auto cache_str = [&](::std::string s){ tmp.push_back(::std::move(s)); return tmp.back().c_str(); };
-            ::std::vector<const char*>  args;
+            StringList  args;
             bool is_windows = false;
             switch( m_compiler )
             {
@@ -487,7 +550,7 @@ namespace {
                 {
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        args.push_back(cache_str( crate.second.m_path + ".o" ));
+                        args.push_back(crate.second.m_path + ".o");
                     }
                     for(const auto& path : link_dirs )
                     {
@@ -519,7 +582,7 @@ namespace {
             case Compiler::Msvc:
                 is_windows = true;
                 // TODO: Look up these paths in the registry and use CreateProcess instead of system
-                args.push_back(cache_str( detect_msvc().path_vcvarsall ));
+                args.push_back(detect_msvc().path_vcvarsall);
                 if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 )
                 {
                     args.push_back("amd64");  // NOTE: Doesn't support inline assembly, only works with overrides
@@ -540,40 +603,42 @@ namespace {
                 }
                 if(is_executable)
                 {
-                    args.push_back(cache_str( FMT("/Fe" << m_outfile_path) ));
+                    args.push_back(FMT("/Fe" << m_outfile_path));
 
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        args.push_back(cache_str( crate.second.m_path + ".o" ));
+                        args.push_back(crate.second.m_path + ".o");
                     }
                     // Crate-specified libraries
                     for(const auto& lib : m_crate.m_ext_libs) {
                         ASSERT_BUG(Span(), lib.name != "", "");
-                        args.push_back(cache_str( lib.name + ".lib" ));
+                        args.push_back(lib.name + ".lib");
                     }
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
                         for(const auto& lib : crate.second.m_data->m_ext_libs) {
                             ASSERT_BUG(Span(), lib.name != "", "Empty lib from " << crate.first);
-                            args.push_back(cache_str( lib.name + ".lib" ));
+                            args.push_back(lib.name + ".lib");
                         }
                     }
                     for(const auto& path : opt.libraries )
                     {
-                        args.push_back(cache_str( path + ".lib" ));
+                        args.push_back(path + ".lib");
                     }
+                    args.push_back("kernel32.lib"); // Needed for Interlocked*
 
                     // Command-line specified linker search directories
                     args.push_back("/link");
+                    args.push_back("/verbose");
                     for(const auto& path : link_dirs )
                     {
-                        args.push_back(cache_str( FMT("/LIBPATH:" << path) ));
+                        args.push_back(FMT("/LIBPATH:" << path));
                     }
                 }
                 else
                 {
                     args.push_back("/c");
-                    args.push_back(cache_str( FMT("/Fo" << m_outfile_path) ));
+                    args.push_back(FMT("/Fo" << m_outfile_path));
                 }
                 break;
             }
@@ -583,7 +648,7 @@ namespace {
             {
                 cmd_ss << "echo \"\" & ";
             }
-            for(const auto& arg : args)
+            for(const auto& arg : args.get_vec())
             {
                 if(strcmp(arg, "&") == 0 && is_windows) {
                     cmd_ss << "&";
@@ -1133,14 +1198,17 @@ namespace {
                 const auto& variants = item.m_data.as_Data();
                 m_of << "struct e_" << Trans_Mangle(p) << " {\n";
                 m_of << "\tunsigned int TAG;\n";
-                m_of << "\tunion {\n";
-                for(unsigned int i = 0; i < variants.size(); i ++)
+                if( variants.size() > 0 )
                 {
-                    m_of << "\t\t";
-                    emit_ctype( monomorph(variants[i].type) );
-                    m_of << " var_" << i << ";\n";
+                    m_of << "\tunion {\n";
+                    for(unsigned int i = 0; i < variants.size(); i ++)
+                    {
+                        m_of << "\t\t";
+                        emit_ctype( monomorph(variants[i].type) );
+                        m_of << " var_" << i << ";\n";
+                    }
+                    m_of << "\t} DATA;\n";
                 }
-                m_of << "\t} DATA;\n";
                 m_of << "};\n";
             }
 
@@ -1323,7 +1391,8 @@ namespace {
                     // Handled with asm() later
                     break;
                 case Compiler::Msvc:
-                    m_of << "#pragma comment(linker, \"/alternatename:_" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    //m_of << "#pragma comment(linker, \"/alternatename:_" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
                     break;
                 //case Compiler::Std11:
                 //    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
@@ -1766,7 +1835,7 @@ namespace {
             m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(p);
 
-            if (item.m_linkage.name != "" && m_compiler != Compiler::Gcc)
+            if (item.m_linkage.name != "")
             {
                 switch (m_compiler)
                 {
@@ -1774,7 +1843,8 @@ namespace {
                     // Handled with asm() later
                     break;
                 case Compiler::Msvc:
-                    m_of << "#pragma comment(linker, \"/alternatename:" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    //m_of << "#pragma comment(linker, \"/alternatename:_" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    //m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
                     break;
                 //case Compiler::Std11:
                 //    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
@@ -1785,9 +1855,38 @@ namespace {
             m_of << "// EXTERN extern \"" << item.m_abi << "\" " << p << "\n";
             m_of << "extern ";
             emit_function_header(p, item, params);
-            if( item.m_linkage.name != "" && m_compiler == Compiler::Gcc)
+            if( item.m_linkage.name != "" )
             {
-                m_of << " asm(\"" << item.m_linkage.name << "\")";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << " asm(\"" << item.m_linkage.name << "\")";
+                    break;
+                case Compiler::Msvc:
+                    m_of << " {\n";
+                    m_of << "\t";
+                    if( TU_TEST1(item.m_return.m_data, Tuple, .size() == 0) )
+                        ;
+                    else if( item.m_return.m_data.is_Diverge() )
+                        ;
+                    else {
+                        m_of << "return ";
+                        if( item.m_return.m_data.is_Pointer() )
+                            m_of << "(void*)";
+                    }
+                    m_of << item.m_linkage.name << "(";
+                    for(size_t i = 0; i < item.m_args.size(); i ++ )
+                    {
+                        if( i > 0 )
+                            m_of << ", ";
+                        m_of << "arg" << i;
+                    }
+                    m_of << ");\n";
+                    m_of << "}";
+                    //m_of << "#pragma comment(linker, \"/alternatename:_" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    //m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
+                    break;
+                }
             }
             m_of << ";\n";
 
@@ -2007,6 +2106,8 @@ namespace {
                     }
                     ),
                 (SwitchValue,
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = mir_res.get_lvalue_type(tmp, e.val);
                     if( const auto* ve = e.values.opt_String() ) {
                         assert(ve->size() == e.targets.size());
                         m_of << "\t{ int cmp;\n";
@@ -2026,7 +2127,10 @@ namespace {
                     }
                     else if( const auto* ve = e.values.opt_Unsigned() ) {
                         assert(ve->size() == e.targets.size());
-                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ") {\n";
+                        m_of << "\tswitch("; emit_lvalue(e.val);
+                        if(m_options.emulated_i128 && ty == ::HIR::CoreType::U128)
+                            m_of << ".lo";
+                        m_of << ") {\n";
                         for(size_t i = 0; i < e.targets.size(); i++)
                         {
                             m_of << "\t\tcase " << (*ve)[i] << "ull: goto bb" << e.targets[i] << ";\n";
@@ -2036,7 +2140,10 @@ namespace {
                     }
                     else if( const auto* ve = e.values.opt_Signed() ) {
                         assert(ve->size() == e.targets.size());
-                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ") {\n";
+                        m_of << "\tswitch("; emit_lvalue(e.val);
+                        if(m_options.emulated_i128 && ty == ::HIR::CoreType::I128)
+                            m_of << ".lo";
+                        m_of << ") {\n";
                         for(size_t i = 0; i < e.targets.size(); i++)
                         {
                             m_of << "\t\tcase ";
@@ -3233,11 +3340,11 @@ namespace {
                 case Compiler::Msvc:
                     switch(op)
                     {
-                    case AtomicOp::Add: emit_msvc_atomic_op("InterlockedExchangeAdd", ordering);    break;
-                    case AtomicOp::Sub: emit_msvc_atomic_op("InterlockedExchangeSub", ordering);    break;
-                    case AtomicOp::And: emit_msvc_atomic_op("InterlockedExchangeAnd", ordering);    break;
-                    case AtomicOp::Or:  emit_msvc_atomic_op("InterlockedExchangeOr", ordering);    break;
-                    case AtomicOp::Xor: emit_msvc_atomic_op("InterlockedExchangeXor", ordering);    break;
+                    case AtomicOp::Add: emit_msvc_atomic_op("InterlockedAdd", ordering);    break;
+                    case AtomicOp::Sub: emit_msvc_atomic_op("InterlockedSub", ordering);    break;
+                    case AtomicOp::And: emit_msvc_atomic_op("InterlockedAnd", ordering);    break;
+                    case AtomicOp::Or:  emit_msvc_atomic_op("InterlockedOr", ordering);    break;
+                    case AtomicOp::Xor: emit_msvc_atomic_op("InterlockedXor", ordering);    break;
                     }
                     emit_param(e.args.at(0)); m_of << ", ";
                     if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
@@ -3782,7 +3889,8 @@ namespace {
                     m_of << "atomic_load_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", " << ordering << ")";
                     break;
                 case Compiler::Msvc:
-                    emit_msvc_atomic_op("InterlockedRead", ordering); emit_param(e.args.at(0)); m_of << ")";
+                    //emit_msvc_atomic_op("InterlockedRead", ordering); emit_param(e.args.at(0)); m_of << ")";
+                    emit_msvc_atomic_op("InterlockedCompareExchange", ordering); emit_param(e.args.at(0)); m_of << ", 0, 0)";
                     break;
                 }
             }
@@ -3794,12 +3902,19 @@ namespace {
                     m_of << "atomic_store_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
                     break;
                 case Compiler::Msvc:
-                    emit_msvc_atomic_op("InterlockedStore", ordering); emit_param(e.args.at(0)); m_of << ", ";
+                    emit_msvc_atomic_op("InterlockedCompareExchange", ordering); emit_param(e.args.at(0)); m_of << ", ";
                     if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
                     {
                         m_of << "(void*)";
                     }
-                    emit_param(e.args.at(1)); m_of << ")";
+                    emit_param(e.args.at(1));
+                    m_of << ", ";
+                    if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
+                    {
+                        m_of << "(void*)";
+                    }
+                    emit_param(e.args.at(1));
+                    m_of << ")";
                     break;
                 }
             }
