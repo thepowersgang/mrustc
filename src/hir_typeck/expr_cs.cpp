@@ -186,7 +186,7 @@ struct Context
     }
     // Mark an ivar as having an unknown possibility (on the source side)
     void possible_equate_type_disable_from(unsigned int ivar_index) {
-        possible_equate_type_disable(ivar_index, true);
+        possible_equate_type_disable(ivar_index, false);
     }
     /// Default type
     //void possible_equate_type_def(unsigned int ivar_index, const ::HIR::TypeRef& t);
@@ -4161,7 +4161,7 @@ void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef
     list.push_back( t.clone() );
 }
 void Context::possible_equate_type_disable(unsigned int ivar_index, bool is_to) {
-    DEBUG(ivar_index << " ?= ??");
+    DEBUG(ivar_index << " ?= ?? (" << (is_to ? "to" : "from") << ")");
     {
         ::HIR::TypeRef  ty_l;
         ty_l.m_data.as_Infer().index = ivar_index;
@@ -5441,10 +5441,7 @@ namespace {
         const auto& sp = _span;
 
         if( ! ivar_ent.has_rules() ) {
-            // No idea! (or unused)
-            // - Clear the `force_no` flag
-            ivar_ent.force_no_to = false;
-            ivar_ent.force_no_from = false;
+            // No rules, don't do anything (and don't print)
             return false;
         }
 
@@ -5724,10 +5721,9 @@ namespace {
         };
 
         // If this type has an infer class active, don't allw a non-primitive to coerce over it.
-        switch( ty_l.m_data.as_Infer().ty_class )
+        if( ty_l.m_data.as_Infer().is_lit() )
         {
-        case ::HIR::InferClass::Integer:
-        case ::HIR::InferClass::Float:
+            DEBUG("Literal checks");
             // TODO: Actively search possibility list for the real type.
             for(const auto& ty : ivar_ent.types_coerce_to)
                 if( ty.m_data.is_Primitive() ) {
@@ -5750,11 +5746,9 @@ namespace {
                     return true;
                 }
             return false;
-        default:
-            break;
         }
 
-        if( ivar_ent.force_no_to == true || ivar_ent.force_no_from )
+        if( ivar_ent.force_no_to || ivar_ent.force_no_from )
         {
             DEBUG("- IVar " << ty_l << " is forced unknown");
             return false;
@@ -6002,17 +5996,24 @@ namespace {
                     });
 
             // Prefer cases where this type is being created from a known type
-            if( types_from.size() == 1 ) {
-                const ::HIR::TypeRef& ty_r = types_from[0];
+            if( types_from.size() == 1 || types_to.size() == 1 ) {
+                const char* list_name = (types_from.size() ? "from" : "to");
+                const ::HIR::TypeRef& ty_r = (types_from.size() == 1 ? types_from[0] : types_to[0]);
                 // Only one possibility
-                DEBUG("- IVar " << ty_l << " = " << ty_r << " (from)");
-                context.equate_types(sp, ty_l, ty_r);
-                return true;
-            }
-            else if( types_to.size() == 1 ) {
-                const ::HIR::TypeRef& ty_r = types_to[0];
-                // Only one possibility
-                DEBUG("- IVar " << ty_l << " = " << ty_r << " (to)");
+                // - If it would ivar unify, don't if the target has guessing disabled
+                if( const auto* e = ty_r.m_data.opt_Infer() )
+                {
+                    if( e->index < context.possible_ivar_vals.size() )
+                    {
+                        const auto& p = context.possible_ivar_vals[e->index];
+                        if(p.force_no_to || p.force_no_from)
+                        {
+                            DEBUG("- IVar " << ty_l << " ?= " << ty_r << " (" << list_name << ", rhs disabled)");
+                            return false;
+                        }
+                    }
+                }
+                DEBUG("- IVar " << ty_l << " = " << ty_r << " (" << list_name << ")");
                 context.equate_types(sp, ty_l, ty_r);
                 return true;
             }
@@ -6252,7 +6253,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             // Clear ivar possibilities for next pass
             for(auto& ivar_ent : context.possible_ivar_vals)
             {
-                ivar_ent = Context::IVarPossible {};
+                ivar_ent.reset();
             }
         }
 
