@@ -981,10 +981,25 @@ void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::A
 
 void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item)
 {
-    TRACE_FUNCTION_F("modpath = " << modpath);
+    TRACE_FUNCTION_F("modpath = " << modpath << ", first_item=" << first_item);
 
     for( const auto& mi: mod.macro_imports_res() )
         DEBUG("- Imports '" << mi.name << "'");
+    // Import all macros from parent module.
+    if( first_item == 0 )
+    {
+        for( const auto& mi: mod.macro_imports_res() )
+            DEBUG("- Imports '" << mi.name << "'");
+        if( modstack.m_prev )
+        {
+            for(const auto& mac : modstack.m_prev->m_item->m_macro_imports)
+            {
+                mod.m_macro_imports.push_back(mac);
+            }
+        }
+        for( const auto& mi: mod.m_macro_imports )
+            DEBUG("- Imports '" << mi.first << "'");
+    }
 
     // Insert prelude if: Enabled for this module, present for the crate, and this module is not an anon
     if( crate.m_prelude_path != AST::Path() )
