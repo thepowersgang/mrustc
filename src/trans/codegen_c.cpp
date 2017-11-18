@@ -1520,7 +1520,7 @@ namespace {
                     m_of << " ";
                     emit_literal(get_inner_type(0, i), e[i], params);
                 }
-                if(ty.m_data.is_Path() && e.size() == 0 && m_options.disallow_empty_structs)
+                if( (ty.m_data.is_Path() || ty.m_data.is_Tuple()) && e.size() == 0 && m_options.disallow_empty_structs )
                     m_of << "0";
                 m_of << " }";
                 if( ty.m_data.is_Array() )
@@ -1835,23 +1835,6 @@ namespace {
             m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(p);
 
-            if (item.m_linkage.name != "")
-            {
-                switch (m_compiler)
-                {
-                case Compiler::Gcc:
-                    // Handled with asm() later
-                    break;
-                case Compiler::Msvc:
-                    //m_of << "#pragma comment(linker, \"/alternatename:_" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
-                    //m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
-                    break;
-                //case Compiler::Std11:
-                //    m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
-                //    break;
-                }
-            }
-
             m_of << "// EXTERN extern \"" << item.m_abi << "\" " << p << "\n";
             m_of << "extern ";
             emit_function_header(p, item, params);
@@ -1883,8 +1866,6 @@ namespace {
                     }
                     m_of << ");\n";
                     m_of << "}";
-                    //m_of << "#pragma comment(linker, \"/alternatename:_" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
-                    //m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
                     break;
                 }
             }

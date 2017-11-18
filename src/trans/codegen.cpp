@@ -91,6 +91,15 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
         if( fcn.m_code.m_mir ) {
             codegen->emit_function_proto(ent.first, fcn, ent.second->pp, is_extern);
         }
+    }
+
+    for(const auto& ent : list.m_functions)
+    {
+        //DEBUG("FUNCTION " << ent.first);
+        assert( ent.second->ptr );
+        const auto& fcn = *ent.second->ptr;
+        if( fcn.m_code.m_mir ) {
+        }
         else {
             // TODO: Why would an intrinsic be in the queue?
             // - If it's exported it does.
