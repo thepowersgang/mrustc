@@ -398,7 +398,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         // Rebuild (missing)
         DEBUG("Building " << outfile << " - Missing");
     }
-    else if( ts_result < this->get_timestamp(m_compiler_path) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) {
+    else if( !getenv("MINICARGO_IGNTOOLS") && ( ts_result < this->get_timestamp(m_compiler_path) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) ) {
         // Rebuild (older than mrustc/minicargo)
         DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(m_compiler_path) << ")");
     }
@@ -547,7 +547,7 @@ bool Builder::build_library(const PackageManifest& manifest) const
             if( ts_result == Timestamp::infinite_past() ) {
                 DEBUG("Building " << out_file << " - Missing");
             }
-            else if( ts_result < this->get_timestamp(m_compiler_path) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) {
+            else if( !getenv("MINICARGO_IGNTOOLS") && (ts_result < this->get_timestamp(m_compiler_path) /*|| ts_result < this->get_timestamp("bin/minicargo")*/) ) {
                 // Rebuild (older than mrustc/minicargo)
                 DEBUG("Building " << out_file << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(m_compiler_path) << ")");
             }
