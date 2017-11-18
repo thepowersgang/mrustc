@@ -2806,8 +2806,14 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             const auto& real_trait_path = real_trait.m_path;
             DEBUG("- bound mono " << real_type << " : " << real_trait);
             bool found_fuzzy_match = false;
-            if( real_type.m_data.is_Path() && real_type.m_data.as_Path().binding.is_Unbound() ) {
+            // If the type is an unbound UFCS path, assume fuzzy
+            if( TU_TEST1(real_type.m_data, Path, .binding.is_Unbound()) ) {
                 DEBUG("- Bounded type is unbound UFCS, assuming fuzzy match");
+                found_fuzzy_match = true;
+            }
+            // If the type is an ivar, but not a literal, assume fuzzy
+            if( TU_TEST1(real_type.m_data, Infer, .is_lit() == false) ) {
+                DEBUG("- Bounded type is an ivar, assuming fuzzy match");
                 found_fuzzy_match = true;
             }
             // TODO: Pass the `match_test_generics` callback? Or another one that handles the impl placeholders.
