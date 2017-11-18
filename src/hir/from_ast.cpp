@@ -1735,7 +1735,9 @@ public:
                 ERROR(sp, E0000, "Conflicting definitions of lang item '" << name << "'. " << path << " and " << irv.first->second);
             }
         }
-        auto p = ext_crate.second.m_filename.find('/');
+        auto p1 = ext_crate.second.m_filename.rfind('/');
+        auto p2 = ext_crate.second.m_filename.rfind('\\');
+        auto p = (p1 == ::std::string::npos ? p2 : (p2 == ::std::string::npos ? p1 : ::std::max(p1,p2)));
         auto crate_file = (p == ::std::string::npos ? ext_crate.second.m_filename : ext_crate.second.m_filename.substr(p+1));
         rv.m_ext_crates.insert( ::std::make_pair( ext_crate.first, ::HIR::ExternCrate { mv$(ext_crate.second.m_hir), crate_file, ext_crate.second.m_filename } ) );
     }
