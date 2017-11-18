@@ -750,6 +750,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
             DEBUG("Compiler was terminated with signal " << WTERMSIG(status));
         else
             DEBUG("Compiler terminated for unknown reason, status=" << status);
+        DEBUG("See " << logfile << " for the compiler output");
         return false;
     }
 #endif
