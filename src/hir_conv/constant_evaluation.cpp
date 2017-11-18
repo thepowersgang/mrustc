@@ -439,18 +439,22 @@ namespace {
             }
             void visit(::HIR::ExprNode_Borrow& node) override {
 
+                ::HIR::TypeRef  exp_ty_inner;
                 TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_exp_type.m_data), (te),
                 (
                     //ERROR(node.span(), E0000, "Invalid expected type for a &-ptr - " << m_exp_type);
+                    DEBUG("_Borrow: Unknown " << m_exp_type);
+                    exp_ty_inner = m_exp_type.clone();
                     ),
                 (Infer,
                     ),
                 (Borrow,
-                    auto inner = mv$( *te.inner );
-                    m_exp_type = mv$(inner);
+                    exp_ty_inner = mv$( *te.inner );
+                    DEBUG("_Borrow: borrow expecting inner " << exp_ty_inner);
                     )
                 )
 
+                m_exp_type = exp_ty_inner.clone();
                 node.m_value->visit(*this);
                 auto val = mv$(m_rv);
 
@@ -459,7 +463,12 @@ namespace {
                 }
 
                 if( visit_ty_with(m_rv_type, [&](const auto& x){ return x.m_data.is_Infer(); }) ) {
-                    ERROR(node.span(), E0000, "Could not trivially infer type of referenced static - " << m_rv_type << ", lit = " << val);
+                    if( visit_ty_with(exp_ty_inner, [&](const auto& x){ return x.m_data.is_Infer(); }) ) {
+                        ERROR(node.span(), E0000, "Could not trivially infer type of referenced static - " << m_rv_type << ", lit = " << val << ", exp=&" << exp_ty_inner);
+                    }
+                    else {
+                        m_rv_type = mv$(exp_ty_inner);
+                    }
                 }
 
                 m_rv_type = ::HIR::TypeRef::new_borrow( node.m_type, mv$(m_rv_type) );
