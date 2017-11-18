@@ -5994,6 +5994,19 @@ namespace {
             H::dedup_type_list_with(types_to, [&](const auto& l, const auto& r) {
                     return context.m_ivars.types_equal(l, r) ? DedupKeep::Left : DedupKeep::Both;
                     });
+            
+            // If there is a common type in both lists, use it
+            for(const auto& t1 : types_from)
+            {
+                for(const auto& t2 : types_to)
+                {
+                    if(t1 == t2) {
+                        DEBUG("- IVar " << ty_l << " = " << t1 << " (present in both lists)");
+                        context.equate_types(sp, ty_l, t1);
+                        return true;
+                    }
+                }
+            }
 
             // Prefer cases where this type is being created from a known type
             if( types_from.size() == 1 || types_to.size() == 1 ) {
@@ -6008,12 +6021,19 @@ namespace {
                         const auto& p = context.possible_ivar_vals[e->index];
                         if(p.force_no_to || p.force_no_from)
                         {
-                            DEBUG("- IVar " << ty_l << " ?= " << ty_r << " (" << list_name << ", rhs disabled)");
+                            DEBUG("- IVar " << ty_l << " ?= " << ty_r << " (single " << list_name << ", rhs disabled)");
                             return false;
                         }
                     }
                 }
-                DEBUG("- IVar " << ty_l << " = " << ty_r << " (" << list_name << ")");
+                // If there are from options, AND the to option is an Unsize
+                if( types_from.size() > 1 && ivar_ent.types_unsize_to.size() == 1 && ivar_ent.types_coerce_to.size() == 0
+                        && ::std::any_of(types_from.begin(), types_from.end(), [](const auto&x){ return x.m_data.is_Infer(); }) ) {
+                    DEBUG("- IVar " << ty_l << " != " << ty_r << " (single " << list_name << ", but was unsize and from has ivars)");
+                    return false;
+                }
+
+                DEBUG("- IVar " << ty_l << " = " << ty_r << " (single " << list_name << ")");
                 context.equate_types(sp, ty_l, ty_r);
                 return true;
             }
