@@ -601,6 +601,7 @@ namespace {
                 m_pmi.send_symbol("(");
                 for( const auto& si : se.ents )
                 {
+                    // TODO: Attributes.
                     if( si.m_is_public )
                         m_pmi.send_ident("pub");
                     this->visit_type(si.m_type);
@@ -616,6 +617,7 @@ namespace {
 
                 for( const auto& si : se.ents )
                 {
+                    // TODO: Attributes.
                     if( si.m_is_public )
                         m_pmi.send_ident("pub");
                     m_pmi.send_ident(si.m_name.c_str());
@@ -627,11 +629,56 @@ namespace {
                 )
             )
         }
-        void visit_enum(const ::std::string& name, bool is_pub, const ::AST::Enum& str)
+        void visit_enum(const ::std::string& name, bool is_pub, const ::AST::Enum& enm)
         {
+            if( is_pub ) {
+                m_pmi.send_ident("pub");
+            }
+
+            m_pmi.send_ident("enum");
+            m_pmi.send_ident(name.c_str());
+            this->visit_params(enm.params());
+            this->visit_bounds(enm.params());
+            m_pmi.send_symbol("{");
+            for(const auto& v : enm.variants())
+            {
+                // TODO: Attributes.
+                m_pmi.send_ident(v.m_name.c_str());
+                TU_MATCH(AST::EnumVariantData, (v.m_data), (e),
+                (Value,
+                    m_pmi.send_symbol("=");
+                    this->visit_nodes(e.m_value);
+                    ),
+                (Tuple,
+                    m_pmi.send_symbol("(");
+                    for(const auto& st : e.m_sub_types)
+                    {
+                        // TODO: Attributes?
+                        this->visit_type(st);
+                        m_pmi.send_symbol(",");
+                    }
+                    m_pmi.send_symbol(")");
+                    ),
+                (Struct,
+                    m_pmi.send_symbol("{");
+                    for(const auto& f : e.m_fields)
+                    {
+                        // TODO: Attributes?
+                        m_pmi.send_ident(f.m_name.c_str());
+                        m_pmi.send_symbol(":");
+                        this->visit_type(f.m_type);
+                        m_pmi.send_symbol(",");
+                    }
+                    m_pmi.send_symbol("}");
+                    )
+                )
+                m_pmi.send_symbol(",");
+            }
+            m_pmi.send_symbol("}");
         }
-        void visit_union(const ::std::string& name, bool is_pub, const ::AST::Union& str)
+        void visit_union(const ::std::string& name, bool is_pub, const ::AST::Union& unn)
         {
+            TODO(sp, "visit_union");
         }
     };
 }
