@@ -14,7 +14,9 @@
 #include <hir/hir.hpp>  // ABI_RUST
 #include "proc_macro.hpp"
 #include <parse/lex.hpp>
-#ifdef WIN32
+#ifdef _WIN32
+# define NOGDI  // Don't include GDI functions (defines some macros that collide with mrustc ones)
+# include <Windows.h>
 #else
 # include <unistd.h>    // read/write/pipe
 # include <spawn.h>
@@ -673,7 +675,7 @@ namespace {
 ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const char* macro_name):
     m_parent_span(sp)
 {
-#ifdef WIN32
+#ifdef _WIN32
 #else
      int    stdin_pipes[2];
     pipe(stdin_pipes);
@@ -708,14 +710,17 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const char* m
 }
 ProcMacroInv::ProcMacroInv(ProcMacroInv&& x):
     m_parent_span(x.m_parent_span),
-#ifdef WIN32
+#ifdef _WIN32
+    child_handle(x.child_handle),
+    child_stdin(x.child_stdin),
+    child_stdout(x.child_stdout)
 #else
     child_pid(x.child_pid),
     child_stdin(x.child_stdin),
     child_stdout(x.child_stdout)
 #endif
 {
-#ifdef WIN32
+#ifdef _WIN32
 #else
     x.child_pid = 0;
 #endif
@@ -724,7 +729,7 @@ ProcMacroInv::ProcMacroInv(ProcMacroInv&& x):
 ProcMacroInv& ProcMacroInv::operator=(ProcMacroInv&& x)
 {
     m_parent_span = x.m_parent_span;
-#ifdef WIN32
+#ifdef _WIN32
 #else
     child_pid = x.child_pid;
     child_stdin = x.child_stdin;
@@ -737,7 +742,7 @@ ProcMacroInv& ProcMacroInv::operator=(ProcMacroInv&& x)
 }
 ProcMacroInv::~ProcMacroInv()
 {
-#ifdef WIN32
+#ifdef _WIN32
 #else
     if( this->child_pid != 0 )
     {
@@ -752,7 +757,11 @@ ProcMacroInv::~ProcMacroInv()
 bool ProcMacroInv::check_good()
 {
     char    v;
+#ifdef _WIN32
+    int rv = ReadFile(this->child_stdout, &v, 1, nullptr, nullptr);
+#else
     int rv = read(this->child_stdout, &v, 1);
+#endif
     if( rv == 0 )
     {
         DEBUG("Unexpected EOF from child");
@@ -770,7 +779,7 @@ bool ProcMacroInv::check_good()
 }
 void ProcMacroInv::send_u8(uint8_t v)
 {
-#ifdef WIN32
+#ifdef _WIN32
 #else
     write(this->child_stdin, &v, 1);
 #endif
@@ -778,7 +787,7 @@ void ProcMacroInv::send_u8(uint8_t v)
 void ProcMacroInv::send_bytes(const void* val, size_t size)
 {
     this->send_v128u( static_cast<uint64_t>(size) );
-#ifdef WIN32
+#ifdef _WIN32
 #else
     write(this->child_stdin, val, size);
 #endif
@@ -794,8 +803,14 @@ void ProcMacroInv::send_v128u(uint64_t val)
 uint8_t ProcMacroInv::recv_u8()
 {
     uint8_t v;
+#ifdef _WIN32
+    DWORD n;
+    if( !ReadFile(this->child_stdout, &v, 1, &n, nullptr) )
+        BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
+#else
     if( read(this->child_stdout, &v, 1) != 1 )
         BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
+#endif
     return v;
 }
 ::std::string ProcMacroInv::recv_bytes()
@@ -807,7 +822,12 @@ uint8_t ProcMacroInv::recv_u8()
     size_t  ofs = 0, rem = len;
     while( rem > 0 )
     {
+#ifdef _WIN32
+        DWORD n;
+        ReadFile(this->child_stdout, &val[ofs], rem, &n, nullptr);
+#else
         auto n = read(this->child_stdout, &val[ofs], rem);
+#endif
         if( n == 0 ) {
             BUG(this->m_parent_span, "Unexpected EOF while reading from child process");
         }

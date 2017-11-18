@@ -85,7 +85,7 @@ namespace HIR {
     }
 }
 
-size_t ::HIR::Enum::find_variant(const ::std::string& name) const
+size_t HIR::Enum::find_variant(const ::std::string& name) const
 {
     if( m_data.is_Value() )
     {
@@ -121,6 +121,7 @@ uint32_t HIR::Enum::get_value(size_t idx) const
     else
     {
         assert(!"TODO: Enum::get_value on non-value enum?");
+        throw "";
     }
 }
 

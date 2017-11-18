@@ -386,6 +386,9 @@
     <ClCompile Include="..\src\trans\allocator.cpp">
       <Filter>Source Files\trans</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\expand\proc_macro.cpp">
+      <Filter>Source Files\expand</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\common.hpp">

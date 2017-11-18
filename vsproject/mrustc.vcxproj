@@ -163,6 +163,7 @@
     <ClCompile Include="..\src\expand\lang_item.cpp" />
     <ClCompile Include="..\src\expand\macro_rules.cpp" />
     <ClCompile Include="..\src\expand\mod.cpp" />
+    <ClCompile Include="..\src\expand\proc_macro.cpp" />
     <ClCompile Include="..\src\expand\rustc_diagnostics.cpp" />
     <ClCompile Include="..\src\expand\std_prelude.cpp" />
     <ClCompile Include="..\src\expand\stringify.cpp" />
