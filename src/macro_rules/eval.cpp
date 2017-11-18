@@ -1325,17 +1325,35 @@ namespace
                 consume_tt(lex);
                 break;
             case TOK_RWORD_IF:
-                lex.consume();
-                consume_expr(lex, true);
-                if( lex.next() != TOK_BRACE_OPEN )
-                    return false;
-                consume_tt(lex);
-                if( lex.next() == TOK_RWORD_ELSE )
+                while(1)
                 {
+                    assert(lex.next() == TOK_RWORD_IF);
                     lex.consume();
+                    if(lex.next() == TOK_RWORD_LET)
+                    {
+                        lex.consume();
+                        if( !consume_pat(lex) )
+                            return false;
+                        if( lex.next() != TOK_EQUAL )
+                            return false;
+                        lex.consume();
+                    }
+                    if( !consume_expr(lex, true) )
+                        return false;
                     if( lex.next() != TOK_BRACE_OPEN )
                         return false;
                     consume_tt(lex);
+                    if( lex.next() != TOK_RWORD_ELSE )
+                        break;
+                    lex.consume();
+
+                    if( lex.next() != TOK_RWORD_IF )
+                    {
+                        if( lex.next() != TOK_BRACE_OPEN )
+                            return false;
+                        consume_tt(lex);
+                        break;
+                    }
                 }
                 break;
             default:
