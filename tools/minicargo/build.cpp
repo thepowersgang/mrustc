@@ -468,6 +468,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     env.push_back("OUT_DIR", out_dir.str());
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
     env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+    env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
+    env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
+    env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
     for(const auto& dep : manifest.dependencies())
     {
         if( ! dep.is_disabled() )
@@ -511,6 +514,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     StringListKV    env;
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
     env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
+    env.push_back("CARGO_PKG_VERSION_MAJOR", ::format(manifest.version().major));
+    env.push_back("CARGO_PKG_VERSION_MINOR", ::format(manifest.version().minor));
+    env.push_back("CARGO_PKG_VERSION_PATCH", ::format(manifest.version().patch));
     // TODO: If there's any dependencies marked as `links = foo` then grab `DEP_FOO_<varname>` from its metadata
     // (build script output)
 
