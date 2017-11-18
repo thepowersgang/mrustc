@@ -741,8 +741,8 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const char* m
     posix_spawn_file_actions_addclose(&file_actions, stdout_pipes[1]);
 
     char*   argv[3] = { const_cast<char*>(executable), const_cast<char*>(macro_name), nullptr };
-    char*   envp[] = { nullptr };
-    int rv = posix_spawn(&this->child_pid, executable, &file_actions, nullptr, argv, envp);
+    //char*   envp[] = { nullptr };
+    int rv = posix_spawn(&this->child_pid, executable, &file_actions, nullptr, argv, environ);
     if( rv != 0 )
     {
         BUG(sp, "Error in posix_spawn - " << rv);

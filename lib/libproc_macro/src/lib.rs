@@ -1,7 +1,26 @@
 // MRustC custom version of libproc_macro
 //
 // Unlike the rustc version, this one is designed to live complely detached from its compiler.
-// See the 
+
+//#[macro_use]
+//extern crate log;
+//extern crate env_logger;
+
+macro_rules! debug {
+    ( $($t:tt)* ) => {
+        if ::std::env::var_os("MRUSTC_PM_DEBUG").is_some() {
+            eprintln!($($t)*)
+        }
+    }
+}
+macro_rules! note {
+    ( $($t:tt)* ) => {
+        if ::std::env::var_os("MRUSTC_PM_DEBUG").is_some() {
+            eprintln!($($t)*)
+        }
+    }
+}
+
 use std::fmt;
 use std::str::FromStr;
 
@@ -646,6 +665,8 @@ pub struct MacroDesc
 
 pub fn main(macros: &[MacroDesc])
 {
+    //::env_logger::init();
+
     let mac_name = ::std::env::args().nth(1).expect("Was not passed a macro name");
     //eprintln!("Searching for macro {}\r", mac_name);
     for m in macros
@@ -654,13 +675,13 @@ pub fn main(macros: &[MacroDesc])
             use std::io::Write;
             ::std::io::stdout().write(&[0]);
             ::std::io::stdout().flush();
-            //eprintln!("Waiting for input\r");
+            debug!("Waiting for input\r");
             let input = recv_token_stream();
-            //eprintln!("INPUT = `{}`\r", input);
+            debug!("INPUT = `{}`\r", input);
             let output = (m.handler)( input );
-            //eprintln!("OUTPUT = `{}`\r", output);
+            debug!("OUTPUT = `{}`\r", output);
             send_token_stream(output);
-            //eprintln!("Done");
+            note!("Done");
             return ;
         }
     }
