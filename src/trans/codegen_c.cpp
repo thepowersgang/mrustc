@@ -2131,7 +2131,7 @@ namespace {
                             if( (*ve)[i] == INT64_MIN )
                                 m_of << "INT64_MIN";
                             else
-                                m_of << (*ve)[i] << "ull";
+                                m_of << (*ve)[i] << "ll";
                             m_of << ": goto bb" << e.targets[i] << ";\n";
                         }
                         m_of << "\t\tdefault: goto bb" << e.def_target << ";\n";
