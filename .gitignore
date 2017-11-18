@@ -14,6 +14,8 @@
 /crates.io
 /test_deps_run-pass.mk
 
+/tools/bin
+
 /output
 /vsproject/Win32
 /vsproject/x64
@@ -36,6 +38,9 @@
 /run_rustc/output
 
 /gitstats
+
+/lib/libproc_macro/Cargo.lock
+/lib/libproc_macro/target
 
 /bnf/*.o
 /bnf/*.dep
