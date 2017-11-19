@@ -205,6 +205,10 @@ public:
     void send_float(eCoreType ct, double v);
     //void send_fragment();
 
+    bool attr_is_used(const ::std::string& n) const {
+        return ::std::find(m_proc_macro_desc.attributes.begin(), m_proc_macro_desc.attributes.end(), n) != m_proc_macro_desc.attributes.end();
+    }
+
     virtual Position getPosition() const override;
     virtual Token realGetToken() override;
     virtual Ident::Hygiene realGetHygiene() const override;
@@ -602,7 +606,41 @@ namespace {
 
         void visit_attrs(const ::AST::MetaItems& attrs)
         {
+            for(const auto& a : attrs.m_items)
+            {
+                if( m_pmi.attr_is_used(a.name()) )
+                {
+                    m_pmi.send_symbol("#");
+                    m_pmi.send_symbol("[");
+                    this->visit_meta_item(a);
+                    m_pmi.send_symbol("]");
+                }
+            }
         }
+        void visit_meta_item(const ::AST::MetaItem& i)
+        {
+            m_pmi.send_ident(i.name().c_str());
+            if( i.has_noarg() ) {
+            }
+            else if( i.has_string() ) {
+                m_pmi.send_symbol("=");
+                m_pmi.send_string( i.string().c_str() );
+            }
+            else {
+                assert(i.has_sub_items());
+                m_pmi.send_symbol("(");
+                bool first = true;
+                for(const auto& si : i.items())
+                {
+                    if(!first)
+                        m_pmi.send_symbol(",");
+                    this->visit_meta_item(si);
+                    first = false;
+                }
+                m_pmi.send_symbol(")");
+            }
+        }
+
         void visit_struct(const ::std::string& name, bool is_pub, const ::AST::Struct& str)
         {
             if( is_pub ) {
