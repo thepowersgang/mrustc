@@ -103,7 +103,7 @@ impl ::std::fmt::Debug for LexError {
 impl FromStr for TokenStream {
     type Err = LexError;
     fn from_str(src: &str) -> Result<TokenStream, LexError> {
-        //eprintln!("TokenStream::from_str({:?})\r", src);
+        debug!("TokenStream::from_str({:?})\r", src);
         let rv = Vec::new();
         let mut it = CharStream::new(src.chars());
 
@@ -167,14 +167,30 @@ impl FromStr for TokenStream {
             {
                 it.consume();
                 c = it.cur();
-                if c.is_xid_start() && it.next().map(|x| x != '\'').unwrap_or(true) {
+                if (c.is_xid_start() || c == '_') && it.next().map(|x| x != '\'').unwrap_or(true) {
                     // Lifetime
                     let ident = get_ident(&mut it, String::new());
                     rv.push(Token::Lifetime(ident))
                 }
                 else {
                     // Char lit
-                    panic!("TODO: char literal");
+                    if c == '\\' {
+                        panic!("TODO: char literal with escape");
+                    }
+                    else {
+                        rv.push(Token::CharLit(c));
+                        match it.consume()
+                        {
+                        Some('\'') => {},
+                        Some(c) => {
+                            debug!("Stray charcter '{}'", c);
+                            return err("Multiple characters in char literal");
+                            },
+                        None => {
+                            return err("Unterminated char literal");
+                            },
+                        }
+                    }
                 }
             }
             else if c == '/' && it.next() == Some('/')
