@@ -219,8 +219,21 @@ int main(int argc, const char* argv[])
                 }
                 else if( line.substr(3, 14) == "compile-flags:" )
                 {
-                    //TODO("Compiler flags - " << line.substr(3+14));
-                    td.m_extra_flags.push_back( line.substr(3+14) );
+                    auto end = line.find(' ', 3+14);
+                    decltype(end) start = 3+14;
+                    do
+                    {
+                        if( start != end )
+                        {
+                            auto a = line.substr(start, end-start);
+                            DEBUG("+" << a);
+                            td.m_extra_flags.push_back(::std::move(a));
+                        }
+                        if( end == ::std::string::npos )
+                            break;
+                        start = end + 1;
+                        end = line.find(' ', start);
+                    } while(1);
                 }
             } while( !in.eof() );
 

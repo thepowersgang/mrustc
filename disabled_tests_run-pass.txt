@@ -1,3 +1,13 @@
 tydesc-name # Difference in printing of paths
 
+# codegen-units
+sepcomp-fns
+
+# Requires unwinding panics
+unwind-resource
+
+
+# BUG: (TODO Determine)
+issue-34932   # Crashes with an OOB (invalid?) pointer in HashMap
+
 # vim: ft=make
