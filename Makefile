@@ -231,6 +231,13 @@ rust_tests: rust_tests-run-pass
 # rust_tests-run-fail
 # rust_tests-compile-fail
 
+.PHONY: RUST_TESTS RUST_TESTS_run-pass
+RUST_TESTS: RUST_TESTS_run-pass
+RUST_TESTS_run-pass:
+	@make -C tools/testrunner
+	@mkdir -p output/rust_tests/run-pass
+	./tools/bin/testrunner -o output/rust_tests/run-pass rustc-1.19.0-src/src/test/run-pass --exceptions disabled_tests_run-pass.txt
+
 DISABLED_TESTS := 
 # - NOT A TEST
 DISABLED_TESTS += run-pass/backtrace-debuginfo-aux
