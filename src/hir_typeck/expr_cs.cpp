@@ -1349,6 +1349,9 @@ namespace {
                 }
             }
 
+
+            // TODO: Figure out a way to disable coercions in desugared for loops (will speed up typecheck)
+
             // Link arguments
             // - NOTE: Uses the cache for the count because vaargs aren't checked (they're checked for suitability in expr_check.cpp)
             for(unsigned int i = 0; i < node.m_cache.m_arg_types.size() - 1; i ++)
@@ -5197,6 +5200,7 @@ namespace {
                     DEBUG("- Magic inferrence link for binops on numerics");
                     context.equate_types(sp, res, left);
                 }
+                context.equate_types_to_shadow(sp, right);
             }
             else
             {
@@ -6223,8 +6227,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             // Check the possible equations
             DEBUG("--- IVar possibilities");
+            // NOTE: Ordering is a hack for libgit2
             for(unsigned int i = context.possible_ivar_vals.size(); i --; )
-            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i]) ) {
                     static Span sp;
