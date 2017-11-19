@@ -572,6 +572,7 @@ int main(int argc, char *argv[])
             TransList items2 = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + "-plugin", trans_opt, *hir_crate, items2, true); });
 
+            hir_crate->m_lang_items.clear();    // Make sure that we're not exporting any lang items
             CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
             break; }
         case ::AST::Crate::Type::Executable:
