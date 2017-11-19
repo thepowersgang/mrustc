@@ -40,6 +40,7 @@ struct TestDesc
     ::std::string   m_name;
     ::std::string   m_path;
     ::std::vector<::std::string>    m_pre_build;
+    ::std::vector<::std::string>    m_extra_flags;
 };
 struct Timestamp
 {
@@ -81,13 +82,8 @@ struct Timestamp
 
 bool run_executable(const ::helpers::path& file, const ::std::vector<const char*>& args, const ::helpers::path& outfile);
 
-bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& output, ::helpers::path libdir={})
+bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& output, const ::std::vector<::std::string>& extra_flags, ::helpers::path libdir={}, bool is_dep=false)
 {
-    auto test_output_ts = Timestamp::for_file(output);
-    if( test_output_ts < Timestamp::for_file(MRUSTC_PATH) )
-        ;
-    else
-        return true;
     ::std::vector<const char*>  args;
     args.push_back("mrustc");
     args.push_back("-L");
@@ -97,16 +93,28 @@ bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& out
         args.push_back("-L");
         args.push_back(libdir.str().c_str());
     }
+
+    ::helpers::path logfile;
+    if( !is_dep )
+    {
+        args.push_back("-o");
+        args.push_back(output.str().c_str());
+        logfile = output + "-build.log";
+    }
     else
     {
         args.push_back("--crate-type");
         args.push_back("rlib");
+        args.push_back("--out-dir");
+        args.push_back(output.str().c_str());
+
+        logfile = output / source_file.basename() + "-build.log";
     }
     args.push_back(source_file.str().c_str());
-    args.push_back("-o");
-    args.push_back(output.str().c_str());
+    for(const auto& s : extra_flags)
+        args.push_back(s.c_str());
 
-    return run_executable(MRUSTC_PATH, args, output + "-build.log");
+    return run_executable(MRUSTC_PATH, args, logfile);
 }
 
 int main(int argc, const char* argv[])
@@ -197,7 +205,6 @@ int main(int argc, const char* argv[])
 
             TestDesc    td;
 
-            bool    blank_seen = false;
             do
             {
                 ::std::string   line;
@@ -209,6 +216,11 @@ int main(int argc, const char* argv[])
                 if( line.substr(3, 10) == "aux-build:" )
                 {
                     td.m_pre_build.push_back( line.substr(13) );
+                }
+                else if( line.substr(3, 14) == "compile-flags:" )
+                {
+                    //TODO("Compiler flags - " << line.substr(3+14));
+                    td.m_extra_flags.push_back( line.substr(3+14) );
                 }
             } while( !in.eof() );
 
@@ -224,7 +236,6 @@ int main(int argc, const char* argv[])
 
             auto test = td;
 
-            DEBUG("[" << skip_list << "] " << td.m_name);
             if( ::std::find(skip_list.begin(), skip_list.end(), td.m_name) != skip_list.end() )
             {
                 DEBUG(">> SKIP " << test.m_name);
@@ -233,24 +244,27 @@ int main(int argc, const char* argv[])
 
             DEBUG(">> " << test.m_name);
             auto depdir = outdir / "deps-" + test.m_name.c_str();
+            auto outfile = outdir / test.m_name + ".exe";
 
-            for(const auto& file : test.m_pre_build)
+            auto test_output_ts = Timestamp::for_file(outfile);
+            if( test_output_ts < Timestamp::for_file(MRUSTC_PATH) )
             {
-                mkdir(depdir.str().c_str(), 0755);
-                auto outfile = (depdir / "lib") + file.substr(0, file.size() - 3).c_str() + ".hir";
-                auto infile = input_path / "auxiliary" / file;
-                if( !run_compiler(infile, outfile) )
+                for(const auto& file : test.m_pre_build)
                 {
-                    DEBUG("COMPILE FAIL " << infile << " (dep of " << test.m_name << ")");
+                    mkdir(depdir.str().c_str(), 0755);
+                    auto infile = input_path / "auxiliary" / file;
+                    if( !run_compiler(infile, depdir, {}, depdir, true) )
+                    {
+                        DEBUG("COMPILE FAIL " << infile << " (dep of " << test.m_name << ")");
+                        return 1;
+                    }
+                }
+                auto compile_logfile = outdir / test.m_name + "-build.log";
+                if( !run_compiler(test.m_path, outfile, test.m_extra_flags, depdir) )
+                {
+                    DEBUG("COMPILE FAIL " << test.m_name);
                     return 1;
                 }
-            }
-            auto outfile = outdir / test.m_name + ".exe";
-            auto compile_logfile = outdir / test.m_name + "-build.log";
-            if( !run_compiler(test.m_path, outfile, depdir) )
-            {
-                DEBUG("COMPILE FAIL " << test.m_name);
-                return 1;
             }
             // - Run the test
             if( !run_executable(outfile, { outfile.str().c_str() }, outdir / test.m_name + ".out") )
@@ -415,11 +429,11 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
     if( status != 0 )
     {
         if( WIFEXITED(status) )
-            DEBUG(exe_name << " exited with non-zero exit status " << WEXITSTATUS(status));
+            DEBUG(exe_name << " exited with non-zero exit status " << WEXITSTATUS(status) << ", see log " << outfile_str);
         else if( WIFSIGNALED(status) )
-            DEBUG(exe_name << " was terminated with signal " << WTERMSIG(status));
+            DEBUG(exe_name << " was terminated with signal " << WTERMSIG(status) << ", see log " << outfile_str);
         else
-            DEBUG(exe_name << " terminated for unknown reason, status=" << status);
+            DEBUG(exe_name << " terminated for unknown reason, status=" << status << ", see log " << outfile_str);
         return false;
     }
 #endif
