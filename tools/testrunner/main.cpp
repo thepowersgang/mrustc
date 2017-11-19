@@ -11,7 +11,16 @@
 # include <Windows.h>
 # define MRUSTC_PATH    "x64\\Release\\mrustc.exe"
 #else
+# include <sys/types.h>
+# include <dirent.h>
+# include <sys/stat.h>
+# include <unistd.h>
+# include <spawn.h>
+# include <fcntl.h> // O_*
+# include <sys/wait.h>  // waitpid
+# define MRUSTC_PATH    "./bin/mrustc"
 #endif
+#include <algorithm>
 
 struct Options
 {
@@ -32,11 +41,53 @@ struct TestDesc
     ::std::string   m_path;
     ::std::vector<::std::string>    m_pre_build;
 };
+struct Timestamp
+{
+    static Timestamp for_file(const ::helpers::path& p);
+#if _WIN32
+    uint64_t m_val;
 
-bool run_executable(const ::helpers::path& file, const ::std::vector<const char*>& args);
+    Timestamp(FILETIME ft):
+        m_val( (static_cast<uint64_t>(ft.dwHighDateTime) << 32) | static_cast<uint64_t>(ft.dwLowDateTime) )
+    {
+    }
+#else
+    time_t  m_val;
+#endif
+    static Timestamp infinite_past() {
+#if _WIN32
+        return Timestamp { FILETIME { 0, 0 } };
+#else
+        return Timestamp { 0 };
+#endif
+    }
+
+    bool operator==(const Timestamp& x) const {
+        return m_val == x.m_val;
+    }
+    bool operator<(const Timestamp& x) const {
+        return m_val < x.m_val;
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const Timestamp& x) {
+#if _WIN32
+        os << ::std::hex << x.m_val << ::std::dec;
+#else
+        os << x.m_val;
+#endif
+        return os;
+    }
+};
+
+bool run_executable(const ::helpers::path& file, const ::std::vector<const char*>& args, const ::helpers::path& outfile);
 
 bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& output, ::helpers::path libdir={})
 {
+    auto test_output_ts = Timestamp::for_file(output);
+    if( test_output_ts < Timestamp::for_file(MRUSTC_PATH) )
+        ;
+    else
+        return true;
     ::std::vector<const char*>  args;
     args.push_back("mrustc");
     args.push_back("-L");
@@ -46,13 +97,16 @@ bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& out
         args.push_back("-L");
         args.push_back(libdir.str().c_str());
     }
+    else
+    {
+        args.push_back("--crate-type");
+        args.push_back("rlib");
+    }
     args.push_back(source_file.str().c_str());
     args.push_back("-o");
     args.push_back(output.str().c_str());
 
-    run_executable(MRUSTC_PATH, args);
-
-    return false;
+    return run_executable(MRUSTC_PATH, args, output + "-build.log");
 }
 
 int main(int argc, const char* argv[])
@@ -68,11 +122,38 @@ int main(int argc, const char* argv[])
     if( opts.exceptions_file )
     {
         auto exceptions_list = ::helpers::path(opts.exceptions_file);
+        ::std::ifstream in(exceptions_list.str());
+        if( !in.good() )
+        {
+            // TODO: Error?
+        }
+        else
+        {
+            while( !in.eof() )
+            {
+                ::std::string   line;
+                ::std::getline(in, line);
+                if( line == "" )
+                    continue ;
+                if( line[0] == '#' )
+                    continue ;
+                auto p = line.find('#');
+                if( p != ::std::string::npos )
+                {
+                    line.resize(0, p);
+                }
+                while(!line.empty() && ::std::isblank(line.back()))
+                    line.pop_back();
+                if( line == "" )
+                    continue ;
+                skip_list.push_back(line);
+            }
+        }
     }
     auto outdir = opts.output_dir ? ::helpers::path(opts.output_dir) : throw "";
 
     ::std::vector<TestDesc> tests;
-    
+
     // 1. Take input glob/folder and enumerate .rs files/matches
     // - If input path is a folder, find *.rs
     // - Otherwise, accept glob.
@@ -93,12 +174,19 @@ int main(int argc, const char* argv[])
         {
             auto test_file_path = input_path / find_data.cFileName;
 #else
-        auto* dp = opendir(path.str().c_str());
+        auto* dp = opendir(input_path.str().c_str());
         if( dp == nullptr )
-            throw ::std::runtime_error(::format( "Unable to open vendor directory '", path, "'" ));
+            throw ::std::runtime_error(::format( "Unable to open vendor directory '", input_path, "'" ));
         while( const auto* dent = readdir(dp) )
         {
-            auto test_file_path = path / dent->d_name;
+            if( dent->d_name[0] == '.' )
+                continue ;
+            auto test_file_path = input_path / dent->d_name;
+            struct stat sb;
+            stat(test_file_path.str().c_str(), &sb);
+            if( (sb.st_mode & S_IFMT) != S_IFREG) {
+                continue ;
+            }
 #endif
             ::std::ifstream in(test_file_path.str());
             if(!in.good())
@@ -107,16 +195,34 @@ int main(int argc, const char* argv[])
 
             TestDesc    td;
 
+            bool    blank_seen = false;
             do
             {
                 ::std::string   line;
-                in >> line;
+                ::std::getline(in, line);
+                //DEBUG(line << '$');
+                if( line == "" )
+                {
+                    if( !blank_seen ) {
+                        blank_seen = true;
+                        continue ;
+                    }
+                    else {
+                        break;
+                    }
+                }
+                if( !blank_seen )
+                    continue ;
                 if( !(line[0] == '/' && line[1] == '/' && line[2] == ' ') )
                     continue ;
+                if( line.find(':') == ::std::string::npos )
+                    continue ;
+                DEBUG(line);
+                // TODO Parse a skewer-case ident and check against known set?
 
-                if( line.substr(3, 10) == "aux-build" )
+                if( line.substr(3, 10) == "aux-build:" )
                 {
-                    TODO("aux_build " << line);
+                    td.m_pre_build.push_back( line.substr(13) );
                 }
             } while( !in.eof() );
 
@@ -126,21 +232,45 @@ int main(int argc, const char* argv[])
             td.m_name.pop_back();
             td.m_path = test_file_path;
 
+            tests.push_back(td);
+
+            // ---
 
             auto test = td;
 
-            tests.push_back(td);
+            if( ::std::find(skip_list.begin(), skip_list.end(), td.m_name) != skip_list.end() )
+            {
+                DEBUG(">> SKIP " << test.m_name);
+                continue ;
+            }
+
             DEBUG(">> " << test.m_name);
             auto depdir = outdir / "deps-" + test.m_name.c_str();
 
             for(const auto& file : test.m_pre_build)
             {
-                run_compiler(file, depdir);
+                mkdir(depdir.str().c_str(), 0755);
+                auto outfile = (depdir / "lib") + file.substr(0, file.size() - 3).c_str() + ".hir";
+                auto infile = input_path / "auxiliary" / file;
+                if( !run_compiler(infile, outfile) )
+                {
+                    DEBUG("COMPILE FAIL " << infile << " (dep of " << test.m_name << ")");
+                    return 1;
+                }
             }
             auto outfile = outdir / test.m_name + ".exe";
-            run_compiler(test.m_path, outfile, outdir);
+            auto compile_logfile = outdir / test.m_name + "-build.log";
+            if( !run_compiler(test.m_path, outfile, depdir) )
+            {
+                DEBUG("COMPILE FAIL " << test.m_name);
+                return 1;
+            }
             // - Run the test
-            run_executable(outfile, {});
+            if( !run_executable(outfile, {}, outdir / test.m_name + ".out") )
+            {
+                DEBUG("RUN FAIL " << test.m_name);
+                return 1;
+            }
 #ifndef _WIN32
         }
         closedir(dp);
@@ -239,7 +369,7 @@ void Options::usage_full() const
 }
 
 ///
-bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const char*>& args)
+bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const char*>& args, const ::helpers::path& outfile)
 {
 #ifdef _WIN32
     ::std::stringstream cmdline;
@@ -267,9 +397,76 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
         return false;
     }
 #else
-    return false;
+    Debug_Print([&](auto& os){
+        os << "Calling";
+        for(const auto& p : args)
+            os << " " << p;
+        });
+    posix_spawn_file_actions_t  file_actions;
+    posix_spawn_file_actions_init(&file_actions);
+    auto outfile_str = outfile.str();
+    if( outfile_str != "" )
+    {
+        posix_spawn_file_actions_addopen(&file_actions, 1, outfile_str.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
+        posix_spawn_file_actions_adddup2(&file_actions, 2, 1);
+    }
+
+    auto argv = args;
+    argv.push_back(nullptr);
+    pid_t   pid;
+    int rv = posix_spawn(&pid, exe_name.str().c_str(), &file_actions, nullptr, const_cast<char**>(argv.data()), environ);
+    if( rv != 0 )
+    {
+        DEBUG("Error in posix_spawn - " << rv);
+        return false;
+    }
+
+    posix_spawn_file_actions_destroy(&file_actions);
+
+    int status = -1;
+    waitpid(pid, &status, 0);
+    if( status != 0 )
+    {
+        if( WIFEXITED(status) )
+            DEBUG(exe_name << " exited with non-zero exit status " << WEXITSTATUS(status));
+        else if( WIFSIGNALED(status) )
+            DEBUG(exe_name << " was terminated with signal " << WTERMSIG(status));
+        else
+            DEBUG(exe_name << " terminated for unknown reason, status=" << status);
+        return false;
+    }
 #endif
     return true;
+}
+
+Timestamp Timestamp::for_file(const ::helpers::path& path)
+{
+#if _WIN32
+    FILETIME    out;
+    auto handle = CreateFile(path.str().c_str(), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    if(handle == INVALID_HANDLE_VALUE) {
+        //DEBUG("Can't find " << path);
+        return Timestamp::infinite_past();
+    }
+    if( GetFileTime(handle, NULL, NULL, &out) == FALSE ) {
+        //DEBUG("Can't GetFileTime on " << path);
+        CloseHandle(handle);
+        return Timestamp::infinite_past();
+    }
+    CloseHandle(handle);
+    //DEBUG(Timestamp{out} << " " << path);
+    return Timestamp { out };
+#else
+    struct stat  s;
+    if( stat(path.str().c_str(), &s) == 0 )
+    {
+        return Timestamp { s.st_mtime };
+    }
+    else
+    {
+        return Timestamp::infinite_past();
+    }
+#endif
 }
 
 
