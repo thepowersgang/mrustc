@@ -126,6 +126,8 @@ int main(int argc, const char* argv[])
         if( !in.good() )
         {
             // TODO: Error?
+            ::std::cerr << "Unable to open exceptions list " << exceptions_list << ::std::endl;
+            return 0;
         }
         else
         {
@@ -140,7 +142,7 @@ int main(int argc, const char* argv[])
                 auto p = line.find('#');
                 if( p != ::std::string::npos )
                 {
-                    line.resize(0, p);
+                    line.resize(p);
                 }
                 while(!line.empty() && ::std::isblank(line.back()))
                     line.pop_back();
@@ -200,24 +202,8 @@ int main(int argc, const char* argv[])
             {
                 ::std::string   line;
                 ::std::getline(in, line);
-                //DEBUG(line << '$');
-                if( line == "" )
-                {
-                    if( !blank_seen ) {
-                        blank_seen = true;
-                        continue ;
-                    }
-                    else {
-                        break;
-                    }
-                }
-                if( !blank_seen )
-                    continue ;
                 if( !(line[0] == '/' && line[1] == '/' && line[2] == ' ') )
                     continue ;
-                if( line.find(':') == ::std::string::npos )
-                    continue ;
-                DEBUG(line);
                 // TODO Parse a skewer-case ident and check against known set?
 
                 if( line.substr(3, 10) == "aux-build:" )
@@ -238,6 +224,7 @@ int main(int argc, const char* argv[])
 
             auto test = td;
 
+            DEBUG("[" << skip_list << "] " << td.m_name);
             if( ::std::find(skip_list.begin(), skip_list.end(), td.m_name) != skip_list.end() )
             {
                 DEBUG(">> SKIP " << test.m_name);
@@ -266,7 +253,7 @@ int main(int argc, const char* argv[])
                 return 1;
             }
             // - Run the test
-            if( !run_executable(outfile, {}, outdir / test.m_name + ".out") )
+            if( !run_executable(outfile, { outfile.str().c_str() }, outdir / test.m_name + ".out") )
             {
                 DEBUG("RUN FAIL " << test.m_name);
                 return 1;
@@ -408,7 +395,7 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
     if( outfile_str != "" )
     {
         posix_spawn_file_actions_addopen(&file_actions, 1, outfile_str.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
-        posix_spawn_file_actions_adddup2(&file_actions, 2, 1);
+        posix_spawn_file_actions_adddup2(&file_actions, 1, 2);
     }
 
     auto argv = args;
