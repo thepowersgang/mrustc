@@ -446,6 +446,15 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     for(const auto& feat : manifest.active_features()) {
         args.push_back("--cfg"); args.push_back(::format("feature=", feat));
     }
+    // If not building the package's library, but the package has a library
+    if( target.m_type != PackageTarget::Type::Lib && manifest.has_library() )
+    {
+        // Add a --extern for it
+        const auto& m = manifest;
+        auto path = this->get_crate_path(m, m.get_library(), nullptr, nullptr);
+        args.push_back("--extern");
+        args.push_back(::format(m.get_library().m_name, "=", path));
+    }
     for(const auto& dep : manifest.dependencies())
     {
         if( ! dep.is_disabled() )

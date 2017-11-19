@@ -334,6 +334,24 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
     // Default target names
     for(auto& tgt : rv.m_targets)
     {
+        if(tgt.m_path == "")
+        {
+            switch(tgt.m_type)
+            {
+            case PackageTarget::Type::Lib:
+                tgt.m_path = "src/lib.rs";
+                break;
+            case PackageTarget::Type::Bin:
+                if(tgt.m_name == "") {
+                    tgt.m_path = "src/main.rs";
+                }
+                else {
+                    // TODO: What about src/bin/foo/main.rs?
+                    tgt.m_path = ::helpers::path("src") / "bin" / tgt.m_name.c_str() + ".rs";
+                }
+                break;
+            }
+        }
         if(tgt.m_name == "")
         {
             tgt.m_name.reserve(rv.m_name.size());

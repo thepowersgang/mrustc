@@ -197,7 +197,7 @@ struct PackageTarget
             m_path = "src/lib.rs";
             break;
         case Type::Bin:
-            m_path = "src/main.rs";
+            //m_path = "src/main.rs";
             break;
         default:
             break;
