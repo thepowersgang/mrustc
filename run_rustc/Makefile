@@ -1,7 +1,7 @@
 # Makefile that builds libstd using the mrustc-built rustc
 
 RUSTC := ../output/rustc
-RUST_SRC := ../rustc-nightly/src/
+RUST_SRC := ../rustc-1.19.0-src/src/
 
 PREFIX := prefix/
 BINDIR := $(PREFIX)bin/
@@ -24,16 +24,16 @@ $(BINDIR)rustc: $(RUSTC)
 $(LIBDIR)%.rlib: $(RUST_SRC)%/lib.rs $(RUSTC)
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
 $(LIBDIR)%.rlib: $(RUST_SRC)%/src/lib.rs $(RUSTC)
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
 
 $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(RUSTC) 
 	$Vmkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
 
 fcn_extcrate = $(patsubst %,$(LIBDIR)lib%.rlib,$(1))
 
