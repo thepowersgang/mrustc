@@ -5,6 +5,7 @@
  * hir/serialise_lowlevel.cpp
  * - HIR (De)Serialisation low-level "protocol"
  */
+#include <debug.hpp>
 #include "serialise_lowlevel.hpp"
 #include <zlib.h>
 #include <fstream>

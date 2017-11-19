@@ -455,6 +455,16 @@ class ExternLibrary
 public:
     ::std::string   name;
 };
+class ProcMacro
+{
+public:
+    // Name of the macro
+    ::std::string   name;
+    // Path to the handler
+    ::HIR::SimplePath   path;
+    // A list of attributes to hand to the handler
+    ::std::vector<::std::string>    attributes;
+};
 class Crate
 {
 public:
@@ -471,7 +481,7 @@ public:
     /// Macros exported by this crate
     ::std::unordered_map< ::std::string, ::MacroRulesPtr >  m_exported_macros;
     /// Procedural macros presented
-    ::std::vector<::HIR::SimplePath>    m_proc_macros;
+    ::std::vector< ::HIR::ProcMacro>    m_proc_macros;
 
     /// Language items avaliable through this crate (includes ones from loaded externs)
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;

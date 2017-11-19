@@ -27,6 +27,14 @@ public:
     ::std::string   expected_panic_message;
 };
 
+class ProcMacroDef
+{
+public:
+    ::std::string   name;
+    ::AST::Path path;
+    ::std::vector<::std::string>    attributes;
+};
+
 class Crate
 {
 public:
@@ -44,7 +52,7 @@ public:
     ::std::vector<TestDesc>   m_tests;
 
     // Procedural macros!
-    ::std::vector<::std::pair< ::std::string, ::AST::Path>> m_proc_macros;
+    ::std::vector<ProcMacroDef> m_proc_macros;
 
     enum class Type {
         Unknown,

@@ -53,6 +53,7 @@ namespace {
         template<typename T>
         void serialise_vec(const ::std::vector<T>& vec)
         {
+            TRACE_FUNCTION_F("size=" << vec.size());
             m_out.write_count(vec.size());
             for(const auto& i : vec)
                 serialise(i);
@@ -155,7 +156,7 @@ namespace {
         }
         void serialise_simplepath(const ::HIR::SimplePath& path)
         {
-            DEBUG(path);
+            TRACE_FUNCTION_F(path);
             m_out.write_string(path.m_crate_name);
             serialise_vec(path.m_components);
         }
@@ -241,6 +242,14 @@ namespace {
             )
         }
 
+
+        void serialise(const ::HIR::ProcMacro& pm)
+        {
+            TRACE_FUNCTION_F("pm = ProcMacro { " << pm.name << ", " << pm.path << ", [" << pm.attributes << "] }");
+            serialise(pm.name);
+            serialise(pm.path);
+            serialise_vec(pm.attributes);
+        }
 
         void serialise_crate(const ::HIR::Crate& crate)
         {

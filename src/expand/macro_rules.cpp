@@ -62,8 +62,8 @@ class CMacroUseHandler:
                     });
                 for(const auto& p : ec.m_hir->m_proc_macros)
                 {
-                    mod.m_macro_imports.push_back(::std::make_pair( p.m_components, nullptr ));
-                    mod.m_macro_imports.back().first.insert( mod.m_macro_imports.back().first.begin(), p.m_crate_name );
+                    mod.m_macro_imports.push_back(::std::make_pair( p.path.m_components, nullptr ));
+                    mod.m_macro_imports.back().first.insert( mod.m_macro_imports.back().first.begin(), p.path.m_crate_name );
                 }
             }
         )

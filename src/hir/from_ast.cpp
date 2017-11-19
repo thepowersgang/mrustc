@@ -1708,7 +1708,7 @@ public:
         for(const auto& ent : crate.m_proc_macros)
         {
             // Register under an invalid simplepath
-            rv.m_proc_macros.push_back( ::HIR::SimplePath("", { ent.first }) );
+            rv.m_proc_macros.push_back( ::HIR::ProcMacro { ent.name, ::HIR::SimplePath("", { ent.name}), ent.attributes } );
         }
     }
     else

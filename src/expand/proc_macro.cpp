@@ -50,7 +50,7 @@ public:
         }
 
         // TODO: Store attributes for later use.
-        crate.m_proc_macros.push_back(::std::make_pair( FMT("derive#" << trait_name), path ));
+        crate.m_proc_macros.push_back(AST::ProcMacroDef { FMT("derive#" << trait_name), path, mv$(attributes) });
     }
 };
 
@@ -95,9 +95,9 @@ void Expand_ProcMacro(::AST::Crate& crate)
     {
         ::AST::ExprNode_StructLiteral::t_values   desc_vals;
         // `name: "foo",`
-        desc_vals.push_back({ {}, "name", NEWNODE(_String,  desc.first) });
+        desc_vals.push_back({ {}, "name", NEWNODE(_String,  desc.name) });
         // `handler`: ::foo
-        desc_vals.push_back({ {}, "handler", NEWNODE(_NamedValue, AST::Path(desc.second)) });
+        desc_vals.push_back({ {}, "handler", NEWNODE(_NamedValue, AST::Path(desc.path)) });
 
         test_nodes.push_back( NEWNODE(_StructLiteral,  ::AST::Path("proc_macro", { ::AST::PathNode("MacroDesc")}), nullptr, mv$(desc_vals) ) );
     }
@@ -155,6 +155,7 @@ struct ProcMacroInv:
     public TokenStream
 {
     Span    m_parent_span;
+    const ::HIR::ProcMacro& m_proc_macro_desc;
 
 #ifdef WIN32
     HANDLE  child_handle;
@@ -170,11 +171,11 @@ struct ProcMacroInv:
     bool    m_eof_hit = false;
 
 public:
-    ProcMacroInv(const Span& sp, const char* executable, const char* macro_name);
+    ProcMacroInv(const Span& sp, const char* executable, const ::HIR::ProcMacro& proc_macro_desc);
     ProcMacroInv(const ProcMacroInv&) = delete;
     ProcMacroInv(ProcMacroInv&&);
     ProcMacroInv& operator=(const ProcMacroInv&) = delete;
-    ProcMacroInv& operator=(ProcMacroInv&&);
+    ProcMacroInv& operator=(ProcMacroInv&&) = delete;
     virtual ~ProcMacroInv();
 
     bool check_good();
@@ -224,18 +225,34 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     const auto& crate_name = mac_path.front();
     const auto& ext_crate = crate.m_extern_crates.at(crate_name);
     // TODO: Ensure that this macro is in the listed crate.
+    const ::HIR::ProcMacro* pmp = nullptr;
+    for(const auto& pm : ext_crate.m_hir->m_proc_macros)
+    {
+        bool good = true;
+        for(size_t i = 0; i < ::std::min( mac_path.size()-1, pm.path.m_components.size() ); i++)
+        {
+            if( mac_path[1+i] != pm.path.m_components[i] )
+            {
+                good = false;
+                break;
+            }
+        }
+        if(good)
+        {
+            pmp = &pm;
+            break;
+        }
+    }
+    if( !pmp )
+    {
+        ERROR(sp, E0000, "Unable to find referenced proc macro " << mac_path);
+    }
 
     // 2. Get executable and macro name
     ::std::string   proc_macro_exe_name = (ext_crate.m_filename + "-plugin");
-    ::std::string   mac_name = mac_path.at(1);
-    for(size_t i = 2; i < mac_path.size(); i ++)
-    {
-        mac_name += "::";
-        mac_name += mac_path[i];
-    }
 
     // 3. Create ProcMacroInv
-    return ProcMacroInv(sp, proc_macro_exe_name.c_str(), mac_name.c_str());
+    return ProcMacroInv(sp, proc_macro_exe_name.c_str(), *pmp);
 }
 
 
@@ -583,6 +600,9 @@ namespace {
             TODO(sp, "ExprNode_UniOp");
         }
 
+        void visit_attrs(const ::AST::MetaItems& attrs)
+        {
+        }
         void visit_struct(const ::std::string& name, bool is_pub, const ::AST::Struct& str)
         {
             if( is_pub ) {
@@ -601,7 +621,7 @@ namespace {
                 m_pmi.send_symbol("(");
                 for( const auto& si : se.ents )
                 {
-                    // TODO: Attributes.
+                    this->visit_attrs(si.m_attrs);
                     if( si.m_is_public )
                         m_pmi.send_ident("pub");
                     this->visit_type(si.m_type);
@@ -617,7 +637,7 @@ namespace {
 
                 for( const auto& si : se.ents )
                 {
-                    // TODO: Attributes.
+                    this->visit_attrs(si.m_attrs);
                     if( si.m_is_public )
                         m_pmi.send_ident("pub");
                     m_pmi.send_ident(si.m_name.c_str());
@@ -642,7 +662,7 @@ namespace {
             m_pmi.send_symbol("{");
             for(const auto& v : enm.variants())
             {
-                // TODO: Attributes.
+                this->visit_attrs(v.m_attrs);
                 m_pmi.send_ident(v.m_name.c_str());
                 TU_MATCH(AST::EnumVariantData, (v.m_data), (e),
                 (Value,
@@ -653,7 +673,7 @@ namespace {
                     m_pmi.send_symbol("(");
                     for(const auto& st : e.m_sub_types)
                     {
-                        // TODO: Attributes?
+                        // TODO: Attributes? (None stored in tuple variants)
                         this->visit_type(st);
                         m_pmi.send_symbol(",");
                     }
@@ -663,7 +683,7 @@ namespace {
                     m_pmi.send_symbol("{");
                     for(const auto& f : e.m_fields)
                     {
-                        // TODO: Attributes?
+                        this->visit_attrs(f.m_attrs);
                         m_pmi.send_ident(f.m_name.c_str());
                         m_pmi.send_symbol(":");
                         this->visit_type(f.m_type);
@@ -719,8 +739,9 @@ namespace {
     return box$(pmi);
 }
 
-ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const char* macro_name):
-    m_parent_span(sp)
+ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::ProcMacro& proc_macro_desc):
+    m_parent_span(sp),
+    m_proc_macro_desc(proc_macro_desc)
 {
 #ifdef _WIN32
 #else
@@ -740,7 +761,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const char* m
     posix_spawn_file_actions_addclose(&file_actions, stdout_pipes[0]);
     posix_spawn_file_actions_addclose(&file_actions, stdout_pipes[1]);
 
-    char*   argv[3] = { const_cast<char*>(executable), const_cast<char*>(macro_name), nullptr };
+    char*   argv[3] = { const_cast<char*>(executable), const_cast<char*>(proc_macro_desc.name.c_str()), nullptr };
     //char*   envp[] = { nullptr };
     int rv = posix_spawn(&this->child_pid, executable, &file_actions, nullptr, argv, environ);
     if( rv != 0 )
@@ -757,6 +778,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const char* m
 }
 ProcMacroInv::ProcMacroInv(ProcMacroInv&& x):
     m_parent_span(x.m_parent_span),
+    m_proc_macro_desc(x.m_proc_macro_desc),
 #ifdef _WIN32
     child_handle(x.child_handle),
     child_stdin(x.child_stdin),
@@ -773,6 +795,7 @@ ProcMacroInv::ProcMacroInv(ProcMacroInv&& x):
 #endif
     DEBUG("");
 }
+#if 0
 ProcMacroInv& ProcMacroInv::operator=(ProcMacroInv&& x)
 {
     m_parent_span = x.m_parent_span;
@@ -787,6 +810,7 @@ ProcMacroInv& ProcMacroInv::operator=(ProcMacroInv&& x)
     DEBUG("");
     return *this;
 }
+#endif
 ProcMacroInv::~ProcMacroInv()
 {
 #ifdef _WIN32

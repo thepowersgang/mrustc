@@ -84,6 +84,7 @@ namespace {
         {
             TRACE_FUNCTION_F("<" << typeid(T).name() << ">");
             size_t n = m_in.read_count();
+            DEBUG("n = " << n);
             ::std::vector<T>    rv;
             rv.reserve(n);
             for(size_t i = 0; i < n; i ++)
@@ -127,6 +128,17 @@ namespace {
         ::HIR::Crate deserialise_crate();
         ::HIR::ExternLibrary deserialise_extlib();
         ::HIR::Module deserialise_module();
+
+        ::HIR::ProcMacro deserialise_procmacro()
+        {
+            ::HIR::ProcMacro    pm;
+            TRACE_FUNCTION_FR("", "ProcMacro { " << pm.name << ", " << pm.path << ", [" << pm.attributes << "]}");
+            pm.name = m_in.read_string();
+            pm.path = deserialise_simplepath();
+            pm.attributes = deserialise_vec< ::std::string>();
+            DEBUG("pm = ProcMacro { " << pm.name << ", " << pm.path << ", [" << pm.attributes << "]}");
+            return pm;
+        }
 
         ::HIR::TypeImpl deserialise_typeimpl()
         {
@@ -699,6 +711,7 @@ namespace {
     template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )
 
+    template<> DEF_D( ::HIR::ProcMacro, return d.deserialise_procmacro(); )
     template<> DEF_D( ::HIR::TypeImpl, return d.deserialise_typeimpl(); )
     template<> DEF_D( ::MacroRulesPtr, return d.deserialise_macrorulesptr(); )
     template<> DEF_D( unsigned int, return static_cast<unsigned int>(d.deserialise_count()); )
@@ -1210,7 +1223,7 @@ namespace {
         rv.m_ext_libs = deserialise_vec< ::HIR::ExternLibrary>();
         rv.m_link_paths = deserialise_vec< ::std::string>();
 
-        rv.m_proc_macros = deserialise_vec< ::HIR::SimplePath>();
+        rv.m_proc_macros = deserialise_vec< ::HIR::ProcMacro>();
 
         return rv;
     }
