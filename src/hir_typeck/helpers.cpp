@@ -2621,6 +2621,10 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             BUG(sp, "UfcsUnknown in typeck - " << type);
             ),
         (UfcsKnown,
+            // If unbound, use Fuzzy
+            if(e.binding.is_Unbound())
+                return ::HIR::Compare::Fuzzy;
+            // Otherwise, it's opaque. Check the bounds on the trait.
             TODO(sp, "Check trait bounds for bound on " << type);
             ),
         (UfcsInherent,
@@ -2628,6 +2632,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             )
         )
         return res;
+    )
+    else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Generic, e,
+        TODO(sp, "Check trait bounds on " << type);
     )
     else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Tuple, e,
         ::HIR::Compare  res = ::HIR::Compare::Equal;
