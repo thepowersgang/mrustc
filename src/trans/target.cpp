@@ -194,6 +194,7 @@ namespace {
 
         StructRepr  rv;
         size_t  cur_ofs = 0;
+        size_t  max_align = 1;
         for(auto& e : ents)
         {
             // Increase offset to fit alignment
@@ -205,9 +206,18 @@ namespace {
                     cur_ofs ++;
                 }
             }
+            max_align = ::std::max(max_align, e.align);
 
             rv.ents.push_back(mv$(e));
             cur_ofs += e.size;
+        }
+        if( !packed )
+        {
+            while( cur_ofs % max_align != 0 )
+            {
+                rv.ents.push_back({ ~0u, 1, 1, ::HIR::TypeRef( ::HIR::CoreType::U8 ) });
+                cur_ofs ++;
+            }
         }
         return box$(rv);
     }
