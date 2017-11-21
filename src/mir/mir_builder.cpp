@@ -374,7 +374,7 @@ void MirBuilder::push_stmt_set_dropflag_default(const Span& sp, unsigned int idx
 void MirBuilder::push_stmt(const Span& sp, ::MIR::Statement stmt)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    DEBUG(stmt);
+    DEBUG("BB" << m_current_block << " += " << stmt);
     m_output.blocks.at(m_current_block).statements.push_back( mv$(stmt) );
 }
 
@@ -1219,11 +1219,26 @@ namespace
                         is_enum = ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum();
                         });
                 // Create a Partial filled with copies of the Optional
+                // TODO: This can lead to contradictions when one field is moved and another not.
+                // - Need to allocate a new drop flag and handle the case where old_state is the state before the
+                //   split (and hence the default state of this new drop flag has to be the original state)
+                //  > Could store reference to start BB and assign into it?
+                //  > Can't it not be from before the split, because that would be a move when not known-valid?
+                //  > Re-assign and partial drop.
                 {
                     ::std::vector<VarState> inner;
                     inner.reserve( nse.inner_states.size() );
                     for(size_t i = 0; i < nse.inner_states.size(); i ++)
+                    {
+#if 1
+                        auto new_flag = builder.new_drop_flag(builder.get_drop_flag_default(sp, old_state.as_Optional()));
+                        builder.push_stmt_set_dropflag_other(sp, new_flag,  old_state.as_Optional());
+                        // TODO: Move this assignment to the source block.
+                        inner.push_back(VarState::make_Optional( new_flag ));
+#else
                         inner.push_back(old_state.clone());
+#endif
+                    }
                     old_state = VarState::make_Partial({ mv$(inner) });
                 }
                 auto& ose = old_state.as_Partial();

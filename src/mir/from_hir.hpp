@@ -79,6 +79,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const VarState& x);
 struct SplitArm {
     bool    has_early_terminated = false;
     bool    always_early_terminated = false;    // Populated on completion
+    //BasicBlockId  source_block;
     ::std::map<unsigned int, VarState>  states;
     ::std::map<unsigned int, VarState>  arg_states;
 };
