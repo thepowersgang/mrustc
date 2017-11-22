@@ -33,6 +33,8 @@ namespace {
             next_item_idx(0)
         {
         }
+        NewvalState(const NewvalState&) = delete;
+        NewvalState(NewvalState&&) = default;
 
         ::HIR::SimplePath new_static(::HIR::TypeRef type, ::HIR::Literal value)
         {
@@ -50,7 +52,7 @@ namespace {
         }
     };
 
-    ::HIR::Literal evaluate_constant(const Span& sp, const ::StaticTraitResolve& resolve, NewvalState newval_state, FmtLambda name, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args);
+    ::HIR::Literal evaluate_constant(const Span& sp, const ::StaticTraitResolve& resolve, NewvalState& newval_state, FmtLambda name, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args);
 
     ::HIR::Literal clone_literal(const ::HIR::Literal& v)
     {
@@ -285,7 +287,7 @@ namespace {
         }
     }
 
-    ::HIR::Literal evaluate_constant_mir(const Span& sp, const StaticTraitResolve& resolve, NewvalState newval_state, FmtLambda name, const ::MIR::Function& fcn, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
+    ::HIR::Literal evaluate_constant_mir(const Span& sp, const StaticTraitResolve& resolve, NewvalState& newval_state, FmtLambda name, const ::MIR::Function& fcn, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
     {
         TRACE_FUNCTION;
 
@@ -773,10 +775,10 @@ namespace {
         }
     }
 
-    ::HIR::Literal evaluate_constant(const Span& sp, const StaticTraitResolve& resolve, NewvalState newval_state, FmtLambda name, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
+    ::HIR::Literal evaluate_constant(const Span& sp, const StaticTraitResolve& resolve, NewvalState& newval_state, FmtLambda name, const ::HIR::ExprPtr& expr, MonomorphState ms, ::std::vector< ::HIR::Literal> args)
     {
         if( expr.m_mir ) {
-            return evaluate_constant_mir(sp, resolve, mv$(newval_state), name, *expr.m_mir, mv$(ms), mv$(args));
+            return evaluate_constant_mir(sp, resolve, newval_state, name, *expr.m_mir, mv$(ms), mv$(args));
         }
         else {
             BUG(sp, "Attempting to evaluate constant expression with no associated code");
@@ -918,7 +920,7 @@ namespace {
             if( item.m_value )
             {
                 auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
-                item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, mv$(nvs), FMT_CB(ss, ss << p;), item.m_value, {}, {});
+                item.m_value_res = evaluate_constant(item.m_value->span(), m_resolve, nvs, FMT_CB(ss, ss << p;), item.m_value, {}, {});
                 DEBUG("static: " << item.m_type <<  " = " << item.m_value_res);
                 visit_expr(item.m_value);
             }
@@ -931,7 +933,7 @@ namespace {
                     if( var.expr )
                     {
                         auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.name << "$") };
-                        auto val = evaluate_constant(var.expr->span(), m_resolve, mv$(nvs), FMT_CB(ss, ss << p;), var.expr, {}, {});
+                        auto val = evaluate_constant(var.expr->span(), m_resolve, nvs, FMT_CB(ss, ss << p;), var.expr, {}, {});
                         DEBUG("Enum value " << p << " - " << var.name << " = " << val);
                         // TODO: Save this value? Or just do the above to
                         // validate?
