@@ -12,28 +12,38 @@ V ?= @
 
 all: $(LIBDIR)libstd.rlib $(BINDIR)hello_world
 
-RUSTFLAGS_output/liblibc.rlib := --cfg stdbuild
+RUSTFLAGS_liblibc := --cfg stdbuild
+RUSTFLAGS_libstd := -l dl -l rt -l pthread
+RUSTFLAGS_libunwind := -l gcc_s
 
 $(RUSTC):
 	make -C ../ output/rustc -j 3
+../output/cargo:
+	make -C ../ output/cargo -j 3
 
 $(BINDIR)rustc: $(RUSTC)
 	@mkdir -p $(dir $@)
 	$Vcp $@ $<
+$(BINDIR)cargo: ../output/cargo
+	@mkdir -p $(dir $@)
+	$Vcp $@ $<
+
+#$(LIBDIR)libstd.rlib: $(RUSTC) $(BINDIR)cargo
+#	$(BINDIR)cargo 
 
 $(LIBDIR)%.rlib: $(RUST_SRC)%/lib.rs $(RUSTC)
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L $(LIBDIR) -L ../output/libs $< -o $@ $(RUSTFLAGS_$*)
 $(LIBDIR)%.rlib: $(RUST_SRC)%/src/lib.rs $(RUSTC)
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L $(LIBDIR) -L ../output/libs $< -o $@ $(RUSTFLAGS_$*)
 
 $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(RUSTC) 
 	$Vmkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L output/ -L ../output/libs $< -o $@
+	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L $(LIBDIR) -L ../output/libs $< -o $@
 
 fcn_extcrate = $(patsubst %,$(LIBDIR)lib%.rlib,$(1))
 
