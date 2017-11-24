@@ -1739,20 +1739,25 @@ namespace {
             // TODO: Hack in fn pointer VTable handling
             if( const auto* te = type.m_data.opt_Function() )
             {
-                const char* call_fcn_name = nullptr;
+                const char* names[] = { "call", "call_mut" };
+                const ::HIR::SimplePath* traits[] = { &m_resolve.m_lang_Fn, &m_resolve.m_lang_FnMut };
+                size_t  offset;
                 if( trait_path.m_path == m_resolve.m_lang_Fn )
-                    call_fcn_name = "call";
+                    offset = 0;
                 else if( trait_path.m_path == m_resolve.m_lang_FnMut )
-                    call_fcn_name = "call_mut";
-                else if( trait_path.m_path == m_resolve.m_lang_FnOnce )
-                    call_fcn_name = "call_once";
+                    offset = 1;
+                //else if( trait_path.m_path == m_resolve.m_lang_FnOnce )
+                //    call_fcn_name = "call_once";
                 else
-                    ;
+                    offset = 2;
 
-                if( call_fcn_name )
+                while(offset < sizeof(names)/sizeof(names[0]))
                 {
+                    const auto& trait_name = *traits[offset];
+                    const char* call_fcn_name = names[offset++];
                     auto fcn_p = p.clone();
                     fcn_p.m_data.as_UfcsKnown().item = call_fcn_name;
+                    fcn_p.m_data.as_UfcsKnown().trait.m_path = trait_name.clone();
                     emit_ctype(*te->m_rettype);
                     auto  arg_ty = ::HIR::TypeRef::new_unit();
                     for(const auto& ty : te->m_arg_types)
