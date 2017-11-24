@@ -21,9 +21,8 @@ script:
  - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/libtest.hir
 # libstd and hello_world
  - CC=gcc-6 make test TAIL_COUNT=2
-# rustc
+# rustc (DISABLED: llvm build)
 # - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/rustc
 # Tests
  - CC=gcc-6 make local_tests -k
 # - CC=gcc-6 make rust_tests -k
- - CC=gcc-6 valgrind --track-origins=yes ./bin/mrustc rustc-1.19.0-src/src/libstd/lib.rs --crate-name std --crate-type rlib -g -O -o output/libstd.hir -L output -l dl -l rt -l pthread
