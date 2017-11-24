@@ -230,7 +230,7 @@ AST::Pattern AST::Pattern::clone() const
         rv.m_data = Data::make_Value({ H::clone_val(e.start), H::clone_val(e.end) });
         ),
     (Tuple,
-        rv.m_data = Data::make_Tuple({ H::clone_tup(e) });
+        rv.m_data = Data::make_Tuple( H::clone_tup(e) );
         ),
     (StructTuple,
         rv.m_data = Data::make_StructTuple({ ::AST::Path(e.path), H::clone_tup(e.tup_pat) });
