@@ -1217,6 +1217,8 @@ namespace {
             const auto& ty_out = node.m_res_type;
             const auto& ty_in = node.m_value->m_res_type;
 
+            // TODO: The correct behavior is to do the cast (into a rvalue) no matter what.
+            // See test run-pass/issue-36936
             if( ty_out == ty_in ) {
                 return ;
             }
