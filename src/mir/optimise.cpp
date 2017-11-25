@@ -54,9 +54,10 @@ namespace {
     }
 
     enum class ValUsage {
-        Read,
-        Write,
-        Borrow,
+        Move,   // Moving read (even if T: Copy)
+        Read,   // Non-moving read (e.g. indexing or deref, TODO: &move pointers?)
+        Write,  // Mutation
+        Borrow, // Any borrow
     };
 
     bool visit_mir_lvalue_mut(::MIR::LValue& lv, ValUsage u, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
@@ -123,50 +124,50 @@ namespace {
         bool rv = false;
         TU_MATCHA( (rval), (se),
         (Use,
-            rv |= visit_mir_lvalue_mut(se, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se, ValUsage::Move, cb); // Can move
             ),
         (Constant,
             ),
         (SizedArray,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb); // Has to be Read
             ),
         (Borrow,
             rv |= visit_mir_lvalue_mut(se.val, ValUsage::Borrow, cb);
             ),
         (Cast,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb); // Also has to be read
             ),
         (BinOp,
-            rv |= visit_mir_lvalue_mut(se.val_l, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se.val_l, ValUsage::Read, cb);   // Same
             rv |= visit_mir_lvalue_mut(se.val_r, ValUsage::Read, cb);
             ),
         (UniOp,
             rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
             ),
         (DstMeta,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb); // Reads
             ),
         (DstPtr,
             rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
             ),
         (MakeDst,
-            rv |= visit_mir_lvalue_mut(se.ptr_val, ValUsage::Read, cb);
-            rv |= visit_mir_lvalue_mut(se.meta_val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se.ptr_val, ValUsage::Move, cb);
+            rv |= visit_mir_lvalue_mut(se.meta_val, ValUsage::Read, cb);    // Note, metadata has to be Copy
             ),
         (Tuple,
             for(auto& v : se.vals)
-                rv |= visit_mir_lvalue_mut(v, ValUsage::Read, cb);
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
             ),
         (Array,
             for(auto& v : se.vals)
-                rv |= visit_mir_lvalue_mut(v, ValUsage::Read, cb);
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
             ),
         (Variant,
-            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_mut(se.val, ValUsage::Move, cb);
             ),
         (Struct,
             for(auto& v : se.vals)
-                rv |= visit_mir_lvalue_mut(v, ValUsage::Read, cb);
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
             )
         )
         return rv;
@@ -489,6 +490,7 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal);
 bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn); // Eliminate useless temporaries
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
@@ -551,6 +553,13 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         MIR_Validate(resolve, path, fcn, args, ret_type);
         #endif
 
+        // Attempt to remove useless temporaries
+        while( MIR_Optimise_DeTemporary(state, fcn) )
+            change_happened = true;
+#if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+
         // >> Replace values from composites if they're known
         //   - Undoes the inefficiencies from the `match (a, b) { ... }` pattern
         change_happened |= MIR_Optimise_PropagateKnownValues(state, fcn);
@@ -566,9 +575,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         // >> Propagate/remove dead assignments
         while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
             change_happened = true;
-        #if CHECK_AFTER_ALL
+#if CHECK_AFTER_ALL
         MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
+#endif
 
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
 
@@ -1228,6 +1237,129 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
     return inline_happened;
 }
 
+// --------------------------------------------------------------------
+// Replaces uses of stack slots with what they were assigned with (when
+// possible)
+// --------------------------------------------------------------------
+bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    for(unsigned int bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
+    {
+        auto& bb = fcn.blocks[bb_idx];
+        // TODO: Store statement index, to allow deleting the statement if the value is !Copy
+        ::std::map<unsigned,unsigned>   local_assignments;  // Local index to statement
+        // Since the passed lvalue was mutated (or borrowed), check if that invalidates part of the above cache.
+        auto check_invalidates = [&](const ::MIR::LValue& lv) {
+            for(auto it = local_assignments.begin(); it != local_assignments.end(); )
+            {
+                const auto& new_lv = bb.statements.at( it->second ).as_Assign().src.as_Use();
+                if( visit_mir_lvalue(new_lv, ValUsage::Read, [&](const auto& ilv2, auto) {
+                    return visit_mir_lvalue(lv, ValUsage::Write, [&](const auto& ilv, auto vu) {
+                        if( ilv == ilv2 )
+                        {
+                            if( vu != ValUsage::Read )
+                                return true;
+                            if( !state.lvalue_is_copy(ilv) )
+                                return true;
+                            DEBUG(state << it->first << " referenced, but not invalidated");
+                        }
+                        return false;
+                        });
+                    }) )
+                {
+                    DEBUG(state << it->first << " from " << bb_idx << "/" << it->second << " - Invalidated");
+                    it = local_assignments.erase(it);
+                }
+                else
+                {
+                    ++ it;
+                }
+            }
+            };
+        auto replace_cb = [&](auto& lv, auto use) {
+            if( lv.is_Local() && use == ValUsage::Read )
+            {
+                auto it = local_assignments.find(lv.as_Local());
+                if( it != local_assignments.end() )
+                {
+                    auto new_lv = bb.statements.at( it->second ).as_Assign().src.as_Use().clone();
+                    if( !state.m_resolve.type_is_copy(state.sp, fcn.locals[lv.as_Local()]) && use == ValUsage::Move )
+                    {
+                        local_assignments.erase(it);
+                        DEBUG(state << lv << " -> " << new_lv << " (and erase)");
+                    }
+                    else
+                    {
+                        DEBUG(state << lv << " -> " << new_lv);
+                    }
+                    lv = mv$(new_lv);
+                    changed = true;
+                }
+            }
+            return false;
+            };
+        for(unsigned int stmt_idx = 0; stmt_idx < bb.statements.size(); stmt_idx ++ )
+        {
+            auto& stmt = bb.statements[stmt_idx];
+            state.set_cur_stmt(bb_idx, stmt_idx);
+            DEBUG(state << stmt);
+            // 1. Replace any referenced locals with contents of a record of the local values.
+            //  > Don't do the replacement if the source could have changed
+            visit_mir_lvalues_mut(stmt, replace_cb);
+            // 2. If it's an assignment of the form Local(N) = LValue, keep a record of that.
+            //  > If a local is borrowed, wipe that local's record
+            if(const auto* e = stmt.opt_Assign())
+            {
+                if( const auto* se = e->src.opt_Borrow() )
+                {
+                    if( se->val.is_Local() ) {
+                        local_assignments.erase( se->val.as_Local() );
+                    }
+                    check_invalidates(se->val);
+                }
+                if( e->dst.is_Local() )
+                {
+                    if( e->src.is_Use() )
+                    {
+                        local_assignments[e->dst.as_Local()] = stmt_idx;
+                    }
+                    else
+                    {
+                        local_assignments.erase( e->dst.as_Local() );
+                    }
+                }
+                check_invalidates(e->dst);
+
+                if( TU_TEST1(e->src, Use, == e->dst) ) {
+                    bb.statements.erase(bb.statements.begin() + stmt_idx);
+                    stmt_idx -= 1;
+                    continue ;
+                }
+            }
+            else if( stmt.is_Drop() )
+            {
+                check_invalidates(stmt.as_Drop().slot);
+            }
+            else
+            {
+            }
+
+            visit_mir_lvalues(stmt, [&](const auto& lv, auto vu){
+                if(vu == ValUsage::Move)
+                    check_invalidates(lv);
+                return true;
+                });
+        }
+        state.set_cur_stmt_term(bb_idx);
+        DEBUG(state << bb.terminator);
+        visit_mir_lvalues_mut(bb.terminator, replace_cb);
+    }
+
+    return changed;
+}
 
 // --------------------------------------------------------------------
 // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
@@ -2097,6 +2229,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 auto& vu = local_uses[e];
                 switch(ut)
                 {
+                case ValUsage::Move:
                 case ValUsage::Read:    vu.read += 1;   break;
                 case ValUsage::Write:   vu.write += 1;  break;
                 case ValUsage::Borrow:  vu.borrow += 1; break;
@@ -2294,7 +2427,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
             for(auto& r : replacements)
             {
                 visit_mir_lvalues_mut(r.second, [&](auto& lv, auto vu) {
-                    if( vu == ValUsage::Read )
+                    if( vu == ValUsage::Read || vu == ValUsage::Move )
                     {
                         auto it = replacements.find(lv);
                         if( it != replacements.end() && it->second.is_Use() )
@@ -2316,7 +2449,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
         {
             auto old_replaced = replaced;
             auto cb = [&](auto& lv, auto vu){
-                if( vu == ValUsage::Read )
+                if( vu == ValUsage::Read || vu == ValUsage::Move )
                 {
                     auto it = replacements.find(lv);
                     if( it != replacements.end() )
