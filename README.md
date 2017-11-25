@@ -16,6 +16,7 @@ Linux
 
 - `make RUSTCSRC` - Downloads the rustc source tarball
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc`
+- `make -C build_rustc` - Build libstd and a "hello, world" using the above-built rustc
 
 Windows
 --------
@@ -43,7 +44,7 @@ Short-Term Plans
 ===
 - Fix currently-failing tests (mostly in type inferrence)
 - Fix all known TODOs in MIR generation (still some possible leaks)
-- Fix compilation errors encountered when compiling `cargo`
+- Perform a clean rustc bootstrap (using a mrustc-built compiler as stage0)
 
 Medium-Term Goals
 ===
@@ -53,8 +54,9 @@ Medium-Term Goals
 Progress
 ===
 - Compiles static libraries into loadable HIR tree and MIR code
-- Generates working executables (most of the test suite)
+- Supports custom derive (aka macros 1.1)
 - Compiles `rustc` that can compile the standard library and "hello, world"
+- Compiles a running `cargo`
 
 Note: All progress is against the source of rustc 1.19.0
 
