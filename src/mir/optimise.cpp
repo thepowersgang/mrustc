@@ -234,7 +234,7 @@ namespace {
                 visit_mir_lvalue_mut(e.fcn.as_Value(), ValUsage::Read, cb);
             }
             for(auto& v : e.args)
-                visit_mir_lvalue_mut(v, ValUsage::Read, cb);
+                visit_mir_lvalue_mut(v, ValUsage::Move, cb);
             visit_mir_lvalue_mut(e.ret_val, ValUsage::Write, cb);
             )
         )
@@ -1286,10 +1286,18 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 if( it != local_assignments.end() )
                 {
                     auto new_lv = bb.statements.at( it->second ).as_Assign().src.as_Use().clone();
-                    if( !state.m_resolve.type_is_copy(state.sp, fcn.locals[lv.as_Local()]) && use == ValUsage::Move )
+                    if( !state.m_resolve.type_is_copy(state.sp, fcn.locals[lv.as_Local()]) )
                     {
                         local_assignments.erase(it);
-                        DEBUG(state << lv << " -> " << new_lv << " (and erase)");
+                        if( use == ValUsage::Move )
+                        {
+                            DEBUG(state << lv << " -> " << new_lv << " (and erase)");
+                        }
+                        else
+                        {
+                            DEBUG(state << lv << " kept, !Copy and not moved");
+                            return false;
+                        }
                     }
                     else
                     {
@@ -1309,8 +1317,11 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // 1. Replace any referenced locals with contents of a record of the local values.
             //  > Don't do the replacement if the source could have changed
             visit_mir_lvalues_mut(stmt, replace_cb);
+
             // 2. If it's an assignment of the form Local(N) = LValue, keep a record of that.
             //  > If a local is borrowed, wipe that local's record
+            bool something_to_add = false;
+            ::std::pair<unsigned,unsigned>  to_add;
             if(const auto* e = stmt.opt_Assign())
             {
                 if( const auto* se = e->src.opt_Borrow() )
@@ -1324,12 +1335,10 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 {
                     if( e->src.is_Use() )
                     {
-                        local_assignments[e->dst.as_Local()] = stmt_idx;
+                        to_add = ::std::make_pair(e->dst.as_Local(), stmt_idx);
+                        something_to_add = true;
                     }
-                    else
-                    {
-                        local_assignments.erase( e->dst.as_Local() );
-                    }
+                    local_assignments.erase( e->dst.as_Local() );
                 }
                 check_invalidates(e->dst);
 
@@ -1352,6 +1361,11 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     check_invalidates(lv);
                 return true;
                 });
+
+            if( something_to_add ) {
+                DEBUG(state << "Record Local(" << to_add.first << ") set from here");
+                local_assignments.insert(to_add);
+            }
         }
         state.set_cur_stmt_term(bb_idx);
         DEBUG(state << bb.terminator);
