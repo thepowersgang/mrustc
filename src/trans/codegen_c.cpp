@@ -2060,8 +2060,8 @@ namespace {
                 (Switch,
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, e.val);
-                    MIR_ASSERT(mir_res, ty.m_data.is_Path(), "");
-                    MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                    MIR_ASSERT(mir_res, ty.m_data.is_Path(), "Switch of a non-enum - " << ty);
+                    MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "Switch of a non-enum - " << ty);
                     const auto* enm = ty.m_data.as_Path().binding.as_Enum();
                     auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
                     if( it != m_enum_repr_cache.end() )
