@@ -1,13 +1,38 @@
+# EXPAND
 tydesc-name # Difference in printing of paths
+macro-use-one	# Selective macro_use
+empty_global_asm	# global_asm! macro not implemented
+issue-38715     # BUG: macro_export doesn't shadow correctly
 
 # codegen-units
 sepcomp-fns
 
 # Requires unwinding panics
 unwind-resource
+issue-24313     # Not sure if this is unwinding or TLS problems...
+
+# None::<T> syntax somewhere (TODO)
+issue-22546
+
+# MIR GEN:
+issue-18352     # append_from_lit - Match literal Borrow
+issue-36936     # Identity casts are removed.
 
 
-# BUG: (TODO Determine)
-issue-34932   # Crashes with an OOB (invalid?) pointer in HashMap
+# TRANS
+enum-discrim-width-stuff	# mrustc doesn't calculate enum descriminant sizes based on values.
+float_math	# Missing intrinsic (fadd_fast)
+raw-fat-ptr	# Ordering comparisons of raw pointers
+
+
+# RESOLVE
+issue-33687		# Calling a unit-like struct with Fn* traits - "Pointed struct in TupleVariant (::Test) isn't a Tuple"
+static-function-pointer-xc	# Calling a static function pointer
+
+# HIR MISC
+xcrate-associated-type-defaults	# type_is_specialisable - Handle missing type in impl(0x17e3018) ::"xcrate_associated_type_defaults"::Foo<u32,> for () {}, name = Out
+issue-25180     # Closure in const
+issue-27268     # ^
+issue-28189     # ^
 
 # vim: ft=make
