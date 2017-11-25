@@ -1,3 +1,6 @@
+# PARSE
+align-struct	# repr(align(2)) - Need to support integers in attributes
+
 # EXPAND
 tydesc-name # Difference in printing of paths
 macro-use-one	# Selective macro_use
@@ -9,7 +12,17 @@ sepcomp-fns
 
 # Requires unwinding panics
 unwind-resource
+backtrace
+backtrace-debuginfo
+backtrace-debuginfo-aux
 issue-24313     # Not sure if this is unwinding or TLS problems...
+
+# CONST EVAL
+associated-const-type-parameters    # TODO: Associated const referred from associated const
+
+# TYPECHECK
+associated-types-doubleendediterator-object # BUG BUG: Validation failed
+autoderef-privacy   # KNOWN BUG: Privacy isn't applied
 
 # None::<T> syntax somewhere (TODO)
 issue-22546
@@ -20,10 +33,14 @@ issue-36936     # Identity casts are removed.
 
 
 # TRANS
-enum-discrim-width-stuff	# mrustc doesn't calculate enum descriminant sizes based on values.
+enum-discrim-width-stuff    # mrustc doesn't calculate enum descriminant sizes based on values.
 float_math	# Missing intrinsic (fadd_fast)
 raw-fat-ptr	# Ordering comparisons of raw pointers
-
+abi-sysv64-register-usage   # asm! register translation
+allocator-override          # asm! translation - "TODO: Handle asm! output leader 'r'"
+asm-in-out-operand          # asm! translation - "Assembly output specifiers must start with ="
+asm-indirect-memory         # ^
+asm-out-assign              # asm! translation
 
 # RESOLVE
 issue-33687		# Calling a unit-like struct with Fn* traits - "Pointed struct in TupleVariant (::Test) isn't a Tuple"
@@ -35,4 +52,7 @@ issue-25180     # Closure in const
 issue-27268     # ^
 issue-28189     # ^
 
-# vim: ft=make
+# MISC
+allocator-default	# Needs alloc_jealloc, which isn't built
+
+# vim: ft=make expandtab ts=4
