@@ -244,12 +244,21 @@ int main(int argc, const char* argv[])
             td.m_path = test_file_path;
 
             tests.push_back(td);
+#ifndef _WIN32
+        }
+        closedir(dp);
+#else
+        } while( FindNextFile(find_handle, &find_data) );
+        FindClose(find_handle);
+#endif
 
-            // ---
+        // Sort tests before running
+        ::std::sort(tests.begin(), tests.end(), [](const auto& a, const auto& b){ return a.m_name < b.m_name; });
 
-            auto test = td;
-
-            if( ::std::find(skip_list.begin(), skip_list.end(), td.m_name) != skip_list.end() )
+        // ---
+        for(const auto& test : tests)
+        {
+            if( ::std::find(skip_list.begin(), skip_list.end(), test.m_name) != skip_list.end() )
             {
                 DEBUG(">> SKIP " << test.m_name);
                 continue ;
@@ -285,13 +294,7 @@ int main(int argc, const char* argv[])
                 DEBUG("RUN FAIL " << test.m_name);
                 return 1;
             }
-#ifndef _WIN32
         }
-        closedir(dp);
-#else
-        } while( FindNextFile(find_handle, &find_data) );
-        FindClose(find_handle);
-#endif
     }
 
     return 0;
