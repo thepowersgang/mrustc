@@ -226,8 +226,11 @@ int main(int argc, const char* argv[])
                         if( start != end )
                         {
                             auto a = line.substr(start, end-start);
-                            DEBUG("+" << a);
-                            td.m_extra_flags.push_back(::std::move(a));
+                            if( a != "" )
+                            {
+                                DEBUG("+" << a);
+                                td.m_extra_flags.push_back(::std::move(a));
+                            }
                         }
                         if( end == ::std::string::npos )
                             break;
