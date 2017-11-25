@@ -481,7 +481,7 @@ namespace {
             (SplitTuple,
                 ASSERT_BUG(sp, ty.m_data.is_Tuple(), "SplitTuple pattern with non-tuple type - " << ty);
                 const auto& subtys = ty.m_data.as_Tuple();
-                assert(pe.leading.size() + pe.trailing.size() < subtys.size());
+                assert(pe.leading.size() + pe.trailing.size() <= subtys.size());
                 auto rv = ::HIR::ValueUsage::Borrow;
                 for(unsigned int i = 0; i < pe.leading.size(); i ++)
                     rv = ::std::max(rv, get_usage_for_pattern(sp, pe.leading[i], subtys[i]));
