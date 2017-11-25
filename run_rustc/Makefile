@@ -5,7 +5,7 @@ RUST_SRC := ../rustc-1.19.0-src/src/
 
 PREFIX := prefix/
 BINDIR := $(PREFIX)bin/
-LIBDIR := $(PREFIX)lib/
+LIBDIR := $(PREFIX)lib/rustlib/x86_64-unknown-linux-gnu/lib/
 
 V ?= @
 
@@ -23,13 +23,15 @@ $(RUSTC):
 
 $(BINDIR)rustc: $(RUSTC)
 	@mkdir -p $(dir $@)
-	$Vcp $@ $<
+	$Vcp $< $@
 $(BINDIR)cargo: ../output/cargo
 	@mkdir -p $(dir $@)
-	$Vcp $@ $<
+	$Vcp $< $@
 
-#$(LIBDIR)libstd.rlib: $(RUSTC) $(BINDIR)cargo
-#	$(BINDIR)cargo 
+#$(LIBDIR)libstd.rlib-: $(RUSTC) $(BINDIR)cargo $(BINDIR)rustc
+#	@mkdir -p ./build/libstd
+#	cd $(RUST_SRC)libstd && CARGO_TARGET_DIR=$(abspath ./build/libstd) PATH="$(abspath $(BINDIR)):$$PATH" cargo build
+#	cp ./build/libstd/target/libstd.rlib $@
 
 $(LIBDIR)%.rlib: $(RUST_SRC)%/lib.rs $(RUSTC)
 	@mkdir -p $(dir $@)
