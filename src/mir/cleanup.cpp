@@ -937,7 +937,21 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
             state.set_cur_stmt( mutator.cur_block, mutator.cur_stmt );
             auto& stmt = *it;
 
-            // 1. Visit all LValues for box deref hackery
+            // >> Detect use of `!` as a value
+            ::HIR::TypeRef  tmp;
+            if( TU_TEST1(stmt, Assign, .src.is_Borrow()) && state.get_lvalue_type(tmp, stmt.as_Assign().src.as_Borrow().val).m_data.is_Diverge() )
+                DEBUG(state << "Not killing block due to use of `!`, it's being borrowed");
+            else
+            {
+                if( ::MIR::visit::visit_mir_lvalues(stmt, [&](const auto& lv, auto /*vu*/){ return state.get_lvalue_type(tmp, lv).m_data.is_Diverge();}) )
+                {
+                    DEBUG(state << "Truncate entire block due to use of `!` as a value - " << stmt);
+                    block.statements.erase(it, block.statements.end());
+                    block.terminator = ::MIR::Terminator::make_Diverge({});
+                    break ;
+                }
+            }
+            // >> Visit all LValues for box deref hackery
             TU_MATCHA( (stmt), (se),
             (Drop,
                 MIR_Cleanup_LValue(state, mutator,  se.slot);
