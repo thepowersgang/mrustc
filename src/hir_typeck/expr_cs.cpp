@@ -4150,7 +4150,12 @@ void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef
     {
         ::HIR::TypeRef  ty_l;
         ty_l.m_data.as_Infer().index = ivar_index;
-        assert( m_ivars.get_type(ty_l).m_data.is_Infer() );
+        const auto& real_ty = m_ivars.get_type(ty_l);
+        if( real_ty != ty_l )
+        {
+            DEBUG("IVar " << ivar_index << " is actually " << real_ty);
+            return ;
+        }
     }
 
     if( ivar_index >= possible_ivar_vals.size() ) {
