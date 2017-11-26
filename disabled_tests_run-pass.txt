@@ -1,11 +1,31 @@
+# COMMANDLINE
+cfg-in-crate-1  # MISSING: `-D warning` (deny warnings)
+crate-name-attr-used    # `-F unused-attributes`
+crt-static-off-works    # -C target-feature=-crt-static -Z unstable-options
+crt-static-on-works     # -C target-feature=+crt-static -Z unstable-options
+debuginfo-lto           # -C lto
+int-abs-overflow    # -Z force-overflow-checks=on
+
 # PARSE
 align-struct	# repr(align(2)) - Need to support integers in attributes
+catch-expr  # MISSING: `do catch {}` syntax
+import-glob-crate   # MISSING: Glob at top-level (`use *;`)
 
 # EXPAND
 tydesc-name # Difference in printing of paths
 macro-use-one	# Selective macro_use
 empty_global_asm	# global_asm! macro not implemented
 issue-38715     # BUG: macro_export doesn't shadow correctly
+concat  # BUG: Slight difference in printing of some tokens
+deriving-copyclone  # BUG: `derive(Copy,Clone)` generates a standard clone impl
+format-ref-cell     # BUG: format_args! ordering
+ifmt    # MISSING: Support for * in format_args!
+hygiene # TODO: Attempted to copy a :expr fragment (shouldn't error, bug in impl?)
+hygienic-labels         # BUG: macro_rules eval doesn't support break/continue labels
+hygienic-labels-in-let  # ^
+issue-11085 # MISSING: cfg() on enum variants
+issue-15221     # BUG: macro_rules eval - :pat in :pat
+issue-18859     # BUG: module_path! doesn't include crate name
 
 # codegen-units
 sepcomp-fns
@@ -16,43 +36,134 @@ backtrace
 backtrace-debuginfo
 backtrace-debuginfo-aux
 issue-24313     # Not sure if this is unwinding or TLS problems...
+box-of-array-of-drop-1
+box-of-array-of-drop-2
+catch-unwind-bang
+cleanup-rvalue-temp-during-incomplete-alloc
+drop-trait-enum
+dynamic-drop
+intrinsic-move-val-cleanups
+issue-14875
 
 # CONST EVAL
 associated-const-type-parameters    # TODO: Associated const referred from associated const
+check-static-mut-slices # MISSING: "Only shared borrows are allowed in constants"
+const-vec-of-fns        # ^
+check-static-slice      # TODO: "LValue::Deref"
+const-deref             # ^
+const-enum-vec-index    # ^
+const-fields-and-indexing   # ^
+issue-17233             # ^
+closure-to-fn-coercion  # TODO: Allow closures in consts
+const-autoderef # Autoderef in Const
+const-binops    # TODO: Branching in MIR Consteval
+const-contents  # BUG: !true evaluates to true
+const-enum-cast         # TODO: Allow casting enum to integer
+enum-vec-initializer    # ^
+const-err       # TODO: Comparisons (in HIR consteval)
+const-fn        # ERROR: Unable to infer in consteval ("Indexing non-array - _")
+const-fn-method # ^
+const-region-ptrs-noncopy   # BUG: Borrows from another static different pointer.
+discriminant_value  # BUG: No truncation of descriminant numbers
+
+# HIR GENERAL
+fn-item-type-zero-sized # fn types
+generic-default-type-params # Bind - TODO "Monomorphise in fix_param_count"
+huge-largest-array  # `unsigned int` too small to hold array size
+issue-15523-big # 64-bit enum reprs
 
 # TYPECHECK
 associated-types-doubleendediterator-object # BUG BUG: Validation failed
 autoderef-privacy   # KNOWN BUG: Privacy isn't applied
+intrinsic-move-val  # ^
+cast-rfc0401    # MISSING: Doesn't allow casts from array borrows to inner-type rawptrs
+closure_to_fn_coercion-expected-types   # MISSING: Closures to fn types
+coerce-overloaded-autoderef # TODO: Failure in deref coercions
+const-cast  # TODO: Allow cast of fn() to *const _
+discrim-explicit-23030  # BUG: Enum variant types
+issue-13902             # ^
+issue-15523             # ^
+empty-types-in-patterns # Inferrence failure in empty match
+generic-default-type-params-cross-crate # Inferrence failure (not using type defaults)
+issue-11205     # Inferrence failure (doesn't consider trait impls in inferrence)
+issue-20575     # Inferrence failure (closure return type from Fn bound)
+# -> Unsize failures
+fat-ptr-cast    # Array unsize missed
+issue-20797     # Trait unsize runthrough
 
 # None::<T> syntax somewhere (TODO)
 issue-22546
 
 # MIR GEN:
 issue-18352     # append_from_lit - Match literal Borrow
+issue-11940     # ^
 issue-36936     # Identity casts are removed.
+binary-heap-panic-safe  # TODO Attempts to move out of a Deref operator... failed &mut reborrow?
+byte-literals   # "Attempting to match on an Array (should have been destructured)"
+cast            # TODO: Allow cast char -> i32
+cleanup-rvalue-during-if-and-while  # BUG: Temporaries created in conditions not dropped at right time.
+cleanup-rvalue-scopes   # BUG: Incorrect drop ordering around `box ref` patterns
+const-str-ptr   # TODO: MIR Cleanup "BorrowOf into pointer"
+issue-13620     # TODO: MIR Cleanup - fn pointer
+diverging-fallback-control-flow # "No value avaliable"
+diverging-fallback-option       # ^
+issue-15763                     # ^
+issue-18110                     # ^
+diverging-fn-tail-35849         # Validation error, assign to ! (return value) in unreachable branch
+if-ret  # "If condition wasn't bool"
+issue-15080 # Infinte loop from incorrect match generation
+issue-17877 # TODO: SplitSlice on array
 
 
 # TRANS
 enum-discrim-width-stuff    # mrustc doesn't calculate enum descriminant sizes based on values.
+enum-discrim-autosizing     # ^
 float_math	# Missing intrinsic (fadd_fast)
 raw-fat-ptr	# Ordering comparisons of raw pointers
 abi-sysv64-register-usage   # asm! register translation
 allocator-override          # asm! translation - "TODO: Handle asm! output leader 'r'"
+i128                        # ^
 asm-in-out-operand          # asm! translation - "Assembly output specifiers must start with ="
 asm-indirect-memory         # ^
+issue-14936                 # ^
 asm-out-assign              # asm! translation
+drop-struct-as-object   # BUG: Box destructor doesn't call inner destructor?
+init-res-into-things    # ^
+issue-10802             # ^
+dst-field-align     # BUG: Alignment of DST fields not valid.
+enum-discr          # Signed discriminants
+enum-disr-val-pretty    # ^
+enum-discrim-manual-sizing  # TODO: Enum reprs not being correctly used (signed reprs?)
+enum-univariant-repr        # ^
+enum-layout-optimization    # BUG: Option size optimisation not applied
+enum-null-pointer-opt       # ^
+explicit-self-generic       # BUG: Incorrect method lookup (doesn't try autoderef, picks ExactSizeIterator)
+i128-ffi    # UNK: i128 is hard (TODO: TRIAGE)
+intrinsic-alignment # MISSING: intrinsic `pref_align_of`
+intrinsics-integer  # `ctpop` signed negative returns OOB value (e.g. 32 instead of 8 on i8)
+issue-21058     # BUG: Enumerate doesn't handle data-less trait objects (e.g. `dyn Send`)
 
 # RESOLVE
 issue-33687		# Calling a unit-like struct with Fn* traits - "Pointed struct in TupleVariant (::Test) isn't a Tuple"
 static-function-pointer-xc	# Calling a static function pointer
+const-block         # ^
+const-block-cross-crate-fn  # ^
+const-block-item    # ^
+issue-17718         # ^ (const here, but same idea)
+empty-struct-braces # MISSING: Full support for braced initialisers for unit-like structs/variants
 
 # HIR MISC
 xcrate-associated-type-defaults	# type_is_specialisable - Handle missing type in impl(0x17e3018) ::"xcrate_associated_type_defaults"::Foo<u32,> for () {}, name = Out
+default-associated-types        # ^
 issue-25180     # Closure in const
 issue-27268     # ^
 issue-28189     # ^
 
 # MISC
 allocator-default	# Needs alloc_jealloc, which isn't built
+
+# TEST RUNNER
+exec-env    # Runtime environment variable
+extern-crosscrate   # test runner params with no leading space
 
 # vim: ft=make expandtab ts=4
