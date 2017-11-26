@@ -21,11 +21,11 @@ deriving-copyclone  # BUG: `derive(Copy,Clone)` generates a standard clone impl
 format-ref-cell     # BUG: format_args! ordering
 ifmt    # MISSING: Support for * in format_args!
 hygiene # TODO: Attempted to copy a :expr fragment (shouldn't error, bug in impl?)
-hygienic-labels         # BUG: macro_rules eval doesn't support break/continue labels
-hygienic-labels-in-let  # ^
 issue-11085 # MISSING: cfg() on enum variants
 issue-15221     # BUG: macro_rules eval - :pat in :pat
 issue-18859     # BUG: module_path! doesn't include crate name
+hygienic-labels         # BUG: hygine doesn't apply to loop labels
+hygienic-labels-in-let  # ^
 
 # codegen-units
 sepcomp-fns

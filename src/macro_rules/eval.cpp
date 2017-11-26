@@ -1116,6 +1116,9 @@ namespace
                     return consume_tt(lex);
                 }
                 break;
+            case TOK_RWORD_BOX:
+                lex.consume();
+                return consume_pat(lex);
             case TOK_AMP:
             case TOK_DOUBLE_AMP:
                 lex.consume();
@@ -1202,6 +1205,7 @@ namespace
                 case TOK_STAR:  // Deref
                 case TOK_DASH:  // Negate
                 case TOK_EXCLAM: // Invert
+                case TOK_RWORD_BOX: // Box
                     lex.consume();
                     break;
                 case TOK_AMP:
@@ -1222,8 +1226,11 @@ namespace
             switch(lex.next())
             {
             case TOK_RWORD_CONTINUE:
-            case TOK_RWORD_RETURN:
             case TOK_RWORD_BREAK:
+                lex.consume();
+                lex.consume_if(TOK_LIFETIME);
+                if(0)
+            case TOK_RWORD_RETURN:
                 lex.consume();
                 switch(lex.next())
                 {
