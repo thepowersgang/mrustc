@@ -194,7 +194,7 @@ namespace
             else
             {
                 assert( m_block_level > 0 );
-                if( !m_name_context.back().is_VarBlock() || m_name_context.back().as_VarBlock().level < m_block_level ) {
+                if( m_name_context.empty() || !m_name_context.back().is_VarBlock() || m_name_context.back().as_VarBlock().level < m_block_level ) {
                     m_name_context.push_back( Ent::make_VarBlock({ m_block_level, {} }) );
                 }
                 DEBUG("New var @ " << m_block_level << ": #" << m_var_count << " " << name);
