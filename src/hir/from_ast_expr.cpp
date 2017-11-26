@@ -339,13 +339,9 @@ struct LowerHIR_ExprNode_Visitor:
                 {}
 
                 void visit(::HIR::ExprNode_Loop& node) override {
-                    if( node.m_label != "" ) {
-                        this->name_stack.push_back( &node.m_label );
-                    }
+                    this->name_stack.push_back( &node.m_label );
                     ::HIR::ExprVisitorDef::visit(node);
-                    if( node.m_label != "" ) {
-                        this->name_stack.pop_back( );
-                    }
+                    this->name_stack.pop_back( );
                 }
                 void visit(::HIR::ExprNode_LoopControl& node) override {
                     ::HIR::ExprVisitorDef::visit(node);
@@ -355,10 +351,10 @@ struct LowerHIR_ExprNode_Visitor:
                     else {
                         for( auto it = this->name_stack.rbegin(); it != this->name_stack.rend(); ++ it )
                         {
-                            if( node.m_label == **it )
+                            if( node.m_label == "" || node.m_label == **it )
                                 return ;
                         }
-                        if( node.m_label == this->top_label ) {
+                        if( node.m_label == "" || node.m_label == this->top_label ) {
                             this->top_is_broken = true;
                         }
                         else {
