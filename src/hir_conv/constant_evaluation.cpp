@@ -674,17 +674,18 @@ namespace {
                     ERROR(sp, E0000, "Field access on invalid literal type - " << val.tag_str());
                 auto& vals = val.as_List();
 
-                TU_MATCH_DEF( ::HIR::TypeRef::Data, (m_rv_type.m_data), (e),
+                ::HIR::TypeRef  ty = mv$(m_rv_type);
+                TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (e),
                 (
-                    ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
+                    ERROR(sp, E0000, "Field access on invalid type - " << ty);
                     ),
                 (Path,
                     TU_MATCHA( (e.binding), (pbe),
                     (Unbound,
-                        ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
+                        ERROR(sp, E0000, "Field access on invalid type - " << ty);
                         ),
                     (Opaque,
-                        ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type);
+                        ERROR(sp, E0000, "Field access on invalid type - " << ty);
                         ),
                     (Struct,
                         auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &e.path.m_data.as_Generic().m_params, nullptr);
@@ -692,7 +693,7 @@ namespace {
                         unsigned int idx=0;
                         TU_MATCHA( (str.m_data), (se),
                         (Unit,
-                            ERROR(sp, E0000, "Field access on invalid type - " << m_rv_type << " - Unit-like");
+                            ERROR(sp, E0000, "Field access on invalid type - " << ty << " - Unit-like");
                             ),
                         (Tuple,
                             idx = ::std::atoi( node.m_field.c_str() );
@@ -709,10 +710,10 @@ namespace {
                         m_rv = mv$( vals[idx] );
                         ),
                     (Enum,
-                        TODO(sp, "Field access on enum variant - " << m_rv_type);
+                        TODO(sp, "Field access on enum variant - " << ty);
                         ),
                     (Union,
-                        TODO(sp, "Field access on union - " << m_rv_type);
+                        TODO(sp, "Field access on union - " << ty);
                         )
                     )
                     ),
