@@ -563,6 +563,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
     // [Flat] = Basic checks (just iterates BBs)
     // - [Flat] Types must be valid (correct type for slot etc.)
     //  - Simple check of all assignments/calls/...
+    DEBUG("=== FLAT CHECKS");
     {
         for(unsigned int bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
         {
@@ -571,6 +572,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             {
                 const auto& stmt = bb.statements[stmt_idx];
                 state.set_cur_stmt(bb_idx, stmt_idx);
+                DEBUG(state << stmt);
 
                 switch( stmt.tag() )
                 {
@@ -580,13 +582,15 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     break;
                 case ::MIR::Statement::TAG_Assign: {
                     const auto& a = stmt.as_Assign();
+                    ::HIR::TypeRef  dst_tmp;
+                    const auto& dst_ty = state.get_lvalue_type(dst_tmp, a.dst);
 
-                    auto check_type = [&](const auto& src_ty) {
-                        ::HIR::TypeRef  tmp;
-                        const auto& dst_ty = state.get_lvalue_type(tmp, a.dst);
+                    auto check_types = [&](const auto& dst_ty, const auto& src_ty) {
                         if( src_ty == ::HIR::TypeRef::new_diverge() ) {
+                            // It's valid to assign to anything from a !
                         }
                         else if( src_ty == dst_ty ) {
+                            // Types are equal, good.
                         }
                         else {
                             MIR_BUG(state,  "Type mismatch, destination is " << dst_ty << ", source is " << src_ty);
@@ -595,12 +599,10 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     TU_MATCH(::MIR::RValue, (a.src), (e),
                     (Use,
                         ::HIR::TypeRef  tmp;
-                        check_type( state.get_lvalue_type(tmp, e) );
+                        check_types( dst_ty, state.get_lvalue_type(tmp, e) );
                         ),
                     (Constant,
                         // TODO: Check constant types.
-                        ::HIR::TypeRef  tmp;
-                        const auto& dst_ty = state.get_lvalue_type(tmp, a.dst);
                         TU_MATCH( ::MIR::Constant, (e), (c),
                         (Int,
                             bool good = false;
@@ -660,13 +662,13 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                             }
                             ),
                         (Bool,
-                            check_type( ::HIR::TypeRef(::HIR::CoreType::Bool) );
+                            check_types( dst_ty, ::HIR::TypeRef(::HIR::CoreType::Bool) );
                             ),
                         (Bytes,
-                            check_type( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, c.size())) );
+                            check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, c.size())) );
                             ),
                         (StaticString,
-                            check_type( ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str) );
+                            check_types( dst_ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str) );
                             ),
                         (Const,
                             // TODO: Check result type against type of const
@@ -775,26 +777,35 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check return type
                         ),
                     (MakeDst,
-                        ::HIR::TypeRef  tmp;
-                        const auto& ty = state.get_lvalue_type(tmp, a.dst);
                         const ::HIR::TypeRef*   ity_p = nullptr;
-                        if( const auto* te = ty.m_data.opt_Borrow() )
+                        if( const auto* te = dst_ty.m_data.opt_Borrow() )
                             ity_p = &*te->inner;
-                        else if( const auto* te = ty.m_data.opt_Pointer() )
+                        else if( const auto* te = dst_ty.m_data.opt_Pointer() )
                             ity_p = &*te->inner;
                         else {
-                            MIR_BUG(state, "DstMeta requires a pointer as output, got " << ty);
+                            MIR_BUG(state, "DstMeta requires a pointer as output, got " << dst_ty);
                         }
                         assert(ity_p);
                         auto meta = get_metadata_type(state, *ity_p);
                         if( meta == ::HIR::TypeRef() )
                         {
-                            MIR_BUG(state, "DstMeta requires a pointer to an unsized type as output, got " << ty);
+                            MIR_BUG(state, "DstMeta requires a pointer to an unsized type as output, got " << dst_ty);
                         }
                         // TODO: Check metadata type?
+
+                        // NOTE: Output type checked above.
                         ),
                     (Tuple,
-                        // TODO: Check return type
+                        if( !dst_ty.m_data.is_Tuple() )
+                            MIR_BUG(state, "Tuple assigned slot of invalid type, " << dst_ty);
+                        const auto& dst_itys = dst_ty.m_data.as_Tuple();
+                        if( dst_itys.size() != e.vals.size() )
+                            MIR_BUG(state, "Tuple assigned slot of invalid type, " << dst_ty << " - expected " << e.vals.size() << " elements");
+                        for(size_t i = 0; i < e.vals.size(); i++)
+                        {
+                            ::HIR::TypeRef  tmp2;
+                            check_types( dst_itys[i], state.get_param_type(tmp2, e.vals[i]) );
+                        }
                         ),
                     (Array,
                         // TODO: Check return type
@@ -820,6 +831,7 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
             }
 
             state.set_cur_stmt_term(bb_idx);
+            DEBUG(state << bb.terminator);
             TU_MATCH(::MIR::Terminator, (bb.terminator), (e),
             (Incomplete,
                 ),

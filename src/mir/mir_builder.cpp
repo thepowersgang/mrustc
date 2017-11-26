@@ -11,9 +11,10 @@
 // --------------------------------------------------------------------
 // MirBuilder
 // --------------------------------------------------------------------
-MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, ::MIR::Function& output):
+MirBuilder::MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ret_ty, const ::HIR::Function::args_t& args, ::MIR::Function& output):
     m_root_span(sp),
     m_resolve(resolve),
+    m_ret_ty(ret_ty),
     m_args(args),
     m_output(output),
     m_lang_Box(nullptr),
@@ -56,14 +57,29 @@ MirBuilder::~MirBuilder()
     const auto& sp = m_root_span;
     if( block_active() )
     {
-        if( has_result() )
+        if( m_ret_ty.m_data.is_Diverge() )
         {
-            push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(sp) );
+            terminate_scope_early(sp, fcn_scope());
+            // Validation fails if this is reachable.
+            //end_block( ::MIR::Terminator::make_Incomplete({}) );
+            end_block( ::MIR::Terminator::make_Diverge({}) );
         }
+        else
+        {
+            if( has_result() )
+            {
+                push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(sp) );
+            }
 
-        terminate_scope_early(sp, fcn_scope());
+            terminate_scope_early(sp, fcn_scope());
 
-        end_block( ::MIR::Terminator::make_Return({}) );
+            end_block( ::MIR::Terminator::make_Return({}) );
+        }
+    }
+    else
+    {
+        terminate_scope(sp, ScopeHandle(*this, 1), /*emit_cleanup=*/false);
+        terminate_scope(sp, mv$(m_fcn_scope), /*emit_cleanup=*/false);
     }
 }
 

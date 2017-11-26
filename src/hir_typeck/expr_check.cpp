@@ -21,6 +21,7 @@ namespace {
         //const t_args&   m_args;
         const ::HIR::TypeRef&   ret_type;
         ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
+        ::std::vector<const ::HIR::ExprNode_Loop*>  m_loops;
 
         ::HIR::SimplePath   m_lang_Index;
 
@@ -93,11 +94,37 @@ namespace {
         void visit(::HIR::ExprNode_Loop& node) override
         {
             TRACE_FUNCTION_F(&node << " loop { ... }");
+            m_loops.push_back(&node);
             node.m_code->visit(*this);
+            m_loops.pop_back();
         }
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
-            //TRACE_FUNCTION_F(&node << " " << (node.m_continue ? "continue" : "break") << " '" << node.m_label);
+            TRACE_FUNCTION_F(&node << " " << (node.m_continue ? "continue" : "break") << " '" << node.m_label);
+            // TODO: Validate `break` return value
+            if( node.m_value )
+            {
+                node.m_value->visit(*this);
+            }
+
+            if( !node.m_continue )
+            {
+                ::HIR::TypeRef  unit = ::HIR::TypeRef::new_unit();
+                const auto& ty = (node.m_value ? node.m_value->m_res_type : unit);
+                const ::HIR::ExprNode_Loop* loop;
+                if( node.m_label == "" ) {
+                    ASSERT_BUG(node.span(), !m_loops.empty(), "Break with no loop");
+                    loop = m_loops.back();
+                }
+                else {
+                    auto it = ::std::find_if( m_loops.rbegin(), m_loops.rend(), [&](const auto* lp){ return lp->m_label == node.m_label; } );
+                    ASSERT_BUG(node.span(), it != m_loops.rend(), "Break with no matching loop");
+                    loop = *it;
+                }
+
+                DEBUG("Breaking to " << loop << ", type " << loop->m_res_type);
+                check_types_equal(node.span(), loop->m_res_type, ty);
+            }
         }
         void visit(::HIR::ExprNode_Let& node) override
         {
@@ -1023,7 +1050,7 @@ namespace {
         }
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
-            if( l.m_data.is_Diverge() || r.m_data.is_Diverge() ) {
+            if( /*l.m_data.is_Diverge() ||*/ r.m_data.is_Diverge() ) {
                 // Diverge, matches everything.
                 // TODO: Is this always true?
             }

@@ -3311,12 +3311,12 @@ void Context::equate_types_inner(const Span& sp, const ::HIR::TypeRef& li, const
             if( l_t.m_data.is_Diverge() && r_t.m_data.is_Diverge() ) {
                 return ;
             }
-            else if( l_t.m_data.is_Diverge() ) {
+            /*else if( l_t.m_data.is_Diverge() ) {
                 TU_IFLET(::HIR::TypeRef::Data, li.m_data, Infer, l_e,
                     this->m_ivars.set_ivar_to(l_e.index, r_t.clone());
                 )
                 return ;
-            }
+            }*/
             else if( r_t.m_data.is_Diverge() ) {
                 TU_IFLET(::HIR::TypeRef::Data, ri.m_data, Infer, r_e,
                     this->m_ivars.set_ivar_to(r_e.index, l_t.clone());

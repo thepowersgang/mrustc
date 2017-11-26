@@ -441,6 +441,7 @@ namespace {
                     // TODO: Emit a drop
                     m_builder.get_result(sp);
                     m_builder.terminate_scope(sp, mv$(stmt_scope));
+                    diverged |= subnode->m_res_type.m_data.is_Diverge();
                 }
                 else {
                     m_builder.terminate_scope(sp, mv$(stmt_scope), false);
@@ -2360,7 +2361,7 @@ namespace {
 }
 
 
-::MIR::FunctionPointer LowerMIR(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, const ::HIR::ExprPtr& ptr, const ::HIR::Function::args_t& args)
+::MIR::FunctionPointer LowerMIR(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, const ::HIR::ExprPtr& ptr, const ::HIR::TypeRef& ret_ty, const ::HIR::Function::args_t& args)
 {
     TRACE_FUNCTION;
 
@@ -2371,7 +2372,7 @@ namespace {
 
     // Scope ensures that builder cleanup happens before `fcn` is moved
     {
-        MirBuilder  builder { ptr->span(), resolve, args, fcn };
+        MirBuilder  builder { ptr->span(), resolve, ret_ty, args, fcn };
         ExprVisitor_Conv    ev { builder, ptr.m_bindings };
 
         // 1. Apply destructuring to arguments
@@ -2411,7 +2412,7 @@ namespace {
 void HIR_GenerateMIR(::HIR::Crate& crate)
 {
     ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, auto& expr_ptr, const auto& args, const auto& ty){
-            expr_ptr.m_mir = LowerMIR(res, p, expr_ptr, args);
+            expr_ptr.m_mir = LowerMIR(res, p, expr_ptr, ty, args);
         } };
     ov.visit_crate(crate);
 }

@@ -130,6 +130,7 @@ class MirBuilder
 
     const Span& m_root_span;
     const StaticTraitResolve& m_resolve;
+    const ::HIR::TypeRef&   m_ret_ty;
     const ::HIR::Function::args_t&  m_args;
     ::MIR::Function&    m_output;
 
@@ -175,7 +176,7 @@ class MirBuilder
     //   the optimiser.
     ::MIR::LValue   m_if_cond_lval;
 public:
-    MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Function::args_t& args, ::MIR::Function& output);
+    MirBuilder(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ret_ty, const ::HIR::Function::args_t& args, ::MIR::Function& output);
     ~MirBuilder();
 
     const ::HIR::SimplePath* lang_Box() const { return m_lang_Box; }
