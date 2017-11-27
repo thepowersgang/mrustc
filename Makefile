@@ -234,7 +234,7 @@ rust_tests: rust_tests-run-pass
 .PHONY: RUST_TESTS RUST_TESTS_run-pass
 RUST_TESTS: RUST_TESTS_run-pass
 RUST_TESTS_run-pass: output/librust_test_helpers.a
-	@make -C tools/testrunner
+	@$(MAKE) -C tools/testrunner
 	@mkdir -p output/rust_tests/run-pass
 	./tools/bin/testrunner -o output/rust_tests/run-pass rustc-1.19.0-src/src/test/run-pass --exceptions disabled_tests_run-pass.txt
 output/librust_test_helpers.a: output/test_deps/librust_test_helpers.a

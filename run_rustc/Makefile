@@ -10,7 +10,7 @@ LIBDIR := $(PREFIX)lib/rustlib/x86_64-unknown-linux-gnu/lib/
 V ?= @
 
 
-all: $(LIBDIR)libstd.rlib $(BINDIR)hello_world
+all: $(BINDIR)rustc $(BINDIR)cargo $(LIBDIR)libstd.rlib $(BINDIR)hello_world
 
 RUSTFLAGS_liblibc := --cfg stdbuild
 RUSTFLAGS_libstd := -l dl -l rt -l pthread
@@ -33,11 +33,11 @@ $(BINDIR)cargo: ../output/cargo
 #	cd $(RUST_SRC)libstd && CARGO_TARGET_DIR=$(abspath ./build/libstd) PATH="$(abspath $(BINDIR)):$$PATH" cargo build
 #	cp ./build/libstd/target/libstd.rlib $@
 
-$(LIBDIR)%.rlib: $(RUST_SRC)%/lib.rs $(RUSTC)
+$(LIBDIR)%.rlib: $(RUST_SRC)%/lib.rs $(BINDIR)rustc
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
 	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L $(LIBDIR) -L ../output/libs $< -o $@ $(RUSTFLAGS_$*)
-$(LIBDIR)%.rlib: $(RUST_SRC)%/src/lib.rs $(RUSTC)
+$(LIBDIR)%.rlib: $(RUST_SRC)%/src/lib.rs $(BINDIR)rustc
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
 	$Vtime $(DBG) $(RUSTC) $(RUSTFLAGS_$@) -L $(LIBDIR) -L ../output/libs $< -o $@ $(RUSTFLAGS_$*)
