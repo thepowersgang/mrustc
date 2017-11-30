@@ -28,6 +28,9 @@ bool NodeRef::has_target() const
         (Switch,
             return e.next_bb != SIZE_MAX;
             ),
+        (SwitchValue,
+            return e.next_bb != SIZE_MAX;
+            ),
         (Loop,
             return e.next_bb != SIZE_MAX;
             )
@@ -49,6 +52,9 @@ size_t NodeRef::target() const
             return e.next_bb;
             ),
         (Switch,
+            return e.next_bb;
+            ),
+        (SwitchValue,
             return e.next_bb;
             ),
         (Loop,
@@ -164,6 +170,7 @@ public:
                         next_blocks.push_back( arms.back().target() );
                     }
                 }
+                // TODO: Make the next block common
                 ::std::sort(next_blocks.begin(), next_blocks.end());
                 size_t  exit_bb = SIZE_MAX;
                 if(!next_blocks.empty())
@@ -189,10 +196,55 @@ public:
                     }
                 }
                 refs.push_back(Node::make_Switch({ exit_bb, &te.val, mv$(arms) }));
+                // TODO: Continue with the exit bb?
                 stop = true;
                 ),
             (SwitchValue,
-                TODO(Span(), "SwitchValue");
+                ::std::vector<NodeRef>  arms;
+                ::std::vector<size_t>   next_blocks;
+                for(auto& tgt : te.targets)
+                {
+                    arms.push_back( process_node_ref(tgt) );
+                    if( arms.back().has_target() )
+                    {
+                        next_blocks.push_back( arms.back().target() );
+                    }
+                }
+                auto def_arm = process_node_ref(te.def_target);
+                if(def_arm.has_target())
+                {
+                    next_blocks.push_back(def_arm.target());
+                }
+
+                // TODO: Make the next block common
+                ::std::sort(next_blocks.begin(), next_blocks.end());
+                size_t  exit_bb = SIZE_MAX;
+                if(!next_blocks.empty())
+                {
+                    size_t  cur = next_blocks[0];
+                    size_t  cur_count = 0;
+                    size_t  max_count = 0;
+                    for(auto b : next_blocks)
+                    {
+                        if(cur == b) {
+                            cur_count ++;
+                        }
+                        else {
+                            if( cur_count > max_count ) {
+                                exit_bb = cur;
+                            }
+                            cur = b;
+                            cur_count = 1;
+                        }
+                    }
+                    if( cur_count > max_count ) {
+                        exit_bb = cur;
+                    }
+                }
+
+                refs.push_back(Node::make_SwitchValue({ exit_bb, &te.val, mv$(def_arm), mv$(arms), &te.values }));
+                stop = true;
+
                 ),
             (Call,
                 // NOTE: Let the panic arm just be a goto

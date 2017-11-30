@@ -2058,38 +2058,9 @@ namespace {
                     m_of << "\tif("; emit_lvalue(e.cond); m_of << ") goto bb" << e.bb0 << "; else goto bb" << e.bb1 << ";\n";
                     ),
                 (Switch,
-                    ::HIR::TypeRef  tmp;
-                    const auto& ty = mir_res.get_lvalue_type(tmp, e.val);
-                    MIR_ASSERT(mir_res, ty.m_data.is_Path(), "Switch of a non-enum - " << ty);
-                    MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "Switch of a non-enum - " << ty);
-                    const auto* enm = ty.m_data.as_Path().binding.as_Enum();
-                    auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
-                    if( it != m_enum_repr_cache.end() )
-                    {
-                        MIR_ASSERT(mir_res, e.targets.size() == 2, "Non-zero optimised type a variant count that isn't 2");
-                        m_of << "\tif("; emit_lvalue(e.val); m_of << "._1"; emit_nonzero_path(it->second); m_of << ")\n";
-                        m_of << "\t\tgoto bb" << e.targets[1] << ";\n";
-                        m_of << "\telse\n";
-                        m_of << "\t\tgoto bb" << e.targets[0] << ";\n";
-                    }
-                    else if( enm->is_value() )
-                    {
-                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ".TAG) {\n";
-                        for(unsigned int j = 0; j < e.targets.size(); j ++)
-                        {
-                            m_of << "\t\tcase " << enm->get_value(j) << ": goto bb" << e.targets[j] << ";\n";
-                        }
-                        m_of << "\t\tdefault: abort();\n";
-                        m_of << "\t}\n";
-                    }
-                    else
-                    {
-                        m_of << "\tswitch("; emit_lvalue(e.val); m_of << ".TAG) {\n";
-                        for(unsigned int j = 0; j < e.targets.size(); j ++)
-                            m_of << "\t\tcase " << j << ": goto bb" << e.targets[j] << ";\n";
-                        m_of << "\t\tdefault: abort();\n";
-                        m_of << "\t}\n";
-                    }
+                    emit_term_switch(mir_res, e.val, e.targets.size(), 1, [&](size_t idx) {
+                        m_of << "goto bb" << e.targets[idx] << ";";
+                        });
                     ),
                 (SwitchValue,
                     ::HIR::TypeRef  tmp;
@@ -2203,7 +2174,6 @@ namespace {
                             //assert(i == e.nodes.size()-1 && "If");
                             ),
                         (Call,
-                            // TODO: Emit call
                             emit_term_call(mir_res, te, indent_level);
                             ),
                         (Switch,
@@ -2252,6 +2222,9 @@ namespace {
                         m_of << "goto bb" << arm.bb_idx << ";";
                     }
                     });
+                ),
+            (SwitchValue,
+                MIR_TODO(mir_res, "SwitchValue");
                 ),
             (Loop,
                 m_of << indent << "for(;;) {\n";

@@ -38,6 +38,13 @@ TAGGED_UNION(Node, Block,
     const ::MIR::LValue* val;
     ::std::vector<NodeRef>  arms;
     }),
+(SwitchValue, struct {
+    size_t  next_bb;
+    const ::MIR::LValue* val;
+    NodeRef def_arm;
+    ::std::vector<NodeRef>  arms;
+    const ::MIR::SwitchValues*  vals;
+    }),
 (Loop, struct {
     size_t  next_bb;
     NodeRef code;
