@@ -62,6 +62,7 @@ namespace {
 
     bool visit_mir_lvalue_mut(::MIR::LValue& lv, ValUsage u, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
+        //TRACE_FUNCTION_F(lv);
         if( cb(lv, u) )
             return true;
         TU_MATCHA( (lv), (e),
@@ -553,11 +554,13 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         MIR_Validate(resolve, path, fcn, args, ret_type);
         #endif
 
+#if 1
         // Attempt to remove useless temporaries
         while( MIR_Optimise_DeTemporary(state, fcn) )
             change_happened = true;
 #if CHECK_AFTER_ALL
         MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
 #endif
 
         // >> Replace values from composites if they're known
@@ -1305,6 +1308,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     }
                     lv = mv$(new_lv);
                     changed = true;
+                    return true;
                 }
             }
             return false;
@@ -1337,11 +1341,18 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     {
                         to_add = ::std::make_pair(e->dst.as_Local(), stmt_idx);
                         something_to_add = true;
+
+                        if( visit_mir_lvalues(e->src, [&](const auto& lv, auto ){ return lv == e->dst; }) )
+                        {
+                            DEBUG(state << "Assignment to slot used in source, can't use");
+                            something_to_add = false;
+                        }
                     }
                     local_assignments.erase( e->dst.as_Local() );
                 }
                 check_invalidates(e->dst);
 
+                // Remove no-op assignents
                 if( TU_TEST1(e->src, Use, == e->dst) ) {
                     bb.statements.erase(bb.statements.begin() + stmt_idx);
                     stmt_idx -= 1;
