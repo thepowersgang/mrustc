@@ -378,6 +378,15 @@ namespace {
                 << "static inline size_t mrustc_max(size_t a, size_t b) { return a < b ? b : a; }\n"
                 << "static inline void noop_drop(void *p) {}\n"
                 << "\n"
+                // A linear (fast-fail) search of a list of strings
+                << "static inline size_t mrustc_string_search_linear(SLICE_PTR val, size_t count, SLICE_PTR* options) {\n"
+                << "\tfor(size_t i = 0; i < count; i ++) {\n"
+                << "\t\tint cmp = slice_cmp(val, options[i]);\n"
+                << "\t\tif(cmp < 0) break;\n"
+                << "\t\tif(cmp == 0) return i;\n"
+                << "\t}\n"
+                << "\treturn SIZE_MAX;\n"
+                << "}\n"
                 ;
         }
 
@@ -2063,59 +2072,9 @@ namespace {
                         });
                     ),
                 (SwitchValue,
-                    ::HIR::TypeRef  tmp;
-                    const auto& ty = mir_res.get_lvalue_type(tmp, e.val);
-                    if( const auto* ve = e.values.opt_String() ) {
-                        assert(ve->size() == e.targets.size());
-                        m_of << "\t{ int cmp;\n";
-                        m_of << "\t";
-                        for(size_t i = 0; i < e.targets.size(); i++)
-                        {
-                            const auto& v = (*ve)[i];
-                            m_of << "if( (cmp = slice_cmp("; emit_lvalue(e.val); m_of << ", make_sliceptr("; this->print_escaped_string(v); m_of << "," << v.size() << "))) < 0)\n";
-                            m_of << "\t\tgoto bb" << e.def_target << ";\n";
-                            m_of << "\telse if( cmp == 0 )\n";
-                            m_of << "\t\tgoto bb" << e.targets[i] << ";\n";
-                            m_of << "\telse ";
-                        }
-                        m_of << "\n\t\tgoto bb" << e.def_target << ";\n";
-
-                        m_of << "\t}\n";
-                    }
-                    else if( const auto* ve = e.values.opt_Unsigned() ) {
-                        assert(ve->size() == e.targets.size());
-                        m_of << "\tswitch("; emit_lvalue(e.val);
-                        if(m_options.emulated_i128 && ty == ::HIR::CoreType::U128)
-                            m_of << ".lo";
-                        m_of << ") {\n";
-                        for(size_t i = 0; i < e.targets.size(); i++)
-                        {
-                            m_of << "\t\tcase " << (*ve)[i] << "ull: goto bb" << e.targets[i] << ";\n";
-                        }
-                        m_of << "\t\tdefault: goto bb" << e.def_target << ";\n";
-                        m_of << "\t}\n";
-                    }
-                    else if( const auto* ve = e.values.opt_Signed() ) {
-                        assert(ve->size() == e.targets.size());
-                        m_of << "\tswitch("; emit_lvalue(e.val);
-                        if(m_options.emulated_i128 && ty == ::HIR::CoreType::I128)
-                            m_of << ".lo";
-                        m_of << ") {\n";
-                        for(size_t i = 0; i < e.targets.size(); i++)
-                        {
-                            m_of << "\t\tcase ";
-                            if( (*ve)[i] == INT64_MIN )
-                                m_of << "INT64_MIN";
-                            else
-                                m_of << (*ve)[i] << "ll";
-                            m_of << ": goto bb" << e.targets[i] << ";\n";
-                        }
-                        m_of << "\t\tdefault: goto bb" << e.def_target << ";\n";
-                        m_of << "\t}\n";
-                    }
-                    else {
-                        MIR_BUG(mir_res, "SwitchValue with unknown value type - " << e.values.tag_str());
-                    }
+                    emit_term_switchvalue(mir_res, e.val, e.values, 1, [&](size_t idx) {
+                        m_of << "goto bb" << (idx == SIZE_MAX ? e.def_target : e.targets[idx]) << ";";
+                        });
                     ),
                 (Call,
                     emit_term_call(mir_res, e, 1);
@@ -2224,7 +2183,22 @@ namespace {
                     });
                 ),
             (SwitchValue,
+                // TODO: Change the logic in emit_term_switchvalue to not call multiple times.
                 MIR_TODO(mir_res, "SwitchValue");
+                this->emit_term_switchvalue(mir_res, *e.val, *e.vals, indent_level, [&](auto idx) {
+                    const auto& arm = (idx == SIZE_MAX ? e.def_arm : e.arms.at(idx));
+                    if( arm.node ) {
+                        m_of << "{\n";
+                        this->emit_fcn_node(mir_res, *arm.node, indent_level+1);
+                        m_of << indent  << "\t} ";
+                        if( arm.has_target() && arm.target() != e.next_bb ) {
+                            m_of << "goto bb" << arm.target() << ";";
+                        }
+                    }
+                    else {
+                        m_of << "goto bb" << arm.bb_idx << ";";
+                    }
+                    });
                 ),
             (Loop,
                 m_of << indent << "for(;;) {\n";
@@ -2885,6 +2859,70 @@ namespace {
                 }
                 m_of << indent << "default: abort();\n";
                 m_of << indent << "}\n";
+            }
+        }
+        void emit_term_switchvalue(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, const ::MIR::SwitchValues& values, unsigned indent_level, ::std::function<void(size_t)> cb)
+        {
+            auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
+
+            ::HIR::TypeRef  tmp;
+            const auto& ty = mir_res.get_lvalue_type(tmp, val);
+            if( const auto* ve = values.opt_String() ) {
+                // TODO: Call a helper that searches a list of strings and returns an index
+                // > This helper can do a binary search, or a linear
+                //assert(ve->size() == e.targets.size());
+                m_of << indent << "{ int cmp;\n";
+                m_of << indent;
+                for(size_t i = 0; i < ve->size(); i++)
+                {
+                    const auto& v = (*ve)[i];
+                    m_of << "if( (cmp = slice_cmp("; emit_lvalue(val); m_of << ", make_sliceptr("; this->print_escaped_string(v); m_of << "," << v.size() << "))) < 0)\n";
+                    m_of << indent << "\t"; cb(SIZE_MAX); m_of << "\n";
+                    m_of << indent << "else if( cmp == 0 )\n";
+                    m_of << indent << "\t"; cb(i); m_of << "\n";
+                    m_of << indent << "else ";
+                }
+                m_of << "{\n";
+                // TODO: Insert a deterinistic label and use that instead of calling `cb(SIZE_MAX)` multiple times
+                m_of << indent << "\t"; cb(SIZE_MAX); m_of << "\n";
+                m_of << indent << "}\n";
+
+                m_of << indent << "}\n";
+            }
+            else if( const auto* ve = values.opt_Unsigned() ) {
+                m_of << indent << "switch("; emit_lvalue(val);
+                // TODO: Ensure that .hi is zero
+                if(m_options.emulated_i128 && ty == ::HIR::CoreType::U128)
+                    m_of << ".lo";
+                m_of << ") {\n";
+                for(size_t i = 0; i < ve->size(); i++)
+                {
+                    m_of << indent << "\tcase " << (*ve)[i] << "ull: "; cb(i); m_of << " break;\n";
+                }
+                m_of << indent << "\tdefault: "; cb(SIZE_MAX); m_of << "\n";
+                m_of << indent << "}\n";
+            }
+            else if( const auto* ve = values.opt_Signed() ) {
+                //assert(ve->size() == e.targets.size());
+                m_of << indent << "switch("; emit_lvalue(val);
+                // TODO: Ensure that .hi is zero
+                if(m_options.emulated_i128 && ty == ::HIR::CoreType::I128)
+                    m_of << ".lo";
+                m_of << ") {\n";
+                for(size_t i = 0; i < ve->size(); i++)
+                {
+                    m_of << indent << "\tcase ";
+                    if( (*ve)[i] == INT64_MIN )
+                        m_of << "INT64_MIN";
+                    else
+                        m_of << (*ve)[i] << "ll";
+                    m_of << ": "; cb(i); m_of << " break;\n";
+                }
+                m_of << indent << "\tdefault: "; cb(SIZE_MAX); m_of << "\n";
+                m_of << indent << "}\n";
+            }
+            else {
+                MIR_BUG(mir_res, "SwitchValue with unknown value type - " << values.tag_str());
             }
         }
         void emit_term_call(const ::MIR::TypeResolve& mir_res, const ::MIR::Terminator::Data_Call& e, unsigned indent_level)
