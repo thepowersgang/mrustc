@@ -75,7 +75,8 @@ namespace {
         (Static,
             ),
         (Field,
-            return visit_mir_lvalue_mut(*e.val, u, cb);
+            // HACK: If "moving", use a "Read" value usage (covers some quirks)
+            return visit_mir_lvalue_mut(*e.val, u == ValUsage::Move ? ValUsage::Read : u, cb);
             ),
         (Deref,
             return visit_mir_lvalue_mut(*e.val, ValUsage::Read, cb);
@@ -1253,6 +1254,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     {
         auto& bb = fcn.blocks[bb_idx];
         // TODO: Store statement index, to allow deleting the statement if the value is !Copy
+        ::std::vector<unsigned> to_delete;
         ::std::map<unsigned,unsigned>   local_assignments;  // Local index to statement
         // Since the passed lvalue was mutated (or borrowed), check if that invalidates part of the above cache.
         auto check_invalidates = [&](const ::MIR::LValue& lv) {
@@ -1283,7 +1285,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             }
             };
         auto replace_cb = [&](auto& lv, auto use) {
-            if( lv.is_Local() && use == ValUsage::Read )
+            if( lv.is_Local() && (use == ValUsage::Read || use == ValUsage::Move) )
             {
                 auto it = local_assignments.find(lv.as_Local());
                 if( it != local_assignments.end() )
@@ -1291,13 +1293,16 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     auto new_lv = bb.statements.at( it->second ).as_Assign().src.as_Use().clone();
                     if( !state.m_resolve.type_is_copy(state.sp, fcn.locals[lv.as_Local()]) )
                     {
-                        local_assignments.erase(it);
+                        // TODO: ::Move is used for field accesses, even if the value is !Copy
                         if( use == ValUsage::Move )
                         {
+                            to_delete.push_back(it->second);
+                            local_assignments.erase(it);
                             DEBUG(state << lv << " -> " << new_lv << " (and erase)");
                         }
                         else
                         {
+                            local_assignments.erase(it);
                             DEBUG(state << lv << " kept, !Copy and not moved");
                             return false;
                         }
@@ -1381,6 +1386,13 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         state.set_cur_stmt_term(bb_idx);
         DEBUG(state << bb.terminator);
         visit_mir_lvalues_mut(bb.terminator, replace_cb);
+
+        ::std::sort(to_delete.begin(), to_delete.end());
+        while(!to_delete.empty())
+        {
+            bb.statements.erase( bb.statements.begin() + to_delete.back() );
+            to_delete.pop_back();
+        }
     }
 
     return changed;
