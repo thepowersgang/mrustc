@@ -382,7 +382,9 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             out_size = g_target.m_arch.m_pointer_bits / 8;
             return true;
         }
-        // TODO: Handle different types of Unsized
+        // TODO: Handle different types of Unsized (ones with different pointer sizes)
+        out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
+        return true;
         ),
     (Pointer,
         // - Alignment is machine native
@@ -393,7 +395,9 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             out_size = g_target.m_arch.m_pointer_bits / 8;
             return true;
         }
-        // TODO: Handle different types of Unsized
+        // TODO: Handle different types of Unsized (ones with different pointer sizes)
+        out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
+        return true;
         ),
     (Function,
         // Pointer size
