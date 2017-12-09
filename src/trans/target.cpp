@@ -96,6 +96,7 @@ void Target_SetCfg(const ::std::string& target_name)
     if( g_target.m_os_name == "linux" )
     {
         Cfg_SetFlag("linux");
+        Cfg_SetValue("target_vendor", "gnu");
     }
     Cfg_SetValue("target_env", g_target.m_env_name);
 

@@ -917,8 +917,24 @@ namespace {
             if( repr_str == "C" ) {
                 repr = ::HIR::Enum::Repr::C;
             }
+            else if( repr_str == "u8") {
+                repr = ::HIR::Enum::Repr::U8;
+            }
+            else if( repr_str == "u16") {
+                repr = ::HIR::Enum::Repr::U16;
+            }
+            else if( repr_str == "u32") {
+                repr = ::HIR::Enum::Repr::U32;
+            }
+            else if( repr_str == "u64") {
+                repr = ::HIR::Enum::Repr::U32;
+            }
+            else if( repr_str == "usize") {
+                repr = ::HIR::Enum::Repr::Usize;
+            }
             else {
                 // TODO: Other repr types
+                ERROR(Span(), E0000, "Unknown enum repr '" << repr_str << "'");
             }
         }
         data = ::HIR::Enum::Class::make_Value({ repr, mv$(variants) });

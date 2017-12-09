@@ -1190,6 +1190,9 @@ namespace {
                 case ::HIR::Enum::Repr::C:
                     m_of << "\tunsigned int TAG;\n";
                     break;
+                case ::HIR::Enum::Repr::Usize:
+                    m_of << "\tuintptr_t TAG;\n";
+                    break;
                 case ::HIR::Enum::Repr::U8:
                     m_of << "\tuint8_t TAG;\n";
                     break;
@@ -1197,6 +1200,9 @@ namespace {
                     m_of << "\tuint16_t TAG;\n";
                     break;
                 case ::HIR::Enum::Repr::U32:
+                    m_of << "\tuint32_t TAG;\n";
+                    break;
+                case ::HIR::Enum::Repr::U64:
                     m_of << "\tuint32_t TAG;\n";
                     break;
                 }
@@ -1975,15 +1981,18 @@ namespace {
                 )
             }
 
-            if( false )
+            const bool EMIT_STRUCTURED = false; // Saves time.
+            const bool USE_STRUCTURED = false;  // Still not correct.
+            if( EMIT_STRUCTURED )
             {
-                m_of << "#if 0\n";
+                m_of << "#if " << USE_STRUCTURED << "\n";
                 auto nodes = MIR_To_Structured(*code);
                 for(const auto& node : nodes)
                 {
                     emit_fcn_node(mir_res, node, 1);
                 }
-                m_of << "#endif\n";
+
+                m_of << "#else\n";
             }
 
             for(unsigned int i = 0; i < code->blocks.size(); i ++)
@@ -2000,7 +2009,6 @@ namespace {
                 // If the previous block is a goto/function call to this
                 // block, AND this block only has a single reference, omit the
                 // label.
-                #if 1
                 if( bb_use_counts.at(i) == 0 )
                 {
                     if( i == 0 )
@@ -2028,9 +2036,6 @@ namespace {
                 {
                     m_of << "bb" << i << ":\n";
                 }
-                #else
-                m_of << "bb" << i << ":\n";
-                #endif
 
                 for(const auto& stmt : code->blocks[i].statements)
                 {
@@ -2090,6 +2095,11 @@ namespace {
                 )
                 m_of << "\t// ^ " << code->blocks[i].terminator << "\n";
             }
+
+            if( EMIT_STRUCTURED )
+            {
+                m_of << "#endif\n";
+            }
             m_of << "}\n";
             m_of.flush();
             m_mir_res = nullptr;
@@ -2120,12 +2130,13 @@ namespace {
                         (Incomplete, ),
                         (Return,
                             assert(i == e.nodes.size()-1 && "Return");
-                            m_of << indent << "return;\n";
+                            m_of << indent << "return rv;\n";
                             ),
                         (Goto,
                             // Ignore (handled by caller)
                             ),
                         (Diverge,
+                            m_of << indent << "_Unwind_Resume();\n";
                             ),
                         (Panic,
                             ),
@@ -2183,8 +2194,6 @@ namespace {
                     });
                 ),
             (SwitchValue,
-                // TODO: Change the logic in emit_term_switchvalue to not call multiple times.
-                MIR_TODO(mir_res, "SwitchValue");
                 this->emit_term_switchvalue(mir_res, *e.val, *e.vals, indent_level, [&](auto idx) {
                     const auto& arm = (idx == SIZE_MAX ? e.def_arm : e.arms.at(idx));
                     if( arm.node ) {
@@ -2868,26 +2877,19 @@ namespace {
             ::HIR::TypeRef  tmp;
             const auto& ty = mir_res.get_lvalue_type(tmp, val);
             if( const auto* ve = values.opt_String() ) {
-                // TODO: Call a helper that searches a list of strings and returns an index
-                // > This helper can do a binary search, or a linear
-                //assert(ve->size() == e.targets.size());
-                m_of << indent << "{ int cmp;\n";
-                m_of << indent;
+                m_of << indent << "{ static SLICE_PTR switch_strings[] = {";
+                for(const auto& v : *ve)
+                {
+                    m_of << " {"; this->print_escaped_string(v); m_of << "," << v.size() << "},";
+                }
+                m_of << " {0,0} };\n";
+                m_of << indent << "switch( mrustc_string_search_linear("; emit_lvalue(val); m_of << ", " << ve->size() << ", switch_strings) ) {\n";
                 for(size_t i = 0; i < ve->size(); i++)
                 {
-                    const auto& v = (*ve)[i];
-                    m_of << "if( (cmp = slice_cmp("; emit_lvalue(val); m_of << ", make_sliceptr("; this->print_escaped_string(v); m_of << "," << v.size() << "))) < 0)\n";
-                    m_of << indent << "\t"; cb(SIZE_MAX); m_of << "\n";
-                    m_of << indent << "else if( cmp == 0 )\n";
-                    m_of << indent << "\t"; cb(i); m_of << "\n";
-                    m_of << indent << "else ";
+                    m_of << indent << "case " << i << ": "; cb(i); m_of << " break;\n";
                 }
-                m_of << "{\n";
-                // TODO: Insert a deterinistic label and use that instead of calling `cb(SIZE_MAX)` multiple times
-                m_of << indent << "\t"; cb(SIZE_MAX); m_of << "\n";
-                m_of << indent << "}\n";
-
-                m_of << indent << "}\n";
+                m_of << indent << "default: "; cb(SIZE_MAX); m_of << "\n";
+                m_of << indent << "} }\n";
             }
             else if( const auto* ve = values.opt_Unsigned() ) {
                 m_of << indent << "switch("; emit_lvalue(val);

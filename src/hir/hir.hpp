@@ -222,7 +222,7 @@ public:
     {
         Rust,
         C,
-        U8, U16, U32,
+        Usize, U8, U16, U32, U64,
     };
     struct ValueVariant {
         ::std::string   name;
