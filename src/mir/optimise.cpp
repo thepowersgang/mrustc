@@ -555,7 +555,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         MIR_Validate(resolve, path, fcn, args, ret_type);
         #endif
 
-#if 1
+        // Disabled: Slightly buggy.
+#if 0
         // Attempt to remove useless temporaries
         while( MIR_Optimise_DeTemporary(state, fcn) )
             change_happened = true;
@@ -1261,7 +1262,8 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             for(auto it = local_assignments.begin(); it != local_assignments.end(); )
             {
                 const auto& new_lv = bb.statements.at( it->second ).as_Assign().src.as_Use();
-                if( visit_mir_lvalue(new_lv, ValUsage::Read, [&](const auto& ilv2, auto) {
+
+                bool new_invalidated = visit_mir_lvalue(new_lv, ValUsage::Read, [&](const auto& ilv2, auto) {
                     return visit_mir_lvalue(lv, ValUsage::Write, [&](const auto& ilv, auto vu) {
                         if( ilv == ilv2 )
                         {
@@ -1273,7 +1275,17 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         }
                         return false;
                         });
-                    }) )
+                    });
+                bool old_used = visit_mir_lvalue(lv, ValUsage::Write, [&](const auto& ilv, auto vu) {
+                    if( ilv == ::MIR::LValue::make_Local(it->first) )
+                    {
+                        DEBUG(state << it->first << " used, remove");
+                        return true;
+                    }
+                    return false;
+                    });
+
+                if( new_invalidated || old_used )
                 {
                     DEBUG(state << it->first << " from " << bb_idx << "/" << it->second << " - Invalidated");
                     it = local_assignments.erase(it);
@@ -1293,6 +1305,8 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                     auto new_lv = bb.statements.at( it->second ).as_Assign().src.as_Use().clone();
                     if( !state.m_resolve.type_is_copy(state.sp, fcn.locals[lv.as_Local()]) )
                     {
+                        local_assignments.erase(it);
+                        return false;
                         // TODO: ::Move is used for field accesses, even if the value is !Copy
                         if( use == ValUsage::Move )
                         {
@@ -1323,9 +1337,6 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             auto& stmt = bb.statements[stmt_idx];
             state.set_cur_stmt(bb_idx, stmt_idx);
             DEBUG(state << stmt);
-            // 1. Replace any referenced locals with contents of a record of the local values.
-            //  > Don't do the replacement if the source could have changed
-            visit_mir_lvalues_mut(stmt, replace_cb);
 
             // 2. If it's an assignment of the form Local(N) = LValue, keep a record of that.
             //  > If a local is borrowed, wipe that local's record
@@ -1370,6 +1381,12 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             }
             else
             {
+            }
+            if( !something_to_add )
+            {
+                // 1. Replace any referenced locals with contents of a record of the local values.
+                //  > Don't do the replacement if the source could have changed
+                visit_mir_lvalues_mut(stmt, replace_cb);
             }
 
             visit_mir_lvalues(stmt, [&](const auto& lv, auto vu){
