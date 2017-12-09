@@ -34,18 +34,16 @@ echo "--- Running x.py, see ${WORKDIR}mrustc.log for progress"
 (cd ${WORKDIR} && mv build mrustc)
 rm -rf ${WORKDIR}mrustc-output
 cp -r ${WORKDIR}mrustc/rustc-1.20.0-src/build/x86_64-unknown-linux-gnu/stage2 ${WORKDIR}mrustc-output
-tar -czvf ${WORKDIR}mrustc.tar.gz -C ${WORKDIR} mrustc-output
+tar -czf ${WORKDIR}mrustc.tar.gz -C ${WORKDIR} mrustc-output
 
 #
-# Build rustc by downloading the previous version of rustc
-# > Note: This uses the locally-built cargo (due to subtle version differences)
+# Build rustc by downloading the previous version of rustc (and its matching cargo)
 #
 echo "=== Building rustc bootstrap downloaded stage0"
 mkdir -p ${WORKDIR}official/
 tar -xf rustc-1.20.0-src.tar.gz -C ${WORKDIR}official/
 cat - > ${WORKDIR}official/rustc-1.20.0-src/config.toml <<EOF
 [build]
-cargo = "${PREFIX}bin/cargo"
 full-bootstrap = true
 EOF
 echo "--- Running x.py, see ${WORKDIR}official.log for progress"
@@ -54,4 +52,4 @@ echo "--- Running x.py, see ${WORKDIR}official.log for progress"
 (cd ${WORKDIR} && mv build official)
 rm -rf ${WORKDIR}official-output
 cp -r ${WORKDIR}official/rustc-1.20.0-src/build/x86_64-unknown-linux-gnu/stage2 ${WORKDIR}official-output
-tar -czvf ${WORKDIR}official.tar.gz -C ${WORKDIR} official-output
+tar -czf ${WORKDIR}official.tar.gz -C ${WORKDIR} official-output
