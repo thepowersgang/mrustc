@@ -10,7 +10,7 @@ OBJDIR := .obj/
 
 BIN := ../bin/minicargo
 OBJS := main.o build.o manifest.o repository.o
-OBJS += toml.o path.o
+OBJS += toml.o path.o debug.o
 
 LINKFLAGS := -g
 CXXFLAGS := -Wall -std=c++14 -g -O2

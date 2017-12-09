@@ -43,8 +43,14 @@ int main(int argc, const char* argv[])
         return 1;
     }
 
+    Debug_DisablePhase("Load Repository");
+    Debug_DisablePhase("Load Root");
+    Debug_DisablePhase("Load Dependencies");
+    //Debug_DisablePhase("Build");
+
     try
     {
+        Debug_SetPhase("Load Repository");
         // Load package database
         Repository repo;
         // TODO: load repository from a local cache
@@ -56,19 +62,27 @@ int main(int argc, const char* argv[])
         auto bs_override_dir = opts.override_directory ? ::helpers::path(opts.override_directory) : ::helpers::path();
 
         // 1. Load the Cargo.toml file from the passed directory
+        Debug_SetPhase("Load Root");
         auto dir = ::helpers::path(opts.directory ? opts.directory : ".");
         auto m = PackageManifest::load_from_toml( dir / "Cargo.toml" );
 
         // 2. Load all dependencies
+        Debug_SetPhase("Load Dependencies");
         m.load_dependencies(repo, !bs_override_dir.is_valid());
 
         // 3. Build dependency tree and build program.
+        // TODO: Split creating the build list away from actually running it
         BuildOptions    build_opts;
         build_opts.build_script_overrides = ::std::move(bs_override_dir);
         build_opts.output_dir = opts.output_directory ? ::helpers::path(opts.output_directory) : ::helpers::path("output");
         build_opts.lib_search_dirs.reserve(opts.lib_search_dirs.size());
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
+        //Debug_SetPhase("Enumerate Build");
+        //auto build_list = MiniCargo_CreateBuildList(m, ::std::move(build_opts));
+        //Debug_SetPhase("Run Build");
+        //MiniCargo_RunBuild(build_list, opts.par_level);
+        Debug_SetPhase("Build");
         if( !MiniCargo_Build(m, ::std::move(build_opts)) )
         {
             ::std::cerr << "BUILD FAILED" << ::std::endl;
@@ -186,30 +200,5 @@ void ProgramOptions::usage() const
     ::std::cerr
         << "Usage: minicargo <package dir>" << ::std::endl
         ;
-}
-
-static int giIndentLevel = 0;
-void Debug_Print(::std::function<void(::std::ostream& os)> cb)
-{
-    for(auto i = giIndentLevel; i --; )
-        ::std::cout << " ";
-    cb(::std::cout);
-    ::std::cout << ::std::endl;
-}
-void Debug_EnterScope(const char* name, dbg_cb_t cb)
-{
-    for(auto i = giIndentLevel; i --; )
-        ::std::cout << " ";
-    ::std::cout << ">>> " << name << "(";
-    cb(::std::cout);
-    ::std::cout << ")" << ::std::endl;
-    giIndentLevel ++;
-}
-void Debug_LeaveScope(const char* name, dbg_cb_t cb)
-{
-    giIndentLevel --;
-    for(auto i = giIndentLevel; i --; )
-        ::std::cout << " ";
-    ::std::cout << "<<< " << name << ::std::endl;
 }
 
