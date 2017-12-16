@@ -784,10 +784,16 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
 #ifdef _WIN32
 #else
      int    stdin_pipes[2];
-    pipe(stdin_pipes);
+    if( pipe(stdin_pipes) != 0 )
+    {
+        BUG(sp, "Unable to create stdin pipe pair for proc macro, " << strerror(errno));
+    }
     this->child_stdin = stdin_pipes[1]; // Write end
      int    stdout_pipes[2];
-    pipe(stdout_pipes);
+    if( pipe(stdout_pipes) != 0)
+    {
+        BUG(sp, "Unable to create stdin pipe pair for proc macro, " << strerror(errno));
+    }
     this->child_stdout = stdout_pipes[0]; // Read end
 
     posix_spawn_file_actions_t  file_actions;
@@ -890,7 +896,8 @@ void ProcMacroInv::send_u8(uint8_t v)
 {
 #ifdef _WIN32
 #else
-    write(this->child_stdin, &v, 1);
+    if( write(this->child_stdin, &v, 1) != 1 )
+        BUG(m_parent_span, "Error writing to child, " << strerror(errno));
 #endif
 }
 void ProcMacroInv::send_bytes(const void* val, size_t size)
@@ -898,7 +905,8 @@ void ProcMacroInv::send_bytes(const void* val, size_t size)
     this->send_v128u( static_cast<uint64_t>(size) );
 #ifdef _WIN32
 #else
-    write(this->child_stdin, val, size);
+    if( write(this->child_stdin, val, size) != static_cast<ssize_t>(size) )
+        BUG(m_parent_span, "Error writing to child, " << strerror(errno));
 #endif
 }
 void ProcMacroInv::send_v128u(uint64_t val)
