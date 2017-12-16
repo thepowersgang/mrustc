@@ -27,6 +27,7 @@ cat - > ${WORKDIR}mrustc/rustc-1.20.0-src/config.toml <<EOF
 cargo = "${PREFIX}bin/cargo"
 rustc = "${PREFIX}bin/rustc"
 full-bootstrap = true
+vendor = true
 EOF
 echo "--- Running x.py, see ${WORKDIR}mrustc.log for progress"
 (cd ${WORKDIR} && mv mrustc build)
@@ -45,6 +46,7 @@ tar -xf rustc-1.20.0-src.tar.gz -C ${WORKDIR}official/
 cat - > ${WORKDIR}official/rustc-1.20.0-src/config.toml <<EOF
 [build]
 full-bootstrap = true
+vendor = true
 EOF
 echo "--- Running x.py, see ${WORKDIR}official.log for progress"
 (cd ${WORKDIR} && mv official build)
