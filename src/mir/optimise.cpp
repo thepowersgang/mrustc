@@ -79,7 +79,7 @@ namespace {
             return visit_mir_lvalue_mut(*e.val, u == ValUsage::Move ? ValUsage::Read : u, cb);
             ),
         (Deref,
-            return visit_mir_lvalue_mut(*e.val, ValUsage::Read, cb);
+            return visit_mir_lvalue_mut(*e.val, u == ValUsage::Borrow ? u : ValUsage::Read, cb);
             ),
         (Index,
             bool rv = false;
@@ -240,6 +240,10 @@ namespace {
             visit_mir_lvalue_mut(e.ret_val, ValUsage::Write, cb);
             )
         )
+    }
+    void visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
+    {
+        visit_mir_lvalues_mut(const_cast<::MIR::Terminator&>(term), [&](auto& lv, auto im){ return cb(lv, im); });
     }
 
     void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
@@ -555,14 +559,11 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         MIR_Validate(resolve, path, fcn, args, ret_type);
         #endif
 
-        // Disabled: Slightly buggy.
-#if 0
         // Attempt to remove useless temporaries
         while( MIR_Optimise_DeTemporary(state, fcn) )
             change_happened = true;
 #if CHECK_AFTER_ALL
         MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
 #endif
 
         // >> Replace values from composites if they're known
@@ -1254,161 +1255,158 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     for(unsigned int bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
     {
         auto& bb = fcn.blocks[bb_idx];
-        // TODO: Store statement index, to allow deleting the statement if the value is !Copy
-        ::std::vector<unsigned> to_delete;
-        ::std::map<unsigned,unsigned>   local_assignments;  // Local index to statement
-        // Since the passed lvalue was mutated (or borrowed), check if that invalidates part of the above cache.
-        auto check_invalidates = [&](const ::MIR::LValue& lv) {
-            for(auto it = local_assignments.begin(); it != local_assignments.end(); )
-            {
-                const auto& new_lv = bb.statements.at( it->second ).as_Assign().src.as_Use();
+        ::std::map<unsigned,unsigned>   local_assignments;  // Local number -> statement index
+        ::std::vector<unsigned> statements_to_remove;   // List of statements that have to be removed
 
-                bool new_invalidated = visit_mir_lvalue(new_lv, ValUsage::Read, [&](const auto& ilv2, auto) {
-                    return visit_mir_lvalue(lv, ValUsage::Write, [&](const auto& ilv, auto vu) {
-                        if( ilv == ilv2 )
-                        {
-                            if( vu != ValUsage::Read )
-                                return true;
-                            if( !state.lvalue_is_copy(ilv) )
-                                return true;
-                            DEBUG(state << it->first << " referenced, but not invalidated");
-                        }
-                        return false;
-                        });
-                    });
-                bool old_used = visit_mir_lvalue(lv, ValUsage::Write, [&](const auto& ilv, auto vu) {
-                    if( ilv == ::MIR::LValue::make_Local(it->first) )
+        // ----- Helper closures -----
+        // > Check if a recorded assignment is no longer valid.
+        auto cb_check_invalidate = [&](const ::MIR::LValue& lv, ValUsage vu) {
+                for(auto it = local_assignments.begin(); it != local_assignments.end(); )
+                {
+                    bool invalidated = false;
+                    const auto& src_rvalue = bb.statements[it->second].as_Assign().src;
+
+                    // Destination invalidated?
+                    if( lv.is_Local() && it->first == lv.as_Local() )
                     {
-                        DEBUG(state << it->first << " used, remove");
-                        return true;
+                        switch(vu)
+                        {
+                        case ValUsage::Borrow:
+                        case ValUsage::Write:
+                            DEBUG(state << "> Mutate/Borrowed " << lv);
+                            invalidated = true;
+                            break;
+                        default:
+                            break;
+                        }
                     }
-                    return false;
-                    });
-
-                if( new_invalidated || old_used )
-                {
-                    DEBUG(state << it->first << " from " << bb_idx << "/" << it->second << " - Invalidated");
-                    it = local_assignments.erase(it);
-                }
-                else
-                {
-                    ++ it;
-                }
-            }
-            };
-        auto replace_cb = [&](auto& lv, auto use) {
-            if( lv.is_Local() && (use == ValUsage::Read || use == ValUsage::Move) )
-            {
-                auto it = local_assignments.find(lv.as_Local());
-                if( it != local_assignments.end() )
-                {
-                    auto new_lv = bb.statements.at( it->second ).as_Assign().src.as_Use().clone();
-                    if( !state.m_resolve.type_is_copy(state.sp, fcn.locals[lv.as_Local()]) )
+                    // Source invalidated?
+                    else
                     {
-                        local_assignments.erase(it);
-                        return false;
-                        // TODO: ::Move is used for field accesses, even if the value is !Copy
-                        if( use == ValUsage::Move )
+                        switch(vu)
                         {
-                            to_delete.push_back(it->second);
-                            local_assignments.erase(it);
-                            DEBUG(state << lv << " -> " << new_lv << " (and erase)");
+                        case ValUsage::Borrow:  // Borrows are annoying, assume they invalidate anything used
+                        case ValUsage::Write:   // Mutated? It's invalidated
+                        case ValUsage::Move:    // Moved? Now invalid
+                            visit_mir_lvalues(src_rvalue, [&](const auto& s_lv, auto /*s_vu*/) {
+                                if( s_lv == lv )
+                                {
+                                    DEBUG(state << "> Invalidates source of Local(" << it->first << ") - " << src_rvalue);
+                                    invalidated = true;
+                                    return true;
+                                }
+                                return false;
+                                });
+                            break;
+                        case ValUsage::Read:    // Read is Ok
+                            break;
                         }
-                        else
-                        {
-                            local_assignments.erase(it);
-                            DEBUG(state << lv << " kept, !Copy and not moved");
-                            return false;
-                        }
+                    }
+
+                    if( invalidated )
+                    {
+                        it = local_assignments.erase(it);
                     }
                     else
                     {
-                        DEBUG(state << lv << " -> " << new_lv);
+                        ++ it;
                     }
-                    lv = mv$(new_lv);
-                    changed = true;
-                    return true;
                 }
-            }
-            return false;
+                return false;
             };
+            // ^^^ Check for invalidations
+        auto cb_apply_replacements = [&](auto& top_lv, auto top_usage) {
+            // NOTE: Visits only the top-level LValues
+            // - The inner `visit_mir_lvalue_mut` handles sub-values
+
+            // TODO: Handle partial moves (only delete assignment if the value is fully used)
+            // > For now, don't do the replacement if it would delete the assignment UNLESS it's directly being used)
+
+            // 2. Search for replacements
+            bool top_level = true;
+            visit_mir_lvalue_mut(top_lv, top_usage, [&](auto& ilv, auto /*i_usage*/) {
+                if( ilv.is_Local() )
+                {
+                    auto it = local_assignments.find(ilv.as_Local());
+                    if( it != local_assignments.end() )
+                    {
+                        // - Copy? All is good.
+                        if( state.lvalue_is_copy(ilv) )
+                        {
+                            ilv = bb.statements[it->second].as_Assign().src.as_Use().clone();
+                            DEBUG(state << "> Replace (and keep) Local(" << it->first << ") with " << ilv);
+                        }
+                        // - Top-level (directly used) also good.
+                        else if( top_level )
+                        {
+                            // TODO: DstMeta/DstPtr _doesn't_ move, so shouldn't trigger this.
+                            ilv = bb.statements[it->second].as_Assign().src.as_Use().clone();
+                            DEBUG(state << "> Replace (and remove) Local(" << it->first << ") with " << ilv);
+                            statements_to_remove.push_back( it->second );
+                            local_assignments.erase(it);
+                        }
+                        // - Otherwise, remove the record.
+                        else
+                        {
+                            DEBUG(state << "> Non-copy value used within a LValue, remove record of Local(" << it->first << ")");
+                            local_assignments.erase(it);
+                        }
+                    }
+                }
+                top_level = false;
+                return false;
+                });
+            // Return true to prevent recursion
+            return true;
+            };
+
+        // ----- Top-level algorithm ------
+        // - Find expressions matching the pattern `Local(N) = Use(...)`
+        //  > Delete entry when destination is mutated
+        //  > Delete entry when source is mutated or invalidated (moved)
         for(unsigned int stmt_idx = 0; stmt_idx < bb.statements.size(); stmt_idx ++ )
         {
             auto& stmt = bb.statements[stmt_idx];
             state.set_cur_stmt(bb_idx, stmt_idx);
             DEBUG(state << stmt);
 
-            // 2. If it's an assignment of the form Local(N) = LValue, keep a record of that.
-            //  > If a local is borrowed, wipe that local's record
-            bool something_to_add = false;
-            ::std::pair<unsigned,unsigned>  to_add;
-            if(const auto* e = stmt.opt_Assign())
-            {
-                if( const auto* se = e->src.opt_Borrow() )
-                {
-                    if( se->val.is_Local() ) {
-                        local_assignments.erase( se->val.as_Local() );
-                    }
-                    check_invalidates(se->val);
-                }
-                if( e->dst.is_Local() )
-                {
-                    if( e->src.is_Use() )
-                    {
-                        to_add = ::std::make_pair(e->dst.as_Local(), stmt_idx);
-                        something_to_add = true;
+            // - Check if this statement mutates or borrows a recorded local
+            //  > (meaning that the slot isn't a temporary)
+            // - Check if this statement mutates or moves the source
+            //  > (thus making it invalid to move the source forwards)
+            visit_mir_lvalues(stmt, cb_check_invalidate);
 
-                        if( visit_mir_lvalues(e->src, [&](const auto& lv, auto ){ return lv == e->dst; }) )
-                        {
-                            DEBUG(state << "Assignment to slot used in source, can't use");
-                            something_to_add = false;
-                        }
-                    }
-                    local_assignments.erase( e->dst.as_Local() );
-                }
-                check_invalidates(e->dst);
+            // - Apply known relacements
+            visit_mir_lvalues_mut(stmt, cb_apply_replacements);
 
-                // Remove no-op assignents
-                if( TU_TEST1(e->src, Use, == e->dst) ) {
-                    bb.statements.erase(bb.statements.begin() + stmt_idx);
-                    stmt_idx -= 1;
-                    continue ;
-                }
-            }
-            else if( stmt.is_Drop() )
+            // - Check if this is a new assignment
+            if( stmt.is_Assign() && stmt.as_Assign().dst.is_Local() && stmt.as_Assign().src.is_Use() )
             {
-                check_invalidates(stmt.as_Drop().slot);
+                local_assignments.insert(::std::make_pair( stmt.as_Assign().dst.as_Local(), stmt_idx ));
+                DEBUG(state << "> Record assignment");
             }
-            else
-            {
-            }
-            if( !something_to_add )
-            {
-                // 1. Replace any referenced locals with contents of a record of the local values.
-                //  > Don't do the replacement if the source could have changed
-                visit_mir_lvalues_mut(stmt, replace_cb);
-            }
+        } // for(stmt in bb.statements)
 
-            visit_mir_lvalues(stmt, [&](const auto& lv, auto vu){
-                if(vu == ValUsage::Move)
-                    check_invalidates(lv);
-                return true;
-                });
-
-            if( something_to_add ) {
-                DEBUG(state << "Record Local(" << to_add.first << ") set from here");
-                local_assignments.insert(to_add);
-            }
-        }
+        // TERMINATOR
         state.set_cur_stmt_term(bb_idx);
         DEBUG(state << bb.terminator);
-        visit_mir_lvalues_mut(bb.terminator, replace_cb);
-
-        ::std::sort(to_delete.begin(), to_delete.end());
-        while(!to_delete.empty())
+        // > Check for invalidations (e.g. move of a source value)
+        visit_mir_lvalues(bb.terminator, cb_check_invalidate);
+        // > THEN check for replacements
+        if( ! bb.terminator.is_Switch() )
         {
-            bb.statements.erase( bb.statements.begin() + to_delete.back() );
-            to_delete.pop_back();
+            visit_mir_lvalues_mut(bb.terminator, cb_apply_replacements);
+        }
+
+        // Remove assignments
+        ::std::sort(statements_to_remove.begin(), statements_to_remove.end());
+        while(!statements_to_remove.empty())
+        {
+            // TODO: Handle partial moves here?
+            // TODO: Is there some edge case I'm missing where the assignment shouldn't be removed?
+            // > It isn't removed if it's used as a Copy, so that's not a problem.
+            bb.statements.erase( bb.statements.begin() + statements_to_remove.back() );
+            statements_to_remove.pop_back();
         }
     }
 
