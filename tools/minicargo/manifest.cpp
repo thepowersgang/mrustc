@@ -575,7 +575,7 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
 
     for(size_t i = start; i < m_active_features.size(); i ++)
     {
-        const auto& featname = m_active_features[i];
+        const auto featname = m_active_features[i];
         // Look up this feature
         auto it = m_features.find(featname);
         if( it != m_features.end() )
