@@ -91,6 +91,18 @@ fn do_replacements(stmt)
 ```
 
 
+Reverse De-temporary
+====================
+
+Allows removing useless temporaries (e.g. function returns)
+
+IDEA ONLY.
+- Find `... = Local(n)`
+- Find where it was defined
+- If the destination was invalidated in that time, don't do anything
+- If it's mutated or otherwise accessed in the intervening time, don't do anything with it
+- If the value is Copy and it's used elsewhere, don't do anything
+- Otherwise, remove the assignment and move upwards
 
 Return Backprop
 ===============
@@ -119,6 +131,10 @@ Remove assignments where the assigned value isn't read/borrowed before next assi
 
 Algorithm
 ---------
+- For all assignments of the form `Local(n) = ...`, seek forwards until the next use or loopback
+- If the next use of that particular lvalue is an assignment, delete the original assignment
+- If the lvalue is fully reassigned, delete the original assignment
+  - Fully reassignment means that the LHS of Index/Field is mutated
 
 Pseudocode
 ---------
