@@ -28,4 +28,4 @@ script:
 # - CC=gcc-6 make rust_tests -k
 # cargo
  - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/cargo
- - CC=gcc-6 CXX=g++-6 valgrind tools/bin/minicargo rustc-1.19.0-src/src/tools/cargo --vendor-dir rustc-1.19.0-src/src/vendor --output-dir output/cargo-build -L output/
+ - cat output/cargo-build/cargo_dbg.txt
