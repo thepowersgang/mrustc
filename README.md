@@ -21,6 +21,14 @@ Progress
 Getting Started
 ===============
 
+Dependencies
+------------
+- C++14-compatible compiler (tested with gcc 5.4 and gcc 6)
+- C11 compatible C compiler (for output, see above)
+- `libz-dev` (used to reduce size of bytecode files, linux only - windows uses vcpkg to download it)
+- `curl` (for downloading the rust source, linux only)
+- `cmake` (at least 3.4.3, required for building llvm in rustc)
+
 Linux
 -----
 - `make RUSTCSRC` - Downloads the rustc source tarball (1.19.0 by default)
@@ -34,15 +42,28 @@ Windows
   - NOTE: I am open to suggestions for how to automate that step
 - Open `vsproject/mrustc.sln` and build minicargo
 
-Building Requirements
-=====================
-- C++14-compatible compiler (tested with gcc 5.4 and gcc 6)
-- C11 compatible C compiler (for output, see above)
-- `curl` (for downloading the rust source, linux only)
-- `cmake` (at least 3.4.3, required for building llvm in rustc)
+
+Diagnosing Issues and Reporting Bugs
+====================================
+
+Debugging
+---------
+Both the makefiles and `minicargo` write the compiler's stdout to a file in the output directory, e.g. when building
+`output/libcore.hir` it'll save to `output/libcore.hir_dbg.txt`.
+To get full debug output for a compilation run, set the environemnt variable `MRUSTC_DEBUG` to the pass you want to debug
+(pass names are printed in every log line). E.g. `MRUSTC_DEBUG=Expand make -f minicargo.mk`
+
+Bug Reports
+-----------
+Please try to include the following when submitting a bug report:
+- What you're trying to build
+- Your host system version (e.g. Ubuntu 17.10)
+- C/C++ compiler version
+- Revison of the mrustc repo that you're running
+
 
 Current Features
-===
+================
 - Full compilation chain including HIR and MIR stages (outputting to C)
 - MIR optimisations (to take some load off the C compiler)
 - Optionally-enablable exhaustive MIR validation (set the `MRUSTC_FULL_VALIDATE` environment variable)
@@ -50,14 +71,21 @@ Current Features
   - Includes build script support
 - Procedural macros (custom derive)
 
-Short-Term Plans
-===
+Plans
+=====
+
+Short-term
+----------
 - Fix currently-failing tests (mostly in type inferrence)
 - Fix all known TODOs in MIR generation (still some possible leaks)
 
-Medium-Term Goals
-===
+Medium-term
+-----------
 - Propagate lifetime annotations so that MIR can include a borrow checker
+- Emit C code that is (more) human readable (uses names from the orignal source, reduced/no gotos)
+- Add alternate backends (e.g. LLVM IR, cretonne, ...)
+
+
 
 Note: All progress is against the source of rustc 1.19.0
 
