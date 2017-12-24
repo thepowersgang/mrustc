@@ -1,21 +1,30 @@
 Mutabah's Rust Compiler
 
-_In-progress_ alternative rust compiler. Not yet suitable for everyday use.
+_In-progress_ alternative rust compiler. Capable of building a fully-working copy of rustc, but not yet suitable for everyday use.
 
 Intro
 ===
 This project is an attempt at creating a simple rust compiler in C++, with the ultimate goal of being a separate re-implementation.
 
-The short-term goal is to compile pre-borrowchecked rust code into some intermediate form (e.g. LLVM IR, x86-64 assembly, or C code). Thankfully, (from what I have seen), the borrow checker is not needed to compile rust code (just to ensure that it's valid)
+`mrustc` works by comping assumed-valid rust code (i.e. without borrow checking) into a high-level assembly (currently using C, but LLVM/cretonne or even direct machine code could work) and getting an external code generator to turn that into optimised machine code. This works because the borrow checker doesn't have any impact on the generated code, just in checking that the code would be valid.
+
+Progress
+--------
+- Supported Targets:
+  - x86-64 linux
+  - (incomplete) x86 windows
+  - (incomplete) x86-64 windows
+- Builds working copies of `rustc` and `cargo` from a release source tarball
+- `rustc` bootstrap tested and validated
+  - See the script `TestRustcBootstrap.sh` for how this was done.
 
 Getting Started
 ===============
 
 Linux
 -----
-
-- `make RUSTCSRC` - Downloads the rustc source tarball
-- `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc`
+- `make RUSTCSRC` - Downloads the rustc source tarball (1.19.0 by default)
+- `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc` and `cargo`
 - `make -C build_rustc` - Build libstd and a "hello, world" using the above-built rustc
 
 Windows
@@ -35,28 +44,20 @@ Building Requirements
 Current Features
 ===
 - Full compilation chain including HIR and MIR stages (outputting to C)
-- Supports just x86-64 linux
-- MIR optimisations
+- MIR optimisations (to take some load off the C compiler)
 - Optionally-enablable exhaustive MIR validation (set the `MRUSTC_FULL_VALIDATE` environment variable)
 - Functional cargo clone (minicargo)
+  - Includes build script support
+- Procedural macros (custom derive)
 
 Short-Term Plans
 ===
 - Fix currently-failing tests (mostly in type inferrence)
 - Fix all known TODOs in MIR generation (still some possible leaks)
-- Perform a clean rustc bootstrap (using a mrustc-built compiler as stage0)
 
 Medium-Term Goals
 ===
 - Propagate lifetime annotations so that MIR can include a borrow checker
-
-
-Progress
-===
-- Compiles static libraries into loadable HIR tree and MIR code
-- Supports custom derive (aka macros 1.1)
-- Compiles `rustc` that can compile the standard library and "hello, world"
-- Compiles a running `cargo`
 
 Note: All progress is against the source of rustc 1.19.0
 
