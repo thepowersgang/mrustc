@@ -15,7 +15,7 @@
 #define __attribute__(x)    /* no-op */
 #endif
 
-#define FMT(ss)    (dynamic_cast< ::std::stringstream&>(::std::stringstream() << ss).str())
+#define FMT(ss)    (static_cast<::std::ostringstream&&>(::std::ostringstream() << ss).str())
 // XXX: Evil hack - Define 'mv$' to be ::std::move
 #define mv$(x)    ::std::move(x)
 #define box$(...) ::make_unique_ptr(::std::move(__VA_ARGS__))
