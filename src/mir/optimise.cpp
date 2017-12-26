@@ -1337,7 +1337,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             DEBUG(state << "> Replace (and keep) Local(" << it->first << ") with " << ilv);
                         }
                         // - Top-level (directly used) also good.
-                        else if( top_level )
+                        else if( top_level && top_usage == ValUsage::Move )
                         {
                             // TODO: DstMeta/DstPtr _doesn't_ move, so shouldn't trigger this.
                             ilv = bb.statements[it->second].as_Assign().src.as_Use().clone();
@@ -1382,8 +1382,17 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             // - Check if this is a new assignment
             if( stmt.is_Assign() && stmt.as_Assign().dst.is_Local() && stmt.as_Assign().src.is_Use() )
             {
-                local_assignments.insert(::std::make_pair( stmt.as_Assign().dst.as_Local(), stmt_idx ));
-                DEBUG(state << "> Record assignment");
+                if( visit_mir_lvalue(stmt.as_Assign().src.as_Use(), ValUsage::Read, [&](const auto& lv, auto /*vu*/) {
+                        return lv == stmt.as_Assign().dst;
+                        }) )
+                {
+                    DEBUG(state << "> Don't record, self-referrential");
+                }
+                else
+                {
+                    local_assignments.insert(::std::make_pair( stmt.as_Assign().dst.as_Local(), stmt_idx ));
+                    DEBUG(state << "> Record assignment");
+                }
             }
         } // for(stmt in bb.statements)
 
