@@ -927,7 +927,7 @@ namespace {
                 repr = ::HIR::Enum::Repr::U32;
             }
             else if( repr_str == "u64") {
-                repr = ::HIR::Enum::Repr::U32;
+                repr = ::HIR::Enum::Repr::U64;
             }
             else if( repr_str == "usize") {
                 repr = ::HIR::Enum::Repr::Usize;

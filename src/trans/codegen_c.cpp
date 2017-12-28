@@ -1203,7 +1203,7 @@ namespace {
                     m_of << "\tuint32_t TAG;\n";
                     break;
                 case ::HIR::Enum::Repr::U64:
-                    m_of << "\tuint32_t TAG;\n";
+                    m_of << "\tuint64_t TAG;\n";
                     break;
                 }
                 m_of << "};\n";
