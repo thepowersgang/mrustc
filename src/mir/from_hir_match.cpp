@@ -1054,7 +1054,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             }
             ),
         (SplitTuple,
-            assert(e.size() > pe.leading.size() + pe.trailing.size());
+            assert(e.size() >= pe.leading.size() + pe.trailing.size());
             unsigned trailing_start = e.size() - pe.trailing.size();
             for(unsigned int i = 0; i < e.size(); i ++) {
                 if( i < pe.leading.size() )
