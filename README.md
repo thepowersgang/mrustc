@@ -25,6 +25,8 @@ Dependencies
 ------------
 - C++14-compatible compiler (tested with gcc 5.4 and gcc 6)
 - C11 compatible C compiler (for output, see above)
+- `make` (for the mrustc makefiles)
+- `patch` (For doing minor edits to the rustc source)
 - `libz-dev` (used to reduce size of bytecode files, linux only - windows uses vcpkg to download it)
 - `curl` (for downloading the rust source, linux only)
 - `cmake` (at least 3.4.3, required for building llvm in rustc)
