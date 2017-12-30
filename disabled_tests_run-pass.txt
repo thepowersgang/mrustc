@@ -5,16 +5,51 @@ crt-static-off-works    # -C target-feature=-crt-static -Z unstable-options
 crt-static-on-works     # -C target-feature=+crt-static -Z unstable-options
 debuginfo-lto           # -C lto
 int-abs-overflow    # -Z force-overflow-checks=on
+issue-38226 # -Cno-prepopulate-passes
+iter-step-overflow-debug    # -C debug_assertions=yes
+iter-step-overflow-ndebug   # -C debug_assertions=no
+iter-sum-overflow-debug     # -C debug_assertions=yes
+iter-sum-overflow-ndebug    # -C debug_assertions=no
+iter-sum-overflow-overflow-checks   # -C overflow-checks
+lint-cap    # --cap-lints allow
+parallel-codegen-closures   # -C codegen-units
+sepcomp-fns         # ^
+sepcomp-cci         # ^
+sepcomp-extern      # ^
+sepcomp-fns-backwards   # ^
+sepcomp-statics     # ^
+sepcomp-unwind      # ^
+sepcomp-lib-lto     # -C lto
+mir_overflow_off    # -Z force-overflow-checks=off
+no-landing-pads     # -Z no-landing-pads
+num-wrapping        # -C debug-assertions
+shift-near-oflo     # ^
+slice-of-zero-size-elements # ^
+optimization-fuel-0 # -Z fuel=foo=0
+optimization-fuel-1 # ^
+warn-ctypes-inhibit # -D improper-ctypes
+
+# LEX
+lex-bare-cr-nondoc-comment  # Don't treat \r as a new line
 
 # PARSE
 align-struct	# repr(align(2)) - Need to support integers in attributes
 catch-expr  # MISSING: `do catch {}` syntax
 import-glob-crate   # MISSING: Glob at top-level (`use *;`)
+issue-37733 # for<'a> in types
+issue-39089 # for<'a> in optional traits
+loop-break-value    # TODO: Handle loop labels in expression position.
+match-range # TODO: Exlusive ranges in patterns
+paths-in-macro-invocations  # TODO: Handle path macros at root.
+trait-object-lifetime-first # TODO: Handle lifetime annotations before traits in trait objects
+vec-matching    # TODO: Nested slice patterns
 
 # EXPAND
 tydesc-name # Difference in printing of paths
 macro-use-one	# Selective macro_use
+two-macro-use   # ^
 empty_global_asm	# global_asm! macro not implemented
+simple_global_asm   # ^
 issue-38715     # BUG: macro_export doesn't shadow correctly
 concat  # BUG: Slight difference in printing of some tokens
 deriving-copyclone  # BUG: `derive(Copy,Clone)` generates a standard clone impl
@@ -26,9 +61,29 @@ issue-15221     # BUG: macro_rules eval - :pat in :pat
 issue-18859     # BUG: module_path! doesn't include crate name
 hygienic-labels         # BUG: hygine doesn't apply to loop labels
 hygienic-labels-in-let  # ^
-
-# codegen-units
-sepcomp-fns
+issue-26322 # BUG: line/column macros aren't quite correct
+syntax-extension-source-utils   # ^
+issue-40469 # BUG: macro invocation results expanded after rest of module
+issue-41803 # BUG: ^
+lexer-crlf-line-endings-string-literal-doc-comment  # Unknown: \r\n lost as part of include_str?
+link-cfg-works  # TODO: #[link(.., cfg(bar)]
+log_syntax-trace_macros-macro-locations # trace_macros!
+macro-doc-raw-str-hashes    # TODO: stringify! on :meta
+macro-interpolation # TODO: Allow :block for function body
+macro-stmt          # ^
+macro-pub-matcher   # TODO: macro_rules :vis fragment
+macro-reexport-no-intermediate-use  # #[macro_reexport]
+macro-use-all-and-none  # TODO: #[macro_use(foo)]
+macro-use-both  # ^
+simd-intrinsic-generic-cast     # TODO: concat_idents! macro
+simd-intrinsic-generic-comparison   # ^
+smallest-hello-world    # Unknown lang item "eh_unwind_resume"
+stmt_expr_attr_macro_parse  # macro_rules - attributes not consumed as part of :expr
+sync-send-iterators-in-libcollections   # macro_rules - :expr matching bare ..
+trait-item-inside-macro # TODO: Allow macro invocations in traits
+try-operator-custom # TODO: use the ops::Try trait instead of try! desugar
+type-macros-hlist   # Missed expansion in UFCS
+type-macros-simple  # macro_rules ordering with nested items
 
 # Requires unwinding panics
 unwind-resource
@@ -44,6 +99,28 @@ drop-trait-enum
 dynamic-drop
 intrinsic-move-val-cleanups
 issue-14875
+issue-25089
+issue-26655
+issue-29485
+issue-29948
+issue-30018-panic
+issue-8460  # .. except it fails because there's no overflow checks
+multi-panic
+nested-vec-3
+panic-handler-chain
+panic-handler-flail-wildly
+panic-handler-set-twice
+panic-in-dtor-drops-fields
+panic-recover-propagate
+reachable-unnameable-items
+slice-panic-1
+slice-panic-2
+task-stderr
+terminate-in-initializer
+test-should-fail-good-message
+unit-like-struct-drop-run
+unwind-unique
+vector-sort-panic-safe
 
 # CONST EVAL
 associated-const-type-parameters    # TODO: Associated const referred from associated const
@@ -60,17 +137,46 @@ const-binops    # TODO: Branching in MIR Consteval
 const-contents  # BUG: !true evaluates to true
 const-enum-cast         # TODO: Allow casting enum to integer
 enum-vec-initializer    # ^
+issue-38942     # ^ (but to float)
+issue-41394     # ^
 const-err       # TODO: Comparisons (in HIR consteval)
+issue-39548     # ^
 const-fn        # ERROR: Unable to infer in consteval ("Indexing non-array - _")
 const-fn-method # ^
 const-region-ptrs-noncopy   # BUG: Borrows from another static different pointer.
 discriminant_value  # BUG: No truncation of descriminant numbers
+issue-23968-const-not-overflow  # BUG: operations work on u64 and don't saturate correctly,
+issue-25757 # TODO: Handle <Foo>::bar borrows
+ufcs-polymorphic-paths  # ^
+issue-38002         # TODO: Enum variants
+match-arm-statics   # ^
+issue-9837  # BUG: No truncation on cast
+mir_refs_correct    # TODO: Struct constructor to function pointer
+signed-shift-const-eval # BUG: Signed shift incorrect value
 
 # HIR GENERAL
 fn-item-type-zero-sized # fn types
 generic-default-type-params # Bind - TODO "Monomorphise in fix_param_count"
+issue-39367     # ^
 huge-largest-array  # `unsigned int` too small to hold array size
+vec-fixed-length    # ^
 issue-15523-big # 64-bit enum reprs
+issue-2718      # isize enum repr
+small-enum-range-edge   # i8 enum repr
+issue-22258     # BUG: Incorrect handling of trait param defaults
+multiple-reprs  # BUG: Incorrect handling of multiple reprs
+packed-struct-generic-layout    # TODO: repr(packed) - at least error on it!
+packed-struct-generic-size      # ^
+packed-struct-layout            # ^
+packed-struct-size              # ^
+packed-struct-size-xc           # ^
+packed-struct-vec               # ^
+packed-tuple-struct-layout      # ^
+packed-tuple-struct-size        # ^
+placement-in-syntax # BUG: Can't find impl in optimise
+struct-path-associated-type # HUH? `T::A { ... }` struct literal with (bounded) associated const
+struct-path-self    # TODO: Handle `Self` in patterns
+thread-local-extern-static  # TODO: #[no_mangle]
 
 # TYPECHECK
 associated-types-doubleendediterator-object # BUG BUG: Validation failed
@@ -79,17 +185,54 @@ intrinsic-move-val  # ^
 cast-rfc0401    # MISSING: Doesn't allow casts from array borrows to inner-type rawptrs
 closure_to_fn_coercion-expected-types   # MISSING: Closures to fn types
 coerce-overloaded-autoderef # TODO: Failure in deref coercions
+issue-7784      # BUG: PartialEq and deref coercion not working correctly.
 const-cast  # TODO: Allow cast of fn() to *const _
+mir_misc_casts  # ^
 discrim-explicit-23030  # BUG: Enum variant types
 issue-13902             # ^
 issue-15523             # ^
+issue-38727     # ^
+issue-42007     # ^
+issue-23304-1   # ^ (float)
+issue-23304-2   # ^
+issue-23898     # ^ 
 empty-types-in-patterns # Inferrence failure in empty match
 generic-default-type-params-cross-crate # Inferrence failure (not using type defaults)
 issue-11205     # Inferrence failure (doesn't consider trait impls in inferrence)
+issue-9951      # ^
+trait-copy-guessing # ^
+trait-default-method-xc # ^
+trait-impl      # ^
 issue-20575     # Inferrence failure (closure return type from Fn bound)
+issue-26805     # Inferrence failure (doesn't use associated types)
+last-use-in-cap-clause  # ^
+overloaded-calls-object-zero-args   # ^
+regions-infer-borrow-scope-addr-of  # Inferrence failure with `&isize` and `&{int}
+swap-2          # ^
+slice_binary_search     # Inferrence failure with &String and &str
+never-result    # Inferrence failure: Race with !
+new-box-syntax  # Inferrence failure: Box syntax and literals
+issue-21245     # BUG: Method lookup doesn't consider IntoIterator on an Iterator
+issue-23208     # Trait lookup not considering supertraits.
+traits-issue-26339  # ^
+traits-repeated-supertrait  # Multiple supertraits confusing inferrence
+issue-21410     # Infinite Recursion on closure type.
+issue-25439     # ^
+project-cache-issue-31849   # Excessive typecheck time
+issue-21486     # Diverging function - in struct literal
+issue-30371     # Match of !
+issue-21922     # BUG: Missed coercion point.
+mir_coercions   # TODO: Coerce to unsafe fn
+typeck-fn-to-unsafe-fn-ptr  # ^
+unsafe-coercion # ^
+never_coercions # Failed to coerce (related to !?)
+variadic-ffi    # Assertion failure caused by variadic function pointer
+weird-exprs     # Return in a let not triggering diverge.
+wrapping-int-api    # Implicit integer truncation with `<large_literal> as u64`
 # -> Unsize failures
 fat-ptr-cast    # Array unsize missed
 issue-20797     # Trait unsize runthrough
+issue-26905     # Manual CoerceUnsized not working?
 
 # None::<T> syntax somewhere (TODO)
 issue-22546
@@ -97,32 +240,67 @@ issue-22546
 # MIR GEN:
 issue-18352     # append_from_lit - Match literal Borrow
 issue-11940     # ^
+mir_build_match_comparisons # ^
 issue-36936     # Identity casts are removed.
 binary-heap-panic-safe  # TODO Attempts to move out of a Deref operator... failed &mut reborrow?
+issue-28839     # ^
+issue-21306     # ^ Likely caused by bad Fn* selection
 byte-literals   # "Attempting to match on an Array (should have been destructured)"
 cast            # TODO: Allow cast char -> i32
 cleanup-rvalue-during-if-and-while  # BUG: Temporaries created in conditions not dropped at right time.
+mir_drop_order      # BUG: incorrect drop ordering with borrows
 cleanup-rvalue-scopes   # BUG: Incorrect drop ordering around `box ref` patterns
 const-str-ptr   # TODO: MIR Cleanup "BorrowOf into pointer"
 issue-13620     # TODO: MIR Cleanup - fn pointer
 diverging-fallback-control-flow # "No value avaliable"
 diverging-fallback-option       # ^
 issue-15763                     # ^
-issue-18110                     # ^
+issue-18110             # ^
+issue-30018-nopanic     # ^
+match-bot-2             # ^
+unreachable-code        # ^
 diverging-fn-tail-35849         # Validation error, assign to ! (return value) in unreachable branch
 if-ret  # "If condition wasn't bool"
 issue-15080 # Infinte loop from incorrect match generation
 issue-17877 # TODO: SplitSlice on array
+vec-matching-fixed  # ^
+vec-tail-matching   # Trailing SplitSlice
+zero_sized_subslice_match   # ^
+issue-23311 # TODO: rules_overlap - byte string and slice pattern
+issue-23338-ensure-param-drop-order # BUG: Incorrect ordering of parameter drop.
+issue-27054-primitive-binary-ops    # BUG: LHS of operator read after RHS evaluated
+issue-28950 # BUG? Stack overflow not prevented
+mir_heavy_promoted  # ^
+issue-32805	# BUG: Possible f32 literal rounding isue
+issue-4734      # BUG: Unused values not dropped.
+match-byte-array-patterns   # ASSERTION (column_weights vs arms)
+match-ref-unsized   # TODO: Allow `ref v = *"string"` (ref to unsized value)
+mir_raw_fat_ptr # TODO: Handle ordering comparisons on raw pointers
+move-guard-const    # NOT A BUG: rustc allows match guards to move, mrustc does not.
+struct-order-of-eval-1  # BUG: Use of non-valid local
+struct-order-of-eval-3  # ^
+# > Cleanup
+issue-6919  # Handle function pointer from Literal
 
 
 # TRANS
 enum-discrim-width-stuff    # mrustc doesn't calculate enum descriminant sizes based on values.
 enum-discrim-autosizing     # ^
+nonzero-enum                # ^
+small-enums-with-fields     # ^
+type-sizes                  # ^
 float_math	# Missing intrinsic (fadd_fast)
+issue-38074 # Missing intrinsic (simd_shuffle)
+simd-generics       # Missing intrinsic (simd_*)
+simd-intrinsic-generic-arithmetic   # ^
+simd-intrinsic-generic-elements     # ^
 raw-fat-ptr	# Ordering comparisons of raw pointers
 abi-sysv64-register-usage   # asm! register translation
 allocator-override          # asm! translation - "TODO: Handle asm! output leader 'r'"
 i128                        # ^
+issue-32947                 # ^
+issue-41696                 # ^
+u128                        # ^
 asm-in-out-operand          # asm! translation - "Assembly output specifiers must start with ="
 asm-indirect-memory         # ^
 issue-14936                 # ^
@@ -130,18 +308,34 @@ asm-out-assign              # asm! translation
 drop-struct-as-object   # BUG: Box destructor doesn't call inner destructor?
 init-res-into-things    # ^
 issue-10802             # ^
+mir_fat_ptr_drop    # ^
 dst-field-align     # BUG: Alignment of DST fields not valid.
 enum-discr          # Signed discriminants
 enum-disr-val-pretty    # ^
+tag-variant-disr-val    # ^
 enum-discrim-manual-sizing  # TODO: Enum reprs not being correctly used (signed reprs?)
 enum-univariant-repr        # ^
 enum-layout-optimization    # BUG: Option size optimisation not applied
 enum-null-pointer-opt       # ^
+nullable-pointer-opt-closures   # ^
+nullable-pointer-size       # ^
 explicit-self-generic       # BUG: Incorrect method lookup (doesn't try autoderef, picks ExactSizeIterator)
 i128-ffi    # UNK: i128 is hard (TODO: TRIAGE)
 intrinsic-alignment # MISSING: intrinsic `pref_align_of`
 intrinsics-integer  # `ctpop` signed negative returns OOB value (e.g. 32 instead of 8 on i8)
 issue-21058     # BUG: Enumerate doesn't handle data-less trait objects (e.g. `dyn Send`)
+issue-25515     # ^
+issue-26709     # ^
+issue-35815     # ^
+issue-34796	    # BUG: Missing vtable type.
+mir_calls_to_shims   # BUG: Missing functions (bad enumerate?)
+newtype     # Incorrect error when a struct is used in a function pointer to itself
+trans-object-shim   # BUG: Doesn't generate `<(Foo) as Foo>::bar` function.
+transmute-specialization    # BUG: Enumerate hit an opaque type
+type-id-higher-rank # BUG: type_id returns the same value for `for<'a> fn(&'a T)` as `fn(&'static T)`
+type-id-higher-rank-2   # ^ (test failed)
+unsized3    # BUG: Incorrect dst type annotation for struct containing `str`
+utf8_idents # BUG: No escaping of utf8 in symbols, GCC doesn't like this
 
 # RESOLVE
 issue-33687		# Calling a unit-like struct with Fn* traits - "Pointed struct in TupleVariant (::Test) isn't a Tuple"
@@ -149,8 +343,15 @@ static-function-pointer-xc	# Calling a static function pointer
 const-block         # ^
 const-block-cross-crate-fn  # ^
 const-block-item    # ^
+rfc1623             # ^
+static-function-pointer # ^
 issue-17718         # ^ (const here, but same idea)
+issue-27890         # ^
 empty-struct-braces # MISSING: Full support for braced initialisers for unit-like structs/variants
+issue-29540     # Errors out on very deep method call list.
+issue-34751     # Treats PhantomData as a refutable pattern
+mir_ascription_coercion # TODO: Either visit expected types, or make a type annotation its own node type
+type-ascription     # ^
 
 # HIR MISC
 xcrate-associated-type-defaults	# type_is_specialisable - Handle missing type in impl(0x17e3018) ::"xcrate_associated_type_defaults"::Foo<u32,> for () {}, name = Out
@@ -158,9 +359,15 @@ default-associated-types        # ^
 issue-25180     # Closure in const
 issue-27268     # ^
 issue-28189     # ^
+self-impl   # Can't find impl in Expand UFCS
 
 # MISC
 allocator-default	# Needs alloc_jealloc, which isn't built
+lib-defaults    # Crate type "staticlib"
+linkage1    # "extern_weak" linkage
+reexport-test-harness-main  # NOT A BUG: Tests an implementation detail of the test harness
+test-runner-hides-start # BUG: Test harness doesn't hide #[start]
+tls-dtors-are-run-in-a-static-binary    # Thread-local destructors aren't being run.
 
 # TEST RUNNER
 exec-env    # Runtime environment variable
