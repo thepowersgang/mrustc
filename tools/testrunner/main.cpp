@@ -41,6 +41,7 @@ struct TestDesc
     ::std::string   m_path;
     ::std::vector<::std::string>    m_pre_build;
     ::std::vector<::std::string>    m_extra_flags;
+    bool ignore;
 };
 struct Timestamp
 {
@@ -204,23 +205,30 @@ int main(int argc, const char* argv[])
             DEBUG("> " << test_file_path);
 
             TestDesc    td;
+            td.ignore = false;
 
             do
             {
                 ::std::string   line;
                 ::std::getline(in, line);
-                if( !(line[0] == '/' && line[1] == '/' && line[2] == ' ') )
+                if( !(line[0] == '/' && line[1] == '/'/* && line[2] == ' '*/) )
                     continue ;
                 // TODO Parse a skewer-case ident and check against known set?
 
-                if( line.substr(3, 10) == "aux-build:" )
+                auto start = (line[2] == ' ' ? 3 : 2);
+
+                if( line.substr(start, 10) == "aux-build:" )
                 {
-                    td.m_pre_build.push_back( line.substr(13) );
+                    td.m_pre_build.push_back( line.substr(start+10) );
                 }
-                else if( line.substr(3, 14) == "compile-flags:" )
+                else if( line.substr(start, 11) == "ignore-test" )
+                {
+                    td.ignore = true;
+                }
+                else if( line.substr(start, 14) == "compile-flags:" )
                 {
                     auto end = line.find(' ', 3+14);
-                    decltype(end) start = 3+14;
+                    start += 14;
                     do
                     {
                         if( start != end )
@@ -259,11 +267,21 @@ int main(int argc, const char* argv[])
         ::std::sort(tests.begin(), tests.end(), [](const auto& a, const auto& b){ return a.m_name < b.m_name; });
 
         // ---
+        unsigned n_skip = 0;
+        unsigned n_cfail = 0;
+        unsigned n_fail = 0;
+        unsigned n_ok = 0;
         for(const auto& test : tests)
         {
+            if( test.ignore )
+            {
+                DEBUG(">> IGNORE " << test.m_name);
+                continue ;
+            }
             if( ::std::find(skip_list.begin(), skip_list.end(), test.m_name) != skip_list.end() )
             {
                 DEBUG(">> SKIP " << test.m_name);
+                n_skip ++;
                 continue ;
             }
 
@@ -281,6 +299,7 @@ int main(int argc, const char* argv[])
                     if( !run_compiler(infile, depdir, {}, depdir, true) )
                     {
                         DEBUG("COMPILE FAIL " << infile << " (dep of " << test.m_name << ")");
+                        n_cfail ++;
                         return 1;
                     }
                 }
@@ -288,6 +307,7 @@ int main(int argc, const char* argv[])
                 if( !run_compiler(test.m_path, outfile, test.m_extra_flags, depdir) )
                 {
                     DEBUG("COMPILE FAIL " << test.m_name);
+                    n_cfail ++;
                     return 1;
                 }
             }
@@ -295,9 +315,15 @@ int main(int argc, const char* argv[])
             if( !run_executable(outfile, { outfile.str().c_str() }, outdir / test.m_name + ".out") )
             {
                 DEBUG("RUN FAIL " << test.m_name);
+                n_fail ++;
                 return 1;
             }
+
+            n_ok ++;
         }
+
+        ::std::cout << "TESTS COMPLETED" << ::std::endl;
+        ::std::cout << n_ok << " passed, " << n_fail << " failed, " << n_cfail << " errored, " << n_skip << " skipped" << ::std::endl;
     }
 
     return 0;
