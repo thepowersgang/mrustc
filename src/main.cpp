@@ -684,6 +684,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 } continue;
 
             default:
+                // Fall through to the for loop below
                 break;
             }
 
@@ -706,6 +707,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     this->emit_debug_info = true;
                     break;
                 default:
+                    ::std::cerr << "Unknown option: '-" << *arg << "'" << ::std::endl;
                     exit(1);
                 }
             }
