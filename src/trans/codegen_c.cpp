@@ -407,7 +407,7 @@ namespace {
                 if( c_start_path == ::HIR::SimplePath() )
                 {
                     m_of << "\treturn " << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) ) << "("
-                            << "(uint8_t*)" << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
+                            << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << ", argc, (uint8_t**)argv"
                             << ");\n";
                 }
                 else
@@ -415,96 +415,6 @@ namespace {
                     m_of << "\treturn " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
                 }
                 m_of << "}\n";
-
-                // Emit allocator bindings
-                for(const auto& method : ALLOCATOR_METHODS)
-                {
-                    ::std::vector<const char*>  args;
-                    const char* ret_ty = nullptr;
-                    // TODO: Configurable between __rg_, __rdl_, and __rde_
-                    auto prefix = "__rdl_";
-
-                    for(size_t i = 0; i < method.n_args; i++)
-                    {
-                        switch(method.args[i])
-                        {
-                        case AllocatorDataTy::Never:
-                        case AllocatorDataTy::Unit:
-                        case AllocatorDataTy::ResultPtr:
-                        case AllocatorDataTy::ResultExcess:
-                        case AllocatorDataTy::UsizePair:
-                        case AllocatorDataTy::ResultUnit:
-                            BUG(Span(), "Invalid data type for allocator argument");
-                            break;
-                        case AllocatorDataTy::Layout:
-                            args.push_back("uintptr_t");
-                            args.push_back("uintptr_t");
-                            break;
-                        case AllocatorDataTy::LayoutRef:
-                            args.push_back("uint8_t*");
-                            break;
-                        case AllocatorDataTy::AllocError:
-                            args.push_back("uint8_t*");
-                            break;
-                        case AllocatorDataTy::Ptr:
-                            args.push_back("uint8_t*");
-                            break;
-                        }
-                    }
-                    switch(method.ret)
-                    {
-                    case AllocatorDataTy::Never:
-                    case AllocatorDataTy::Unit:
-                        ret_ty = "void";
-                        break;
-                    case AllocatorDataTy::ResultPtr:
-                        args.push_back("uint8_t*");
-                        ret_ty = "uint8_t*";
-                        break;
-                    case AllocatorDataTy::ResultExcess:
-                        args.push_back("uint8_t*");
-                        args.push_back("uint8_t*");
-                        ret_ty = "uint8_t*";
-                        break;
-                    case AllocatorDataTy::UsizePair:
-                        args.push_back("uintptr_t*");
-                        args.push_back("uintptr_t*");
-                        ret_ty = "void";
-                        break;
-                    case AllocatorDataTy::ResultUnit:
-                        ret_ty = "int8_t";
-                        break;
-                    case AllocatorDataTy::Layout:
-                    case AllocatorDataTy::AllocError:
-                    case AllocatorDataTy::Ptr:
-                    case AllocatorDataTy::LayoutRef:
-                        BUG(Span(), "Invalid data type for allocator return");
-                    }
-
-                    m_of << "extern " << ret_ty << " " << prefix << method.name << "(";
-                    for(size_t i = 0; i < args.size(); i++)
-                    {
-                        if(i > 0)   m_of << ", ";
-                        m_of << args[i] << " arg" << i;
-                    }
-                    m_of << ");\n";
-
-                    m_of << ret_ty << " __rust_" << method.name << "(";
-                    for(size_t i = 0; i < args.size(); i++)
-                    {
-                        if(i > 0)   m_of << ", ";
-                        m_of << args[i] << " arg" << i;
-                    }
-                    m_of << ") {\n";
-                    m_of << "\treturn " << prefix << method.name << "(";
-                    for(size_t i = 0; i < args.size(); i++)
-                    {
-                        if(i > 0)   m_of << ", ";
-                        m_of << "arg" << i;
-                    }
-                    m_of << ");\n";
-                    m_of << "}\n";
-                }
             }
 
             m_of.flush();
