@@ -212,7 +212,10 @@ public:
                     // TODO: `error-chain`'s quick_error macro has an arm which refers to an undefined metavar.
                     // - Maybe emit a warning and use a marker index.
                     WARNING(lex.point_span(), W0000, "Macro variable $" << name << " not found");
-                    idx = (1<<16)-1;    // NOTE: Encoded as a u16
+                    // Emit the literal $ <name>
+                    ret.push_back( MacroExpansionEnt(Token(TOK_DOLLAR)) );
+                    ret.push_back( MacroExpansionEnt(mv$(tok)) );
+                    continue ;
                 }
                 if( var_set_ptr ) {
                     var_set_ptr->insert( ::std::make_pair(idx,true) );

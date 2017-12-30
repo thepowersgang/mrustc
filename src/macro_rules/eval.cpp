@@ -761,6 +761,7 @@ namespace
         ::std::vector<size_t>   m_offsets;
         size_t  m_active_offset;
 
+        Token m_faked_next;
         size_t  m_consume_count;
     public:
         TokenStreamRO(const TokenTree& tt):
@@ -798,6 +799,11 @@ namespace
         const Token& next_tok() const {
             static Token    eof_token = TOK_EOF;
 
+            if( m_faked_next.type() != TOK_NULL )
+            {
+                return m_faked_next;
+            }
+
             if( m_offsets.empty() && m_active_offset == m_tt.size() )
             {
                 //DEBUG(m_consume_count << " " << eof_token << "(EOF)");
@@ -815,6 +821,12 @@ namespace
         }
         void consume()
         {
+            if( m_faked_next.type() != TOK_NULL )
+            {
+                m_faked_next = Token(TOK_NULL);
+                return ;
+            }
+
             if( m_offsets.empty() && m_active_offset == m_tt.size() )
                 throw ::std::runtime_error("Attempting to consume EOS");
             DEBUG(m_consume_count << " " << next_tok());
@@ -829,7 +841,7 @@ namespace
                 // If reached the end of a tree...
                 if(m_active_offset == cur_tree->size())
                 {
-                    // If the end of the root is reached, return (leaving the state indicating EOS0
+                    // If the end of the root is reached, return (leaving the state indicating EOS)
                     if( m_offsets.empty() )
                         return ;
                     // Pop and continue
@@ -849,6 +861,11 @@ namespace
                     return ;
                 }
             }
+        }
+        void consume_and_push(eTokenType ty)
+        {
+            consume();
+            m_faked_next = Token(ty);
         }
 
         // Consumes if the current token is `ty`, otherwise doesn't and returns false
@@ -919,7 +936,20 @@ namespace
             }
             else if( lex.next() == TOK_GT || lex.next() == TOK_DOUBLE_GT )
             {
-                level -= (lex.next() == TOK_DOUBLE_GT ? 2 : 1);
+                assert(level > 0);
+                if( lex.next() == TOK_DOUBLE_GT )
+                {
+                    if( level == 1 )
+                    {
+                        lex.consume_and_push(TOK_GT);
+                        return true;
+                    }
+                    level -= 2;
+                }
+                else
+                {
+                    level -= 1;
+                }
                 if( level == 0 )
                     break;
             }
@@ -1100,6 +1130,9 @@ namespace
                 return true;
         }
 
+        if( lex.consume_if(TOK_INTERPOLATED_PATTERN) )
+            return true;
+
         for(;;)
         {
             if( lex.consume_if(TOK_UNDERSCORE) )
@@ -1113,6 +1146,13 @@ namespace
             case TOK_INTERPOLATED_PATH:
                 consume_path(lex);
                 if( lex.next() == TOK_BRACE_OPEN ) {
+                    return consume_tt(lex);
+                }
+                else if( lex.next() == TOK_PAREN_OPEN ) {
+                    return consume_tt(lex);
+                }
+                else if( lex.next() == TOK_EXCLAM ) {
+                    lex.consume();
                     return consume_tt(lex);
                 }
                 break;
@@ -1174,12 +1214,14 @@ namespace
             {
                 do
                 {
+                    if( lex.next() == TOK_PIPE )
+                        break;
                     consume_pat(lex);
                     if(lex.consume_if(TOK_COLON))
                     {
                         consume_type(lex);
                     }
-                } while(lex.next() == TOK_COMMA);
+                } while(lex.consume_if(TOK_COMMA));
                 if( !lex.consume_if(TOK_PIPE) )
                     return false;
             }
@@ -1436,6 +1478,8 @@ namespace
             case TOK_EXCLAM_EQUAL:
             case TOK_DOUBLE_AMP:
             case TOK_DOUBLE_PIPE:
+            case TOK_DOUBLE_DOT:
+            case TOK_TRIPLE_DOT:
                 lex.consume();
                 break;
             case TOK_EQUAL:
@@ -2321,7 +2365,7 @@ Token MacroExpander::realGetToken()
     {
         const auto& ent = *next_ent_ptr;
         TU_IFLET(MacroExpansionEnt, ent, Token, e,
-            return e;
+            return e.clone();
         )
         else if( ent.is_NamedValue() ) {
             const auto& e = ent.as_NamedValue();
