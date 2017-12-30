@@ -156,20 +156,6 @@ output/rustc output/cargo: output/libtest.hir
 
 TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir output/test_deps/librust_test_helpers.a
 
-output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
-	@echo "--- [MRUSTC] --test -o $@"
-	@mkdir -p output/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
 fcn_extcrate = $(patsubst %,output/lib%.hir,$(1))
 
 fn_getdeps = \
@@ -236,502 +222,56 @@ RUST_TESTS: RUST_TESTS_run-pass
 RUST_TESTS_run-pass: output/librust_test_helpers.a
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output/rust_tests/run-pass
-	./tools/bin/testrunner -o output/rust_tests/run-pass rustc-1.19.0-src/src/test/run-pass --exceptions disabled_tests_run-pass.txt
-output/librust_test_helpers.a: output/test_deps/librust_test_helpers.a
-	cp $< $@
+	./tools/bin/testrunner -o output/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
+output/librust_test_helpers.a: output/rust_test_helpers.o
+	@mkdir -p $(dir $@)
+	ar cur $@ $<
+output/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
+	@mkdir -p $(dir $@)
+	$(CC) -c $< -o $@
 
-DISABLED_TESTS := 
-# - NOT A TEST
-DISABLED_TESTS += run-pass/backtrace-debuginfo-aux
-DISABLED_TESTS += run-pass/mod_file_aux
-# - asm! is hard to translate
-DISABLED_TESTS += run-pass/abi-sysv64-register-usage
-DISABLED_TESTS += run-pass/asm-in-out-operand
-DISABLED_TESTS += run-pass/asm-indirect-memory
-DISABLED_TESTS += run-pass/asm-out-assign
-DISABLED_TESTS += run-pass/i128	# Unknown leader 'r'
-DISABLED_TESTS += run-pass/issue-14936
-DISABLED_TESTS += run-pass/issue-32947
-DISABLED_TESTS += run-pass/num-wrapping
-DISABLED_TESTS += run-pass/out-of-stack
-# - Requires jemalloc
-DISABLED_TESTS += run-pass/allocator-default
-DISABLED_TESTS += run-pass/allocator-override
-# - Really odd behavior:
-DISABLED_TESTS += run-pass/move-guard-const	# Moves are allowed in match arm guards (should error in mrustc)
-# - Lazy.
-DISABLED_TESTS += run-pass/associated-types-projection-in-where-clause	# Not normalizing bounds
-DISABLED_TESTS += run-pass/cast	# Disallows cast from char to i32
-DISABLED_TESTS += run-pass/empty-struct-braces	# HIR Gen - Empty struct support
-DISABLED_TESTS += run-pass/explicit-self-generic	# Method Selection: Picks ExactSizeIterator::len instead of Self::len
-DISABLED_TESTS += run-pass/extern-compare-with-return-type	# TODO Specialisation with function pointers
-DISABLED_TESTS += run-pass/issue-26709	# Inferrence ran though a coercion point (integer literal)
-DISABLED_TESTS += run-pass/issue-20797	# Failed to find impl with associated type, possible incorrect coerce?
-DISABLED_TESTS += run-pass/issue-21245	# IntoIterator on core::slice::Iterator ?
-DISABLED_TESTS += run-pass/issue-21486	# Type mismatch
-DISABLED_TESTS += run-pass/issue-21410	# Infinite recursion
-DISABLED_TESTS += run-pass/issue-25439	# ^
-DISABLED_TESTS += run-pass/issue-22629	# Auto trait + UFCS todo
-DISABLED_TESTS += run-pass/send-is-not-static-par-for	# ^
-DISABLED_TESTS += run-pass/issue-22828	# ^
-DISABLED_TESTS += run-pass/issue-23699	# fn() inferrence
-DISABLED_TESTS += run-pass/issue-30371	# destructuring pattern on !
-DISABLED_TESTS += run-pass/issue-33687	# Unit struct implementing FnOnce call
-DISABLED_TESTS += run-pass/issue-38033	# Not equating associated type of type param.
-DISABLED_TESTS += run-pass/issue-7784	# PartialEq impl and deref
-DISABLED_TESTS += run-pass/traits-issue-26339	# ^
-DISABLED_TESTS += run-pass/builtin-superkinds-self-type	# ^
-DISABLED_TESTS += run-pass/intrinsic-move-val	# ^
-DISABLED_TESTS += run-pass/trait-default-method-xc	# Trait impled for i32
-DISABLED_TESTS += run-pass/issue-11205	# ^
-DISABLED_TESTS += run-pass/mir_coercions	# Coercion to unsafe fn
-DISABLED_TESTS += run-pass/typeck-fn-to-unsafe-fn-ptr	# ^
-DISABLED_TESTS += run-pass/unsafe-coercion	# ^
-DISABLED_TESTS += run-pass/mir_misc_casts	# Cast fn to *const isize
-DISABLED_TESTS += run-pass/never-result	# ! not correctly unifiying
-DISABLED_TESTS += run-pass/self-impl	# Unable to infer
-DISABLED_TESTS += run-pass/trait-copy-guessing	# ^
-DISABLED_TESTS += run-pass/issue-20575	# ^
-DISABLED_TESTS += run-pass/sync-send-iterators-in-libcore	# Send for Range<_>
-DISABLED_TESTS += run-pass/traits-repeated-supertrait	# Type mismatch, i64 and u64
-DISABLED_TESTS += run-pass/trans-object-shim	# fn cast to other fn as type annotation
-DISABLED_TESTS += run-pass/variadic-ffi	# variadics not supported
-DISABLED_TESTS += run-pass/weird-exprs	# Line 17, let _ = return; result type
-DISABLED_TESTS += run-pass/where-for-self	# Failed deref coercion?
-DISABLED_TESTS += run-pass/union/union-backcomp	# ? discarded value?
-DISABLED_TESTS += run-pass/coerce-expect-unsized	 # Can't infer ivar in associated
-DISABLED_TESTS += run-pass/issue-26805	# ^
-DISABLED_TESTS += run-pass/associated-types-doubleendediterator-object	# Failed to propagate associated type from trait object
-DISABLED_TESTS += run-pass/issue-26905	# ^
-DISABLED_TESTS += run-pass/last-use-in-cap-clause	# ^
-DISABLED_TESTS += run-pass/last-use-is-capture	# TODO: Unsize of closure to FnMut
-DISABLED_TESTS += run-pass/overloaded-calls-object-zero-args
-# - Lazy (Typecheck - Leftover rules)
-DISABLED_TESTS += run-pass/regions-infer-borrow-scope-addr-of	# Didn't unify literal ivar
-DISABLED_TESTS += run-pass/swap-2	# ^
-DISABLED_TESTS += run-pass/slice_binary_search	# Didn't detect infer possiblity (&str, &String)
-# - Lazy (Typecheck - Array unsize)
-DISABLED_TESTS += run-pass/associated-types-conditional-dispatch	# Ran through coercion point
-DISABLED_TESTS += run-pass/byte-literals	# Over-eager inferrence
-DISABLED_TESTS += run-pass/never_coercions	# Over-eager inferrence (ran through coercion)
-DISABLED_TESTS += run-pass/cast-rfc0401-vtable-kinds # Spare rules (struct Unsize)
-DISABLED_TESTS += run-pass/dst-struct-sole           # ^
-DISABLED_TESTS += run-pass/dst-struct                # ^
-DISABLED_TESTS += run-pass/issue-23261               # ^
-DISABLED_TESTS += run-pass/cast-rfc0401	# Skipped coerce unsized - Cast to raw pointer causing unsize
-DISABLED_TESTS += run-pass/fat-ptr-cast    # Skipped coerce unsized - ERROR - coerce Borrow->Pointer and Unsize in one
-DISABLED_TESTS += run-pass/issue-21562     # ^
-DISABLED_TESTS += run-pass/mir_raw_fat_ptr # ^
-DISABLED_TESTS += run-pass/raw-fat-ptr     # ^
-## - Lazy (Typecheck - Trait unsize)
-DISABLED_TESTS += run-pass/dst-coercions	# Skipped CoerceUnsize
-DISABLED_TESTS += run-pass/dst-raw	# Skipped CoerceUnsize
-DISABLED_TESTS += run-pass/issue-11677	# Skipped
-# - Lazy (MIR)
-DISABLED_TESTS += run-pass/if-ret	# If condition wasn't a bool
-DISABLED_TESTS += run-pass/issue-11940	# todo: Match literal Borrow
-DISABLED_TESTS += run-pass/mir_build_match_comparisons	# - ^
-DISABLED_TESTS += run-pass/issue-18352	# - ^
-DISABLED_TESTS += run-pass/issue-13620	# - Todo in cleanup of dependency
-DISABLED_TESTS += run-pass/vec-matching-fold	# todo: Match SplitSlice with tailing (rule gen)
-DISABLED_TESTS += run-pass/match-vec-alternatives	# &
-DISABLED_TESTS += run-pass/issue-17877	# - SplitSlice + array
-DISABLED_TESTS += run-pass/vec-matching-fixed	# ^
-DISABLED_TESTS += run-pass/vec-tail-matching	# SplitSlice destructure array
-DISABLED_TESTS += run-pass/zero_sized_subslice_match	# ^
-DISABLED_TESTS += run-pass/issue-28839	# - Move &mut ?
-DISABLED_TESTS += run-pass/union/union-inherent-method	# ^ ?
-DISABLED_TESTS += run-pass/issue-21306	# ^
-DISABLED_TESTS += run-pass/issue-28950	# - Stack overflow in vec!
-DISABLED_TESTS += run-pass/mir_heavy_promoted	# Stack overflow in array constant
-DISABLED_TESTS += run-pass/issue-29227	# - Excessive time in MIR lowering
-DISABLED_TESTS += run-pass/issue-15763	# No value avaliable (return in _StructLiteral)
-DISABLED_TESTS += run-pass/issue-18110	# ^ (return in _Tuple)
-DISABLED_TESTS += run-pass/issue-30018-nopanic	# ^
-DISABLED_TESTS += run-pass/match-bot-2	# ^
-DISABLED_TESTS += run-pass/unreachable-code	# ^
-DISABLED_TESTS += run-pass/struct-order-of-eval-1	# Struct init order (fails validation)
-DISABLED_TESTS += run-pass/struct-order-of-eval-3	# ^
-DISABLED_TESTS += run-pass/const-enum-vec-index	# This is valid code?
-DISABLED_TESTS += run-pass/match-byte-array-patterns	# Byte string match (match gen assertion)
-# - Lazy (trans)
-DISABLED_TESTS += run-pass/issue-21058	# Empty trait object vtable
-DISABLED_TESTS += run-pass/issue-25515	# ^
-DISABLED_TESTS += run-pass/issue-35815	# ^
-DISABLED_TESTS += run-pass/issue-29663	# Missing volatile_(load|store) intrinsic
-DISABLED_TESTS += run-pass/intrinsic-alignment	# Missing pref_align_of intrinsic
-DISABLED_TESTS += run-pass/volatile-fat-ptr	# ^
-DISABLED_TESTS += run-pass/newtype	# Can't handle mutally recursive definitions
-DISABLED_TESTS += run-pass/transmute-specialization	# Opaque type hit?
-DISABLED_TESTS += run-pass/unit-fallback	# ! didn't default to ()
-DISABLED_TESTS += run-pass/issue-33387	# Missing vtable for array
-# - HIR resolve
-DISABLED_TESTS += run-pass/union/union-generic	# Can't find associated type on type param
-# - Lazy (misc)
-DISABLED_TESTS += run-pass/issue-13494
-DISABLED_TESTS += run-pass/issue-6919	# Literal function pointer
-DISABLED_TESTS += run-pass/item-attributes	# Attributed function after last statement leads to last statement yielded
-DISABLED_TESTS += run-pass/new-box-syntax	# todo - placement syntax
-DISABLED_TESTS += run-pass/placement-in-syntax	# ^
-DISABLED_TESTS += run-pass/pat-tuple-1	# assertion in "Annotate Value Usage"
-DISABLED_TESTS += run-pass/pat-tuple-2	# ^
-DISABLED_TESTS += run-pass/pat-tuple-3	# ^
-DISABLED_TESTS += run-pass/pat-tuple-4	# ^
-DISABLED_TESTS += run-pass/paths-in-macro-invocations	# MISSING: qualified macro paths
-DISABLED_TESTS += run-pass/struct-path-associated-type	# non-absolute path for HIR::GenericPath
-DISABLED_TESTS += run-pass/struct-path-self	# ^
-DISABLED_TESTS += run-pass/ufcs-polymorphic-paths	# ^
-# - Resolve
-DISABLED_TESTS += run-pass/issue-22546	# None::<u8> handling in patterns
-DISABLED_TESTS += run-pass/issue-29540	# Infinite recursion
-DISABLED_TESTS += run-pass/issue-38002	# Enum::StructVariant
-DISABLED_TESTS += run-pass/match-arm-statics	# ^
-DISABLED_TESTS += run-pass/mir_ascription_coercion	# Missed item
-DISABLED_TESTS += run-pass/type-ascription	# Relative path in lowering
-DISABLED_TESTS += run-pass/issue-15221	# Macros in patterns
-# - Overly-restrictive consteval
-DISABLED_TESTS += run-pass/const-cast	# Cast from fn() to pointer
-DISABLED_TESTS += run-pass/const-autoderef	# Expected [u8]
-DISABLED_TESTS += run-pass/check-static-mut-slices
-DISABLED_TESTS += run-pass/check-static-slice
-DISABLED_TESTS += run-pass/const-binops
-DISABLED_TESTS += run-pass/const-contents
-DISABLED_TESTS += run-pass/const-deref
-DISABLED_TESTS += run-pass/const-enum-cast
-DISABLED_TESTS += run-pass/const-err
-DISABLED_TESTS += run-pass/const-fields-and-indexing
-DISABLED_TESTS += run-pass/const-fn-method
-DISABLED_TESTS += run-pass/const-fn
-DISABLED_TESTS += run-pass/const-str-ptr
-DISABLED_TESTS += run-pass/const-vec-of-fns
-DISABLED_TESTS += run-pass/diverging-fn-tail-35849
-DISABLED_TESTS += run-pass/enum-vec-initializer
-DISABLED_TESTS += run-pass/huge-largest-array
-DISABLED_TESTS += run-pass/issue-17233
-DISABLED_TESTS += run-pass/issue-19244	# Missing type info
-DISABLED_TESTS += run-pass/issue-22894	# TODO: Deref
-DISABLED_TESTS += run-pass/issue-25180	# Closure in const
-DISABLED_TESTS += run-pass/issue-27268	# ^
-DISABLED_TESTS += run-pass/issue-28189	# ^
-DISABLED_TESTS += run-pass/issue-25757	# UFCS function pointer
-DISABLED_TESTS += run-pass/mir_refs_correct
-DISABLED_TESTS += run-pass/vec-fixed-length	# Overflow in costeval
-DISABLED_TESTS += run-pass/union/union-const-trans	# Union literal
-DISABLED_TESTS += run-pass/union/union-packed	# ConstEval UnionLiteral
-# - Type defaults not supported
-DISABLED_TESTS += run-pass/default-associated-types
-DISABLED_TESTS += run-pass/default_ty_param_default_dependent_associated_type
-DISABLED_TESTS += run-pass/default_ty_param_dependent_defaults
-DISABLED_TESTS += run-pass/default_ty_param_method_call_test
-DISABLED_TESTS += run-pass/default_ty_param_struct_and_type_alias
-DISABLED_TESTS += run-pass/default_ty_param_struct
-DISABLED_TESTS += run-pass/default_ty_param_trait_impl
-DISABLED_TESTS += run-pass/default_ty_param_trait_impl_simple
-DISABLED_TESTS += run-pass/default_ty_param_type_alias
-DISABLED_TESTS += run-pass/generic-default-type-params-cross-crate
-DISABLED_TESTS += run-pass/generic-default-type-params
-# - ERROR: Function pointers in consants/statics don't trigger calls
-DISABLED_TESTS += run-pass/issue-17718
-DISABLED_TESTS += run-pass/rfc1623
-DISABLED_TESTS += run-pass/static-function-pointer-xc
-DISABLED_TESTS += run-pass/static-function-pointer
-DISABLED_TESTS += run-pass/const-block-cross-crate-fn
-DISABLED_TESTS += run-pass/const-block-item
-DISABLED_TESTS += run-pass/const-block
-# - Quirks
-DISABLED_TESTS += run-pass/autoderef-privacy	# No privacy with autoderef
-DISABLED_TESTS += run-pass/fn-item-type-zero-sized	# fn() items are not ZSTs
-DISABLED_TESTS += run-pass/int-abs-overflow	# No overflow checks
-DISABLED_TESTS += run-pass/issue-18859	# module_path output is differend
-DISABLED_TESTS += run-pass/issue-8709	# stringify! output
-DISABLED_TESTS += run-pass/tydesc-name	# ^
-DISABLED_TESTS += run-pass/concat	# ^
-DISABLED_TESTS += run-pass/type-id-higher-rank-2	# lifetimes don't apply in type_id
-DISABLED_TESTS += run-pass/type-id-higher-rank	# ^
-# - BUG-Expand: macro_rules
-DISABLED_TESTS += run-pass/macro-of-higher-order
-DISABLED_TESTS += run-pass/macro-pat	# :pat doesn't allow MACRO
-DISABLED_TESTS += run-pass/macro-reexport-no-intermediate-use	# macro_reexport failed
-DISABLED_TESTS += run-pass/macro-with-attrs1	# cfg on macro_rules
-DISABLED_TESTS += run-pass/shift-near-oflo	# Scoping rules
-DISABLED_TESTS += run-pass/type-macros-simple	# ^
-DISABLED_TESTS += run-pass/stmt_expr_attr_macro_parse	# Orderign with :expr and #[]
-DISABLED_TESTS += run-pass/sync-send-iterators-in-libcollections	# .. should match :expr
-DISABLED_TESTS += run-pass/type-macros-hlist	# Mismatched arms
-# - BUG-Expand: format_args!
-DISABLED_TESTS += run-pass/ifmt	# Unknown formatting type specifier '*'
-# - BUG-Expand: line/column macros don't work properly
-DISABLED_TESTS += run-pass/issue-26322
-# - Expand
-DISABLED_TESTS += run-pass/issue-11085	# No support for cfg() on enum variants
-DISABLED_TESTS += run-pass/lexer-crlf-line-endings-string-literal-doc-comment	# Missing include_str!
-DISABLED_TESTS += run-pass/syntax-extension-source-utils	# ^
-DISABLED_TESTS += run-pass/link-cfg-works	# cfg in #[link]
-DISABLED_TESTS += run-pass/linkage1	# #[linkage]
-DISABLED_TESTS += run-pass/log_syntax-trace_macros-macro-locations	# no trace_macros!
-DISABLED_TESTS += run-pass/macro-use-all-and-none	# missing macro_use feature
-DISABLED_TESTS += run-pass/macro-use-both	# ^
-DISABLED_TESTS += run-pass/macro-use-one	# ^
-DISABLED_TESTS += run-pass/two-macro-use	# ^
-DISABLED_TESTS += run-pass/simd-intrinsic-generic-cast	# Missing concat_idents!
-DISABLED_TESTS += run-pass/simd-intrinsic-generic-comparison	# ^
-DISABLED_TESTS += run-pass/smallest-hello-world	# missing lang item
-DISABLED_TESTS += run-pass/trait-item-inside-macro	# macro invocations in traits
-DISABLED_TESTS += run-pass/try-operator-custom	# `?` carrier
-DISABLED_TESTS += run-pass/wrapping-int-api	# cfg on match arms
-#DISABLED_TESTS += run-pass/union/union-c-interop	# union derive
-DISABLED_TESTS += run-pass/union/union-derive	# ^
-#DISABLED_TESTS += run-pass/union/union-overwrite	# ? MetaItem::as_String()
-DISABLED_TESTS += run-pass/union/union-pat-refutability	# Union matching
-# - Parse
-DISABLED_TESTS += run-pass/issue-37733	# for<'a,>
-DISABLED_TESTS += run-pass/loop-break-value	# `break value`
-DISABLED_TESTS += run-pass/macro-attribute-expansion	# No handling of $expr in attributes
-DISABLED_TESTS += run-pass/macro-doc-escapes	# Doc comments aren't attributes
-DISABLED_TESTS += run-pass/macro-doc-raw-str-hashes	# ^
-DISABLED_TESTS += run-pass/macro-interpolation	# $block not allowed in place of function body
-DISABLED_TESTS += run-pass/macro-stmt	# ^
-DISABLED_TESTS += run-pass/macro-tt-followed-by-seq	# Mismatched arms?
-DISABLED_TESTS += run-pass/struct-field-shorthand	# Struct field shorthand
-DISABLED_TESTS += run-pass/vec-matching	# [a, [b,..].., c]
-# HIR Lowering
-DISABLED_TESTS += run-pass/union/union-basic	# Union struct pattern
-# - BUG-Parse: `use *`
-DISABLED_TESTS += run-pass/import-glob-crate
-DISABLED_TESTS += run-pass/import-prefix-macro
-# - BUG-CODEGEN: Missing symbol
-DISABLED_TESTS += run-pass/const-enum-ptr
-DISABLED_TESTS += run-pass/const-enum-vec-ptr
-DISABLED_TESTS += run-pass/const-vecs-and-slices
-DISABLED_TESTS += run-pass/issue-5688
-DISABLED_TESTS += run-pass/issue-5917
-DISABLED_TESTS += run-pass/issue-7012
-DISABLED_TESTS += run-pass/issue-29147	# Missing type
-DISABLED_TESTS += run-pass/issue-30081	# ^
-DISABLED_TESTS += run-pass/issue-3447	# ^
-DISABLED_TESTS += run-pass/issue-34796	# Missing vtable type (in dep)
-DISABLED_TESTS += run-pass/simd-generics	# "platform-intrinsics"
-DISABLED_TESTS += run-pass/simd-intrinsic-generic-arithmetic	# ^
-DISABLED_TESTS += run-pass/simd-intrinsic-generic-elements	# ^
-DISABLED_TESTS += run-pass/thread-local-extern-static	# Extern static not generated?
-# - BUG: Codegen
-DISABLED_TESTS += run-pass/unsized3	# Pointer instead of fat pointer
-DISABLED_TESTS += run-pass/utf8_idents	# C backend doesn't support utf8 idents
-# - BUG: Hygine
-DISABLED_TESTS += run-pass/hygiene
-DISABLED_TESTS += run-pass/hygienic-labels-in-let
-DISABLED_TESTS += run-pass/hygienic-labels
-DISABLED_TESTS += run-pass/macro-nested_stmt_macros	# hygine fires when it shouldn't
-# - Test framework required
-DISABLED_TESTS += run-pass/core-run-destroy
-DISABLED_TESTS += run-pass/exec-env
-DISABLED_TESTS += run-pass/issue-16597-empty
-DISABLED_TESTS += run-pass/issue-16597	# NOTE: Crashes in resolve
-DISABLED_TESTS += run-pass/issue-20823
-DISABLED_TESTS += run-pass/issue-34932
-DISABLED_TESTS += run-pass/issue-36768
-DISABLED_TESTS += run-pass/reexport-test-harness-main
-DISABLED_TESTS += run-pass/test-fn-signature-verification-for-explicit-return-type
-DISABLED_TESTS += run-pass/test-main-not-dead-attr
-DISABLED_TESTS += run-pass/test-main-not-dead
-DISABLED_TESTS += run-pass/test-runner-hides-buried-main
-DISABLED_TESTS += run-pass/test-runner-hides-main
-DISABLED_TESTS += run-pass/test-runner-hides-start
-DISABLED_TESTS += run-pass/test-should-fail-good-message
-DISABLED_TESTS += run-pass/test-should-panic-attr
-# - Makefile test framework quirks
-DISABLED_TESTS += run-pass/issue-18913
-DISABLED_TESTS += run-pass/issue-2380-b
-DISABLED_TESTS += run-pass/issue-29485
-DISABLED_TESTS += run-pass/svh-add-comment
-DISABLED_TESTS += run-pass/svh-add-doc
-DISABLED_TESTS += run-pass/svh-add-macro
-DISABLED_TESTS += run-pass/svh-add-nothing
-DISABLED_TESTS += run-pass/svh-add-redundant-cfg
-DISABLED_TESTS += run-pass/svh-add-whitespace
-# - Target Features
-DISABLED_TESTS += run-pass/crt-static-on-works
-DISABLED_TESTS += run-pass/sse2
-# - Infinite loops
-DISABLED_TESTS += run-pass/issue-27890	# - Stack exhausted : Resolve
-DISABLED_TESTS += run-pass/project-cache-issue-31849
-# - Impl selection
-DISABLED_TESTS += run-pass/issue-23208	# Couldn't find an impl for <T/*M:0*/ as ::TheSuperTrait<u32,>>::get
-DISABLED_TESTS += run-pass/xcrate-associated-type-defaults	# Failed to find an impl
-# --- Runtime Errors ---
-# - Line information that isn't avaliable due to codegen
-DISABLED_TESTS += run-pass/backtrace-debuginfo
-DISABLED_TESTS += run-pass/backtrace
-# - No unwind catching support
-DISABLED_TESTS += run-pass/binary-heap-panic-safe
-DISABLED_TESTS += run-pass/box-of-array-of-drop-1
-DISABLED_TESTS += run-pass/box-of-array-of-drop-2
-DISABLED_TESTS += run-pass/cleanup-rvalue-temp-during-incomplete-alloc
-DISABLED_TESTS += run-pass/drop-trait-enum
-DISABLED_TESTS += run-pass/intrinsic-move-val-cleanups
-DISABLED_TESTS += run-pass/issue-14875
-DISABLED_TESTS += run-pass/issue-25089
-DISABLED_TESTS += run-pass/issue-26655
-DISABLED_TESTS += run-pass/issue-30018-panic
-DISABLED_TESTS += run-pass/issue-8460
-DISABLED_TESTS += run-pass/iter-step-overflow-debug
-DISABLED_TESTS += run-pass/iter-sum-overflow-debug
-DISABLED_TESTS += run-pass/multi-panic
-DISABLED_TESTS += run-pass/nested-vec-3
-DISABLED_TESTS += run-pass/no-landing-pads
-DISABLED_TESTS += run-pass/panic-handler-chain
-DISABLED_TESTS += run-pass/panic-handler-flail-wildly
-DISABLED_TESTS += run-pass/panic-handler-set-twice
-DISABLED_TESTS += run-pass/panic-in-dtor-drops-fields
-DISABLED_TESTS += run-pass/panic-recover-propagate
-DISABLED_TESTS += run-pass/sepcomp-unwind
-DISABLED_TESTS += run-pass/slice-panic-1
-DISABLED_TESTS += run-pass/slice-panic-2
-DISABLED_TESTS += run-pass/task-stderr
-DISABLED_TESTS += run-pass/terminate-in-initializer
-DISABLED_TESTS += run-pass/unit-like-struct-drop-run
-DISABLED_TESTS += run-pass/unwind-resource
-DISABLED_TESTS += run-pass/unwind-unique
-DISABLED_TESTS += run-pass/vector-sort-panic-safe
-DISABLED_TESTS += run-pass/dynamic-drop
-DISABLED_TESTS += run-pass/reachable-unnameable-items
-# - Misc
-DISABLED_TESTS += run-pass/issue-16671	# Blocks forever
-DISABLED_TESTS += run-pass/issue-13027	# Infinite loop (match?)
-DISABLED_TESTS += run-pass/issue-36936	# assert_eq failing on equal values
-# - BUG: signed ctpop/cttz/ctlz
-DISABLED_TESTS += run-pass/intrinsics-integer	# todo - bswap<i8>
-# - BUG: Incorrect drop ordering
-DISABLED_TESTS += run-pass/issue-23338-ensure-param-drop-order
-# - BUG: Incorrect consteval
-DISABLED_TESTS += run-pass/issue-23968-const-not-overflow	# !0 / 2 incorrect value
-# - BUG: Incorrect ordering of read in binops
-DISABLED_TESTS += run-pass/issue-27054-primitive-binary-ops
-# - BUG: Enum variants not getting correct integer values (negatives)
-DISABLED_TESTS += run-pass/discriminant_value
-DISABLED_TESTS += run-pass/enum-discr
-DISABLED_TESTS += run-pass/enum-disr-val-pretty
-DISABLED_TESTS += run-pass/issue-15523-big
-DISABLED_TESTS += run-pass/issue-9837
-DISABLED_TESTS += run-pass/signed-shift-const-eval
-DISABLED_TESTS += run-pass/tag-variant-disr-val
-# - BUG: repr(size) not working
-DISABLED_TESTS += run-pass/enum-univariant-repr
-DISABLED_TESTS += run-pass/issue-15523
-# - ConstEval: Handling of enum variant casts
-DISABLED_TESTS += run-pass/issue-23304-1
-DISABLED_TESTS += run-pass/issue-23304-2
-# - BUG: Null pointer opt not fully correct
-DISABLED_TESTS += run-pass/enum-null-pointer-opt
-DISABLED_TESTS += run-pass/nonzero-enum
-DISABLED_TESTS += run-pass/nullable-pointer-opt-closures
-DISABLED_TESTS += run-pass/nullable-pointer-size
-# - BUG: Incorrect enum sizing
-DISABLED_TESTS += run-pass/enum-discrim-autosizing
-DISABLED_TESTS += run-pass/enum-discrim-manual-sizing
-DISABLED_TESTS += run-pass/enum-discrim-width-stuff
-DISABLED_TESTS += run-pass/multiple-reprs	# no repr handling
-DISABLED_TESTS += run-pass/small-enums-with-fields
-DISABLED_TESTS += run-pass/type-sizes
-DISABLED_TESTS += run-pass/discrim-explicit-23030
-DISABLED_TESTS += run-pass/issue-13902
-# - BUG: Bad floats
-DISABLED_TESTS += run-pass/float_math	# Missing intrinsic
-DISABLED_TESTS += run-pass/intrinsics-math
-DISABLED_TESTS += run-pass/issue-32805	# Possible f32 literal rounding isue
-# - BUG: MIR Generation
-DISABLED_TESTS += run-pass/union/union-drop-assign	# No drop when assiging to union field
-DISABLED_TESTS += run-pass/issue-4734	# Destructor on unused rvalue
-DISABLED_TESTS += run-pass/issue-8860	# No drop of un-moved arguments
-DISABLED_TESTS += run-pass/issue-15080	# Infinte loop from incorrect match generation
-# - BUG: Codegen
-DISABLED_TESTS += run-pass/union/union-transmute	# Incorrect union behavior, likey backend UB
-DISABLED_TESTS += run-pass/mir_overflow_off	# out-of-range shift behavior
-DISABLED_TESTS += run-pass/dst-field-align	# DST Fields aren't aligned correctly
-# - BUG: Codegen - No handling of repr()
-DISABLED_TESTS += run-pass/packed-struct-generic-layout
-DISABLED_TESTS += run-pass/packed-struct-generic-size
-DISABLED_TESTS += run-pass/packed-struct-layout
-DISABLED_TESTS += run-pass/packed-struct-size-xc
-DISABLED_TESTS += run-pass/packed-struct-size
-DISABLED_TESTS += run-pass/packed-struct-vec
-DISABLED_TESTS += run-pass/packed-tuple-struct-layout
-DISABLED_TESTS += run-pass/packed-tuple-struct-size
-# - BUG-Expand: format_args!
-DISABLED_TESTS += run-pass/format-ref-cell
-# - BUG-Expand: Copy,Clone calls Clone for inner values instead of copying
-DISABLED_TESTS += run-pass/deriving-copyclone
-# - BUG: Unknown
-DISABLED_TESTS += run-pass/process-spawn-with-unicode-params	# Bad path for process spawn
-DISABLED_TESTS += run-pass/u128	# u128 not very good, unknown where error is
-# - TODO:
-DISABLED_TESTS += run-pass/align-struct	# Literals in attributes
-DISABLED_TESTS += run-pass/issue-42747	# Inifinite loop in _gcc_
+# 
+# libstd tests
+# 
+.PHONY: rust_tests-libs
 
-DEF_RUST_TESTS = $(sort $(patsubst $(RUST_TESTS_DIR)%.rs,output/rust/%_out.txt,$(wildcard $(RUST_TESTS_DIR)$1/*.rs)))
-rust_tests-run-pass: $(filter-out $(patsubst %,output/rust/%_out.txt,$(DISABLED_TESTS)), $(call DEF_RUST_TESTS,run-pass) $(call DEF_RUST_TESTS,run-pass/union))
-rust_tests-run-fail: $(call DEF_RUST_TESTS,run-fail)
-
-LIB_TESTS := collections collectionstest rustc_data_structures
-RUNTIME_ARGS_output/libcollectionstest-test := --test-threads 1 --skip linked_list::test_ord_nan --skip ::slice::test_box_slice_clone_panics
-RUNTIME_ARGS_output/libstd-test := --test-threads 1 --skip :collections::hash::map::test_map::test_index_nonexistent
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
+LIB_TESTS := collections #std
+#LIB_TESTS += rustc_data_structures
 rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
 
-#rust_tests-compile-fail: $(call DEF_RUST_TESTS,compile-fail)
+RUNTIME_ARGS_output/libcollectionstest-test := --test-threads 1
+RUNTIME_ARGS_output/libcollectionstest-test := --skip linked_list::test_ord_nan --skip ::slice::test_box_slice_clone_panics
+RUNTIME_ARGS_output/libstd-test := --test-threads 1
+RUNTIME_ARGS_output/libstd-test := --skip ::collections::hash::map::test_map::test_index_nonexistent
+RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
 
-output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
-	@mkdir -p $(dir $@)
-	@echo "--- [MRUSTC] -o $@"
-	$(DBG) $(BIN) $< -L output/libs -o $@ $(RUST_FLAGS) $(PIPECMD)
-output/rust/test_run-pass_hello_out.txt: output/rust/test_run-pass_hello
-	@echo "--- [$<]"
-	@./$< | tee $@
-
-TEST_ARGS_run-pass/cfg-in-crate-1 := --cfg bar
-TEST_ARGS_run-pass/cfgs-on-items := --cfg fooA --cfg fooB
-TEST_ARGS_run-pass/cfg-macros-foo := --cfg foo
-TEST_ARGS_run-pass/cfg_attr := --cfg set1 --cfg set2
-TEST_ARGS_run-pass/issue-11085 := --cfg foo
-TEST_ARGS_run-pass/macro-meta-items := --cfg foo
-TEST_ARGS_run-pass/issue-21361 := -g
-TEST_ARGS_run-pass/syntax-extension-cfg := --cfg foo --cfg 'qux=foo'
-
-output/rust/%: $(RUST_TESTS_DIR)%.rs $(TEST_DEPS)
-	@mkdir -p $(dir $@)
-	@echo "=== TEST $(patsubst output/rust/%,%,$@)"
-	@echo "--- [MRUSTC] -o $@"
-	$V$(BIN) $< -o $@ -L output/libs -L output/test_deps $(RUST_FLAGS) --stop-after $(RUST_TESTS_FINAL_STAGE) $(TEST_ARGS_$*) > $@.txt 2>&1 || (tail -n 1 $@.txt; false)
+output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
+	@echo "--- [MRUSTC] --test -o $@"
+	@mkdir -p output/
+	@rm -f $@
+	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+#	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
+output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
+	@echo "--- [MRUSTC] $@"
+	@mkdir -p output/
+	@rm -f $@
+	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+#	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
 output/%_out.txt: output/%
 	@echo "--- [$<]"
 	@./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
 
-output/test_deps/librust_test_helpers.a: output/test_deps/rust_test_helpers.o
+# "hello, world" test - Invoked by the `make test` target
+output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
 	@mkdir -p $(dir $@)
-	ar cur $@ $<
-output/test_deps/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
-	@mkdir -p $(dir $@)
-	$(CC) -c $< -o $@
+	@echo "--- [MRUSTC] -o $@"
+	$(DBG) $(BIN) $< -o $@ $(RUST_FLAGS) $(PIPECMD)
+output/rust/test_run-pass_hello_out.txt: output/rust/test_run-pass_hello
+	@echo "--- [$<]"
+	@./$< | tee $@
 
-output/rust/run-pass/allocator-default.o: output/libstd.hir output/liballoc_jemalloc.hir
-output/rust/run-pass/allocator-system.o: output/liballoc_system.hir
-output/rust/run-pass/anon-extern-mod-cross-crate-2.o: output/test_deps/libanonexternmod.hir
-output/test_deps/libsvh_b.hir: output/test_deps/libsvh_a_base.hir
-
-output/test_deps/libanonexternmod.hir: $(RUST_TESTS_DIR)run-pass/auxiliary/anon-extern-mod-cross-crate-1.rs
-	$(BIN) $< $(RUST_FLAGS) --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
-output/test_deps/libunion.hir: $(RUST_TESTS_DIR)run-pass/union/auxiliary/union.rs
-	mkdir -p $(dir $@)
-	$(BIN) $< $(RUST_FLAGS) --crate-type rlib --out-dir output/test_deps > $@.txt 2>&1
-
-test_deps_run-pass.mk: Makefile $(wildcard $(RUST_TESTS_DIR)run_pass/*.rs)
-	@echo "--- Generating test dependencies: $@"
-	@grep 'aux-build:' rustc-nightly/src/test/run-pass/{*.rs,union/*.rs} | awk -F : '{a=gensub(/.+run-pass\/(.*)\.rs$$/, "\\1", "g", $$1); b=gensub(/(.*)\.rs/,"\\1","g",$$3); gsub(/-/,"_",b); print "output/rust/run-pass/" a ": " "output/test_deps/lib" b ".hir" }' > $@.tmp
-	@grep 'aux-build:' rustc-nightly/src/test/run-pass/*.rs | awk -F : '{ print $$3 }' | sort | uniq | awk '{ b=gensub(/(.*)\.rs/,"\\1","g",$$1); gsub(/-/,"_",b); print "output/test_deps/lib" b ".hir: $$(RUST_TESTS_DIR)run-pass/auxiliary/" $$1 " output/libstd.hir" ; print "\t@mkdir -p $$(dir $$@)" ; print "\t@echo \"--- [MRUSTC] $$@\"" ; print "\t@$$(DBG) $$(BIN) $$(RUST_FLAGS) $$< --crate-type rlib --out-dir output/test_deps > $$@.txt 2>&1" ; print "\t@touch $$@" }' >> $@.tmp
-	@mv $@.tmp $@
-
-
--include test_deps_run-pass.mk
 
 
 .PHONY: test test_rustos
