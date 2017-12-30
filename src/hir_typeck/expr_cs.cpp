@@ -3107,6 +3107,7 @@ namespace {
             check_type_resolved_pp(sp, path.m_params, tmp);
         }
         void check_type_resolved(const Span& sp, ::HIR::TypeRef& ty, const ::HIR::TypeRef& top_type) const {
+            TRACE_FUNCTION_F(ty);
             TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
             (Infer,
                 auto new_ty = this->ivars.get_type(ty).clone();
