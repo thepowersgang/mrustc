@@ -441,6 +441,7 @@ class CFormatArgsExpander:
         Token   tok;
 
         auto lex = TTStream(sp, tt);
+        lex.parse_state().module = &mod;
         if( ident != "" )
             ERROR(sp, E0000, "format_args! doesn't take an ident");
 
