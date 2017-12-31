@@ -328,18 +328,54 @@ int main(int argc, char *argv[])
 
         // Allocator and panic strategies
         CompilePhaseV("Implicit Crates", [&]() {
-            if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness || crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
-            {
-                // TODO: Detect if an allocator crate is already present.
-                crate.load_extern_crate(Span(), "alloc_system");
-                crate.load_extern_crate(Span(), "panic_abort");
-
-                // - `mrustc-main` lang item default
-                crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
-            }
             if( params.test_harness )
             {
                 crate.load_extern_crate(Span(), "test");
+            }
+            if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness || crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
+            {
+                bool allocator_crate_loaded = false;
+                bool panic_runtime_loaded = false;
+                bool panic_runtime_needed = false;
+                for(const auto& ec : crate.m_extern_crates)
+                {
+                    ::std::ostringstream    ss;
+                    for(const auto& e : ec.second.m_hir->m_lang_items)
+                        ss << e << ",";
+                    DEBUG("Looking at lang items from " << ec.first << " : " << ss.str());
+                    if(ec.second.m_hir->m_lang_items.count("mrustc-allocator"))
+                    {
+                        if( allocator_crate_loaded ) {
+                            // TODO: Emit an error because there's multiple allocators loaded
+                        }
+                        allocator_crate_loaded = true;
+                    }
+                    if(ec.second.m_hir->m_lang_items.count("mrustc-panic_runtime"))
+                    {
+                        if( panic_runtime_loaded ) {
+                            // TODO: Emit an error because there's multiple allocators loaded
+                        }
+                        panic_runtime_loaded = true;
+                    }
+                    if(ec.second.m_hir->m_lang_items.count("mrustc-needs_panic_runtime"))
+                    {
+                        panic_runtime_needed = true;
+                    }
+                }
+                if( !allocator_crate_loaded )
+                {
+                    crate.load_extern_crate(Span(), "alloc_system");
+                }
+
+                if( panic_runtime_needed && !panic_runtime_loaded )
+                {
+                    // TODO: Get a panic method from the command line
+                    // - Fall back to abort by default, because mrustc doesn't do unwinding yet.
+                    crate.load_extern_crate(Span(), "panic_abort");
+                }
+
+                // - `mrustc-main` lang item default
+                crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
             }
             });
 

@@ -52,7 +52,44 @@ public:
     }
 };
 
+class Decorator_Allocator:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Pre; }
+
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+        // TODO: Check for an existing allocator crate
+        crate.m_lang_items.insert(::std::make_pair( "mrustc-allocator", AST::Path("",{}) ));
+    }
+};
+class Decorator_PanicRuntime:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Pre; }
+
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+        // TODO: Check for an existing panic_runtime crate
+        crate.m_lang_items.insert(::std::make_pair( "mrustc-panic_runtime", AST::Path("",{}) ));
+    }
+};
+class Decorator_NeedsPanicRuntime:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Pre; }
+
+    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+        crate.m_lang_items.insert(::std::make_pair( "mrustc-needs_panic_runtime", AST::Path("",{}) ));
+    }
+};
+
 STATIC_DECORATOR("crate_type", Decorator_CrateType)
 STATIC_DECORATOR("crate_name", Decorator_CrateName)
+
+STATIC_DECORATOR("allocator", Decorator_Allocator)
+STATIC_DECORATOR("panic_runtime", Decorator_PanicRuntime)
+STATIC_DECORATOR("needs_panic_runtime", Decorator_NeedsPanicRuntime)
 
 

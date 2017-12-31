@@ -490,7 +490,6 @@ namespace {
                     {
                         args.push_back("-l"); args.push_back(path.c_str());
                     }
-                    args.push_back("-z"); args.push_back("muldefs");
                     args.push_back("-Wl,--gc-sections");
                 }
                 else
@@ -760,6 +759,10 @@ namespace {
         {
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
             m_mir_res = &top_mir_res;
+            bool is_vtable; {
+                const auto& lc = p.m_path.m_components.back();
+                is_vtable = (lc.size() > 7 && ::std::strcmp(lc.c_str() + lc.size() - 7, "#vtable") == 0);
+                };
 
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  tmp;
@@ -796,11 +799,9 @@ namespace {
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
 
             // HACK: For vtables, insert the alignment and size at the start
+            if(is_vtable)
             {
-                const auto& lc = p.m_path.m_components.back();
-                if( lc.size() > 7 && ::std::strcmp(lc.c_str() + lc.size() - 7, "#vtable") == 0 ) {
-                    m_of << "\tVTABLE_HDR hdr;\n";
-                }
+                m_of << "\tVTABLE_HDR hdr;\n";
             }
 
             TU_MATCHA( (item.m_data), (e),
@@ -1222,7 +1223,7 @@ namespace {
             const auto& e = str.m_data.as_Tuple();
 
 
-            m_of << "struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(path) << "(";
+            m_of << "static struct e_" << Trans_Mangle(p) << " " << Trans_Mangle(path) << "(";
             for(unsigned int i = 0; i < e.size(); i ++)
             {
                 if(i != 0)
@@ -1282,7 +1283,7 @@ namespace {
                 };
             // Crate constructor function
             const auto& e = item.m_data.as_Tuple();
-            m_of << "struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
+            m_of << "static struct s_" << Trans_Mangle(p) << " " << Trans_Mangle(p) << "(";
             for(unsigned int i = 0; i < e.size(); i ++)
             {
                 if(i != 0)
@@ -1683,10 +1684,13 @@ namespace {
                     auto fcn_p = p.clone();
                     fcn_p.m_data.as_UfcsKnown().item = call_fcn_name;
                     fcn_p.m_data.as_UfcsKnown().trait.m_path = trait_name.clone();
-                    emit_ctype(*te->m_rettype);
+
                     auto  arg_ty = ::HIR::TypeRef::new_unit();
                     for(const auto& ty : te->m_arg_types)
                         arg_ty.m_data.as_Tuple().push_back( ty.clone() );
+
+                    m_of << "static ";
+                    emit_ctype(*te->m_rettype);
                     m_of << " " << Trans_Mangle(fcn_p) << "("; emit_ctype(type, FMT_CB(ss, ss << "*ptr";)); m_of << ", "; emit_ctype(arg_ty, FMT_CB(ss, ss << "args";)); m_of << ") {\n";
                     m_of << "\treturn (*ptr)(";
                         for(unsigned int i = 0; i < te->m_arg_types.size(); i++)
@@ -1711,10 +1715,15 @@ namespace {
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
                 ::HIR::TypeRef  vtable_ty( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
 
-                if( m_compiler == Compiler::Msvc )
+                // Weak link for vtables
+                switch(m_compiler)
                 {
-                    // Weak link for vtables
+                case Compiler::Gcc:
+                    m_of << "__attribute__((weak)) ";
+                    break;
+                case Compiler::Msvc:
                     m_of << "__declspec(selectany) ";
+                    break;
                 }
 
                 emit_ctype(vtable_ty);

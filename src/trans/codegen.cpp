@@ -87,6 +87,7 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
         DEBUG("FUNCTION " << ent.first);
         assert( ent.second->ptr );
         const auto& fcn = *ent.second->ptr;
+        // Extern if there isn't any HIR
         bool is_extern = ! static_cast<bool>(fcn.m_code);
         if( fcn.m_code.m_mir ) {
             codegen->emit_function_proto(ent.first, fcn, ent.second->pp, is_extern);
