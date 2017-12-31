@@ -29,17 +29,31 @@
 
 // Hacky default target
 #ifdef _MSC_VER
-#define DEFAULT_TARGET_NAME "x86-windows-msvc"
-#elif defined(__GNU__)
-# if defined(__linux__)
-#define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
-# elif defined(_WIN64)
-#define DEFAULT_TARGET_NAME "x86_64-windows-gnu"
+# if defined(_X64)
+#  define DEFAULT_TARGET_NAME "x86_64-windows-msvc"
 # else
-#define DEFAULT_TARGET_NAME "x86_64-windows-gnu"
+#  define DEFAULT_TARGET_NAME "x86-windows-msvc"
+# endif
+#elif defined(__linux__)
+# if defined(__amd64__)
+#  define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+# elif defined(__aarch64__)
+#  define DEFAULT_TARGET_NAME "arm64-linux-gnu"
+# elif defined(__arm__)
+#  define DEFAULT_TARGET_NAME "arm-linux-gnu"
+# elif defined(__i386__)
+#  define DEFAULT_TARGET_NAME "i586-linux-gnu"
+# else
+#  error "Unable to detect a suitable default target (linux-gnu)"
+# endif
+#elif defined(__MINGW32__)
+# if defined(_WIN64)
+#  define DEFAULT_TARGET_NAME "x86_64-windows-gnu"
+# else
+#  define DEFAULT_TARGET_NAME "i586-windows-gnu"
 # endif
 #else
-#define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
+# error "Unable to detect a suitable default target"
 #endif
 
 int g_debug_indent_level = 0;

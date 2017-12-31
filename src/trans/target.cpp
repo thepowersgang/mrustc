@@ -23,6 +23,11 @@ TargetArch ARCH_X86 = {
     32, false,
     { /*atomic(u8)=*/true, false, true, false,  true }
 };
+TargetArch ARCH_ARM32 = {
+    "arm32",
+    32, false,
+    { /*atomic(u8)=*/true, false, true, false,  true }
+};
 TargetSpec  g_target;
 
 
@@ -40,11 +45,25 @@ namespace
         {
             return load_spec_from_file(target_name);
         }
+        else if(target_name == "i586-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", CodegenMode::Gnu11,
+                ARCH_X86
+                };
+        }
         else if(target_name == "x86_64-linux-gnu")
         {
             return TargetSpec {
                 "unix", "linux", "gnu", CodegenMode::Gnu11,
                 ARCH_X86_64
+                };
+        }
+        else if(target_name == "arm-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", CodegenMode::Gnu11,
+                ARCH_ARM32
                 };
         }
         else if(target_name == "x86_64-windows-gnu")

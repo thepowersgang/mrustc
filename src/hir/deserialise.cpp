@@ -752,7 +752,7 @@ namespace {
         _(Array, {
             deserialise_ptr< ::HIR::TypeRef>(),
             nullptr,
-            m_in.read_u64c() & SIZE_MAX
+            static_cast<size_t>(m_in.read_u64c() & SIZE_MAX)
             })
         _(Slice, {
             deserialise_ptr< ::HIR::TypeRef>()
