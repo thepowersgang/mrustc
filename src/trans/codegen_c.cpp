@@ -602,7 +602,8 @@ namespace {
             ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
             args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
 
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, empty_fcn };
             m_mir_res = &mir_res;
             m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
 
@@ -706,7 +707,8 @@ namespace {
         }
         void emit_type(const ::HIR::TypeRef& ty) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "type " << ty;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "type " << ty;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(ty);
@@ -726,7 +728,7 @@ namespace {
                 auto drop_glue_path = ::HIR::Path(ty.clone(), "#drop_glue");
                 auto args = ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> >();
                 auto ty_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ty.clone());
-                ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), ty_ptr, args, *(::MIR::Function*)nullptr };
+                ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), ty_ptr, args, empty_fcn };
                 m_mir_res = &mir_res;
                 m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {";
                 auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
@@ -757,7 +759,8 @@ namespace {
 
         void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
             bool is_vtable; {
                 const auto& lc = p.m_path.m_components.back();
@@ -878,7 +881,7 @@ namespace {
                 return ;
             }
 
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, *(::MIR::Function*)nullptr };
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, empty_fcn };
             m_mir_res = &mir_res;
             m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ") {\n";
 
@@ -916,7 +919,8 @@ namespace {
         }
         void emit_union(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Union& item) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "union " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "union " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
@@ -944,7 +948,7 @@ namespace {
             auto drop_glue_path = ::HIR::Path(item_ty.clone(), "#drop_glue");
             auto item_ptr_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, item_ty.clone());
             auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(item_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), item_ptr_ty, {}, *(::MIR::Function*)nullptr };
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), item_ptr_ty, {}, empty_fcn };
             m_mir_res = &mir_res;
 
             if( item.m_markings.has_drop_impl )
@@ -1038,7 +1042,8 @@ namespace {
 
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
@@ -1145,7 +1150,7 @@ namespace {
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
             auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
             auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, *(::MIR::Function*)nullptr };
+            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, {}, empty_fcn };
             m_mir_res = &mir_res;
 
             if( item.m_markings.has_drop_impl )
@@ -1305,7 +1310,8 @@ namespace {
 
         void emit_static_ext(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern static " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(p);
 
@@ -1341,7 +1347,8 @@ namespace {
         }
         void emit_static_proto(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
@@ -1355,7 +1362,8 @@ namespace {
         }
         void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
@@ -1655,7 +1663,8 @@ namespace {
 
         void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "vtable " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "vtable " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
@@ -1770,7 +1779,8 @@ namespace {
 
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern fn " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern fn " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(p);
 
@@ -1814,7 +1824,8 @@ namespace {
         }
         void emit_function_proto(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def) override
         {
-            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "/*proto*/ fn " << p;), ::HIR::TypeRef(), {}, *(::MIR::Function*)nullptr };
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "/*proto*/ fn " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
