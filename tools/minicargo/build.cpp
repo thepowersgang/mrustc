@@ -34,44 +34,6 @@
 # define TARGET "x86_64-unknown-linux-gnu"
 #endif
 
-struct BuildList
-{
-    struct BuildEnt {
-        const PackageManifest*  package;
-        unsigned level;
-    };
-    ::std::vector<BuildEnt>  m_list;
-
-    void add_dependencies(const PackageManifest& p, unsigned level, bool include_build);
-    void add_package(const PackageManifest& p, unsigned level, bool include_build);
-    void sort_list();
-
-    struct Iter {
-        const BuildList& l;
-        size_t  i;
-
-        const PackageManifest& operator*() const {
-            return *this->l.m_list[this->i].package;
-        }
-        void operator++() {
-            this->i++;
-        }
-        bool operator!=(const Iter& x) const {
-            return this->i != x.i;
-        }
-        Iter begin() const {
-            return *this;
-        }
-        Iter end() {
-            return Iter{ this->l, this->l.m_list.size() };
-        }
-    };
-
-    Iter iter() const {
-        return Iter { *this, 0 };
-    }
-};
-
 class StringList
 {
     ::std::vector<::std::string>    m_cached;
@@ -162,7 +124,7 @@ public:
     struct Iter {
         const StringListKV&   v;
         size_t  i;
-        
+
         void operator++() {
             this->i++;
         }
@@ -580,104 +542,6 @@ bool BuildList2::build(BuildOptions opts, unsigned num_jobs)
         });
 }
 
-bool MiniCargo_Build(const PackageManifest& manifest, BuildOptions opts)
-{
-    BuildList   list;
-
-    list.add_dependencies(manifest, 0, !opts.build_script_overrides.is_valid());
-
-    list.sort_list();
-    // dedup?
-    for(const auto& p : list.iter())
-    {
-        DEBUG("WILL BUILD " << p.name() << " from " << p.manifest_path());
-    }
-
-    // Build dependencies
-    Builder builder { ::std::move(opts) };
-    for(const auto& p : list.iter())
-    {
-        if( ! builder.build_library(p) )
-        {
-            return false;
-        }
-    }
-
-    // TODO: If the manifest doesn't have a library, build the binary
-    if( manifest.has_library() )
-    {
-        if( ! builder.build_library(manifest) )
-        {
-            return false;
-        }
-    }
-
-    return manifest.foreach_binaries([&](const auto& bin_target) {
-        return builder.build_target(manifest, bin_target);
-        });
-}
-
-void BuildList::add_dependencies(const PackageManifest& p, unsigned level, bool include_build)
-{
-    for (const auto& dep : p.dependencies())
-    {
-        if( dep.is_disabled() )
-        {
-            continue ;
-        }
-        DEBUG(p.name() << ": Dependency " << dep.name());
-        add_package(dep.get_package(), level+1, include_build);
-    }
-
-    if( p.build_script() != "" && include_build )
-    {
-        for(const auto& dep : p.build_dependencies())
-        {
-            if( dep.is_disabled() )
-            {
-                continue ;
-            }
-            DEBUG(p.name() << ": Build Dependency " << dep.name());
-            add_package(dep.get_package(), level+1, include_build);
-        }
-    }
-}
-void BuildList::add_package(const PackageManifest& p, unsigned level, bool include_build)
-{
-    TRACE_FUNCTION_F(p.name());
-    // If the package is already loaded
-    for(auto& ent : m_list)
-    {
-        if(ent.package == &p && ent.level >= level)
-        {
-            // NOTE: Only skip if this package will be built before we needed (i.e. the level is greater)
-            return ;
-        }
-        // Keep searching (might already have a higher entry)
-    }
-    m_list.push_back({ &p, level });
-    add_dependencies(p, level, include_build);
-}
-void BuildList::sort_list()
-{
-    ::std::sort(m_list.begin(), m_list.end(), [](const auto& a, const auto& b){ return a.level > b.level; });
-
-    // Needed to deduplicate after sorting (`add_package` doesn't fully dedup)
-    for(auto it = m_list.begin(); it != m_list.end(); )
-    {
-        auto it2 = ::std::find_if(m_list.begin(), it, [&](const auto& x){ return x.package == it->package; });
-        if( it2 != it )
-        {
-            DEBUG((it - m_list.begin()) << ": Duplicate " << it->package->name() << " - Already at pos " << (it2 - m_list.begin()));
-            it = m_list.erase(it);
-        }
-        else
-        {
-            DEBUG((it - m_list.begin()) << ": Keep " << it->package->name() << ", level = " << it->level);
-            ++it;
-        }
-    }
-}
 
 Builder::Builder(BuildOptions opts):
     m_opts(::std::move(opts))

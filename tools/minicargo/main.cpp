@@ -50,7 +50,8 @@ int main(int argc, const char* argv[])
     Debug_DisablePhase("Load Repository");
     Debug_DisablePhase("Load Root");
     Debug_DisablePhase("Load Dependencies");
-    //Debug_DisablePhase("Build");
+    Debug_DisablePhase("Enumerate Build");
+    //Debug_DisablePhase("Run Build");
 
     try
     {
