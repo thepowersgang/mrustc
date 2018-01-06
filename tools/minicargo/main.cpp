@@ -30,10 +30,14 @@ struct ProgramOptions
     // Library search directories
     ::std::vector<const char*>  lib_search_dirs;
 
+    // Number of build jobs to run at a time
+    unsigned build_jobs = 1;
+
     bool pause_before_quit = false;
 
     int parse(int argc, const char* argv[]);
     void usage() const;
+    void help() const;
 };
 
 int main(int argc, const char* argv[])
@@ -78,12 +82,10 @@ int main(int argc, const char* argv[])
         build_opts.lib_search_dirs.reserve(opts.lib_search_dirs.size());
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
-        //Debug_SetPhase("Enumerate Build");
-        //auto build_list = MiniCargo_CreateBuildList(m, ::std::move(build_opts));
-        //Debug_SetPhase("Run Build");
-        //MiniCargo_RunBuild(build_list, opts.par_level);
-        Debug_SetPhase("Build");
-        if( !MiniCargo_Build(m, ::std::move(build_opts)) )
+        Debug_SetPhase("Enumerate Build");
+        auto build_list = BuildList2(m, build_opts);
+        Debug_SetPhase("Run Build");
+        if( !build_list.build(::std::move(build_opts), opts.build_jobs) )
         {
             ::std::cerr << "BUILD FAILED" << ::std::endl;
             if(opts.pause_before_quit) {
@@ -144,8 +146,19 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 }
                 this->output_directory = argv[++i];
                 break;
-            case 'h':
+            case 'j':
+                if( i+1 == argc || argv[i+1][0] == '-' ) {
+                    // TODO: Detect number of CPU cores and use that many jobs
+                    break;
+                }
+                this->build_jobs = ::std::strtol(argv[++i], nullptr, 10);
                 break;
+            case 'n':
+                this->build_jobs = 0;
+                break;
+            case 'h':
+                this->help();
+                exit(1);
             default:
                 ::std::cerr << "Unknown flag -" << arg[1] << ::std::endl;
                 return 1;
@@ -158,7 +171,11 @@ int ProgramOptions::parse(int argc, const char* argv[])
         else
         {
             // Long arguments
-            if( ::std::strcmp(arg, "--script-overrides") == 0 ) {
+            if( ::std::strcmp(arg, "--help") == 0 ) {
+                this->help();
+                exit(1);
+            }
+            else if( ::std::strcmp(arg, "--script-overrides") == 0 ) {
                 if(i+1 == argc) {
                     ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
                     return 1;
@@ -199,6 +216,22 @@ void ProgramOptions::usage() const
 {
     ::std::cerr
         << "Usage: minicargo <package dir>" << ::std::endl
+        << ::std::endl
+        << "   Build a cargo package using mrustc. Point it at a directory containing Cargo.toml" << ::std::endl
         ;
 }
 
+void ProgramOptions::help() const
+{
+    usage();
+    ::std::cerr
+        << ::std::endl
+        << "--help, -h  : Show this help text\n"
+        << "--script-overrides <dir> : Directory containing <package>.txt files containing the build script output\n"
+        << "--vendor-dir <dir>       : Directory containing vendored packages (from `cargo vendor`)\n"
+        << "--output-dir,-o <dir>    : Specify the compiler output directory\n"
+        << "-L <dir>                 : Search for pre-built crates (e.g. libstd) in the specified directory\n"
+        << "-j <count>               : Run at most <count> build tasks at once (default is to run only one)\n"
+        << "-n                       : Don't build any packages, just list the packages that would be built\n"
+        ;
+}

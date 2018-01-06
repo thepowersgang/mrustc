@@ -10,6 +10,11 @@
 #include <algorithm>
 #include <sstream>  // stringstream
 #include <cstdlib>  // setenv
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <climits>
+#include <cassert>
 #ifdef _WIN32
 # include <Windows.h>
 #else
@@ -220,6 +225,360 @@ struct Timestamp
         return os;
     }
 };
+
+BuildList2::BuildList2(const PackageManifest& manifest, const BuildOptions& opts):
+    m_root_manifest(manifest)
+{
+    struct Builder {
+        struct Ent {
+            const PackageManifest* package;
+            bool    native;
+            unsigned level;
+            };
+        ::std::vector<Ent>  m_list;
+
+        void add_package(const PackageManifest& p, unsigned level, bool include_build, bool is_native)
+        {
+            TRACE_FUNCTION_F(p.name());
+            // TODO: If this is a proc macro, set `is_native`
+            // If the package is already loaded
+            for(auto& ent : m_list)
+            {
+                if(ent.package == &p && ent.native == is_native && ent.level >= level)
+                {
+                    // NOTE: Only skip if this package will be built before we needed (i.e. the level is greater)
+                    return ;
+                }
+                // Keep searching (might already have a higher entry)
+            }
+            m_list.push_back({ &p, is_native, level });
+            add_dependencies(p, level, include_build, is_native);
+        }
+        void add_dependencies(const PackageManifest& p, unsigned level, bool include_build, bool is_native)
+        {
+            for (const auto& dep : p.dependencies())
+            {
+                if( dep.is_disabled() )
+                {
+                    continue ;
+                }
+                DEBUG(p.name() << ": Dependency " << dep.name());
+                add_package(dep.get_package(), level+1, include_build, is_native);
+            }
+
+            if( p.build_script() != "" && include_build )
+            {
+                for(const auto& dep : p.build_dependencies())
+                {
+                    if( dep.is_disabled() )
+                    {
+                        continue ;
+                    }
+                    DEBUG(p.name() << ": Build Dependency " << dep.name());
+                    add_package(dep.get_package(), level+1, true, true);
+                }
+            }
+        }
+        void sort_list()
+        {
+            ::std::sort(m_list.begin(), m_list.end(), [](const auto& a, const auto& b){ return a.level > b.level; });
+
+            // Needed to deduplicate after sorting (`add_package` doesn't fully dedup)
+            for(auto it = m_list.begin(); it != m_list.end(); )
+            {
+                auto it2 = ::std::find_if(m_list.begin(), it, [&](const auto& x){ return x.package == it->package; });
+                if( it2 != it )
+                {
+                    DEBUG((it - m_list.begin()) << ": Duplicate " << it->package->name() << " - Already at pos " << (it2 - m_list.begin()));
+                    it = m_list.erase(it);
+                }
+                else
+                {
+                    DEBUG((it - m_list.begin()) << ": Keep " << it->package->name() << ", level = " << it->level);
+                    ++it;
+                }
+            }
+        }
+    };
+
+    bool cross_compiling = false;
+    Builder b;
+    b.add_dependencies(manifest, 0, !opts.build_script_overrides.is_valid(), !cross_compiling);
+    if( manifest.has_library() )
+    {
+        b.m_list.push_back({ &manifest, !cross_compiling, 0 });
+    }
+
+    // TODO: Add the binaries too?
+    // - They need slightly different treatment.
+
+    b.sort_list();
+
+
+    // Move the contents of the above list to this class's list
+    m_list.reserve(b.m_list.size());
+    for(const auto& e : b.m_list)
+    {
+        m_list.push_back({ e.package, {} });
+    }
+    // Fill in all of the dependents (i.e. packages that will be closer to being buildable when the package is built)
+    for(size_t i = 0; i < m_list.size(); i++)
+    {
+        const auto* cur = m_list[i].package;
+        for(size_t j = i+1; j < m_list.size(); j ++)
+        {
+            for( const auto& dep : m_list[j].package->dependencies() )
+            {
+                if( !dep.is_disabled() && &dep.get_package() == cur )
+                {
+                    m_list[i].dependents.push_back(j);
+                }
+            }
+        }
+    }
+}
+bool BuildList2::build(BuildOptions opts, unsigned num_jobs)
+{
+    bool include_build = !opts.build_script_overrides.is_valid();
+    Builder builder { ::std::move(opts) };
+
+    // Pre-count how many dependencies are remaining for each package
+    struct BuildState
+    {
+        ::std::vector<unsigned> num_deps_remaining;
+        ::std::vector<unsigned> build_queue;
+
+        int complete_package(unsigned index, const ::std::vector<Entry>& list)
+        {
+            int rv = 0;
+            DEBUG("Completed " << list[index].package->name());
+
+            for(auto d : list[index].dependents)
+            {
+                assert(this->num_deps_remaining[d] > 0);
+                this->num_deps_remaining[d] --;
+                DEBUG("- " << list[d].package->name() << " has " << this->num_deps_remaining[d] << " deps remaining");
+                if( this->num_deps_remaining[d] == 0 )
+                {
+                    rv ++;
+                    this->build_queue.push_back(d);
+                }
+            }
+
+            return rv;
+        }
+
+        unsigned get_next()
+        {
+            assert(!this->build_queue.empty());
+            unsigned rv = this->build_queue.back();
+            this->build_queue.pop_back();
+            return rv;
+        }
+    };
+    BuildState  state;
+    state.num_deps_remaining.reserve(m_list.size());
+    for(const auto& e : m_list)
+    {
+        const auto& p = *e.package;
+        unsigned n_deps = 0;
+        for (const auto& dep : p.dependencies())
+        {
+            if( dep.is_disabled() )
+            {
+                continue ;
+            }
+            n_deps ++;
+        }
+
+        if( p.build_script() != "" && include_build )
+        {
+            for(const auto& dep : p.build_dependencies())
+            {
+                if( dep.is_disabled() )
+                {
+                    continue ;
+                }
+                n_deps ++;
+            }
+        }
+        // If there's no dependencies for this package, add it to the build queue
+        if( n_deps == 0 )
+        {
+            state.build_queue.push_back(state.num_deps_remaining.size());
+        }
+        state.num_deps_remaining.push_back( n_deps );
+    }
+
+    // Actually do the build
+    if( num_jobs > 1 )
+    {
+        class Semaphore
+        {
+            ::std::mutex    mutex;
+            ::std::condition_variable   condvar;
+            unsigned    count = 0;
+        public:
+            void notify_max() {
+                ::std::lock_guard<::std::mutex> lh { this->mutex };
+                count = UINT_MAX;
+                condvar.notify_all();
+            }
+            void notify() {
+                ::std::lock_guard<::std::mutex> lh { this->mutex };
+                if( count == UINT_MAX )
+                    return;
+                ++ count;
+                condvar.notify_one();
+            }
+            void wait() {
+                ::std::unique_lock<::std::mutex> lh { this->mutex };
+                while( count == 0 )
+                {
+                    condvar.wait(lh);
+                }
+                if( count == UINT_MAX )
+                    return;
+                -- count;
+            }
+        };
+        struct Queue
+        {
+            Semaphore   dead_threads;
+            Semaphore   avaliable_tasks;
+
+            ::std::mutex    mutex;
+            BuildState  state;
+
+            unsigned    num_active;
+            bool    failure;
+            bool    complete;   // Set if num_active==0 and tasks.empty()
+
+            Queue(BuildState x):
+                state(::std::move(x)),
+                num_active(0),
+                failure(false),
+                complete(false)
+            {
+            }
+
+            void signal_all() {
+                avaliable_tasks.notify_max();
+            }
+        };
+        struct H {
+            static void thread_body(unsigned my_idx, const ::std::vector<Entry>* list_p, Queue* queue_p, const Builder* builder)
+            {
+                const auto& list = *list_p;
+                auto& queue = *queue_p;
+                for(;;)
+                {
+                    DEBUG("Thread " << my_idx << ": waiting");
+                    queue.avaliable_tasks.wait();
+
+                    if( queue.complete || queue.failure )
+                    {
+                        DEBUG("Thread " << my_idx << ": Terminating");
+                        break;
+                    }
+
+                    unsigned cur;
+                    {
+                        ::std::lock_guard<::std::mutex> sl { queue.mutex };
+                        cur = queue.state.get_next();
+                        queue.num_active ++;
+                    }
+
+                    DEBUG("Thread " << my_idx << ": Starting " << cur << " - " << list[cur].package->name());
+                    if( ! builder->build_library(*list[cur].package) )
+                    {
+                        queue.failure = true;
+                        queue.signal_all();
+                    }
+                    else
+                    {
+                        ::std::lock_guard<::std::mutex> sl { queue.mutex };
+                        queue.num_active --;
+                        int v = queue.state.complete_package(cur, list);
+                        while(v--)
+                        {
+                            queue.avaliable_tasks.notify();
+                        }
+
+                        // If the queue is empty, and there's no active jobs, stop.
+                        if( queue.state.build_queue.empty() && queue.num_active == 0 )
+                        {
+                            queue.complete = true;
+                            queue.signal_all();
+                        }
+                    }
+                }
+
+                queue.dead_threads.notify();
+            }
+        };
+        Queue   queue { state };
+
+
+        ::std::vector<::std::thread>    threads;
+        threads.reserve(num_jobs);
+        DEBUG("Spawning " << num_jobs << " worker threads");
+        for(unsigned i = 0; i < num_jobs; i++)
+        {
+            threads.push_back(::std::thread(H::thread_body, i, &this->m_list, &queue, &builder));
+        }
+
+        DEBUG("Poking jobs");
+        for(auto i = queue.state.build_queue.size(); i --;)
+        {
+            queue.avaliable_tasks.notify();
+        }
+
+        // All jobs are done, wait for each thread to complete
+        for(unsigned i = 0; i < num_jobs; i++)
+        {
+            threads[i].join();
+            DEBUG("> Thread " << i << " complete");
+        }
+
+    }
+    else if( num_jobs == 1 )
+    {
+        while( !state.build_queue.empty() )
+        {
+            auto cur = state.get_next();
+
+            if( ! builder.build_library(*m_list[cur].package) )
+            {
+                return false;
+            }
+            state.complete_package(cur, m_list);
+        }
+    }
+    else
+    {
+        ::std::cout << "DRY RUN BUILD" << ::std::endl;
+        unsigned pass = 0;
+        while( !state.build_queue.empty() )
+        {
+            auto queue = ::std::move(state.build_queue);
+            for(auto idx : queue)
+            {
+                ::std::cout << pass << ": " << m_list[idx].package->name() << ::std::endl;
+            }
+            for(auto idx : queue)
+            {
+                state.complete_package(idx, m_list);
+            }
+            pass ++;
+        }
+    }
+
+    // Now that all libraries are done, build the binaries (if present)
+    return this->m_root_manifest.foreach_binaries([&](const auto& bin_target) {
+        return builder.build_target(this->m_root_manifest, bin_target);
+        });
+}
 
 bool MiniCargo_Build(const PackageManifest& manifest, BuildOptions opts)
 {

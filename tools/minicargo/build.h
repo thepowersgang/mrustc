@@ -35,4 +35,19 @@ private:
     Timestamp get_timestamp(const ::helpers::path& path) const;
 };
 
+class BuildList2
+{
+    struct Entry
+    {
+        const PackageManifest*  package;
+        ::std::vector<unsigned> dependents;   // Indexes into the list
+    };
+    const PackageManifest&  m_root_manifest;
+    // List is sorted by build order
+    ::std::vector<Entry>    m_list;
+public:
+    BuildList2(const PackageManifest& manifest, const BuildOptions& opts);
+    bool build(BuildOptions opts, unsigned num_jobs);  // 0 = 1 job
+};
+
 extern bool MiniCargo_Build(const PackageManifest& manifest, BuildOptions opts);

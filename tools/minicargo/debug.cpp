@@ -8,10 +8,13 @@
 #include <set>
 #include <iostream>
 #include "debug.h"
+#include <mutex>
 
 static int giIndentLevel = 0;
 static const char* gsDebugPhase = "";
 static ::std::set<::std::string> gmDisabledDebug;
+static ::std::mutex gDebugLock;
+
 void Debug_SetPhase(const char* phase_name)
 {
     gsDebugPhase = phase_name;
@@ -30,6 +33,8 @@ void Debug_Print(::std::function<void(::std::ostream& os)> cb)
 {
     if( !Debug_IsEnabled() )
         return ;
+    ::std::unique_lock<::std::mutex>    _lh { gDebugLock };
+
     ::std::cout << gsDebugPhase << "- ";
     for(auto i = giIndentLevel; i --; )
         ::std::cout << " ";
@@ -40,6 +45,8 @@ void Debug_EnterScope(const char* name, dbg_cb_t cb)
 {
     if( !Debug_IsEnabled() )
         return ;
+    ::std::unique_lock<::std::mutex>    _lh { gDebugLock };
+
     ::std::cout << gsDebugPhase << "- ";
     for(auto i = giIndentLevel; i --; )
         ::std::cout << " ";
@@ -52,6 +59,8 @@ void Debug_LeaveScope(const char* name, dbg_cb_t cb)
 {
     if( !Debug_IsEnabled() )
         return ;
+    ::std::unique_lock<::std::mutex>    _lh { gDebugLock };
+
     ::std::cout << gsDebugPhase << "- ";
     giIndentLevel --;
     for(auto i = giIndentLevel; i --; )

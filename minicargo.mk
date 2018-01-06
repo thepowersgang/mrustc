@@ -3,6 +3,7 @@ RUSTC_CHANNEL ?= stable
 RUSTC_VERSION ?= 1.19.0
 OVERRIDE_SUFFIX ?= -linux
 OUTDIR := output/
+PARLEVEL ?= 1
 
 MRUSTC := bin/mrustc
 MINICARGO := tools/bin/minicargo
@@ -39,16 +40,16 @@ $(MINICARGO):
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
 $(OUTDIR)libstd.hir: $(MRUSTC) $(MINICARGO)
-	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR)
+	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) -j $(PARLEVEL)
 	test -e $@
 $(OUTDIR)libpanic_unwind.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
-	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR)
+	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) -j $(PARLEVEL)
 	test -e $@
 $(OUTDIR)libtest.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libpanic_unwind.hir
-	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)
+	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR) -j $(PARLEVEL)
 	test -e $@
 $(OUTDIR)libgetopts.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
-	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR)
+	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) -j $(PARLEVEL)
 	test -e $@
 # MRustC custom version of libproc_macro
 $(OUTDIR)libproc_macro.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
@@ -65,11 +66,11 @@ RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
-	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)rustc-build -L $(OUTDIR)
+	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) -j $(PARLEVEL)
 	cp $(OUTDIR)rustc-build/rustc $(OUTDIR)
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
-	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)cargo-build -L $(OUTDIR)
+	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) -j $(PARLEVEL)
 	cp $(OUTDIR)cargo-build/cargo $(OUTDIR)
 
 # Reference $(RUSTCSRC)src/bootstrap/native.rs for these values
