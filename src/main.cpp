@@ -773,7 +773,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     exit(1);
                 }
                 const char* desc = argv[++i];
-                auto* pos = ::std::strchr(desc, '=');
+                const char* pos = ::std::strchr(desc, '=');
                 if( pos == nullptr ) {
                     ::std::cerr << "--extern takes an argument of the format name=path" << ::std::endl;
                     exit(1);
