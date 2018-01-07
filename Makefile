@@ -213,7 +213,7 @@ output/local_test/%: samples/test/%.rs $(TEST_DEPS)
 # 
 .PHONY: rust_tests local_tests
 RUST_TESTS_DIR := $(RUSTCSRC)src/test/
-rust_tests: rust_tests-run-pass
+rust_tests: RUST_TESTS-run-pass
 # rust_tests-run-fail
 # rust_tests-compile-fail
 
