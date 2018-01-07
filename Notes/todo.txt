@@ -4,12 +4,6 @@ TODO:
 - Audit TODOs in codebase
 - MIR Optimisations
  - Remove variables that are just assigned from arguments
-- Convert enum variants to point to structs for the data type
- - Four types of variants: Unit, Value, Tuple1, Composite
-  - TODO: Have value enums be a different structure to data enums
-  - Tuple1 is a special case to reduce the cost of Some/Ok/Err/...
- - This may have to wait for a rustc RFC? (or can hide the structs for now)
-- Clean up Span code to correctly handle nested spans
 - Clean up AST
  - Almost done, just a few little niggles left
 - Split arg patterns and arg types up for cleaner serialisation
@@ -19,8 +13,6 @@ TODO:
 
 
 ## Big change TODOs
-- Enum variant types
-- SwitchValue
 - Support MIR-only RLibs
 - Fix Span annotations
 - Refactor parse to use a consume model lexer
@@ -29,11 +21,9 @@ TODO:
 
 ## Smaller changes
 - Only generate destructors if needed (removes C warnings)
-- Add `-j` support to minicargo
 - Cache specialisation tree
 - Dependency files from mrustc
 - Allow disabling C codegen (and/or emitting a makefile stub for it)
-- Simplified C code (remove useless BB labels)
 
 
 ## Optimisations
