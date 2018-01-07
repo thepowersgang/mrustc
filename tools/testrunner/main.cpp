@@ -28,6 +28,7 @@ struct Options
     const char* input_glob = nullptr;
 
     const char* exceptions_file = nullptr;
+    bool fail_fast = false;
 
     int parse(int argc, const char* argv[]);
 
@@ -306,14 +307,22 @@ int main(int argc, const char* argv[])
                     }
                 }
                 if( pre_build_failed )
-                    continue;
+                {
+                    if( opts.fail_fast )
+                        return 1;
+                    else
+                        continue;
+                }
 
                 auto compile_logfile = outdir / test.m_name + "-build.log";
                 if( !run_compiler(test.m_path, outfile, test.m_extra_flags, depdir) )
                 {
                     DEBUG("COMPILE FAIL " << test.m_name);
                     n_cfail ++;
-                    continue;
+                    if( opts.fail_fast )
+                        return 1;
+                    else
+                        continue;
                 }
             }
             // - Run the test
@@ -321,7 +330,10 @@ int main(int argc, const char* argv[])
             {
                 DEBUG("RUN FAIL " << test.m_name);
                 n_fail ++;
-                continue;
+                if( opts.fail_fast )
+                    return 1;
+                else
+                    continue;
             }
 
             n_ok ++;
@@ -404,6 +416,10 @@ int Options::parse(int argc, const char* argv[])
                     return 1;
                 }
                 this->output_dir = argv[++i];
+            }
+            else if( 0 == ::std::strcmp(arg, "--fail-fast") )
+            {
+                this->fail_fast = true;
             }
             else
             {
