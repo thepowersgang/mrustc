@@ -27,12 +27,16 @@ struct ProgramOptions
     // Output/build directory
     const char* output_directory = nullptr;
 
+    // Target name (if null, defaults to host)
+    const char* target = nullptr;
+
     // Library search directories
     ::std::vector<const char*>  lib_search_dirs;
 
     // Number of build jobs to run at a time
     unsigned build_jobs = 1;
 
+    // Pause for user input before quitting (useful for MSVC debugging)
     bool pause_before_quit = false;
 
     int parse(int argc, const char* argv[]);
@@ -76,15 +80,15 @@ int main(int argc, const char* argv[])
         m.load_dependencies(repo, !bs_override_dir.is_valid());
 
         // 3. Build dependency tree and build program.
-        // TODO: Split creating the build list away from actually running it
         BuildOptions    build_opts;
         build_opts.build_script_overrides = ::std::move(bs_override_dir);
         build_opts.output_dir = opts.output_directory ? ::helpers::path(opts.output_directory) : ::helpers::path("output");
         build_opts.lib_search_dirs.reserve(opts.lib_search_dirs.size());
+	build_opts.target_name = opts.target;
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
         Debug_SetPhase("Enumerate Build");
-        auto build_list = BuildList2(m, build_opts);
+        auto build_list = BuildList(m, build_opts);
         Debug_SetPhase("Run Build");
         if( !build_list.build(::std::move(build_opts), opts.build_jobs) )
         {
@@ -196,6 +200,13 @@ int ProgramOptions::parse(int argc, const char* argv[])
                     return 1;
                 }
                 this->output_directory = argv[++i];
+            }
+            else if( ::std::strcmp(arg, "--target") == 0 ) {
+                if(i+1 == argc) {
+                    ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                    return 1;
+                }
+                this->target = argv[++i];
             }
             else {
                 ::std::cerr << "Unknown flag " << arg << ::std::endl;

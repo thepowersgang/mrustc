@@ -1,4 +1,9 @@
 /*
+ * minicargo - MRustC-specific clone of `cargo`
+ * - By John Hodge (Mutabah)
+ *
+ * build.cpp
+ * - Logic related to invoking the compiler
  */
 #ifdef _WIN32
 # define _CRT_SECURE_NO_WARNINGS    // Allows use of getenv (this program doesn't set env vars)
@@ -6,6 +11,7 @@
 #include "manifest.h"
 #include "build.h"
 #include "debug.h"
+#include "stringlist.h"
 #include <vector>
 #include <algorithm>
 #include <sstream>  // stringstream
@@ -28,130 +34,43 @@
 
 #ifdef _WIN32
 # define EXESUF ".exe"
-# define TARGET "x86_64-windows-msvc"
+# define HOST_TARGET "x86_64-windows-msvc"
 #else
 # define EXESUF ""
-# define TARGET "x86_64-unknown-linux-gnu"
+# define HOST_TARGET "x86_64-unknown-linux-gnu"
 #endif
 
-class StringList
+/// Class abstracting access to the compiler
+class Builder
 {
-    ::std::vector<::std::string>    m_cached;
-    ::std::vector<const char*>  m_strings;
+    BuildOptions    m_opts;
+    ::helpers::path m_compiler_path;
+
 public:
-    StringList()
-    {
-    }
-    StringList(const StringList&) = delete;
-    StringList(StringList&&) = default;
+    Builder(BuildOptions opts);
 
-    const ::std::vector<const char*>& get_vec() const
-    {
-        return m_strings;
-    }
+    bool build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host) const;
+    bool build_library(const PackageManifest& manifest, bool is_for_host) const;
+    ::helpers::path build_build_script(const PackageManifest& manifest, bool is_for_host, bool* out_is_rebuilt) const;
 
-    void push_back(::std::string s)
-    {
-        // If the cache list is about to move, update the pointers
-        if(m_cached.capacity() == m_cached.size())
-        {
-            // Make a bitmap of entries in `m_strings` that are pointers into `m_cached`
-            ::std::vector<bool> b;
-            b.reserve(m_strings.size());
-            size_t j = 0;
-            for(const auto* s : m_strings)
-            {
-                if(j == m_cached.size())
-                    break;
-                if(s == m_cached[j].c_str())
-                {
-                    j ++;
-                    b.push_back(true);
-                }
-                else
-                {
-                    b.push_back(false);
-                }
-            }
+private:
+    ::helpers::path get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const;
+    bool spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const;
+    bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile) const;
 
-            // Add the new one
-            m_cached.push_back(::std::move(s));
-            // Update pointers
-            j = 0;
-            for(size_t i = 0; i < b.size(); i ++)
-            {
-                if(b[i])
-                {
-                    m_strings[i] = m_cached.at(j++).c_str();
-                }
-            }
-        }
+    ::helpers::path build_and_run_script(const PackageManifest& manifest, bool is_for_host) const;
+
+    // If `is_for_host` and cross compiling, use a different directory
+    // - TODO: Include the target arch in the output dir too?
+    ::helpers::path get_output_dir(bool is_for_host) const {
+        if(is_for_host && m_opts.target_name != nullptr)
+            return m_opts.output_dir / "host";
         else
-        {
-            m_cached.push_back(::std::move(s));
-        }
-        m_strings.push_back(m_cached.back().c_str());
-    }
-    void push_back(const char* s)
-    {
-        m_strings.push_back(s);
-    }
-};
-class StringListKV: private StringList
-{
-    ::std::vector<const char*>  m_keys;
-public:
-    StringListKV()
-    {
-    }
-    StringListKV(StringListKV&& x):
-        StringList(::std::move(x)),
-        m_keys(::std::move(x.m_keys))
-    {
-    }
-
-    void push_back(const char* k, ::std::string v)
-    {
-        m_keys.push_back(k);
-        StringList::push_back(v);
-    }
-    void push_back(const char* k, const char* v)
-    {
-        m_keys.push_back(k);
-        StringList::push_back(v);
-    }
-
-    struct Iter {
-        const StringListKV&   v;
-        size_t  i;
-
-        void operator++() {
-            this->i++;
-        }
-        ::std::pair<const char*,const char*> operator*() {
-            return ::std::make_pair(this->v.m_keys[this->i], this->v.get_vec()[this->i]);
-        }
-        bool operator!=(const Iter& x) const {
-            return this->i != x.i;
-        }
-    };
-    Iter begin() const {
-        return Iter { *this, 0 };
-    }
-    Iter end() const {
-        return Iter { *this, m_keys.size() };
-    }
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const StringListKV& x) {
-        os << "{ ";
-        for(auto kv : x)
-            os << kv.first << "=" << kv.second << " ";
-        os << "}";
-        return os;
+            return m_opts.output_dir;
     }
 };
 
-struct Timestamp
+class Timestamp
 {
 #if _WIN32
     uint64_t m_val;
@@ -162,7 +81,14 @@ struct Timestamp
     }
 #else
     time_t  m_val;
+    Timestamp(time_t t):
+        m_val(t)
+    {
+    }
 #endif
+
+public:
+    static Timestamp for_file(const ::helpers::path& p);
     static Timestamp infinite_past() {
 #if _WIN32
         return Timestamp { FILETIME { 0, 0 } };
@@ -188,10 +114,10 @@ struct Timestamp
     }
 };
 
-BuildList2::BuildList2(const PackageManifest& manifest, const BuildOptions& opts):
+BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     m_root_manifest(manifest)
 {
-    struct Builder {
+    struct ListBuilder {
         struct Ent {
             const PackageManifest* package;
             bool    native;
@@ -263,8 +189,8 @@ BuildList2::BuildList2(const PackageManifest& manifest, const BuildOptions& opts
         }
     };
 
-    bool cross_compiling = false;
-    Builder b;
+    bool cross_compiling = (opts.target_name != nullptr);
+    ListBuilder b;
     b.add_dependencies(manifest, 0, !opts.build_script_overrides.is_valid(), !cross_compiling);
     if( manifest.has_library() )
     {
@@ -281,7 +207,7 @@ BuildList2::BuildList2(const PackageManifest& manifest, const BuildOptions& opts
     m_list.reserve(b.m_list.size());
     for(const auto& e : b.m_list)
     {
-        m_list.push_back({ e.package, {} });
+        m_list.push_back({ e.package, e.native, {} });
     }
     // Fill in all of the dependents (i.e. packages that will be closer to being buildable when the package is built)
     for(size_t i = 0; i < m_list.size(); i++)
@@ -299,7 +225,7 @@ BuildList2::BuildList2(const PackageManifest& manifest, const BuildOptions& opts
         }
     }
 }
-bool BuildList2::build(BuildOptions opts, unsigned num_jobs)
+bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 {
     bool include_build = !opts.build_script_overrides.is_valid();
     Builder builder { ::std::move(opts) };
@@ -452,7 +378,7 @@ bool BuildList2::build(BuildOptions opts, unsigned num_jobs)
                     }
 
                     DEBUG("Thread " << my_idx << ": Starting " << cur << " - " << list[cur].package->name());
-                    if( ! builder->build_library(*list[cur].package) )
+                    if( ! builder->build_library(*list[cur].package, list[cur].is_host) )
                     {
                         queue.failure = true;
                         queue.signal_all();
@@ -510,7 +436,7 @@ bool BuildList2::build(BuildOptions opts, unsigned num_jobs)
         {
             auto cur = state.get_next();
 
-            if( ! builder.build_library(*m_list[cur].package) )
+            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host) )
             {
                 return false;
             }
@@ -538,7 +464,7 @@ bool BuildList2::build(BuildOptions opts, unsigned num_jobs)
 
     // Now that all libraries are done, build the binaries (if present)
     return this->m_root_manifest.foreach_binaries([&](const auto& bin_target) {
-        return builder.build_target(this->m_root_manifest, bin_target);
+        return builder.build_target(this->m_root_manifest, bin_target, /*is_for_host=*/false);
         });
 }
 
@@ -565,9 +491,9 @@ Builder::Builder(BuildOptions opts):
 #endif
 }
 
-::helpers::path Builder::get_crate_path(const PackageManifest& manifest, const PackageTarget& target, const char** crate_type, ::std::string* out_crate_suffix) const
+::helpers::path Builder::get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const
 {
-    auto outfile = m_opts.output_dir;
+    auto outfile = this->get_output_dir(is_for_host);
     // HACK: If there's no version, don't emit a version tag
     ::std::string   crate_suffix;
 #if 1
@@ -600,11 +526,11 @@ Builder::Builder(BuildOptions opts):
     return outfile;
 }
 
-bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target) const
+bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host) const
 {
     const char* crate_type;
     ::std::string   crate_suffix;
-    auto outfile = this->get_crate_path(manifest, target,  &crate_type, &crate_suffix);
+    auto outfile = this->get_crate_path(manifest, target, is_for_host,  &crate_type, &crate_suffix);
 
     // TODO: Determine if it needs re-running
     // Rerun if:
@@ -613,7 +539,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     // > build script has changed
     // > any input file has changed (requires depfile from mrustc)
     bool force_rebuild = false;
-    auto ts_result = this->get_timestamp(outfile);
+    auto ts_result = Timestamp::for_file(outfile);
     if( force_rebuild ) {
         DEBUG("Building " << outfile << " - Force");
     }
@@ -621,9 +547,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         // Rebuild (missing)
         DEBUG("Building " << outfile << " - Missing");
     }
-    else if( !getenv("MINICARGO_IGNTOOLS") && ( ts_result < this->get_timestamp(m_compiler_path) /*|| ts_result < this->get_timestamp("bin/minicargo")*/ ) ) {
+    else if( !getenv("MINICARGO_IGNTOOLS") && ( ts_result < Timestamp::for_file(m_compiler_path) /*|| ts_result < Timestamp::for_file("bin/minicargo")*/ ) ) {
         // Rebuild (older than mrustc/minicargo)
-        DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(m_compiler_path) << ")");
+        DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << Timestamp::for_file(m_compiler_path) << ")");
     }
     else {
         // TODO: Check dependencies. (from depfile)
@@ -652,8 +578,17 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     if( true /*this->enable_optimise*/ ) {
         args.push_back("-O");
     }
+    if( m_opts.target_name )
+    {
+        if( is_for_host ) {
+            //args.push_back("--target"); args.push_back(HOST_TARGET);
+        }
+        else {
+            args.push_back("--target"); args.push_back(m_opts.target_name);
+        }
+    }
     args.push_back("-o"); args.push_back(outfile);
-    args.push_back("-L"); args.push_back(m_opts.output_dir.str().c_str());
+    args.push_back("-L"); args.push_back(this->get_output_dir(is_for_host).str().c_str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
         args.push_back("-L"); args.push_back(dir.second.c_str());
     }
@@ -674,7 +609,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     {
         // Add a --extern for it
         const auto& m = manifest;
-        auto path = this->get_crate_path(m, m.get_library(), nullptr, nullptr);
+        auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
         args.push_back("--extern");
         args.push_back(::format(m.get_library().m_name, "=", path));
     }
@@ -683,7 +618,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
-            auto path = this->get_crate_path(m, m.get_library(), nullptr, nullptr);
+            auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
             args.push_back("--extern");
             args.push_back(::format(m.get_library().m_name, "=", path));
         }
@@ -696,7 +631,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     // TODO: Environment variables (rustc_env)
     StringListKV    env;
-    auto out_dir = m_opts.output_dir.to_absolute() / "build_" + manifest.name().c_str();
+    auto out_dir = this->get_output_dir(is_for_host).to_absolute() / "build_" + manifest.name().c_str();
     env.push_back("OUT_DIR", out_dir.str());
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
     env.push_back("CARGO_PKG_VERSION", ::format(manifest.version()));
@@ -717,16 +652,33 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     return this->spawn_process_mrustc(args, ::std::move(env), outfile + "_dbg.txt");
 }
-::std::string Builder::build_build_script(const PackageManifest& manifest) const
+::helpers::path Builder::build_build_script(const PackageManifest& manifest, bool is_for_host, bool* out_is_rebuilt) const
 {
-    auto outfile = m_opts.output_dir / manifest.name() + "_build" EXESUF;
+    // - Output dir is the same as the library.
+    auto outfile = this->get_output_dir(is_for_host) / manifest.name() + "_build" EXESUF;
+
+    auto ts_result = Timestamp::for_file(outfile);
+    if( ts_result == Timestamp::infinite_past() ) {
+        DEBUG("Building " << outfile << " - Missing");
+    }
+    else if( !getenv("MINICARGO_IGNTOOLS") && (ts_result < Timestamp::for_file(m_compiler_path)) ) {
+        // Rebuild (older than mrustc/minicargo)
+        DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << Timestamp::for_file(m_compiler_path) << ")");
+    }
+    else
+    {
+        *out_is_rebuilt = false;
+        return outfile;
+    }
+
+    // TODO: Load+check a depfile (requires mrustc to emit one)
 
     StringList  args;
     args.push_back( ::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(manifest.build_script()) );
     args.push_back("--crate-name"); args.push_back("build");
     args.push_back("--crate-type"); args.push_back("bin");
     args.push_back("-o"); args.push_back(outfile);
-    args.push_back("-L"); args.push_back(m_opts.output_dir.str().c_str());
+    args.push_back("-L"); args.push_back(this->get_output_dir(true).str().c_str()); // NOTE: Forces `is_for_host` to true here.
     for(const auto& d : m_opts.lib_search_dirs)
     {
         args.push_back("-L");
@@ -737,11 +689,13 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         if( ! dep.is_disabled() )
         {
             const auto& m = dep.get_package();
-            auto path = this->get_crate_path(m, m.get_library(), nullptr, nullptr);
+            auto path = this->get_crate_path(m, m.get_library(), true, nullptr, nullptr);   // Dependencies for build scripts are always for the host (because it is)
             args.push_back("--extern");
             args.push_back(::format(m.get_library().m_name, "=", path));
         }
     }
+    // - Build scripts are built for the host (not the target)
+    //args.push_back("--target"); args.push_back(HOST_TARGET);
 
     StringListKV    env;
     env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
@@ -753,11 +707,94 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     // (build script output)
 
     if( this->spawn_process_mrustc(args, ::std::move(env), outfile + "_dbg.txt") )
+    {
+        *out_is_rebuilt = true;
         return outfile;
+    }
     else
-        return "";
+    {
+        // Force the caller to check the above path
+        return ::helpers::path();
+    }
 }
-bool Builder::build_library(const PackageManifest& manifest) const
+::helpers::path Builder::build_and_run_script(const PackageManifest& manifest, bool is_for_host) const
+{
+    auto output_dir_abs = this->get_output_dir(is_for_host).to_absolute();
+
+    auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
+    auto out_dir = output_dir_abs / "build_" + manifest.name().c_str();
+    
+    bool run_build_script = false;
+    // TODO: Handle a pre-existing script containing `cargo:rerun-if-changed`
+    auto script_exe = this->build_build_script(manifest, is_for_host, &run_build_script);
+    if( !script_exe.is_valid() )
+    {
+        // Build failed, return an invalid path too.
+        return ::helpers::path();
+    }
+
+    if( run_build_script )
+    {
+        auto script_exe_abs = script_exe.to_absolute();
+
+        // - Run the script and put output in the right dir
+#if _WIN32
+        CreateDirectoryA(out_dir.str().c_str(), NULL);
+#else
+        mkdir(out_dir.str().c_str(), 0755);
+#endif
+        // Environment variables (key-value list)
+        StringListKV    env;
+        env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
+        //env.push_back("CARGO_MANIFEST_LINKS", manifest.m_links);
+        //for(const auto& feat : manifest.m_active_features)
+        //{
+        //    ::std::string   fn = "CARGO_FEATURE_";
+        //    for(char c : feat)
+        //        fn += c == '-' ? '_' : tolower(c);
+        //    env.push_back(fn, manifest.m_links);
+        //}
+        //env.push_back("CARGO_CFG_RELEASE", "");
+        env.push_back("OUT_DIR", out_dir);
+        env.push_back("TARGET", m_opts.target_name ? m_opts.target_name : HOST_TARGET);
+        env.push_back("HOST", HOST_TARGET);
+        env.push_back("NUM_JOBS", "1");
+        env.push_back("OPT_LEVEL", "2");
+        env.push_back("DEBUG", "0");
+        env.push_back("PROFILE", "release");
+        for(const auto& dep : manifest.dependencies())
+        {
+            if( ! dep.is_disabled() )
+            {
+                const auto& m = dep.get_package();
+                for(const auto& p : m.build_script_output().downstream_env)
+                {
+                    env.push_back(p.first.c_str(), p.second.c_str());
+                }
+            }
+        }
+
+        //auto _ = ScopedChdir { manifest.directory() };
+        #if _WIN32
+        #else
+        auto fd_cwd = open(".", O_DIRECTORY);
+        chdir(manifest.directory().str().c_str());
+        #endif
+        if( !this->spawn_process(script_exe_abs.str().c_str(), {}, env, out_file) )
+        {
+            rename(out_file.str().c_str(), (out_file+"_failed").str().c_str());
+            // Build failed, return an invalid path
+            return ::helpers::path();;
+        }
+        #if _WIN32
+        #else
+        fchdir(fd_cwd);
+        #endif
+    }
+    
+    return out_file;
+}
+bool Builder::build_library(const PackageManifest& manifest, bool is_for_host) const
 {
     if( manifest.build_script() != "" )
     {
@@ -772,94 +809,18 @@ bool Builder::build_library(const PackageManifest& manifest) const
         }
         else
         {
-            auto out_file = m_opts.output_dir / "build_" + manifest.name().c_str() + ".txt";
-            // If the build script output doesn't exist (TODO: Or is older than ...)
-            bool run_build_script = true;
-            auto ts_result = this->get_timestamp(out_file);
-            if( ts_result == Timestamp::infinite_past() ) {
-                DEBUG("Building " << out_file << " - Missing");
-            }
-            else if( !getenv("MINICARGO_IGNTOOLS") && (ts_result < this->get_timestamp(m_compiler_path) /*|| ts_result < this->get_timestamp("bin/minicargo")*/) ) {
-                // Rebuild (older than mrustc/minicargo)
-                DEBUG("Building " << out_file << " - Older than mrustc ( " << ts_result << " < " << this->get_timestamp(m_compiler_path) << ")");
-            }
-            else
+            // - Build+Run
+            auto script_file = this->build_and_run_script(manifest, is_for_host);
+            if( !script_file.is_valid() )
             {
-                run_build_script = false;
-            }
-            if( run_build_script )
-            {
-                // Compile and run build script
-                // - Load dependencies for the build script
-                //  - TODO: Should this have already been done
-                // - Build the script itself
-                auto script_exe = this->build_build_script( manifest );
-                if( script_exe == "" )
-                    return false;
-                auto script_exe_abs = ::helpers::path(script_exe).to_absolute();
-
-                auto output_dir_abs = m_opts.output_dir.to_absolute();
-
-                // - Run the script and put output in the right dir
-                auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
-                auto out_dir = output_dir_abs / "build_" + manifest.name().c_str();
-#if _WIN32
-                CreateDirectoryA(out_dir.str().c_str(), NULL);
-#else
-                mkdir(out_dir.str().c_str(), 0755);
-#endif
-                // TODO: Environment variables (key-value list)
-                StringListKV    env;
-                env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
-                //env.push_back("CARGO_MANIFEST_LINKS", manifest.m_links);
-                //for(const auto& feat : manifest.m_active_features)
-                //{
-                //    ::std::string   fn = "CARGO_FEATURE_";
-                //    for(char c : feat)
-                //        fn += c == '-' ? '_' : tolower(c);
-                //    env.push_back(fn, manifest.m_links);
-                //}
-                //env.push_back("CARGO_CFG_RELEASE", "");
-                env.push_back("OUT_DIR", out_dir);
-                env.push_back("TARGET", TARGET);
-                env.push_back("HOST", TARGET);
-                env.push_back("NUM_JOBS", "1");
-                env.push_back("OPT_LEVEL", "2");
-                env.push_back("DEBUG", "0");
-                env.push_back("PROFILE", "release");
-                for(const auto& dep : manifest.dependencies())
-                {
-                    if( ! dep.is_disabled() )
-                    {
-                        const auto& m = dep.get_package();
-                        for(const auto& p : m.build_script_output().downstream_env)
-                        {
-                            env.push_back(p.first.c_str(), p.second.c_str());
-                        }
-                    }
-                }
-
-                #if _WIN32
-                #else
-                auto fd_cwd = open(".", O_DIRECTORY);
-                chdir(manifest.directory().str().c_str());
-                #endif
-                if( !this->spawn_process(script_exe_abs.str().c_str(), {}, env, out_file) )
-                {
-                    rename(out_file.str().c_str(), (out_file+"_failed").str().c_str());
-                    return false;
-                }
-                #if _WIN32
-                #else
-                fchdir(fd_cwd);
-                #endif
+                return false;
             }
             // - Load
-            const_cast<PackageManifest&>(manifest).load_build_script( out_file.str() );
+            const_cast<PackageManifest&>(manifest).load_build_script( script_file.str() );
         }
     }
 
-    return this->build_target(manifest, manifest.get_library());
+    return this->build_target(manifest, manifest.get_library(), is_for_host);
 }
 bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
@@ -877,7 +838,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     DEBUG("Calling " << cmdline_str);
     
 #if 0
-    // TODO: Determine required minimal environment.
+    // TODO: Determine required minimal environment, to avoid importing the entire caller environment
     ::std::stringstream environ_str;
     environ_str << "TEMP=" << getenv("TEMP") << '\0';
     environ_str << "TMP=" << getenv("TMP") << '\0';
@@ -989,7 +950,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     return true;
 }
 
-Timestamp Builder::get_timestamp(const ::helpers::path& path) const
+Timestamp Timestamp::for_file(const ::helpers::path& path)
 {
 #if _WIN32
     FILETIME    out;
