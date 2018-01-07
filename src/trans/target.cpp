@@ -24,7 +24,7 @@ TargetArch ARCH_X86 = {
     { /*atomic(u8)=*/true, false, true, false,  true }
 };
 TargetArch ARCH_ARM32 = {
-    "arm32",
+    "arm",
     32, false,
     { /*atomic(u8)=*/true, false, true, false,  true }
 };
