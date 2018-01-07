@@ -292,6 +292,7 @@ int main(int argc, const char* argv[])
             auto test_output_ts = Timestamp::for_file(outfile);
             if( test_output_ts < Timestamp::for_file(MRUSTC_PATH) )
             {
+                bool pre_build_failed = false;
                 for(const auto& file : test.m_pre_build)
                 {
                     mkdir(depdir.str().c_str(), 0755);
@@ -300,15 +301,19 @@ int main(int argc, const char* argv[])
                     {
                         DEBUG("COMPILE FAIL " << infile << " (dep of " << test.m_name << ")");
                         n_cfail ++;
-                        return 1;
+                        pre_build_failed = true;
+                        break;
                     }
                 }
+                if( pre_build_failed )
+                    continue;
+
                 auto compile_logfile = outdir / test.m_name + "-build.log";
                 if( !run_compiler(test.m_path, outfile, test.m_extra_flags, depdir) )
                 {
                     DEBUG("COMPILE FAIL " << test.m_name);
                     n_cfail ++;
-                    return 1;
+                    continue;
                 }
             }
             // - Run the test
@@ -316,7 +321,7 @@ int main(int argc, const char* argv[])
             {
                 DEBUG("RUN FAIL " << test.m_name);
                 n_fail ++;
-                return 1;
+                continue;
             }
 
             n_ok ++;
@@ -324,6 +329,9 @@ int main(int argc, const char* argv[])
 
         ::std::cout << "TESTS COMPLETED" << ::std::endl;
         ::std::cout << n_ok << " passed, " << n_fail << " failed, " << n_cfail << " errored, " << n_skip << " skipped" << ::std::endl;
+
+        if( n_fail > 0 || n_cfail > 0 )
+            return 1;
     }
 
     return 0;
