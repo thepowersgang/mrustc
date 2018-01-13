@@ -429,6 +429,11 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
             DEBUG("> Thread " << i << " complete");
         }
 
+        if( queue.failure )
+        {
+            return false;
+        }
+
     }
     else if( num_jobs == 1 )
     {
@@ -589,7 +594,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         }
     }
     args.push_back("-o"); args.push_back(outfile);
-    args.push_back("-L"); args.push_back(this->get_output_dir(is_for_host).str().c_str());
+    args.push_back("-L"); args.push_back(this->get_output_dir(is_for_host).str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
         args.push_back("-L"); args.push_back(dir.second.c_str());
     }
