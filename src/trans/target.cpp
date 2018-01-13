@@ -48,42 +48,42 @@ namespace
         else if(target_name == "i586-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, //"i586-pc-linux-gnu"
+                "unix", "linux", "gnu", CodegenMode::Gnu11, "i586-pc-linux-gnu",
                 ARCH_X86
                 };
         }
         else if(target_name == "x86_64-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, //"x86_64-pc-linux-gnu",
+                "unix", "linux", "gnu", CodegenMode::Gnu11, "x86_64-pc-linux-gnu",
                 ARCH_X86_64
                 };
         }
         else if(target_name == "arm-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, //"arm-elf-eabi"
+                "unix", "linux", "gnu", CodegenMode::Gnu11, "arm-elf-eabi",
                 ARCH_ARM32
                 };
         }
         else if(target_name == "x86_64-windows-gnu")
         {
             return TargetSpec {
-                "windows", "windows", "gnu", CodegenMode::Gnu11, //"gcc"
+                "windows", "windows", "gnu", CodegenMode::Gnu11, "x86_64-w64-mingw32",
                 ARCH_X86_64
                 };
         }
         else if (target_name == "x86-windows-msvc")
         {
             return TargetSpec {
-                "windows", "windows", "msvc", CodegenMode::Msvc,// "x86",
+                "windows", "windows", "msvc", CodegenMode::Msvc, "x86",
                 ARCH_X86
             };
         }
         //else if (target_name == "x86_64-windows-msvc")
         //{
         //    return TargetSpec {
-        //        "windows", "windows", "msvc", CodegenMode::Msvc, // "amd64"
+        //        "windows", "windows", "msvc", CodegenMode::Msvc, "amd64"
         //        ARCH_X86_64
         //        };
         //}

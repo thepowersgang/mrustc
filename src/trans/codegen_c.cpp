@@ -445,7 +445,10 @@ namespace {
             switch( m_compiler )
             {
             case Compiler::Gcc:
-                args.push_back( getenv("CC") ? getenv("CC") : "gcc" );
+                if( getenv("CC") )
+                    args.push_back( getenv("CC") );
+                else
+                    args.push_back( Target_GetCurSpec().m_c_compiler + "-gcc" );
                 args.push_back("-ffunction-sections");
                 args.push_back("-pthread");
                 switch(opt.opt_level)
@@ -501,10 +504,7 @@ namespace {
                 is_windows = true;
                 // TODO: Look up these paths in the registry and use CreateProcess instead of system
                 args.push_back(detect_msvc().path_vcvarsall);
-                if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 )
-                {
-                    args.push_back("amd64");  // NOTE: Doesn't support inline assembly, only works with overrides
-                }
+                args.push_back( Target_GetCurSpec().m_c_compiler );
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");

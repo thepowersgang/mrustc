@@ -38,6 +38,7 @@ struct TargetSpec
     ::std::string   m_env_name;
 
     CodegenMode m_codegen_mode;
+    ::std::string   m_c_compiler;   // MSVC arch / GNU triplet
     TargetArch  m_arch;
 };
 
