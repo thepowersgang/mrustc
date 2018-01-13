@@ -581,7 +581,12 @@ namespace {
             }
             //DEBUG("- " << cmd_ss.str());
             ::std::cout << "Running comamnd - " << cmd_ss.str() << ::std::endl;
-            if( system(cmd_ss.str().c_str()) != 0 )
+            if( opt.build_command_file != "" )
+            {
+                ::std::cerr << "INVOKE CC: " << cmd_ss.str() << ::std::endl;
+                ::std::ofstream(opt.build_command_file) << cmd_ss.str() << ::std::endl;
+            }
+            else if( system(cmd_ss.str().c_str()) != 0 )
             {
                 ::std::cerr << "C Compiler failed to execute" << ::std::endl;
                 abort();

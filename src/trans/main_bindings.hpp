@@ -17,6 +17,7 @@ struct TransOptions
 {
     unsigned int opt_level = 0;
     bool emit_debug_info = false;
+    ::std::string   build_command_file;
 
     ::std::vector< ::std::string>   library_search_dirs;
     ::std::vector< ::std::string>   libraries;

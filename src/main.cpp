@@ -183,6 +183,9 @@ struct ProgramParams
         bool full_validate = false;
         bool full_validate_early = false;
     } debug;
+    struct {
+        ::std::string   emit_build_command;
+    } codegen;
 
     ProgramParams(int argc, char *argv[]);
 };
@@ -561,6 +564,7 @@ int main(int argc, char *argv[])
         // - MIR Exportable (public generic, #[inline], or used by a either of those)
         // - Require codegen (public or used by an exported function)
         TransOptions    trans_opt;
+        trans_opt.build_command_file = params.codegen.emit_build_command;
         trans_opt.opt_level = params.opt_level;
         for(const char* libdir : params.lib_search_dirs ) {
             // Store these paths for use in final linking.
@@ -705,6 +709,33 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     this->libraries.push_back( arg+1 );
                 }
                 continue ;
+            case 'C': {
+                ::std::string optname;
+                ::std::string optval;
+                if( arg[1] == '\0' ) {
+                    if( i == argc - 1) {
+                        ::std::cerr << "Option " << arg << " requires an argument" << ::std::endl;
+                        exit(1);
+                    }
+                    optname = argv[++i];
+                }
+                else {
+                    optname = arg+1;
+                }
+                auto eq_pos = optname.find('=');
+                if( eq_pos != ::std::string::npos ) {
+                    optval = optname.substr(eq_pos+1);
+                    optname.resize(eq_pos);
+                }
+
+                if( optname == "emit-build-command" ) {
+                    this->codegen.emit_build_command = optval;
+                }
+                else {
+                    ::std::cerr << "Unknown codegen option: '" << optname << "'" << ::std::endl;
+                    exit(1);
+                }
+                } continue;
             case 'Z': {
                 ::std::string optname;
                 if( arg[1] == '\0' ) {

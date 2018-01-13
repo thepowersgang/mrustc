@@ -585,6 +585,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         }
         else {
             args.push_back("--target"); args.push_back(m_opts.target_name);
+            args.push_back("-C"); args.push_back(format("emit-build-command=",outfile,".sh"));
         }
     }
     args.push_back("-o"); args.push_back(outfile);
@@ -650,6 +651,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         }
     }
 
+    // TODO: If emitting command files (i.e. cross-compiling), concatenate the contents of `outfile + ".sh"` onto a
+    // master file.
+    // - Will probably want to do this as a final stage after building everything.
     return this->spawn_process_mrustc(args, ::std::move(env), outfile + "_dbg.txt");
 }
 ::helpers::path Builder::build_build_script(const PackageManifest& manifest, bool is_for_host, bool* out_is_rebuilt) const
