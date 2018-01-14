@@ -215,11 +215,22 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
         const auto* cur = m_list[i].package;
         for(size_t j = i+1; j < m_list.size(); j ++)
         {
-            for( const auto& dep : m_list[j].package->dependencies() )
+            const auto& p = *m_list[j].package;
+            for( const auto& dep : p.dependencies() )
             {
                 if( !dep.is_disabled() && &dep.get_package() == cur )
                 {
                     m_list[i].dependents.push_back(static_cast<unsigned>(j));
+                }
+            }
+            if( p.build_script() != "" && !opts.build_script_overrides.is_valid() )
+            {
+                for(const auto& dep : p.build_dependencies())
+                {
+                    if( !dep.is_disabled() && &dep.get_package() == cur )
+                    {
+                        m_list[i].dependents.push_back(static_cast<unsigned>(j));
+                    }
                 }
             }
         }
@@ -268,6 +279,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     state.num_deps_remaining.reserve(m_list.size());
     for(const auto& e : m_list)
     {
+        auto idx = static_cast<unsigned>(state.num_deps_remaining.size());
         const auto& p = *e.package;
         unsigned n_deps = 0;
         for (const auto& dep : p.dependencies())
@@ -293,8 +305,9 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         // If there's no dependencies for this package, add it to the build queue
         if( n_deps == 0 )
         {
-            state.build_queue.push_back(static_cast<unsigned>( state.num_deps_remaining.size() ));
+            state.build_queue.push_back(idx);
         }
+        DEBUG("Package '" << p.name() << "' has " << n_deps << " dependencies and " << m_list[idx].dependents.size() << " dependents");
         state.num_deps_remaining.push_back( n_deps );
     }
 
@@ -464,6 +477,23 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
                 state.complete_package(idx, m_list);
             }
             pass ++;
+        }
+        // TODO: Binaries?
+        return false;
+    }
+
+    // DEBUG ASSERT
+    {
+        bool any_incomplete = false;
+        for(size_t i = 0; i < state.num_deps_remaining.size(); i ++)
+        {
+            if( state.num_deps_remaining[i] != 0 ) {
+                ::std::cerr << "BUG: Package '" << m_list[i].package->name() << "' still had " << state.num_deps_remaining[i] << " dependecies still to be built" << ::std::endl;
+                any_incomplete = true;
+            }
+        }
+        if( any_incomplete ) {
+            throw ::std::runtime_error("Incomplete packages (still have dependencies remaining)");
         }
     }
 
@@ -687,7 +717,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("--crate-name"); args.push_back("build");
     args.push_back("--crate-type"); args.push_back("bin");
     args.push_back("-o"); args.push_back(outfile);
-    args.push_back("-L"); args.push_back(this->get_output_dir(true).str().c_str()); // NOTE: Forces `is_for_host` to true here.
+    args.push_back("-L"); args.push_back(this->get_output_dir(true).str()); // NOTE: Forces `is_for_host` to true here.
     for(const auto& d : m_opts.lib_search_dirs)
     {
         args.push_back("-L");
