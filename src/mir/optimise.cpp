@@ -808,6 +808,16 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 if( fcn.blocks.size() != fcn.blocks[0].terminator.as_Switch().targets.size()+3 )
                     return false;
                 // TODO: Check for the parameter being a Constant?
+                for(size_t i = 1; i < fcn.blocks.size(); i ++)
+                {
+                    if( fcn.blocks[i].terminator.is_Call() )
+                    {
+                        const auto& te = fcn.blocks[i].terminator.as_Call();
+                        // Recursion, don't inline.
+                        if( te.fcn.is_Path() && te.fcn.as_Path() == path )
+                            return false;
+                    }
+                }
                 return true;
             }
             else
@@ -1177,6 +1187,11 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             const auto* called_mir = get_called_mir(state, path,  cloner.params);
             if( !called_mir )
                 continue ;
+            if( called_mir == &fcn )
+            {
+                DEBUG("Can't inline - recursion");
+                continue ;
+            }
 
             // Check the size of the target function.
             // Inline IF:
