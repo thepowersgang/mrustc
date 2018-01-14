@@ -35,7 +35,7 @@ Linux
 -----
 - `make RUSTCSRC` - Downloads the rustc source tarball (1.19.0 by default)
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc` and `cargo`
-- `make -C build_rustc` - Build libstd and a "hello, world" using the above-built rustc
+- `make -C run_rustc` - Build libstd and a "hello, world" using the above-built rustc
 
 Windows
 --------
@@ -43,6 +43,7 @@ Windows
 - Download and extract `rustc-1.19.0-src.tar.gz` to the repository root (such that the `rustc-1.19.0-src` directory is present)
   - NOTE: I am open to suggestions for how to automate that step
 - Open `vsproject/mrustc.sln` and build minicargo
+- Run `vsproject/build_rustc_minicargo.cmd` to attempt to build libstd
 
 
 Diagnosing Issues and Reporting Bugs
@@ -62,6 +63,10 @@ Please try to include the following when submitting a bug report:
 - Your host system version (e.g. Ubuntu 17.10)
 - C/C++ compiler version
 - Revison of the mrustc repo that you're running
+
+Support and Discussion
+----------------------
+For problems that don't warrant opening an issue, join the IRC channel - `irc.mozilla.org#mrustc`
 
 
 Current Features
