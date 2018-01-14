@@ -502,6 +502,7 @@ bool MIR_Optimise_CommonStatements(::MIR::TypeResolve& state, ::MIR::Function& f
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
@@ -608,6 +609,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
         // >> Remove assignments of unsed drop flags
         change_happened |= MIR_Optimise_DeadDropFlags(state, fcn);
+        // >> Remove assignments that are never read
+        change_happened |= MIR_Optimise_DeadAssignments(state, fcn);
 
         #if CHECK_AFTER_ALL
         MIR_Validate(resolve, path, fcn, args, ret_type);
@@ -2873,6 +2876,61 @@ bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             }
             });
     return removed_statement;
+}
+
+// --------------------------------------------------------------------
+// Remove unread assignments of locals (and replaced assignments of anything?)
+// --------------------------------------------------------------------
+bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    // Find any locals that are never read, and delete their assignments.
+
+    // Per-local flag indicating that the particular local is read.
+    ::std::vector<bool> read_locals( fcn.locals.size() );
+    for(const auto& bb : fcn.blocks)
+    {
+        auto cb = [&](const ::MIR::LValue& lv, ValUsage vu) {
+            if( lv.is_Local() ) {
+                read_locals[lv.as_Local()] = true;
+            }
+            return false;
+            };
+        for(const auto& stmt : bb.statements)
+        {
+            if( stmt.is_Assign() && stmt.as_Assign().dst.is_Local() )
+            {
+                visit_mir_lvalues(stmt.as_Assign().src, cb);
+            }
+            else
+            {
+                visit_mir_lvalues(stmt, cb);
+            }
+        }
+        visit_mir_lvalues(bb.terminator, cb);
+    }
+
+    for(auto& bb : fcn.blocks)
+    {
+        for(auto it = bb.statements.begin(); it != bb.statements.end(); )
+        {
+            state.set_cur_stmt(&bb - &fcn.blocks.front(), it - bb.statements.begin());
+            if( it->is_Assign() && it->as_Assign().dst.is_Local() && read_locals[it->as_Assign().dst.as_Local()] == false )
+            {
+                DEBUG(state << "Unread assignment, remove - " << *it);
+                it = bb.statements.erase(it);
+                changed = true;
+                continue ;
+            }
+            ++ it;
+        }
+    }
+
+    // Locate assignments of locals then find the next assignment or read.
+
+    return changed;
 }
 
 
