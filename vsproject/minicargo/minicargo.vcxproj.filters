@@ -33,6 +33,9 @@
     <ClCompile Include="..\..\tools\minicargo\path.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\tools\minicargo\debug.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tools\minicargo\helpers.h">

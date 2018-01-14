@@ -86,7 +86,7 @@ namespace {
         }
 
         fix_type_params(sp, enm.m_params,  path.m_params);
-        return ::std::make_pair( &enm, idx );
+        return ::std::make_pair( &enm, static_cast<unsigned>(idx) );
     }
 
 

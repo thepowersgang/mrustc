@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <cctype>   // std::isblank
 #include "../minicargo/debug.h"
 #include "../minicargo/path.h"
 #ifdef _WIN32
@@ -216,7 +217,7 @@ int main(int argc, const char* argv[])
                     continue ;
                 // TODO Parse a skewer-case ident and check against known set?
 
-                auto start = (line[2] == ' ' ? 3 : 2);
+                size_t start = (line[2] == ' ' ? 3 : 2);
 
                 if( line.substr(start, 10) == "aux-build:" )
                 {
@@ -296,7 +297,11 @@ int main(int argc, const char* argv[])
                 bool pre_build_failed = false;
                 for(const auto& file : test.m_pre_build)
                 {
+#ifdef _WIN32
+                    CreateDirectoryA(depdir.str().c_str(), NULL);
+#else
                     mkdir(depdir.str().c_str(), 0755);
+#endif
                     auto infile = input_path / "auxiliary" / file;
                     if( !run_compiler(infile, depdir, {}, depdir, true) )
                     {

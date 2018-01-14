@@ -6,6 +6,7 @@
 #include "path.h"
 #include <cassert>
 #include <algorithm>
+#include <cctype>   // toupper
 #include "repository.h"
 
 

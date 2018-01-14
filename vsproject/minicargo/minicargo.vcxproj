@@ -111,6 +111,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\tools\minicargo\build.cpp" />
+    <ClCompile Include="..\..\tools\minicargo\debug.cpp" />
     <ClCompile Include="..\..\tools\minicargo\main.cpp" />
     <ClCompile Include="..\..\tools\minicargo\manifest.cpp" />
     <ClCompile Include="..\..\tools\minicargo\path.cpp" />

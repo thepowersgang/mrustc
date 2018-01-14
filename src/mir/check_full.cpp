@@ -909,28 +909,6 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                         // Box<T> - Wrapper around Unique<T>
                         MIR_ASSERT(mir_res, vs.is_composite(), "Shallow drop on non-composite state - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
                         const auto& sub_states = state.get_composite(mir_res, vs);
-#if 0
-                        MIR_ASSERT(mir_res, sub_states.size() == 1, "Shallow drop of slot with incorrect state shape (state=" << StateFmt(state,vs) << ")");
-                        // Unique<T> - NonZero<*const T>, PhantomData<T>
-                        MIR_ASSERT(mir_res, sub_states[0].is_composite(), "");
-                        const auto& sub_states2 = state.get_composite(mir_res, sub_states[0]);
-                        MIR_ASSERT(mir_res, sub_states2.size() == 2, "- " << StateFmt(state, sub_states[0]));
-                        MIR_ASSERT(mir_res, sub_states2[0].is_composite(), "");
-                        MIR_ASSERT(mir_res, sub_states2[1].is_valid(), "");
-                        // `NonZero<*const T>` - *const T
-                        const auto& sub_states3 = state.get_composite(mir_res, sub_states2[0]);
-                        MIR_ASSERT(mir_res, sub_states3.size() == 1, "- " << StateFmt(state, sub_states2[0]));
-                        MIR_ASSERT(mir_res, sub_states3[0].is_composite(), "");
-                        // `*const T` - Moved out of, so has a composite state
-                        const auto& sub_states4 = state.get_composite(mir_res, sub_states3[0]);
-                        MIR_ASSERT(mir_res, sub_states4.size() == 2, "- " << StateFmt(state, sub_states3[0]));
-                        MIR_ASSERT(mir_res, sub_states4[0].is_valid(), "Shallow drop on deallocated Box - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
-                        // TODO: This is leak protection, enable it once the rest works
-                        if( ENABLE_LEAK_DETECTOR )
-                        {
-                            MIR_ASSERT(mir_res, !sub_states4[1].is_valid(), "Shallow drop on populated Box - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
-                        }
-#else
                         MIR_ASSERT(mir_res, sub_states.size() == 2, "Shallow drop of slot with incorrect state shape (state=" << StateFmt(state,vs) << ")");
                         MIR_ASSERT(mir_res, sub_states[0].is_valid(), "Shallow drop on deallocated Box - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
                         // TODO: This is leak protection, enable it once the rest works
@@ -938,7 +916,6 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                         {
                             MIR_ASSERT(mir_res, !sub_states[1].is_valid(), "Shallow drop on populated Box - " << se.slot << " (state=" << StateFmt(state,vs) << ")");
                         }
-#endif
 
                         state.set_lvalue_state(mir_res, se.slot, State(false));
                     }
