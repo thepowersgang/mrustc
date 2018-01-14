@@ -206,7 +206,7 @@ output/local_test/%_out.txt: output/local_test/%
 	./$< > $@
 output/local_test/%: samples/test/%.rs $(TEST_DEPS)
 	mkdir -p $(dir $@)
-	$(BIN) -L output/libs -g $< -o $@ $(RUST_FLAGS) --test $(PIPECMD)
+	$(BIN) -g $< -o $@ $(RUST_FLAGS) --test $(PIPECMD)
 
 # 
 # RUSTC TESTS
@@ -249,14 +249,14 @@ output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ -L output/libs $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
 output/%_out.txt: output/%
