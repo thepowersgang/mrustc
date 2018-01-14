@@ -5,7 +5,7 @@
 
 class StringList;
 class StringListKV;
-struct Timestamp;
+class Timestamp;
 
 struct BuildOptions
 {

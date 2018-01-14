@@ -219,7 +219,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
             {
                 if( !dep.is_disabled() && &dep.get_package() == cur )
                 {
-                    m_list[i].dependents.push_back(j);
+                    m_list[i].dependents.push_back(static_cast<unsigned>(j));
                 }
             }
         }
@@ -293,7 +293,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         // If there's no dependencies for this package, add it to the build queue
         if( n_deps == 0 )
         {
-            state.build_queue.push_back(state.num_deps_remaining.size());
+            state.build_queue.push_back(static_cast<unsigned>( state.num_deps_remaining.size() ));
         }
         state.num_deps_remaining.push_back( n_deps );
     }
