@@ -239,9 +239,10 @@ namespace {
                 break;
             case Compiler::Msvc:
                 m_of
+                    << "#include <windows.h>\n"
                     << "#define INFINITY    ((float)(1e300*1e300))\n"
                     << "#define NAN ((float)(INFINITY*0.0))\n"
-                    << "void abort(void);"
+                    << "void abort(void);\n"
                     ;
                 break;
             }
@@ -302,6 +303,11 @@ namespace {
                     << "}\n"
                     ;
             case Compiler::Msvc:
+                m_of
+                    << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
+                    << "\treturn (v >> 32 != 0 ? __popcnt64(v>>32) : 32 + __popcnt64(v));\n"
+                    << "}\n"
+                    ;
                 break;
             }
 
@@ -1801,24 +1807,46 @@ namespace {
                     break;
                 case Compiler::Msvc:
                     m_of << " {\n";
-                    m_of << "\t";
-                    if( TU_TEST1(item.m_return.m_data, Tuple, .size() == 0) )
-                        ;
-                    else if( item.m_return.m_data.is_Diverge() )
-                        ;
-                    else {
-                        m_of << "return ";
-                        if( item.m_return.m_data.is_Pointer() )
-                            m_of << "(void*)";
-                    }
-                    m_of << item.m_linkage.name << "(";
-                    for(size_t i = 0; i < item.m_args.size(); i ++ )
+                    // A few hacky hard-coded signatures
+                    if( item.m_linkage.name == "SetFilePointerEx" )
                     {
-                        if( i > 0 )
-                            m_of << ", ";
-                        m_of << "arg" << i;
+                        // LARGE_INTEGER
+                        m_of << "\tLARGE_INTEGER    arg1_v;\n";
+                        m_of << "\targ1_v.QuadPart = arg1;\n";
+                        m_of << "\treturn SetFilePointerEx(arg0, arg1_v, arg2, arg3);\n";
                     }
-                    m_of << ");\n";
+                    else if( item.m_linkage.name == "CopyFileExW" )
+                    {
+                        // Not field access to undo an Option<fn()>
+                        m_of << "\treturn CopyFileExW(arg0, arg1, arg2._1._0, arg3, arg4, arg5);\n";
+                    }
+                    // BUG: libtest defines this as returning an i32, but it's void
+                    else if( item.m_linkage.name == "GetSystemInfo" )
+                    {
+                        m_of << "\tGetSystemInfo(arg0);\n";
+                        m_of << "\treturn 0;\n";
+                    }
+                    else
+                    {
+                        m_of << "\t";
+                        if( TU_TEST1(item.m_return.m_data, Tuple, .size() == 0) )
+                            ;
+                        else if( item.m_return.m_data.is_Diverge() )
+                            ;
+                        else {
+                            m_of << "return ";
+                            if( item.m_return.m_data.is_Pointer() )
+                                m_of << "(void*)";
+                        }
+                        m_of << item.m_linkage.name << "(";
+                        for(size_t i = 0; i < item.m_args.size(); i ++ )
+                        {
+                            if( i > 0 )
+                                m_of << ", ";
+                            m_of << "arg" << i;
+                        }
+                        m_of << ");\n";
+                    }
                     m_of << "}";
                     break;
                 }
@@ -3201,6 +3229,34 @@ namespace {
                     }
                     throw "";
                 };
+            auto get_prim_size = [&mir_res](const ::HIR::TypeRef& ty)->unsigned {
+                    if( !ty.m_data.is_Primitive() )
+                        MIR_BUG(mir_res, "Unknown type for getting primitive size - " << ty);
+                    switch( ty.m_data.as_Primitive() )
+                    {
+                    case ::HIR::CoreType::U8:
+                    case ::HIR::CoreType::I8:
+                        return 8;
+                    case ::HIR::CoreType::U16:
+                    case ::HIR::CoreType::I16:
+                        return 16;
+                    case ::HIR::CoreType::U32:
+                    case ::HIR::CoreType::I32:
+                        return 32;
+                    case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::I64:
+                        return 64;
+                    case ::HIR::CoreType::U128:
+                    case ::HIR::CoreType::I128:
+                        return 128;
+                    case ::HIR::CoreType::Usize:
+                    case ::HIR::CoreType::Isize:
+                        // TODO: Is this a good idea?
+                        return Target_GetCurSpec().m_arch.m_pointer_bits;
+                    default:
+                        MIR_BUG(mir_res, "Unknown primitive for getting size- " << ty);
+                    }
+                };
             auto emit_msvc_atomic_op = [&](const char* name, const char* ordering) {
                 switch (params.m_types.at(0).m_data.as_Primitive())
                 {
@@ -3220,7 +3276,14 @@ namespace {
                     break;
                 case ::HIR::CoreType::Usize:
                 case ::HIR::CoreType::Isize:
-                    m_of << "(uintptr_t)" << name << "Pointer" << ordering << "((void**)";
+                    m_of << name;
+                    if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 )
+                        m_of << "64";
+                    else if( Target_GetCurSpec().m_arch.m_pointer_bits == 32 )
+                        m_of << "";
+                    else
+                        MIR_TODO(mir_res, "Handle non 32/64 bit pointer types");
+                    m_of << ordering << "(";
                     break;
                 default:
                     MIR_BUG(mir_res, "Unsupported atomic type - " << params.m_types.at(0));
@@ -3243,14 +3306,7 @@ namespace {
                 case Compiler::Msvc:
                     emit_lvalue(e.ret_val); m_of << "._0 = ";
                     emit_msvc_atomic_op("InterlockedCompareExchange", "");  // TODO: Use ordering
-                    if(params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
-                    {
-                        emit_param(e.args.at(0)); m_of << ", (void*)"; emit_param(e.args.at(1)); m_of << ", (void*)"; emit_param(e.args.at(2)); m_of << ")";
-                    }
-                    else
-                    {
-                        emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
-                    }
+                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
                     m_of << ";\n\t";
                     emit_lvalue(e.ret_val); m_of << "._1 = ("; emit_lvalue(e.ret_val); m_of << "._0 == "; emit_param(e.args.at(2)); m_of << ")";
                     break;
@@ -3272,19 +3328,34 @@ namespace {
                     m_of << "("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << ordering << ")";
                     break;
                 case Compiler::Msvc:
+                    if( params.m_types.at(0) == ::HIR::CoreType::U8 || params.m_types.at(0) == ::HIR::CoreType::I8 )
+                    {
+                        //_InterlockedCompareExchange8 ?
+                        if( params.m_types.at(0) == ::HIR::CoreType::U8 )
+                            m_of << "*(volatile uint8_t*)";
+                        else
+                            m_of << "*(volatile int8_t*)";
+                        emit_param(e.args.at(0)); 
+                        switch(op)
+                        {
+                        case AtomicOp::Add: m_of << " += "; break;
+                        case AtomicOp::Sub: m_of << " -= "; break;
+                        case AtomicOp::And: m_of << " &= "; break;
+                        case AtomicOp::Or:  m_of << " |= "; break;
+                        case AtomicOp::Xor: m_of << " ^= "; break;
+                        }
+                        emit_param(e.args.at(1));
+                        return ;
+                    }
                     switch(op)
                     {
                     case AtomicOp::Add: emit_msvc_atomic_op("InterlockedAdd", ordering);    break;
-                    case AtomicOp::Sub: emit_msvc_atomic_op("InterlockedSub", ordering);    break;
+                    case AtomicOp::Sub: emit_msvc_atomic_op("InterlockedExchangeSubtract", ordering);    break;
                     case AtomicOp::And: emit_msvc_atomic_op("InterlockedAnd", ordering);    break;
                     case AtomicOp::Or:  emit_msvc_atomic_op("InterlockedOr", ordering);    break;
                     case AtomicOp::Xor: emit_msvc_atomic_op("InterlockedXor", ordering);    break;
                     }
                     emit_param(e.args.at(0)); m_of << ", ";
-                    if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
-                    {
-                        m_of << "(void*)";
-                    }
                     emit_param(e.args.at(1)); m_of << ")";
                     break;
                 }
@@ -3513,30 +3584,58 @@ namespace {
             else if( name == "bswap" ) {
                 const auto& ty = params.m_types.at(0);
                 MIR_ASSERT(mir_res, ty.m_data.is_Primitive(), "Invalid type passed to bwsap, must be a primitive, got " << ty);
-                switch( ty.m_data.as_Primitive() )
-                {
-                case ::HIR::CoreType::U8:
-                case ::HIR::CoreType::I8:
+                if( ty == ::HIR::CoreType::U8 || ty == ::HIR::CoreType::I8 ) {
+                    // Nop.
                     emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0));
-                    break;
-                case ::HIR::CoreType::U16:
-                case ::HIR::CoreType::I16:
-                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap16("; emit_param(e.args.at(0)); m_of << ")";
-                    break;
-                case ::HIR::CoreType::U32:
-                case ::HIR::CoreType::I32:
-                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap32("; emit_param(e.args.at(0)); m_of << ")";
-                    break;
-                case ::HIR::CoreType::U64:
-                case ::HIR::CoreType::I64:
-                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap64("; emit_param(e.args.at(0)); m_of << ")";
-                    break;
-                case ::HIR::CoreType::U128:
-                case ::HIR::CoreType::I128:
-                    emit_lvalue(e.ret_val); m_of << " = __builtin_bswap128("; emit_param(e.args.at(0)); m_of << ")";
-                    break;
-                default:
-                    MIR_TODO(mir_res, "bswap<" << ty << ">");
+                }
+                else {
+                    emit_lvalue(e.ret_val); m_of << " = ";
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        switch(get_prim_size(ty))
+                        {
+                        case 16:
+                            m_of << "__builtin_bswap16";
+                            break;
+                        case 32:
+                            m_of << "__builtin_bswap32";
+                            break;
+                        case 64:
+                            m_of << "__builtin_bswap64";
+                            break;
+                        case 128:
+                            m_of << "__builtin_bswap128";
+                            break;
+                        default:
+                            MIR_TODO(mir_res, "bswap<" << ty << ">");
+                        }
+                        break;
+                    case Compiler::Msvc:
+                        switch( ty.m_data.as_Primitive() )
+                        {
+                        case ::HIR::CoreType::U16:
+                        case ::HIR::CoreType::I16:
+                            m_of << "_byteswap_ushort";
+                            break;
+                        case ::HIR::CoreType::U32:
+                        case ::HIR::CoreType::I32:
+                            m_of << "_byteswap_ulong";
+                            break;
+                        case ::HIR::CoreType::U64:
+                        case ::HIR::CoreType::I64:
+                            m_of << "_byteswap_uint64";
+                            break;
+                        case ::HIR::CoreType::U128:
+                        case ::HIR::CoreType::I128:
+                            m_of << "__builtin_bswap128";
+                            break;
+                        default:
+                            MIR_TODO(mir_res, "bswap<" << ty << ">");
+                        }
+                        break;
+                    }
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ")";
                 }
             }
             // > Obtain the discriminane of a &T as u64
@@ -3572,9 +3671,17 @@ namespace {
             // Overflowing Arithmatic
             // HACK: Uses GCC intrinsics
             else if( name == "add_with_overflow" ) {
-                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                    break;
+                case Compiler::Msvc:
+                    emit_lvalue(e.ret_val); m_of << "._1 = _addcarry_u" << get_prim_size(params.m_types.at(0));
+                    m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                    break;
+                }
             }
             else if( name == "sub_with_overflow" ) {
                 emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow("; emit_param(e.args.at(0));
@@ -3587,9 +3694,17 @@ namespace {
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
             }
             else if( name == "overflowing_add" ) {
-                m_of << "__builtin_add_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "__builtin_add_overflow";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                    break;
+                case Compiler::Msvc:
+                    m_of << "_addcarry_u" << get_prim_size(params.m_types.at(0));
+                    m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                    break;
+                }
             }
             else if( name == "overflowing_sub" ) {
                 m_of << "__builtin_sub_overflow("; emit_param(e.args.at(0));
@@ -3724,7 +3839,22 @@ namespace {
                 }
                 else
                 {
-                    m_of << "__builtin_popcount";
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        m_of << "__builtin_popcount";
+                        break;
+                    case Compiler::Msvc:
+                        if( params.m_types.at(0) == ::HIR::CoreType::U64 || params.m_types.at(0) == ::HIR::CoreType::I64 )
+                        {
+                            m_of << "__popcnt64";
+                        }
+                        else
+                        {
+                            m_of << "__popcnt";
+                        }
+                        break;
+                    }
                 }
                 m_of << "("; emit_param(e.args.at(0)); m_of << ")";
             }
@@ -3837,16 +3967,8 @@ namespace {
                     break;
                 case Compiler::Msvc:
                     emit_msvc_atomic_op("InterlockedCompareExchange", ordering); emit_param(e.args.at(0)); m_of << ", ";
-                    if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
-                    {
-                        m_of << "(void*)";
-                    }
                     emit_param(e.args.at(1));
                     m_of << ", ";
-                    if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
-                    {
-                        m_of << "(void*)";
-                    }
                     emit_param(e.args.at(1));
                     m_of << ")";
                     break;
@@ -3911,10 +4033,6 @@ namespace {
                 case Compiler::Msvc:
                     emit_msvc_atomic_op("InterlockedExchange", ordering);
                     emit_param(e.args.at(0)); m_of << ", ";
-                    if (params.m_types.at(0) == ::HIR::CoreType::Usize || params.m_types.at(0) == ::HIR::CoreType::Isize)
-                    {
-                        m_of << "(void*)";
-                    }
                     emit_param(e.args.at(1)); m_of << ")";
                     break;
                 }
