@@ -302,6 +302,7 @@ namespace {
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
                     << "}\n"
                     ;
+		break;
             case Compiler::Msvc:
                 m_of
                     << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
