@@ -112,6 +112,9 @@ void Crate::load_externs()
     if(basename == "" && it != g_crate_overrides.end())
     {
         path = it->second;
+        if( !::std::ifstream(path).good() ) {
+            ERROR(sp, E0000, "Unable to open crate '" << name << "' at path " << path);
+        }
     }
     else
     {
@@ -131,14 +134,13 @@ void Crate::load_externs()
             if( ::std::ifstream(path).good() ) {
                 break ;
             }
-            // TODO: Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
         }
-    }
-    if( !::std::ifstream(path).good() ) {
-        if( basename.empty() )
-            ERROR(sp, E0000, "Unable to locate crate '" << name << "'");
-        else
-            ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename);
+        if( !::std::ifstream(path).good() ) {
+            if( basename.empty() )
+                ERROR(sp, E0000, "Unable to locate crate '" << name << "' in search directories");
+            else
+                ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename << " in search directories");
+        }
     }
 
     // NOTE: Creating `ExternCrate` loads the crate from the specified path
