@@ -285,6 +285,10 @@ TAGGED_UNION(Statement, Assign,
         })
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const Statement& x);
+extern bool operator==(const Statement& a, const Statement& b);
+static inline bool operator!=(const Statement& a, const Statement& b) {
+    return !(a == b);
+}
 
 struct BasicBlock
 {

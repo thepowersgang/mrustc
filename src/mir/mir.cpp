@@ -500,6 +500,39 @@ namespace MIR {
         )
         return os;
     }
+    bool operator==(const Statement& a, const Statement& b) {
+        if( a.tag() != b.tag() )
+            return false;
+        
+        TU_MATCHA( (a,b), (ae,be),
+        (Assign,
+            return ae.dst == be.dst && ae.src == be.src;
+            ),
+        (Asm,
+            return ae.outputs == be.outputs
+                && ae.inputs == be.inputs
+                && ae.clobbers == be.clobbers
+                && ae.flags == be.flags
+                ;
+            ),
+        (SetDropFlag,
+            return ae.idx == be.idx
+                && ae.other == be.other
+                && ae.new_val == be.new_val
+                ;
+            ),
+        (Drop,
+            return ae.slot == be.slot
+                && ae.kind == be.kind
+                && ae.flag_idx == be.flag_idx
+                ;
+            ),
+        (ScopeEnd,
+            return ae.slots == be.slots;
+            )
+        )
+        throw "";
+    }
 }
 
 ::MIR::LValue MIR::LValue::clone() const

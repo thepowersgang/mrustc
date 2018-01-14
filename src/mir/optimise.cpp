@@ -498,6 +498,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
 bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn); // Eliminate useless temporaries
 bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_CommonStatements(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn);
@@ -599,6 +600,9 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 # endif
         }
 #endif
+
+        // >> Move common statements (assignments) across gotos.
+        change_happened |= MIR_Optimise_CommonStatements(state, fcn);
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
@@ -1430,6 +1434,72 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
     return changed;
 }
+
+
+// --------------------------------------------------------------------
+// Detect common statements between all source arms of a block
+// --------------------------------------------------------------------
+bool MIR_Optimise_CommonStatements(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    for(size_t bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
+    {
+        state.set_cur_stmt(bb_idx, 0);
+
+        bool skip = false;
+        ::std::vector<size_t>   sources;
+        // Find source blocks
+        for(size_t bb2_idx = 0; bb2_idx < fcn.blocks.size(); bb2_idx ++)
+        {
+            const auto& blk = fcn.blocks[bb2_idx];
+            // TODO: Handle non-Goto branches? (e.g. calls)
+            if( blk.terminator.is_Goto() && blk.terminator.as_Goto() == bb_idx )
+            {
+                if( blk.statements.empty() )
+                {
+                    DEBUG(state << " BB" << bb2_idx << " empty");
+                    skip = true;
+                    break ;
+                }
+                if( !sources.empty() )
+                {
+                    if( blk.statements.back() != fcn.blocks[sources.front()].statements.back() )
+                    {
+                        DEBUG(state << " BB" << bb2_idx << " doesn't end with " << fcn.blocks[sources.front()].statements.back() << " instead " << blk.statements.back());
+                        skip = true;
+                        break;
+                    }
+                }
+                sources.push_back(bb2_idx);
+            }
+            else
+            {
+                visit_terminator_target(blk.terminator, [&](const auto& dst_idx) {
+                    if( dst_idx == bb_idx ) {
+                        DEBUG(state << " BB" << bb2_idx << " doesn't end Goto - instead " << blk.terminator);
+                        skip = true;
+                    }
+                });
+            }
+        }
+
+        if( !skip && sources.size() > 1 )
+        {
+            // Found a common assignment, add to the start and remove from sources.
+            auto stmt = ::std::move(fcn.blocks[sources.front()].statements.back());
+            MIR_DEBUG(state, "Move common final statements from " << sources << " to " << bb_idx << " - " << stmt);
+            for(auto idx : sources)
+            {
+                fcn.blocks[idx].statements.pop_back();
+            }
+            fcn.blocks[bb_idx].statements.insert(fcn.blocks[bb_idx].statements.begin(), ::std::move(stmt));
+        }
+    }
+    return changed;
+}
+
 
 // --------------------------------------------------------------------
 // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
