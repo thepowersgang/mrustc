@@ -794,6 +794,15 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     return false;
                 return true;
             }
+            else if( fcn.blocks.size() > 1 && fcn.blocks[0].terminator.is_Switch() )
+            {
+                // Setup + Arms + Return + Panic
+                // - Handles the atomit wrappers
+                if( fcn.blocks.size() != fcn.blocks[0].terminator.as_Switch().targets.size()+3 )
+                    return false;
+                // TODO: Check for the parameter being a Constant?
+                return true;
+            }
             else
             {
                 return false;
