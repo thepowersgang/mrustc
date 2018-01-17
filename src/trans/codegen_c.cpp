@@ -452,10 +452,13 @@ namespace {
             switch( m_compiler )
             {
             case Compiler::Gcc:
-                if( getenv("CC") )
+                if( getenv("CC") ) {
                     args.push_back( getenv("CC") );
-                else
-                    args.push_back( Target_GetCurSpec().m_c_compiler + "-gcc" );
+		}
+                else {
+                    //args.push_back( Target_GetCurSpec().m_c_compiler + "-gcc" );
+                    args.push_back( "gcc" );
+		}
                 args.push_back("-ffunction-sections");
                 args.push_back("-pthread");
                 switch(opt.opt_level)
