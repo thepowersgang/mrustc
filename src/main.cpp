@@ -188,6 +188,8 @@ struct ProgramParams
     } codegen;
 
     ProgramParams(int argc, char *argv[]);
+
+    void show_help() const;
 };
 
 template <typename Rv, typename Fcn>
@@ -334,6 +336,17 @@ int main(int argc, char *argv[])
             DEBUG("params.outfile = " << params.outfile);
         }
 
+        //if( params.emit_depfile != "" )
+        //{
+        //    ::std::ofstream of { params.emit_depfile };
+        //    of << params.outfile << ":";
+        //    // - Iterate all loaded files.
+        //    for(const auto& srcfile : params.source_files) {
+        //        of << " " << srcfile;
+        //    }
+        //    // - Iterate all loaded crates
+        //}
+
         // XXX: Dump crate before resolve
         CompilePhaseV("Dump Expanded", [&]() {
             Dump_Rust( FMT(params.outfile << "_0a_exp.rs").c_str(), crate );
@@ -363,14 +376,14 @@ int main(int argc, char *argv[])
                     if(ec.second.m_hir->m_lang_items.count("mrustc-allocator"))
                     {
                         if( allocator_crate_loaded ) {
-                            // TODO: Emit an error because there's multiple allocators loaded
+			    ERROR(Span(), E0000, "Multiple allocator crates loaded");
                         }
                         allocator_crate_loaded = true;
                     }
                     if(ec.second.m_hir->m_lang_items.count("mrustc-panic_runtime"))
                     {
                         if( panic_runtime_loaded ) {
-                            // TODO: Emit an error because there's multiple allocators loaded
+			    ERROR(Span(), E0000, "Multiple panic_runtime crates loaded");
                         }
                         panic_runtime_loaded = true;
                     }
@@ -559,7 +572,7 @@ int main(int argc, char *argv[])
             return 0;
         }
 
-        // TODO: Pass to mark items that are
+        // TODO: Pass to mark items that are..
         // - Signature Exportable (public)
         // - MIR Exportable (public generic, #[inline], or used by a either of those)
         // - Require codegen (public or used by an exported function)
@@ -674,7 +687,6 @@ ProgramParams::ProgramParams(int argc, char *argv[])
             }
             else
             {
-                // TODO: Error
                 ::std::cerr << "Unexpected free argument" << ::std::endl;
                 exit(1);
             }
@@ -727,8 +739,24 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     optval = optname.substr(eq_pos+1);
                     optname.resize(eq_pos);
                 }
+                auto get_optval = [&]() {
+                    if( eq_pos == ::std::string::npos ) {
+                        if( i == argc - 1 ) {
+                            ::std::cerr << "Flag -Z " << optname << " requires an argument" << ::std::endl;
+                            exit(1);
+                        }
+                        optval = argv[++i];
+                    }
+                    };
+                //auto no_optval = [&]() {
+                //    if(eq_pos != ::std::string::npos) {
+                //        ::std::cerr << "Flag -Z " << optname << " doesn't take an argument" << ::std::endl;
+                //        exit(1);
+                //    }
+                //    };
 
                 if( optname == "emit-build-command" ) {
+                    get_optval();
                     this->codegen.emit_build_command = optval;
                 }
                 else {
@@ -738,6 +766,7 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 } continue;
             case 'Z': {
                 ::std::string optname;
+                ::std::string optval;
                 if( arg[1] == '\0' ) {
                     if( i == argc - 1) {
                         ::std::cerr << "Option " << arg << " requires an argument" << ::std::endl;
@@ -748,15 +777,55 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 else {
                     optname = arg+1;
                 }
+                auto eq_pos = optname.find('=');
+                if( eq_pos != ::std::string::npos ) {
+                    optval = optname.substr(eq_pos+1);
+                    optname.resize(eq_pos);
+                }
+                auto get_optval = [&]() {
+                    if( eq_pos == ::std::string::npos ) {
+                        if( i == argc - 1 ) {
+                            ::std::cerr << "Flag -Z " << optname << " requires an argument" << ::std::endl;
+                            exit(1);
+                        }
+                        optval = argv[++i];
+                    }
+                    };
+                auto no_optval = [&]() {
+                    if(eq_pos != ::std::string::npos) {
+                        ::std::cerr << "Flag -Z " << optname << " doesn't take an argument" << ::std::endl;
+                        exit(1);
+                    }
+                    };
 
                 if( optname == "disable-mir-opt" ) {
+                    no_optval();
                     this->debug.disable_mir_optimisations = true;
                 }
                 else if( optname == "full-validate" ) {
+                    no_optval();
                     this->debug.full_validate = true;
                 }
                 else if( optname == "full-validate-early" ) {
+                    no_optval();
                     this->debug.full_validate_early = true;
+                }
+                else if( optname == "stop-after" ) {
+                    get_optval();
+                    if( optval == "parse" )
+                        this->last_stage = STAGE_PARSE;
+                    else if( optval == "expand" )
+                        this->last_stage = STAGE_EXPAND;
+                    else if( optval == "resolve" )
+                        this->last_stage = STAGE_RESOLVE;
+                    else if( optval == "mir" )
+                        this->last_stage = STAGE_MIR;
+                    else if( optval == "ALL" )
+                        this->last_stage = STAGE_ALL;
+                    else {
+                        ::std::cerr << "Unknown argument to -Z stop-after - '" << optval << "'" << ::std::endl;
+                        exit(1);
+                    }
                 }
                 else {
                     ::std::cerr << "Unknown debug option: '" << optname << "'" << ::std::endl;
@@ -796,20 +865,20 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         else
         {
             if( strcmp(arg, "--help") == 0 ) {
-                // TODO: Help
+                this->show_help();
+                exit(0);
             }
             // --out-dir <dir>  >> Set the output directory for automatically-named files
-            else if (strcmp(arg, "--out-dir") == 0) {
+            else if( strcmp(arg, "--out-dir") == 0) {
                 if (i == argc - 1) {
                     ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
                     exit(1);
                 }
                 this->output_dir = argv[++i];
-                if (this->output_dir == "") {
-                    // TODO: Error?
-                }
-                if( this->output_dir.back() != '/' )
+                if( this->output_dir != "" && this->output_dir.back() != '/' )
+                {
                     this->output_dir += '/';
+                }
             }
             // --extern <name>=<path>   >> Override the file to load for `extern crate <name>;`
             else if( strcmp(arg, "--extern") == 0 ) {
@@ -910,30 +979,6 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 this->target = argv[++i];
             }
-            // `--stop-after <stage>`   - Stops the compiler after the specified stage
-            // TODO: Convert this to a `-Z` option
-            else if( strcmp(arg, "--stop-after") == 0 ) {
-                if( i == argc - 1 ) {
-                    ::std::cerr << "Flag --stop-after requires an argument" << ::std::endl;
-                    exit(1);
-                }
-
-                arg = argv[++i];
-                if( strcmp(arg, "parse") == 0 )
-                    this->last_stage = STAGE_PARSE;
-                else if( strcmp(arg, "expand") == 0 )
-                    this->last_stage = STAGE_EXPAND;
-                else if( strcmp(arg, "resolve") == 0 )
-                    this->last_stage = STAGE_RESOLVE;
-                else if( strcmp(arg, "mir") == 0 )
-                    this->last_stage = STAGE_MIR;
-                else if( strcmp(arg, "ALL") == 0 )
-                    this->last_stage = STAGE_ALL;
-                else {
-                    ::std::cerr << "Unknown argument to --stop-after : '" << arg << "'" << ::std::endl;
-                    exit(1);
-                }
-            }
             else if( strcmp(arg, "--test") == 0 ) {
                 this->test_harness = true;
             }
@@ -949,6 +994,26 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         ::std::cerr << "No input file passed" << ::std::endl;
         exit(1);
     }
+}
+void ProgramParams::show_help() const
+{
+    ::std::cout <<
+        "USAGE: mrustc <sourcefile>\n"
+        "\n"
+        "OPTIONS:\n"
+        "-L <dir>           : Search for crate files (.hir) in this directory\n"
+        "-o <filename>      : Write compiler output (library or executable) to this file\n"
+        "-O                 : Enable optimistion\n"
+        "-g                 : Emit debugging information\n"
+        "--out-dir <dir>    : Specify the output directory (alternative to `-o`)\n"
+        "--extern <crate>=<path>"
+        "                   : Specify the path for a given crate (instead of searching for it)\n"
+        "--crate-tag <str>  : Specify a suffix for symbols and output files\n"
+        "--crate-name <str> : Override/set the crate name\n"
+        "--crate-type <ty>  : Override/set the crate type (rlib, bin, proc-macro)\n"
+        "--test             : Generate a unit test executable\n"
+        // TODO: More
+        ;
 }
 
 
