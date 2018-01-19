@@ -1006,13 +1006,17 @@ void ProgramParams::show_help() const
         "-O                 : Enable optimistion\n"
         "-g                 : Emit debugging information\n"
         "--out-dir <dir>    : Specify the output directory (alternative to `-o`)\n"
-        "--extern <crate>=<path>"
+        "--extern <crate>=<path>\n"
         "                   : Specify the path for a given crate (instead of searching for it)\n"
         "--crate-tag <str>  : Specify a suffix for symbols and output files\n"
         "--crate-name <str> : Override/set the crate name\n"
         "--crate-type <ty>  : Override/set the crate type (rlib, bin, proc-macro)\n"
+        "--cfg flag         : Set a boolean #[cfg]/cfg! flag\n"
+        "--cfg flag=\"val\"   : Set a string #[cfg]/cfg! flag\n"
+        "--target <name>    : Compile code for the given target\n"
         "--test             : Generate a unit test executable\n"
-        // TODO: More
+        "-C <option>        : Code-generation options\n"
+        "-Z <option>        : Debugging/experiemental options\n"
         ;
 }
 
