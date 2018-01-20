@@ -365,7 +365,9 @@ int main(int argc, char *argv[])
             if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness || crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
             {
                 bool allocator_crate_loaded = false;
+                ::std::string   alloc_crate_name;
                 bool panic_runtime_loaded = false;
+                ::std::string   panic_crate_name;
                 bool panic_runtime_needed = false;
                 for(const auto& ec : crate.m_extern_crates)
                 {
@@ -376,15 +378,17 @@ int main(int argc, char *argv[])
                     if(ec.second.m_hir->m_lang_items.count("mrustc-allocator"))
                     {
                         if( allocator_crate_loaded ) {
-			    ERROR(Span(), E0000, "Multiple allocator crates loaded");
+                            ERROR(Span(), E0000, "Multiple allocator crates loaded - " << alloc_crate_name << " and " << ec.first);
                         }
+                        alloc_crate_name = ec.first;
                         allocator_crate_loaded = true;
                     }
                     if(ec.second.m_hir->m_lang_items.count("mrustc-panic_runtime"))
                     {
                         if( panic_runtime_loaded ) {
-			    ERROR(Span(), E0000, "Multiple panic_runtime crates loaded");
+                            ERROR(Span(), E0000, "Multiple panic_runtime crates loaded - " << panic_crate_name << " and " << ec.first);
                         }
+                        panic_crate_name = ec.first;
                         panic_runtime_loaded = true;
                     }
                     if(ec.second.m_hir->m_lang_items.count("mrustc-needs_panic_runtime"))

@@ -272,7 +272,18 @@ namespace {
             }
 
             serialise_strmap(crate.m_exported_macros);
-            serialise_strmap(crate.m_lang_items);
+            {
+                decltype(crate.m_lang_items)    lang_items_filtered;
+                for(const auto& ent : crate.m_lang_items)
+                {
+                    if(ent.second.m_crate_name == "" || ent.second.m_crate_name == crate.m_crate_name)
+                    {
+                        ::std::cerr << "Lang item " << ent << ::std::endl;
+                        lang_items_filtered.insert(ent);
+                    }
+                }
+                serialise_strmap(lang_items_filtered);
+            }
 
             m_out.write_count(crate.m_ext_crates.size());
             for(const auto& ext : crate.m_ext_crates)
