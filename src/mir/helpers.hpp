@@ -9,6 +9,7 @@
 #include <vector>
 #include <functional>
 #include <hir_typeck/static.hpp>
+#include <mir/mir.hpp>
 
 namespace HIR {
 class Crate;
@@ -78,15 +79,30 @@ public:
         }
     }
 
+    void set_cur_stmt(const ::MIR::BasicBlock& bb, const ::MIR::Statement& stmt) {
+        assert(&stmt >= &bb.statements.front());
+        assert(&stmt <= &bb.statements.back());
+        this->set_cur_stmt(bb, &stmt - bb.statements.data());
+    }
+    void set_cur_stmt(const ::MIR::BasicBlock& bb, unsigned int stmt_idx) {
+        assert(&bb >= &m_fcn.blocks.front());
+        assert(&bb <= &m_fcn.blocks.back());
+        this->set_cur_stmt(&bb - m_fcn.blocks.data(), stmt_idx);
+    }
     void set_cur_stmt(unsigned int bb_idx, unsigned int stmt_idx) {
         this->bb_idx = bb_idx;
         this->stmt_idx = stmt_idx;
     }
-    unsigned int get_cur_stmt_ofs() const;
+    void set_cur_stmt_term(const ::MIR::BasicBlock& bb) {
+        assert(&bb >= &m_fcn.blocks.front());
+        assert(&bb <= &m_fcn.blocks.back());
+        this->set_cur_stmt_term(&bb - m_fcn.blocks.data());
+    }
     void set_cur_stmt_term(unsigned int bb_idx) {
         this->bb_idx = bb_idx;
         this->stmt_idx = STMT_TERM;
     }
+    unsigned int get_cur_stmt_ofs() const;
 
     void fmt_pos(::std::ostream& os) const;
     void print_bug(::std::function<void(::std::ostream& os)> cb) const {
