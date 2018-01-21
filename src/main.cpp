@@ -162,6 +162,8 @@ struct ProgramParams
     ::std::string   output_dir = "";
     ::std::string   target = DEFAULT_TARGET_NAME;
 
+    ::std::string   emit_depfile;
+
     ::AST::Crate::Type  crate_type = ::AST::Crate::Type::Unknown;
     ::std::string   crate_name;
     ::std::string   crate_name_suffix;
@@ -176,7 +178,6 @@ struct ProgramParams
     ::std::map<::std::string, ::std::string>    crate_overrides;    // --extern name=path
 
     ::std::set< ::std::string> features;
-
 
     struct {
         bool disable_mir_optimisations = false;
@@ -336,17 +337,6 @@ int main(int argc, char *argv[])
             DEBUG("params.outfile = " << params.outfile);
         }
 
-        //if( params.emit_depfile != "" )
-        //{
-        //    ::std::ofstream of { params.emit_depfile };
-        //    of << params.outfile << ":";
-        //    // - Iterate all loaded files.
-        //    for(const auto& srcfile : params.source_files) {
-        //        of << " " << srcfile;
-        //    }
-        //    // - Iterate all loaded crates
-        //}
-
         // XXX: Dump crate before resolve
         CompilePhaseV("Dump Expanded", [&]() {
             Dump_Rust( FMT(params.outfile << "_0a_exp.rs").c_str(), crate );
@@ -412,6 +402,38 @@ int main(int argc, char *argv[])
                 crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-main"), ::AST::Path("", {AST::PathNode("main")}) ));
             }
             });
+
+        if( params.emit_depfile != "" )
+        {
+            ::std::ofstream of { params.emit_depfile };
+            of << params.outfile << ":";
+            // - Iterate all loaded files for modules
+            struct H {
+                ::std::ofstream& of;
+                H(::std::ofstream& of): of(of) {}
+                void visit_module(::AST::Module& mod) {
+                    if( mod.m_file_info.path != "!" && mod.m_file_info.path.back() != '/' ) {
+                        of << " " << mod.m_file_info.path;
+                    }
+                    // TODO: Should we check anon modules?
+                    //for(auto& amod : mod.anon_mods()) {
+                    //    this->visit_module(*amod);
+                    //}
+                    for(auto& i : mod.items()) {
+                        if(i.data.is_Module()) {
+                            this->visit_module(i.data.as_Module());
+                        }
+                    }
+                }
+            };
+            H(of).visit_module(crate.m_root_module);
+            // - Iterate all loaded crates files
+            for(const auto& ec : crate.m_extern_crates)
+            {
+                of << " " << ec.second.m_filename;
+            }
+            // - Iterate all extra files (include! and friends)
+        }
 
         // Resolve names to be absolute names (include references to the relevant struct/global/function)
         // - This does name checking on types and free functions.
@@ -745,11 +767,8 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 auto get_optval = [&]() {
                     if( eq_pos == ::std::string::npos ) {
-                        if( i == argc - 1 ) {
-                            ::std::cerr << "Flag -Z " << optname << " requires an argument" << ::std::endl;
-                            exit(1);
-                        }
-                        optval = argv[++i];
+                        ::std::cerr << "Flag -Z " << optname << " requires an argument" << ::std::endl;
+                        exit(1);
                     }
                     };
                 //auto no_optval = [&]() {
@@ -762,6 +781,10 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 if( optname == "emit-build-command" ) {
                     get_optval();
                     this->codegen.emit_build_command = optval;
+                }
+                else if( optname == "emit-depfile" ) {
+                    get_optval();
+                    this->emit_depfile = optval;
                 }
                 else {
                     ::std::cerr << "Unknown codegen option: '" << optname << "'" << ::std::endl;
@@ -788,11 +811,8 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 auto get_optval = [&]() {
                     if( eq_pos == ::std::string::npos ) {
-                        if( i == argc - 1 ) {
-                            ::std::cerr << "Flag -Z " << optname << " requires an argument" << ::std::endl;
-                            exit(1);
-                        }
-                        optval = argv[++i];
+                        ::std::cerr << "Flag -Z " << optname << " requires an argument" << ::std::endl;
+                        exit(1);
                     }
                     };
                 auto no_optval = [&]() {

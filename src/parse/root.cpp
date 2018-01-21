@@ -1925,6 +1925,7 @@ AST::Crate Parse_Crate(::std::string mainfile)
 
     AST::Crate  crate;
 
+    //crate.root_module().m_file_info.file_path = mainfile;
     crate.root_module().m_file_info.path = mainpath;
     crate.root_module().m_file_info.controls_dir = true;
 

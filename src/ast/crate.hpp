@@ -51,6 +51,8 @@ public:
     bool    m_test_harness = false;
     ::std::vector<TestDesc>   m_tests;
 
+    //::std::vector<::std::string>    m_extra_files;
+
     // Procedural macros!
     ::std::vector<ProcMacroDef> m_proc_macros;
 
