@@ -278,7 +278,6 @@ namespace {
                 {
                     if(ent.second.m_crate_name == "" || ent.second.m_crate_name == crate.m_crate_name)
                     {
-                        ::std::cerr << "Lang item " << ent << ::std::endl;
                         lang_items_filtered.insert(ent);
                     }
                 }
