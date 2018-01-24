@@ -553,9 +553,6 @@
     <ClInclude Include="..\src\hir\from_ast.hpp">
       <Filter>Header Files\hir</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\hir\hir.hpp">
-      <Filter>Header Files\mir</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\mir\from_hir.hpp">
       <Filter>Header Files\mir</Filter>
     </ClInclude>
@@ -597,6 +594,9 @@
     </ClInclude>
     <ClInclude Include="..\src\parse\tokentree.hpp">
       <Filter>Header Files\parse</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir\hir.hpp">
+      <Filter>Header Files\hir</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

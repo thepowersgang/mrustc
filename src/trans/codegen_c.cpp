@@ -308,6 +308,58 @@ namespace {
                     << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
                     << "\treturn (v >> 32 != 0 ? __popcnt64(v>>32) : 32 + __popcnt64(v));\n"
                     << "}\n"
+                    << "static inline bool __builtin_mul_overflow_u8(uint8_t a, uint8_t b, uint8_t* out) {\n"
+                    << "\t*out = a*b;\n"
+                    << "\tif(a > UINT8_MAX/b)  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_i8(int8_t a, int8_t b, int8_t* out) {\n"
+                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
+                    << "\tif(a > INT8_MAX/b)  return true;\n"
+                    << "\tif(a < INT8_MIN/b)  return true;\n"
+                    << "\tif( (a == -1) && (b == INT8_MIN))  return true;\n"
+                    << "\tif( (b == -1) && (a == INT8_MIN))  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_u16(uint16_t a, uint16_t b, uint16_t* out) {\n"
+                    << "\t*out = a*b;\n"
+                    << "\tif(a > UINT16_MAX/b)  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_i16(int16_t a, int16_t b, int16_t* out) {\n"
+                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
+                    << "\tif(a > INT16_MAX/b)  return true;\n"
+                    << "\tif(a < INT16_MIN/b)  return true;\n"
+                    << "\tif( (a == -1) && (b == INT16_MIN))  return true;\n"
+                    << "\tif( (b == -1) && (a == INT16_MIN))  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_u32(uint32_t a, uint32_t b, uint32_t* out) {\n"
+                    << "\t*out = a*b;\n"
+                    << "\tif(a > UINT32_MAX/b)  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_i32(int32_t a, int32_t b, int32_t* out) {\n"
+                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
+                    << "\tif(a > INT32_MAX/b)  return true;\n"
+                    << "\tif(a < INT32_MIN/b)  return true;\n"
+                    << "\tif( (a == -1) && (b == INT32_MIN))  return true;\n"
+                    << "\tif( (b == -1) && (a == INT32_MIN))  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_u64(uint64_t a, uint64_t b, uint64_t* out) {\n"
+                    << "\t*out = a*b;\n"
+                    << "\tif(a > UINT64_MAX/b)  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_i64(int64_t a, int64_t b, int64_t* out) {\n"
+                    << "\t*out = a*b;\n"    // Wait, this isn't valid?
+                    << "\tif(a > INT64_MAX/b)  return true;\n"
+                    << "\tif(a < INT64_MIN/b)  return true;\n"
+                    << "\tif( (a == -1) && (b == INT64_MIN))  return true;\n"
+                    << "\tif( (b == -1) && (a == INT64_MIN))  return true;\n"
+                    << "\treturn false;\n"
+                    << "}\n"
                     ;
                 break;
             }
@@ -526,7 +578,7 @@ namespace {
                     args.push_back("/O1");
                     break;
                 case 2:
-                    args.push_back("/O2");
+                    //args.push_back("/O2");
                     break;
                 }
                 if(is_executable)
@@ -3693,9 +3745,18 @@ namespace {
                     m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
             }
             else if( name == "mul_with_overflow" ) {
-                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_param(e.args.at(0));
+                        m_of << ", "; emit_param(e.args.at(1));
+                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                    break;
+                case Compiler::Msvc:
+                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow_" << params.m_types.at(0);
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                    break;
+                }
             }
             else if( name == "overflowing_add" ) {
                 switch(m_compiler)
