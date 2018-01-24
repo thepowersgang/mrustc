@@ -9,6 +9,7 @@
 #include <tagged_union.hpp>
 #include <vector>
 #include <string>
+#include <memory>   // std::unique_ptr
 #include <hir/type.hpp>
 
 namespace MIR {
