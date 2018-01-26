@@ -33,10 +33,14 @@ struct Token
 
     uint64_t integer() const;
     double real() const;
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const Token& x);
 };
 
 class Lexer
 {
+    ::std::string   m_filename;
+    unsigned m_cur_line;
     ::std::ifstream m_if;
     Token   m_cur;
 public:
@@ -51,6 +55,8 @@ public:
     void check_consume(const char* s) { check(s); consume(); }
     bool consume_if(char ch) { if(next() == ch) { consume(); return true; } return false; }
     bool consume_if(const char* s) { if(next() == s) { consume(); return true; } return false; }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const Lexer& x);
 
 private:
     void advance();

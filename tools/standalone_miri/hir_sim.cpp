@@ -136,9 +136,25 @@ namespace HIR {
                 break;
             case TypeWrapper::Ty::Pointer:
                 os << "*";
+                switch(it->size)
+                {
+                case 2: os << "move ";  break;
+                case 1: os << "mut ";   break;
+                case 0: os << "const "; break;
+                default:
+                    break;
+                }
                 break;
             case TypeWrapper::Ty::Borrow:
                 os << "&";
+                switch(it->size)
+                {
+                case 2: os << "move ";  break;
+                case 1: os << "mut ";   break;
+                case 0: os << "";       break;
+                default:
+                    break;
+                }
                 break;
             }
         }
@@ -153,9 +169,10 @@ namespace HIR {
         case RawType::Unreachable:
             os << "!";
             break;
-        case RawType::Str:
-            os << "str";
-            break;
+        case RawType::Bool: os << "bool"; break;
+        case RawType::Char: os << "char"; break;
+        case RawType::Str:  os << "str";  break;
+
         case RawType::U8:   os << "u8"; break;
         case RawType::I8:   os << "i8"; break;
         case RawType::U16:  os << "u16";    break;
@@ -166,6 +183,8 @@ namespace HIR {
         case RawType::I64:  os << "i64";    break;
         case RawType::U128: os << "u128";   break;
         case RawType::I128: os << "i128";   break;
+        case RawType::USize: os << "usize";   break;
+        case RawType::ISize: os << "isize";   break;
         }
         for(auto it = x.wrappers.rbegin(); it != x.wrappers.rend(); ++it)
         {
@@ -183,6 +202,15 @@ namespace HIR {
         }
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x)
+    {
+        os << "::\"" << x.crate_name << "\"";
+        for(const auto& e : x.ents)
+        {
+            os << "::" << e;
+        }
+        return os;
+    }
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::PathParams& x)
     {
         if( !x.tys.empty() )
@@ -194,8 +222,27 @@ namespace HIR {
         }
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x)
+    {
+        os << x.m_simplepath;
+        os << x.m_params;
+        return os;
+    }
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::Path& x)
     {
+        if( x.m_name == "" )
+        {
+            os << x.m_trait;
+        }
+        else
+        {
+            os << "<" << x.m_type;
+            if( x.m_trait != ::HIR::GenericPath() )
+            {
+                os << " as " << x.m_trait;
+            }
+            os << ">::" << x.m_name << x.m_params;
+        }
         return os;
     }
 }

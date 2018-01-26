@@ -37,6 +37,7 @@ public:
 struct DataType
 {
     // TODO: Metadata type! (indicates an unsized wrapper)
+    // TODO: Drop glue
 
     size_t  alignment;
     size_t  size;

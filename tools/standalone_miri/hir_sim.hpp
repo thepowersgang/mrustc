@@ -21,6 +21,7 @@ struct DataType;
 enum class RawType
 {
     Unreachable,
+    Function,
     Unit,
 
     Bool,
@@ -29,6 +30,7 @@ enum class RawType
     U32, I32,
     U64, I64,
     U128, I128,
+    USize, ISize,
 
     F32, F64,
 
@@ -152,6 +154,7 @@ namespace HIR {
             __LT(ents);
             return false;
         }
+        friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
     };
 
     struct PathParams
@@ -183,6 +186,8 @@ namespace HIR {
             __LT(m_params.tys);
             return false;
         }
+
+        friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);
     };
     struct Path
     {
