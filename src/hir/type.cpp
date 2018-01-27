@@ -105,8 +105,11 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         os << "*/";
         ),
     (TraitObject,
-        os << "(";
-        os << e.m_trait;
+        os << "dyn (";
+        if( e.m_trait.m_path != ::HIR::GenericPath() )
+        {
+            os << e.m_trait;
+        }
         for(const auto& tr : e.m_markers)
             os << "+" << tr;
         if( e.m_lifetime.name != "" )

@@ -389,6 +389,9 @@
     <ClCompile Include="..\src\expand\proc_macro.cpp">
       <Filter>Source Files\expand</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\trans\codegen_mmir.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\common.hpp">
