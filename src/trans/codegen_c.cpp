@@ -506,11 +506,11 @@ namespace {
             case Compiler::Gcc:
                 if( getenv("CC") ) {
                     args.push_back( getenv("CC") );
-		}
+                }
                 else {
                     //args.push_back( Target_GetCurSpec().m_c_compiler + "-gcc" );
                     args.push_back( "gcc" );
-		}
+                }
                 args.push_back("-ffunction-sections");
                 args.push_back("-pthread");
                 switch(opt.opt_level)
@@ -833,94 +833,83 @@ namespace {
                 const auto& lc = p.m_path.m_components.back();
                 is_vtable = (lc.size() > 7 && ::std::strcmp(lc.c_str() + lc.size() - 7, "#vtable") == 0);
                 };
+            bool is_packed = item.m_repr == ::HIR::Struct::Repr::Packed;
 
             TRACE_FUNCTION_F(p);
-            ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
             bool has_unsized = false;
-            auto emit_struct_fld_ty = [&](const ::HIR::TypeRef& ty_raw, ::FmtLambda inner) {
-                const auto& ty = monomorph(ty_raw);
-                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
-                    emit_ctype( *te.inner, FMT_CB(ss, ss << inner << "[0]";) );
-                    has_unsized = true;
-                )
-                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, te,
-                    m_of << "unsigned char " << inner << "[0]";
-                    has_unsized = true;
-                )
-                else if( ty == ::HIR::CoreType::Str ) {
-                    m_of << "uint8_t " << inner << "[0]";
-                    has_unsized = true;
-                }
-                else {
-                    emit_ctype( ty, inner );
-                }
-                };
             m_of << "// struct " << p << "\n";
+            // For repr(packed), mark as packed
+            if(is_packed)
+            {
+                switch(m_compiler)
+                {
+                case Compiler::Msvc:
+                    m_of << "#pragma pack(push, 1)\n";
+                    break;
+                case Compiler::Gcc:
+                    break;
+                }
+            }
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
 
             // HACK: For vtables, insert the alignment and size at the start
+            // TODO: This should be done in HIR, not here
             if(is_vtable)
             {
                 m_of << "\tVTABLE_HDR hdr;\n";
             }
 
-            TU_MATCHA( (item.m_data), (e),
-            (Unit,
+            ::std::vector<unsigned> fields;
+            for(const auto& ent : repr->fields)
+            {
+                fields.push_back(fields.size());
+            }
+            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+            for(const auto fld : fields)
+            {
+                m_of << "\t";
+                const auto& ty = repr->fields[fld].ty;
+                
+                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
+                    emit_ctype( *te.inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
+                    has_unsized = true;
+                )
+                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, te,
+                    m_of << "unsigned char _" << fld << "[0]";
+                    has_unsized = true;
+                )
+                else if( ty == ::HIR::CoreType::Str ) {
+                    m_of << "uint8_t _" << fld << "[0]";
+                    has_unsized = true;
+                }
+                else {
+                    // TODO: Nested unsized?
+                    emit_ctype( ty, FMT_CB(ss, ss << "_" << fld) );
+                }
+                m_of << ";\n";
+            }
+            if( fields.size() == 0 )
+            {
                 if( m_options.disallow_empty_structs )
                 {
                     m_of << "\tchar _d;\n";
                 }
-                ),
-            (Tuple,
-                if( e.empty() )
+            }
+            m_of << "}";
+            if(is_packed)
+            {
+                switch(m_compiler)
                 {
-                    if( m_options.disallow_empty_structs )
-                    {
-                        m_of << "\tchar _d;\n";
-                    }
+                case Compiler::Msvc:
+                    m_of << ";\n#pragma pack(pop)\n";
+                    break;
+                case Compiler::Gcc:
+                    m_of << " __attribute__((packed));\n";
+                    break;
                 }
-                else
-                {
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        const auto& fld = e[i];
-                        m_of << "\t";
-                        emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
-                        m_of << ";\n";
-                    }
-                }
-                ),
-            (Named,
-                if( e.empty() )
-                {
-                    if( m_options.disallow_empty_structs )
-                    {
-                        m_of << "\tchar _d;\n";
-                    }
-                }
-                else
-                {
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        const auto& fld = e[i].second;
-                        m_of << "\t";
-                        emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
-                        m_of << ";\n";
-                    }
-                }
-                )
-            )
-            m_of << "};\n";
+            }
 
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
@@ -959,28 +948,12 @@ namespace {
 
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
-            TU_MATCHA( (item.m_data), (e),
-            (Unit,
-                ),
-            (Tuple,
-                for(unsigned int i = 0; i < e.size(); i ++)
-                {
-                    const auto& fld = e[i];
-                    fld_lv.as_Field().field_index = i;
+            for(size_t i = 0; i < repr->fields.size(); i++)
+            {
+                fld_lv.as_Field().field_index = i;
 
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), true, 1);
-                }
-                ),
-            (Named,
-                for(unsigned int i = 0; i < e.size(); i ++)
-                {
-                    const auto& fld = e[i].second;
-                    fld_lv.as_Field().field_index = i;
-
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), true, 1);
-                }
-                )
-            )
+                emit_destructor_call(fld_lv, repr->fields[i].ty, /*unsized_valid=*/true, /*indent=*/1);
+            }
             m_of << "}\n";
             m_mir_res = nullptr;
         }
@@ -991,27 +964,19 @@ namespace {
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
+            auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
+            MIR_ASSERT(*m_mir_res, repr != nullptr, "No repr for union " << item_ty);
 
-            ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
             m_of << "union u_" << Trans_Mangle(p) << " {\n";
-            for(unsigned int i = 0; i < item.m_variants.size(); i ++)
+            for(unsigned int i = 0; i < repr->fields.size(); i ++)
             {
-                m_of << "\t"; emit_ctype( monomorph(item.m_variants[i].second.ent), FMT_CB(ss, ss << "var_" << i;) ); m_of << ";\n";
+                assert(repr->fields[i].offset == 0);
+                m_of << "\t"; emit_ctype( repr->fields[i].ty, FMT_CB(ss, ss << "var_" << i;) ); m_of << ";\n";
             }
             m_of << "};\n";
 
             // Drop glue (calls destructor if there is one)
-            auto item_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(item_ty.clone(), "#drop_glue");
             auto item_ptr_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, item_ty.clone());
             auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(item_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
@@ -1031,79 +996,19 @@ namespace {
             m_of << "}\n";
         }
 
-        // TODO: Move this to codegen.cpp?
-        bool get_nonzero_path(const Span& sp, const ::HIR::TypeRef& ty, ::std::vector<unsigned int>& out) const
+        void emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
         {
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
-            (
-                return false;
-                ),
-            (Path,
-                if( te.binding.is_Struct() )
-                {
-                    const auto& str = *te.binding.as_Struct();
-                    const auto& p = te.path.m_data.as_Generic();
-                    ::HIR::TypeRef  tmp;
-                    auto monomorph = [&](const auto& ty)->const auto& {
-                        if( monomorphise_type_needed(ty) ) {
-                            tmp = monomorphise_type(sp, str.m_params, p.m_params, ty);
-                            m_resolve.expand_associated_types(sp, tmp);
-                            return tmp;
-                        }
-                        else {
-                            return ty;
-                        }
-                        };
-                    TU_MATCHA( (str.m_data), (se),
-                    (Unit,
-                        ),
-                    (Tuple,
-                        for(size_t i = 0; i < se.size(); i ++)
-                        {
-                            if( get_nonzero_path(sp, monomorph(se[i].ent), out) )
-                            {
-                                out.push_back(i);
-                                return true;
-                            }
-                        }
-                        ),
-                    (Named,
-                        for(size_t i = 0; i < se.size(); i ++)
-                        {
-                            if( get_nonzero_path(sp, monomorph(se[i].second.ent), out) )
-                            {
-                                out.push_back(i);
-                                return true;
-                            }
-                        }
-                        )
-                    )
-                }
-                return false;
-                ),
-            (Borrow,
-                if( metadata_type(*te.inner) != MetadataType::None )
-                {
-                    // HACK: If the inner is a DST, emit ~0 as a marker
-                    out.push_back(~0u);
-                }
-                return true;
-                ),
-            (Function,
-                return true;
-                )
-            )
-        }
-        void emit_nonzero_path(const ::std::vector<unsigned int>& nonzero_path) {
-            for(const auto v : nonzero_path)
+            if( path.index == repr->fields.size() - 1 )
             {
-                if(v == ~0u) {
-                    // NOTE: Should only ever be the last
-                    m_of << ".PTR";
-                }
-                else {
-                    m_of << "._" << v;
-                }
+                m_of << ".TAG";
+            }
+            else
+            {
+                m_of << ".DATA.var_" << path.index;
+            }
+            for(auto fld : path.sub_fields)
+            {
+                m_of << "._" << fld;
             }
         }
 
@@ -1114,101 +1019,73 @@ namespace {
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
-            ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
 
-            // TODO: Cache repr info elsewhere (and have core codegen be responsible instead)
-            // TODO: Do more complex nonzero relations.
-            ::std::vector<unsigned> nonzero_path;
+            // 1. Enumerate fields with the same offset as the first (these go into a union)
+            ::std::vector<unsigned> union_fields;
+            for(size_t i = 1; i < repr->fields.size(); i ++)
             {
-                // Detect Option (and similar enums)
-                // - Matches two-variant enums where the first variant is unit-like, and the second is not
-                if( item.m_data.is_Data() && item.m_data.as_Data().size() == 2
-                 && item.m_data.as_Data()[0].type == ::HIR::TypeRef::new_unit()
-                 && item.m_data.as_Data()[1].type != ::HIR::TypeRef::new_unit()
-                    )
+                if( repr->fields[i].offset == repr->fields[0].offset )
                 {
-                    const auto& data_type = monomorph(item.m_data.as_Data()[1].type);
-                    if( get_nonzero_path(sp, data_type, nonzero_path) )
-                    {
-                        ::std::reverse( nonzero_path.begin(), nonzero_path.end() );
-                        DEBUG("Correct format for NonZero to apply, and field found at " << nonzero_path);
-                    }
-                    else
-                    {
-                        DEBUG("Correct format for NonZero to apply, but no field");
-                        assert(nonzero_path.size() == 0);
-                    }
+                    union_fields.push_back(i);
                 }
             }
 
             m_of << "// enum " << p << "\n";
-            if( nonzero_path.size() > 0 )
+            m_of << "struct e_" << Trans_Mangle(p) << " {\n";
+
+            // If there multiple fields with the same offset, they're the data variants
+            if( union_fields.size() > 0 )
             {
-                //MIR_ASSERT(*m_mir_res, item.num_variants() == 2, "");
-                //MIR_ASSERT(*m_mir_res, item.m_variants[0].second.is_Unit(), "");
-                //const auto& data_var = item.m_variants[1];
-                //MIR_ASSERT(*m_mir_res, data_var.second.is_Tuple(), "");
-                //MIR_ASSERT(*m_mir_res, data_var.second.as_Tuple().size() == 1, "");
-                const auto& data_type = monomorph(item.m_data.as_Data()[1].type);
-                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
-                m_of << "\t"; emit_ctype(data_type, FMT_CB(s, s << "_1";)); m_of << ";\n";
-                m_of << "};\n";
-            }
-            else if( item.m_data.is_Value() )
-            {
-                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
-                switch(item.m_data.as_Value().repr)
+                assert(1 + union_fields.size() + 1 >= repr->fields.size());
+                // Make the union!
+                // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
+                m_of << "\tunion {\n";
+                // > First field
+                m_of << "\t\t";
+                emit_ctype(repr->fields[0].ty, FMT_CB(os, os << "var_0"));
+                m_of << ";\n";
+                // > All others
+                for(auto idx : union_fields)
                 {
-                case ::HIR::Enum::Repr::Rust:
-                case ::HIR::Enum::Repr::C:
-                    m_of << "\tunsigned int TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::Usize:
-                    m_of << "\tuintptr_t TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::U8:
-                    m_of << "\tuint8_t TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::U16:
-                    m_of << "\tuint16_t TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::U32:
-                    m_of << "\tuint32_t TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::U64:
-                    m_of << "\tuint64_t TAG;\n";
-                    break;
+                    // TODO: if the compiler doesn't allow zero-sized types, don't emit zero-sized fields.
+                    m_of << "\t\t";
+                    emit_ctype(repr->fields[idx].ty, FMT_CB(os, os << "var_" << idx));
+                    m_of << ";\n";
                 }
-                m_of << "};\n";
+                m_of << "\t} DATA;\n";
+
+                if( repr->fields.size() == 1 + union_fields.size() )
+                {
+                    // No tag, the tag is in one of the fields.
+                    DEBUG("Untagged, nonzero or other");
+                }
+                else
+                {
+                    assert(repr->fields.back().offset != repr->fields.front().offset);
+                    DEBUG("Tag present at offset " << repr->fields.back().offset << " - " << repr->fields.back().ty);
+
+                    m_of << "\t";
+                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
+                    m_of << ";\n";
+                }
+            }
+            else if( repr->fields.size() == 1 )
+            {
+                // Tag only.
+                // - A value-only enum.
+                m_of << "\t";
+                emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
+                m_of << ";\n";
             }
             else
             {
-                const auto& variants = item.m_data.as_Data();
-                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
-                m_of << "\tunsigned int TAG;\n";
-                if( variants.size() > 0 )
-                {
-                    m_of << "\tunion {\n";
-                    for(unsigned int i = 0; i < variants.size(); i ++)
-                    {
-                        m_of << "\t\t";
-                        emit_ctype( monomorph(variants[i].type) );
-                        m_of << " var_" << i << ";\n";
-                    }
-                    m_of << "\t} DATA;\n";
-                }
-                m_of << "};\n";
+                // One data field and a tag (or all different offsets)
+                TODO(sp, "No common offsets and more than one field, is this possible? - " << item_ty);
             }
+
+            m_of << "};\n";
 
             // ---
             // - Drop Glue
@@ -1234,39 +1111,35 @@ namespace {
             }
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
 
-            if( nonzero_path.size() > 0 )
+            if( const auto* e = repr->variants.opt_NonZero() )
             {
+                unsigned idx = 1 - e->zero_variant;
                 // TODO: Fat pointers?
-                m_of << "\tif( (*rv)._1"; emit_nonzero_path(nonzero_path); m_of << " ) {\n";
-                emit_destructor_call( ::MIR::LValue::make_Field({ box$(self), 1 }), monomorph(item.m_data.as_Data()[1].type), false, 2 );
+                m_of << "\tif( rv"; emit_enum_path(repr, e->field); m_of << "!= 0 ) {\n";
+                emit_destructor_call( ::MIR::LValue::make_Field({ box$(self), idx }), repr->fields[idx].ty, false, 2 );
                 m_of << "\t}\n";
             }
-            else if( const auto* e = item.m_data.opt_Data() )
-            {
-                auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
-
-                m_of << "\tswitch(rv->TAG) {\n";
-                for(unsigned int var_idx = 0; var_idx < e->size(); var_idx ++)
-                {
-                    var_lv.as_Downcast().variant_index = var_idx;
-                    m_of << "\tcase " << var_idx << ":\n";
-                    emit_destructor_call(var_lv, monomorph( (*e)[var_idx].type ), false, 2);
-                    m_of << "\tbreak;\n";
-                }
-                m_of << "\t}\n";
-            }
-            else
+            else if( repr->fields.size() == 1 )
             {
                 // Value enum
                 // Glue does nothing (except call the destructor, if there is one)
             }
+            else if( const auto* e = repr->variants.opt_Values() )
+            {
+                auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
+
+                m_of << "\tswitch(rv->TAG) {\n";
+                for(unsigned int var_idx = 0; var_idx < e->values.size(); var_idx ++)
+                {
+                    var_lv.as_Downcast().variant_index = var_idx;
+                    m_of << "\tcase " << e->values[var_idx] << ":\n";
+                    emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
+                    m_of << "\tbreak;\n";
+                }
+                m_of << "\t}\n";
+            }
             m_of << "}\n";
             m_mir_res = nullptr;
-
-            if( nonzero_path.size() )
-            {
-                m_enum_repr_cache.insert( ::std::make_pair( p.clone(), mv$(nonzero_path) ) );
-            }
         }
 
         void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) override
@@ -2848,28 +2721,27 @@ namespace {
             const auto& ty = mir_res.get_lvalue_type(tmp, val);
             MIR_ASSERT(mir_res, ty.m_data.is_Path(), "Switch over non-Path type");
             MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "Switch over non-enum");
-            const auto* enm = ty.m_data.as_Path().binding.as_Enum();
+            const auto* repr = Target_GetTypeRepr(mir_res.sp, m_resolve, ty);
+            MIR_ASSERT(mir_res, repr, "No repr for " << ty);
 
-            auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
-            if( it != m_enum_repr_cache.end() )
+            if( const auto* e = repr->variants.opt_NonZero() )
             {
-                //MIR_ASSERT(mir_res, e.targets.size() == 2, "NonZero optimised representation for an enum without two variants");
                 MIR_ASSERT(mir_res, n_arms == 2, "NonZero optimised switch without two arms");
-                m_of << indent << "if("; emit_lvalue(val); m_of << "._1"; emit_nonzero_path(it->second); m_of << ")\n";
+                m_of << indent << "if( "; emit_lvalue(val); emit_enum_path(repr, e->field); m_of << " != 0)\n";
                 m_of << indent;
-                cb(1);
+                cb(1 - e->zero_variant);
                 m_of << "\n";
                 m_of << indent << "else\n";
                 m_of << indent;
-                cb(0);
+                cb(e->zero_variant);
                 m_of << "\n";
             }
-            else if( enm->is_value() )
+            else if( const auto* e = repr->variants.opt_Values() )
             {
                 m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
                 for(size_t j = 0; j < n_arms; j ++)
                 {
-                    m_of << indent << "case " << enm->get_value(j) << ": ";
+                    m_of << indent << "case " << e->values[j] << ": ";
                     cb(j);
                     m_of << "\n";
                 }
@@ -2878,15 +2750,7 @@ namespace {
             }
             else
             {
-                m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
-                for(size_t j = 0; j < n_arms; j ++)
-                {
-                    m_of << indent << "case " << j << ": ";
-                    cb(j);
-                    m_of << "\n";
-                }
-                m_of << indent << "default: abort();\n";
-                m_of << indent << "}\n";
+                BUG(sp, "");
             }
         }
         void emit_term_switchvalue(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, const ::MIR::SwitchValues& values, unsigned indent_level, ::std::function<void(size_t)> cb)
@@ -3698,19 +3562,26 @@ namespace {
             else if( name == "discriminant_value" ) {
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = ";
-                if( ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum() ) {
-                    auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
-                    if( it != m_enum_repr_cache.end() )
-                    {
-                        emit_param(e.args.at(0)); m_of << "->_1"; emit_nonzero_path(it->second); m_of << " != 0";
-                    }
-                    else
-                    {
-                        emit_param(e.args.at(0)); m_of << "->TAG";
-                    }
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                if( !repr ) {
+                    m_of << "0";
                 }
                 else {
-                    m_of << "0";
+                    switch(repr->variants.tag())
+                    {
+                    case TypeRepr::VariantMode::TAGDEAD:    throw "";
+                    TU_ARM(repr->variants, None, _e)
+                        m_of << "0";
+                        break;
+                    TU_ARM(repr->variants, Values, _e) {
+                        emit_param(e.args.at(0)); m_of << "->TAG";
+                        } break;
+                    TU_ARM(repr->variants, NonZero, ve) {
+                        emit_param(e.args.at(0)); emit_enum_path(repr, ve.field); m_of << " ";
+                        m_of << (ve.zero_variant ? "==" : "!=");
+                        m_of << "0";
+                        } break;
+                    }
                 }
             }
             // Hints
@@ -4325,28 +4196,29 @@ namespace {
             (Variant,
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
-                const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
-                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                if( it != m_enum_repr_cache.end() )
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                MIR_ASSERT(*m_mir_res, repr, "");
+                switch(repr->variants.tag())
                 {
-                    if( e.idx == 0 ) {
-                        emit_nonzero_path(it->second);
-                        m_of << " = 0";
+                case TypeRepr::VariantMode::TAGDEAD:    throw "";
+                TU_ARM(repr->variants, None, ve)
+                    BUG(sp, "");
+                TU_ARM(repr->variants, NonZero, ve) {
+                    if( e.idx == ve.zero_variant ) {
+                        emit_dst(); emit_enum_path(repr, ve.field); m_of << " = 0";
                     }
                     else {
                         assign_from_literal([&](){ emit_dst(); }, get_inner_type(e.idx, 0), *e.val);
                     }
-                }
-                else if( enm.is_value() )
-                {
-                    MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
-                    emit_dst(); m_of << ".TAG = " << enm.get_value(e.idx);
-                }
-                else
-                {
-                    emit_dst(); m_of << ".TAG = " << e.idx;
-                    m_of << ";\n\t";
-                    assign_from_literal([&](){ emit_dst(); m_of << ".DATA.var_" << e.idx; }, get_inner_type(e.idx, 0), *e.val);
+                    } break;
+                TU_ARM(repr->variants, Values, ve) {
+                    emit_dst(); emit_enum_path(repr, ve.field); m_of << " = " << ve.values[e.idx];
+                    if( TU_TEST1((*e.val), List, .empty() == false) )
+                    {
+                        m_of << ";\n\t";
+                        assign_from_literal([&](){ emit_dst(); m_of << ".DATA.var_" << e.idx; }, get_inner_type(e.idx, 0), *e.val);
+                    }
+                    } break;
                 }
                 ),
             (Integer,
