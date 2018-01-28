@@ -10,7 +10,9 @@
 # DEPENDENCIES
 # - zlib (-dev)
 # - curl (bin, for downloading libstd source)
-
+ifeq ($(OS),Windows_NT)
+  EXESUF ?= .exe
+endif
 EXESUF ?=
 CXX ?= g++
 V ?= @
@@ -115,7 +117,7 @@ OBJ +=  mir/check_full.o
 OBJ += hir/serialise.o hir/deserialise.o hir/serialise_lowlevel.o
 OBJ += trans/trans_list.o trans/mangling.o
 OBJ += trans/enumerate.o trans/monomorphise.o trans/codegen.o
-OBJ += trans/codegen_c.o trans/codegen_c_structured.o
+OBJ += trans/codegen_c.o trans/codegen_c_structured.o trans/codegen_mmir.o
 OBJ += trans/target.o trans/allocator.o
 
 PCHS := ast/ast.hpp
@@ -147,7 +149,7 @@ RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(shell cat $(RUSTC_SRC_DES)) RUSTC_CHANNEL=$(RUSTC_SRC_TY)
 
 
-output/libstd.hir: $(BIN) $(RUSTC_SRC_DL)
+output/libstd.hir: $(BIN)
 	$(MAKE_MINICARGO) $@
 output/libtest.hir output/libpanic_unwind.hir output/libproc_macro.hir: output/libstd.hir
 	$(MAKE_MINICARGO) $@
@@ -245,14 +247,14 @@ RUNTIME_ARGS_output/libstd-test := --test-threads 1
 RUNTIME_ARGS_output/libstd-test := --skip ::collections::hash::map::test_map::test_index_nonexistent
 RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
 
-output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
+output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"
 	@mkdir -p output/
 	@rm -f $@
 	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(RUSTC_SRC_DL) $(TEST_DEPS)
+output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(TEST_DEPS)
 	@echo "--- [MRUSTC] $@"
 	@mkdir -p output/
 	@rm -f $@
@@ -278,7 +280,7 @@ output/rust/test_run-pass_hello_out.txt: output/rust/test_run-pass_hello
 #
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
-test: $(RUSTC_SRC_DL) output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
+test: output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
 
 #
 # TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
@@ -305,9 +307,12 @@ $(BIN): $(OBJ)
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJ) $(LIBS)
+ifeq ($(OS),Windows_NT)
+else
 	objcopy --only-keep-debug $(BIN) $(BIN).debug
 	objcopy --add-gnu-debuglink=$(BIN).debug $(BIN)
 	strip $(BIN)
+endif
 
 $(OBJDIR)%.o: src/%.cpp
 	@mkdir -p $(dir $@)

@@ -616,12 +616,12 @@ namespace {
                 }
             }
             } break;
-        TU_ARM(ty.m_data, Borrow, te) {
+        TU_ARM(ty.m_data, Borrow, _te) { (void)_te;
             out_path.sub_fields.push_back(0);
             Target_GetSizeOf(sp, resolve, ty, out_path.size);
             return true;
             } break;
-        TU_ARM(ty.m_data, Function, _te)
+        TU_ARM(ty.m_data, Function, _te) (void)_te;
             out_path.sub_fields.push_back(0);
             Target_GetSizeOf(sp, resolve, ty, out_path.size);
             return true;
@@ -800,7 +800,7 @@ namespace {
                 {
                     vals.push_back(v.val);
                 }
-                rv.variants = TypeRepr::VariantMode::make_Values({ 0, rv.size, ::std::move(vals) });
+                rv.variants = TypeRepr::VariantMode::make_Values({ { 0, static_cast<uint8_t>(rv.size), {} }, ::std::move(vals) });
             }
             } break;
         }

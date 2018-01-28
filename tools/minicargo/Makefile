@@ -3,12 +3,16 @@
 # - Interprets Cargo.toml files and emits makefiles
 # - Supports overriding build script output
 #
+ifeq ($(OS),Windows_NT)
+  EXESUF ?= .exe
+endif
+EXESUF ?=
 
 V ?= @
 
 OBJDIR := .obj/
 
-BIN := ../bin/minicargo
+BIN := ../bin/minicargo$(EXESUF)
 OBJS := main.o build.o manifest.o repository.o
 OBJS += toml.o path.o debug.o
 
