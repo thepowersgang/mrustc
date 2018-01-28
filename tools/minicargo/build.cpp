@@ -623,6 +623,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             args.push_back("-C"); args.push_back(format("emit-build-command=",outfile,".sh"));
         }
     }
+    if( m_opts.emit_mmir )
+    {
+        args.push_back("-C"); args.push_back("codegen-type=monomir");
+    }
+
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(this->get_output_dir(is_for_host).str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {

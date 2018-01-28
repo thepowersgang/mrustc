@@ -12,6 +12,7 @@ struct BuildOptions
     ::helpers::path output_dir;
     ::helpers::path build_script_overrides;
     ::std::vector<::helpers::path>  lib_search_dirs;
+    bool emit_mmir = false;
     const char* target_name = nullptr;	// if null, host is used
 };
 

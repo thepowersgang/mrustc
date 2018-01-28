@@ -27,6 +27,9 @@ struct ProgramOptions
     // Output/build directory
     const char* output_directory = nullptr;
 
+    // Emit Monomorphised MIR instead of C
+    bool emit_mmir = false;
+
     // Target name (if null, defaults to host)
     const char* target = nullptr;
 
@@ -84,7 +87,8 @@ int main(int argc, const char* argv[])
         build_opts.build_script_overrides = ::std::move(bs_override_dir);
         build_opts.output_dir = opts.output_directory ? ::helpers::path(opts.output_directory) : ::helpers::path("output");
         build_opts.lib_search_dirs.reserve(opts.lib_search_dirs.size());
-	build_opts.target_name = opts.target;
+        build_opts.emit_mmir = opts.emit_mmir;
+        build_opts.target_name = opts.target;
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
         Debug_SetPhase("Enumerate Build");
@@ -157,6 +161,25 @@ int ProgramOptions::parse(int argc, const char* argv[])
                     break;
                 }
                 this->build_jobs = ::std::strtol(argv[++i], nullptr, 10);
+                break;
+            case 'Z':
+                if( arg[2] != '\0' ) {
+                    arg = arg + 2;
+                }
+                else {
+                    if(i+1 == argc) {
+                        ::std::cerr << "Flag " << arg << " takes an argument" << ::std::endl;
+                        return 1;
+                    }
+                    arg = argv[++i];
+                }
+                if( ::std::strcmp(arg, "emit-mmir") == 0 ) {
+                    this->emit_mmir = true;
+                }
+                else {
+                    ::std::cerr << "Unknown debug option -Z " << arg << ::std::endl;
+                    return 1;
+                }
                 break;
             case 'n':
                 this->build_jobs = 0;
