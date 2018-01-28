@@ -7,6 +7,7 @@
 #include "mangling.hpp"
 #include "target.hpp"
 
+#include <iomanip>
 #include <fstream>
 
 namespace
@@ -35,7 +36,7 @@ namespace
         switch(x.e.tag())
         {
         case ::MIR::LValue::TAGDEAD:    throw "";
-        TU_ARM(x.e, Return, _e)
+        TU_ARM(x.e, Return, _e) (void)_e;
             os << "RETURN";
             break;
         TU_ARM(x.e, Local, e)
@@ -68,6 +69,33 @@ namespace
         }
         return os;
     }
+    ::std::ostream& operator<<(::std::ostream& os, const Fmt<::MIR::Constant>& x)
+    {
+        const auto& e = x.e;
+        switch(e.tag())
+        {
+        case ::MIR::Constant::TAGDEAD:  throw "";
+        TU_ARM(e, Int, v) {
+            os << (v.v < 0 ? "" : "+") << v.v << " " << v.t;
+            } break;
+        TU_ARM(e, Uint, v)
+            os << v.v << " " << v.t;
+            break;
+        TU_ARM(e, Float, v) {
+            // TODO: Infinity/nan/...
+            auto vi = *reinterpret_cast<const uint64_t*>(&v.v);
+            bool sign = (vi & (1ull << 63)) != 0;
+            int exp = (vi >> 52) & 0x7FF;
+            uint64_t frac = vi & ((1ull << 52) - 1);
+            os << (sign ? "-" : "+") << "0x1." << ::std::setw(52/4) << ::std::setfill('0') << ::std::hex << frac << ::std::dec << "p" << (exp - 1023);
+            os << " " << v.t;
+            } break;
+        default:
+            os << e;
+            break;
+        }
+        return os;
+    }
     ::std::ostream& operator<<(::std::ostream& os, const Fmt<::MIR::Param>& x)
     {
         switch(x.e.tag())
@@ -77,7 +105,7 @@ namespace
             os << fmt(e);
             break;
         TU_ARM(x.e, Constant, e)
-            os << e;
+            os << fmt(e);
             break;
         }
         return os;
@@ -188,19 +216,21 @@ namespace
 
             if( const auto* te = ty.m_data.opt_Tuple() )
             {
-#if 0
                 if( te->size() > 0 )
                 {
-                    m_of << "typedef struct "; emit_ctype(ty); m_of << " {\n";
-                    for(unsigned int i = 0; i < te.size(); i++)
-                    {
-                        m_of << "\t";
-                        emit_ctype(te[i], FMT_CB(ss, ss << "_" << i;));
-                        m_of << ";\n";
-                    }
-                    m_of << "} "; emit_ctype(ty); m_of << ";\n";
-                }
+                    const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                    MIR_ASSERT(*m_mir_res, repr, "No repr for tuple " << ty);
 
+                    m_of << "type " << ty << " {\n";
+                    m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
+                    size_t  ofs = 0;
+                    for(const auto& e : repr->fields)
+                    {
+                        m_of << "\t" << e.offset << " = " << e.ty << ";\n";
+                    }
+                    m_of << "}\n";
+                }
+#if 0
                 auto drop_glue_path = ::HIR::Path(ty.clone(), "#drop_glue");
                 auto args = ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> >();
                 auto ty_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ty.clone());
@@ -386,7 +416,7 @@ namespace
             switch(repr->variants.tag())
             {
             case TypeRepr::VariantMode::TAGDEAD:    throw "";
-            TU_ARM(repr->variants, None, e)
+            TU_ARM(repr->variants, None, _e) (void)_e;
                 break;
             TU_ARM(repr->variants, Values, e)
                 for(auto v : e.values)
@@ -525,7 +555,7 @@ namespace
                             m_of << "=" << fmt(e);
                             break;
                         TU_ARM(se.src, Constant, e)
-                            m_of << e;
+                            m_of << fmt(e);
                             break;
                         TU_ARM(se.src, SizedArray, e)
                             m_of << "[" << fmt(e.val) << "; " << e.count << "]";
@@ -639,9 +669,15 @@ namespace
                         {
                             m_of << "\"" << v.first << "\" : " << fmt(v.second) << ", ";
                         }
-                        m_of << ") [" << se.flags << "]";
+                        m_of << ") [";
+
+                        for(const auto& v : se.clobbers)
+                        {
+                            m_of << "\"" << v << "\", ";
+                        }
+                        m_of << ":" << se.flags << "]";
                         } break;
-                    TU_ARM(stmt, ScopeEnd, se) {
+                    TU_ARM(stmt, ScopeEnd, se) { (void)se;
                         continue ;
                         } break;
                     TU_ARM(stmt, Drop, se) {
@@ -670,13 +706,13 @@ namespace
                 switch(term.tag())
                 {
                 case ::MIR::Terminator::TAGDEAD: throw "";
-                TU_ARM(term, Incomplete, _e)
+                TU_ARM(term, Incomplete, _e) (void)_e;
                     m_of << "INCOMPLTE\n";
                     break;
-                TU_ARM(term, Return, _e)
+                TU_ARM(term, Return, _e) (void)_e;
                     m_of << "RETURN\n";
                     break;
-                TU_ARM(term, Diverge, _e)
+                TU_ARM(term, Diverge, _e) (void)_e;
                     m_of << "DIVERGE\n";
                     break;
                 TU_ARM(term, Goto, e)
@@ -695,6 +731,28 @@ namespace
                     } break;
                 TU_ARM(term, SwitchValue, e) {
                     m_of << "SWITCHVALUE " << fmt(e.val) << " { ";
+                    switch(e.values.tag())
+                    {
+                    case ::MIR::SwitchValues::TAGDEAD:  throw "";
+                    TU_ARM(e.values, String, ve)
+                        for(size_t i = 0; i < ve.size(); i++)
+                        {
+                            m_of << "\"" << FmtEscaped(ve[i]) << "\" = " << e.targets[i] << ",";
+                        }
+                        break;
+                    TU_ARM(e.values, Unsigned, ve)
+                        for(size_t i = 0; i < ve.size(); i++)
+                        {
+                            m_of << ve[i] << " = " << e.targets[i] << ",";
+                        }
+                        break;
+                    TU_ARM(e.values, Signed, ve)
+                        for(size_t i = 0; i < ve.size(); i++)
+                        {
+                            m_of << (ve[i] < 0 ? "" : "+") << ve[i] << " = " << e.targets[i] << ",";
+                        }
+                        break;
+                    }
                     // TODO: Values.
                     //if( e.values.size() > 0 )
                     //{
