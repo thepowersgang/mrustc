@@ -53,4 +53,5 @@
 /bnf/rust.output
 /bnf/test.bin
 /vsproject/output
+/vsproject/output_mmir
 /vsproject/standalone_miri/x64

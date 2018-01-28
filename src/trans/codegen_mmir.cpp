@@ -147,24 +147,23 @@ namespace
         {
             if( is_executable )
             {
-                m_of << "fn main(i32, *const *const i8): i32 {\n";
-                m_of << "\t0: {\n";
+                m_of << "fn ::main#(i32, *const *const i8): i32 {\n";
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");
                 if( c_start_path == ::HIR::SimplePath() )
                 {
-                    m_of << "\tlet m: fn();";
+                    m_of << "\tlet m: fn();\n";
                     m_of << "\t0: {\n";
-                    m_of << "\t\tASSIGN m = " << Trans_Mangle( ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) ) << "\n";
-                    m_of << "\t\tCALL RETURN = " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(m, arg1, arg2) goto 1 else 1;\n";
+                    m_of << "\t\tASSIGN m = &" << ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) << ";\n";
+                    m_of << "\t\tCALL RETURN = " << ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) << "(m, arg1, arg2) goto 1 else 1\n";
                 }
                 else
                 {
                     m_of << "\t0: {\n";
-                    m_of << "\t\tCALL RETURN = " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(arg1, arg2) goto 1 else 1;\n";
+                    m_of << "\t\tCALL RETURN = " << ::HIR::GenericPath(c_start_path) << "(arg1, arg2) goto 1 else 1;\n";
                 }
                 m_of << "\t}\n";
                 m_of << "\t1: {\n";
-                m_of << "\t\tRETURN}\n";
+                m_of << "\t\tRETURN\n";
                 m_of << "\t}\n";
                 m_of << "}\n";
             }

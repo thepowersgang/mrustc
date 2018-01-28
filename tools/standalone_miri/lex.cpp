@@ -53,6 +53,9 @@ double Token::real() const
     case TokenClass::String:
         os << "\"" << x.strval << "\"";
         break;
+    case TokenClass::ByteString:
+        os << "b\"" << x.strval << "\"";
+        break;
     }
     return os;
 }
@@ -74,6 +77,18 @@ Lexer::Lexer(const ::std::string& path):
 const Token& Lexer::next() const
 {
     return m_cur;
+}
+const Token& Lexer::lookahead()
+{
+    if( !m_next_valid )
+    {
+        auto tmp = ::std::move(m_cur);
+        advance();
+        m_next = ::std::move(m_cur);
+        m_cur = ::std::move(tmp);
+        m_next_valid = true;
+    }
+    return m_next;
 }
 Token Lexer::consume()
 {
@@ -107,6 +122,13 @@ void Lexer::check(const char* s)
 
 void Lexer::advance()
 {
+    if( m_next_valid )
+    {
+        m_cur = ::std::move(m_next);
+        m_next_valid = false;
+        return ;
+    }
+
     char ch;
     do
     {
@@ -177,6 +199,20 @@ void Lexer::advance()
         ch = '#';
     }
 
+    if(ch == 'b')
+    {
+        ch = m_if.get();
+        if( ch == '"' ) {
+            auto val = this->parse_string();
+            m_cur = Token { TokenClass::ByteString, ::std::move(val) };
+            return ;
+        }
+        else {
+            m_if.unget();
+        }
+        ch = 'b';
+    }
+
     if( m_if.eof() )
     {
         m_cur = Token { TokenClass::Eof, "" };
@@ -203,7 +239,7 @@ void Lexer::advance()
                     throw "ERROR";
 
                 uint64_t    rv = 0;
-                while(::std::isdigit(ch))
+                while(::std::isxdigit(ch))
                 {
                     rv *= 16;
                     if( ch <= '9' )
@@ -218,9 +254,65 @@ void Lexer::advance()
                 }
                 if( ch == '.' || ch == 'p' )
                 {
+                    uint64_t frac = 0;
+                    if( ch == '.' )
+                    {
+                        ch = m_if.get();
+                        int pos = 0;
+                        while(::std::isxdigit(ch))
+                        {
+                            frac *= 16;
+                            if( ch <= '9' )
+                                frac += ch - '0';
+                            else if( ch <= 'F' )
+                                frac += ch - 'A' + 10;
+                            else if( ch <= 'f' )
+                                frac += ch - 'a' + 10;
+                            else
+                                throw "";
+                            pos ++;
+                            ch = m_if.get();
+                        }
+                        while(pos < 52/4)
+                        {
+                            frac *= 16;
+                            pos ++;
+                        }
+                    }
+                    int exp = 0;
+                    if( ch == 'p' )
+                    {
+                        ch = m_if.get();
+                        bool neg = false;
+                        if( ch == '-' ) {
+                            neg = true;
+                            ch = m_if.get();
+                        }
+                        if( !::std::isdigit(ch) )
+                            throw "ERROR";
+                        while(::std::isdigit(ch))
+                        {
+                            exp *= 10;
+                            exp += ch - '0';
+                            ch = m_if.get();
+                        }
+                        if(neg)
+                            exp = -exp;
+                    }
                     // Floats!
-                    ::std::cerr << *this << "TODO - Hex floats" << ::std::endl;
-                    throw "TODO";
+                    //::std::cerr << *this << "TODO - Hex floats - " << rv << "." << frac << "p" << exp << ::std::endl;
+                    if( rv != 1 ) {
+                        ::std::cerr << *this << "Invalid hex float literal, whole component must be 1" << ::std::endl;
+                        throw "ERROR";
+                    }
+                    if( frac >= (1ull << 52) ) {
+                        ::std::cerr << *this << "Invalid hex float literal, fractional component is more than 52 bits" << ::std::endl;
+                        throw "ERROR";
+                    }
+                    uint64_t vi = (static_cast<uint64_t>(exp) << 52) | frac;
+                    m_cur = Token { TokenClass::Real, "" };
+                    m_cur.numbers.real_val = *reinterpret_cast<const double*>(&vi);
+                    return ;
                 }
                 m_if.unget();
 
@@ -254,31 +346,7 @@ void Lexer::advance()
     }
     else if( ch == '"' )
     {
-        ::std::string   val;
-        while( (ch = m_if.get()) != '"' )
-        {
-            if( ch == '\\' )
-            {
-                switch( (ch = m_if.get()) )
-                {
-                case '0':   val.push_back(0); break;
-                case 'n':   val.push_back(10); break;
-                case 'x': {
-                    char tmp[3] = { static_cast<char>(m_if.get()), static_cast<char>(m_if.get()), 0};
-                    val.push_back( static_cast<char>(::std::strtol(tmp, nullptr, 16)) );
-                    break; }
-                case '"':   val.push_back('"'); break;
-                case '\\':  val.push_back('\\'); break;
-                default:
-                    ::std::cerr << *this << "Unexpected escape sequence '\\" << ch << "'" << ::std::endl;
-                    throw "ERROR";
-                }
-            }
-            else
-            {
-                val.push_back(ch);
-            }
-        }
+        auto val = this->parse_string();
         m_cur = Token { TokenClass::String, ::std::move(val) };
     }
     else
@@ -304,6 +372,7 @@ void Lexer::advance()
         case '&':   m_cur = Token { TokenClass::Symbol, "&" };  break;
         case '*':   m_cur = Token { TokenClass::Symbol, "*" };  break;
         case '/':   m_cur = Token { TokenClass::Symbol, "/" };  break;
+        case '%':   m_cur = Token { TokenClass::Symbol, "%" };  break;
         case '-':   m_cur = Token { TokenClass::Symbol, "-" };  break;
         case '+':   m_cur = Token { TokenClass::Symbol, "+" };  break;
         case '^':   m_cur = Token { TokenClass::Symbol, "^" };  break;
@@ -314,7 +383,19 @@ void Lexer::advance()
 
         case '(':   m_cur = Token { TokenClass::Symbol, "(" };  break;
         case ')':   m_cur = Token { TokenClass::Symbol, ")" };  break;
-        case '<':   m_cur = Token { TokenClass::Symbol, "<" };  break;
+        case '<':
+            // Combine << (note, doesn't need to happen for >>)
+            ch = m_if.get();
+            if( ch == '<' )
+            {
+                m_cur = Token { TokenClass::Symbol, "<<" };
+            }
+            else
+            {
+                m_if.unget();
+                m_cur = Token { TokenClass::Symbol, "<" };
+            }
+            break;
         case '>':   m_cur = Token { TokenClass::Symbol, ">" };  break;
         case '[':   m_cur = Token { TokenClass::Symbol, "[" };  break;
         case ']':   m_cur = Token { TokenClass::Symbol, "]" };  break;
@@ -325,6 +406,83 @@ void Lexer::advance()
             throw "ERROR";
         }
     }
+}
+::std::string Lexer::parse_string()
+{
+    ::std::string   val;
+    char ch;
+    while( (ch = m_if.get()) != '"' )
+    {
+        if( ch == '\\' )
+        {
+            switch( (ch = m_if.get()) )
+            {
+            case '0':   val.push_back(0); break;
+            case 'n':   val.push_back(10); break;
+            case 'x': {
+                char tmp[3] = { static_cast<char>(m_if.get()), static_cast<char>(m_if.get()), 0};
+                val.push_back( static_cast<char>(::std::strtol(tmp, nullptr, 16)) );
+                } break;
+            case 'u': {
+                ch = m_if.get();
+                if( ch != '{' ) {
+                    ::std::cerr << *this << "Unexpected character in unicode escape - '" << ch << "'" << ::std::endl;
+                    throw "ERROR";
+                }
+                ch = m_if.get();
+                uint32_t v = 0;
+                do {
+                    if( !isxdigit(ch) ) {
+                        ::std::cerr << *this << "Unexpected character in unicode escape - '" << ch << "'" << ::std::endl;
+                        throw "ERROR";
+                    }
+                    v *= 16;
+                    if( ch <= '9' )
+                        v += ch - '0';
+                    else if( ch <= 'F' )
+                        v += ch - 'A' + 10;
+                    else if( ch <= 'f' )
+                        v += ch - 'a' + 10;
+                    else
+                        throw "";
+                    ch = m_if.get();
+                } while(ch != '}');
+
+                if( v < 0x80 ) {
+                    val.push_back(static_cast<char>(v));
+                }
+                else if( v < (0x1F+1)<<(1*6) ) {
+                    val += (char)(0xC0 | ((v >> 6) & 0x1F));
+                    val += (char)(0x80 | ((v >> 0) & 0x3F));
+                }
+                else if( v < (0x0F+1)<<(2*6) ) {
+                    val += (char)(0xE0 | ((v >> 12) & 0x0F));
+                    val += (char)(0x80 | ((v >>  6) & 0x3F));
+                    val += (char)(0x80 | ((v >>  0) & 0x3F));
+                }
+                else if( v < (0x07+1)<<(3*6) ) {
+                    val += (char)(0xF0 | ((v >> 18) & 0x07));
+                    val += (char)(0x80 | ((v >> 12) & 0x3F));
+                    val += (char)(0x80 | ((v >>  6) & 0x3F));
+                    val += (char)(0x80 | ((v >>  0) & 0x3F));
+                }
+                else {
+                    throw "";
+                }
+                } break;
+            case '"':   val.push_back('"'); break;
+            case '\\':  val.push_back('\\'); break;
+            default:
+                ::std::cerr << *this << "Unexpected escape sequence '\\" << ch << "'" << ::std::endl;
+                throw "ERROR";
+            }
+        }
+        else
+        {
+            val.push_back(ch);
+        }
+    }
+    return val;
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Lexer& x)

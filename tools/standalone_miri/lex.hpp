@@ -13,6 +13,7 @@ enum class TokenClass
     Integer,
     Real,
     String,
+    ByteString,
 };
 
 struct Token
@@ -43,16 +44,21 @@ class Lexer
     unsigned m_cur_line;
     ::std::ifstream m_if;
     Token   m_cur;
+    bool    m_next_valid = false;
+    Token   m_next;
 public:
     Lexer(const ::std::string& path);
 
+
     const Token& next() const;
+    const Token& lookahead();
     Token consume();
     void check(TokenClass tc);
     void check(char ch);
     void check(const char* s);
-    void check_consume(char ch) { check(ch); consume(); }
-    void check_consume(const char* s) { check(s); consume(); }
+    Token check_consume(TokenClass tc) { check(tc); return consume(); }
+    Token check_consume(char ch) { check(ch); return consume(); }
+    Token check_consume(const char* s) { check(s); return consume(); }
     bool consume_if(char ch) { if(next() == ch) { consume(); return true; } return false; }
     bool consume_if(const char* s) { if(next() == s) { consume(); return true; } return false; }
 
@@ -60,4 +66,6 @@ public:
 
 private:
     void advance();
+
+    ::std::string parse_string();
 };
