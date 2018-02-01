@@ -571,7 +571,7 @@ namespace {
             if( e.size == SIZE_MAX )
             {
                 // TODO: Ensure that this is the last item
-                ASSERT_BUG(sp, &e == &ents.back(), "Unsized item isn't the last item");
+                ASSERT_BUG(sp, &e == &ents.back(), "Unsized item isn't the last item in " << ty);
                 cur_ofs = SIZE_MAX;
             }
             else
@@ -617,12 +617,12 @@ namespace {
             }
             } break;
         TU_ARM(ty.m_data, Borrow, _te) { (void)_te;
-            out_path.sub_fields.push_back(0);
+            //out_path.sub_fields.push_back(0);
             Target_GetSizeOf(sp, resolve, ty, out_path.size);
             return true;
             } break;
         TU_ARM(ty.m_data, Function, _te) (void)_te;
-            out_path.sub_fields.push_back(0);
+            //out_path.sub_fields.push_back(0);
             Target_GetSizeOf(sp, resolve, ty, out_path.size);
             return true;
         default:

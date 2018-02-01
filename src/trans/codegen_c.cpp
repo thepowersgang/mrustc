@@ -195,8 +195,6 @@ namespace {
             bool disallow_empty_structs = false;
         } m_options;
 
-        ::std::map<::HIR::GenericPath, ::std::vector<unsigned>> m_enum_repr_cache;
-
         ::std::vector< ::std::pair< ::HIR::GenericPath, const ::HIR::Struct*> >   m_box_glue_todo;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
@@ -910,6 +908,10 @@ namespace {
                     break;
                 }
             }
+            else
+            {
+                m_of << ";\n";
+            }
 
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
@@ -998,7 +1000,7 @@ namespace {
 
         void emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
         {
-            if( path.index == repr->fields.size() - 1 )
+            if( path.index == repr->fields.size() - 1 && !repr->variants.is_NonZero() )
             {
                 m_of << ".TAG";
             }
@@ -1006,9 +1008,18 @@ namespace {
             {
                 m_of << ".DATA.var_" << path.index;
             }
+            const auto* ty = &repr->fields[path.index].ty;
             for(auto fld : path.sub_fields)
             {
+                repr = Target_GetTypeRepr(sp, m_resolve, *ty);
+                ty = &repr->fields[fld].ty;
                 m_of << "._" << fld;
+            }
+            if( const auto* te = ty->m_data.opt_Borrow() )
+            {
+                if( metadata_type(*te->inner) != MetadataType::None ) {
+                    m_of << ".PTR";
+                }
             }
         }
 
@@ -1023,9 +1034,13 @@ namespace {
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
 
             // 1. Enumerate fields with the same offset as the first (these go into a union)
+            // TODO: What if all data variants are zero-sized?
             ::std::vector<unsigned> union_fields;
             for(size_t i = 1; i < repr->fields.size(); i ++)
             {
+                // Avoid placing the tag in the union
+                if( repr->variants.is_Values() && i == repr->variants.as_Values().field.index )
+                    continue ;
                 if( repr->fields[i].offset == repr->fields[0].offset )
                 {
                     union_fields.push_back(i);
@@ -1063,7 +1078,7 @@ namespace {
                 }
                 else
                 {
-                    assert(repr->fields.back().offset != repr->fields.front().offset);
+                    //assert(repr->fields.back().offset != repr->fields.front().offset);
                     DEBUG("Tag present at offset " << repr->fields.back().offset << " - " << repr->fields.back().ty);
 
                     m_of << "\t";
@@ -1078,6 +1093,15 @@ namespace {
                 m_of << "\t";
                 emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
                 m_of << ";\n";
+            }
+            else if( repr->fields.size() == 0 )
+            {
+                // Empty/un-constructable
+                // - Shouldn't be emitted really?
+                if( m_options.disallow_empty_structs )
+                {
+                    m_of << "\tchar _d;\n";
+                }
             }
             else
             {
@@ -1115,11 +1139,11 @@ namespace {
             {
                 unsigned idx = 1 - e->zero_variant;
                 // TODO: Fat pointers?
-                m_of << "\tif( rv"; emit_enum_path(repr, e->field); m_of << "!= 0 ) {\n";
-                emit_destructor_call( ::MIR::LValue::make_Field({ box$(self), idx }), repr->fields[idx].ty, false, 2 );
+                m_of << "\tif( (*rv)"; emit_enum_path(repr, e->field); m_of << " != 0 ) {\n";
+                emit_destructor_call( ::MIR::LValue::make_Downcast({ box$(self), idx }), repr->fields[idx].ty, false, 2 );
                 m_of << "\t}\n";
             }
-            else if( repr->fields.size() == 1 )
+            else if( repr->fields.size() <= 1 )
             {
                 // Value enum
                 // Glue does nothing (except call the destructor, if there is one)
@@ -1159,6 +1183,7 @@ namespace {
 
             auto p = path.clone();
             p.m_path.m_components.pop_back();
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ::HIR::TypeRef::new_path(p.clone(), &item));
 
             ASSERT_BUG(sp, item.m_data.is_Data(), "");
             const auto& var = item.m_data.as_Data().at(var_idx);
@@ -1176,39 +1201,33 @@ namespace {
                 emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
             }
             m_of << ") {\n";
-            auto it = m_enum_repr_cache.find(p);
-            if( it != m_enum_repr_cache.end() )
-            {
-                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { _0 };\n";
-            }
-            else
-            {
-                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx;
 
-                if( e.empty() )
+            //if( repr->variants.
+            m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx;
+
+            if( e.empty() )
+            {
+                if( m_options.disallow_empty_structs )
                 {
-                    if( m_options.disallow_empty_structs )
-                    {
-                        m_of << ", .DATA = { .var_" << var_idx << " = {0} }";
-                    }
-                    else
-                    {
-                        // No fields, don't initialise
-                    }
+                    m_of << ", .DATA = { .var_" << var_idx << " = {0} }";
                 }
                 else
                 {
-                    m_of << ", .DATA = { .var_" << var_idx << " = {";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        if(i != 0)
-                        m_of << ",";
-                        m_of << "\n\t\t_" << i;
-                    }
-                    m_of << "\n\t\t}";
+                    // No fields, don't initialise
                 }
-                m_of << " }};\n";
             }
+            else
+            {
+                m_of << ", .DATA = { .var_" << var_idx << " = {";
+                for(unsigned int i = 0; i < e.size(); i ++)
+                {
+                    if(i != 0)
+                    m_of << ",";
+                    m_of << "\n\t\t_" << i;
+                }
+                m_of << "\n\t\t}";
+            }
+            m_of << " }};\n";
             m_of << "\treturn rv;\n";
             m_of << "}\n";
         }
@@ -1369,7 +1388,7 @@ namespace {
                         MIR_TODO(*m_mir_res, "Union literals");
                         ),
                     (Enum,
-                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "");
+                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "Getting inner type of a non-Data enum");
                         const auto& evar = pbe->m_data.as_Data().at(var);
                         return monomorph_with(pp, evar.type);
                         )
@@ -1403,15 +1422,19 @@ namespace {
             (Variant,
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
                 const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
-                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                if( it != m_enum_repr_cache.end() )
+                if( const auto* ve = repr->variants.opt_NonZero() )
                 {
-                    if( e.idx == 0 ) {
+                    if( e.idx == ve->zero_variant )
+                    {
                         m_of << "{0}";
                     }
-                    else {
+                    else
+                    {
+                        m_of << "{ { .var_" << e.idx << " = ";
                         emit_literal(get_inner_type(e.idx, 0), *e.val, params);
+                        m_of << " } }";
                     }
                 }
                 else if( enm.is_value() )
@@ -1421,10 +1444,10 @@ namespace {
                 }
                 else
                 {
-                    m_of << "{" << e.idx;
-                    m_of << ", { .var_" << e.idx << " = ";
+                    m_of << "{";
+                    m_of << " { .var_" << e.idx << " = ";
                     emit_literal(get_inner_type(e.idx, 0), *e.val, params);
-                    m_of << " }";
+                    m_of << " }, .TAG = " << e.idx;
                     m_of << "}";
                 }
                 ),
@@ -1747,7 +1770,7 @@ namespace {
                     else if( item.m_linkage.name == "CopyFileExW" )
                     {
                         // Not field access to undo an Option<fn()>
-                        m_of << "\treturn CopyFileExW(arg0, arg1, arg2._1._0, arg3, arg4, arg5);\n";
+                        m_of << "\treturn CopyFileExW(arg0, arg1, arg2.DATA.var_1._0, arg3, arg4, arg5);\n";
                     }
                     // BUG: libtest defines this as returning an i32, but it's void
                     else if( item.m_linkage.name == "GetSystemInfo" )
@@ -2489,20 +2512,19 @@ namespace {
                     {
                         ::HIR::TypeRef  tmp;
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+                        auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
 
-                        auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                        if( it != m_enum_repr_cache.end() )
+                        if( const auto* re = repr->variants.opt_NonZero() )
                         {
-                            if( ve.index == 0 ) {
+                            MIR_ASSERT(*m_mir_res, ve.index < 2, "");
+                            if( ve.index == re->zero_variant ) {
                                 // TODO: Use nonzero_path
                                 m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
                             }
-                            else if( ve.index == 1 ) {
-                                emit_lvalue(e.dst);
-                                m_of << "._1 = ";
-                                emit_param(ve.val);
-                            }
                             else {
+                                emit_lvalue(e.dst);
+                                m_of << ".DATA.var_" << ve.index << " = ";
+                                emit_param(ve.val);
                             }
                             break;
                         }
@@ -2727,12 +2749,12 @@ namespace {
             if( const auto* e = repr->variants.opt_NonZero() )
             {
                 MIR_ASSERT(mir_res, n_arms == 2, "NonZero optimised switch without two arms");
-                m_of << indent << "if( "; emit_lvalue(val); emit_enum_path(repr, e->field); m_of << " != 0)\n";
-                m_of << indent;
+                m_of << indent << "if( "; emit_lvalue(val); emit_enum_path(repr, e->field); m_of << " != 0 )\n";
+                m_of << indent << "\t";
                 cb(1 - e->zero_variant);
                 m_of << "\n";
                 m_of << indent << "else\n";
-                m_of << indent;
+                m_of << indent << "\t";
                 cb(e->zero_variant);
                 m_of << "\n";
             }
@@ -4381,18 +4403,7 @@ namespace {
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
                 if( ty.m_data.as_Path().binding.is_Enum() )
                 {
-                    auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                    if( it != m_enum_repr_cache.end() )
-                    {
-                        MIR_ASSERT(*m_mir_res, e.variant_index == 1, "");
-                        // NOTE: Downcast returns a magic tuple
-                        m_of << "._1";
-                        break ;
-                    }
-                    else
-                    {
-                        m_of << ".DATA";
-                    }
+                    m_of << ".DATA";
                 }
                 m_of << ".var_" << e.variant_index;
                 )
