@@ -71,6 +71,13 @@ namespace
     }
     ::std::ostream& operator<<(::std::ostream& os, const Fmt<::MIR::Constant>& x)
     {
+        struct H {
+            static uint64_t double_to_u64(double v) {
+                uint64_t    rv;
+                ::std::memcpy(&rv, &v, sizeof(double));
+                return rv;
+            }
+        };
         const auto& e = x.e;
         switch(e.tag())
         {
@@ -83,7 +90,7 @@ namespace
             break;
         TU_ARM(e, Float, v) {
             // TODO: Infinity/nan/...
-            auto vi = *reinterpret_cast<const uint64_t*>(&v.v);
+            auto vi = H::double_to_u64(v.v);
             bool sign = (vi & (1ull << 63)) != 0;
             int exp = (vi >> 52) & 0x7FF;
             uint64_t frac = vi & ((1ull << 52) - 1);
@@ -222,7 +229,6 @@ namespace
 
                     m_of << "type " << ty << " {\n";
                     m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
-                    size_t  ofs = 0;
                     for(const auto& e : repr->fields)
                     {
                         m_of << "\t" << e.offset << " = " << e.ty << ";\n";
@@ -277,7 +283,6 @@ namespace
             MIR_ASSERT(*m_mir_res, repr, "No repr for struct " << ty);
             m_of << "type " << p << " {\n";
             m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
-            size_t  ofs = 0;
             for(const auto& e : repr->fields)
             {
                 m_of << "\t" << e.offset << " = " << e.ty << ";\n";
@@ -362,7 +367,6 @@ namespace
             MIR_ASSERT(*m_mir_res, repr, "No repr for union " << ty);
             m_of << "type " << p << " {\n";
             m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
-            size_t  ofs = 0;
             for(const auto& e : repr->fields)
             {
                 m_of << "\t" << e.offset << " = " << e.ty << ";\n";
@@ -407,7 +411,6 @@ namespace
             MIR_ASSERT(*m_mir_res, repr, "No repr for enum " << ty);
             m_of << "type " << p << " {\n";
             m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
-            size_t  ofs = 0;
             for(const auto& e : repr->fields)
             {
                 m_of << "\t" << e.offset << " = " << e.ty << ";\n";

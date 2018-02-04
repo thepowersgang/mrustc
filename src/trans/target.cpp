@@ -66,6 +66,13 @@ namespace
                 ARCH_ARM32
                 };
         }
+        else if(target_name == "i586-windows-gnu")
+        {
+            return TargetSpec {
+                "windows", "windows", "gnu", CodegenMode::Gnu11, "mingw32",
+                ARCH_X86
+            };
+        }
         else if(target_name == "x86_64-windows-gnu")
         {
             return TargetSpec {
@@ -750,17 +757,17 @@ namespace {
                 }
                 else if( e.variants.size() == 1 ) {
                 }
-                else if( e.variants.size() <= 255 ) {
-                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U8 });
+                else if( e.variants.size() <= 128 ) {
+                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I8 });
                 }
-                else if( e.variants.size() <= 0xFFFF ) {
-                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U16 });
+                else if( e.variants.size() <= 0x7FFF ) {
+                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I16 });
                 }
-                else if( e.variants.size() <= 0xFFFFFFFF ) {
-                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U32 });
+                else if( e.variants.size() <= 0x7FFFFFFF ) {
+                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I32 });
                 }
                 else {
-                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U64 });
+                    rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I64 });
                 }
                 break;
             case ::HIR::Enum::Repr::U8:
@@ -869,4 +876,15 @@ const TypeRepr* Target_GetTypeRepr(const Span& sp, const StaticTraitResolve& res
 
     auto ires = s_cache.insert(::std::make_pair( ty.clone(), make_type_repr(sp, resolve, ty) ));
     return ires.first->second.get();
+}
+const ::HIR::TypeRef& Target_GetInnerType(const Span& sp, const StaticTraitResolve& resolve, const TypeRepr& repr, size_t idx, const ::std::vector<size_t>& sub_fields, size_t ofs)
+{
+    const auto& ty = repr.fields.at(idx).ty;
+    if( sub_fields.size() == ofs )
+    {
+        return ty;
+    }
+    const auto* inner_repr = Target_GetTypeRepr(sp, resolve, ty);
+    ASSERT_BUG(sp, inner_repr, "No inner repr for " << ty);
+    return Target_GetInnerType(sp, resolve, *inner_repr, sub_fields[ofs], sub_fields, ofs+1);
 }

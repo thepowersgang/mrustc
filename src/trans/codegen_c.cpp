@@ -209,6 +209,10 @@ namespace {
             case CodegenMode::Gnu11:
                 m_compiler = Compiler::Gcc;
                 m_options.emulated_i128 = false;
+                if( Target_GetCurSpec().m_arch.m_pointer_bits < 64 )
+                {
+                    m_options.emulated_i128 = true;
+                }
                 break;
             case CodegenMode::Msvc:
                 m_compiler = Compiler::Msvc;
@@ -273,8 +277,6 @@ namespace {
             {
             case Compiler::Gcc:
                 m_of
-                    << "typedef unsigned __int128 uint128_t;\n"
-                    << "typedef signed __int128 int128_t;\n"
                     << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                     << "#define ALIGNOF(t) __alignof__(t)\n"
                     ;
@@ -367,22 +369,15 @@ namespace {
                 m_of
                     << "typedef struct { uint64_t lo, hi; } uint128_t;\n"
                     << "typedef struct { uint64_t lo, hi; } int128_t;\n"
-                    << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
-                    << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
-                    << "static inline int128_t sub128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
-                    << "static inline int128_t mul128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "static inline int128_t div128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "static inline int128_t mod128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "static inline int128_t and128s(int128_t a, int128_t b) { int128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
-                    << "static inline int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
-                    << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
-                    << "static inline int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
-                    << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
                     << "static inline uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
-                    << "static inline uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
-                    << "static inline uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
-                    << "static inline uint128_t mul128(uint128_t a, uint128_t b) { abort(); }\n"
-                    << "static inline uint128_t div128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
+                    << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
+                    << "static inline bool mul128_o(uint128_t a, uint128_t b, uint128_t* o) { abort(); }\n"
+                    << "static inline bool div128_o(uint128_t a, uint128_t b, uint128_t* o) { abort(); }\n"
+                    << "static inline uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; add128_o(a, b, &v); return v; }\n"
+                    << "static inline uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; sub128_o(a, b, &v); return v; }\n"
+                    << "static inline uint128_t mul128(uint128_t a, uint128_t b) { uint128_t v; mul128_o(a, b, &v); return v; }\n"
+                    << "static inline uint128_t div128(uint128_t a, uint128_t b) { uint128_t v; div128_o(a, b, &v); return v; }\n"
                     << "static inline uint128_t mod128(uint128_t a, uint128_t b) { abort(); }\n"
                     << "static inline uint128_t and128(uint128_t a, uint128_t b) { uint128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
                     << "static inline uint128_t or128 (uint128_t a, uint128_t b) { uint128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
@@ -399,12 +394,25 @@ namespace {
                     << "\tuint128_t rv = { (v.lo == 0 ? (v.hi == 0 ? 128 : __builtin_ctz64(v.hi) + 64) : __builtin_ctz64(v.lo)), 0 };\n"
                     << "\treturn rv;\n"
                     << "}\n"
+                    << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
+                    << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
+                    << "static inline int128_t sub128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
+                    << "static inline int128_t mul128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t div128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t mod128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t and128s(int128_t a, int128_t b) { int128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
+                    << "static inline int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
+                    << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
+                    << "static inline int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
+                    << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
                     ;
             }
             else
             {
                 // GCC-only
                 m_of
+                    << "typedef unsigned __int128 uint128_t;\n"
+                    << "typedef signed __int128 int128_t;\n"
                     << "static inline uint128_t __builtin_bswap128(uint128_t v) {\n"
                     << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
                     << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
@@ -498,7 +506,11 @@ namespace {
 
             // Execute $CC with the required libraries
             StringList  args;
+#ifdef _WIN32
+            bool is_windows = true;
+#else
             bool is_windows = false;
+#endif
             switch( m_compiler )
             {
             case Compiler::Gcc:
@@ -561,7 +573,6 @@ namespace {
                 }
                 break;
             case Compiler::Msvc:
-                is_windows = true;
                 // TODO: Look up these paths in the registry and use CreateProcess instead of system
                 args.push_back(detect_msvc().path_vcvarsall);
                 args.push_back( Target_GetCurSpec().m_c_compiler );
@@ -862,6 +873,7 @@ namespace {
             ::std::vector<unsigned> fields;
             for(const auto& ent : repr->fields)
             {
+                (void)ent;
                 fields.push_back(fields.size());
             }
             ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
@@ -2760,10 +2772,46 @@ namespace {
             }
             else if( const auto* e = repr->variants.opt_Values() )
             {
+                const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, e->field.index, e->field.sub_fields);
+                bool is_signed = false;
+                switch(tag_ty.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::I8:
+                case ::HIR::CoreType::I16:
+                case ::HIR::CoreType::I32:
+                case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::Isize:
+                    is_signed = true;
+                    break;
+                case ::HIR::CoreType::Bool:
+                case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Usize:
+                case ::HIR::CoreType::Char:
+                    is_signed = false;
+                    break;
+                case ::HIR::CoreType::I128: // TODO: Emulation
+                case ::HIR::CoreType::U128: // TODO: Emulation
+                    break;
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    MIR_TODO(mir_res, "Floating point enum tag.");
+                    break;
+                case ::HIR::CoreType::Str:
+                    MIR_BUG(mir_res, "Unsized tag?!");
+                }
                 m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
                 for(size_t j = 0; j < n_arms; j ++)
                 {
-                    m_of << indent << "case " << e->values[j] << ": ";
+                    // TODO: Get type of this field and check if it's signed.
+                    if( is_signed ) {
+                        m_of << indent << "case " << static_cast<int64_t>(e->values[j]) << ": ";
+                    }
+                    else {
+                        m_of << indent << "case " << e->values[j] << ": ";
+                    }
                     cb(j);
                     m_of << "\n";
                 }
@@ -2934,6 +2982,9 @@ namespace {
                     if (::std::strcmp(r, "{eax}") == 0 || ::std::strcmp(r, "{rax}") == 0) {
                         return "a";
                     }
+                    else if (::std::strcmp(r, "{ecx}") == 0 || ::std::strcmp(r, "{rcx}") == 0) {
+                        return "c";
+                    }
                     else {
                         return r;
                     }
@@ -2966,6 +3017,8 @@ namespace {
                     m_of << "%";
                 else if (*it == '%' && !isdigit(*(it + 1)))
                     m_of << "%%";
+                else if (*it == '$' && isdigit(*(it + 1)) && *(it + 2) != 'x')
+                    m_of << "%";
                 else
                     m_of << *it;
             }
@@ -2983,14 +3036,14 @@ namespace {
                 default:    MIR_TODO(mir_res, "Handle asm! output leader '" << v.first[0] << "'");
                 }
                 m_of << H::convert_reg(v.first.c_str() + 1);
-                m_of << "\"("; emit_lvalue(v.second); m_of << ")";
+                m_of << "\" ("; emit_lvalue(v.second); m_of << ")";
             }
             m_of << ": ";
             for (unsigned int i = 0; i < e.inputs.size(); i++)
             {
                 const auto& v = e.inputs[i];
                 if (i != 0)    m_of << ", ";
-                m_of << "\"" << v.first << "\"("; emit_lvalue(v.second); m_of << ")";
+                m_of << "\"" << H::convert_reg(v.first.c_str()) << "\" ("; emit_lvalue(v.second); m_of << ")";
             }
             m_of << ": ";
             for (unsigned int i = 0; i < e.clobbers.size(); i++)
@@ -3620,59 +3673,146 @@ namespace {
             // Overflowing Arithmatic
             // HACK: Uses GCC intrinsics
             else if( name == "add_with_overflow" ) {
-                switch(m_compiler)
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
                 {
-                case Compiler::Gcc:
-                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow";
+                    emit_lvalue(e.ret_val); m_of << "._1 = add128_o";
                     m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                    break;
-                case Compiler::Msvc:
-                    emit_lvalue(e.ret_val); m_of << "._1 = _addcarry_u" << get_prim_size(params.m_types.at(0));
-                    m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                    break;
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    emit_lvalue(e.ret_val); m_of << "._1 = add128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                }
+                else
+
+                {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    case Compiler::Msvc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = _addcarry_u" << get_prim_size(params.m_types.at(0));
+                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    }
                 }
             }
             else if( name == "sub_with_overflow" ) {
-                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
+                {
+                    emit_lvalue(e.ret_val); m_of << "._1 = sub128_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    emit_lvalue(e.ret_val); m_of << "._1 = sub128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                }
+                else
+                {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    case Compiler::Msvc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = _subcarry_u" << get_prim_size(params.m_types.at(0));
+                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    }
+                }
             }
             else if( name == "mul_with_overflow" ) {
-                switch(m_compiler)
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
                 {
-                case Compiler::Gcc:
-                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_param(e.args.at(0));
-                        m_of << ", "; emit_param(e.args.at(1));
-                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                    break;
-                case Compiler::Msvc:
-                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow_" << params.m_types.at(0);
+                    emit_lvalue(e.ret_val); m_of << "._1 = mul128_o";
                     m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                    break;
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    emit_lvalue(e.ret_val); m_of << "._1 = mul128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                }
+                else
+                {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_param(e.args.at(0));
+                            m_of << ", "; emit_param(e.args.at(1));
+                            m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    case Compiler::Msvc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow_" << params.m_types.at(0);
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    }
                 }
             }
             else if( name == "overflowing_add" ) {
-                switch(m_compiler)
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
                 {
-                case Compiler::Gcc:
-                    m_of << "__builtin_add_overflow";
+                    m_of << "add128_o";
                     m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                    break;
-                case Compiler::Msvc:
-                    m_of << "_addcarry_u" << get_prim_size(params.m_types.at(0));
-                    m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                    break;
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    m_of << "add128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else
+                {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        m_of << "__builtin_add_overflow";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        break;
+                    case Compiler::Msvc:
+                        m_of << "_addcarry_u" << get_prim_size(params.m_types.at(0));
+                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        break;
+                    }
                 }
             }
             else if( name == "overflowing_sub" ) {
-                m_of << "__builtin_sub_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
+                {
+                    m_of << "sub128_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    m_of << "sub128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else
+                {
+                    m_of << "__builtin_sub_overflow("; emit_param(e.args.at(0));
+                        m_of << ", "; emit_param(e.args.at(1));
+                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
             }
             else if( name == "overflowing_mul" ) {
-                m_of << "__builtin_mul_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
+                {
+                    m_of << "mul128_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    m_of << "mul128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else
+                {
+                    m_of << "__builtin_mul_overflow("; emit_param(e.args.at(0));
+                        m_of << ", "; emit_param(e.args.at(1));
+                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
             }
             // Unchecked Arithmatic
             else if( name == "unchecked_div" ) {
@@ -4234,7 +4374,37 @@ namespace {
                     }
                     } break;
                 TU_ARM(repr->variants, Values, ve) {
-                    emit_dst(); emit_enum_path(repr, ve.field); m_of << " = " << ve.values[e.idx];
+                    const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, ve.field.index, ve.field.sub_fields);
+                    emit_dst(); emit_enum_path(repr, ve.field); m_of << " = ";
+                    switch(tag_ty.m_data.as_Primitive())
+                    {
+                    case ::HIR::CoreType::I8:
+                    case ::HIR::CoreType::I16:
+                    case ::HIR::CoreType::I32:
+                    case ::HIR::CoreType::I64:
+                    case ::HIR::CoreType::Isize:
+                        m_of << static_cast<int64_t>(ve.values[e.idx]);
+                        break;
+                    case ::HIR::CoreType::Bool:
+                    case ::HIR::CoreType::U8:
+                    case ::HIR::CoreType::U16:
+                    case ::HIR::CoreType::U32:
+                    case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::Usize:
+                    case ::HIR::CoreType::Char:
+                        m_of << ve.values[e.idx];
+                        break;
+                    case ::HIR::CoreType::I128: // TODO: Emulation
+                    case ::HIR::CoreType::U128: // TODO: Emulation
+                        MIR_TODO(*m_mir_res, "Emulated i128 tag");
+                        break;
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
+                        MIR_TODO(*m_mir_res, "Floating point enum tag.");
+                        break;
+                    case ::HIR::CoreType::Str:
+                        MIR_BUG(*m_mir_res, "Unsized tag?!");
+                    }
                     if( TU_TEST1((*e.val), List, .empty() == false) )
                     {
                         m_of << ";\n\t";

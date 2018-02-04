@@ -103,3 +103,5 @@ extern const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitR
 
 extern const TypeRepr* Target_GetTypeRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty);
 
+extern const ::HIR::TypeRef& Target_GetInnerType(const Span& sp, const StaticTraitResolve& resolve, const TypeRepr& repr, size_t idx, const ::std::vector<size_t>& sub_fields={}, size_t ofs=0);
+
