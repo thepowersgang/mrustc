@@ -276,6 +276,7 @@ const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitResolve&
 
 bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
+    TRACE_FUNCTION_FR(ty, "size=" << out_size << ", align=" << out_align);
     TU_MATCHA( (ty.m_data), (te),
     (Infer,
         BUG(sp, "sizeof on _ type");
@@ -362,20 +363,19 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         BUG(sp, "sizeof on an erased type - shouldn't exist");
         ),
     (Array,
-        size_t  size;
-        if( !Target_GetSizeAndAlignOf(sp, resolve, *te.inner, size,out_align) )
+        if( !Target_GetSizeAndAlignOf(sp, resolve, *te.inner, out_size,out_align) )
             return false;
-        if( size == SIZE_MAX )
+        if( out_size == SIZE_MAX )
             BUG(sp, "Unsized type in array - " << ty);
-        if( te.size_val == 0 )
+        if( te.size_val == 0 || out_size == 0 )
         {
-            size = 0;
+            out_size = 0;
         }
         else
         {
-            if( SIZE_MAX / te.size_val <= size )
+            if( SIZE_MAX / te.size_val <= out_size )
                 BUG(sp, "Integer overflow calculating array size");
-            size *= te.size_val;
+            out_size *= te.size_val;
         }
         return true;
         ),
