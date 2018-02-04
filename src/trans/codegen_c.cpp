@@ -877,15 +877,15 @@ namespace {
                 fields.push_back(fields.size());
             }
             ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
-            for(const auto fld : fields)
+            for(unsigned fld : fields)
             {
                 m_of << "\t";
                 const auto& ty = repr->fields[fld].ty;
                 
-                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
-                    emit_ctype( *te.inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
+                if( const auto* te = ty.m_data.opt_Slice() ) {
+                    emit_ctype( *te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
                     has_unsized = true;
-                )
+                }
                 else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, te,
                     m_of << "unsigned char _" << fld << "[0]";
                     has_unsized = true;
@@ -924,6 +924,7 @@ namespace {
             {
                 m_of << ";\n";
             }
+            (void)has_unsized;
 
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
@@ -1195,7 +1196,7 @@ namespace {
 
             auto p = path.clone();
             p.m_path.m_components.pop_back();
-            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ::HIR::TypeRef::new_path(p.clone(), &item));
+            //const auto* repr = Target_GetTypeRepr(sp, m_resolve, ::HIR::TypeRef::new_path(p.clone(), &item));
 
             ASSERT_BUG(sp, item.m_data.is_Data(), "");
             const auto& var = item.m_data.as_Data().at(var_idx);
