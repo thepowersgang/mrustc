@@ -1437,7 +1437,11 @@ namespace {
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
                 const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
                 const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
-                if( const auto* ve = repr->variants.opt_NonZero() )
+                if( repr->variants.is_None() )
+                {
+                    m_of << "{}";
+                }
+                else if( const auto* ve = repr->variants.opt_NonZero() )
                 {
                     if( e.idx == ve->zero_variant )
                     {
@@ -2527,7 +2531,11 @@ namespace {
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
                         auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
 
-                        if( const auto* re = repr->variants.opt_NonZero() )
+                        if( repr->variants.is_None() )
+                        {
+                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_param(ve.val);
+                        }
+                        else if( const auto* re = repr->variants.opt_NonZero() )
                         {
                             MIR_ASSERT(*m_mir_res, ve.index < 2, "");
                             if( ve.index == re->zero_variant ) {

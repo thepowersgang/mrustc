@@ -729,7 +729,14 @@ namespace {
                 {
                     vals.push_back(i);
                 }
-                rv.variants = TypeRepr::VariantMode::make_Values({ { mono_types.size(), tag_size, {} }, ::std::move(vals) });
+                if( vals.size() > 1 )
+                {
+                    rv.variants = TypeRepr::VariantMode::make_Values({ { mono_types.size(), tag_size, {} }, ::std::move(vals) });
+                }
+                else
+                {
+                    // Leave the enum with NoVariants
+                }
                 if( max_align > 0 )
                 {
                     rv.size = (max_size + tag_size);
@@ -755,8 +762,7 @@ namespace {
             case ::HIR::Enum::Repr::Rust:
                 if( e.variants.size() == 0 ) {
                 }
-                else if( e.variants.size() == 1 ) {
-                }
+                // NOTE: Even with 1 variant, we need to save the value
                 else if( e.variants.size() <= 128 ) {
                     rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I8 });
                 }
