@@ -84,7 +84,7 @@ int main(int argc, const char* argv[])
         build_opts.build_script_overrides = ::std::move(bs_override_dir);
         build_opts.output_dir = opts.output_directory ? ::helpers::path(opts.output_directory) : ::helpers::path("output");
         build_opts.lib_search_dirs.reserve(opts.lib_search_dirs.size());
-	build_opts.target_name = opts.target;
+        build_opts.target_name = opts.target;
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
         Debug_SetPhase("Enumerate Build");
@@ -207,6 +207,9 @@ int ProgramOptions::parse(int argc, const char* argv[])
                     return 1;
                 }
                 this->target = argv[++i];
+            }
+            else if( ::std::strcmp(arg, "--pause") == 0 ) {
+                this->pause_before_quit = true;
             }
             else {
                 ::std::cerr << "Unknown flag " << arg << ::std::endl;
