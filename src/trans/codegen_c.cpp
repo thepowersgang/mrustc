@@ -1013,7 +1013,7 @@ namespace {
 
         void emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
         {
-            if( path.index == repr->fields.size() - 1 && !repr->variants.is_NonZero() )
+            if( TU_TEST1(repr->variants, Values, .field.index == path.index) )
             {
                 m_of << ".TAG";
             }
@@ -1101,11 +1101,23 @@ namespace {
             }
             else if( repr->fields.size() == 1 )
             {
-                // Tag only.
-                // - A value-only enum.
-                m_of << "\t";
-                emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
-                m_of << ";\n";
+                if( repr->variants.is_Values() )
+                {
+                    // Tag only.
+                    // - A value-only enum.
+                    m_of << "\t";
+                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
+                    m_of << ";\n";
+                }
+                else
+                {
+                    m_of << "\tunion {\n";
+                    m_of << "\t\t";
+                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "var_0"));
+                    m_of << ";\n";
+                    m_of << "\t} DATA;\n";
+                    // No tag
+                }
             }
             else if( repr->fields.size() == 0 )
             {
@@ -1196,7 +1208,7 @@ namespace {
 
             auto p = path.clone();
             p.m_path.m_components.pop_back();
-            //const auto* repr = Target_GetTypeRepr(sp, m_resolve, ::HIR::TypeRef::new_path(p.clone(), &item));
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ::HIR::TypeRef::new_path(p.clone(), &item));
 
             ASSERT_BUG(sp, item.m_data.is_Data(), "");
             const auto& var = item.m_data.as_Data().at(var_idx);
@@ -1216,13 +1228,24 @@ namespace {
             m_of << ") {\n";
 
             //if( repr->variants.
-            m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx;
+            m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = {";
+            switch(repr->variants.tag())
+            {
+            case TypeRepr::VariantMode::TAGDEAD:    throw "";
+            TU_ARM(repr->variants, Values, ve)
+                m_of << " .TAG = " << ve.values[var_idx] << ",";
+                break;
+            TU_ARM(repr->variants, NonZero, ve)
+                break;
+            TU_ARM(repr->variants, None, ve)
+                break;
+            }
 
             if( e.empty() )
             {
                 if( m_options.disallow_empty_structs )
                 {
-                    m_of << ", .DATA = { .var_" << var_idx << " = {0} }";
+                    m_of << " .DATA = { .var_" << var_idx << " = {0} }";
                 }
                 else
                 {
@@ -1231,7 +1254,7 @@ namespace {
             }
             else
             {
-                m_of << ", .DATA = { .var_" << var_idx << " = {";
+                m_of << " .DATA = { .var_" << var_idx << " = {";
                 for(unsigned int i = 0; i < e.size(); i ++)
                 {
                     if(i != 0)
@@ -1464,7 +1487,8 @@ namespace {
                     m_of << "{";
                     m_of << " { .var_" << e.idx << " = ";
                     emit_literal(get_inner_type(e.idx, 0), *e.val, params);
-                    m_of << " }, .TAG = " << e.idx;
+                    m_of << " }";
+                    m_of << ", .TAG = " << repr->variants.as_Values().values[e.idx];
                     m_of << "}";
                 }
                 ),
@@ -2533,7 +2557,7 @@ namespace {
 
                         if( repr->variants.is_None() )
                         {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_param(ve.val);
+                            emit_lvalue(e.dst); m_of << ".DATA.var_0 = "; emit_param(ve.val);
                         }
                         else if( const auto* re = repr->variants.opt_NonZero() )
                         {
@@ -2555,7 +2579,7 @@ namespace {
                         }
                         else
                         {
-                            emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
+                            emit_lvalue(e.dst); m_of << ".TAG = " << repr->variants.as_Values().values[ve.index] << ";\n\t";
                             emit_lvalue(e.dst); m_of << ".DATA";
                             m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
                         }
@@ -2827,9 +2851,13 @@ namespace {
                 m_of << indent << "default: abort();\n";
                 m_of << indent << "}\n";
             }
+            else if( repr->variants.is_None() )
+            {
+                m_of << indent; cb(0); m_of << "\n";
+            }
             else
             {
-                BUG(sp, "");
+                BUG(sp, "Unexpected variant type - " << repr->variants.tag_str());
             }
         }
         void emit_term_switchvalue(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, const ::MIR::SwitchValues& values, unsigned indent_level, ::std::function<void(size_t)> cb)

@@ -1983,6 +1983,8 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     // - Remove calls to `size_of` and `align_of` (replace with value if known)
     for(auto& bb : fcn.blocks)
     {
+        state.set_cur_stmt_term(bb);
+        MIR_DEBUG(state, bb.terminator);
         if( !bb.terminator.is_Call() )
             continue ;
         auto& te = bb.terminator.as_Call();
@@ -1994,6 +1996,19 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             size_t size_val = 0;
             if( Target_GetSizeOf(state.sp, state.m_resolve, tef.params.m_types.at(0), size_val) )
             {
+                DEBUG("size_of = " << size_val);
+                auto val = ::MIR::Constant::make_Uint({ size_val, ::HIR::CoreType::Usize });
+                bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
+                bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+                changed = true;
+            }
+        }
+        else if( tef.name == "size_of_val" )
+        {
+            size_t size_val = 0, tmp;
+            if( Target_GetSizeAndAlignOf(state.sp, state.m_resolve, tef.params.m_types.at(0), size_val, tmp) && size_val != SIZE_MAX )
+            {
+                DEBUG("size_of_val = " << size_val);
                 auto val = ::MIR::Constant::make_Uint({ size_val, ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
                 bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
@@ -2005,6 +2020,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             size_t align_val = 0;
             if( Target_GetAlignOf(state.sp, state.m_resolve, tef.params.m_types.at(0), align_val) )
             {
+                DEBUG("align_of = " << align_val);
                 auto val = ::MIR::Constant::make_Uint({ align_val, ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
                 bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);

@@ -227,6 +227,7 @@ public:
     struct ValueVariant {
         ::std::string   name;
         ::HIR::ExprPtr  expr;
+        // TODO: Signed.
         uint64_t val;
     };
     TAGGED_UNION(Class, Data,

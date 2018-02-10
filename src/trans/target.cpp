@@ -588,6 +588,7 @@ namespace {
         }
         if( !packed && cur_ofs != SIZE_MAX )
         {
+            // Size must be a multiple of alignment
             while( cur_ofs % max_align != 0 )
             {
                 cur_ofs ++;
@@ -705,6 +706,14 @@ namespace {
                     max_align = ::std::max(max_align, align);
                     rv.fields.push_back(TypeRepr::Field { 0, mv$(t) });
                 }
+                DEBUG("max_size = " << max_size << ", max_align = " << max_align);
+                // HACK: This is required for the C backend, because the union that contains the enum variants is
+                // padded out to align.
+                if(max_size > 0)
+                {
+                    while(max_size % max_align)
+                        max_size ++;
+                }
                 size_t tag_size = 0;
                 // TODO: repr(C) enums
                 if( mono_types.size() == 0 ) {
@@ -716,12 +725,14 @@ namespace {
                 else if( mono_types.size() <= 255 ) {
                     rv.fields.push_back(TypeRepr::Field { max_size, ::HIR::CoreType::U8 });
                     tag_size = 1;
+                    DEBUG("u8 data tag");
                 }
                 else {
                     ASSERT_BUG(sp, mono_types.size() <= 0xFFFF, "");
                     while(max_size % 2) max_size ++;
                     rv.fields.push_back(TypeRepr::Field { max_size, ::HIR::CoreType::U16 });
                     tag_size = 2;
+                    DEBUG("u16 data tag");
                 }
                 max_align = ::std::max(max_align, tag_size);
                 ::std::vector<uint64_t> vals;
@@ -739,6 +750,7 @@ namespace {
                 }
                 if( max_align > 0 )
                 {
+                    // Size must be a multiple of alignment
                     rv.size = (max_size + tag_size);
                     while(rv.size % max_align)
                         rv.size ++;
@@ -759,23 +771,47 @@ namespace {
                 // No auto-sizing, just i32?
                 rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U32 });
                 break;
-            case ::HIR::Enum::Repr::Rust:
-                if( e.variants.size() == 0 ) {
+            case ::HIR::Enum::Repr::Rust: {
+                int pow8 = 0;
+                for( const auto& v : e.variants )
+                {
+                    auto v2 = static_cast<int64_t>(v.val);
+                    if( -0x80 <= v2 && v2 < 0x80 )
+                    {
+                        pow8 = ::std::max(pow8, 1);
+                    }
+                    else if( -0x8000 <= v2 && v2 < 0x8000 )
+                    {
+                        pow8 = ::std::max(pow8, 2);
+                    }
+                    else if( -0x80000000 <= v2 && v2 < 0x80000000 )
+                    {
+                        pow8 = ::std::max(pow8, 3);
+                    }
+                    else
+                    {
+                        pow8 = 4;
+                    }
                 }
-                // NOTE: Even with 1 variant, we need to save the value
-                else if( e.variants.size() <= 128 ) {
+                switch(pow8)
+                {
+                case 0: break;
+                case 1:
                     rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I8 });
-                }
-                else if( e.variants.size() <= 0x7FFF ) {
+                    break;
+                case 2:
                     rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I16 });
-                }
-                else if( e.variants.size() <= 0x7FFFFFFF ) {
+                    break;
+                case 3:
                     rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I32 });
-                }
-                else {
+                    break;
+                case 4:
                     rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::I64 });
+                    break;
+                default:
+                    break;
                 }
-                break;
+                } break;
             case ::HIR::Enum::Repr::U8:
                 rv.fields.push_back(TypeRepr::Field { 0, ::HIR::CoreType::U8 });
                 break;
@@ -817,6 +853,7 @@ namespace {
             }
             } break;
         }
+        DEBUG("rv.variants = " << rv.variants.tag_str());
         return box$(rv);
     }
     ::std::unique_ptr<TypeRepr> make_type_repr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
@@ -860,6 +897,14 @@ namespace {
         else if( TU_TEST1(ty.m_data, Path, .binding.is_Enum()) )
         {
             return make_type_repr_enum(sp, resolve, ty);
+        }
+        else if( ty.m_data.is_Primitive() )
+        {
+            return nullptr;
+        }
+        else if( ty.m_data.is_Borrow() || ty.m_data.is_Pointer() )
+        {
+            return nullptr;
         }
         else
         {
