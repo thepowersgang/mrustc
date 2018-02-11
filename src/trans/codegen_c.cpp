@@ -1233,7 +1233,7 @@ namespace {
             {
             case TypeRepr::VariantMode::TAGDEAD:    throw "";
             TU_ARM(repr->variants, Values, ve) {
-                m_of << " .TAG = " << ve.values[var_idx] << ",";
+                m_of << " .TAG = "; emit_enum_variant_val(repr, var_idx); m_of << ",";
                 } break;
             TU_ARM(repr->variants, NonZero, ve) {
                 } break;
@@ -1488,7 +1488,7 @@ namespace {
                     m_of << " { .var_" << e.idx << " = ";
                     emit_literal(get_inner_type(e.idx, 0), *e.val, params);
                     m_of << " }";
-                    m_of << ", .TAG = " << repr->variants.as_Values().values[e.idx];
+                    m_of << ", .TAG = "; emit_enum_variant_val(repr, e.idx);
                     m_of << "}";
                 }
                 ),
@@ -2575,11 +2575,11 @@ namespace {
                         }
                         else if( enm_p->is_value() )
                         {
-                            emit_lvalue(e.dst); m_of << ".TAG = " << enm_p->get_value(ve.index) << "";
+                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
                         }
                         else
                         {
-                            emit_lvalue(e.dst); m_of << ".TAG = " << repr->variants.as_Values().values[ve.index] << ";\n\t";
+                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index); m_of << ";\n\t";
                             emit_lvalue(e.dst); m_of << ".DATA";
                             m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
                         }
@@ -4317,6 +4317,41 @@ namespace {
             }
         }
 
+        void emit_enum_variant_val(const TypeRepr* repr, unsigned idx)
+        {
+            const auto& ve = repr->variants.as_Values();
+            const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, ve.field.index, ve.field.sub_fields);
+            switch(tag_ty.m_data.as_Primitive())
+            {
+            case ::HIR::CoreType::I8:
+            case ::HIR::CoreType::I16:
+            case ::HIR::CoreType::I32:
+            case ::HIR::CoreType::I64:
+            case ::HIR::CoreType::Isize:
+                m_of << static_cast<int64_t>(ve.values[idx]);
+                break;
+            case ::HIR::CoreType::Bool:
+            case ::HIR::CoreType::U8:
+            case ::HIR::CoreType::U16:
+            case ::HIR::CoreType::U32:
+            case ::HIR::CoreType::U64:
+            case ::HIR::CoreType::Usize:
+            case ::HIR::CoreType::Char:
+                m_of << ve.values[idx];
+                break;
+            case ::HIR::CoreType::I128: // TODO: Emulation
+            case ::HIR::CoreType::U128: // TODO: Emulation
+                MIR_TODO(*m_mir_res, "Emulated i128 tag");
+                break;
+            case ::HIR::CoreType::F32:
+            case ::HIR::CoreType::F64:
+                MIR_TODO(*m_mir_res, "Floating point enum tag.");
+                break;
+            case ::HIR::CoreType::Str:
+                MIR_BUG(*m_mir_res, "Unsized tag?!");
+            }
+        }
+
         void assign_from_literal(::std::function<void()> emit_dst, const ::HIR::TypeRef& ty, const ::HIR::Literal& lit)
         {
             //TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
@@ -4411,37 +4446,9 @@ namespace {
                     }
                     } break;
                 TU_ARM(repr->variants, Values, ve) {
-                    const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, ve.field.index, ve.field.sub_fields);
                     emit_dst(); emit_enum_path(repr, ve.field); m_of << " = ";
-                    switch(tag_ty.m_data.as_Primitive())
-                    {
-                    case ::HIR::CoreType::I8:
-                    case ::HIR::CoreType::I16:
-                    case ::HIR::CoreType::I32:
-                    case ::HIR::CoreType::I64:
-                    case ::HIR::CoreType::Isize:
-                        m_of << static_cast<int64_t>(ve.values[e.idx]);
-                        break;
-                    case ::HIR::CoreType::Bool:
-                    case ::HIR::CoreType::U8:
-                    case ::HIR::CoreType::U16:
-                    case ::HIR::CoreType::U32:
-                    case ::HIR::CoreType::U64:
-                    case ::HIR::CoreType::Usize:
-                    case ::HIR::CoreType::Char:
-                        m_of << ve.values[e.idx];
-                        break;
-                    case ::HIR::CoreType::I128: // TODO: Emulation
-                    case ::HIR::CoreType::U128: // TODO: Emulation
-                        MIR_TODO(*m_mir_res, "Emulated i128 tag");
-                        break;
-                    case ::HIR::CoreType::F32:
-                    case ::HIR::CoreType::F64:
-                        MIR_TODO(*m_mir_res, "Floating point enum tag.");
-                        break;
-                    case ::HIR::CoreType::Str:
-                        MIR_BUG(*m_mir_res, "Unsized tag?!");
-                    }
+                    
+                    emit_enum_variant_val(repr, e.idx);
                     if( TU_TEST1((*e.val), List, .empty() == false) )
                     {
                         m_of << ";\n\t";
