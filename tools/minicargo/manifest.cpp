@@ -217,6 +217,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         {
             // TODO: Target opts?
             if( key_val.path.size() < 3 ) {
+                throw ::std::runtime_error("Expected at least three path components in `[target.{...}]`");
             }
             const auto& cfg = key_val.path[1];
             const auto& real_section = key_val.path[2];
@@ -224,34 +225,166 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             // - It can be a target spec, or a cfg(foo) same as rustc
             bool success;
             if( cfg.substr(0, 4) == "cfg(" ) {
-                // TODO: Parser?
-                if( cfg == "cfg(unix)" ) {
-                    success = CFG_UNIX;
-                }
-                else if( cfg == "cfg(all(unix, not(target_os = \"macos\")))" ) {
-                    success = CFG_UNIX;
-                }
-                else if( cfg == "cfg(not(target_os = \"emscripten\"))" ) {
-                    success = true;
-                }
-                else if( cfg == "cfg(all(unix, not(target_os = \"emscripten\"), not(target_os = \"macos\"), not(target_os = \"ios\")))" ) {
-                    success = CFG_UNIX;
-                }
-                else if( cfg == "cfg(windows)" ) {
-                    success = CFG_WINDOWS;
-                }
-                else if( cfg == "cfg(target_env = \"msvc\")" ) {
-                    success = CFG_WINDOWS;
-                }
-                else if( cfg == "cfg(not(windows))" ) {
-                    success = !CFG_WINDOWS;
-                }
-                else if( cfg == "cfg(not(stage0))" ) {
-                    success = true;
-                }
-                else {
-                    TODO("Target deps - " << cfg);
-                }
+                class Parser
+                {
+                public:
+                    class Tok
+                    {
+                        friend class Parser;
+                        const char* s;
+                        const char* e;
+                        Tok(const char* s, const char* e):
+                            s(s), e(e)
+                        {
+                        }
+                    public:
+                        bool operator==(const char* v) const {
+                            return (strlen(v) == e - s) && memcmp(s, v, e-s) == 0;
+                        }
+                        bool operator!=(const char* v) const {
+                            return (strlen(v) != e - s) || memcmp(s, v, e-s) != 0;
+                        }
+                        ::std::string to_string() const {
+                            return ::std::string(s, e);
+                        }
+                    };
+                private:
+                    const char* m_pos;
+                    Tok m_cur;
+
+                public:
+                    Parser(const char* s):
+                        m_pos(s),
+                        m_cur(nullptr,nullptr)
+                    {
+                        consume();
+                    }
+                    const Tok& cur() const {
+                        return m_cur;
+                    }
+
+                    Tok consume() {
+                        auto rv = m_cur;
+                        m_cur = get_next();
+                        //::std::cout << "consume: " << rv.to_string() << " => " << m_cur.to_string() << ::std::endl;
+                        return rv;
+                    }
+                    bool consume_if(const char* s) {
+                        if( cur() == s ) {
+                            consume();
+                            return true;
+                        }
+                        else {
+                            return false;
+                        }
+                    }
+                private:
+                    Tok get_next() {
+                        while(*m_pos == ' ')
+                            m_pos ++;
+                        if(*m_pos == 0)
+                            return Tok { m_pos, m_pos };
+                        switch(*m_pos)
+                        {
+                        case '(': case ')':
+                        case ',': case '=':
+                            return Tok { m_pos++, m_pos };
+                        case '"': {
+                            auto s = m_pos;
+                            m_pos ++;
+                            while( *m_pos != '"' )
+                            {
+                                if( *m_pos == '\\' )
+                                {
+                                    TODO("Escape sequences in cfg parser");
+                                }
+                                m_pos ++;
+                            }
+                            m_pos ++;
+                            return Tok { s, m_pos }; }
+                        default:
+                            if( isalnum(*m_pos) || *m_pos == '_' )
+                            {
+                                auto s = m_pos;
+                                while(isalnum(*m_pos) || *m_pos == '_')
+                                    m_pos ++;
+                                return Tok { s, m_pos };
+                            }
+                            else
+                            {
+                                throw ::std::runtime_error(format("Unexpected character in cfg() - ", *m_pos));
+                            }
+                        }
+                    }
+                };
+
+                struct H {
+                    static bool check_cfg(Parser& p)
+                    {
+                        if( p.consume_if("not") ) {
+                            if( !p.consume_if("(") )
+                                throw ::std::runtime_error("Expected '(' after `not`");
+                            auto rv = !check_cfg(p);
+                            if( !p.consume_if(")") )
+                                throw ::std::runtime_error("Expected ')' after `not` content");
+                            return rv;
+                        }
+                        else if( p.consume_if("all") ) {
+                            if( !p.consume_if("(") )
+                                throw ::std::runtime_error("Expected '(' after `all`");
+                            bool rv = true;
+                            do
+                            {
+                                rv &= check_cfg(p);
+                            } while(p.consume_if(","));
+                            if( !p.consume_if(")") )
+                                throw ::std::runtime_error("Expected ')' after `all` content");
+                            return rv;
+                        }
+                        // Strings
+                        else if( p.consume_if("target_os") ) {
+                            if( !p.consume_if("=") )
+                                throw ::std::runtime_error("Expected '=' after target_os");
+                            auto t = p.consume();
+                            if( t == "\"emscripten\"" ) {
+                                return false;
+                            }
+                            else {
+                                TODO("Handle target_os string - " << t.to_string());
+                            }
+                        }
+                        else if( p.consume_if("target_arch") ) {
+                            if( !p.consume_if("=") )
+                                throw ::std::runtime_error("Expected '=' after target");
+                            auto t = p.consume();
+                            if( t == "\"wasm32\"" ) {
+                                return false;
+                            }
+                            else{
+                                TODO("Handle target_arch string - " << t.to_string());
+                            }
+                        }
+                        // Flags
+                        else if( p.consume_if("unix") ) {
+                            return CFG_UNIX;
+                        }
+                        else if( p.consume_if("windows") ) {
+                            return CFG_WINDOWS;
+                        }
+                        else if( p.consume_if("stage0") ) {
+                            return false;
+                        }
+                        else {
+                            TODO("Unknown fragment in cfg - " << p.cur().to_string());
+                            throw ::std::runtime_error("");
+                        }
+                    }
+                };
+
+                Parser p { cfg.data() + 4 };
+                success = H::check_cfg(p);
+                if( !p.consume_if(")") )
+                    throw ::std::runtime_error(format("Expected ')' after cfg condition - got", p.cur().to_string()));
             }
             else {
                 // It's a target name

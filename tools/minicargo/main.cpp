@@ -231,6 +231,9 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 }
                 this->target = argv[++i];
             }
+            else if( ::std::strcmp(arg, "--pause") == 0 ) {
+                this->pause_before_quit = true;
+            }
             else {
                 ::std::cerr << "Unknown flag " << arg << ::std::endl;
                 return 1;

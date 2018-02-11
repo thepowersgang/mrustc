@@ -14,13 +14,12 @@ extern void Debug_Print(dbg_cb_t cb);
 
 #if defined(NOLOG)
 # define DEBUG(fmt)  do { } while(0)
-# define TODO(fmt)   do { } while(0)
 # define TRACE_FUNCTION_F(fmt) do{}while(0)
 #else
 # define DEBUG(fmt)  do { Debug_Print([&](auto& os){ os << "DEBUG: " << fmt; }); } while(0)
-# define TODO(fmt)   do { Debug_Print([&](auto& os){ os << "TODO: " << fmt; }); abort(); } while(0)
 # define TRACE_FUNCTION_F(fmt) DebugFunctionScope  trace_function_hdr { __FUNCTION__, [&](auto& os){ os << fmt; } }
 #endif
+#define TODO(fmt)   do { ::std::cerr << "TODO: " << fmt << ::std::endl; abort(); } while(0)
 
 namespace {
     static inline void format_to_stream(::std::ostream& os) {
