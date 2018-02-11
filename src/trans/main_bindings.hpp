@@ -15,6 +15,7 @@ class Crate;
 
 struct TransOptions
 {
+    ::std::string   mode = "c";
     unsigned int opt_level = 0;
     bool emit_debug_info = false;
     ::std::string   build_command_file;

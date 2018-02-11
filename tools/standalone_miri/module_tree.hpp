@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <set>
 
 #include "../../src/mir/mir.hpp"
 #include "hir_sim.hpp"
@@ -20,6 +21,8 @@ struct Function
 class ModuleTree
 {
     friend struct Parser;
+
+    ::std::set<::std::string>   loaded_files;
 
     ::std::map<::HIR::Path, Function>    functions;
     // Hack: Tuples are stored as `::""::<A,B,C,...>`

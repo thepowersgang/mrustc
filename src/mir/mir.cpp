@@ -13,9 +13,11 @@ namespace MIR {
         (Int,
             os << (e.v < 0 ? "-" : "+");
             os << (e.v < 0 ? -e.v : e.v);
+            os << " " << e.t;
             ),
         (Uint,
             os << e.v;
+            os << " " << e.t;
             ),
         (Float,
             os << e.v;

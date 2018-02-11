@@ -185,6 +185,7 @@ struct ProgramParams
         bool full_validate_early = false;
     } debug;
     struct {
+        ::std::string   codegen_type;
         ::std::string   emit_build_command;
     } codegen;
 
@@ -603,6 +604,7 @@ int main(int argc, char *argv[])
         // - MIR Exportable (public generic, #[inline], or used by a either of those)
         // - Require codegen (public or used by an exported function)
         TransOptions    trans_opt;
+        trans_opt.mode = params.codegen.codegen_type == "" ? "c" : params.codegen.codegen_type;
         trans_opt.build_command_file = params.codegen.emit_build_command;
         trans_opt.opt_level = params.opt_level;
         for(const char* libdir : params.lib_search_dirs ) {
@@ -781,6 +783,10 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 if( optname == "emit-build-command" ) {
                     get_optval();
                     this->codegen.emit_build_command = optval;
+                }
+                else if( optname == "codegen-type" ) {
+                    get_optval();
+                    this->codegen.codegen_type = optval;
                 }
                 else if( optname == "emit-depfile" ) {
                     get_optval();

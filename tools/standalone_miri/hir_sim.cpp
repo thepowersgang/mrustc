@@ -12,6 +12,7 @@
 
 size_t HIR::TypeRef::get_size(size_t ofs) const
 {
+    const size_t POINTER_SIZE = 8;
     if( this->wrappers.size() <= ofs )
     {
         switch(this->inner_type)
@@ -33,7 +34,12 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
             return 8;
         case RawType::U128: case RawType::I128:
             return 16;
+
+        case RawType::Function: // This should probably be invalid?
+        case RawType::USize: case RawType::ISize:
+            return POINTER_SIZE;
         }
+        throw "";
     }
     
     switch(this->wrappers[ofs].type)
@@ -48,21 +54,21 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
             if( this->inner_type == RawType::Composite )
                 throw "TODO";
             else if( this->inner_type == RawType::Str )
-                return 8*2;
+                return POINTER_SIZE*2;
             else if( this->inner_type == RawType::TraitObject )
-                return 8*2;
+                return POINTER_SIZE*2;
             else
             {
-                return 8;
+                return POINTER_SIZE;
             }
         }
         else if( this->wrappers[ofs+1].type == TypeWrapper::Ty::Slice )
         {
-            return 8*2;
+            return POINTER_SIZE*2;
         }
         else
         {
-            return 8;
+            return POINTER_SIZE;
         }
     case TypeWrapper::Ty::Slice:
         throw "Invalid";

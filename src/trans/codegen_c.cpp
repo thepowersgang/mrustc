@@ -195,8 +195,6 @@ namespace {
             bool disallow_empty_structs = false;
         } m_options;
 
-        ::std::map<::HIR::GenericPath, ::std::vector<unsigned>> m_enum_repr_cache;
-
         ::std::vector< ::std::pair< ::HIR::GenericPath, const ::HIR::Struct*> >   m_box_glue_todo;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
@@ -211,6 +209,10 @@ namespace {
             case CodegenMode::Gnu11:
                 m_compiler = Compiler::Gcc;
                 m_options.emulated_i128 = false;
+                if( Target_GetCurSpec().m_arch.m_pointer_bits < 64 )
+                {
+                    m_options.emulated_i128 = true;
+                }
                 break;
             case CodegenMode::Msvc:
                 m_compiler = Compiler::Msvc;
@@ -275,8 +277,6 @@ namespace {
             {
             case Compiler::Gcc:
                 m_of
-                    << "typedef unsigned __int128 uint128_t;\n"
-                    << "typedef signed __int128 int128_t;\n"
                     << "extern void _Unwind_Resume(void) __attribute__((noreturn));\n"
                     << "#define ALIGNOF(t) __alignof__(t)\n"
                     ;
@@ -369,22 +369,15 @@ namespace {
                 m_of
                     << "typedef struct { uint64_t lo, hi; } uint128_t;\n"
                     << "typedef struct { uint64_t lo, hi; } int128_t;\n"
-                    << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
-                    << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
-                    << "static inline int128_t sub128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
-                    << "static inline int128_t mul128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "static inline int128_t div128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "static inline int128_t mod128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "static inline int128_t and128s(int128_t a, int128_t b) { int128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
-                    << "static inline int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
-                    << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
-                    << "static inline int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
-                    << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
                     << "static inline uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
-                    << "static inline uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
-                    << "static inline uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
-                    << "static inline uint128_t mul128(uint128_t a, uint128_t b) { abort(); }\n"
-                    << "static inline uint128_t div128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
+                    << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
+                    << "static inline bool mul128_o(uint128_t a, uint128_t b, uint128_t* o) { abort(); }\n"
+                    << "static inline bool div128_o(uint128_t a, uint128_t b, uint128_t* o) { abort(); }\n"
+                    << "static inline uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; add128_o(a, b, &v); return v; }\n"
+                    << "static inline uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; sub128_o(a, b, &v); return v; }\n"
+                    << "static inline uint128_t mul128(uint128_t a, uint128_t b) { uint128_t v; mul128_o(a, b, &v); return v; }\n"
+                    << "static inline uint128_t div128(uint128_t a, uint128_t b) { uint128_t v; div128_o(a, b, &v); return v; }\n"
                     << "static inline uint128_t mod128(uint128_t a, uint128_t b) { abort(); }\n"
                     << "static inline uint128_t and128(uint128_t a, uint128_t b) { uint128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
                     << "static inline uint128_t or128 (uint128_t a, uint128_t b) { uint128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
@@ -401,12 +394,25 @@ namespace {
                     << "\tuint128_t rv = { (v.lo == 0 ? (v.hi == 0 ? 128 : __builtin_ctz64(v.hi) + 64) : __builtin_ctz64(v.lo)), 0 };\n"
                     << "\treturn rv;\n"
                     << "}\n"
+                    << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
+                    << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
+                    << "static inline int128_t sub128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
+                    << "static inline int128_t mul128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t div128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t mod128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int128_t and128s(int128_t a, int128_t b) { int128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
+                    << "static inline int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
+                    << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
+                    << "static inline int128_t shl128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = a.lo << b; v.hi = (a.hi << b) | (a.lo >> (64 - b)); } else { v.hi = a.lo << (b - 64); v.lo = 0; } return v; }\n"
+                    << "static inline int128_t shr128s(int128_t a, uint32_t b) { int128_t v; if(b < 64) { v.lo = (a.lo >> b)|(a.hi << (64 - b)); v.hi = a.hi >> b; } else { v.lo = a.hi >> (b - 64); v.hi = 0; } return v; }\n"
                     ;
             }
             else
             {
                 // GCC-only
                 m_of
+                    << "typedef unsigned __int128 uint128_t;\n"
+                    << "typedef signed __int128 int128_t;\n"
                     << "static inline uint128_t __builtin_bswap128(uint128_t v) {\n"
                     << "\tuint64_t lo = __builtin_bswap64((uint64_t)v);\n"
                     << "\tuint64_t hi = __builtin_bswap64((uint64_t)(v>>64));\n"
@@ -500,17 +506,21 @@ namespace {
 
             // Execute $CC with the required libraries
             StringList  args;
+#ifdef _WIN32
+            bool is_windows = true;
+#else
             bool is_windows = false;
+#endif
             switch( m_compiler )
             {
             case Compiler::Gcc:
                 if( getenv("CC") ) {
                     args.push_back( getenv("CC") );
-		}
+                }
                 else {
                     //args.push_back( Target_GetCurSpec().m_c_compiler + "-gcc" );
                     args.push_back( "gcc" );
-		}
+                }
                 args.push_back("-ffunction-sections");
                 args.push_back("-pthread");
                 switch(opt.opt_level)
@@ -563,7 +573,6 @@ namespace {
                 }
                 break;
             case Compiler::Msvc:
-                is_windows = true;
                 // TODO: Look up these paths in the registry and use CreateProcess instead of system
                 args.push_back(detect_msvc().path_vcvarsall);
                 args.push_back( Target_GetCurSpec().m_c_compiler );
@@ -833,94 +842,89 @@ namespace {
                 const auto& lc = p.m_path.m_components.back();
                 is_vtable = (lc.size() > 7 && ::std::strcmp(lc.c_str() + lc.size() - 7, "#vtable") == 0);
                 };
+            bool is_packed = item.m_repr == ::HIR::Struct::Repr::Packed;
 
             TRACE_FUNCTION_F(p);
-            ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
             bool has_unsized = false;
-            auto emit_struct_fld_ty = [&](const ::HIR::TypeRef& ty_raw, ::FmtLambda inner) {
-                const auto& ty = monomorph(ty_raw);
-                TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
-                    emit_ctype( *te.inner, FMT_CB(ss, ss << inner << "[0]";) );
-                    has_unsized = true;
-                )
-                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, te,
-                    m_of << "unsigned char " << inner << "[0]";
-                    has_unsized = true;
-                )
-                else if( ty == ::HIR::CoreType::Str ) {
-                    m_of << "uint8_t " << inner << "[0]";
-                    has_unsized = true;
-                }
-                else {
-                    emit_ctype( ty, inner );
-                }
-                };
             m_of << "// struct " << p << "\n";
+            // For repr(packed), mark as packed
+            if(is_packed)
+            {
+                switch(m_compiler)
+                {
+                case Compiler::Msvc:
+                    m_of << "#pragma pack(push, 1)\n";
+                    break;
+                case Compiler::Gcc:
+                    break;
+                }
+            }
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
 
             // HACK: For vtables, insert the alignment and size at the start
+            // TODO: This should be done in HIR, not here
             if(is_vtable)
             {
                 m_of << "\tVTABLE_HDR hdr;\n";
             }
 
-            TU_MATCHA( (item.m_data), (e),
-            (Unit,
+            ::std::vector<unsigned> fields;
+            for(const auto& ent : repr->fields)
+            {
+                (void)ent;
+                fields.push_back(fields.size());
+            }
+            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+            for(unsigned fld : fields)
+            {
+                m_of << "\t";
+                const auto& ty = repr->fields[fld].ty;
+                
+                if( const auto* te = ty.m_data.opt_Slice() ) {
+                    emit_ctype( *te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
+                    has_unsized = true;
+                }
+                else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, TraitObject, te,
+                    m_of << "unsigned char _" << fld << "[0]";
+                    has_unsized = true;
+                )
+                else if( ty == ::HIR::CoreType::Str ) {
+                    m_of << "uint8_t _" << fld << "[0]";
+                    has_unsized = true;
+                }
+                else {
+                    // TODO: Nested unsized?
+                    emit_ctype( ty, FMT_CB(ss, ss << "_" << fld) );
+                }
+                m_of << ";\n";
+            }
+            if( fields.size() == 0 )
+            {
                 if( m_options.disallow_empty_structs )
                 {
                     m_of << "\tchar _d;\n";
                 }
-                ),
-            (Tuple,
-                if( e.empty() )
+            }
+            m_of << "}";
+            if(is_packed)
+            {
+                switch(m_compiler)
                 {
-                    if( m_options.disallow_empty_structs )
-                    {
-                        m_of << "\tchar _d;\n";
-                    }
+                case Compiler::Msvc:
+                    m_of << ";\n#pragma pack(pop)\n";
+                    break;
+                case Compiler::Gcc:
+                    m_of << " __attribute__((packed));\n";
+                    break;
                 }
-                else
-                {
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        const auto& fld = e[i];
-                        m_of << "\t";
-                        emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
-                        m_of << ";\n";
-                    }
-                }
-                ),
-            (Named,
-                if( e.empty() )
-                {
-                    if( m_options.disallow_empty_structs )
-                    {
-                        m_of << "\tchar _d;\n";
-                    }
-                }
-                else
-                {
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        const auto& fld = e[i].second;
-                        m_of << "\t";
-                        emit_struct_fld_ty(fld.ent, FMT_CB(ss, ss << "_" << i;));
-                        m_of << ";\n";
-                    }
-                }
-                )
-            )
-            m_of << "};\n";
+            }
+            else
+            {
+                m_of << ";\n";
+            }
+            (void)has_unsized;
 
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
@@ -959,28 +963,12 @@ namespace {
 
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
             auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
-            TU_MATCHA( (item.m_data), (e),
-            (Unit,
-                ),
-            (Tuple,
-                for(unsigned int i = 0; i < e.size(); i ++)
-                {
-                    const auto& fld = e[i];
-                    fld_lv.as_Field().field_index = i;
+            for(size_t i = 0; i < repr->fields.size(); i++)
+            {
+                fld_lv.as_Field().field_index = i;
 
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), true, 1);
-                }
-                ),
-            (Named,
-                for(unsigned int i = 0; i < e.size(); i ++)
-                {
-                    const auto& fld = e[i].second;
-                    fld_lv.as_Field().field_index = i;
-
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), true, 1);
-                }
-                )
-            )
+                emit_destructor_call(fld_lv, repr->fields[i].ty, /*unsized_valid=*/true, /*indent=*/1);
+            }
             m_of << "}\n";
             m_mir_res = nullptr;
         }
@@ -991,27 +979,19 @@ namespace {
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
+            auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
+            MIR_ASSERT(*m_mir_res, repr != nullptr, "No repr for union " << item_ty);
 
-            ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
             m_of << "union u_" << Trans_Mangle(p) << " {\n";
-            for(unsigned int i = 0; i < item.m_variants.size(); i ++)
+            for(unsigned int i = 0; i < repr->fields.size(); i ++)
             {
-                m_of << "\t"; emit_ctype( monomorph(item.m_variants[i].second.ent), FMT_CB(ss, ss << "var_" << i;) ); m_of << ";\n";
+                assert(repr->fields[i].offset == 0);
+                m_of << "\t"; emit_ctype( repr->fields[i].ty, FMT_CB(ss, ss << "var_" << i;) ); m_of << ";\n";
             }
             m_of << "};\n";
 
             // Drop glue (calls destructor if there is one)
-            auto item_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(item_ty.clone(), "#drop_glue");
             auto item_ptr_ty = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, item_ty.clone());
             auto drop_impl_path = (item.m_markings.has_drop_impl ? ::HIR::Path(item_ty.clone(), m_resolve.m_lang_Drop, "drop") : ::HIR::Path(::HIR::SimplePath()));
@@ -1031,78 +1011,27 @@ namespace {
             m_of << "}\n";
         }
 
-        // TODO: Move this to codegen.cpp?
-        bool get_nonzero_path(const Span& sp, const ::HIR::TypeRef& ty, ::std::vector<unsigned int>& out) const
+        void emit_enum_path(const TypeRepr* repr, const TypeRepr::FieldPath& path)
         {
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
-            (
-                return false;
-                ),
-            (Path,
-                if( te.binding.is_Struct() )
-                {
-                    const auto& str = *te.binding.as_Struct();
-                    const auto& p = te.path.m_data.as_Generic();
-                    ::HIR::TypeRef  tmp;
-                    auto monomorph = [&](const auto& ty)->const auto& {
-                        if( monomorphise_type_needed(ty) ) {
-                            tmp = monomorphise_type(sp, str.m_params, p.m_params, ty);
-                            m_resolve.expand_associated_types(sp, tmp);
-                            return tmp;
-                        }
-                        else {
-                            return ty;
-                        }
-                        };
-                    TU_MATCHA( (str.m_data), (se),
-                    (Unit,
-                        ),
-                    (Tuple,
-                        for(size_t i = 0; i < se.size(); i ++)
-                        {
-                            if( get_nonzero_path(sp, monomorph(se[i].ent), out) )
-                            {
-                                out.push_back(i);
-                                return true;
-                            }
-                        }
-                        ),
-                    (Named,
-                        for(size_t i = 0; i < se.size(); i ++)
-                        {
-                            if( get_nonzero_path(sp, monomorph(se[i].second.ent), out) )
-                            {
-                                out.push_back(i);
-                                return true;
-                            }
-                        }
-                        )
-                    )
-                }
-                return false;
-                ),
-            (Borrow,
-                if( metadata_type(*te.inner) != MetadataType::None )
-                {
-                    // HACK: If the inner is a DST, emit ~0 as a marker
-                    out.push_back(~0u);
-                }
-                return true;
-                ),
-            (Function,
-                return true;
-                )
-            )
-        }
-        void emit_nonzero_path(const ::std::vector<unsigned int>& nonzero_path) {
-            for(const auto v : nonzero_path)
+            if( TU_TEST1(repr->variants, Values, .field.index == path.index) )
             {
-                if(v == ~0u) {
-                    // NOTE: Should only ever be the last
+                m_of << ".TAG";
+            }
+            else
+            {
+                m_of << ".DATA.var_" << path.index;
+            }
+            const auto* ty = &repr->fields[path.index].ty;
+            for(auto fld : path.sub_fields)
+            {
+                repr = Target_GetTypeRepr(sp, m_resolve, *ty);
+                ty = &repr->fields[fld].ty;
+                m_of << "._" << fld;
+            }
+            if( const auto* te = ty->m_data.opt_Borrow() )
+            {
+                if( metadata_type(*te->inner) != MetadataType::None ) {
                     m_of << ".PTR";
-                }
-                else {
-                    m_of << "._" << v;
                 }
             }
         }
@@ -1114,101 +1043,98 @@ namespace {
             m_mir_res = &top_mir_res;
 
             TRACE_FUNCTION_F(p);
-            ::HIR::TypeRef  tmp;
-            auto monomorph = [&](const auto& x)->const auto& {
-                if( monomorphise_type_needed(x) ) {
-                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
-                    m_resolve.expand_associated_types(sp, tmp);
-                    return tmp;
-                }
-                else {
-                    return x;
-                }
-                };
+            auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
 
-            // TODO: Cache repr info elsewhere (and have core codegen be responsible instead)
-            // TODO: Do more complex nonzero relations.
-            ::std::vector<unsigned> nonzero_path;
+            // 1. Enumerate fields with the same offset as the first (these go into a union)
+            // TODO: What if all data variants are zero-sized?
+            ::std::vector<unsigned> union_fields;
+            for(size_t i = 1; i < repr->fields.size(); i ++)
             {
-                // Detect Option (and similar enums)
-                // - Matches two-variant enums where the first variant is unit-like, and the second is not
-                if( item.m_data.is_Data() && item.m_data.as_Data().size() == 2
-                 && item.m_data.as_Data()[0].type == ::HIR::TypeRef::new_unit()
-                 && item.m_data.as_Data()[1].type != ::HIR::TypeRef::new_unit()
-                    )
+                // Avoid placing the tag in the union
+                if( repr->variants.is_Values() && i == repr->variants.as_Values().field.index )
+                    continue ;
+                if( repr->fields[i].offset == repr->fields[0].offset )
                 {
-                    const auto& data_type = monomorph(item.m_data.as_Data()[1].type);
-                    if( get_nonzero_path(sp, data_type, nonzero_path) )
-                    {
-                        ::std::reverse( nonzero_path.begin(), nonzero_path.end() );
-                        DEBUG("Correct format for NonZero to apply, and field found at " << nonzero_path);
-                    }
-                    else
-                    {
-                        DEBUG("Correct format for NonZero to apply, but no field");
-                        assert(nonzero_path.size() == 0);
-                    }
+                    union_fields.push_back(i);
                 }
             }
 
             m_of << "// enum " << p << "\n";
-            if( nonzero_path.size() > 0 )
+            m_of << "struct e_" << Trans_Mangle(p) << " {\n";
+
+            // If there multiple fields with the same offset, they're the data variants
+            if( union_fields.size() > 0 )
             {
-                //MIR_ASSERT(*m_mir_res, item.num_variants() == 2, "");
-                //MIR_ASSERT(*m_mir_res, item.m_variants[0].second.is_Unit(), "");
-                //const auto& data_var = item.m_variants[1];
-                //MIR_ASSERT(*m_mir_res, data_var.second.is_Tuple(), "");
-                //MIR_ASSERT(*m_mir_res, data_var.second.as_Tuple().size() == 1, "");
-                const auto& data_type = monomorph(item.m_data.as_Data()[1].type);
-                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
-                m_of << "\t"; emit_ctype(data_type, FMT_CB(s, s << "_1";)); m_of << ";\n";
-                m_of << "};\n";
-            }
-            else if( item.m_data.is_Value() )
-            {
-                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
-                switch(item.m_data.as_Value().repr)
+                assert(1 + union_fields.size() + 1 >= repr->fields.size());
+                // Make the union!
+                // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
+                m_of << "\tunion {\n";
+                // > First field
+                m_of << "\t\t";
+                emit_ctype(repr->fields[0].ty, FMT_CB(os, os << "var_0"));
+                m_of << ";\n";
+                // > All others
+                for(auto idx : union_fields)
                 {
-                case ::HIR::Enum::Repr::Rust:
-                case ::HIR::Enum::Repr::C:
-                    m_of << "\tunsigned int TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::Usize:
-                    m_of << "\tuintptr_t TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::U8:
-                    m_of << "\tuint8_t TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::U16:
-                    m_of << "\tuint16_t TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::U32:
-                    m_of << "\tuint32_t TAG;\n";
-                    break;
-                case ::HIR::Enum::Repr::U64:
-                    m_of << "\tuint64_t TAG;\n";
-                    break;
+                    // TODO: if the compiler doesn't allow zero-sized types, don't emit zero-sized fields.
+                    m_of << "\t\t";
+                    emit_ctype(repr->fields[idx].ty, FMT_CB(os, os << "var_" << idx));
+                    m_of << ";\n";
                 }
-                m_of << "};\n";
+                m_of << "\t} DATA;\n";
+
+                if( repr->fields.size() == 1 + union_fields.size() )
+                {
+                    // No tag, the tag is in one of the fields.
+                    DEBUG("Untagged, nonzero or other");
+                }
+                else
+                {
+                    //assert(repr->fields.back().offset != repr->fields.front().offset);
+                    DEBUG("Tag present at offset " << repr->fields.back().offset << " - " << repr->fields.back().ty);
+
+                    m_of << "\t";
+                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
+                    m_of << ";\n";
+                }
+            }
+            else if( repr->fields.size() == 1 )
+            {
+                if( repr->variants.is_Values() )
+                {
+                    // Tag only.
+                    // - A value-only enum.
+                    m_of << "\t";
+                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "TAG"));
+                    m_of << ";\n";
+                }
+                else
+                {
+                    m_of << "\tunion {\n";
+                    m_of << "\t\t";
+                    emit_ctype(repr->fields.back().ty, FMT_CB(os, os << "var_0"));
+                    m_of << ";\n";
+                    m_of << "\t} DATA;\n";
+                    // No tag
+                }
+            }
+            else if( repr->fields.size() == 0 )
+            {
+                // Empty/un-constructable
+                // - Shouldn't be emitted really?
+                if( m_options.disallow_empty_structs )
+                {
+                    m_of << "\tchar _d;\n";
+                }
             }
             else
             {
-                const auto& variants = item.m_data.as_Data();
-                m_of << "struct e_" << Trans_Mangle(p) << " {\n";
-                m_of << "\tunsigned int TAG;\n";
-                if( variants.size() > 0 )
-                {
-                    m_of << "\tunion {\n";
-                    for(unsigned int i = 0; i < variants.size(); i ++)
-                    {
-                        m_of << "\t\t";
-                        emit_ctype( monomorph(variants[i].type) );
-                        m_of << " var_" << i << ";\n";
-                    }
-                    m_of << "\t} DATA;\n";
-                }
-                m_of << "};\n";
+                // One data field and a tag (or all different offsets)
+                TODO(sp, "No common offsets and more than one field, is this possible? - " << item_ty);
             }
+
+            m_of << "};\n";
 
             // ---
             // - Drop Glue
@@ -1234,39 +1160,35 @@ namespace {
             }
             auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
 
-            if( nonzero_path.size() > 0 )
+            if( const auto* e = repr->variants.opt_NonZero() )
             {
+                unsigned idx = 1 - e->zero_variant;
                 // TODO: Fat pointers?
-                m_of << "\tif( (*rv)._1"; emit_nonzero_path(nonzero_path); m_of << " ) {\n";
-                emit_destructor_call( ::MIR::LValue::make_Field({ box$(self), 1 }), monomorph(item.m_data.as_Data()[1].type), false, 2 );
+                m_of << "\tif( (*rv)"; emit_enum_path(repr, e->field); m_of << " != 0 ) {\n";
+                emit_destructor_call( ::MIR::LValue::make_Downcast({ box$(self), idx }), repr->fields[idx].ty, false, 2 );
                 m_of << "\t}\n";
             }
-            else if( const auto* e = item.m_data.opt_Data() )
-            {
-                auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
-
-                m_of << "\tswitch(rv->TAG) {\n";
-                for(unsigned int var_idx = 0; var_idx < e->size(); var_idx ++)
-                {
-                    var_lv.as_Downcast().variant_index = var_idx;
-                    m_of << "\tcase " << var_idx << ":\n";
-                    emit_destructor_call(var_lv, monomorph( (*e)[var_idx].type ), false, 2);
-                    m_of << "\tbreak;\n";
-                }
-                m_of << "\t}\n";
-            }
-            else
+            else if( repr->fields.size() <= 1 )
             {
                 // Value enum
                 // Glue does nothing (except call the destructor, if there is one)
             }
+            else if( const auto* e = repr->variants.opt_Values() )
+            {
+                auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
+
+                m_of << "\tswitch(rv->TAG) {\n";
+                for(unsigned int var_idx = 0; var_idx < e->values.size(); var_idx ++)
+                {
+                    var_lv.as_Downcast().variant_index = var_idx;
+                    m_of << "\tcase " << e->values[var_idx] << ":\n";
+                    emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
+                    m_of << "\tbreak;\n";
+                }
+                m_of << "\t}\n";
+            }
             m_of << "}\n";
             m_mir_res = nullptr;
-
-            if( nonzero_path.size() )
-            {
-                m_enum_repr_cache.insert( ::std::make_pair( p.clone(), mv$(nonzero_path) ) );
-            }
         }
 
         void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) override
@@ -1286,6 +1208,7 @@ namespace {
 
             auto p = path.clone();
             p.m_path.m_components.pop_back();
+            const auto* repr = Target_GetTypeRepr(sp, m_resolve, ::HIR::TypeRef::new_path(p.clone(), &item));
 
             ASSERT_BUG(sp, item.m_data.is_Data(), "");
             const auto& var = item.m_data.as_Data().at(var_idx);
@@ -1303,39 +1226,44 @@ namespace {
                 emit_ctype( monomorph(e[i].ent), FMT_CB(ss, ss << "_" << i;) );
             }
             m_of << ") {\n";
-            auto it = m_enum_repr_cache.find(p);
-            if( it != m_enum_repr_cache.end() )
-            {
-                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { _0 };\n";
-            }
-            else
-            {
-                m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = { .TAG = " << var_idx;
 
-                if( e.empty() )
+            //if( repr->variants.
+            m_of << "\tstruct e_" << Trans_Mangle(p) << " rv = {";
+            switch(repr->variants.tag())
+            {
+            case TypeRepr::VariantMode::TAGDEAD:    throw "";
+            TU_ARM(repr->variants, Values, ve) {
+                m_of << " .TAG = " << ve.values[var_idx] << ",";
+                } break;
+            TU_ARM(repr->variants, NonZero, ve) {
+                } break;
+            TU_ARM(repr->variants, None, ve) {
+                } break;
+            }
+
+            if( e.empty() )
+            {
+                if( m_options.disallow_empty_structs )
                 {
-                    if( m_options.disallow_empty_structs )
-                    {
-                        m_of << ", .DATA = { .var_" << var_idx << " = {0} }";
-                    }
-                    else
-                    {
-                        // No fields, don't initialise
-                    }
+                    m_of << " .DATA = { .var_" << var_idx << " = {0} }";
                 }
                 else
                 {
-                    m_of << ", .DATA = { .var_" << var_idx << " = {";
-                    for(unsigned int i = 0; i < e.size(); i ++)
-                    {
-                        if(i != 0)
-                        m_of << ",";
-                        m_of << "\n\t\t_" << i;
-                    }
-                    m_of << "\n\t\t}";
+                    // No fields, don't initialise
                 }
-                m_of << " }};\n";
             }
+            else
+            {
+                m_of << " .DATA = { .var_" << var_idx << " = {";
+                for(unsigned int i = 0; i < e.size(); i ++)
+                {
+                    if(i != 0)
+                    m_of << ",";
+                    m_of << "\n\t\t_" << i;
+                }
+                m_of << "\n\t\t}";
+            }
+            m_of << " }};\n";
             m_of << "\treturn rv;\n";
             m_of << "}\n";
         }
@@ -1496,7 +1424,7 @@ namespace {
                         MIR_TODO(*m_mir_res, "Union literals");
                         ),
                     (Enum,
-                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "");
+                        MIR_ASSERT(*m_mir_res, pbe->m_data.is_Data(), "Getting inner type of a non-Data enum");
                         const auto& evar = pbe->m_data.as_Data().at(var);
                         return monomorph_with(pp, evar.type);
                         )
@@ -1530,15 +1458,23 @@ namespace {
             (Variant,
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
                 const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
-                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                if( it != m_enum_repr_cache.end() )
+                if( repr->variants.is_None() )
                 {
-                    if( e.idx == 0 ) {
+                    m_of << "{}";
+                }
+                else if( const auto* ve = repr->variants.opt_NonZero() )
+                {
+                    if( e.idx == ve->zero_variant )
+                    {
                         m_of << "{0}";
                     }
-                    else {
+                    else
+                    {
+                        m_of << "{ { .var_" << e.idx << " = ";
                         emit_literal(get_inner_type(e.idx, 0), *e.val, params);
+                        m_of << " } }";
                     }
                 }
                 else if( enm.is_value() )
@@ -1548,10 +1484,11 @@ namespace {
                 }
                 else
                 {
-                    m_of << "{" << e.idx;
-                    m_of << ", { .var_" << e.idx << " = ";
+                    m_of << "{";
+                    m_of << " { .var_" << e.idx << " = ";
                     emit_literal(get_inner_type(e.idx, 0), *e.val, params);
                     m_of << " }";
+                    m_of << ", .TAG = " << repr->variants.as_Values().values[e.idx];
                     m_of << "}";
                 }
                 ),
@@ -1874,7 +1811,7 @@ namespace {
                     else if( item.m_linkage.name == "CopyFileExW" )
                     {
                         // Not field access to undo an Option<fn()>
-                        m_of << "\treturn CopyFileExW(arg0, arg1, arg2._1._0, arg3, arg4, arg5);\n";
+                        m_of << "\treturn CopyFileExW(arg0, arg1, arg2.DATA.var_1._0, arg3, arg4, arg5);\n";
                     }
                     // BUG: libtest defines this as returning an i32, but it's void
                     else if( item.m_linkage.name == "GetSystemInfo" )
@@ -2616,20 +2553,23 @@ namespace {
                     {
                         ::HIR::TypeRef  tmp;
                         const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+                        auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
 
-                        auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                        if( it != m_enum_repr_cache.end() )
+                        if( repr->variants.is_None() )
                         {
-                            if( ve.index == 0 ) {
+                            emit_lvalue(e.dst); m_of << ".DATA.var_0 = "; emit_param(ve.val);
+                        }
+                        else if( const auto* re = repr->variants.opt_NonZero() )
+                        {
+                            MIR_ASSERT(*m_mir_res, ve.index < 2, "");
+                            if( ve.index == re->zero_variant ) {
                                 // TODO: Use nonzero_path
                                 m_of << "memset(&"; emit_lvalue(e.dst); m_of << ", 0, sizeof("; emit_ctype(ty); m_of << "))";
                             }
-                            else if( ve.index == 1 ) {
-                                emit_lvalue(e.dst);
-                                m_of << "._1 = ";
-                                emit_param(ve.val);
-                            }
                             else {
+                                emit_lvalue(e.dst);
+                                m_of << ".DATA.var_" << ve.index << " = ";
+                                emit_param(ve.val);
                             }
                             break;
                         }
@@ -2639,7 +2579,7 @@ namespace {
                         }
                         else
                         {
-                            emit_lvalue(e.dst); m_of << ".TAG = " << ve.index << ";\n\t";
+                            emit_lvalue(e.dst); m_of << ".TAG = " << repr->variants.as_Values().values[ve.index] << ";\n\t";
                             emit_lvalue(e.dst); m_of << ".DATA";
                             m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
                         }
@@ -2848,45 +2788,76 @@ namespace {
             const auto& ty = mir_res.get_lvalue_type(tmp, val);
             MIR_ASSERT(mir_res, ty.m_data.is_Path(), "Switch over non-Path type");
             MIR_ASSERT(mir_res, ty.m_data.as_Path().binding.is_Enum(), "Switch over non-enum");
-            const auto* enm = ty.m_data.as_Path().binding.as_Enum();
+            const auto* repr = Target_GetTypeRepr(mir_res.sp, m_resolve, ty);
+            MIR_ASSERT(mir_res, repr, "No repr for " << ty);
 
-            auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
-            if( it != m_enum_repr_cache.end() )
+            if( const auto* e = repr->variants.opt_NonZero() )
             {
-                //MIR_ASSERT(mir_res, e.targets.size() == 2, "NonZero optimised representation for an enum without two variants");
                 MIR_ASSERT(mir_res, n_arms == 2, "NonZero optimised switch without two arms");
-                m_of << indent << "if("; emit_lvalue(val); m_of << "._1"; emit_nonzero_path(it->second); m_of << ")\n";
-                m_of << indent;
-                cb(1);
+                m_of << indent << "if( "; emit_lvalue(val); emit_enum_path(repr, e->field); m_of << " != 0 )\n";
+                m_of << indent << "\t";
+                cb(1 - e->zero_variant);
                 m_of << "\n";
                 m_of << indent << "else\n";
-                m_of << indent;
-                cb(0);
+                m_of << indent << "\t";
+                cb(e->zero_variant);
                 m_of << "\n";
             }
-            else if( enm->is_value() )
+            else if( const auto* e = repr->variants.opt_Values() )
             {
+                const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, e->field.index, e->field.sub_fields);
+                bool is_signed = false;
+                switch(tag_ty.m_data.as_Primitive())
+                {
+                case ::HIR::CoreType::I8:
+                case ::HIR::CoreType::I16:
+                case ::HIR::CoreType::I32:
+                case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::Isize:
+                    is_signed = true;
+                    break;
+                case ::HIR::CoreType::Bool:
+                case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::Usize:
+                case ::HIR::CoreType::Char:
+                    is_signed = false;
+                    break;
+                case ::HIR::CoreType::I128: // TODO: Emulation
+                case ::HIR::CoreType::U128: // TODO: Emulation
+                    break;
+                case ::HIR::CoreType::F32:
+                case ::HIR::CoreType::F64:
+                    MIR_TODO(mir_res, "Floating point enum tag.");
+                    break;
+                case ::HIR::CoreType::Str:
+                    MIR_BUG(mir_res, "Unsized tag?!");
+                }
                 m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
                 for(size_t j = 0; j < n_arms; j ++)
                 {
-                    m_of << indent << "case " << enm->get_value(j) << ": ";
+                    // TODO: Get type of this field and check if it's signed.
+                    if( is_signed ) {
+                        m_of << indent << "case " << static_cast<int64_t>(e->values[j]) << ": ";
+                    }
+                    else {
+                        m_of << indent << "case " << e->values[j] << ": ";
+                    }
                     cb(j);
                     m_of << "\n";
                 }
                 m_of << indent << "default: abort();\n";
                 m_of << indent << "}\n";
+            }
+            else if( repr->variants.is_None() )
+            {
+                m_of << indent; cb(0); m_of << "\n";
             }
             else
             {
-                m_of << indent << "switch("; emit_lvalue(val); m_of << ".TAG) {\n";
-                for(size_t j = 0; j < n_arms; j ++)
-                {
-                    m_of << indent << "case " << j << ": ";
-                    cb(j);
-                    m_of << "\n";
-                }
-                m_of << indent << "default: abort();\n";
-                m_of << indent << "}\n";
+                BUG(sp, "Unexpected variant type - " << repr->variants.tag_str());
             }
         }
         void emit_term_switchvalue(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& val, const ::MIR::SwitchValues& values, unsigned indent_level, ::std::function<void(size_t)> cb)
@@ -3048,6 +3019,9 @@ namespace {
                     if (::std::strcmp(r, "{eax}") == 0 || ::std::strcmp(r, "{rax}") == 0) {
                         return "a";
                     }
+                    else if (::std::strcmp(r, "{ecx}") == 0 || ::std::strcmp(r, "{rcx}") == 0) {
+                        return "c";
+                    }
                     else {
                         return r;
                     }
@@ -3080,6 +3054,8 @@ namespace {
                     m_of << "%";
                 else if (*it == '%' && !isdigit(*(it + 1)))
                     m_of << "%%";
+                else if (*it == '$' && isdigit(*(it + 1)) && *(it + 2) != 'x')
+                    m_of << "%";
                 else
                     m_of << *it;
             }
@@ -3097,14 +3073,14 @@ namespace {
                 default:    MIR_TODO(mir_res, "Handle asm! output leader '" << v.first[0] << "'");
                 }
                 m_of << H::convert_reg(v.first.c_str() + 1);
-                m_of << "\"("; emit_lvalue(v.second); m_of << ")";
+                m_of << "\" ("; emit_lvalue(v.second); m_of << ")";
             }
             m_of << ": ";
             for (unsigned int i = 0; i < e.inputs.size(); i++)
             {
                 const auto& v = e.inputs[i];
                 if (i != 0)    m_of << ", ";
-                m_of << "\"" << v.first << "\"("; emit_lvalue(v.second); m_of << ")";
+                m_of << "\"" << H::convert_reg(v.first.c_str()) << "\" ("; emit_lvalue(v.second); m_of << ")";
             }
             m_of << ": ";
             for (unsigned int i = 0; i < e.clobbers.size(); i++)
@@ -3590,7 +3566,7 @@ namespace {
             }
             else if( name == "write_bytes" ) {
                 // 0: Destination, 1: Value, 2: Count
-                m_of << "memset( "; emit_param(e.args.at(0));
+                m_of << "if( "; emit_param(e.args.at(2)); m_of << " > 0) memset( "; emit_param(e.args.at(0));
                     m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", "; emit_param(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                     m_of << ")";
@@ -3698,19 +3674,26 @@ namespace {
             else if( name == "discriminant_value" ) {
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = ";
-                if( ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Enum() ) {
-                    auto it = m_enum_repr_cache.find( ty.m_data.as_Path().path.m_data.as_Generic() );
-                    if( it != m_enum_repr_cache.end() )
-                    {
-                        emit_param(e.args.at(0)); m_of << "->_1"; emit_nonzero_path(it->second); m_of << " != 0";
-                    }
-                    else
-                    {
-                        emit_param(e.args.at(0)); m_of << "->TAG";
-                    }
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                if( !repr ) {
+                    m_of << "0";
                 }
                 else {
-                    m_of << "0";
+                    switch(repr->variants.tag())
+                    {
+                    case TypeRepr::VariantMode::TAGDEAD:    throw "";
+                    TU_ARM(repr->variants, None, _e)
+                        m_of << "0";
+                        break;
+                    TU_ARM(repr->variants, Values, ve) {
+                        m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
+                        } break;
+                    TU_ARM(repr->variants, NonZero, ve) {
+                        m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field); m_of << " ";
+                        m_of << (ve.zero_variant ? "==" : "!=");
+                        m_of << " 0";
+                        } break;
+                    }
                 }
             }
             // Hints
@@ -3727,59 +3710,146 @@ namespace {
             // Overflowing Arithmatic
             // HACK: Uses GCC intrinsics
             else if( name == "add_with_overflow" ) {
-                switch(m_compiler)
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
                 {
-                case Compiler::Gcc:
-                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow";
+                    emit_lvalue(e.ret_val); m_of << "._1 = add128_o";
                     m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                    break;
-                case Compiler::Msvc:
-                    emit_lvalue(e.ret_val); m_of << "._1 = _addcarry_u" << get_prim_size(params.m_types.at(0));
-                    m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                    break;
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    emit_lvalue(e.ret_val); m_of << "._1 = add128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                }
+                else
+
+                {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_add_overflow";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    case Compiler::Msvc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = _addcarry_u" << get_prim_size(params.m_types.at(0));
+                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    }
                 }
             }
             else if( name == "sub_with_overflow" ) {
-                emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
+                {
+                    emit_lvalue(e.ret_val); m_of << "._1 = sub128_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    emit_lvalue(e.ret_val); m_of << "._1 = sub128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                }
+                else
+                {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    case Compiler::Msvc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = _subcarry_u" << get_prim_size(params.m_types.at(0));
+                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    }
+                }
             }
             else if( name == "mul_with_overflow" ) {
-                switch(m_compiler)
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
                 {
-                case Compiler::Gcc:
-                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_param(e.args.at(0));
-                        m_of << ", "; emit_param(e.args.at(1));
-                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                    break;
-                case Compiler::Msvc:
-                    emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow_" << params.m_types.at(0);
+                    emit_lvalue(e.ret_val); m_of << "._1 = mul128_o";
                     m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
-                    break;
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    emit_lvalue(e.ret_val); m_of << "._1 = mul128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                }
+                else
+                {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow("; emit_param(e.args.at(0));
+                            m_of << ", "; emit_param(e.args.at(1));
+                            m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    case Compiler::Msvc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_mul_overflow_" << params.m_types.at(0);
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        break;
+                    }
                 }
             }
             else if( name == "overflowing_add" ) {
-                switch(m_compiler)
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
                 {
-                case Compiler::Gcc:
-                    m_of << "__builtin_add_overflow";
+                    m_of << "add128_o";
                     m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                    break;
-                case Compiler::Msvc:
-                    m_of << "_addcarry_u" << get_prim_size(params.m_types.at(0));
-                    m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
-                    break;
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    m_of << "add128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else
+                {
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        m_of << "__builtin_add_overflow";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        break;
+                    case Compiler::Msvc:
+                        m_of << "_addcarry_u" << get_prim_size(params.m_types.at(0));
+                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        break;
+                    }
                 }
             }
             else if( name == "overflowing_sub" ) {
-                m_of << "__builtin_sub_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
+                {
+                    m_of << "sub128_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    m_of << "sub128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else
+                {
+                    m_of << "__builtin_sub_overflow("; emit_param(e.args.at(0));
+                        m_of << ", "; emit_param(e.args.at(1));
+                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
             }
             else if( name == "overflowing_mul" ) {
-                m_of << "__builtin_mul_overflow("; emit_param(e.args.at(0));
-                    m_of << ", "; emit_param(e.args.at(1));
-                    m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::U128)
+                {
+                    m_of << "mul128_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else if(m_options.emulated_i128 && params.m_types.at(0) == ::HIR::CoreType::I128)
+                {
+                    m_of << "mul128s_o";
+                    m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
+                else
+                {
+                    m_of << "__builtin_mul_overflow("; emit_param(e.args.at(0));
+                        m_of << ", "; emit_param(e.args.at(1));
+                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                }
             }
             // Unchecked Arithmatic
             else if( name == "unchecked_div" ) {
@@ -4325,28 +4395,59 @@ namespace {
             (Variant,
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
                 MIR_ASSERT(*m_mir_res, ty.m_data.as_Path().binding.is_Enum(), "");
-                const auto& enm = *ty.m_data.as_Path().binding.as_Enum();
-                auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                if( it != m_enum_repr_cache.end() )
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                MIR_ASSERT(*m_mir_res, repr, "");
+                switch(repr->variants.tag())
                 {
-                    if( e.idx == 0 ) {
-                        emit_nonzero_path(it->second);
-                        m_of << " = 0";
+                case TypeRepr::VariantMode::TAGDEAD:    throw "";
+                TU_ARM(repr->variants, None, ve)
+                    BUG(sp, "");
+                TU_ARM(repr->variants, NonZero, ve) {
+                    if( e.idx == ve.zero_variant ) {
+                        emit_dst(); emit_enum_path(repr, ve.field); m_of << " = 0";
                     }
                     else {
                         assign_from_literal([&](){ emit_dst(); }, get_inner_type(e.idx, 0), *e.val);
                     }
-                }
-                else if( enm.is_value() )
-                {
-                    MIR_ASSERT(*m_mir_res, TU_TEST1((*e.val), List, .empty()), "Value-only enum with fields");
-                    emit_dst(); m_of << ".TAG = " << enm.get_value(e.idx);
-                }
-                else
-                {
-                    emit_dst(); m_of << ".TAG = " << e.idx;
-                    m_of << ";\n\t";
-                    assign_from_literal([&](){ emit_dst(); m_of << ".DATA.var_" << e.idx; }, get_inner_type(e.idx, 0), *e.val);
+                    } break;
+                TU_ARM(repr->variants, Values, ve) {
+                    const auto& tag_ty = Target_GetInnerType(sp, m_resolve, *repr, ve.field.index, ve.field.sub_fields);
+                    emit_dst(); emit_enum_path(repr, ve.field); m_of << " = ";
+                    switch(tag_ty.m_data.as_Primitive())
+                    {
+                    case ::HIR::CoreType::I8:
+                    case ::HIR::CoreType::I16:
+                    case ::HIR::CoreType::I32:
+                    case ::HIR::CoreType::I64:
+                    case ::HIR::CoreType::Isize:
+                        m_of << static_cast<int64_t>(ve.values[e.idx]);
+                        break;
+                    case ::HIR::CoreType::Bool:
+                    case ::HIR::CoreType::U8:
+                    case ::HIR::CoreType::U16:
+                    case ::HIR::CoreType::U32:
+                    case ::HIR::CoreType::U64:
+                    case ::HIR::CoreType::Usize:
+                    case ::HIR::CoreType::Char:
+                        m_of << ve.values[e.idx];
+                        break;
+                    case ::HIR::CoreType::I128: // TODO: Emulation
+                    case ::HIR::CoreType::U128: // TODO: Emulation
+                        MIR_TODO(*m_mir_res, "Emulated i128 tag");
+                        break;
+                    case ::HIR::CoreType::F32:
+                    case ::HIR::CoreType::F64:
+                        MIR_TODO(*m_mir_res, "Floating point enum tag.");
+                        break;
+                    case ::HIR::CoreType::Str:
+                        MIR_BUG(*m_mir_res, "Unsized tag?!");
+                    }
+                    if( TU_TEST1((*e.val), List, .empty() == false) )
+                    {
+                        m_of << ";\n\t";
+                        assign_from_literal([&](){ emit_dst(); m_of << ".DATA.var_" << e.idx; }, get_inner_type(e.idx, 0), *e.val);
+                    }
+                    } break;
                 }
                 ),
             (Integer,
@@ -4509,18 +4610,7 @@ namespace {
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
                 if( ty.m_data.as_Path().binding.is_Enum() )
                 {
-                    auto it = m_enum_repr_cache.find(ty.m_data.as_Path().path.m_data.as_Generic());
-                    if( it != m_enum_repr_cache.end() )
-                    {
-                        MIR_ASSERT(*m_mir_res, e.variant_index == 1, "");
-                        // NOTE: Downcast returns a magic tuple
-                        m_of << "._1";
-                        break ;
-                    }
-                    else
-                    {
-                        m_of << ".DATA";
-                    }
+                    m_of << ".DATA";
                 }
                 m_of << ".var_" << e.variant_index;
                 )

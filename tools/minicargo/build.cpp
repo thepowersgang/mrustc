@@ -5,9 +5,18 @@
  * build.cpp
  * - Logic related to invoking the compiler
  */
-#ifdef _WIN32
+#ifdef _MSC_VER
 # define _CRT_SECURE_NO_WARNINGS    // Allows use of getenv (this program doesn't set env vars)
 #endif
+
+#if defined(__MINGW32__)
+# define DISABLE_MULTITHREAD    // Mingw32 doesn't have c++11 threads
+// Mingw doesn't define putenv()
+extern "C" {
+extern int _putenv_s(const char*, const char*);
+}
+#endif
+
 #include "manifest.h"
 #include "build.h"
 #include "debug.h"
@@ -16,9 +25,11 @@
 #include <algorithm>
 #include <sstream>  // stringstream
 #include <cstdlib>  // setenv
-#include <thread>
-#include <mutex>
-#include <condition_variable>
+#ifndef DISABLE_MULTITHREAD
+# include <thread>
+# include <mutex>
+# include <condition_variable>
+#endif
 #include <climits>
 #include <cassert>
 #ifdef _WIN32
@@ -34,7 +45,12 @@
 
 #ifdef _WIN32
 # define EXESUF ".exe"
-# define HOST_TARGET "x86_64-windows-msvc"
+# ifdef _MSC_VER
+#  define HOST_TARGET "x86_64-windows-msvc"
+# elif defined(__MINGW32__)
+#  define HOST_TARGET "x86_64-windows-gnu"
+# else
+# endif
 #else
 # define EXESUF ""
 # define HOST_TARGET "x86_64-unknown-linux-gnu"
@@ -314,6 +330,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     // Actually do the build
     if( num_jobs > 1 )
     {
+#ifndef DISABLE_MULTITHREAD
         class Semaphore
         {
             ::std::mutex    mutex;
@@ -446,7 +463,18 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         {
             return false;
         }
+#else
+        while( !state.build_queue.empty() )
+        {
+            auto cur = state.get_next();
 
+            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host) )
+            {
+                return false;
+            }
+            state.complete_package(cur, m_list);
+        }
+#endif
     }
     else if( num_jobs == 1 )
     {
@@ -514,7 +542,11 @@ Builder::Builder(BuildOptions opts):
 
     ::helpers::path minicargo_path { buf };
     minicargo_path.pop_component();
+#ifdef __MINGW32__
+    m_compiler_path = (minicargo_path / "..\\..\\bin\\mrustc.exe").normalise();
+#else
     m_compiler_path = minicargo_path / "mrustc.exe";
+#endif
 #else
     char buf[1024];
     size_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
@@ -623,6 +655,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             args.push_back("-C"); args.push_back(format("emit-build-command=",outfile,".sh"));
         }
     }
+    if( m_opts.emit_mmir )
+    {
+        args.push_back("-C"); args.push_back("codegen-type=monomir");
+    }
+
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(this->get_output_dir(is_for_host).str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
