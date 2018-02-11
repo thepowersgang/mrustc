@@ -27,6 +27,7 @@ struct Options
 {
     const char* output_dir = nullptr;
     const char* input_glob = nullptr;
+    ::std::vector<::std::string>    test_list;
 
     const char* exceptions_file = nullptr;
     bool fail_fast = false;
@@ -275,6 +276,11 @@ int main(int argc, const char* argv[])
         unsigned n_ok = 0;
         for(const auto& test : tests)
         {
+            if( !opts.test_list.empty() && ::std::find(opts.test_list.begin(), opts.test_list.end(), test.m_name) == opts.test_list.end() )
+            {
+                DEBUG(">> NOT SELECTED");
+                continue ;
+            }
             if( test.ignore )
             {
                 DEBUG(">> IGNORE " << test.m_name);
@@ -366,8 +372,9 @@ int Options::parse(int argc, const char* argv[])
             }
             // TODO: Multiple input globs?
             else {
-                this->usage_short();
-                return 1;
+                this->test_list.push_back(arg);
+                //this->usage_short();
+                //return 1;
             }
         }
         else if( arg[1] != '-' )
