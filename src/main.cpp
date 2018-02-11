@@ -29,7 +29,7 @@
 
 // Hacky default target
 #ifdef _MSC_VER
-# if defined(_X64)
+# if defined(_WIN64)
 #  define DEFAULT_TARGET_NAME "x86_64-windows-msvc"
 # else
 #  define DEFAULT_TARGET_NAME "x86-windows-msvc"

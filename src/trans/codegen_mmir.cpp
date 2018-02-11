@@ -548,11 +548,14 @@ namespace
                 putb(v >> 24);
                 };
             auto putsize = [&](uint64_t v) {
-                if( true ) {
+                if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 ) {
                     putu32(v      );
                     putu32(v >> 32);
                 }
-                else { 
+                else if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 ) {
+                    putu32(v   );
+                }
+                else {
                     putu32(v   );
                 }
                 };
@@ -680,6 +683,10 @@ namespace
                         }
                         auto v = ::HIR::Literal::make_Integer(le.idx);
                         emit_literal_as_bytes(v, repr->fields[ve->field.index].ty, out_relocations, base_ofs + cur_ofs);
+
+                        size_t size;
+                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[ve->field.index].ty, size));
+                        cur_ofs += size;
                     }
                     // TODO: Nonzero?
                     while(cur_ofs < repr->size)

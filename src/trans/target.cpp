@@ -87,13 +87,13 @@ namespace
                 ARCH_X86
             };
         }
-        //else if (target_name == "x86_64-windows-msvc")
-        //{
-        //    return TargetSpec {
-        //        "windows", "windows", "msvc", CodegenMode::Msvc, "amd64"
-        //        ARCH_X86_64
-        //        };
-        //}
+        else if (target_name == "x86_64-windows-msvc")
+        {
+            return TargetSpec {
+                "windows", "windows", "msvc", CodegenMode::Msvc, "amd64",
+                ARCH_X86_64
+                };
+        }
         else
         {
             ::std::cerr << "Unknown target name '" << target_name << "'" << ::std::endl;
