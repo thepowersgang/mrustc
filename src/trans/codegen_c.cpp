@@ -1232,13 +1232,13 @@ namespace {
             switch(repr->variants.tag())
             {
             case TypeRepr::VariantMode::TAGDEAD:    throw "";
-            TU_ARM(repr->variants, Values, ve)
+            TU_ARM(repr->variants, Values, ve) {
                 m_of << " .TAG = " << ve.values[var_idx] << ",";
-                break;
-            TU_ARM(repr->variants, NonZero, ve)
-                break;
-            TU_ARM(repr->variants, None, ve)
-                break;
+                } break;
+            TU_ARM(repr->variants, NonZero, ve) {
+                } break;
+            TU_ARM(repr->variants, None, ve) {
+                } break;
             }
 
             if( e.empty() )
@@ -3566,7 +3566,7 @@ namespace {
             }
             else if( name == "write_bytes" ) {
                 // 0: Destination, 1: Value, 2: Count
-                m_of << "memset( "; emit_param(e.args.at(0));
+                m_of << "if( "; emit_param(e.args.at(2)); m_of << " > 0) memset( "; emit_param(e.args.at(0));
                     m_of << ", "; emit_param(e.args.at(1));
                     m_of << ", "; emit_param(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                     m_of << ")";
@@ -3685,13 +3685,13 @@ namespace {
                     TU_ARM(repr->variants, None, _e)
                         m_of << "0";
                         break;
-                    TU_ARM(repr->variants, Values, _e) {
-                        emit_param(e.args.at(0)); m_of << "->TAG";
+                    TU_ARM(repr->variants, Values, ve) {
+                        m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field);
                         } break;
                     TU_ARM(repr->variants, NonZero, ve) {
-                        emit_param(e.args.at(0)); emit_enum_path(repr, ve.field); m_of << " ";
+                        m_of << "(*"; emit_param(e.args.at(0)); m_of << ")"; emit_enum_path(repr, ve.field); m_of << " ";
                         m_of << (ve.zero_variant ? "==" : "!=");
-                        m_of << "0";
+                        m_of << " 0";
                         } break;
                     }
                 }
