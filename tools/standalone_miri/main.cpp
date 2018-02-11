@@ -107,6 +107,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 return args.at(e.idx);
                 } break;
             TU_ARM(lv, Static, e) {
+                // TODO: Type!
                 return modtree.get_static(e);
                 } break;
             TU_ARM(lv, Index, e) {
@@ -301,22 +302,26 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 TU_ARM(se.src, Borrow, re) {
                     ::HIR::TypeRef  src_ty;
                     size_t ofs = 0;
-                    Value&  base_value = state.get_value_type_and_ofs(re.val, ofs, src_ty);
-                    if( !base_value.allocation )
+                    Value&  src_base_value = state.get_value_type_and_ofs(re.val, ofs, src_ty);
+                    if( !src_base_value.allocation )
                     {
                         // TODO: Need to convert this value into an allocation version
                         ::std::cerr << "TODO: RValue::Borrow - " << se.src << " - convert to non-inline" << ::std::endl;
                         throw "TODO";
                         //base_value.to_allocation();
                     }
-                    ofs += base_value.meta.indirect_meta.offset;
+                    ofs += src_base_value.meta.indirect_meta.offset;
                     src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
                     Value new_val = Value(src_ty);
                     // ^ Pointer value
-                    new_val.allocation.alloc().relocations.push_back(Relocation { 0, base_value.allocation });
+                    new_val.allocation.alloc().relocations.push_back(Relocation { 0, src_base_value.allocation });
                     new_val.write_bytes(0, &ofs, src_ty.get_size());
-                    ::std::cerr << "TODO: RValue::Borrow - " << se.src << ::std::endl;
-                    throw "TODO";
+
+                    ::HIR::TypeRef  dst_ty;
+                    // TODO: Check type equality
+                    size_t dst_ofs = 0;
+                    Value&  dst_base_value = state.get_value_type_and_ofs(se.dst, dst_ofs, dst_ty);
+                    dst_base_value.write_value(dst_ofs, ::std::move(new_val));
                     } break;
                 TU_ARM(se.src, SizedArray, re) {
                     throw "TODO";

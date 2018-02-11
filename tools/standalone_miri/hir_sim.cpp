@@ -14,7 +14,6 @@ const size_t POINTER_SIZE = 8;
 
 size_t HIR::TypeRef::get_size(size_t ofs) const
 {
-    const size_t POINTER_SIZE = 8;
     if( this->wrappers.size() <= ofs )
     {
         switch(this->inner_type)

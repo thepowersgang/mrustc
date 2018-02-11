@@ -238,12 +238,18 @@ void Value::write_bytes(size_t ofs, const void* src, size_t count)
 {
     if( this->allocation )
     {
-        if(ofs >= this->meta.indirect_meta.size )
+        if(ofs >= this->meta.indirect_meta.size ) {
+            ::std::cerr << "Value::write_bytes - Out of bounds write, " << ofs << " >= " << this->meta.indirect_meta.size << ::std::endl;
             throw "ERROR";
-        if(count > this->meta.indirect_meta.size )
+        }
+        if(count > this->meta.indirect_meta.size ) {
+            ::std::cerr << "Value::write_bytes - Out of bounds write, count " << count << " > size " << this->meta.indirect_meta.size << ::std::endl;
             throw "ERROR";
-        if(ofs+count > this->meta.indirect_meta.size )
+        }
+        if(ofs+count > this->meta.indirect_meta.size ) {
+            ::std::cerr << "Value::write_bytes - Out of bounds write, " << ofs << "+" << count << " > size " << this->meta.indirect_meta.size << ::std::endl;
             throw "ERROR";
+        }
     }
     else
     {
