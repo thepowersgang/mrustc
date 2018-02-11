@@ -97,6 +97,9 @@ namespace
             os << (sign ? "-" : "+") << "0x1." << ::std::setw(52/4) << ::std::setfill('0') << ::std::hex << frac << ::std::dec << "p" << (exp - 1023);
             os << " " << v.t;
             } break;
+        TU_ARM(e, ItemAddr, v) {
+            os << "ADDROF " << v;
+            } break;
         default:
             os << e;
             break;
@@ -160,13 +163,13 @@ namespace
                 {
                     m_of << "\tlet m: fn();\n";
                     m_of << "\t0: {\n";
-                    m_of << "\t\tASSIGN m = &" << ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) << ";\n";
-                    m_of << "\t\tCALL RETURN = " << ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) << "(m, arg1, arg2) goto 1 else 1\n";
+                    m_of << "\t\tASSIGN m = ADDROF " << ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "mrustc-main")) << ";\n";
+                    m_of << "\t\tCALL RETURN = " << ::HIR::GenericPath(m_resolve.m_crate.get_lang_item_path(Span(), "start")) << "(m, arg0, arg1) goto 1 else 1\n";
                 }
                 else
                 {
                     m_of << "\t0: {\n";
-                    m_of << "\t\tCALL RETURN = " << ::HIR::GenericPath(c_start_path) << "(arg1, arg2) goto 1 else 1;\n";
+                    m_of << "\t\tCALL RETURN = " << ::HIR::GenericPath(c_start_path) << "(arg0, arg1) goto 1 else 1;\n";
                 }
                 m_of << "\t}\n";
                 m_of << "\t1: {\n";
@@ -507,6 +510,271 @@ namespace
                 m_enum_repr_cache.insert( ::std::make_pair( p.clone(), mv$(nonzero_path) ) );
             }
 #endif
+            m_mir_res = nullptr;
+        }
+        struct Reloc {
+            size_t  ofs;
+            size_t  len;
+            const ::HIR::Path* p;
+            ::std::string   bytes;
+        };
+        void emit_literal_as_bytes(const ::HIR::Literal& lit, const ::HIR::TypeRef& ty, ::std::vector<Reloc>& out_relocations, size_t base_ofs)
+        {
+            TRACE_FUNCTION_F(lit << ", " << ty);
+            auto putb = [&](uint8_t b) {
+                if( b == 0 ) {
+                    m_of << "\\0";
+                }
+                else if( b == '\\' ) {
+                    m_of << "\\\\";
+                }
+                else if( b == '"' ) {
+                    m_of << "\\\"";
+                }
+                else if( ' ' <= b && b <= 'z' && b != '\\' ) {
+                    m_of << b;
+                }
+                else if( b < 16 ) {
+                    m_of << "\\x0" << ::std::hex << int(b) << ::std::dec;
+                }
+                else {
+                    m_of << "\\x" << ::std::hex << int(b) << ::std::dec;
+                }
+                };
+            auto putu32 = [&](uint32_t v) {
+                putb(v & 0xFF);
+                putb(v >> 8);
+                putb(v >> 16);
+                putb(v >> 24);
+                };
+            auto putsize = [&](uint64_t v) {
+                if( true ) {
+                    putu32(v      );
+                    putu32(v >> 32);
+                }
+                else { 
+                    putu32(v   );
+                }
+                };
+            switch(ty.m_data.tag())
+            {
+            case ::HIR::TypeRef::Data::TAGDEAD: throw "";
+            case ::HIR::TypeRef::Data::TAG_Generic:
+            case ::HIR::TypeRef::Data::TAG_ErasedType:
+            case ::HIR::TypeRef::Data::TAG_Diverge:
+            case ::HIR::TypeRef::Data::TAG_Infer:
+            case ::HIR::TypeRef::Data::TAG_TraitObject:
+            case ::HIR::TypeRef::Data::TAG_Slice:
+            case ::HIR::TypeRef::Data::TAG_Closure:
+                BUG(sp, "Unexpected " << ty << " in decoding literal");
+            TU_ARM(ty.m_data, Primitive, te) {
+                switch(te)
+                {
+                case ::HIR::CoreType::U8:
+                case ::HIR::CoreType::I8:
+                case ::HIR::CoreType::Bool:
+                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
+                    putb(lit.as_Integer());
+                    break;
+                case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I16:
+                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
+                    putb(lit.as_Integer() & 0xFF);
+                    putb(lit.as_Integer() >> 8);
+                    break;
+                case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I32:
+                case ::HIR::CoreType::Char:
+                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
+                    putu32(lit.as_Integer()   );
+                    break;
+                case ::HIR::CoreType::U64:
+                case ::HIR::CoreType::I64:
+                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
+                    putu32(lit.as_Integer()      );
+                    putu32(lit.as_Integer() >> 32);
+                    break;
+                case ::HIR::CoreType::U128:
+                case ::HIR::CoreType::I128:
+                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
+                    putu32(lit.as_Integer()      );
+                    putu32(lit.as_Integer() >> 32);
+                    putu32(0);
+                    putu32(0);
+                    break;
+                case ::HIR::CoreType::Usize:
+                case ::HIR::CoreType::Isize:
+                    ASSERT_BUG(sp, lit.is_Integer(), ty << " not Literal::Integer - " << lit);
+                    putsize(lit.as_Integer());
+                    break;
+                case ::HIR::CoreType::F32: {
+                    ASSERT_BUG(sp, lit.is_Float(), "not Literal::Float - " << lit);
+                    uint32_t v;
+                    memcpy(&v, &double(lit.as_Float()), 4);
+                    putu32(v);
+                    } break;
+                case ::HIR::CoreType::F64: {
+                    ASSERT_BUG(sp, lit.is_Float(), "not Literal::Float - " << lit);
+                    uint64_t v;
+                    memcpy(&v, &lit.as_Float(), 8);
+                    putu32(v);
+                    } break;
+                case ::HIR::CoreType::Str:
+                    BUG(sp, "Unexpected " << ty << " in decoding literal");
+                }
+                } break;
+            case ::HIR::TypeRef::Data::TAG_Path:
+            case ::HIR::TypeRef::Data::TAG_Tuple: {
+                const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
+                assert(repr);
+                size_t cur_ofs = 0;
+                if( lit.is_List() )
+                {
+                    const auto& le = lit.as_List();
+                    assert(le.size() == repr->fields.size());
+                    for(size_t i = 0; i < repr->fields.size(); i ++)
+                    {
+                        assert(cur_ofs <= repr->fields[i].offset);
+                        while(cur_ofs < repr->fields[i].offset)
+                        {
+                            putb(0);
+                            cur_ofs ++;
+                        }
+                        emit_literal_as_bytes(le[i], repr->fields[i].ty, out_relocations, base_ofs + cur_ofs);
+                        size_t size;
+                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[i].ty, size));
+                        cur_ofs += size;
+                    }
+                    while(cur_ofs < repr->size)
+                    {
+                        putb(0);
+                        cur_ofs ++;
+                    }
+                }
+                else if( lit.is_Variant() )
+                {
+                    const auto& le = lit.as_Variant();
+                    if( *le.val != ::HIR::Literal::make_List({}) )
+                    {
+                        assert(le.idx < repr->fields.size());
+                        while(cur_ofs < repr->fields[le.idx].offset)
+                        {
+                            putb(0);
+                            cur_ofs ++;
+                        }
+
+                        emit_literal_as_bytes(*le.val, repr->fields[le.idx].ty, out_relocations, base_ofs + cur_ofs);
+
+                        size_t size;
+                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[le.idx].ty, size));
+                        cur_ofs += size;
+                    }
+
+                    if(const auto* ve = repr->variants.opt_Values())
+                    {
+                        ASSERT_BUG(sp, cur_ofs <= repr->fields[ve->field.index].offset, "Bad offset before enum tag");
+                        while(cur_ofs < repr->fields[ve->field.index].offset)
+                        {
+                            putb(0);
+                            cur_ofs ++;
+                        }
+                        auto v = ::HIR::Literal::make_Integer(le.idx);
+                        emit_literal_as_bytes(v, repr->fields[ve->field.index].ty, out_relocations, base_ofs + cur_ofs);
+                    }
+                    // TODO: Nonzero?
+                    while(cur_ofs < repr->size)
+                    {
+                        putb(0);
+                        cur_ofs ++;
+                    }
+                }
+                else
+                {
+                    TODO(sp, "Composites - " << ty << " w/ " << lit);
+                }
+                } break;
+            case ::HIR::TypeRef::Data::TAG_Borrow:
+                if( *ty.m_data.as_Borrow().inner == ::HIR::CoreType::Str )
+                {
+                    ASSERT_BUG(sp, lit.is_String(), ty << " not Literal::String - " << lit);
+                    const auto& s = lit.as_String();
+                    putsize(0);
+                    putsize(s.size());
+                    out_relocations.push_back(Reloc { base_ofs, 8, nullptr, s });
+                    break;
+                }
+                // fall
+            case ::HIR::TypeRef::Data::TAG_Pointer: {
+                const auto& ity = (ty.m_data.is_Borrow() ? *ty.m_data.as_Borrow().inner : *ty.m_data.as_Pointer().inner);
+                size_t ity_size, ity_align;
+                Target_GetSizeAndAlignOf(sp, m_resolve, ity, ity_size, ity_align);
+                bool is_unsized = (ity_size == SIZE_MAX);
+                if( lit.is_BorrowPath() )
+                {
+                    putsize(0);
+                    out_relocations.push_back(Reloc { base_ofs, 8, &lit.as_BorrowPath(), "" });
+                    if( is_unsized )
+                    {
+                        // TODO: Get the size of the pointed-to array
+                        // OR: Find out the source item type and the target trait.
+                        putsize(0);
+                    }
+                    break;
+                }
+                else if( lit.is_Integer() )
+                {
+                    ASSERT_BUG(sp, lit.as_Integer() == 0, "Pointer from integer not 0");
+                    ASSERT_BUG(sp, ty.m_data.is_Pointer(), "Borrow from integer");
+                    putsize(0);
+                    if( is_unsized )
+                    {
+                        putsize(0);
+                    }
+                    break;
+                }
+                TODO(sp, "Pointers - " << ty << " w/ " << lit);
+                } break;
+            case ::HIR::TypeRef::Data::TAG_Function:
+                ASSERT_BUG(sp, lit.is_BorrowPath(), ty << " not Literal::BorrowPath - " << lit);
+                putsize(0);
+                out_relocations.push_back(Reloc { base_ofs, 8, &lit.as_BorrowPath(), "" });
+                break;
+            TU_ARM(ty.m_data, Array, te) {
+                // What about byte strings?
+                // TODO: Assert size
+                ASSERT_BUG(sp, lit.is_List(), "not Literal::List - " << lit);
+                for(const auto& v : lit.as_List())
+                {
+                    emit_literal_as_bytes(v, *te.inner, out_relocations, base_ofs);
+                    size_t size;
+                    assert(Target_GetSizeOf(sp, m_resolve, *te.inner, size));
+                    base_ofs += size;
+                }
+                } break;
+            }
+        }
+        void emit_static_local(const ::HIR::Path& p, const ::HIR::Static& item, const Trans_Params& params) override
+        {
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "static " << p;), ::HIR::TypeRef(), {}, empty_fcn };
+            m_mir_res = &top_mir_res;
+
+            TRACE_FUNCTION_F(p);
+
+            ::std::vector<Reloc>    relocations;
+
+            auto type = params.monomorph(m_resolve, item.m_type);
+            m_of << "static " << p << ": " << type << " = \"";
+            emit_literal_as_bytes(item.m_value_res, type, relocations, 0);
+            m_of << "\"";
+            m_of << "{";
+            for(const auto& r : relocations)
+            {
+                // TODO.
+            }
+            m_of << "}";
+            m_of << ";\n";
+
             m_mir_res = nullptr;
         }
         void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) override

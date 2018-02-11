@@ -7,8 +7,6 @@
 #include <algorithm>
 #include <iomanip>
 
-#pragma warning( error : 4061) 
-
 struct ProgramOptions
 {
     ::std::string   infile;
@@ -16,7 +14,7 @@ struct ProgramOptions
     int parse(int argc, const char* argv[]);
 };
 
-Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args);
+Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args);
 
 int main(int argc, const char* argv[])
 {
@@ -31,15 +29,32 @@ int main(int argc, const char* argv[])
 
     tree.load_file(opts.infile);
 
-    auto rv = MIRI_Invoke(tree, tree.find_lang_item("start"), {});
+    auto val_argc = Value( ::HIR::TypeRef{RawType::I32} );
+    ::HIR::TypeRef  argv_ty { RawType::I8 };
+    argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
+    argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
+    auto val_argv = Value(argv_ty);
+    val_argc.write_bytes(0, "\0\0\0", 4);
+    val_argv.write_bytes(0, "\0\0\0\0\0\0\0", argv_ty.get_size());
+
+    ::std::vector<Value>    args;
+    args.push_back(::std::move(val_argc));
+    args.push_back(::std::move(val_argv));
+    auto rv = MIRI_Invoke( tree, tree.find_lang_item("start"), ::std::move(args) );
     ::std::cout << rv << ::std::endl;
 
     return 0;
 }
 
-Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
+Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
 {
+    //TRACE_FUNCTION_FR(path,path)
     const auto& fcn = modtree.get_function(path);
+    for(size_t i = 0; i < args.size(); i ++)
+    {
+        //DEBUG(a);
+        ::std::cout << "Argument(" << i << ") = " << args[i] << ::std::endl;
+    }
 
     ::std::vector<bool> drop_flags = fcn.m_mir.drop_flags;
     ::std::vector<Value>    locals; locals.reserve( fcn.m_mir.locals.size() );
@@ -52,12 +67,14 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
 
     struct State
     {
+        ModuleTree& modtree;
         const Function& fcn;
         Value   ret;
         ::std::vector<Value>    args;
         ::std::vector<Value>    locals;
 
-        State(const Function& fcn, ::std::vector<Value> args):
+        State(ModuleTree& modtree, const Function& fcn, ::std::vector<Value> args):
+            modtree(modtree),
             fcn(fcn),
             ret(fcn.ret_ty),
             args(::std::move(args))
@@ -73,6 +90,7 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
         {
             switch(lv.tag())
             {
+            case ::MIR::LValue::TAGDEAD:    throw "";
             TU_ARM(lv, Return, _e) {
                 ofs = 0;
                 ty = fcn.ret_ty;
@@ -87,6 +105,9 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
                 ofs = 0;
                 ty = fcn.args.at(e.idx);
                 return args.at(e.idx);
+                } break;
+            TU_ARM(lv, Static, e) {
+                return modtree.get_static(e);
                 } break;
             TU_ARM(lv, Index, e) {
                 auto idx = read_lvalue(*e.idx).as_usize();
@@ -118,6 +139,23 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
                 ofs += inner_ofs;
                 return base_val;
                 }
+            TU_ARM(lv, Downcast, e) {
+                ::HIR::TypeRef  composite_ty;
+                auto& base_val = get_value_type_and_ofs(*e.val, ofs, composite_ty);
+
+                size_t inner_ofs;
+                ty = composite_ty.get_field(e.variant_index, inner_ofs);
+                ::std::cerr << "TODO: Read from Downcast - " << lv << ::std::endl;
+                throw "TODO";
+                ofs += inner_ofs;
+                return base_val;
+                }
+            TU_ARM(lv, Deref, e) {
+                //auto addr = read_lvalue(*e.val);
+
+                ::std::cerr << "TODO: Read from deref - " << lv << ::std::endl;
+                throw "TODO";
+                } break;
             }
             throw "";
         }
@@ -161,6 +199,7 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
         {
             switch(c.tag())
             {
+            case ::MIR::Constant::TAGDEAD:  throw "";
             TU_ARM(c, Int, ce) {
                 ty = ::HIR::TypeRef(ce.t);
                 Value val = Value(ty);
@@ -174,6 +213,42 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
                 val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
                 return val;
                 } break;
+            TU_ARM(c, Bool, ce) {
+                Value val = Value(::HIR::TypeRef { RawType::Bool });
+                val.write_bytes(0, &ce.v, 1);
+                return val;
+                } break;
+            TU_ARM(c, Float, ce) {
+                ty = ::HIR::TypeRef(ce.t);
+                Value val = Value(ty);
+                if( ce.t.raw_type == RawType::F64 ) {
+                    val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian/format?
+                }
+                else if( ce.t.raw_type == RawType::F32 ) {
+                    float v = static_cast<float>(ce.v);
+                    val.write_bytes(0, &v, ::std::min(ty.get_size(), sizeof(v)));  // TODO: Endian/format?
+                }
+                else {
+                    throw ::std::runtime_error("BUG: Invalid type in Constant::Float");
+                }
+                return val;
+                } break;
+            TU_ARM(c, Const, ce) {
+                throw ::std::runtime_error("BUG: Constant::Const in mmir");
+                } break;
+            TU_ARM(c, Bytes, ce) {
+                throw ::std::runtime_error("TODO: Constant::Bytes");
+                } break;
+            TU_ARM(c, StaticString, ce) {
+                throw ::std::runtime_error("TODO: Constant::StaticString");
+                } break;
+            TU_ARM(c, ItemAddr, ce) {
+                // Create a value with a special backing allocation of zero size that references the specified item.
+                if( const auto* fn = modtree.get_function_opt(ce) ) {
+                    return Value::new_fnptr(ce);
+                }
+                throw ::std::runtime_error("TODO: Constant::ItemAddr");
+                } break;
             }
             throw "";
         }
@@ -186,6 +261,7 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
         {
             switch(p.tag())
             {
+            case ::MIR::Param::TAGDEAD: throw "";
             TU_ARM(p, Constant, pe)
                 return const_to_value(pe, ty);
             TU_ARM(p, LValue, pe)
@@ -198,7 +274,7 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
             ::HIR::TypeRef  ty;
             return param_to_value(p, ty);
         }
-    } state { fcn, ::std::move(args) };
+    } state { modtree, fcn, ::std::move(args) };
 
     size_t bb_idx = 0;
     for(;;)
@@ -210,15 +286,37 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
             ::std::cout << "BB" << bb_idx << "/" << (&stmt - bb.statements.data()) << ": " << stmt << ::std::endl;
             switch(stmt.tag())
             {
+            case ::MIR::Statement::TAGDEAD: throw "";
             TU_ARM(stmt, Assign, se) {
                 Value   val;
                 switch(se.src.tag())
                 {
+                case ::MIR::RValue::TAGDEAD: throw "";
                 TU_ARM(se.src, Use, re) {
                     state.write_lvalue(se.dst, state.read_lvalue(re));
                     } break;
                 TU_ARM(se.src, Constant, re) {
                     state.write_lvalue(se.dst, state.const_to_value(re));
+                    } break;
+                TU_ARM(se.src, Borrow, re) {
+                    ::HIR::TypeRef  src_ty;
+                    size_t ofs = 0;
+                    Value&  base_value = state.get_value_type_and_ofs(re.val, ofs, src_ty);
+                    if( !base_value.allocation )
+                    {
+                        // TODO: Need to convert this value into an allocation version
+                        ::std::cerr << "TODO: RValue::Borrow - " << se.src << " - convert to non-inline" << ::std::endl;
+                        throw "TODO";
+                        //base_value.to_allocation();
+                    }
+                    ofs += base_value.meta.indirect_meta.offset;
+                    src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
+                    Value new_val = Value(src_ty);
+                    // ^ Pointer value
+                    new_val.allocation.alloc().relocations.push_back(Relocation { 0, base_value.allocation });
+                    new_val.write_bytes(0, &ofs, src_ty.get_size());
+                    ::std::cerr << "TODO: RValue::Borrow - " << se.src << ::std::endl;
+                    throw "TODO";
                     } break;
                 TU_ARM(se.src, SizedArray, re) {
                     throw "TODO";
@@ -272,17 +370,61 @@ Value MIRI_Invoke(const ModuleTree& modtree, ::HIR::Path path, ::std::vector<Val
             case ::MIR::Statement::TAG_SetDropFlag:
                 throw "TODO";
                 break;
+            case ::MIR::Statement::TAG_ScopeEnd:
+                throw "TODO";
+                break;
             }
         }
 
         ::std::cout << "BB" << bb_idx << "/TERM: " << bb.terminator << ::std::endl;
         switch(bb.terminator.tag())
         {
+        case ::MIR::Terminator::TAGDEAD:    throw "";
+        TU_ARM(bb.terminator, Incomplete, _te)
+            throw ::std::runtime_error("BUG: Terminator::Incomplete hit");
+        TU_ARM(bb.terminator, Diverge, _te)
+            throw ::std::runtime_error("BUG: Terminator::Diverge hit");
+        TU_ARM(bb.terminator, Panic, _te)
+            throw ::std::runtime_error("TODO: Terminator::Panic");
         TU_ARM(bb.terminator, Goto, te)
             bb_idx = te;
             continue;
         TU_ARM(bb.terminator, Return, _te)
             return state.ret;
+        TU_ARM(bb.terminator, If, _te)
+            throw ::std::runtime_error("TODO: Terminator::If");
+        TU_ARM(bb.terminator, Switch, _te)
+            throw ::std::runtime_error("TODO: Terminator::Switch");
+        TU_ARM(bb.terminator, SwitchValue, _te)
+            throw ::std::runtime_error("TODO: Terminator::SwitchValue");
+        TU_ARM(bb.terminator, Call, te) {
+            if( te.fcn.is_Intrinsic() ) {
+                throw ::std::runtime_error("TODO: Terminator::Call - intrinsic");
+            }
+            else {
+                const ::HIR::Path* fcn_p;
+                if( te.fcn.is_Path() ) {
+                    fcn_p = &te.fcn.as_Path();
+                }
+                else {
+                    ::HIR::TypeRef ty;
+                    auto v = state.read_lvalue_with_ty(te.fcn.as_Value(), ty);
+                    // TODO: Assert type
+                    // TODO: Assert offset/content.
+                    assert(v.as_usize() == 0);
+                    fcn_p = &v.allocation.alloc().relocations.at(0).backing_alloc.fcn();
+                }
+
+                ::std::vector<Value>    sub_args; sub_args.reserve(te.args.size());
+                for(const auto& a : te.args)
+                {
+                    sub_args.push_back( state.param_to_value(a) );
+                }
+                ::std::cout << "TODO: Call " << *fcn_p << ::std::endl;
+                MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args));
+            }
+            throw ::std::runtime_error("TODO: Terminator::Call");
+            } break;
         }
         throw "";
     }

@@ -412,9 +412,6 @@
     <ClInclude Include="..\src\hir_expand\main_bindings.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\hir_typeck\main_bindings.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\include\cpp_unpack.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -460,16 +457,7 @@
     <ClInclude Include="..\src\parse\lex.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\src\parse\parseerror.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\resolve\main_bindings.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\trans\main_bindings.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\src\trans\mangling.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\ast\attrs.hpp">
@@ -600,6 +588,18 @@
     </ClInclude>
     <ClInclude Include="..\src\hir\hir.hpp">
       <Filter>Header Files\hir</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\hir_typeck\main_bindings.hpp">
+      <Filter>Header Files\hir_typeck</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\trans\main_bindings.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\trans\mangling.hpp">
+      <Filter>Header Files\trans</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\parse\parseerror.hpp">
+      <Filter>Header Files\parse</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

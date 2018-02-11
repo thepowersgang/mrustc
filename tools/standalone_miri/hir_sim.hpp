@@ -82,6 +82,7 @@ namespace HIR {
     /// Definition of a type
     struct TypeRef
     {
+        // Top to bottom list of wrappers (first entry is the outermost wrapper)
         ::std::vector<TypeWrapper>  wrappers;
         RawType inner_type = RawType::Unit;
         const DataType* composite_type = nullptr;

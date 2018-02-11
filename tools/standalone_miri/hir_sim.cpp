@@ -6,6 +6,8 @@
 #include "hir_sim.hpp"
 #include "module_tree.hpp"
 
+const size_t POINTER_SIZE = 8;
+
 //::HIR::Path::Path(::HIR::SimplePath sp)
 //{
 //}
@@ -22,6 +24,7 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
         case RawType::Composite:
             return this->composite_type->size;
         case RawType::Unreachable:
+        case RawType::TraitObject:
         case RawType::Str:
             throw "Invalid";
         case RawType::U8:   case RawType::I8:
@@ -34,6 +37,16 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
             return 8;
         case RawType::U128: case RawType::I128:
             return 16;
+
+        case RawType::Bool:
+            return 1;
+        case RawType::Char:
+            return 4;
+
+        case RawType::F32:
+            return 4;
+        case RawType::F64:
+            return 8;
 
         case RawType::Function: // This should probably be invalid?
         case RawType::USize: case RawType::ISize:
@@ -52,7 +65,10 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
         {
             // Need to look up the metadata type for the actual type
             if( this->inner_type == RawType::Composite )
-                throw "TODO";
+            {
+                ::std::cerr << "TODO: Check metadata type for pointer " << *this << ", assuming none" << ::std::endl;
+                return POINTER_SIZE;
+            }
             else if( this->inner_type == RawType::Str )
                 return POINTER_SIZE*2;
             else if( this->inner_type == RawType::TraitObject )
@@ -175,6 +191,12 @@ namespace HIR {
         case RawType::Unreachable:
             os << "!";
             break;
+        case RawType::Function:
+            os << "function_?";
+            break;
+        case RawType::TraitObject:
+            os << "traitobject_?";
+            break;
         case RawType::Bool: os << "bool"; break;
         case RawType::Char: os << "char"; break;
         case RawType::Str:  os << "str";  break;
@@ -191,6 +213,8 @@ namespace HIR {
         case RawType::I128: os << "i128";   break;
         case RawType::USize: os << "usize";   break;
         case RawType::ISize: os << "isize";   break;
+        case RawType::F32:  os << "f32";    break;
+        case RawType::F64:  os << "f64";    break;
         }
         for(auto it = x.wrappers.rbegin(); it != x.wrappers.rend(); ++it)
         {

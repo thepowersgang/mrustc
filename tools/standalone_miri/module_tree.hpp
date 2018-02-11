@@ -10,8 +10,11 @@
 #include "../../src/mir/mir.hpp"
 #include "hir_sim.hpp"
 
+struct Value;
+
 struct Function
 {
+    ::HIR::Path my_path;
     ::std::vector<::HIR::TypeRef>   args;
     ::HIR::TypeRef   ret_ty;
     ::MIR::Function m_mir;
@@ -25,6 +28,9 @@ class ModuleTree
     ::std::set<::std::string>   loaded_files;
 
     ::std::map<::HIR::Path, Function>    functions;
+    ::std::map<::HIR::Path, Value>    statics;
+    // TODO: statics
+
     // Hack: Tuples are stored as `::""::<A,B,C,...>`
     ::std::map<::HIR::GenericPath, ::std::unique_ptr<DataType>>  data_types;
 public:
@@ -34,6 +40,9 @@ public:
 
     ::HIR::SimplePath find_lang_item(const char* name) const;
     const Function& get_function(const ::HIR::Path& p) const;
+    const Function* get_function_opt(const ::HIR::Path& p) const;
+    Value& get_static(const ::HIR::Path& p);
+    Value* get_static_opt(const ::HIR::Path& p);
 };
 
 // struct/union/enum

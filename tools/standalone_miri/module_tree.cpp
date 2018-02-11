@@ -3,6 +3,7 @@
 //
 #include "module_tree.hpp"
 #include "lex.hpp"
+#include "value.hpp"
 #include <iostream>
 
 ModuleTree::ModuleTree()
@@ -73,7 +74,7 @@ bool Parser::parse_one()
     else if( lex.consume_if("fn") )
     {
         auto p = parse_path();
-        //::std::cout << "DEBUG:p arse_one - fn " << p << ::std::endl;
+        //::std::cout << "DEBUG: parse_one - fn " << p << ::std::endl;
 
         lex.check_consume('(');
         ::std::vector<::HIR::TypeRef>  arg_tys;
@@ -91,17 +92,33 @@ bool Parser::parse_one()
         }
         auto body = parse_body();
 
-        tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(arg_tys), rv_ty, ::std::move(body) }) );
+        auto p2 = p;
+        tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, ::std::move(body) }) );
     }
     else if( lex.consume_if("static") )
     {
         auto p = parse_path();
         //::std::cout << "DEBUG: parse_one - static " << p << ::std::endl;
+        lex.check_consume(':');
+        auto ty = parse_type();
+        // TODO: externs?
         lex.check_consume('=');
-        // TODO: Body? Value?
-        //auto body = parse_body();
-        //auto data = ::std::move(lex.consume().strval);
-        throw "TODO";
+        lex.check(TokenClass::String);
+        auto data = ::std::move(lex.consume().strval);
+        if( lex.consume_if('{') )
+        {
+            while( !lex.consume_if('}') )
+            {
+                // TODO: Parse relocation entries
+                throw "TODO";
+            }
+        }
+        lex.check_consume(';');
+
+        Value val = Value(ty);
+        val.write_bytes(0, data.data(), data.size());
+
+        tree.statics.insert(::std::make_pair( ::std::move(p), ::std::move(val) ));
     }
     else if( lex.consume_if("type") )
     {
@@ -354,7 +371,7 @@ bool Parser::parse_one()
             else if( p.lex.consume_if("false") ) {
                 return ::MIR::Constant::make_Bool({ false });
             }
-            else if( p.lex.consume_if("&") ) {
+            else if( p.lex.consume_if("ADDROF") ) {
                 auto path = p.parse_path();
 
                 return ::MIR::Constant::make_ItemAddr({ ::std::move(path) });
@@ -371,6 +388,7 @@ bool Parser::parse_one()
             if( p.lex.next() == TokenClass::Integer || p.lex.next() == TokenClass::String || p.lex.next() == TokenClass::ByteString
                 || p.lex.next() == '+' || p.lex.next() == '-' || p.lex.next() == '&'
                 || p.lex.next() == "true" || p.lex.next() == "false"
+                || p.lex.next() == "ADDROF"
                 )
             {
                 return parse_const(p);
@@ -432,6 +450,7 @@ bool Parser::parse_one()
                 if( lex.next() == TokenClass::Integer || lex.next() == TokenClass::String || lex.next() == TokenClass::ByteString
                     || lex.next() == '+' || lex.next() == '-'
                     || lex.next() == "true" || lex.next() == "false"
+                    || lex.next() == "ADDROF"
                     )
                 {
                     src_rval = H::parse_const(*this);
@@ -1203,4 +1222,32 @@ const Function& ModuleTree::get_function(const ::HIR::Path& p) const
         throw "";
     }
     return it->second;
+}
+const Function* ModuleTree::get_function_opt(const ::HIR::Path& p) const
+{
+    auto it = functions.find(p);
+    if(it == functions.end())
+    {
+        return nullptr;
+    }
+    return &it->second;
+}
+Value& ModuleTree::get_static(const ::HIR::Path& p)
+{
+    auto it = statics.find(p);
+    if(it == statics.end())
+    {
+        ::std::cerr << "Unable to find static " << p << " for invoke" << ::std::endl;
+        throw "";
+    }
+    return it->second;
+}
+Value* ModuleTree::get_static_opt(const ::HIR::Path& p)
+{
+    auto it = statics.find(p);
+    if(it == statics.end())
+    {
+        return nullptr;
+    }
+    return &it->second;
 }
