@@ -613,7 +613,8 @@ namespace
                 case ::HIR::CoreType::F32: {
                     ASSERT_BUG(sp, lit.is_Float(), "not Literal::Float - " << lit);
                     uint32_t v;
-                    memcpy(&v, &double(lit.as_Float()), 4);
+                    float v2 = lit.as_Float();
+                    memcpy(&v, &v2, 4);
                     putu32(v);
                     } break;
                 case ::HIR::CoreType::F64: {
@@ -777,7 +778,12 @@ namespace
             m_of << "{";
             for(const auto& r : relocations)
             {
-                // TODO.
+                m_of << "@" << r.ofs << "+" << r.len << " = ";
+                if( r.p )
+                    m_of << *r.p;
+                else
+                    m_of << "\"" << FmtEscaped(r.bytes) << "\"";
+                m_of << ",";
             }
             m_of << "}";
             m_of << ";\n";
