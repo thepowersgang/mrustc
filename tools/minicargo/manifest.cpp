@@ -349,6 +349,9 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                             if( t == "\"emscripten\"" ) {
                                 return false;
                             }
+                            else if( t == "\"macos\"" ) {
+                                return false;
+                            }
                             else {
                                 TODO("Handle target_os string - " << t.to_string());
                             }
