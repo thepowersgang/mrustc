@@ -2315,6 +2315,18 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         }
 
         state.set_cur_stmt_term(bbidx);
+        switch(bb.terminator.tag())
+        {
+        case ::MIR::Terminator::TAGDEAD:    throw "";
+        TU_ARM(bb.terminator, Switch, te) {
+            auto it = known_values.find(te.val);
+            if( it != known_values.end() ) {
+                // TODO: How would an enum be encoded in switch?
+            }
+            } break;
+        default:
+            break;
+        }
     }
 
     // - Remove based on known booleans within a single block
