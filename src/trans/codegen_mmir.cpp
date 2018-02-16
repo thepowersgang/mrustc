@@ -424,15 +424,20 @@ namespace
             TU_ARM(repr->variants, None, _e) (void)_e;
                 break;
             TU_ARM(repr->variants, Values, e)
-                for(auto v : e.values)
+                for(const auto& v : e.values)
                 {
-                    m_of << "\t[" << e.field.index << ", " << e.field.sub_fields << "] = \"";
+                    // Variants require:
+                    m_of << "\t#" << (&v - e.values.data());
+                    // - Data field number (optional)
+                    if( !item.is_value() )
+                    {
+                        m_of << " =" << (&v - e.values.data());
+                    }
+                    // - Tag offsetr
+                    m_of << " @[" << e.field.index << ", " << e.field.sub_fields << "] = \"";
                     for(size_t i = 0; i < e.field.size; i ++)
                     {
                         int val = (v >> (i*8)) & 0xFF;
-                        //if( val == 0 )
-                        //    m_of << "\\0";
-                        //else
                         if(val < 16)
                             m_of << ::std::hex << "\\x0" << val << ::std::dec;
                         else
@@ -442,12 +447,13 @@ namespace
                 }
                 break;
             TU_ARM(repr->variants, NonZero, e) {
-                m_of << "\t[" << e.field.index << ", " << e.field.sub_fields << "] = \"";
+                m_of << "\t#" << int(e.zero_variant) << " @[" << e.field.index << ", " << e.field.sub_fields << "] = \"";
                 for(size_t i = 0; i < e.field.size; i ++)
                 {
                     m_of << "\\0";
                 }
                 m_of << "\";\n";
+                m_of << "\t#" << int(1 - e.zero_variant) << ";\n";
                 } break;
             }
             m_of << "}\n";
@@ -805,6 +811,11 @@ namespace
             m_mir_res = &mir_res;
 
             m_of << "fn " << p << "(";
+            for(unsigned int i = 0; i < item.m_args.size(); i ++)
+            {
+                if( i != 0 )    m_of << ", ";
+                m_of << params.monomorph(m_resolve, item.m_args[i].second);
+            }
             m_of << "): " << ret_type << " {\n";
             for(unsigned int i = 0; i < code->locals.size(); i ++) {
                 DEBUG("var" << i << " : " << code->locals[i]);

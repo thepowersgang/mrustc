@@ -33,6 +33,9 @@
     <ClInclude Include="..\..\tools\standalone_miri\lex.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\..\tools\standalone_miri\debug.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\tools\standalone_miri\main.cpp">
@@ -51,6 +54,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\tools\standalone_miri\value.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\tools\standalone_miri\debug.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

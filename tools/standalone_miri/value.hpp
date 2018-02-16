@@ -43,6 +43,7 @@ public:
     ~AllocationPtr();
     static AllocationPtr new_fcn(::HIR::Path p);
 
+    AllocationPtr& operator=(const AllocationPtr& x) = delete;
     AllocationPtr& operator=(AllocationPtr&& x) {
         this->~AllocationPtr();
         this->m_ptr = x.m_ptr;
@@ -70,6 +71,8 @@ public:
     Ty get_ty() const {
         return static_cast<Ty>( reinterpret_cast<uintptr_t>(m_ptr) & 3 );
     }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const AllocationPtr& x);
 private:
     void* get_ptr() const {
         return reinterpret_cast<void*>( reinterpret_cast<uintptr_t>(m_ptr) & ~3 );
@@ -127,7 +130,29 @@ struct Value
     void write_value(size_t ofs, Value v);
     void write_bytes(size_t ofs, const void* src, size_t count);
 
-    size_t as_usize() const;
+    uint8_t read_u8(size_t ofs) const { uint8_t rv; read_bytes(ofs, &rv, 1); return rv; }
+     int8_t read_i8(size_t ofs) const { return static_cast<int8_t>(read_u8(ofs)); }
+    uint16_t read_u16(size_t ofs) const { uint16_t rv; read_bytes(ofs, &rv, 2); return rv; }
+     int16_t read_i16(size_t ofs) const { return static_cast<int16_t>(read_u16(ofs)); }
+    uint32_t read_u32(size_t ofs) const { uint32_t rv; read_bytes(ofs, &rv, 4); return rv; }
+     int32_t read_i32(size_t ofs) const { return static_cast<int32_t>(read_u32(ofs)); }
+    uint64_t read_u64(size_t ofs) const { uint64_t rv; read_bytes(ofs, &rv, 8); return rv; }
+     int64_t read_i64(size_t ofs) const { return static_cast<int64_t>(read_u64(ofs)); }
+    float  read_f32(size_t ofs) const { float rv; read_bytes(ofs, &rv, 4); return rv; }
+    double read_f64(size_t ofs) const { double rv; read_bytes(ofs, &rv, 8); return rv; }
+    uint64_t read_usize(size_t ofs) const;
+     int64_t read_isize(size_t ofs) const { return static_cast<int64_t>(read_usize(ofs)); }
+
+    void write_u8 (size_t ofs, uint8_t  v) { write_bytes(ofs, &v, 1); }
+    void write_u16(size_t ofs, uint16_t v) { write_bytes(ofs, &v, 2); }
+    void write_u32(size_t ofs, uint32_t v) { write_bytes(ofs, &v, 4); }
+    void write_u64(size_t ofs, uint64_t v) { write_bytes(ofs, &v, 8); }
+    void write_i8 (size_t ofs, int8_t  v) { write_u8 (ofs, static_cast<uint8_t >(v)); }
+    void write_i16(size_t ofs, int16_t v) { write_u16(ofs, static_cast<uint16_t>(v)); }
+    void write_i32(size_t ofs, int32_t v) { write_u32(ofs, static_cast<uint32_t>(v)); }
+    void write_i64(size_t ofs, int64_t v) { write_u64(ofs, static_cast<uint64_t>(v)); }
+    void write_f32(size_t ofs, float  v) { write_bytes(ofs, &v, 4); }
+    void write_f64(size_t ofs, double v) { write_bytes(ofs, &v, 8); }
 private:
     const uint8_t* data_ptr() const { return allocation ? allocation.alloc().data_ptr() + meta.indirect_meta.offset : meta.direct_data.data; }
           uint8_t* data_ptr()       { return allocation ? allocation.alloc().data_ptr() + meta.indirect_meta.offset : meta.direct_data.data; }

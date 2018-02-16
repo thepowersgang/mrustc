@@ -133,6 +133,22 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
         throw "ERROR";
     }
 }
+size_t HIR::TypeRef::get_field_ofs(size_t base_idx, const ::std::vector<size_t>& other_idx,  TypeRef& ty) const
+{
+    assert(this->wrappers.size() == 0);
+    assert(this->inner_type == RawType::Composite);
+    size_t ofs = this->composite_type->fields.at(base_idx).first;
+    const auto* ty_p = &this->composite_type->fields.at(base_idx).second;
+    for(auto idx : other_idx)
+    {
+        assert(ty_p->wrappers.size() == 0);
+        assert(ty_p->inner_type == RawType::Composite);
+        ofs += ty_p->composite_type->fields.at(idx).first;
+        ty_p = &ty_p->composite_type->fields.at(idx).second;
+    }
+    ty = *ty_p;
+    return ofs;
+}
 
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::BorrowType& x)

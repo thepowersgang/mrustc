@@ -43,6 +43,10 @@ public:
     const Function* get_function_opt(const ::HIR::Path& p) const;
     Value& get_static(const ::HIR::Path& p);
     Value* get_static_opt(const ::HIR::Path& p);
+
+    const DataType& get_composite(const ::HIR::GenericPath& p) const {
+        return *data_types.at(p);
+    }
 };
 
 // struct/union/enum
@@ -57,9 +61,12 @@ struct DataType
     ::std::vector<::std::pair<size_t, ::HIR::TypeRef>> fields;
     // Values for variants
     struct VariantValue {
+        size_t data_field;
         size_t base_field;
         ::std::vector<size_t>   field_path;
-        uint64_t    value;  // TODO: This should be arbitary data? what size?
+
+        //size_t tag_offset;  // Cached.
+        ::std::string tag_data;
     };
     ::std::vector<VariantValue> variants;
 };

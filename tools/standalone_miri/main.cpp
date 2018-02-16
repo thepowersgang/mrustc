@@ -6,6 +6,7 @@
 #include "value.hpp"
 #include <algorithm>
 #include <iomanip>
+#include "debug.hpp"
 
 struct ProgramOptions
 {
@@ -48,12 +49,11 @@ int main(int argc, const char* argv[])
 
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
 {
-    //TRACE_FUNCTION_FR(path,path)
+    LOG_DEBUG(path);
     const auto& fcn = modtree.get_function(path);
     for(size_t i = 0; i < args.size(); i ++)
     {
-        //DEBUG(a);
-        ::std::cout << "Argument(" << i << ") = " << args[i] << ::std::endl;
+        LOG_DEBUG("- Argument(" << i << ") = " << args[i]);
     }
 
     ::std::vector<bool> drop_flags = fcn.m_mir.drop_flags;
@@ -134,7 +134,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             TU_ARM(lv, Field, e) {
                 ::HIR::TypeRef  composite_ty;
                 auto& base_val = get_value_type_and_ofs(*e.val, ofs, composite_ty);
-                ::std::cout << "get_type_and_ofs: " << composite_ty << ::std::endl;
+                LOG_DEBUG("Field - " << composite_ty);
                 size_t inner_ofs;
                 ty = composite_ty.get_field(e.field_index, inner_ofs);
                 ofs += inner_ofs;
@@ -146,16 +146,23 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
                 size_t inner_ofs;
                 ty = composite_ty.get_field(e.variant_index, inner_ofs);
-                ::std::cerr << "TODO: Read from Downcast - " << lv << ::std::endl;
-                throw "TODO";
+                LOG_TODO("Read from Downcast - " << lv);
                 ofs += inner_ofs;
                 return base_val;
                 }
             TU_ARM(lv, Deref, e) {
-                //auto addr = read_lvalue(*e.val);
+                ::HIR::TypeRef  ptr_ty;
+                auto addr = read_lvalue_with_ty(*e.val, ptr_ty);
+                // There MUST be a relocation at this point with a valid allocation.
+                auto& reloc = addr.allocation.alloc().relocations.at(0);
+                assert(reloc.slot_ofs == 0);
+                ofs = addr.read_usize(0);
+                // Need to make a new Value to return as the base value.
+                // - This value needs to be stored somewhere.
+                // - Shoudl the value directly reference into the pointer?
+                //auto rv = Value(ptr_ty.get_inner(), reloc.backing_alloc, ofs);
+                LOG_TODO("Read from deref - " << lv << " - " << addr);
 
-                ::std::cerr << "TODO: Read from deref - " << lv << ::std::endl;
-                throw "TODO";
                 } break;
             }
             throw "";
@@ -171,24 +178,19 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
         Value read_lvalue_with_ty(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
         {
-            ::std::cout << "read_lvalue_with_ty: " << lv << ::std::endl;
             size_t ofs = 0;
             Value&  base_value = get_value_type_and_ofs(lv, ofs, ty);
-
-            ::std::cout << "> read_lvalue_with_ty: " << ty << ::std::endl;
 
             return base_value.read_value(ofs, ty.get_size());
         }
         Value read_lvalue(const ::MIR::LValue& lv)
         {
-            ::std::cout << "read_lvalue: " << lv << ::std::endl;
             ::HIR::TypeRef  ty;
             return read_lvalue_with_ty(lv, ty);
         }
         void write_lvalue(const ::MIR::LValue& lv, Value val)
         {
-            ::std::cout << "write_lvaue: " << lv << ::std::endl;
-            //::std::cout << "write_lvaue: " << lv << " = " << val << ::std::endl;
+            //LOG_DEBUG(lv << " = " << val);
             ::HIR::TypeRef  ty;
             size_t ofs = 0;
             Value&  base_value = get_value_type_and_ofs(lv, ofs, ty);
@@ -284,7 +286,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
         for(const auto& stmt : bb.statements)
         {
-            ::std::cout << "BB" << bb_idx << "/" << (&stmt - bb.statements.data()) << ": " << stmt << ::std::endl;
+            LOG_DEBUG("BB" << bb_idx << "/" << (&stmt - bb.statements.data()) << ": " << stmt);
             switch(stmt.tag())
             {
             case ::MIR::Statement::TAGDEAD: throw "";
@@ -316,18 +318,180 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     // ^ Pointer value
                     new_val.allocation.alloc().relocations.push_back(Relocation { 0, src_base_value.allocation });
                     new_val.write_bytes(0, &ofs, src_ty.get_size());
+                    LOG_DEBUG("- " << new_val);
 
                     ::HIR::TypeRef  dst_ty;
                     // TODO: Check type equality
                     size_t dst_ofs = 0;
                     Value&  dst_base_value = state.get_value_type_and_ofs(se.dst, dst_ofs, dst_ty);
                     dst_base_value.write_value(dst_ofs, ::std::move(new_val));
+                    LOG_DEBUG("- " << dst_base_value);
                     } break;
                 TU_ARM(se.src, SizedArray, re) {
                     throw "TODO";
                     } break;
                 TU_ARM(se.src, Cast, re) {
-                    throw "TODO";
+                    // Determine the type of cast, is it a reinterpret or is it a value transform?
+                    // - Float <-> integer is a transform, anything else should be a reinterpret.
+                    ::HIR::TypeRef  src_ty;
+                    Value src_value = state.read_lvalue_with_ty(re.val, src_ty);
+
+                    ::HIR::TypeRef  dst_ty;
+                    size_t dst_ofs = 0;
+                    Value&  dst_base_value = state.get_value_type_and_ofs(se.dst, dst_ofs, dst_ty);
+
+                    Value new_val = Value(re.type);
+                    if( re.type == src_ty )
+                    {
+                        // No-op cast
+                        new_val = ::std::move(src_value);
+                    }
+                    else if( !re.type.wrappers.empty() )
+                    {
+                        // Destination can only be a raw pointer
+                        if( re.type.wrappers.at(0).type != TypeWrapper::Ty::Pointer ) {
+                            throw "ERROR";
+                        }
+                        if( !src_ty.wrappers.empty() )
+                        {
+                            // Source can be either
+                            if( src_ty.wrappers.at(0).type != TypeWrapper::Ty::Pointer
+                                && src_ty.wrappers.at(0).type != TypeWrapper::Ty::Borrow ) {
+                                throw "ERROR";
+                            }
+
+                            if( src_ty.get_size() > re.type.get_size() ) {
+                                // TODO: How to casting fat to thin?
+                                throw "TODO";
+                            }
+                            else 
+                            {
+                                new_val = ::std::move(src_value);
+                            }
+                        }
+                        else
+                        {
+                            if( src_ty == RawType::Function )
+                            {
+                            }
+                            else if( src_ty == RawType::USize )
+                            {
+                            }
+                            else
+                            {
+                                ::std::cerr << "ERROR: Trying to pointer (" << re.type <<" ) from invalid type (" << src_ty << ")\n";
+                                throw "ERROR";
+                            }
+                            new_val = ::std::move(src_value);
+                        }
+                    }
+                    else if( !src_ty.wrappers.empty() )
+                    {
+                        // TODO: top wrapper MUST be a pointer
+                        if( src_ty.wrappers.at(0).type != TypeWrapper::Ty::Pointer
+                            && src_ty.wrappers.at(0).type != TypeWrapper::Ty::Borrow ) {
+                            throw "ERROR";
+                        }
+                        // TODO: MUST be a thin pointer
+
+                        // TODO: MUST be an integer (usize only?)
+                        if( src_ty != RawType::USize ) {
+                            throw "ERROR";
+                        }
+                        new_val = ::std::move(src_value);
+                    }
+                    else
+                    {
+                        // TODO: What happens if there'a cast of something with a relocation?
+                        switch(re.type.inner_type)
+                        {
+                        case RawType::Unreachable:  throw "BUG";
+                        case RawType::Composite:    throw "ERROR";
+                        case RawType::TraitObject:    throw "ERROR";
+                        case RawType::Function:    throw "ERROR";
+                        case RawType::Str:    throw "ERROR";
+                        case RawType::Unit:   throw "ERROR";
+                        case RawType::F32: {
+                            float dst_val = 0.0;
+                            // Can be an integer, or F64 (pointer is impossible atm)
+                            switch(src_ty.inner_type)
+                            {
+                            case RawType::Unreachable:  throw "BUG";
+                            case RawType::Composite:    throw "ERROR";
+                            case RawType::TraitObject:  throw "ERROR";
+                            case RawType::Function:     throw "ERROR";
+                            case RawType::Char: throw "ERROR";
+                            case RawType::Str:  throw "ERROR";
+                            case RawType::Unit: throw "ERROR";
+                            case RawType::Bool: throw "ERROR";
+                            case RawType::F32:  throw "BUG";
+                            case RawType::F64:  dst_val = static_cast<float>( src_value.read_f64(0) ); break;
+                            case RawType::USize:    throw "TODO";// /*dst_val = src_value.read_usize();*/   break;
+                            case RawType::ISize:    throw "TODO";// /*dst_val = src_value.read_isize();*/   break;
+                            case RawType::U8:   dst_val = static_cast<float>( src_value.read_u8 (0) );  break;
+                            case RawType::I8:   dst_val = static_cast<float>( src_value.read_i8 (0) );  break;
+                            case RawType::U16:  dst_val = static_cast<float>( src_value.read_u16(0) );  break;
+                            case RawType::I16:  dst_val = static_cast<float>( src_value.read_i16(0) );  break;
+                            case RawType::U32:  dst_val = static_cast<float>( src_value.read_u32(0) );  break;
+                            case RawType::I32:  dst_val = static_cast<float>( src_value.read_i32(0) );  break;
+                            case RawType::U64:  dst_val = static_cast<float>( src_value.read_u64(0) );  break;
+                            case RawType::I64:  dst_val = static_cast<float>( src_value.read_i64(0) );  break;
+                            case RawType::U128: throw "TODO";// /*dst_val = src_value.read_u128();*/ break;
+                            case RawType::I128: throw "TODO";// /*dst_val = src_value.read_i128();*/ break;
+                            }
+                            new_val.write_f32(0, dst_val);
+                            } break;
+                        case RawType::F64: {
+                            double dst_val = 0.0;
+                            // Can be an integer, or F32 (pointer is impossible atm)
+                            switch(src_ty.inner_type)
+                            {
+                            case RawType::Unreachable:  throw "BUG";
+                            case RawType::Composite:    throw "ERROR";
+                            case RawType::TraitObject:  throw "ERROR";
+                            case RawType::Function:     throw "ERROR";
+                            case RawType::Char: throw "ERROR";
+                            case RawType::Str:  throw "ERROR";
+                            case RawType::Unit: throw "ERROR";
+                            case RawType::Bool: throw "ERROR";
+                            case RawType::F64:  throw "BUG";
+                            case RawType::F32:  dst_val = static_cast<double>( src_value.read_f32(0) ); break;
+                            case RawType::USize:    throw "TODO"; /*dst_val = src_value.read_usize();*/   break;
+                            case RawType::ISize:    throw "TODO"; /*dst_val = src_value.read_isize();*/   break;
+                            case RawType::U8:   dst_val = static_cast<double>( src_value.read_u8 (0) );  break;
+                            case RawType::I8:   dst_val = static_cast<double>( src_value.read_i8 (0) );  break;
+                            case RawType::U16:  dst_val = static_cast<double>( src_value.read_u16(0) );  break;
+                            case RawType::I16:  dst_val = static_cast<double>( src_value.read_i16(0) );  break;
+                            case RawType::U32:  dst_val = static_cast<double>( src_value.read_u32(0) );  break;
+                            case RawType::I32:  dst_val = static_cast<double>( src_value.read_i32(0) );  break;
+                            case RawType::U64:  dst_val = static_cast<double>( src_value.read_u64(0) );  break;
+                            case RawType::I64:  dst_val = static_cast<double>( src_value.read_i64(0) );  break;
+                            case RawType::U128: throw "TODO"; /*dst_val = src_value.read_u128();*/ break;
+                            case RawType::I128: throw "TODO"; /*dst_val = src_value.read_i128();*/ break;
+                            }
+                            new_val.write_f64(0, dst_val);
+                            } break;
+                        case RawType::Bool:
+                            throw "TODO";
+                        case RawType::Char:
+                            throw "TODO";
+                        case RawType::USize:
+                        case RawType::ISize:
+                        case RawType::U8:
+                        case RawType::I8:
+                        case RawType::U16:
+                        case RawType::I16:
+                        case RawType::U32:
+                        case RawType::I32:
+                        case RawType::U64:
+                        case RawType::I64:
+                        case RawType::U128:
+                        case RawType::I128:
+                            throw "TODO";
+                        }
+                    }
+                        
+                    dst_base_value.write_value(dst_ofs, ::std::move(new_val));
                     } break;
                 TU_ARM(se.src, BinOp, re) {
                     throw "TODO";
@@ -359,7 +523,34 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     throw "TODO";
                     } break;
                 TU_ARM(se.src, Variant, re) {
-                    throw "TODO";
+                    ::HIR::TypeRef  dst_ty;
+                    size_t dst_ofs = 0;
+                    Value&  dst_base_value = state.get_value_type_and_ofs(se.dst, dst_ofs, dst_ty);
+
+                    // 1. Get the composite by path.
+                    const auto& ty = state.modtree.get_composite(re.path);
+                    // Three cases:
+                    // - Unions (no tag)
+                    // - Data enums (tag and data)
+                    // - Value enums (no data)
+                    const auto& var = ty.variants.at(re.index);
+                    if( var.data_field != SIZE_MAX )
+                    {
+                        const auto& fld = ty.fields.at(re.index);
+
+                        dst_base_value.write_value(dst_ofs + fld.first, state.param_to_value(re.val));
+                    }
+                    if( var.base_field != SIZE_MAX )
+                    {
+                        ::HIR::TypeRef  tag_ty;
+                        size_t tag_ofs = dst_ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
+                        LOG_ASSERT(tag_ty.get_size() == var.tag_data.size());
+                        dst_base_value.write_bytes(dst_ofs + tag_ofs, var.tag_data.data(), var.tag_data.size());
+                    }
+                    else
+                    {
+                        // Union, no tag
+                    }
                     } break;
                 TU_ARM(se.src, Struct, re) {
                     throw "TODO";
@@ -416,7 +607,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     auto v = state.read_lvalue_with_ty(te.fcn.as_Value(), ty);
                     // TODO: Assert type
                     // TODO: Assert offset/content.
-                    assert(v.as_usize() == 0);
+                    assert(v.read_usize(0) == 0);
                     fcn_p = &v.allocation.alloc().relocations.at(0).backing_alloc.fcn();
                 }
 

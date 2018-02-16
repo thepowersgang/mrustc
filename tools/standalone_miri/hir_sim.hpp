@@ -119,6 +119,14 @@ namespace HIR {
         TypeRef get_inner() const;
         TypeRef get_field(size_t idx, size_t& ofs) const;
 
+        bool operator==(const RawType& x) const {
+            if( this->wrappers.size() != 0 )
+                return false;
+            return this->inner_type == x;
+        }
+        bool operator!=(const RawType& x) const {
+            return !(*this == x);
+        }
         bool operator==(const TypeRef& x) const {
             return !(*this != x);
         }
@@ -134,6 +142,8 @@ namespace HIR {
             __LT(composite_type);
             return false;
         }
+
+        size_t get_field_ofs(size_t idx, const ::std::vector<size_t>& other_idx,  TypeRef& ty) const;
 
         friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& x);
     };
