@@ -35,4 +35,4 @@ public:
 #define LOG_FATAL(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Fatal) << strm; exit(1); } while(0)
 #define LOG_TODO(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "TODO: " << strm; abort(); } while(0)
 #define LOG_BUG(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "BUG: " << strm; abort(); } while(0)
-#define LOG_ASSERT(cnd) do { if( !(cnd) ) { LOG_BUG("Assertion failure: " #cnd); } } while(0)
+#define LOG_ASSERT(cnd,strm) do { if( !(cnd) ) { LOG_BUG("Assertion failure: " #cnd " - " << strm); } } while(0)

@@ -35,7 +35,7 @@ DebugSink DebugSink::get(const char* fcn_name, const char* file, unsigned line, 
         ::std::cout << "FATAL: ";
         break;
     case DebugLevel::Bug:
-        ::std::cout << "BUG: " << fcn_name << ": ";
+        ::std::cout << "BUG: " << file << ":" << line << ": ";
         break;
     }
     return DebugSink(::std::cout);

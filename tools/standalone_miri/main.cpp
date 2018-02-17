@@ -86,40 +86,37 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             }
         }
 
-        Value& get_value_type_and_ofs(const ::MIR::LValue& lv, size_t& ofs, ::HIR::TypeRef& ty)
+        ValueRef get_value_and_type(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
         {
             switch(lv.tag())
             {
             case ::MIR::LValue::TAGDEAD:    throw "";
             TU_ARM(lv, Return, _e) {
-                ofs = 0;
                 ty = fcn.ret_ty;
-                return ret;
+                return ValueRef(ret, 0, ret.size());
                 } break;
             TU_ARM(lv, Local, e) {
-                ofs = 0;
                 ty = fcn.m_mir.locals.at(e);
-                return locals.at(e);
+                return ValueRef(locals.at(e), 0, locals.at(e).size());
                 } break;
             TU_ARM(lv, Argument, e) {
-                ofs = 0;
                 ty = fcn.args.at(e.idx);
-                return args.at(e.idx);
+                return ValueRef(args.at(e.idx), 0, args.at(e.idx).size());
                 } break;
             TU_ARM(lv, Static, e) {
                 // TODO: Type!
-                return modtree.get_static(e);
+                return ValueRef(modtree.get_static(e), 0, modtree.get_static(e).size());
                 } break;
             TU_ARM(lv, Index, e) {
-                auto idx = read_lvalue(*e.idx).as_usize();
+                auto idx = get_value_ref(*e.idx).read_usize(0);
                 ::HIR::TypeRef  array_ty;
-                auto& base_val = get_value_type_and_ofs(*e.val, ofs, array_ty);
+                auto base_val = get_value_and_type(*e.val, array_ty);
                 if( array_ty.wrappers.empty() )
                     throw "ERROR";
                 if( array_ty.wrappers.front().type == TypeWrapper::Ty::Array )
                 {
                     ty = array_ty.get_inner();
-                    ofs += ty.get_size() * idx;
+                    base_val.m_offset += ty.get_size() * idx;
                     return base_val;
                 }
                 else if( array_ty.wrappers.front().type == TypeWrapper::Ty::Slice )
@@ -133,55 +130,58 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 } break;
             TU_ARM(lv, Field, e) {
                 ::HIR::TypeRef  composite_ty;
-                auto& base_val = get_value_type_and_ofs(*e.val, ofs, composite_ty);
+                auto base_val = get_value_and_type(*e.val, composite_ty);
                 LOG_DEBUG("Field - " << composite_ty);
                 size_t inner_ofs;
                 ty = composite_ty.get_field(e.field_index, inner_ofs);
-                ofs += inner_ofs;
+                base_val.m_offset += inner_ofs;
                 return base_val;
                 }
             TU_ARM(lv, Downcast, e) {
                 ::HIR::TypeRef  composite_ty;
-                auto& base_val = get_value_type_and_ofs(*e.val, ofs, composite_ty);
+                auto base_val = get_value_and_type(*e.val, composite_ty);
 
                 size_t inner_ofs;
                 ty = composite_ty.get_field(e.variant_index, inner_ofs);
                 LOG_TODO("Read from Downcast - " << lv);
-                ofs += inner_ofs;
+                base_val.m_offset += inner_ofs;
                 return base_val;
                 }
             TU_ARM(lv, Deref, e) {
                 ::HIR::TypeRef  ptr_ty;
-                auto addr = read_lvalue_with_ty(*e.val, ptr_ty);
+                auto val = get_value_and_type(*e.val, ptr_ty);
+                LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value");
                 // There MUST be a relocation at this point with a valid allocation.
-                auto& reloc = addr.allocation.alloc().relocations.at(0);
-                assert(reloc.slot_ofs == 0);
-                ofs = addr.read_usize(0);
-                // Need to make a new Value to return as the base value.
-                // - This value needs to be stored somewhere.
-                // - Shoudl the value directly reference into the pointer?
-                //auto rv = Value(ptr_ty.get_inner(), reloc.backing_alloc, ofs);
-                LOG_TODO("Read from deref - " << lv << " - " << addr);
-
+                auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
+                LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
+                LOG_TRACE("Deref " << val_alloc.alloc());
+                auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
+                LOG_ASSERT(alloc, "Deref of a value with no relocation");
+                size_t ofs = val.read_usize(0);
+                ty = ptr_ty.get_inner();
+                return ValueRef(::std::move(alloc), ofs, ty.get_size());
                 } break;
             }
             throw "";
+        }
+        ValueRef get_value_ref(const ::MIR::LValue& lv)
+        {
+            ::HIR::TypeRef  tmp;
+            return get_value_and_type(lv, tmp);
         }
 
         ::HIR::TypeRef get_lvalue_ty(const ::MIR::LValue& lv)
         {
             ::HIR::TypeRef  ty;
-            size_t ofs = 0;
-            get_value_type_and_ofs(lv, ofs, ty);
+            get_value_and_type(lv, ty);
             return ty;
         }
 
         Value read_lvalue_with_ty(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
         {
-            size_t ofs = 0;
-            Value&  base_value = get_value_type_and_ofs(lv, ofs, ty);
+            auto base_value = get_value_and_type(lv, ty);
 
-            return base_value.read_value(ofs, ty.get_size());
+            return base_value.read_value(0, ty.get_size());
         }
         Value read_lvalue(const ::MIR::LValue& lv)
         {
@@ -192,10 +192,14 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         {
             //LOG_DEBUG(lv << " = " << val);
             ::HIR::TypeRef  ty;
-            size_t ofs = 0;
-            Value&  base_value = get_value_type_and_ofs(lv, ofs, ty);
+            auto base_value = get_value_and_type(lv, ty);
 
-            base_value.write_value(ofs, val);
+            if(base_value.m_alloc) {
+                base_value.m_alloc.alloc().write_value(base_value.m_offset, ::std::move(val));
+            }
+            else {
+                base_value.m_value->write_value(base_value.m_offset, ::std::move(val));
+            }
         }
 
         Value const_to_value(const ::MIR::Constant& c, ::HIR::TypeRef& ty)
@@ -291,41 +295,37 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             {
             case ::MIR::Statement::TAGDEAD: throw "";
             TU_ARM(stmt, Assign, se) {
-                Value   val;
+                Value   new_val;
                 switch(se.src.tag())
                 {
                 case ::MIR::RValue::TAGDEAD: throw "";
                 TU_ARM(se.src, Use, re) {
-                    state.write_lvalue(se.dst, state.read_lvalue(re));
+                    new_val = state.read_lvalue(re);
                     } break;
                 TU_ARM(se.src, Constant, re) {
-                    state.write_lvalue(se.dst, state.const_to_value(re));
+                    new_val = state.const_to_value(re);
                     } break;
                 TU_ARM(se.src, Borrow, re) {
                     ::HIR::TypeRef  src_ty;
-                    size_t ofs = 0;
-                    Value&  src_base_value = state.get_value_type_and_ofs(re.val, ofs, src_ty);
-                    if( !src_base_value.allocation )
+                    ValueRef src_base_value = state.get_value_and_type(re.val, src_ty);
+                    auto alloc = src_base_value.m_alloc;
+                    if( !alloc )
                     {
-                        // TODO: Need to convert this value into an allocation version
-                        ::std::cerr << "TODO: RValue::Borrow - " << se.src << " - convert to non-inline" << ::std::endl;
-                        throw "TODO";
-                        //base_value.to_allocation();
+                        if( !src_base_value.m_value->allocation )
+                        {
+                            src_base_value.m_value->create_allocation();
+                        }
+                        alloc = AllocationPtr(src_base_value.m_value->allocation);
                     }
-                    ofs += src_base_value.meta.indirect_meta.offset;
+                    LOG_DEBUG("- alloc=" << alloc << " (" << alloc.alloc() << ")");
+                    size_t ofs = src_base_value.m_offset;
                     src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
-                    Value new_val = Value(src_ty);
-                    // ^ Pointer value
-                    new_val.allocation.alloc().relocations.push_back(Relocation { 0, src_base_value.allocation });
-                    new_val.write_bytes(0, &ofs, src_ty.get_size());
-                    LOG_DEBUG("- " << new_val);
 
-                    ::HIR::TypeRef  dst_ty;
-                    // TODO: Check type equality
-                    size_t dst_ofs = 0;
-                    Value&  dst_base_value = state.get_value_type_and_ofs(se.dst, dst_ofs, dst_ty);
-                    dst_base_value.write_value(dst_ofs, ::std::move(new_val));
-                    LOG_DEBUG("- " << dst_base_value);
+                    new_val = Value(src_ty);
+                    // ^ Pointer value
+                    new_val.write_usize(0, ofs);
+                    // - Add the relocation after writing the value (writing clears the relocations)
+                    new_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
                     } break;
                 TU_ARM(se.src, SizedArray, re) {
                     throw "TODO";
@@ -334,17 +334,13 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     // Determine the type of cast, is it a reinterpret or is it a value transform?
                     // - Float <-> integer is a transform, anything else should be a reinterpret.
                     ::HIR::TypeRef  src_ty;
-                    Value src_value = state.read_lvalue_with_ty(re.val, src_ty);
+                    auto src_value = state.get_value_and_type(re.val, src_ty);
 
-                    ::HIR::TypeRef  dst_ty;
-                    size_t dst_ofs = 0;
-                    Value&  dst_base_value = state.get_value_type_and_ofs(se.dst, dst_ofs, dst_ty);
-
-                    Value new_val = Value(re.type);
+                    new_val = Value(re.type);
                     if( re.type == src_ty )
                     {
                         // No-op cast
-                        new_val = ::std::move(src_value);
+                        new_val = src_value.read_value(0, re.type.get_size());
                     }
                     else if( !re.type.wrappers.empty() )
                     {
@@ -366,7 +362,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             }
                             else 
                             {
-                                new_val = ::std::move(src_value);
+                                new_val = src_value.read_value(0, re.type.get_size());
                             }
                         }
                         else
@@ -382,7 +378,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                                 ::std::cerr << "ERROR: Trying to pointer (" << re.type <<" ) from invalid type (" << src_ty << ")\n";
                                 throw "ERROR";
                             }
-                            new_val = ::std::move(src_value);
+                            new_val = src_value.read_value(0, re.type.get_size());
                         }
                     }
                     else if( !src_ty.wrappers.empty() )
@@ -395,10 +391,11 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         // TODO: MUST be a thin pointer
 
                         // TODO: MUST be an integer (usize only?)
-                        if( src_ty != RawType::USize ) {
+                        if( re.type != RawType::USize ) {
+                            LOG_ERROR("Casting from a pointer to non-usize - " << re.type << " to " << src_ty);
                             throw "ERROR";
                         }
-                        new_val = ::std::move(src_value);
+                        new_val = src_value.read_value(0, re.type.get_size());
                     }
                     else
                     {
@@ -490,8 +487,6 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             throw "TODO";
                         }
                     }
-                        
-                    dst_base_value.write_value(dst_ofs, ::std::move(new_val));
                     } break;
                 TU_ARM(se.src, BinOp, re) {
                     throw "TODO";
@@ -510,42 +505,40 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     } break;
                 TU_ARM(se.src, Tuple, re) {
                     ::HIR::TypeRef  dst_ty;
-                    size_t ofs = 0;
-                    Value&  base_value = state.get_value_type_and_ofs(se.dst, ofs, dst_ty);
+                    state.get_value_and_type(se.dst, dst_ty);
+                    new_val = Value(dst_ty);
 
                     for(size_t i = 0; i < re.vals.size(); i++)
                     {
                         auto fld_ofs = dst_ty.composite_type->fields.at(i).first;
-                        base_value.write_value(ofs + fld_ofs, state.param_to_value(re.vals[i]));
+                        new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
                     }
                     } break;
                 TU_ARM(se.src, Array, re) {
                     throw "TODO";
                     } break;
                 TU_ARM(se.src, Variant, re) {
-                    ::HIR::TypeRef  dst_ty;
-                    size_t dst_ofs = 0;
-                    Value&  dst_base_value = state.get_value_type_and_ofs(se.dst, dst_ofs, dst_ty);
-
                     // 1. Get the composite by path.
-                    const auto& ty = state.modtree.get_composite(re.path);
+                    const auto& data_ty = state.modtree.get_composite(re.path);
+                    auto dst_ty = ::HIR::TypeRef(&data_ty);
+                    new_val = Value(dst_ty);
                     // Three cases:
                     // - Unions (no tag)
                     // - Data enums (tag and data)
                     // - Value enums (no data)
-                    const auto& var = ty.variants.at(re.index);
+                    const auto& var = data_ty.variants.at(re.index);
                     if( var.data_field != SIZE_MAX )
                     {
-                        const auto& fld = ty.fields.at(re.index);
+                        const auto& fld = data_ty.fields.at(re.index);
 
-                        dst_base_value.write_value(dst_ofs + fld.first, state.param_to_value(re.val));
+                        new_val.write_value(fld.first, state.param_to_value(re.val));
                     }
                     if( var.base_field != SIZE_MAX )
                     {
                         ::HIR::TypeRef  tag_ty;
                         size_t tag_ofs = dst_ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
-                        LOG_ASSERT(tag_ty.get_size() == var.tag_data.size());
-                        dst_base_value.write_bytes(dst_ofs + tag_ofs, var.tag_data.data(), var.tag_data.size());
+                        LOG_ASSERT(tag_ty.get_size() == var.tag_data.size(), "");
+                        new_val.write_bytes(tag_ofs, var.tag_data.data(), var.tag_data.size());
                     }
                     else
                     {
@@ -556,6 +549,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     throw "TODO";
                     } break;
                 }
+                LOG_DEBUG("- " << new_val);
+                state.write_lvalue(se.dst, ::std::move(new_val));
                 } break;
             case ::MIR::Statement::TAG_Asm:
                 throw "TODO";
@@ -577,25 +572,25 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         {
         case ::MIR::Terminator::TAGDEAD:    throw "";
         TU_ARM(bb.terminator, Incomplete, _te)
-            throw ::std::runtime_error("BUG: Terminator::Incomplete hit");
+            LOG_TODO("Terminator::Incomplete hit");
         TU_ARM(bb.terminator, Diverge, _te)
-            throw ::std::runtime_error("BUG: Terminator::Diverge hit");
+            LOG_TODO("Terminator::Diverge hit");
         TU_ARM(bb.terminator, Panic, _te)
-            throw ::std::runtime_error("TODO: Terminator::Panic");
+            LOG_TODO("Terminator::Panic");
         TU_ARM(bb.terminator, Goto, te)
             bb_idx = te;
             continue;
         TU_ARM(bb.terminator, Return, _te)
             return state.ret;
         TU_ARM(bb.terminator, If, _te)
-            throw ::std::runtime_error("TODO: Terminator::If");
+            LOG_TODO("Terminator::If");
         TU_ARM(bb.terminator, Switch, _te)
-            throw ::std::runtime_error("TODO: Terminator::Switch");
+            LOG_TODO("Terminator::Switch");
         TU_ARM(bb.terminator, SwitchValue, _te)
-            throw ::std::runtime_error("TODO: Terminator::SwitchValue");
+            LOG_TODO("Terminator::SwitchValue");
         TU_ARM(bb.terminator, Call, te) {
             if( te.fcn.is_Intrinsic() ) {
-                throw ::std::runtime_error("TODO: Terminator::Call - intrinsic");
+                LOG_TODO("Terminator::Call - intrinsic");
             }
             else {
                 const ::HIR::Path* fcn_p;
@@ -604,11 +599,15 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 }
                 else {
                     ::HIR::TypeRef ty;
-                    auto v = state.read_lvalue_with_ty(te.fcn.as_Value(), ty);
+                    auto v = state.get_value_and_type(te.fcn.as_Value(), ty);
                     // TODO: Assert type
                     // TODO: Assert offset/content.
-                    assert(v.read_usize(0) == 0);
-                    fcn_p = &v.allocation.alloc().relocations.at(0).backing_alloc.fcn();
+                    assert(v.read_usize(v.m_offset) == 0);
+                    auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
+                    LOG_ASSERT(alloc_ptr, "");
+                    auto& fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
+                    LOG_ASSERT(fcn_alloc_ptr, "");
+                    fcn_p = &fcn_alloc_ptr.fcn();
                 }
 
                 ::std::vector<Value>    sub_args; sub_args.reserve(te.args.size());
@@ -616,10 +615,9 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 {
                     sub_args.push_back( state.param_to_value(a) );
                 }
-                ::std::cout << "TODO: Call " << *fcn_p << ::std::endl;
+                ::std::cout << "Call " << *fcn_p << ::std::endl;
                 MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args));
             }
-            throw ::std::runtime_error("TODO: Terminator::Call");
             } break;
         }
         throw "";

@@ -6,6 +6,8 @@
 #include <vector>
 #include <memory>
 
+const size_t POINTER_SIZE = 8;
+
 #define __NE(fld)  if(this->fld != x.fld) return true
 #define __LT(fld)  if(this->fld != x.fld) return this->fld < x.fld
 

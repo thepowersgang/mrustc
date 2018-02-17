@@ -108,18 +108,194 @@ AllocationPtr::~AllocationPtr()
     return os;
 }
 
+
+void Allocation::check_bytes_valid(size_t ofs, size_t size) const
+{
+    if( !(ofs + size <= this->size()) ) {
+        LOG_FATAL("Out of range - " << ofs << "+" << size << " > " << this->size());
+    }
+    for(size_t i = ofs; i < ofs + size; i++)
+    {
+        if( !(this->mask[i/8] & (1 << i%8)) )
+        {
+            ::std::cerr << "ERROR: Invalid bytes in value" << ::std::endl;
+            throw "ERROR";
+        }
+    }
+}
+void Allocation::mark_bytes_valid(size_t ofs, size_t size)
+{
+    assert( ofs+size <= this->mask.size() * 8 );
+    for(size_t i = ofs; i < ofs + size; i++)
+    {
+        this->mask[i/8] |= (1 << i%8);
+    }
+}
+Value Allocation::read_value(size_t ofs, size_t size) const
+{
+    Value rv;
+    // TODO: Determine if this can become an inline allocation.
+    bool has_reloc = false;
+    for(const auto& r : this->relocations)
+    {
+        if( ofs <= r.slot_ofs && r.slot_ofs < ofs + size )
+        {
+            has_reloc = true;
+        }
+    }
+    if( has_reloc || size > sizeof(rv.direct_data.data) )
+    {
+        rv.allocation = Allocation::new_alloc(size);
+
+        rv.write_bytes(0, this->data_ptr() + ofs, size);
+
+        for(const auto& r : this->relocations)
+        {
+            if( ofs <= r.slot_ofs && r.slot_ofs < ofs + size )
+            {
+                rv.allocation.alloc().relocations.push_back({ r.slot_ofs - ofs, r.backing_alloc });
+            }
+        }
+    }
+    else
+    {
+        rv.direct_data.size = static_cast<uint8_t>(size);
+        rv.write_bytes(0, this->data_ptr() + ofs, size);
+    }
+    return rv;
+}
+void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
+{
+    if(ofs >= this->size() ) {
+        ::std::cerr << "Value::write_bytes - Out of bounds read, " << ofs << " >= " << this->size() << ::std::endl;
+        throw "ERROR";
+    }
+    if(count > this->size() ) {
+        ::std::cerr << "Value::write_bytes - Out of bounds read, count " << count << " > size " << this->size() << ::std::endl;
+        throw "ERROR";
+    }
+    if(ofs+count > this->size() ) {
+        ::std::cerr << "Value::write_bytes - Out of bounds read, " << ofs << "+" << count << " > size " << this->size() << ::std::endl;
+        throw "ERROR";
+    }
+    check_bytes_valid(ofs, count);
+
+
+    ::std::memcpy(dst, this->data_ptr() + ofs, count);
+}
+void Allocation::write_value(size_t ofs, Value v)
+{
+    if( v.allocation )
+    {
+        size_t  v_size = v.allocation.alloc().size();
+        const auto& src_alloc = v.allocation.alloc();
+        // TODO: Just copy the validity from the source.
+        v.check_bytes_valid(0, v_size);
+
+        // Save relocations first, because `Foo = Foo` is valid.
+        ::std::vector<Relocation>   new_relocs = src_alloc.relocations;
+        // - write_bytes removes any relocations in this region.
+        write_bytes(ofs, src_alloc.data_ptr(), v_size);
+
+        // Find any relocations that apply and copy those in.
+        // - Any relocations in the source within `v.meta.indirect_meta.offset` .. `v.meta.indirect_meta.offset + v_size`
+        if( !new_relocs.empty() )
+        {
+            // 2. Move the new relocations into this allocation
+            for(auto& r : new_relocs)
+            {
+                LOG_TRACE("Insert " << r.backing_alloc);
+                r.slot_ofs += ofs;
+                this->relocations.push_back( ::std::move(r) );
+            }
+        }
+    }
+    else
+    {
+        // TODO: Check validity of input, OR just copy the validity
+        v.check_bytes_valid(0, v.direct_data.size);
+        this->write_bytes(ofs, v.direct_data.data, v.direct_data.size);
+    }
+}
+void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
+{
+    if(ofs >= this->size() ) {
+        ::std::cerr << "Value::write_bytes - Out of bounds write, " << ofs << " >= " << this->size() << ::std::endl;
+        throw "ERROR";
+    }
+    if(count > this->size() ) {
+        ::std::cerr << "Value::write_bytes - Out of bounds write, count " << count << " > size " << this->size() << ::std::endl;
+        throw "ERROR";
+    }
+    if(ofs+count > this->size() ) {
+        ::std::cerr << "Value::write_bytes - Out of bounds write, " << ofs << "+" << count << " > size " << this->size() << ::std::endl;
+        throw "ERROR";
+    }
+
+
+    // - Remove any relocations already within this region
+    auto& this_relocs = this->relocations;
+    for(auto it = this_relocs.begin(); it != this_relocs.end(); )
+    {
+        if( ofs <= it->slot_ofs && it->slot_ofs < ofs + count)
+        {
+            LOG_TRACE("Delete " << it->backing_alloc);
+            it = this_relocs.erase(it);
+        }
+        else 
+        {
+            ++it;
+        }
+    }
+
+    ::std::memcpy(this->data_ptr() + ofs, src, count);
+    mark_bytes_valid(ofs, count);
+}
+void Allocation::write_usize(size_t ofs, uint64_t v)
+{
+    this->write_bytes(0, &v, POINTER_SIZE);
+}
+::std::ostream& operator<<(::std::ostream& os, const Allocation& x)
+{
+    for(size_t i = 0; i < x.size(); i++)
+    {
+        if( i != 0 )
+            os << " ";
+
+        if( x.mask[i/8] & (1 << i%8) )
+        {
+            os << ::std::setw(2) << ::std::setfill('0') << (int)x.data_ptr()[i];
+        }
+        else
+        {
+            os << "--";
+        }
+    }
+
+    os << " {";
+    for(const auto& r : x.relocations)
+    {
+        if( 0 <= r.slot_ofs && r.slot_ofs < x.size() )
+        {
+            os << " @" << r.slot_ofs << "=" << r.backing_alloc;
+        }
+    }
+    os << " }";
+    return os;
+}
+
 Value::Value()
 {
-    this->meta.direct_data.size = 0;
-    this->meta.direct_data.mask[0] = 0;
-    this->meta.direct_data.mask[1] = 0;
+    this->direct_data.size = 0;
+    this->direct_data.mask[0] = 0;
+    this->direct_data.mask[1] = 0;
 }
 Value::Value(::HIR::TypeRef ty)
 {
     size_t size = ty.get_size();
 #if 1
     // Support inline data if the data will fit within the inline region (which is the size of the metadata)
-    if( ty.get_size() <= sizeof(this->meta.direct_data.data) )
+    if( ty.get_size() <= sizeof(this->direct_data.data) )
     {
         struct H
         {
@@ -152,9 +328,9 @@ Value::Value(::HIR::TypeRef ty)
         {
             // Will fit in a inline allocation, nice.
             //LOG_TRACE("No pointers in " << ty << ", storing inline");
-            this->meta.direct_data.size = static_cast<uint8_t>(size);
-            this->meta.direct_data.mask[0] = 0;
-            this->meta.direct_data.mask[1] = 0;
+            this->direct_data.size = static_cast<uint8_t>(size);
+            this->direct_data.mask[0] = 0;
+            this->direct_data.mask[1] = 0;
             return ;
         }
     }
@@ -163,8 +339,6 @@ Value::Value(::HIR::TypeRef ty)
     // Fallback: Make a new allocation
     //LOG_TRACE(" Creating allocation for " << ty);
     this->allocation = Allocation::new_alloc(size);
-    this->meta.indirect_meta.offset = 0;
-    this->meta.indirect_meta.size = size;
 }
 Value Value::new_fnptr(const ::HIR::Path& fn_path)
 {
@@ -176,44 +350,40 @@ Value Value::new_fnptr(const ::HIR::Path& fn_path)
     return rv;
 }
 
+void Value::create_allocation()
+{
+    assert(!this->allocation);
+    this->allocation = Allocation::new_alloc(this->direct_data.size);
+    this->allocation.alloc().mask[0] = this->direct_data.mask[0];
+    this->allocation.alloc().mask[1] = this->direct_data.mask[1];
+    ::std::memcpy(this->allocation.alloc().data.data(), this->direct_data.data, this->direct_data.size);
+}
 void Value::check_bytes_valid(size_t ofs, size_t size) const
 {
+    if( size == 0 )
+        return ;
     if( this->allocation )
     {
-        const auto& alloc = this->allocation.alloc();
-        if( ofs >= this->meta.indirect_meta.size || ofs+size > this->meta.indirect_meta.size ) {
-            ::std::cerr << "ERROR: OOB read" << ::std::endl;
-            throw "ERROR";
-        }
-        ofs += this->meta.indirect_meta.offset;
-        //assert(ofs + size < alloc.size());
-        for(size_t i = ofs; i < ofs + size; i++)
-        {
-            if( !(alloc.mask[i/8] & (1 << i%8)) )
-            {
-                ::std::cerr << "ERROR: Invalid bytes in value" << ::std::endl;
-                throw "ERROR";
-            }
-        }
+        this->allocation.alloc().check_bytes_valid(ofs, size);
     }
     else
     {
-        if( size == 0 && this->meta.direct_data.size > 0 ) {
+        if( size == 0 && this->direct_data.size > 0 ) {
             return ;
         }
-        if( ofs >= this->meta.direct_data.size ) {
-            ::std::cerr << "ERROR: OOB read" << ::std::endl;
+        if( ofs >= this->direct_data.size ) {
+            LOG_ERROR("Read out of bounds " << ofs << "+" << size << " > " << int(this->direct_data.size));
             throw "ERROR";
         }
-        if( ofs+size > this->meta.direct_data.size ) {
-            ::std::cerr << "ERROR: OOB read" << ::std::endl;
+        if( ofs+size > this->direct_data.size ) {
+            LOG_ERROR("Read out of bounds " << ofs+size << " >= " << int(this->direct_data.size));
             throw "ERROR";
         }
         for(size_t i = ofs; i < ofs + size; i++)
         {
-            if( !(this->meta.direct_data.mask[i/8] & (1 << i%8)) )
+            if( !(this->direct_data.mask[i/8] & (1 << i%8)) )
             {
-                ::std::cerr << "ERROR: Invalid bytes in value" << ::std::endl;
+                LOG_ERROR("Accessing invalid bytes in value");
                 throw "ERROR";
             }
         }
@@ -223,20 +393,13 @@ void Value::mark_bytes_valid(size_t ofs, size_t size)
 {
     if( this->allocation )
     {
-        auto& alloc = this->allocation.alloc();
-        // TODO: Assert range.
-        ofs += this->meta.indirect_meta.offset;
-        assert( ofs+size <= alloc.mask.size() * 8 );
-        for(size_t i = ofs; i < ofs + size; i++)
-        {
-            alloc.mask[i/8] |= (1 << i%8);
-        }
+        this->allocation.alloc().mark_bytes_valid(ofs, size);
     }
     else
     {
-        for(size_t i = 0; i < this->meta.direct_data.size; i++)
+        for(size_t i = 0; i < this->direct_data.size; i++)
         {
-            this->meta.direct_data.mask[i/8] |= (1 << i%8);
+            this->direct_data.mask[i/8] |= (1 << i%8);
         }
     }
 }
@@ -248,211 +411,113 @@ Value Value::read_value(size_t ofs, size_t size) const
     check_bytes_valid(ofs, size);
     if( this->allocation )
     {
-        const auto& alloc = this->allocation.alloc();
-        // TODO: Determine if this can become an inline allocation.
-        bool has_reloc = false;
-        for(const auto& r : alloc.relocations)
-        {
-            if( this->meta.indirect_meta.offset+ofs <= r.slot_ofs && r.slot_ofs < this->meta.indirect_meta.offset + ofs + size )
-            {
-                has_reloc = true;
-            }
-        }
-        if( has_reloc || size > sizeof(this->meta.direct_data.data) )
-        {
-            rv.allocation = Allocation::new_alloc(size);
-            rv.meta.indirect_meta.offset = 0;
-            rv.meta.indirect_meta.size = size;
-
-            for(const auto& r : alloc.relocations)
-            {
-                if( this->meta.indirect_meta.offset+ofs <= r.slot_ofs && r.slot_ofs < this->meta.indirect_meta.offset + ofs + size )
-                {
-                    rv.allocation.alloc().relocations.push_back({ r.slot_ofs - (this->meta.indirect_meta.offset+ofs), r.backing_alloc });
-                }
-            }
-        }
-        else
-        {
-            rv.meta.direct_data.size = static_cast<uint8_t>(size);
-        }
-        rv.write_bytes(0, this->data_ptr() + ofs, size);
+        rv = this->allocation.alloc().read_value(ofs, size);
     }
     else
     {
         // Inline can become inline.
-        rv.meta.direct_data.size = static_cast<uint8_t>(size);
-        rv.write_bytes(0, this->meta.direct_data.data+ofs, size);
+        rv.direct_data.size = static_cast<uint8_t>(size);
+        rv.write_bytes(0, this->direct_data.data+ofs, size);
     }
     LOG_DEBUG("RETURN " << rv);
     return rv;
 }
 void Value::read_bytes(size_t ofs, void* dst, size_t count) const
 {
-    check_bytes_valid(ofs, count);
-    throw "TODO";
+    if( this->allocation )
+    {
+        this->allocation.alloc().read_bytes(ofs, dst, count);
+    }
+    else
+    {
+        check_bytes_valid(ofs, count);
+
+        if(ofs >= this->direct_data.size )
+            throw "ERROR";
+        if(count > this->direct_data.size )
+            throw "ERROR";
+        if(ofs+count > this->direct_data.size )
+            throw "ERROR";
+        ::std::memcpy(dst, this->direct_data.data + ofs, count);
+    }
 }
 
 void Value::write_bytes(size_t ofs, const void* src, size_t count)
 {
+    if( count == 0 )
+        return ;
     if( this->allocation )
     {
-        if(ofs >= this->meta.indirect_meta.size ) {
-            ::std::cerr << "Value::write_bytes - Out of bounds write, " << ofs << " >= " << this->meta.indirect_meta.size << ::std::endl;
-            throw "ERROR";
-        }
-        if(count > this->meta.indirect_meta.size ) {
-            ::std::cerr << "Value::write_bytes - Out of bounds write, count " << count << " > size " << this->meta.indirect_meta.size << ::std::endl;
-            throw "ERROR";
-        }
-        if(ofs+count > this->meta.indirect_meta.size ) {
-            ::std::cerr << "Value::write_bytes - Out of bounds write, " << ofs << "+" << count << " > size " << this->meta.indirect_meta.size << ::std::endl;
-            throw "ERROR";
-        }
-
-
-        // - Remove any relocations already within this region
-        auto& this_relocs = this->allocation.alloc().relocations;
-        for(auto it = this_relocs.begin(); it != this_relocs.end(); )
-        {
-            if( this->meta.indirect_meta.offset + ofs <= it->slot_ofs && it->slot_ofs < this->meta.indirect_meta.offset + ofs + count)
-            {
-                LOG_TRACE("Delete " << it->backing_alloc);
-                it = this_relocs.erase(it);
-            }
-            else 
-            {
-                ++it;
-            }
-        }
-
+        this->allocation.alloc().write_bytes(ofs, src, count);
     }
     else
     {
-        if(ofs >= this->meta.direct_data.size )
+        if(ofs >= this->direct_data.size )
             throw "ERROR";
-        if(count > this->meta.direct_data.size )
+        if(count > this->direct_data.size )
             throw "ERROR";
-        if(ofs+count > this->meta.direct_data.size )
+        if(ofs+count > this->direct_data.size )
             throw "ERROR";
+        ::std::memcpy(this->direct_data.data + ofs, src, count);
+        mark_bytes_valid(ofs, count);
     }
-    ::std::memcpy(this->data_ptr() + ofs, src, count);
-    mark_bytes_valid(ofs, count);
 }
 void Value::write_value(size_t ofs, Value v)
 {
-    if( v.allocation )
+    if( this->allocation )
     {
-        size_t  v_size = v.meta.indirect_meta.size;
-        v.check_bytes_valid(0, v_size);
-        const auto& src_alloc = v.allocation.alloc();
-        write_bytes(ofs, v.data_ptr(), v_size);
-        // Find any relocations that apply and copy those in.
-        // - Any relocations in the source within `v.meta.indirect_meta.offset` .. `v.meta.indirect_meta.offset + v_size`
-        ::std::vector<Relocation>   new_relocs;
-        for(const auto& r : src_alloc.relocations)
-        {
-            // TODO: Negative offsets in destination?
-            if( v.meta.indirect_meta.offset <= r.slot_ofs && r.slot_ofs < v.meta.indirect_meta.offset + v_size )
-            {
-                LOG_TRACE("Copy " << r.backing_alloc);
-                // Applicable, save for later
-                new_relocs.push_back( r );
-            }
-        }
-        if( !new_relocs.empty() )
-        {
-            if( !this->allocation ) {
-                throw ::std::runtime_error("TODO: Writing value with a relocation into a slot without a relocation");
-            }
-            // 1. Remove any relocations already within this region
-            auto& this_relocs = this->allocation.alloc().relocations;
-            for(auto it = this_relocs.begin(); it != this_relocs.end(); )
-            {
-                if( this->meta.indirect_meta.offset + ofs <= it->slot_ofs && it->slot_ofs < this->meta.indirect_meta.offset + ofs + v_size)
-                {
-                    LOG_TRACE("Delete " << it->backing_alloc);
-                    it = this_relocs.erase(it);
-                }
-                else 
-                {
-                    ++it;
-                }
-            }
-            // 2. Move the new relocations into this allocation
-            for(auto& r : new_relocs)
-            {
-                LOG_TRACE("Insert " << r.backing_alloc);
-                r.slot_ofs -= v.meta.indirect_meta.offset;
-                r.slot_ofs += this->meta.indirect_meta.offset + ofs;
-                this_relocs.push_back( ::std::move(r) );
-            }
-        }
+        this->allocation.alloc().write_value(ofs, ::std::move(v));
     }
     else
     {
-        v.check_bytes_valid(0, v.meta.direct_data.size);
-        write_bytes(ofs, v.meta.direct_data.data, v.meta.direct_data.size);
+        if( v.allocation && !v.allocation.alloc().relocations.empty() )
+        {
+            this->create_allocation();
+            this->allocation.alloc().write_value(ofs, ::std::move(v));
+        }
+        else
+        {
+            v.check_bytes_valid(0, v.direct_data.size);
+            write_bytes(ofs, v.direct_data.data, v.direct_data.size);
+        }
     }
 }
-
-uint64_t Value::read_usize(size_t ofs) const
+void Value::write_usize(size_t ofs, uint64_t v)
 {
-    uint64_t    v = 0;
-    // TODO: Handle different pointer sizes
-    this->read_bytes(0, &v, 8);
-    return v;
+    this->write_bytes(0, &v, POINTER_SIZE);
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Value& v)
 {
-    auto flags = os.flags();
-    os << ::std::hex;
     if( v.allocation )
     {
-        const auto& alloc = v.allocation.alloc();
-        for(size_t i = 0; i < v.meta.indirect_meta.size; i++)
-        {
-            if( i != 0 )
-                os << " ";
-            size_t j = i + v.meta.indirect_meta.offset;
-
-            if( alloc.mask[j/8] & (1 << i%8) )
-            {
-                os << ::std::setw(2) << ::std::setfill('0') << (int)alloc.data_ptr()[j];
-            }
-            else
-            {
-                os << "--";
-            }
-        }
-
-        os << " {";
-        for(const auto& r : alloc.relocations)
-        {
-            if( v.meta.indirect_meta.offset <= r.slot_ofs && r.slot_ofs < v.meta.indirect_meta.offset + v.meta.indirect_meta.size )
-            {
-                os << " @" << (r.slot_ofs - v.meta.indirect_meta.offset) << "=" << r.backing_alloc;
-            }
-        }
-        os << " }";
+        os << v.allocation.alloc();
     }
     else
     {
-        for(size_t i = 0; i < v.meta.direct_data.size; i++)
+        auto flags = os.flags();
+        os << ::std::hex;
+        for(size_t i = 0; i < v.direct_data.size; i++)
         {
             if( i != 0 )
                 os << " ";
-            if( v.meta.direct_data.mask[i/8] & (1 << i%8) )
+            if( v.direct_data.mask[i/8] & (1 << i%8) )
             {
-                os << ::std::setw(2) << ::std::setfill('0') << (int)v.meta.direct_data.data[i];
+                os << ::std::setw(2) << ::std::setfill('0') << (int)v.direct_data.data[i];
             }
             else
             {
                 os << "--";
             }
         }
+        os.setf(flags);
     }
-    os.setf(flags);
     return os;
+}
+
+uint64_t ValueRef::read_usize(size_t ofs) const
+{
+    uint64_t    v = 0;
+    this->read_bytes(0, &v, POINTER_SIZE);
+    return v;
 }

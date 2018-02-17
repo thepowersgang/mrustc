@@ -6,8 +6,6 @@
 #include "hir_sim.hpp"
 #include "module_tree.hpp"
 
-const size_t POINTER_SIZE = 8;
-
 //::HIR::Path::Path(::HIR::SimplePath sp)
 //{
 //}
