@@ -877,11 +877,12 @@ namespace {
                 fields.push_back(fields.size());
             }
             ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+            size_t sized_fields = 0;
             for(unsigned fld : fields)
             {
                 m_of << "\t";
                 const auto& ty = repr->fields[fld].ty;
-                
+
                 if( const auto* te = ty.m_data.opt_Slice() ) {
                     emit_ctype( *te->inner, FMT_CB(ss, ss << "_" << fld << "[0]";) );
                     has_unsized = true;
@@ -895,12 +896,21 @@ namespace {
                     has_unsized = true;
                 }
                 else {
-                    // TODO: Nested unsized?
-                    emit_ctype( ty, FMT_CB(ss, ss << "_" << fld) );
+                    size_t s;
+                    Target_GetSizeOf(sp, m_resolve, ty, s);
+                    if( s == 0 ) {
+                        m_of << "// ZST\n";
+                        continue ;
+                    }
+                    else {
+                        // TODO: Nested unsized?
+                        emit_ctype( ty, FMT_CB(ss, ss << "_" << fld) );
+                        sized_fields ++;
+                    }
                 }
                 m_of << ";\n";
             }
-            if( fields.size() == 0 )
+            if( sized_fields == 0 )
             {
                 if( m_options.disallow_empty_structs )
                 {
@@ -3117,6 +3127,13 @@ namespace {
                 m_of << indent << "__fastfail("; emit_lvalue(e.inputs[0].second); m_of << ");\n";
                 return ;
             }
+            else if( e.tpl == "pause" )
+            {
+                if( !(e.inputs.size() == 0 && e.outputs.size() == 0) )
+                    MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
+                m_of << indent << "_mm_pause();\n";
+                return ;
+            }
             else
             {
                 // No hard-coded translations.
@@ -3135,6 +3152,9 @@ namespace {
 #endif
             }
 
+            if( Target_GetCurSpec().m_c_compiler == "amd64" ) {
+                MIR_TODO(mir_res, "MSVC amd64 doesn't support inline assembly, need to have a transform for '" << e.tpl << "'");
+            }
             m_of << indent << "__asm {\n";
 
             m_of << indent << "\t";
