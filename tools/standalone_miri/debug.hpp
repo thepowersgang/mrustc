@@ -4,6 +4,7 @@
 #pragma once
 
 #include <iostream>
+#include <functional>
 
 enum class DebugLevel {
     Trace,
@@ -17,6 +18,7 @@ enum class DebugLevel {
 
 class DebugSink
 {
+    static unsigned s_indent;
     ::std::ostream& m_inner;
     DebugSink(::std::ostream& inner);
 public:
@@ -27,8 +29,48 @@ public:
 
     static bool enabled(const char* fcn_name);
     static DebugSink get(const char* fcn_name, const char* file, unsigned line, DebugLevel lvl);
-};
 
+    static void inc_indent();
+    static void dec_indent();
+};
+template<typename T, typename U>
+class FunctionTrace
+{
+    const char* m_fname;
+    const char* m_file;
+    unsigned m_line;
+    U   m_exit;
+public:
+    FunctionTrace(const char* fname, const char* file, unsigned line, T entry, U exit):
+        m_fname(fname),
+        m_file(file),
+        m_line(line),
+        m_exit(exit)
+    {
+        if( DebugSink::enabled(fname) ) {
+            auto s = DebugSink::get(fname, file, line, DebugLevel::Debug);
+            s << "(";
+            (entry)(s);
+            s << ")";
+            DebugSink::inc_indent();
+        }
+    }
+    ~FunctionTrace() {
+        if( DebugSink::enabled(m_fname) ) {
+            DebugSink::dec_indent();
+            auto s = DebugSink::get(m_fname, m_file, m_line, DebugLevel::Debug);
+            s << "(";
+            m_exit(s);
+            s << ")";
+        }
+    }
+};
+template<typename T, typename U>
+FunctionTrace<T,U> FunctionTrace_d(const char* fname, const char* file, unsigned line, T entry, U exit) {
+    return FunctionTrace<T,U>(fname, file, line, entry, exit);
+}
+
+#define TRACE_FUNCTION_R(entry, exit) auto ftg##__LINE__ = FunctionTrace_d(__FUNCTION__,__FILE__,__LINE__,[&](DebugSink& FunctionTrace_ss){FunctionTrace_ss << entry;}, [&](DebugSink& FunctionTrace_ss) {FunctionTrace_ss << exit;} )
 #define LOG_TRACE(strm) do { if(DebugSink::enabled(__FUNCTION__)) DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Trace) << strm; } while(0)
 #define LOG_DEBUG(strm) do { if(DebugSink::enabled(__FUNCTION__)) DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Debug) << strm; } while(0)
 #define LOG_ERROR(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Error) << strm; exit(1); } while(0)

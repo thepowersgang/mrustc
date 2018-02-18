@@ -1,5 +1,7 @@
 #include "debug.hpp"
 
+unsigned DebugSink::s_indent = 0;
+
 DebugSink::DebugSink(::std::ostream& inner):
     m_inner(inner)
 {
@@ -14,6 +16,8 @@ bool DebugSink::enabled(const char* fcn_name)
 }
 DebugSink DebugSink::get(const char* fcn_name, const char* file, unsigned line, DebugLevel lvl)
 {
+    for(size_t i = s_indent; i--;)
+        ::std::cout << " ";
     switch(lvl)
     {
     case DebugLevel::Trace:
@@ -39,4 +43,12 @@ DebugSink DebugSink::get(const char* fcn_name, const char* file, unsigned line, 
         break;
     }
     return DebugSink(::std::cout);
+}
+void DebugSink::inc_indent()
+{
+    s_indent ++;
+}
+void DebugSink::dec_indent()
+{
+    s_indent --;
 }
