@@ -1707,10 +1707,10 @@ namespace {
             else
             {
                 // Get the variant index from the enum.
-                auto enum_path = node.m_path.m_path;
-                enum_path.m_components.pop_back();
+                auto enum_path = node.m_path.clone();
+                enum_path.m_path.m_components.pop_back();
                 const auto& var_name = node.m_path.m_path.m_components.back();
-                const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
+                const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path.m_path);
 
                 size_t idx = enm.find_variant(var_name);
                 ASSERT_BUG(sp, idx != SIZE_MAX, "Variant " << node.m_path.m_path << " isn't present");
@@ -1980,11 +1980,11 @@ namespace {
             if( !node.m_is_struct )
             {
                 // Get the variant index from the enum.
-                auto enum_path = node.m_path.m_path;
-                enum_path.m_components.pop_back();
+                auto enum_path = node.m_path.clone();
+                enum_path.m_path.m_components.pop_back();
                 const auto& var_name = node.m_path.m_path.m_components.back();
 
-                const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path);
+                const auto& enm = m_builder.crate().get_enum_by_path(sp, enum_path.m_path);
 
                 auto idx = enm.find_variant(var_name);
                 ASSERT_BUG(sp, idx != SIZE_MAX, "Variant " << node.m_path.m_path << " isn't present");
@@ -2232,8 +2232,8 @@ namespace {
             (Unbound, ),
             (Opaque, ),
             (Enum,
-                auto enum_path = node.m_path.m_path;
-                enum_path.m_components.pop_back();
+                auto enum_path = node.m_path.clone();
+                enum_path.m_path.m_components.pop_back();
                 const auto& var_name = node.m_path.m_path.m_components.back();
 
                 const auto& enm = *e;
