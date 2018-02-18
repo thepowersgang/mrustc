@@ -122,7 +122,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             else
             {
                 // Unknown value in `package`
-                throw ::std::runtime_error("Unknown key `" + key + "` in [package]");
+                ::std::cerr << "WARNING: Unknown key `" + key + "` in [package]" << ::std::endl;
             }
         }
         else if( section == "lib" )
@@ -447,7 +447,8 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         else
         {
             // Unknown manifest section
-            TODO("Unknown manifest section " << section);
+            ::std::cerr << "WARNING: Unknown manifest section `" + section + "`" << ::std::endl;
+            // TODO: Prevent this from firing multiple times in a row.
         }
     }
 
