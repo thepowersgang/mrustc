@@ -796,6 +796,30 @@ namespace
 
             m_mir_res = nullptr;
         }
+        void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
+        {
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "extern fn " << p;), ::HIR::TypeRef(), {}, empty_fcn };
+            m_mir_res = &top_mir_res;
+            TRACE_FUNCTION_F(p);
+
+            // If the function is a C external, emit as such
+            if( item.m_linkage.name != "" )
+            {
+                ::HIR::TypeRef  ret_type_tmp;
+                const auto& ret_type = monomorphise_fcn_return(ret_type_tmp, item, params);
+
+                m_of << "fn " << p << "(";
+                for(unsigned int i = 0; i < item.m_args.size(); i ++)
+                {
+                    if( i != 0 )    m_of << ", ";
+                    m_of << params.monomorph(m_resolve, item.m_args[i].second);
+                }
+                m_of << "): " << ret_type << " = \"" << item.m_linkage.name << "\":\"" << item.m_abi << "\";\n";
+            }
+
+            m_mir_res = nullptr;
+        }
         void emit_function_code(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params, bool is_extern_def, const ::MIR::FunctionPointer& code) override
         {
             TRACE_FUNCTION_F(p);

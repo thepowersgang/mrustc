@@ -17,6 +17,12 @@ struct Function
     ::HIR::Path my_path;
     ::std::vector<::HIR::TypeRef>   args;
     ::HIR::TypeRef   ret_ty;
+    
+    // If `link_name` is non-empty, then the function is an external
+    struct {
+        ::std::string   link_name;
+        ::std::string   link_abi;
+    } external;
     ::MIR::Function m_mir;
 };
 

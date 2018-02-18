@@ -91,10 +91,24 @@ bool Parser::parse_one()
         {
             rv_ty = parse_type();
         }
-        auto body = parse_body();
+        
+        if( lex.consume_if('=') )
+        {
+            auto link_name = ::std::move(lex.check_consume(TokenClass::String).strval);
+            lex.check_consume(':');
+            auto abi = ::std::move(lex.check_consume(TokenClass::String).strval);
+            lex.check_consume(';');
 
-        auto p2 = p;
-        tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, ::std::move(body) }) );
+            auto p2 = p;
+            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {link_name, abi}, {} }) );
+        }
+        else
+        {
+            auto body = parse_body();
+
+            auto p2 = p;
+            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {}, ::std::move(body) }) );
+        }
     }
     else if( lex.consume_if("static") )
     {
