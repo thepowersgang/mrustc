@@ -16,6 +16,7 @@ struct ProgramOptions
 };
 
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args);
+Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
 
 int main(int argc, const char* argv[])
 {
@@ -49,11 +50,19 @@ int main(int argc, const char* argv[])
 
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
 {
+    TRACE_FUNCTION_R(path, "");
+
     LOG_DEBUG(path);
     const auto& fcn = modtree.get_function(path);
     for(size_t i = 0; i < args.size(); i ++)
     {
         LOG_DEBUG("- Argument(" << i << ") = " << args[i]);
+    }
+
+    if( fcn.external.link_name != "" )
+    {
+        // External function!
+        return MIRI_Invoke_Extern(fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
     }
 
     ::std::vector<bool> drop_flags = fcn.m_mir.drop_flags;
@@ -488,7 +497,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     }
                     } break;
                 TU_ARM(se.src, BinOp, re) {
-                    throw "TODO";
+                    LOG_TODO("Handle BinOp - " << se.src);
                     } break;
                 TU_ARM(se.src, UniOp, re) {
                     throw "TODO";
@@ -566,7 +575,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             }
         }
 
-        ::std::cout << "BB" << bb_idx << "/TERM: " << bb.terminator << ::std::endl;
+        LOG_DEBUG("BB" << bb_idx << "/TERM: " << bb.terminator);
         switch(bb.terminator.tag())
         {
         case ::MIR::Terminator::TAGDEAD:    throw "";
@@ -661,7 +670,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     LOG_TODO("Terminator::Call - intrinsic \"" << fe.name << "\"");
                 }
             }
-            else {
+            else
+            {
                 const ::HIR::Path* fcn_p;
                 if( te.fcn.is_Path() ) {
                     fcn_p = &te.fcn.as_Path();
@@ -694,6 +704,20 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
     }
 
     throw "";
+}
+Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
+{
+    if( link_name == "AddVectoredExceptionHandler" )
+    {
+        LOG_DEBUG("Call `AddVectoredExceptionHandler` - Ignoring and returning non-null");
+        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.write_usize(0, 1);
+        return rv;
+    }
+    else
+    {
+        LOG_TODO("Call external function " << link_name);
+    }
 }
 
 int ProgramOptions::parse(int argc, const char* argv[])
