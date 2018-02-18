@@ -735,28 +735,26 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         unsigned int i = 0;
         for(auto& block : fcn.blocks)
         {
-            if( !visited[i] )
+            if( visited[i] )
             {
-                i++;
-                continue ;
-            }
-            while( block.terminator.is_Goto() )
-            {
-                auto tgt = block.terminator.as_Goto();
-                if( uses[tgt] != 1 )
-                    break ;
-                if( tgt == i )
-                    break;
-                DEBUG("Append bb " << tgt << " to bb" << i);
+                while( block.terminator.is_Goto() )
+                {
+                    auto tgt = block.terminator.as_Goto();
+                    if( uses[tgt] != 1 )
+                        break ;
+                    if( tgt == i )
+                        break;
+                    DEBUG("Append bb " << tgt << " to bb" << i);
 
-                assert( &fcn.blocks[tgt] != &block );
-                // Move contents of source block, then set the TAGDEAD terminator to Incomplete
-                auto src_block = mv$(fcn.blocks[tgt]);
-                fcn.blocks[tgt].terminator = ::MIR::Terminator::make_Incomplete({});
+                    assert( &fcn.blocks[tgt] != &block );
+                    // Move contents of source block, then set the TAGDEAD terminator to Incomplete
+                    auto src_block = mv$(fcn.blocks[tgt]);
+                    fcn.blocks[tgt].terminator = ::MIR::Terminator::make_Incomplete({});
 
-                for(auto& stmt : src_block.statements)
-                    block.statements.push_back( mv$(stmt) );
-                block.terminator = mv$( src_block.terminator );
+                    for(auto& stmt : src_block.statements)
+                        block.statements.push_back( mv$(stmt) );
+                    block.terminator = mv$( src_block.terminator );
+                }
             }
             i ++;
         }
@@ -2015,12 +2013,26 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 changed = true;
             }
         }
-        else if( tef.name == "align_of" )
+        else if( tef.name == "align_of" || tef.name == "min_align_of" )
         {
             size_t align_val = 0;
             if( Target_GetAlignOf(state.sp, state.m_resolve, tef.params.m_types.at(0), align_val) )
             {
                 DEBUG("align_of = " << align_val);
+                auto val = ::MIR::Constant::make_Uint({ align_val, ::HIR::CoreType::Usize });
+                bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
+                bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+                changed = true;
+            }
+        }
+        else if( tef.name == "min_align_of_val" )
+        {
+            size_t align_val = 0;
+            size_t size_val = 0;
+            // Note: Trait object returns align_val = 0 (slice-based types have an alignment)
+            if( Target_GetSizeAndAlignOf(state.sp, state.m_resolve, tef.params.m_types.at(0), size_val, align_val) && align_val > 0 )
+            {
+                DEBUG("min_align_of_val = " << align_val);
                 auto val = ::MIR::Constant::make_Uint({ align_val, ::HIR::CoreType::Usize });
                 bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), mv$(val) }));
                 bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
@@ -2122,7 +2134,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         switch(se.op)
                         {
                         case ::MIR::eBinOp::EQ:
-                            if( val_l.is_Const() )
+                            if( val_l.is_Const() || val_r.is_Const() )
                                 ;
                             else
                             {
@@ -2131,12 +2143,48 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             }
                             break;
                         case ::MIR::eBinOp::NE:
-                            if( val_l.is_Const() )
+                            if( val_l.is_Const() || val_r.is_Const() )
                                 ;
                             else
                             {
                                 replace = true;
                                 new_value = ::MIR::Constant::make_Bool({val_l != val_r});
+                            }
+                            break;
+                        case ::MIR::eBinOp::LT:
+                            if( val_l.is_Const() || val_r.is_Const() )
+                                ;
+                            else
+                            {
+                                replace = true;
+                                new_value = ::MIR::Constant::make_Bool({val_l < val_r});
+                            }
+                            break;
+                        case ::MIR::eBinOp::LE:
+                            if( val_l.is_Const() || val_r.is_Const() )
+                                ;
+                            else
+                            {
+                                replace = true;
+                                new_value = ::MIR::Constant::make_Bool({val_l <= val_r});
+                            }
+                            break;
+                        case ::MIR::eBinOp::GT:
+                            if( val_l.is_Const() || val_r.is_Const() )
+                                ;
+                            else
+                            {
+                                replace = true;
+                                new_value = ::MIR::Constant::make_Bool({val_l > val_r});
+                            }
+                            break;
+                        case ::MIR::eBinOp::GE:
+                            if( val_l.is_Const() || val_r.is_Const() )
+                                ;
+                            else
+                            {
+                                replace = true;
+                                new_value = ::MIR::Constant::make_Bool({val_l >= val_r});
                             }
                             break;
                         // TODO: Other binary operations
@@ -2148,6 +2196,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         {
                             DEBUG(state << " " << e->src << " = " << new_value);
                             e->src = mv$(new_value);
+                            changed = true;
                         }
                     }
                     ),
@@ -2236,6 +2285,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         {
                             DEBUG(state << " " << e->src << " = " << new_value);
                             e->src = mv$(new_value);
+                            changed = true;
                         }
                     }
                     ),
@@ -2358,6 +2408,8 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 auto new_bb = te.targets.at(it->second);
                 DEBUG(state << "Convert " << bb.terminator << " into Goto(" << new_bb << ") because variant known to be #" << it->second);
                 bb.terminator = ::MIR::Terminator::make_Goto(new_bb);
+
+                changed = true;
             }
             } break;
         TU_ARM(bb.terminator, If, te) {
@@ -2367,6 +2419,8 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 auto new_bb = (it->second.as_Bool().v ? te.bb0 : te.bb1);
                 DEBUG(state << "Convert " << bb.terminator << " into Goto(" << new_bb << ") because condition known to be " << it->second);
                 bb.terminator = ::MIR::Terminator::make_Goto(new_bb);
+
+                changed = true;
             }
             } break;
         default:
@@ -2376,6 +2430,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
     // - Remove based on known booleans within a single block
     //  > Eliminates `if false`/`if true` branches
+    // TODO: Is this now defunct after the handling of Terminator::If above?
     for(auto& bb : fcn.blocks)
     {
         auto bbidx = &bb - &fcn.blocks.front();
