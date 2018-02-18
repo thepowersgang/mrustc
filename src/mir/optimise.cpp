@@ -2064,6 +2064,8 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         auto bbidx = &bb - &fcn.blocks.front();
 
         ::std::map< ::MIR::LValue, ::MIR::Constant >    known_values;
+        // Known enum variants
+        ::std::map< ::MIR::LValue, unsigned >   known_values_var;
         ::std::map< unsigned, bool >    known_drop_flags;
 
         auto check_param = [&](::MIR::Param& p) {
@@ -2295,9 +2297,10 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 }
             }
             // - If a known temporary is borrowed mutably or mutated somehow, clear its knowledge
-            visit_mir_lvalues(stmt, [&known_values](const ::MIR::LValue& lv, ValUsage vu)->bool {
+            visit_mir_lvalues(stmt, [&known_values,&known_values_var](const ::MIR::LValue& lv, ValUsage vu)->bool {
                 if( vu == ValUsage::Write ) {
                     known_values.erase(lv);
+                    known_values_var.erase(lv);
                 }
                 return false;
                 });
@@ -2306,9 +2309,38 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             {
                 if( e->dst.is_Local() )
                 {
+                    // Known constant
                     if( const auto* ce = e->src.opt_Constant() )
                     {
                         known_values.insert(::std::make_pair( e->dst.clone(), ce->clone() ));
+                        DEBUG(state << stmt);
+                    }
+                    // Known variant
+                    else if( const auto* ce = e->src.opt_Variant() )
+                    {
+                        known_values_var.insert(::std::make_pair( e->dst.clone(), ce->index ));
+                        DEBUG(state << stmt);
+                    }
+                    // Propagate knowledge through Local=Local assignments
+                    else if( const auto* ce = e->src.opt_Use() )
+                    {
+                        if( ce->is_Local() )
+                        {
+                            auto it1 = known_values.find(*ce);
+                            auto it2 = known_values_var.find(*ce);
+                            assert( !(it1 != known_values.end() && it2 != known_values_var.end()) );
+                            if( it1 != known_values.end() ) {
+                                known_values.insert(::std::make_pair( e->dst.clone(), it1->second.clone() ));
+                                DEBUG(state << stmt);
+                            }
+                            else if( it1 != known_values.end() ) {
+                                known_values_var.insert(::std::make_pair( e->dst.clone(), it2->second ));
+                                DEBUG(state << stmt);
+                            }
+                            else {
+                                // Neither known, don't propagate
+                            }
+                        }
                     }
                 }
             }
@@ -2319,9 +2351,22 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
         {
         case ::MIR::Terminator::TAGDEAD:    throw "";
         TU_ARM(bb.terminator, Switch, te) {
-            auto it = known_values.find(te.val);
+            auto it = known_values_var.find(te.val);
+            if( it != known_values_var.end() ) {
+                MIR_ASSERT(state, it->second < te.targets.size(), "Terminator::Switch with known variant index out of bounds"
+                    << " (#" << it->second << " with " << bb.terminator << ")");
+                auto new_bb = te.targets.at(it->second);
+                DEBUG(state << "Convert " << bb.terminator << " into Goto(" << new_bb << ") because variant known to be #" << it->second);
+                bb.terminator = ::MIR::Terminator::make_Goto(new_bb);
+            }
+            } break;
+        TU_ARM(bb.terminator, If, te) {
+            auto it = known_values.find(te.cond);
             if( it != known_values.end() ) {
-                // TODO: How would an enum be encoded in switch?
+                MIR_ASSERT(state, it->second.is_Bool(), "Terminator::If with known value not Bool - " << it->second);
+                auto new_bb = (it->second.as_Bool().v ? te.bb0 : te.bb1);
+                DEBUG(state << "Convert " << bb.terminator << " into Goto(" << new_bb << ") because condition known to be " << it->second);
+                bb.terminator = ::MIR::Terminator::make_Goto(new_bb);
             }
             } break;
         default:
