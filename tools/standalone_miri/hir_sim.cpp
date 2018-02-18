@@ -5,6 +5,7 @@
 
 #include "hir_sim.hpp"
 #include "module_tree.hpp"
+#include "debug.hpp"
 
 //::HIR::Path::Path(::HIR::SimplePath sp)
 //{
@@ -21,9 +22,10 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
         case RawType::Composite:
             return this->composite_type->size;
         case RawType::Unreachable:
+            LOG_BUG("Attempting to get size of an unreachable type, " << *this);
         case RawType::TraitObject:
         case RawType::Str:
-            throw "Invalid";
+            LOG_BUG("Attempting to get size of an unsized type, " << *this);
         case RawType::U8:   case RawType::I8:
             return 1;
         case RawType::U16:  case RawType::I16:

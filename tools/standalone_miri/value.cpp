@@ -189,8 +189,8 @@ void Allocation::write_value(size_t ofs, Value v)
     {
         size_t  v_size = v.allocation.alloc().size();
         const auto& src_alloc = v.allocation.alloc();
-        // TODO: Just copy the validity from the source.
-        v.check_bytes_valid(0, v_size);
+        // Take a copy of the source mask
+        auto s_mask = src_alloc.mask;
 
         // Save relocations first, because `Foo = Foo` is valid.
         ::std::vector<Relocation>   new_relocs = src_alloc.relocations;
@@ -209,12 +209,42 @@ void Allocation::write_value(size_t ofs, Value v)
                 this->relocations.push_back( ::std::move(r) );
             }
         }
+
+        // Set mask in destination
+        if( ofs % 8 != 0 || v_size % 8 != 0 )
+        {
+            // Lazy way, sets/clears individual bits
+            for(size_t i = 0; i < v_size; i ++)
+            {
+                uint8_t dbit = 1 << ((ofs+i) % 8);
+                if( s_mask[i/8] & (1 << (i %8)) )
+                    this->mask[ (ofs+i) / 8 ] |= dbit;
+                else
+                    this->mask[ (ofs+i) / 8 ] &= ~dbit;
+            }
+        }
+        else
+        {
+            // Copy the mask bytes directly
+            for(size_t i = 0; i < v_size / 8; i ++)
+            {
+                this->mask[ofs/8+i] = s_mask[i];
+            }
+        }
     }
     else
     {
-        // TODO: Check validity of input, OR just copy the validity
-        v.check_bytes_valid(0, v.direct_data.size);
         this->write_bytes(ofs, v.direct_data.data, v.direct_data.size);
+
+        // Lazy way, sets/clears individual bits
+        for(size_t i = 0; i < v.direct_data.size; i ++)
+        {
+            uint8_t dbit = 1 << ((ofs+i) % 8);
+            if( v.direct_data.mask[i/8] & (1 << (i %8)) )
+                this->mask[ (ofs+i) / 8 ] |= dbit;
+            else
+                this->mask[ (ofs+i) / 8 ] &= ~dbit;
+        }
     }
 }
 void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
@@ -516,6 +546,18 @@ void Value::write_usize(size_t ofs, uint64_t v)
 }
 
 uint64_t ValueRef::read_usize(size_t ofs) const
+{
+    uint64_t    v = 0;
+    this->read_bytes(0, &v, POINTER_SIZE);
+    return v;
+}
+uint64_t Value::read_usize(size_t ofs) const
+{
+    uint64_t    v = 0;
+    this->read_bytes(0, &v, POINTER_SIZE);
+    return v;
+}
+uint64_t Allocation::read_usize(size_t ofs) const
 {
     uint64_t    v = 0;
     this->read_bytes(0, &v, POINTER_SIZE);

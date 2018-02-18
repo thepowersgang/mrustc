@@ -134,6 +134,19 @@ public:
     void write_f64(size_t ofs, double v) { write_bytes(ofs, &v, 8); }
     void write_usize(size_t ofs, uint64_t v);
     void write_isize(size_t ofs, int64_t v) { write_usize(ofs, static_cast<uint64_t>(v)); }
+
+    uint8_t read_u8(size_t ofs) const { uint8_t rv; read_bytes(ofs, &rv, 1); return rv; }
+    uint16_t read_u16(size_t ofs) const { uint16_t rv; read_bytes(ofs, &rv, 2); return rv; }
+    uint32_t read_u32(size_t ofs) const { uint32_t rv; read_bytes(ofs, &rv, 4); return rv; }
+    uint64_t read_u64(size_t ofs) const { uint64_t rv; read_bytes(ofs, &rv, 8); return rv; }
+    int8_t read_i8(size_t ofs) const { return static_cast<int8_t>(read_u8(ofs)); }
+    int16_t read_i16(size_t ofs) const { return static_cast<int16_t>(read_u16(ofs)); }
+    int32_t read_i32(size_t ofs) const { return static_cast<int32_t>(read_u32(ofs)); }
+    int64_t read_i64(size_t ofs) const { return static_cast<int64_t>(read_u64(ofs)); }
+    float  read_f32(size_t ofs) const { float rv; read_bytes(ofs, &rv, 4); return rv; }
+    double read_f64(size_t ofs) const { double rv; read_bytes(ofs, &rv, 8); return rv; }
+    uint64_t read_usize(size_t ofs) const;
+    int64_t read_isize(size_t ofs) const { return static_cast<int64_t>(read_usize(ofs)); }
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 
@@ -176,6 +189,19 @@ struct Value
     void write_f64(size_t ofs, double v) { write_bytes(ofs, &v, 8); }
     void write_usize(size_t ofs, uint64_t v);
     void write_isize(size_t ofs, int64_t v) { write_usize(ofs, static_cast<uint64_t>(v)); }
+
+    uint8_t read_u8(size_t ofs) const { uint8_t rv; read_bytes(ofs, &rv, 1); return rv; }
+    uint16_t read_u16(size_t ofs) const { uint16_t rv; read_bytes(ofs, &rv, 2); return rv; }
+    uint32_t read_u32(size_t ofs) const { uint32_t rv; read_bytes(ofs, &rv, 4); return rv; }
+    uint64_t read_u64(size_t ofs) const { uint64_t rv; read_bytes(ofs, &rv, 8); return rv; }
+    int8_t read_i8(size_t ofs) const { return static_cast<int8_t>(read_u8(ofs)); }
+    int16_t read_i16(size_t ofs) const { return static_cast<int16_t>(read_u16(ofs)); }
+    int32_t read_i32(size_t ofs) const { return static_cast<int32_t>(read_u32(ofs)); }
+    int64_t read_i64(size_t ofs) const { return static_cast<int64_t>(read_u64(ofs)); }
+    float  read_f32(size_t ofs) const { float rv; read_bytes(ofs, &rv, 4); return rv; }
+    double read_f64(size_t ofs) const { double rv; read_bytes(ofs, &rv, 8); return rv; }
+    uint64_t read_usize(size_t ofs) const;
+    int64_t read_isize(size_t ofs) const { return static_cast<int64_t>(read_usize(ofs)); }
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Value& v);
 
@@ -202,6 +228,8 @@ struct ValueRef
     }
 
     Value read_value(size_t ofs, size_t size) const {
+        if( size == 0 )
+            return Value();
         assert(ofs < m_size);
         assert(size <= m_size);
         assert(ofs+size <= m_size);
@@ -213,6 +241,8 @@ struct ValueRef
         }
     }
     void read_bytes(size_t ofs, void* dst, size_t size) const {
+        if( size == 0 )
+            return ;
         assert(ofs < m_size);
         assert(size <= m_size);
         assert(ofs+size <= m_size);

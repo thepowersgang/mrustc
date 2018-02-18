@@ -57,13 +57,6 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
     }
 
     ::std::vector<bool> drop_flags = fcn.m_mir.drop_flags;
-    ::std::vector<Value>    locals; locals.reserve( fcn.m_mir.locals.size() );
-
-    Value   ret_val = Value(fcn.ret_ty);
-    for(const auto& ty : fcn.m_mir.locals)
-    {
-        locals.push_back(Value(ty));
-    }
 
     struct State
     {
@@ -82,7 +75,13 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             locals.reserve(fcn.m_mir.locals.size());
             for(const auto& ty : fcn.m_mir.locals)
             {
-                locals.push_back(Value(ty));
+                if( ty == RawType::Unreachable ) {
+                    // HACK: Locals can be !, but they can NEVER be accessed
+                    locals.push_back(Value());
+                }
+                else {
+                    locals.push_back(Value(ty));
+                }
             }
         }
 
@@ -584,13 +583,83 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             return state.ret;
         TU_ARM(bb.terminator, If, _te)
             LOG_TODO("Terminator::If");
-        TU_ARM(bb.terminator, Switch, _te)
-            LOG_TODO("Terminator::Switch");
+        TU_ARM(bb.terminator, Switch, te) {
+            ::HIR::TypeRef ty;
+            auto v = state.get_value_and_type(te.val, ty);
+            LOG_ASSERT(ty.wrappers.size() == 0, "" << ty);
+            LOG_ASSERT(ty.inner_type == RawType::Composite, "" << ty);
+
+            // TODO: Convert the variant list into something that makes it easier to switch on.
+            size_t found_target = SIZE_MAX;
+            size_t default_target = SIZE_MAX;
+            for(size_t i = 0; i < ty.composite_type->variants.size(); i ++)
+            {
+                const auto& var = ty.composite_type->variants[i];
+                if( var.tag_data.size() == 0 )
+                {
+                    // Save as the default, error for multiple defaults
+                    if( default_target != SIZE_MAX )
+                    {
+                        LOG_FATAL("Two variants with no tag in Switch");
+                    }
+                    default_target = i;
+                }
+                else
+                {
+                    // Get offset, read the value.
+                    ::HIR::TypeRef  tag_ty;
+                    size_t tag_ofs = ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
+                    // Read the value bytes
+                    ::std::vector<char> tmp( var.tag_data.size() );
+                    v.read_bytes(tag_ofs, const_cast<char*>(tmp.data()), tmp.size());
+                    if( ::std::memcmp(tmp.data(), var.tag_data.data(), tmp.size()) == 0 )
+                    {
+                        found_target = i;
+                        break ;
+                    }
+                }
+            }
+
+            if( found_target == SIZE_MAX )
+            {
+                found_target = default_target;
+            }
+            if( found_target == SIZE_MAX )
+            {
+                LOG_FATAL("Terminator::Switch on " << ty << " didn't find a variant");
+            }
+            bb_idx = te.targets.at(found_target);
+            } continue;
         TU_ARM(bb.terminator, SwitchValue, _te)
             LOG_TODO("Terminator::SwitchValue");
         TU_ARM(bb.terminator, Call, te) {
-            if( te.fcn.is_Intrinsic() ) {
-                LOG_TODO("Terminator::Call - intrinsic");
+            if( te.fcn.is_Intrinsic() )
+            {
+                const auto& fe = te.fcn.as_Intrinsic();
+                if( fe.name == "atomic_store" )
+                {
+                    const auto& ptr_param = te.args.at(0);
+                    const auto& val_param = te.args.at(1);
+
+                    ::HIR::TypeRef  ptr_ty;
+                    auto val = state.param_to_value(ptr_param, ptr_ty);
+                    LOG_ASSERT(val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
+
+                    // There MUST be a relocation at this point with a valid allocation.
+                    LOG_ASSERT(val.allocation, "Deref of a value with no allocation (hence no relocations)");
+                    LOG_TRACE("Deref " << val.allocation.alloc());
+                    auto alloc = val.allocation.alloc().get_relocation(0);
+                    LOG_ASSERT(alloc, "Deref of a value with no relocation");
+
+                    // TODO: Atomic side of this?
+                    size_t ofs = val.read_usize(0);
+                    auto ty = ptr_ty.get_inner();
+                    alloc.alloc().write_value(ofs, state.param_to_value(val_param));
+                }
+                else 
+                {
+                    LOG_TODO("Terminator::Call - intrinsic \"" << fe.name << "\"");
+                }
             }
             else {
                 const ::HIR::Path* fcn_p;
@@ -618,7 +687,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 ::std::cout << "Call " << *fcn_p << ::std::endl;
                 MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args));
             }
-            } break;
+            bb_idx = te.ret_block;
+            } continue;
         }
         throw "";
     }
