@@ -48,6 +48,36 @@ int main(int argc, const char* argv[])
     return 0;
 }
 
+struct Ops {
+    template<typename T>
+    static bool do_compare(T l, T r, ::MIR::eBinOp op) {
+        switch(op)
+        {
+        case ::MIR::eBinOp::EQ: return l == r;
+        case ::MIR::eBinOp::NE: return l != r;
+        case ::MIR::eBinOp::GT: return l >  r;
+        case ::MIR::eBinOp::GE: return l >= r;
+        case ::MIR::eBinOp::LT: return l <  r;
+        case ::MIR::eBinOp::LE: return l <= r;
+            break;
+        default:
+            LOG_BUG("Unexpected operation in Ops::do_compare");
+        }
+    }
+    static uint64_t do_unsigned(uint64_t l, uint64_t r, ::MIR::eBinOp op) {
+        switch(op)
+        {
+        case ::MIR::eBinOp::ADD:    return l + r;
+        case ::MIR::eBinOp::SUB:    return l - r;
+        case ::MIR::eBinOp::MUL:    return l * r;
+        case ::MIR::eBinOp::DIV:    return l / r;
+        case ::MIR::eBinOp::MOD:    return l % r;
+        default:
+            LOG_BUG("Unexpected operation in Ops::do_unsigned");
+        }
+    }
+};
+
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
 {
     TRACE_FUNCTION_R(path, "");
@@ -249,20 +279,20 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 return val;
                 } break;
             TU_ARM(c, Const, ce) {
-                throw ::std::runtime_error("BUG: Constant::Const in mmir");
+                LOG_BUG("Constant::Const in mmir");
                 } break;
             TU_ARM(c, Bytes, ce) {
-                throw ::std::runtime_error("TODO: Constant::Bytes");
+                LOG_TODO("Constant::Bytes");
                 } break;
             TU_ARM(c, StaticString, ce) {
-                throw ::std::runtime_error("TODO: Constant::StaticString");
+                LOG_TODO("Constant::StaticString");
                 } break;
             TU_ARM(c, ItemAddr, ce) {
                 // Create a value with a special backing allocation of zero size that references the specified item.
                 if( const auto* fn = modtree.get_function_opt(ce) ) {
                     return Value::new_fnptr(ce);
                 }
-                throw ::std::runtime_error("TODO: Constant::ItemAddr");
+                LOG_TODO("Constant::ItemAddr - statics?");
                 } break;
             }
             throw "";
@@ -288,6 +318,20 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         {
             ::HIR::TypeRef  ty;
             return param_to_value(p, ty);
+        }
+
+        ValueRef get_value_ref_param(const ::MIR::Param& p, Value& tmp, ::HIR::TypeRef& ty)
+        {
+            switch(p.tag())
+            {
+            case ::MIR::Param::TAGDEAD: throw "";
+            TU_ARM(p, Constant, pe)
+                tmp = const_to_value(pe, ty);
+                return ValueRef(tmp, 0, ty.get_size());
+            TU_ARM(p, LValue, pe)
+                return get_value_and_type(pe, ty);
+            }
+            throw "";
         }
     } state { modtree, fcn, ::std::move(args) };
 
@@ -461,8 +505,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             case RawType::Bool: throw "ERROR";
                             case RawType::F64:  throw "BUG";
                             case RawType::F32:  dst_val = static_cast<double>( src_value.read_f32(0) ); break;
-                            case RawType::USize:    throw "TODO"; /*dst_val = src_value.read_usize();*/   break;
-                            case RawType::ISize:    throw "TODO"; /*dst_val = src_value.read_isize();*/   break;
+                            case RawType::USize:    dst_val = static_cast<double>( src_value.read_usize(0) );   break;
+                            case RawType::ISize:    dst_val = static_cast<double>( src_value.read_isize(0) );   break;
                             case RawType::U8:   dst_val = static_cast<double>( src_value.read_u8 (0) );  break;
                             case RawType::I8:   dst_val = static_cast<double>( src_value.read_i8 (0) );  break;
                             case RawType::U16:  dst_val = static_cast<double>( src_value.read_u16(0) );  break;
@@ -477,9 +521,9 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             new_val.write_f64(0, dst_val);
                             } break;
                         case RawType::Bool:
-                            throw "TODO";
+                            LOG_TODO("Cast to " << re.type);
                         case RawType::Char:
-                            throw "TODO";
+                            LOG_TODO("Cast to " << re.type);
                         case RawType::USize:
                         case RawType::ISize:
                         case RawType::U8:
@@ -492,12 +536,101 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         case RawType::I64:
                         case RawType::U128:
                         case RawType::I128:
-                            throw "TODO";
+                            LOG_TODO("Cast to " << re.type);
                         }
                     }
                     } break;
                 TU_ARM(se.src, BinOp, re) {
-                    LOG_TODO("Handle BinOp - " << se.src);
+                    ::HIR::TypeRef  ty_l, ty_r;
+                    Value   tmp_l, tmp_r;
+                    auto v_l = state.get_value_ref_param(re.val_l, tmp_l, ty_l);
+                    auto v_r = state.get_value_ref_param(re.val_r, tmp_r, ty_r);
+                    //LOG_DEBUG(v_l << " ? " << v_r);
+
+                    switch(re.op)
+                    {
+                    case ::MIR::eBinOp::BIT_SHL:
+                    case ::MIR::eBinOp::BIT_SHR:
+                        LOG_TODO("BinOp SHL/SHR - can have mismatched types - " << se.src);
+                    case ::MIR::eBinOp::EQ:
+                    case ::MIR::eBinOp::NE:
+                    case ::MIR::eBinOp::GT:
+                    case ::MIR::eBinOp::GE:
+                    case ::MIR::eBinOp::LT:
+                    case ::MIR::eBinOp::LE: {
+                        LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
+                        bool res;
+                        if( ty_l.wrappers.empty() )
+                        {
+                            switch(ty_l.inner_type)
+                            {
+                            case RawType::U64:
+                                res = Ops::do_compare(v_l.read_u64(0), v_r.read_u64(0), re.op);
+                                break;
+                            case RawType::U32:
+                                res = Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0), re.op);
+                                break;
+                            case RawType::U16:
+                                res = Ops::do_compare(v_l.read_u16(0), v_r.read_u16(0), re.op);
+                                break;
+                            case RawType::U8:
+                                res = Ops::do_compare(v_l.read_u8(0), v_r.read_u8(0), re.op);
+                                break;
+                            case RawType::USize:
+                                res = Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0), re.op);
+                                break;
+                            default:
+                                LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
+                            }
+                        }
+                        else if( ty_l.wrappers.front().type == TypeWrapper::Ty::Pointer )
+                        {
+                            // TODO: Technically only EQ/NE are valid.
+                            res = Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0), re.op);
+                            // TODO: Compare fat metadata.
+                            if( v_l.m_size > POINTER_SIZE )
+                            {
+                                LOG_TODO("Compare fat pointers (metadata)");
+                            }
+                        }
+                        else
+                        {
+                            LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
+                        }
+                        new_val = Value(::HIR::TypeRef(RawType::Bool));
+                        new_val.write_u8(0, res ? 1 : 0);
+                        } break;
+                    default:
+                        LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
+                        new_val = Value(ty_l);
+                        switch(ty_l.inner_type)
+                        {
+                        case RawType::U128:
+                            LOG_TODO("BinOp U128");
+                        case RawType::U64:
+                            new_val.write_u64( 0, Ops::do_unsigned(v_l.read_u64(0), v_r.read_u64(0), re.op) );
+                            break;
+                        case RawType::U32:
+                            new_val = Value(ty_l);
+                            new_val.write_u32( 0, Ops::do_unsigned(v_l.read_u32(0), v_r.read_u32(0), re.op) );
+                            break;
+                        case RawType::U16:
+                            new_val = Value(ty_l);
+                            new_val.write_u16( 0, Ops::do_unsigned(v_l.read_u16(0), v_r.read_u16(0), re.op) );
+                            break;
+                        case RawType::U8:
+                            new_val = Value(ty_l);
+                            new_val.write_u8 ( 0, Ops::do_unsigned(v_l.read_u8 (0), v_r.read_u8 (0), re.op) );
+                            break;
+                        case RawType::USize:
+                            new_val = Value(ty_l);
+                            new_val.write_usize( 0, Ops::do_unsigned(v_l.read_usize(0), v_r.read_usize(0), re.op) );
+                            break;
+                        default:
+                            LOG_TODO("Handle BinOp - w/ type " << ty_l);
+                        }
+                        break;
+                    }
                     } break;
                 TU_ARM(se.src, UniOp, re) {
                     throw "TODO";
@@ -590,8 +723,11 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             continue;
         TU_ARM(bb.terminator, Return, _te)
             return state.ret;
-        TU_ARM(bb.terminator, If, _te)
-            LOG_TODO("Terminator::If");
+        TU_ARM(bb.terminator, If, te) {
+            uint8_t v = state.get_value_ref(te.cond).read_u8(0);
+            LOG_ASSERT(v == 0 || v == 1, "");
+            bb_idx = v ? te.bb0 : te.bb1;
+            } continue;
         TU_ARM(bb.terminator, Switch, te) {
             ::HIR::TypeRef ty;
             auto v = state.get_value_and_type(te.val, ty);
@@ -665,7 +801,26 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     auto ty = ptr_ty.get_inner();
                     alloc.alloc().write_value(ofs, state.param_to_value(val_param));
                 }
-                else 
+                else if( fe.name == "atomic_load" )
+                {
+                    const auto& ptr_param = te.args.at(0);
+
+                    ::HIR::TypeRef  ptr_ty;
+                    auto val = state.param_to_value(ptr_param, ptr_ty);
+                    LOG_ASSERT(val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
+
+                    // There MUST be a relocation at this point with a valid allocation.
+                    LOG_ASSERT(val.allocation, "Deref of a value with no allocation (hence no relocations)");
+                    LOG_TRACE("Deref " << val.allocation.alloc());
+                    auto alloc = val.allocation.alloc().get_relocation(0);
+                    LOG_ASSERT(alloc, "Deref of a value with no relocation");
+
+                    // TODO: Atomic side of this?
+                    size_t ofs = val.read_usize(0);
+                    auto ty = ptr_ty.get_inner();
+                    state.write_lvalue( te.ret_val, alloc.alloc().read_value(ofs, fe.params.tys.at(0).get_size()) );
+                }
+                else
                 {
                     LOG_TODO("Terminator::Call - intrinsic \"" << fe.name << "\"");
                 }
@@ -694,8 +849,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 {
                     sub_args.push_back( state.param_to_value(a) );
                 }
-                ::std::cout << "Call " << *fcn_p << ::std::endl;
-                MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args));
+                LOG_DEBUG("Call " << *fcn_p);
+                state.write_lvalue(te.ret_val, MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args)));
             }
             bb_idx = te.ret_block;
             } continue;
