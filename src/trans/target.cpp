@@ -94,6 +94,27 @@ namespace
                 ARCH_X86_64
                 };
         }
+        else if(target_name == "i686-unknown-openbsd")
+        {
+            return TargetSpec {
+                "unix", "openbsd", "gnu", CodegenMode::Gnu11, "i686-unknown-openbsd",
+                ARCH_X86
+                };
+        }
+        else if(target_name == "x86_64-unknown-openbsd")
+        {
+            return TargetSpec {
+                "unix", "openbsd", "gnu", CodegenMode::Gnu11, "x86_64-unknown-openbsd",
+                ARCH_X86_64
+                };
+        }
+        else if(target_name == "arm-unknown-openbsd")
+        {
+            return TargetSpec {
+                "unix", "openbsd", "gnu", CodegenMode::Gnu11, "arm-unknown-openbsd",
+                ARCH_ARM32
+                };
+        }
         else
         {
             ::std::cerr << "Unknown target name '" << target_name << "'" << ::std::endl;
@@ -123,6 +144,13 @@ void Target_SetCfg(const ::std::string& target_name)
     {
         Cfg_SetFlag("linux");
         Cfg_SetValue("target_vendor", "gnu");
+    }
+    Cfg_SetValue("target_env", g_target.m_env_name);
+
+    if( g_target.m_os_name == "openbsd" )
+    {
+        Cfg_SetFlag("openbsd");
+        Cfg_SetValue("target_vendor", "unknown");
     }
     Cfg_SetValue("target_env", g_target.m_env_name);
 
