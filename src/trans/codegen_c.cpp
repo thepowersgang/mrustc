@@ -896,9 +896,9 @@ namespace {
                     has_unsized = true;
                 }
                 else {
-                    size_t s;
-                    Target_GetSizeOf(sp, m_resolve, ty, s);
-                    if( s == 0 ) {
+                    size_t s, a;
+                    Target_GetSizeAndAlignOf(sp, m_resolve, ty, s, a);
+                    if( s == 0 && m_options.disallow_empty_structs ) {
                         m_of << "// ZST\n";
                         continue ;
                     }
@@ -910,12 +910,9 @@ namespace {
                 }
                 m_of << ";\n";
             }
-            if( sized_fields == 0 )
+            if( sized_fields == 0 &&  m_options.disallow_empty_structs )
             {
-                if( m_options.disallow_empty_structs )
-                {
-                    m_of << "\tchar _d;\n";
-                }
+                m_of << "\tchar _d;\n";
             }
             m_of << "}";
             if(is_packed)
