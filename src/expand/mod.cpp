@@ -890,7 +890,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
     Expand_GenericParams(crate, modstack, mod,  impl.def().params());
 
     Expand_Type(crate, modstack, mod,  impl.def().type());
-    //Expand_Type(crate, modstack, mod,  impl.def().trait());
+    Expand_Path(crate, modstack, mod,  impl.def().trait().ent);
 
     DEBUG("> Items");
     for( unsigned int idx = 0; idx < impl.items().size(); idx ++ )
