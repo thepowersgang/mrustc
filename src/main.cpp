@@ -52,6 +52,18 @@
 # else
 #  define DEFAULT_TARGET_NAME "i586-windows-gnu"
 # endif
+#elif defined(__OpenBSD__)
+# if defined(__amd64__)
+#  define DEFAULT_TARGET_NAME "x86_64-unknown-openbsd"
+# elif defined(__aarch64__)
+#  define DEFAULT_TARGET_NAME "arm64-unknown-openbsd"
+# elif defined(__arm__)
+#  define DEFAULT_TARGET_NAME "arm-unknown-openbsd"
+# elif defined(__i386__)
+#  define DEFAULT_TARGET_NAME "i686-unknown-openbsd"
+# else
+#  error "Unable to detect a suitable default target (OpenBSD)"
+# endif
 #else
 # error "Unable to detect a suitable default target"
 #endif

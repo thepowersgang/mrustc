@@ -24,6 +24,10 @@
 # include <sys/wait.h>
 #endif
 
+#ifdef __OpenBSD__
+extern char **environ;
+#endif
+
 #define NEWNODE(_ty, ...)   ::AST::ExprNodeP(new ::AST::ExprNode##_ty(__VA_ARGS__))
 
 class Decorator_ProcMacroDerive:
