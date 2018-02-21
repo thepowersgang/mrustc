@@ -1,3 +1,4 @@
+// compile-flags: --test
 
 struct DropFlag<'a>(&'a mut i32);
 impl<'a> ::std::ops::Drop for DropFlag<'a>

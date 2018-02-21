@@ -202,13 +202,10 @@ endif
 
 # MRUSTC-specific tests
 .PHONY: local_tests
-local_tests: $(patsubst samples/test/%.rs,output/local_test/%_out.txt,$(wildcard samples/test/*.rs))
-
-output/local_test/%_out.txt: output/local_test/%
-	./$< > $@
-output/local_test/%: samples/test/%.rs $(TEST_DEPS)
-	mkdir -p $(dir $@)
-	$(BIN) -g $< -o $@ $(RUST_FLAGS) --test $(PIPECMD)
+local_tests:
+	@$(MAKE) -C tools/testrunner
+	@mkdir -p output/local_tests
+	./tools/bin/testrunner -o output/local_tests samples/test
 
 # 
 # RUSTC TESTS
