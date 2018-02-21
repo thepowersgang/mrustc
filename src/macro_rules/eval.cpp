@@ -1553,8 +1553,31 @@ namespace
             lex.consume_if(TOK_EXCLAM);
             consume_tt(lex);
         }
+        // Interpolated items
         if( lex.consume_if(TOK_INTERPOLATED_ITEM) )
             return true;
+        // Macro invocation
+        // TODO: What about `union!` as a macro? Needs to be handled below
+        if( (lex.next() == TOK_IDENT && lex.next_tok().str() != "union")
+         || lex.next() == TOK_RWORD_SELF
+         || lex.next() == TOK_RWORD_SUPER
+         || lex.next() == TOK_DOUBLE_COLON
+         )
+        {
+            if( !consume_path(lex) )
+                return false;
+            if( !lex.consume_if(TOK_EXCLAM) )
+                return false;
+            bool need_semicolon = (lex.next() != TOK_BRACE_OPEN);
+            consume_tt(lex);
+            if( need_semicolon )
+            {
+                if( !lex.consume_if(TOK_SEMICOLON) )
+                    return false;
+            }
+            return true;
+        }
+        // Normal items
         if(lex.next() == TOK_RWORD_PUB)
             lex.consume();
         if(lex.next() == TOK_RWORD_UNSAFE)
@@ -1669,7 +1692,32 @@ namespace
             if( lex.next() != TOK_BRACE_OPEN )
                 return false;
             return consume_tt(lex);
-        //case TOK_IDENT:
+        case TOK_IDENT:
+            if( lex.next_tok().str() != "union" )
+                return false;
+            lex.consume();
+            if( lex.next() == TOK_EXCLAM )
+            {
+                bool need_semicolon = (lex.next() != TOK_BRACE_OPEN);
+                consume_tt(lex);
+                if( need_semicolon )
+                {
+                    if( !lex.consume_if(TOK_SEMICOLON) )
+                        return false;
+                }
+                return true;
+            }
+            else
+            {
+                if( !H::maybe_generics(lex) )
+                    return false;
+                if( !H::maybe_where(lex) )
+                    return false;
+                if( lex.next() != TOK_BRACE_OPEN )
+                    return false;
+                return consume_tt(lex);
+            }
+            break;
         // const fn
         // const FOO
         case TOK_RWORD_CONST:
