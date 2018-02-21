@@ -24,7 +24,7 @@ script:
 # rustc (DISABLED: llvm build)
 # - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/rustc
 # Tests
- - CC=gcc-6 make local_tests -k
+ - CC=gcc-6 CXX=g++-6 make local_tests -k
 # - CC=gcc-6 make rust_tests -k
 # cargo
 # - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/cargo
