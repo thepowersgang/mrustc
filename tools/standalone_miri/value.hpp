@@ -25,7 +25,7 @@ public:
     {
         Allocation,
         Function,   // m_ptr is a pointer to the function.
-        Unused1,
+        StdString,
         Unused2,
     };
 
@@ -42,6 +42,8 @@ public:
     AllocationPtr(const AllocationPtr& x);
     ~AllocationPtr();
     static AllocationPtr new_fcn(::HIR::Path p);
+    //static AllocationPtr new_rawdata(const void* buf, size_t len);
+    static AllocationPtr new_string(const ::std::string* s);    // NOTE: The string must have a stable pointer
 
     AllocationPtr& operator=(const AllocationPtr& x) = delete;
     AllocationPtr& operator=(AllocationPtr&& x) {
@@ -69,6 +71,11 @@ public:
         assert(*this);
         assert(get_ty() == Ty::Function);
         return *static_cast<const ::HIR::Path*>(get_ptr());
+    }
+    const ::std::string& str() const {
+        assert(*this);
+        assert(get_ty() == Ty::StdString);
+        return *static_cast<const ::std::string*>(get_ptr());
     }
 
     Ty get_ty() const {

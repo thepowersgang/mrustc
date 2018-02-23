@@ -118,6 +118,7 @@ namespace HIR {
         }
 
         size_t get_size(size_t ofs=0) const;
+        bool has_slice_meta() const;    // The attached metadata is a count
         TypeRef get_inner() const;
         TypeRef get_field(size_t idx, size_t& ofs) const;
 

@@ -17,6 +17,7 @@ struct ProgramOptions
 
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args);
 Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
+Value MIRI_Invoke_Intrinsic(const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
 
 int main(int argc, const char* argv[])
 {
@@ -50,18 +51,19 @@ int main(int argc, const char* argv[])
 
 struct Ops {
     template<typename T>
-    static bool do_compare(T l, T r, ::MIR::eBinOp op) {
-        switch(op)
-        {
-        case ::MIR::eBinOp::EQ: return l == r;
-        case ::MIR::eBinOp::NE: return l != r;
-        case ::MIR::eBinOp::GT: return l >  r;
-        case ::MIR::eBinOp::GE: return l >= r;
-        case ::MIR::eBinOp::LT: return l <  r;
-        case ::MIR::eBinOp::LE: return l <= r;
-            break;
-        default:
-            LOG_BUG("Unexpected operation in Ops::do_compare");
+    static int do_compare(T l, T r) {
+        if( l == r ) {
+            return 0;
+        }
+        else if( !(l != r) ) {
+            // Special return value for NaN w/ NaN
+            return 2;
+        }
+        else if( l < r ) {
+            return -1;
+        }
+        else {
+            return 1;
         }
     }
     static uint64_t do_unsigned(uint64_t l, uint64_t r, ::MIR::eBinOp op) {
@@ -188,16 +190,34 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             TU_ARM(lv, Deref, e) {
                 ::HIR::TypeRef  ptr_ty;
                 auto val = get_value_and_type(*e.val, ptr_ty);
-                LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value");
-                // There MUST be a relocation at this point with a valid allocation.
-                auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
-                LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
-                LOG_TRACE("Deref " << val_alloc.alloc());
-                auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
-                LOG_ASSERT(alloc, "Deref of a value with no relocation");
-                size_t ofs = val.read_usize(0);
                 ty = ptr_ty.get_inner();
-                return ValueRef(::std::move(alloc), ofs, ty.get_size());
+                // TODO: Slices and slice-like types have the same logic.
+                if( ty == RawType::Str )
+                {
+                    LOG_ASSERT(val.m_size == 2*POINTER_SIZE, "Deref of a &str that isn't a fat-pointer sized value");
+                    // There MUST be a relocation at this point with a valid allocation.
+                    auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
+                    LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
+                    LOG_TRACE("Deref " << val_alloc.alloc());
+                    auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
+                    LOG_ASSERT(alloc, "Deref of a value with no relocation");
+                    size_t ofs = val.read_usize(0);
+                    size_t size = val.read_usize(POINTER_SIZE);
+                    return ValueRef(::std::move(alloc), ofs, size);
+                }
+                // TODO: Trait objects and trait-object likes
+                else
+                {
+                    LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value");
+                    // There MUST be a relocation at this point with a valid allocation.
+                    auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
+                    LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
+                    LOG_TRACE("Deref " << val_alloc.alloc());
+                    auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
+                    LOG_ASSERT(alloc, "Deref of a value with no relocation");
+                    size_t ofs = val.read_usize(0);
+                    return ValueRef(::std::move(alloc), ofs, ty.get_size());
+                }
                 } break;
             }
             throw "";
@@ -285,7 +305,15 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 LOG_TODO("Constant::Bytes");
                 } break;
             TU_ARM(c, StaticString, ce) {
-                LOG_TODO("Constant::StaticString");
+                ty = ::HIR::TypeRef(RawType::Str);
+                ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
+                Value val = Value(ty);
+                val.write_usize(0, 0);
+                val.write_usize(POINTER_SIZE, ce.size());
+                val.allocation.alloc().relocations.push_back(Relocation { 0, AllocationPtr::new_string(&ce) });
+                LOG_DEBUG(c << " = " << val);
+                //return Value::new_dataptr(ce.data());
+                return val;
                 } break;
             TU_ARM(c, ItemAddr, ce) {
                 // Create a value with a special backing allocation of zero size that references the specified item.
@@ -369,13 +397,21 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         }
                         alloc = AllocationPtr(src_base_value.m_value->allocation);
                     }
-                    LOG_DEBUG("- alloc=" << alloc << " (" << alloc.alloc() << ")");
+                    if( alloc.is_alloc() )
+                        LOG_DEBUG("- alloc=" << alloc << " (" << alloc.alloc() << ")");
+                    else
+                        LOG_DEBUG("- alloc=" << alloc);
                     size_t ofs = src_base_value.m_offset;
+                    bool is_slice_like = src_ty.has_slice_meta();
                     src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
 
                     new_val = Value(src_ty);
                     // ^ Pointer value
                     new_val.write_usize(0, ofs);
+                    if( is_slice_like )
+                    {
+                        new_val.write_usize(POINTER_SIZE, src_base_value.m_size);
+                    }
                     // - Add the relocation after writing the value (writing clears the relocations)
                     new_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
                     } break;
@@ -410,7 +446,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
                             if( src_ty.get_size() > re.type.get_size() ) {
                                 // TODO: How to casting fat to thin?
-                                throw "TODO";
+                                //LOG_TODO("Handle casting fat to thin, " << src_ty << " -> " << re.type);
+                                new_val = src_value.read_value(0, re.type.get_size());
                             }
                             else 
                             {
@@ -440,7 +477,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             && src_ty.wrappers.at(0).type != TypeWrapper::Ty::Borrow ) {
                             throw "ERROR";
                         }
-                        // TODO: MUST be a thin pointer
+                        // TODO: MUST be a thin pointer?
 
                         // TODO: MUST be an integer (usize only?)
                         if( re.type != RawType::USize ) {
@@ -525,15 +562,105 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         case RawType::Char:
                             LOG_TODO("Cast to " << re.type);
                         case RawType::USize:
-                        case RawType::ISize:
                         case RawType::U8:
-                        case RawType::I8:
                         case RawType::U16:
-                        case RawType::I16:
                         case RawType::U32:
-                        case RawType::I32:
                         case RawType::U64:
+                        case RawType::ISize:
+                        case RawType::I8:
+                        case RawType::I16:
+                        case RawType::I32:
                         case RawType::I64:
+                            {
+                            uint64_t dst_val = 0.0;
+                            // Can be an integer, or F32 (pointer is impossible atm)
+                            switch(src_ty.inner_type)
+                            {
+                            case RawType::Unreachable:  throw "BUG";
+                            case RawType::Composite:    throw "ERROR";
+                            case RawType::TraitObject:  throw "ERROR";
+                            case RawType::Function:
+                                LOG_ASSERT(re.type.inner_type == RawType::USize, "");
+                                new_val = src_value.read_value(0, re.type.get_size());
+                                break;
+                            case RawType::Char: LOG_TODO("Cast char to integer (only u32)");
+                            case RawType::Str:  throw "ERROR";
+                            case RawType::Unit: throw "ERROR";
+                            case RawType::Bool: throw "ERROR";
+                            case RawType::F64:  throw "BUG";
+                            case RawType::F32:
+                                dst_val = static_cast<uint64_t>( src_value.read_f32(0) );
+                                if(0)
+                            case RawType::USize:
+                                dst_val = static_cast<uint64_t>( src_value.read_usize(0) );
+                                if(0)
+                            case RawType::ISize:
+                                dst_val = static_cast<uint64_t>( src_value.read_isize(0) );
+                                if(0)
+                            case RawType::U8:
+                                dst_val = static_cast<uint64_t>( src_value.read_u8 (0) );
+                                if(0)
+                            case RawType::I8:
+                                dst_val = static_cast<uint64_t>( src_value.read_i8 (0) );
+                                if(0)
+                            case RawType::U16:
+                                dst_val = static_cast<uint64_t>( src_value.read_u16(0) );
+                                if(0)
+                            case RawType::I16:
+                                dst_val = static_cast<uint64_t>( src_value.read_i16(0) );
+                                if(0)
+                            case RawType::U32:
+                                dst_val = static_cast<uint64_t>( src_value.read_u32(0) );
+                                if(0)
+                            case RawType::I32:
+                                dst_val = static_cast<uint64_t>( src_value.read_i32(0) );
+                                if(0)
+                            case RawType::U64:
+                                dst_val = static_cast<uint64_t>( src_value.read_u64(0) );
+                                if(0)
+                            case RawType::I64:
+                                dst_val = static_cast<uint64_t>( src_value.read_i64(0) );
+
+                                switch(re.type.inner_type)
+                                {
+                                case RawType::USize:
+                                    new_val.write_usize(0, dst_val);
+                                    break;
+                                case RawType::U8:
+                                    new_val.write_u8(0, static_cast<uint8_t>(dst_val));
+                                    break;
+                                case RawType::U16:
+                                    new_val.write_u16(0, static_cast<uint16_t>(dst_val));
+                                    break;
+                                case RawType::U32:
+                                    new_val.write_u32(0, dst_val);
+                                    break;
+                                case RawType::U64:
+                                    new_val.write_u64(0, dst_val);
+                                    break;
+                                case RawType::ISize:
+                                    new_val.write_usize(0, static_cast<int64_t>(dst_val));
+                                    break;
+                                case RawType::I8:
+                                    new_val.write_i8(0, static_cast<int8_t>(dst_val));
+                                    break;
+                                case RawType::I16:
+                                    new_val.write_i16(0, static_cast<int16_t>(dst_val));
+                                    break;
+                                case RawType::I32:
+                                    new_val.write_i32(0, static_cast<int32_t>(dst_val));
+                                    break;
+                                case RawType::I64:
+                                    new_val.write_i64(0, static_cast<int64_t>(dst_val));
+                                    break;
+                                default:
+                                    throw "";
+                                }
+                                break;
+                            case RawType::U128: throw "TODO"; /*dst_val = src_value.read_u128();*/ break;
+                            case RawType::I128: throw "TODO"; /*dst_val = src_value.read_i128();*/ break;
+                            }
+                            } break;
                         case RawType::U128:
                         case RawType::I128:
                             LOG_TODO("Cast to " << re.type);
@@ -559,25 +686,38 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     case ::MIR::eBinOp::LT:
                     case ::MIR::eBinOp::LE: {
                         LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
-                        bool res;
+                        int res = 0;
+                        // TODO: Handle comparison of the relocations too
+
+                        const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
+                        const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
+                        auto reloc_l = alloc_l ? alloc_l.alloc().get_relocation(0) : AllocationPtr();
+                        auto reloc_r = alloc_r ? alloc_r.alloc().get_relocation(0) : AllocationPtr();
+
+                        if( reloc_l != reloc_r )
+                        {
+                            res = (reloc_l < reloc_r ? -1 : 1);
+                        }
+                        LOG_DEBUG("res=" << res << ", " << reloc_l << " ? " << reloc_r);
+
                         if( ty_l.wrappers.empty() )
                         {
                             switch(ty_l.inner_type)
                             {
                             case RawType::U64:
-                                res = Ops::do_compare(v_l.read_u64(0), v_r.read_u64(0), re.op);
+                                res = res != 0 ? res : Ops::do_compare(v_l.read_u64(0), v_r.read_u64(0));
                                 break;
                             case RawType::U32:
-                                res = Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0), re.op);
+                                res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0));
                                 break;
                             case RawType::U16:
-                                res = Ops::do_compare(v_l.read_u16(0), v_r.read_u16(0), re.op);
+                                res = res != 0 ? res : Ops::do_compare(v_l.read_u16(0), v_r.read_u16(0));
                                 break;
                             case RawType::U8:
-                                res = Ops::do_compare(v_l.read_u8(0), v_r.read_u8(0), re.op);
+                                res = res != 0 ? res : Ops::do_compare(v_l.read_u8(0), v_r.read_u8(0));
                                 break;
                             case RawType::USize:
-                                res = Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0), re.op);
+                                res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0));
                                 break;
                             default:
                                 LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
@@ -586,19 +726,41 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         else if( ty_l.wrappers.front().type == TypeWrapper::Ty::Pointer )
                         {
                             // TODO: Technically only EQ/NE are valid.
-                            res = Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0), re.op);
-                            // TODO: Compare fat metadata.
-                            if( v_l.m_size > POINTER_SIZE )
+
+                            res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0));
+
+                            // Compare fat metadata.
+                            if( res == 0 && v_l.m_size > POINTER_SIZE )
                             {
-                                LOG_TODO("Compare fat pointers (metadata)");
+                                reloc_l = v_l.m_alloc ? v_l.m_alloc.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
+                                reloc_r = v_r.m_alloc ? v_r.m_alloc.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
+
+                                if( res == 0 && reloc_l != reloc_r )
+                                {
+                                    res = (reloc_l < reloc_r ? -1 : 1);
+                                }
+                                res = res != 0 ? res : Ops::do_compare(v_l.read_usize(POINTER_SIZE), v_r.read_usize(POINTER_SIZE));
                             }
                         }
                         else
                         {
                             LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                         }
+                        bool res_bool;
+                        switch(re.op)
+                        {
+                        case ::MIR::eBinOp::EQ: res_bool = (res == 0);  break;
+                        case ::MIR::eBinOp::NE: res_bool = (res != 0);  break;
+                        case ::MIR::eBinOp::GT: res_bool = (res == 1);  break;
+                        case ::MIR::eBinOp::GE: res_bool = (res == 1 || res == 0);  break;
+                        case ::MIR::eBinOp::LT: res_bool = (res == -1); break;
+                        case ::MIR::eBinOp::LE: res_bool = (res == -1 || res == 0); break;
+                            break;
+                        default:
+                            LOG_BUG("Unknown comparison");
+                        }
                         new_val = Value(::HIR::TypeRef(RawType::Bool));
-                        new_val.write_u8(0, res ? 1 : 0);
+                        new_val.write_u8(0, res_bool ? 1 : 0);
                         } break;
                     default:
                         LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
@@ -633,7 +795,64 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     }
                     } break;
                 TU_ARM(se.src, UniOp, re) {
-                    throw "TODO";
+                    ::HIR::TypeRef  ty;
+                    auto v = state.get_value_and_type(re.val, ty);
+                    LOG_ASSERT(ty.wrappers.empty(), "UniOp on wrapped type - " << ty);
+                    new_val = Value(ty);
+                    switch(re.op)
+                    {
+                    case ::MIR::eUniOp::INV:
+                        switch(ty.inner_type)
+                        {
+                        case RawType::U128:
+                            LOG_TODO("UniOp::INV U128");
+                        case RawType::U64:
+                            new_val.write_u64( 0, ~v.read_u64(0) );
+                            break;
+                        case RawType::U32:
+                            new_val.write_u32( 0, ~v.read_u32(0) );
+                            break;
+                        case RawType::U16:
+                            new_val.write_u16( 0, ~v.read_u16(0) );
+                            break;
+                        case RawType::U8:
+                            new_val.write_u8 ( 0, ~v.read_u8 (0) );
+                            break;
+                        case RawType::USize:
+                            new_val.write_usize( 0, ~v.read_usize(0) );
+                            break;
+                        case RawType::Bool:
+                            new_val.write_u8 ( 0, v.read_u8 (0) == 0 );
+                            break;
+                        default:
+                            LOG_TODO("UniOp::INV - w/ type " << ty);
+                        }
+                        break;
+                    case ::MIR::eUniOp::NEG:
+                        switch(ty.inner_type)
+                        {
+                        case RawType::I128:
+                            LOG_TODO("UniOp::NEG I128");
+                        case RawType::I64:
+                            new_val.write_i64( 0, -v.read_i64(0) );
+                            break;
+                        case RawType::I32:
+                            new_val.write_i32( 0, -v.read_i32(0) );
+                            break;
+                        case RawType::I16:
+                            new_val.write_i16( 0, -v.read_i16(0) );
+                            break;
+                        case RawType::I8:
+                            new_val.write_i8 ( 0, -v.read_i8 (0) );
+                            break;
+                        case RawType::ISize:
+                            new_val.write_isize( 0, -v.read_isize(0) );
+                            break;
+                        default:
+                            LOG_TODO("UniOp::INV - w/ type " << ty);
+                        }
+                        break;
+                    }
                     } break;
                 TU_ARM(se.src, DstMeta, re) {
                     throw "TODO";
@@ -694,16 +913,16 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 state.write_lvalue(se.dst, ::std::move(new_val));
                 } break;
             case ::MIR::Statement::TAG_Asm:
-                throw "TODO";
+                LOG_TODO(stmt);
                 break;
             case ::MIR::Statement::TAG_Drop:
-                throw "TODO";
+                LOG_TODO(stmt);
                 break;
             case ::MIR::Statement::TAG_SetDropFlag:
-                throw "TODO";
+                LOG_TODO(stmt);
                 break;
             case ::MIR::Statement::TAG_ScopeEnd:
-                throw "TODO";
+                LOG_TODO(stmt);
                 break;
             }
         }
@@ -778,52 +997,15 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         TU_ARM(bb.terminator, SwitchValue, _te)
             LOG_TODO("Terminator::SwitchValue");
         TU_ARM(bb.terminator, Call, te) {
+            ::std::vector<Value>    sub_args; sub_args.reserve(te.args.size());
+            for(const auto& a : te.args)
+            {
+                sub_args.push_back( state.param_to_value(a) );
+            }
             if( te.fcn.is_Intrinsic() )
             {
                 const auto& fe = te.fcn.as_Intrinsic();
-                if( fe.name == "atomic_store" )
-                {
-                    const auto& ptr_param = te.args.at(0);
-                    const auto& val_param = te.args.at(1);
-
-                    ::HIR::TypeRef  ptr_ty;
-                    auto val = state.param_to_value(ptr_param, ptr_ty);
-                    LOG_ASSERT(val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
-
-                    // There MUST be a relocation at this point with a valid allocation.
-                    LOG_ASSERT(val.allocation, "Deref of a value with no allocation (hence no relocations)");
-                    LOG_TRACE("Deref " << val.allocation.alloc());
-                    auto alloc = val.allocation.alloc().get_relocation(0);
-                    LOG_ASSERT(alloc, "Deref of a value with no relocation");
-
-                    // TODO: Atomic side of this?
-                    size_t ofs = val.read_usize(0);
-                    auto ty = ptr_ty.get_inner();
-                    alloc.alloc().write_value(ofs, state.param_to_value(val_param));
-                }
-                else if( fe.name == "atomic_load" )
-                {
-                    const auto& ptr_param = te.args.at(0);
-
-                    ::HIR::TypeRef  ptr_ty;
-                    auto val = state.param_to_value(ptr_param, ptr_ty);
-                    LOG_ASSERT(val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
-
-                    // There MUST be a relocation at this point with a valid allocation.
-                    LOG_ASSERT(val.allocation, "Deref of a value with no allocation (hence no relocations)");
-                    LOG_TRACE("Deref " << val.allocation.alloc());
-                    auto alloc = val.allocation.alloc().get_relocation(0);
-                    LOG_ASSERT(alloc, "Deref of a value with no relocation");
-
-                    // TODO: Atomic side of this?
-                    size_t ofs = val.read_usize(0);
-                    auto ty = ptr_ty.get_inner();
-                    state.write_lvalue( te.ret_val, alloc.alloc().read_value(ofs, fe.params.tys.at(0).get_size()) );
-                }
-                else
-                {
-                    LOG_TODO("Terminator::Call - intrinsic \"" << fe.name << "\"");
-                }
+                state.write_lvalue(te.ret_val, MIRI_Invoke_Intrinsic(fe.name, fe.params, ::std::move(sub_args)));
             }
             else
             {
@@ -844,11 +1026,6 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     fcn_p = &fcn_alloc_ptr.fcn();
                 }
 
-                ::std::vector<Value>    sub_args; sub_args.reserve(te.args.size());
-                for(const auto& a : te.args)
-                {
-                    sub_args.push_back( state.param_to_value(a) );
-                }
                 LOG_DEBUG("Call " << *fcn_p);
                 state.write_lvalue(te.ret_val, MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args)));
             }
@@ -873,6 +1050,59 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
     {
         LOG_TODO("Call external function " << link_name);
     }
+}
+Value MIRI_Invoke_Intrinsic(const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
+{
+    Value rv;
+    TRACE_FUNCTION_R(name, rv);
+    if( name == "atomic_store" )
+    {
+        auto& ptr_val = args.at(0);
+        auto& data_val = args.at(1);
+
+        LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
+
+        // There MUST be a relocation at this point with a valid allocation.
+        LOG_ASSERT(ptr_val.allocation, "Deref of a value with no allocation (hence no relocations)");
+        LOG_TRACE("Deref " << ptr_val.allocation.alloc());
+        auto alloc = ptr_val.allocation.alloc().get_relocation(0);
+        LOG_ASSERT(alloc, "Deref of a value with no relocation");
+
+        // TODO: Atomic side of this?
+        size_t ofs = ptr_val.read_usize(0);
+        const auto& ty = ty_params.tys.at(0);
+        alloc.alloc().write_value(ofs, ::std::move(data_val));
+    }
+    else if( name == "atomic_load" )
+    {
+        auto& ptr_val = args.at(0);
+        LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
+
+        // There MUST be a relocation at this point with a valid allocation.
+        LOG_ASSERT(ptr_val.allocation, "Deref of a value with no allocation (hence no relocations)");
+        LOG_TRACE("Deref " << ptr_val.allocation.alloc());
+        auto alloc = ptr_val.allocation.alloc().get_relocation(0);
+        LOG_ASSERT(alloc, "Deref of a value with no relocation");
+
+        // TODO: Atomic side of this?
+        size_t ofs = ptr_val.read_usize(0);
+        const auto& ty = ty_params.tys.at(0);
+        rv = alloc.alloc().read_value(ofs, ty.get_size());
+    }
+    else if( name == "transmute" )
+    {
+        // Transmute requires the same size, so just copying the value works
+        rv = ::std::move(args.at(0));
+    }
+    else if( name == "assume" )
+    {
+        // Assume is a no-op which returns unit
+    }
+    else
+    {
+        LOG_TODO("Call itrinsic \"" << name << "\"");
+    }
+    return rv;
 }
 
 int ProgramOptions::parse(int argc, const char* argv[])

@@ -25,6 +25,12 @@ AllocationPtr AllocationPtr::new_fcn(::HIR::Path p)
     rv.m_ptr = reinterpret_cast<void*>( reinterpret_cast<uintptr_t>(ptr) + static_cast<uintptr_t>(Ty::Function) );
     return rv;
 }
+AllocationPtr AllocationPtr::new_string(const ::std::string* ptr)
+{
+    AllocationPtr   rv;
+    rv.m_ptr = reinterpret_cast<void*>( reinterpret_cast<uintptr_t>(ptr) + static_cast<uintptr_t>(Ty::StdString) );
+    return rv;
+}
 AllocationPtr::AllocationPtr(const AllocationPtr& x):
     m_ptr(nullptr)
 {
@@ -45,8 +51,10 @@ AllocationPtr::AllocationPtr(const AllocationPtr& x):
             m_ptr = reinterpret_cast<void*>( ptr_i + static_cast<uintptr_t>(Ty::Function) );
             assert(get_ty() == Ty::Function);
             } break;
-        case Ty::Unused1:
-            throw "BUG";
+        case Ty::StdString:
+            // No ownership semantics, just clone the pointer
+            m_ptr = x.m_ptr;
+            break;
         case Ty::Unused2:
             throw "BUG";
         }
@@ -75,7 +83,8 @@ AllocationPtr::~AllocationPtr()
             auto* ptr = const_cast<::HIR::Path*>(&fcn());
             delete ptr;
             } break;
-        case Ty::Unused1: {
+        case Ty::StdString: {
+            // No ownership semantics
             } break;
         case Ty::Unused2: {
             } break;
@@ -93,9 +102,10 @@ AllocationPtr::~AllocationPtr()
             os << &x.alloc();
             break;
         case AllocationPtr::Ty::Function:
-            os << *const_cast<::HIR::Path*>(&x.fcn());
+            os << x.fcn();
             break;
-        case AllocationPtr::Ty::Unused1:
+        case AllocationPtr::Ty::StdString:
+            os << "\"" << x.str() << "\"";
             break;
         case AllocationPtr::Ty::Unused2:
             break;
@@ -283,7 +293,7 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 }
 void Allocation::write_usize(size_t ofs, uint64_t v)
 {
-    this->write_bytes(0, &v, POINTER_SIZE);
+    this->write_bytes(ofs, &v, POINTER_SIZE);
 }
 ::std::ostream& operator<<(::std::ostream& os, const Allocation& x)
 {
@@ -438,7 +448,6 @@ Value Value::read_value(size_t ofs, size_t size) const
 {
     Value   rv;
     LOG_DEBUG("(" << ofs << ", " << size << ") - " << *this);
-    check_bytes_valid(ofs, size);
     if( this->allocation )
     {
         rv = this->allocation.alloc().read_value(ofs, size);
@@ -448,6 +457,8 @@ Value Value::read_value(size_t ofs, size_t size) const
         // Inline can become inline.
         rv.direct_data.size = static_cast<uint8_t>(size);
         rv.write_bytes(0, this->direct_data.data+ofs, size);
+        rv.direct_data.mask[0] = this->direct_data.mask[0];
+        rv.direct_data.mask[1] = this->direct_data.mask[1];
     }
     LOG_DEBUG("RETURN " << rv);
     return rv;
@@ -482,12 +493,15 @@ void Value::write_bytes(size_t ofs, const void* src, size_t count)
     }
     else
     {
-        if(ofs >= this->direct_data.size )
-            throw "ERROR";
-        if(count > this->direct_data.size )
-            throw "ERROR";
-        if(ofs+count > this->direct_data.size )
-            throw "ERROR";
+        if(ofs >= this->direct_data.size ) {
+            LOG_BUG("Write to offset outside value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
+        }
+        if(count > this->direct_data.size ){
+            LOG_BUG("Write larger than value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
+        }
+        if(ofs+count > this->direct_data.size ) {
+            LOG_BUG("Write extends outside value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
+        }
         ::std::memcpy(this->direct_data.data + ofs, src, count);
         mark_bytes_valid(ofs, count);
     }
@@ -514,7 +528,7 @@ void Value::write_value(size_t ofs, Value v)
 }
 void Value::write_usize(size_t ofs, uint64_t v)
 {
-    this->write_bytes(0, &v, POINTER_SIZE);
+    this->write_bytes(ofs, &v, POINTER_SIZE);
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Value& v)

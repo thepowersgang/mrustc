@@ -90,6 +90,25 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
     }
     throw "";
 }
+bool HIR::TypeRef::has_slice_meta() const
+{
+    if( this->wrappers.size() == 0 )
+    {
+        if(this->inner_type == RawType::Composite)
+        {
+            // TODO: Handle metadata better
+            return false;
+        }
+        else
+        {
+            return (this->inner_type == RawType::Str);
+        }
+    }
+    else
+    {
+        return (this->wrappers[0].type == TypeWrapper::Ty::Slice);
+    }
+}
 
 HIR::TypeRef HIR::TypeRef::get_inner() const
 {
