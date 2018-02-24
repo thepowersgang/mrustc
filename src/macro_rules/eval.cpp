@@ -616,6 +616,8 @@ namespace {
     }
 }
 
+// TODO: This shouldn't exist, and can false-positives
+// - Ideally, this would use consume_from_frag (which takes a clone-able input)
 bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
 {
     switch(type)
@@ -652,7 +654,7 @@ bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
     case MacroPatEnt::PAT_META:
         return LOOK_AHEAD(lex) == TOK_IDENT || LOOK_AHEAD(lex) == TOK_INTERPOLATED_META;
     case MacroPatEnt::PAT_ITEM:
-        return is_token_item( LOOK_AHEAD(lex) );
+        return is_token_item( LOOK_AHEAD(lex) ) || LOOK_AHEAD(lex) == TOK_IDENT;
     }
     BUG(lex.point_span(), "Fell through");
 }
@@ -1978,6 +1980,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
 
         // NOTE: There can be multiple arms active, take the first.
         auto i = matches[0];
+        DEBUG("Evalulating arm " << i);
 
         auto lex = TTStreamO(sp, mv$(input));
         SET_MODULE(lex, mod);
