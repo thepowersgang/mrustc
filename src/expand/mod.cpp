@@ -25,6 +25,7 @@ void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::functi
 void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item = 0);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
+void Expand_Path(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::Path& p);
 
 void Register_Synext_Decorator(::std::string name, ::std::unique_ptr<ExpandDecorator> handler) {
     g_decorators.insert(::std::make_pair( mv$(name), mv$(handler) )); 
@@ -265,11 +266,19 @@ void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
     (Generic,
         ),
     (Path,
+        Expand_Path(crate, modstack, mod,  e.path);
         ),
     (TraitObject,
+        for(auto& p : e.traits)
+        {
+            Expand_Path(crate, modstack, mod,  p);
+        }
         ),
     (ErasedType,
-        // TODO: Visit paths.
+        for(auto& p : e.traits)
+        {
+            Expand_Path(crate, modstack, mod,  p);
+        }
         )
     )
 }

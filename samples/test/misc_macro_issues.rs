@@ -31,3 +31,12 @@ impl From<m!(A)> for B {
     }
 }
 
+// #61 - Not expanding macros in paths in types
+macro_rules! Ty {
+    () => { u8 }
+}
+
+fn f() -> Option<Ty![]> {
+    None
+}
+
