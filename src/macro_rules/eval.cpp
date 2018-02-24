@@ -1074,7 +1074,16 @@ namespace
         case TOK_DOUBLE_COLON:
         case TOK_INTERPOLATED_IDENT:
         case TOK_INTERPOLATED_PATH:
-            return consume_path(lex, true);
+            if( !consume_path(lex, true) )
+                return false;
+            if( lex.consume_if(TOK_EXCLAM) )
+            {
+                if( lex.next() != TOK_PAREN_OPEN && lex.next() != TOK_SQUARE_OPEN && lex.next() != TOK_BRACE_OPEN )
+                    return false;
+                if( !consume_tt(lex) )
+                    return false;
+            }
+            return true;
         case TOK_AMP:
         case TOK_DOUBLE_AMP:
             lex.consume();

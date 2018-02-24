@@ -81,7 +81,6 @@ stmt_expr_attr_macro_parse  # macro_rules - attributes not consumed as part of :
 sync-send-iterators-in-libcollections   # macro_rules - :expr matching bare ..
 trait-item-inside-macro # TODO: Allow macro invocations in traits
 try-operator-custom # TODO: use the ops::Try trait instead of try! desugar
-type-macros-hlist   # Missed expansion in UFCS
 type-macros-simple  # macro_rules ordering with nested items
 
 # Requires unwinding panics
