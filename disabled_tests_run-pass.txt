@@ -35,7 +35,6 @@ lex-bare-cr-nondoc-comment  # Don't treat \r as a new line
 # PARSE
 align-struct	# repr(align(2)) - Need to support integers in attributes
 catch-expr  # MISSING: `do catch {}` syntax
-import-glob-crate   # MISSING: Glob at top-level (`use *;`)
 issue-37733 # for<'a> in types
 issue-39089 # for<'a> in optional traits
 loop-break-value    # TODO: Handle loop labels in expression position.

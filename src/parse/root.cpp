@@ -1354,6 +1354,9 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         Parse_Use_Set(lex, span_start, path, fcn);
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
         return;
+    case TOK_STAR:
+        Parse_Use_Wildcard( lex.end_span(span_start), mv$(path), fcn );
+        return;
     case TOK_INTERPOLATED_PATH:
         path = mv$(tok.frag_path());
         break;
