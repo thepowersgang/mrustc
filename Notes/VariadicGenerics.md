@@ -5,7 +5,7 @@ Syntax
 Definition
 ----------
 
-Variadic generics are defined by specifying '...' followed by a parameter name in the generic list, this can
+Variadic generics are defined by specifying `...` followed by a parameter name in the generic list, this can
 optionally be followed by a list of trait bounds in the same way as type parameters (see "Bounds" below)
 
 Use in types
@@ -29,7 +29,7 @@ Trait bounds apply to all types within the pack.
 
 Example
 -------
-```
+```rust
 struct Tuple<...T>(...T);
 
 impl<...T> fmt::Debug for Tuple<...T>
@@ -52,8 +52,9 @@ where
     ... { rv += args; }
     rv
 }
-
 ```
+_TODO: The bound `...U: AddAssign<T>` above feels odd. It expands for each `T` argument, bounding on U with different
+arguments._
 
 
 Possible extensions:
@@ -67,16 +68,26 @@ AST and HIR Encoding
 
 Expression
 ----------
-New node type `Variadic` that is only ever valid in a repetition context
+New node type `UnpackVariadic` that is only ever valid in a position that allows it to eventually expand into multiple
+values. This node contains: an expression (including blocks), and a type parameter name/index (determined after/during
+typecheck).
 
 Valid locations are:
 - Function arguments, tuple \[struct\] constructors, array constructors, block contents
 
+Patterns
+--------
+_TODO: Codify specifics and encoding of variadics in patterns_
+
 Type/Generics
 -------------
-- A TypeParams definition can optionally end with a named variadic specifier.
-- In binding indexes, the maximum of a level (255? iirc) directly refers to the un-expanded variadic generic
-- Only one can exist per generic item.
+- A TypeParams definition can optionally end with a named variadic specifier, this applies a restriction to only allow
+  one variadic generic per parameter set (which makes the maximum number of generics in scope 2, in the current
+  structure)
+- (IMPL NOTE) The binding index of this "type" will be the maximum value for binding indexes at that level (0xFF
+  currently)
+- Use of a variadic type is valid anywhere in a type parameter list.
+- In expressions, it's only valid within an unpack context.
 
 
 MIR Encoding
@@ -88,9 +99,12 @@ Variadic-typed locals can just be locals as usual, the rules apply as normal
 - When being monomorphised, subsequent repeitions get allocated new locals.
 - Temporaries and non-variadic scoped locals use the same value (is this valid?)
 
-A variadic-typed local is valid anywhere within an expansion context (see below), but outside of that it is only valid
-in: call argument lists (anywhere?), array constructors (TODO: requires integer generics?), tuple constructors, and
-struct constructors.
+Within an expansion grouping (see "Blocks" below) a variadic-typed local is valid anywhere (and will expand to the
+single value for that iteration).
+
+Outside of a grouping, a variadic-typed local is ONLY valid somewhere it can expand to multiple values: I.e. call
+argument lists, tuple constructors, struct constructors, and (_TODO: if possible with integer generics_) array
+constructors.
 
 Blocks
 ------
