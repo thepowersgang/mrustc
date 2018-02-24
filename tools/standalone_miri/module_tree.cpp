@@ -173,16 +173,27 @@ bool Parser::parse_one()
         rv.alignment = lex.consume().integer();
         lex.check_consume(';');
 
-        // TODO: DST Meta
-        if( lex.consume_if("DSTMETA") )
+        // Drop glue (if present)
+        if( lex.consume_if("DROP") )
         {
-            //rv->dst_meta = parse_type();
+            rv.drop_glue = parse_path();
             lex.check_consume(';');
-            throw "TODO";
         }
         else
         {
-            //rv->dst_meta = ::HIR::TypeRef::diverge();
+            // No drop glue
+        }
+
+        // DST Meta type
+        if( lex.consume_if("DSTMETA") )
+        {
+            rv.dst_meta = parse_type();
+            lex.check_consume(';');
+        }
+        else
+        {
+            // Using ! as the metadata type means that the type is Sized (meanwhile, `()` means unsized with no meta)
+            rv.dst_meta = ::HIR::TypeRef::diverge();
         }
 
         while( lex.next() != '}' )

@@ -58,11 +58,17 @@ public:
 // struct/union/enum
 struct DataType
 {
+    // TODO: Store the name of this type for logging?
+
     // TODO: Metadata type! (indicates an unsized wrapper)
     // TODO: Drop glue
 
     size_t  alignment;
     size_t  size;
+
+    ::HIR::Path drop_glue;
+    ::HIR::TypeRef  dst_meta;
+
     // Offset and datatype
     ::std::vector<::std::pair<size_t, ::HIR::TypeRef>> fields;
     // Values for variants

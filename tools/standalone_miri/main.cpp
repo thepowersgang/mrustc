@@ -97,8 +97,6 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         return MIRI_Invoke_Extern(fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
     }
 
-    ::std::vector<bool> drop_flags = fcn.m_mir.drop_flags;
-
     struct State
     {
         ModuleTree& modtree;
@@ -106,12 +104,14 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         Value   ret;
         ::std::vector<Value>    args;
         ::std::vector<Value>    locals;
+        ::std::vector<bool>     drop_flags;
 
         State(ModuleTree& modtree, const Function& fcn, ::std::vector<Value> args):
             modtree(modtree),
             fcn(fcn),
             ret(fcn.ret_ty),
-            args(::std::move(args))
+            args(::std::move(args)),
+            drop_flags(fcn.m_mir.drop_flags)
         {
             locals.reserve(fcn.m_mir.locals.size());
             for(const auto& ty : fcn.m_mir.locals)
@@ -906,7 +906,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     }
                     } break;
                 TU_ARM(se.src, Struct, re) {
-                    throw "TODO";
+                    LOG_TODO(stmt);
                     } break;
                 }
                 LOG_DEBUG("- " << new_val);
@@ -915,9 +915,41 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             case ::MIR::Statement::TAG_Asm:
                 LOG_TODO(stmt);
                 break;
-            case ::MIR::Statement::TAG_Drop:
-                LOG_TODO(stmt);
-                break;
+            TU_ARM(stmt, Drop, se) {
+                if( se.flag_idx == ~0u || state.drop_flags.at(se.flag_idx) )
+                {
+                    ::HIR::TypeRef  ty;
+                    auto v = state.get_value_and_type(se.slot, ty);
+                    // If an owned borrow, deref to inner
+                    // If an array, drop all inners
+                    if( !ty.wrappers.empty() )
+                        LOG_TODO(stmt << " - " << ty);
+
+                    // If a composite, check for drop glue and drop if present
+                    if( ty.wrappers.empty() )
+                    {
+                        if( ty.inner_type == RawType::Composite )
+                        {
+                            if( ty.composite_type->drop_glue != ::HIR::Path() )
+                            {
+                                LOG_TODO(stmt << " - " << ty);
+                            }
+                            else
+                            {
+                                // No drop glue
+                            }
+                        }
+                        else if( ty.inner_type == RawType::TraitObject )
+                        {
+                            LOG_TODO(stmt << " - " << ty);
+                        }
+                        else
+                        {
+                            // No destructor
+                        }
+                    }
+                }
+                } break;
             case ::MIR::Statement::TAG_SetDropFlag:
                 LOG_TODO(stmt);
                 break;
@@ -1098,9 +1130,27 @@ Value MIRI_Invoke_Intrinsic(const ::std::string& name, const ::HIR::PathParams& 
     {
         // Assume is a no-op which returns unit
     }
+    else if( name == "offset" )
+    {
+        auto ptr_val = ::std::move(args.at(0));
+        auto& ofs_val = args.at(1);
+
+        auto r = ptr_val.allocation.alloc().get_relocation(0);
+        auto orig_ofs = ptr_val.read_usize(0);
+        auto delta_ofs = ptr_val.read_usize(0);
+        auto new_ofs = orig_ofs + delta_ofs;
+        if(POINTER_SIZE != 8) {
+            new_ofs &= 0xFFFFFFFF;
+        }
+
+
+        ptr_val.write_usize(0, new_ofs);
+        ptr_val.allocation.alloc().relocations.push_back({ 0, r });
+        return ptr_val;
+    }
     else
     {
-        LOG_TODO("Call itrinsic \"" << name << "\"");
+        LOG_TODO("Call intrinsic \"" << name << "\"");
     }
     return rv;
 }

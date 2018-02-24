@@ -210,6 +210,9 @@ namespace HIR {
         ::std::string   m_name; // if empty, the path is Generic in m_trait
         PathParams  m_params;
 
+        Path()
+        {
+        }
         Path(SimplePath sp):
             Path(GenericPath(sp))
         {

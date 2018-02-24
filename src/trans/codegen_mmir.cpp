@@ -182,39 +182,6 @@ namespace
             m_of.close();
         }
 
-        /*
-        void emit_box_drop_glue(::HIR::GenericPath p, const ::HIR::Struct& item)
-        {
-            auto struct_ty = ::HIR::TypeRef( p.clone(), &item );
-            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
-            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
-            // - Drop Glue
-            const auto* ity = m_resolve.is_type_owned_box(struct_ty);
-
-            auto inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, ity->clone() );
-            auto box_free = ::HIR::GenericPath { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
-
-            ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
-            args.push_back( ::std::make_pair( ::HIR::Pattern {}, mv$(inner_ptr) ) );
-
-            ::MIR::Function empty_fcn;
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, empty_fcn };
-            m_mir_res = &mir_res;
-            m_of << "fn " << Trans_Mangle(drop_glue_path) << "(" << Trans_Mangle(p) << ") {\n";
-
-            // Obtain inner pointer
-            // TODO: This is very specific to the structure of the official liballoc's Box.
-            m_of << "\tlet arg1: "; emit_type(args[0].second); m_of << "\n";
-            // Call destructor of inner data
-            emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) }), *ity, true, 1);
-            // Emit a call to box_free for the type
-            m_of << "\t" << Trans_Mangle(box_free) << "(arg0);\n";
-
-            m_of << "}\n";
-            m_mir_res = nullptr;
-        }
-        */
-
 
         void emit_type(const ::HIR::TypeRef& ty) override
         {
@@ -267,6 +234,8 @@ namespace
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
 
+            auto drop_glue_path = ::HIR::Path(::HIR::TypeRef(p.clone(), &item), "drop_glue#");
+
             bool is_vtable; {
                 const auto& lc = p.m_path.m_components.back();
                 is_vtable = (lc.size() > 7 && ::std::strcmp(lc.c_str() + lc.size() - 7, "#vtable") == 0);
@@ -282,79 +251,84 @@ namespace
                 //m_of << "\tVTABLE_HDR hdr;\n";
             }
 
+            // TODO: Generate the drop glue (and determine if there is any)
+            bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, ty);
+
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
             MIR_ASSERT(*m_mir_res, repr, "No repr for struct " << ty);
             m_of << "type " << p << " {\n";
             m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
+            if( has_drop_glue )
+            {
+                m_of << "\tDROP " << drop_glue_path << ";\n";
+            }
             for(const auto& e : repr->fields)
             {
                 m_of << "\t" << e.offset << " = " << e.ty << ";\n";
             }
             m_of << "}\n";
 
-            // TODO: Drop glue!
-#if 0
-            auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
-            auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
-            auto struct_ty_ptr = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Owned, struct_ty.clone());
-            // - Drop Glue
-
-            ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
-            if( item.m_markings.has_drop_impl ) {
-                // If the type is defined outside the current crate, define as static (to avoid conflicts when we define it)
-                if( p.m_path.m_crate_name != m_crate.m_crate_name )
-                {
-                    if( item.m_params.m_types.size() > 0 ) {
-                        m_of << "static ";
-                    }
-                    else {
-                        m_of << "extern ";
-                    }
-                }
-                m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
-            }
-            else if( m_resolve.is_type_owned_box(struct_ty) )
+            if( has_drop_glue )
             {
-                m_box_glue_todo.push_back( ::std::make_pair( mv$(struct_ty.m_data.as_Path().path.m_data.as_Generic()), &item ) );
-                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
-                return ;
-            }
-
-            ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, empty_fcn };
-            m_mir_res = &mir_res;
-            m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ") {\n";
-
-            // If this type has an impl of Drop, call that impl
-            if( item.m_markings.has_drop_impl ) {
-                m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
-            }
-
-            auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-            auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
-            TU_MATCHA( (item.m_data), (e),
-            (Unit,
-                ),
-            (Tuple,
-                for(unsigned int i = 0; i < e.size(); i ++)
+                m_of << "fn " << drop_glue_path << "(&move " << ty << ") {\n";
+                m_of << "\tlet unit: ();\n";
+                
+                if( const auto* ity = m_resolve.is_type_owned_box(ty) )
                 {
-                    const auto& fld = e[i];
-                    fld_lv.as_Field().field_index = i;
+                    m_of << "\t0: {\n";
+                    //ASSERT_BUG(sp, !item.m_markings.has_drop_impl, "Box shouldn't have a Drop impl");
 
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), true, 1);
+                    // TODO: This is very specific to the structure of the official liballoc's Box.
+                    auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
+                    auto fld_p_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                    fld_p_lv = ::MIR::LValue::make_Field({ box$(fld_p_lv), 0 });
+                    fld_p_lv = ::MIR::LValue::make_Field({ box$(fld_p_lv), 0 });
+
+                    if( !m_resolve.type_is_copy(sp, *ity) ) {
+                        auto fld_lv = ::MIR::LValue::make_Deref({ box$(fld_p_lv.clone()) });
+                        m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
+                    }
+
+                    auto box_free = ::HIR::GenericPath { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
+                    m_of << "\t\t""CALL unit = " << box_free << "(" << fmt(fld_p_lv) << ") goto 2 else 1\n";
+                    m_of << "\t}\n";
+                    m_of << "\t1: {\n";
+                    m_of << "\t\tDIVERGE\n";
+                    m_of << "\t}\n";
+                    m_of << "\t2: {\n";
                 }
-                ),
-            (Named,
-                for(unsigned int i = 0; i < e.size(); i ++)
+                else
                 {
-                    const auto& fld = e[i].second;
-                    fld_lv.as_Field().field_index = i;
+                    if( item.m_markings.has_drop_impl ) {
+                        m_of << "\tlet nms: &mut " << ty << ";\n";
+                    }
+                    m_of << "\t0: {\n";
 
-                    emit_destructor_call(fld_lv, monomorph(fld.ent), true, 1);
+                    if( item.m_markings.has_drop_impl )
+                    {
+                        m_of << "\t\t""ASSIGN nms = &mut *arg0;\n";
+                        m_of << "\t\t""CALL unit = " << ::HIR::Path(ty.clone(), m_resolve.m_lang_Drop, "drop") << "(nms) goto 2 else 1\n";
+                        m_of << "\t}\n";
+                        m_of << "\t1: {\n";
+                        m_of << "\t\tDIVERGE\n";
+                        m_of << "\t}\n";
+                        m_of << "\t2: {\n";
+                    }
+
+                    auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
+                    auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                    for(const auto& e : repr->fields)
+                    {
+                        fld_lv.as_Field().field_index += 1;
+                        if( !m_resolve.type_is_copy(sp, e.ty) ) {
+                            m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
+                        }
+                    }
                 }
-                )
-            )
-            m_of << "}\n";
-#endif
+                m_of << "\t\t""RETURN\n";
+                m_of << "\t}\n";
+                m_of << "}\n";
+            }
             m_mir_res = nullptr;
         }
         void emit_union(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Union& item) override
@@ -414,6 +388,7 @@ namespace
             MIR_ASSERT(*m_mir_res, repr, "No repr for enum " << ty);
             m_of << "type " << p << " {\n";
             m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
+            // TODO: Drop glue path
             for(const auto& e : repr->fields)
             {
                 m_of << "\t" << e.offset << " = " << e.ty << ";\n";
