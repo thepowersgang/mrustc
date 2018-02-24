@@ -412,6 +412,9 @@ int Options::parse(int argc, const char* argv[])
                 }
                 this->output_dir = argv[++i];
                 break;
+            case 'v':
+                this->debug_level += 1;
+                break;
 
             default:
                 this->usage_short();
