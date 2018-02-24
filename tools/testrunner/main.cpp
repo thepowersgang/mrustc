@@ -29,6 +29,8 @@ struct Options
     const char* input_glob = nullptr;
     ::std::vector<::std::string>    test_list;
 
+    int debug_level = 0;
+
     const char* exceptions_file = nullptr;
     bool fail_fast = false;
 
@@ -205,7 +207,10 @@ int main(int argc, const char* argv[])
             ::std::ifstream in(test_file_path.str());
             if(!in.good())
                 continue ;
-            DEBUG("> " << test_file_path);
+            if( opts.debug_level > 0 )
+            {
+                DEBUG("> " << test_file_path);
+            }
 
             TestDesc    td;
             td.ignore = false;
@@ -239,7 +244,8 @@ int main(int argc, const char* argv[])
                             auto a = line.substr(start, end-start);
                             if( a != "" )
                             {
-                                DEBUG("+" << a);
+                                if( opts.debug_level > 1 )
+                                    DEBUG("+" << a);
                                 td.m_extra_flags.push_back(::std::move(a));
                             }
                         }
@@ -270,6 +276,7 @@ int main(int argc, const char* argv[])
         ::std::sort(tests.begin(), tests.end(), [](const auto& a, const auto& b){ return a.m_name < b.m_name; });
 
         // ---
+        auto compiler_ts = getenv("TESTRUNNER_NOCOMPILERDEP") ? Timestamp::infinite_past() : Timestamp::for_file(MRUSTC_PATH);
         unsigned n_skip = 0;
         unsigned n_cfail = 0;
         unsigned n_fail = 0;
@@ -278,27 +285,30 @@ int main(int argc, const char* argv[])
         {
             if( !opts.test_list.empty() && ::std::find(opts.test_list.begin(), opts.test_list.end(), test.m_name) == opts.test_list.end() )
             {
-                DEBUG(">> NOT SELECTED");
+                if( opts.debug_level > 0 )
+                    DEBUG(">> NOT SELECTED");
                 continue ;
             }
             if( test.ignore )
             {
-                DEBUG(">> IGNORE " << test.m_name);
+                if( opts.debug_level > 0 )
+                    DEBUG(">> IGNORE " << test.m_name);
                 continue ;
             }
             if( ::std::find(skip_list.begin(), skip_list.end(), test.m_name) != skip_list.end() )
             {
-                DEBUG(">> SKIP " << test.m_name);
+                if( opts.debug_level > 0 )
+                    DEBUG(">> SKIP " << test.m_name);
                 n_skip ++;
                 continue ;
             }
 
-            DEBUG(">> " << test.m_name);
+            //DEBUG(">> " << test.m_name);
             auto depdir = outdir / "deps-" + test.m_name.c_str();
             auto outfile = outdir / test.m_name + ".exe";
 
             auto test_output_ts = Timestamp::for_file(outfile);
-            if( test_output_ts < Timestamp::for_file(MRUSTC_PATH) )
+            if( test_output_ts == Timestamp::infinite_past() || test_output_ts < compiler_ts )
             {
                 bool pre_build_failed = false;
                 for(const auto& file : test.m_pre_build)
@@ -335,16 +345,26 @@ int main(int argc, const char* argv[])
                     else
                         continue;
                 }
+                test_output_ts = Timestamp::for_file(outfile);
             }
             // - Run the test
-            if( !run_executable(outfile, { outfile.str().c_str() }, outdir / test.m_name + ".out") )
+            auto run_out_file = outdir / test.m_name + ".out";
+            if( Timestamp::for_file(run_out_file) < test_output_ts )
             {
-                DEBUG("RUN FAIL " << test.m_name);
-                n_fail ++;
-                if( opts.fail_fast )
-                    return 1;
-                else
-                    continue;
+                if( !run_executable(outfile, { outfile.str().c_str() }, run_out_file) )
+                {
+                    DEBUG("RUN FAIL " << test.m_name);
+                    n_fail ++;
+                    if( opts.fail_fast )
+                        return 1;
+                    else
+                        continue;
+                }
+            }
+            else
+            {
+                if( opts.debug_level > 0 )
+                    DEBUG("Unchanged " << test.m_name);
             }
 
             n_ok ++;
