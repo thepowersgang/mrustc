@@ -302,7 +302,7 @@ namespace {
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
                     << "}\n"
                     ;
-		break;
+		        break;
             case Compiler::Msvc:
                 m_of
                     << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
@@ -360,6 +360,22 @@ namespace {
                     << "\tif( (b == -1) && (a == INT64_MIN))  return true;\n"
                     << "\treturn false;\n"
                     << "}\n"
+                    << "static inline _subcarry_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return (a > b ? *o >= b : *o > a);\n"
+                    << "}\n"
+                    << "static inline _subcarry_u32(uint32_t a, uint32_t b, uint32_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return (a > b ? *o >= b : *o > a);\n"
+                    << "}\n"
+                    << "static inline _subcarry_u16(uint16_t a, uint16_t b, uint16_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return (a > b ? *o >= b : *o > a);\n"
+                    << "}\n"
+                    << "static inline _subcarry_u8(uint8_t a, uint8_t b, uint8_t* o) {\n"
+                    << "\t""*o = a - b;\n"
+                    << "\t""return (a > b ? *o >= b : *o > a);\n"
+                    << "}\n"
                     ;
                 break;
             }
@@ -370,15 +386,16 @@ namespace {
                     << "typedef struct { uint64_t lo, hi; } uint128_t;\n"
                     << "typedef struct { uint64_t lo, hi; } int128_t;\n"
                     << "static inline uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
+                    << "static inline int cmp128(uint128_t a, uint128_t b) { if(a.hi != b.hi) return a.hi < b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
                     << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
                     << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
                     << "static inline bool mul128_o(uint128_t a, uint128_t b, uint128_t* o) { abort(); }\n"
-                    << "static inline bool div128_o(uint128_t a, uint128_t b, uint128_t* o) { abort(); }\n"
+                    << "static inline bool div128_o(uint128_t a, uint128_t b, uint128_t* q, uint128_t* r) { abort(); }\n"
                     << "static inline uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; add128_o(a, b, &v); return v; }\n"
                     << "static inline uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; sub128_o(a, b, &v); return v; }\n"
                     << "static inline uint128_t mul128(uint128_t a, uint128_t b) { uint128_t v; mul128_o(a, b, &v); return v; }\n"
-                    << "static inline uint128_t div128(uint128_t a, uint128_t b) { uint128_t v; div128_o(a, b, &v); return v; }\n"
-                    << "static inline uint128_t mod128(uint128_t a, uint128_t b) { abort(); }\n"
+                    << "static inline uint128_t div128(uint128_t a, uint128_t b) { uint128_t v; div128_o(a, b, &v, NULL); return v; }\n"
+                    << "static inline uint128_t mod128(uint128_t a, uint128_t b) { uint128_t v; div128_o(a, b, NULL, &v); return v;}\n"
                     << "static inline uint128_t and128(uint128_t a, uint128_t b) { uint128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
                     << "static inline uint128_t or128 (uint128_t a, uint128_t b) { uint128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
                     << "static inline uint128_t xor128(uint128_t a, uint128_t b) { uint128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
@@ -395,11 +412,16 @@ namespace {
                     << "\treturn rv;\n"
                     << "}\n"
                     << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
-                    << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo + b.lo; v.hi = a.hi + b.hi + (v.lo < a.lo ? 1 : 0); return v; }\n"
-                    << "static inline int128_t sub128s(int128_t a, int128_t b) { int128_t v; v.lo = a.lo - b.lo; v.hi = a.hi - b.hi - (v.lo > a.lo ? 1 : 0); return v; }\n"
-                    << "static inline int128_t mul128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "static inline int128_t div128s(int128_t a, int128_t b) { abort(); }\n"
-                    << "static inline int128_t mod128s(int128_t a, int128_t b) { abort(); }\n"
+                    << "static inline int cmp128s(int128_t a, int128_t b) { if(a.hi != b.hi) return (int64_t)a.hi < (int64_t)b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
+                    << "static inline bool add128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
+                    << "static inline bool sub128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
+                    << "static inline bool mul128s_o(int128_t a, int128_t b, int128_t* o) { abort(); }\n"
+                    << "static inline bool div128s_o(int128_t a, int128_t b, int128_t* q, int128_t* r) { abort(); }\n"
+                    << "static inline int128_t add128s(int128_t a, int128_t b) { int128_t v; add128s_o(a, b, &v); return v; }\n"
+                    << "static inline int128_t sub128s(int128_t a, int128_t b) { int128_t v; sub128s_o(a, b, &v); return v; }\n"
+                    << "static inline int128_t mul128s(int128_t a, int128_t b) { int128_t v; mul128s_o(a, b, &v); return v; }\n"
+                    << "static inline int128_t div128s(int128_t a, int128_t b) { int128_t v; div128s_o(a, b, &v, NULL); return v; }\n"
+                    << "static inline int128_t mod128s(int128_t a, int128_t b) { int128_t v; div128s_o(a, b, NULL, &v); return v; }\n"
                     << "static inline int128_t and128s(int128_t a, int128_t b) { int128_t v = { a.lo & b.lo, a.hi & b.hi }; return v; }\n"
                     << "static inline int128_t or128s (int128_t a, int128_t b) { int128_t v = { a.lo | b.lo, a.hi | b.hi }; return v; }\n"
                     << "static inline int128_t xor128s(int128_t a, int128_t b) { int128_t v = { a.lo ^ b.lo, a.hi ^ b.hi }; return v; }\n"
@@ -3912,7 +3934,7 @@ namespace {
                         break;
                     case Compiler::Msvc:
                         emit_lvalue(e.ret_val); m_of << "._1 = _subcarry_u" << get_prim_size(params.m_types.at(0));
-                        m_of << "(0, "; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0)";
                         break;
                     }
                 }
@@ -3983,9 +4005,17 @@ namespace {
                 }
                 else
                 {
-                    m_of << "__builtin_sub_overflow("; emit_param(e.args.at(0));
-                        m_of << ", "; emit_param(e.args.at(1));
-                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        break;
+                    case Compiler::Msvc:
+                        m_of << "_subcarry_u" << get_prim_size(params.m_types.at(0));
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        break;
+                    }
                 }
             }
             else if( name == "overflowing_mul" ) {
