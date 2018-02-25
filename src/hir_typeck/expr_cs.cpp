@@ -5445,13 +5445,14 @@ namespace {
         }
     }
 
-    bool check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent)
+    bool check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent, bool honour_disable=true)
     {
         static Span _span;
         const auto& sp = _span;
 
         if( ! ivar_ent.has_rules() ) {
             // No rules, don't do anything (and don't print)
+            DEBUG(i << ": No rules");
             return false;
         }
 
@@ -5758,7 +5759,7 @@ namespace {
             return false;
         }
 
-        if( ivar_ent.force_no_to || ivar_ent.force_no_from )
+        if( honour_disable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
         {
             DEBUG("- IVar " << ty_l << " is forced unknown");
             return false;
@@ -5787,6 +5788,7 @@ namespace {
              && ivar_ent.types_unsize_from.size() == 0 && ivar_ent.types_unsize_to.size() == 0
                 )
             {
+                DEBUG("-- No known options for " << ty_l);
                 return false;
             }
             DEBUG("-- " << ty_l << " FROM=Coerce:{" << ivar_ent.types_coerce_from << "} / Unsize:{" << ivar_ent.types_unsize_from << "},"
@@ -6029,7 +6031,7 @@ namespace {
                     if( e->index < context.possible_ivar_vals.size() )
                     {
                         const auto& p = context.possible_ivar_vals[e->index];
-                        if(p.force_no_to || p.force_no_from)
+                        if( honour_disable && (p.force_no_to || p.force_no_from) )
                         {
                             DEBUG("- IVar " << ty_l << " ?= " << ty_r << " (single " << list_name << ", rhs disabled)");
                             return false;
@@ -6273,19 +6275,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                     //assert( !context.m_ivars.peek_changed() );
                 }
             }
-            for(auto& ivar_ent : context.possible_ivar_vals)
-            {
-                ivar_ent.reset();
-            }
-        }
-        else
-        {
-            // Clear ivar possibilities for next pass
-            for(auto& ivar_ent : context.possible_ivar_vals)
-            {
-                ivar_ent.reset();
-            }
-        }
+        } // `if peek_changed` (ivar possibilities)
 
         if( !context.m_ivars.peek_changed() )
         {
@@ -6317,7 +6307,54 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 }
             }
             #endif
-        }
+        } // `if peek_changed` (node revisits)
+
+        // If nothing has changed, run check_ivar_poss again but ignoring the 'disable' flag
+        if( !context.m_ivars.peek_changed() )
+        {
+            // Check the possible equations
+            DEBUG("--- IVar possibilities (fallback)");
+            // NOTE: Ordering is a hack for libgit2
+            for(unsigned int i = context.possible_ivar_vals.size(); i --; )
+            {
+                if( check_ivar_poss(context, i, context.possible_ivar_vals[i], /*honour_disable=*/false) ) {
+                    static Span sp;
+                    assert( context.possible_ivar_vals[i].has_rules() );
+                    // Disable all metioned ivars in the possibilities
+                    for(const auto& ty : context.possible_ivar_vals[i].types_coerce_to)
+                        context.equate_types_from_shadow(sp,ty);
+                    for(const auto& ty : context.possible_ivar_vals[i].types_unsize_to)
+                        context.equate_types_from_shadow(sp,ty);
+                    for(const auto& ty : context.possible_ivar_vals[i].types_coerce_from)
+                        context.equate_types_to_shadow(sp,ty);
+                    for(const auto& ty : context.possible_ivar_vals[i].types_unsize_from)
+                        context.equate_types_to_shadow(sp,ty);
+
+                    // Also disable inferrence (for this pass) for all ivars in affected bounds
+                    for(const auto& la : context.link_assoc)
+                    {
+                        bool found = false;
+                        auto cb = [&](const auto& t) { return TU_TEST1(t.m_data, Infer, .index == i); };
+                        if( la.left_ty != ::HIR::TypeRef() )
+                            found |= visit_ty_with( la.left_ty, cb );
+                        found |= visit_ty_with( la.impl_ty, cb );
+                        for(const auto& t : la.params.m_types)
+                            found |= visit_ty_with( t, cb );
+                        if( found )
+                        {
+                            if(la.left_ty != ::HIR::TypeRef())
+                                context.equate_types_shadow(sp, la.left_ty, false);
+                            context.equate_types_shadow(sp, la.impl_ty, false);
+                            for(const auto& t : la.params.m_types)
+                                context.equate_types_shadow(sp, t, false);
+                        }
+                    }
+                }
+                else {
+                    //assert( !context.m_ivars.peek_changed() );
+                }
+            }
+        } // `if peek_changed` (ivar possibilities #2)
 
         // Finally. If nothing changed, apply ivar defaults
         if( !context.m_ivars.peek_changed() )
@@ -6326,6 +6363,12 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             if( context.m_ivars.apply_defaults() ) {
                 context.m_ivars.mark_change();
             }
+        }
+
+        // Clear ivar possibilities for next pass
+        for(auto& ivar_ent : context.possible_ivar_vals)
+        {
+            ivar_ent.reset();
         }
 
         count ++;
