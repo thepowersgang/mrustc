@@ -65,8 +65,16 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
             // Need to look up the metadata type for the actual type
             if( this->inner_type == RawType::Composite )
             {
-                ::std::cerr << "TODO: Check metadata type for pointer " << *this << ", assuming none" << ::std::endl;
-                return POINTER_SIZE;
+                if( this->composite_type->dst_meta == RawType::Unreachable )
+                {
+                    return POINTER_SIZE;
+                }
+                // Special case: extern types (which appear when a type is only ever used by pointer)
+                if( this->composite_type->dst_meta == RawType::Unit )
+                {
+                    return POINTER_SIZE;
+                }
+                LOG_TODO("Handle unsized struct " << *this);
             }
             else if( this->inner_type == RawType::Str )
                 return POINTER_SIZE*2;
@@ -220,7 +228,8 @@ namespace HIR {
             os << "()";
             break;
         case RawType::Composite:
-            os << "composite_" << x.composite_type;
+            os << x.composite_type->my_path;
+            //os << "composite_" << x.composite_type;
             break;
         case RawType::Unreachable:
             os << "!";

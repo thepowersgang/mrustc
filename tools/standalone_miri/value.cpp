@@ -176,16 +176,19 @@ Value Allocation::read_value(size_t ofs, size_t size) const
 }
 void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
 {
+    if(count == 0)
+        return ;
+
     if(ofs >= this->size() ) {
-        ::std::cerr << "Value::write_bytes - Out of bounds read, " << ofs << " >= " << this->size() << ::std::endl;
+        LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
     if(count > this->size() ) {
-        ::std::cerr << "Value::write_bytes - Out of bounds read, count " << count << " > size " << this->size() << ::std::endl;
+        LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
     if(ofs+count > this->size() ) {
-        ::std::cerr << "Value::write_bytes - Out of bounds read, " << ofs << "+" << count << " > size " << this->size() << ::std::endl;
+        LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
     check_bytes_valid(ofs, count);
@@ -259,16 +262,18 @@ void Allocation::write_value(size_t ofs, Value v)
 }
 void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 {
+    if(count == 0)
+        return ;
     if(ofs >= this->size() ) {
-        ::std::cerr << "Value::write_bytes - Out of bounds write, " << ofs << " >= " << this->size() << ::std::endl;
+        LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
     if(count > this->size() ) {
-        ::std::cerr << "Value::write_bytes - Out of bounds write, count " << count << " > size " << this->size() << ::std::endl;
+        LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
     if(ofs+count > this->size() ) {
-        ::std::cerr << "Value::write_bytes - Out of bounds write, " << ofs << "+" << count << " > size " << this->size() << ::std::endl;
+        LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
 
@@ -465,6 +470,8 @@ Value Value::read_value(size_t ofs, size_t size) const
 }
 void Value::read_bytes(size_t ofs, void* dst, size_t count) const
 {
+    if(count == 0)
+        return ;
     if( this->allocation )
     {
         this->allocation.alloc().read_bytes(ofs, dst, count);
@@ -473,12 +480,18 @@ void Value::read_bytes(size_t ofs, void* dst, size_t count) const
     {
         check_bytes_valid(ofs, count);
 
-        if(ofs >= this->direct_data.size )
+        if(ofs >= this->direct_data.size ) {
+            LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
             throw "ERROR";
-        if(count > this->direct_data.size )
+        }
+        if(count > this->direct_data.size ) {
+            LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
             throw "ERROR";
-        if(ofs+count > this->direct_data.size )
+        }
+        if(ofs+count > this->direct_data.size ) {
+            LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
             throw "ERROR";
+        }
         ::std::memcpy(dst, this->direct_data.data + ofs, count);
     }
 }

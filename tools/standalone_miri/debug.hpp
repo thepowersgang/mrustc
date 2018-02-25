@@ -29,6 +29,8 @@ public:
 
     static bool enabled(const char* fcn_name);
     static DebugSink get(const char* fcn_name, const char* file, unsigned line, DebugLevel lvl);
+    // TODO: Add a way to insert an annotation before/after an abort/warning/... that indicates what input location caused it.
+    //static void set_position();
 
     static void inc_indent();
     static void dec_indent();

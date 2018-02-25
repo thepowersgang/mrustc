@@ -415,9 +415,6 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     // - Add the relocation after writing the value (writing clears the relocations)
                     new_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
                     } break;
-                TU_ARM(se.src, SizedArray, re) {
-                    throw "TODO";
-                    } break;
                 TU_ARM(se.src, Cast, re) {
                     // Determine the type of cast, is it a reinterpret or is it a value transform?
                     // - Float <-> integer is a transform, anything else should be a reinterpret.
@@ -855,13 +852,13 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     }
                     } break;
                 TU_ARM(se.src, DstMeta, re) {
-                    throw "TODO";
+                    LOG_TODO(stmt);
                     } break;
                 TU_ARM(se.src, DstPtr, re) {
-                    throw "TODO";
+                    LOG_TODO(stmt);
                     } break;
                 TU_ARM(se.src, MakeDst, re) {
-                    throw "TODO";
+                    LOG_TODO(stmt);
                     } break;
                 TU_ARM(se.src, Tuple, re) {
                     ::HIR::TypeRef  dst_ty;
@@ -875,7 +872,34 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     }
                     } break;
                 TU_ARM(se.src, Array, re) {
-                    throw "TODO";
+                    ::HIR::TypeRef  dst_ty;
+                    state.get_value_and_type(se.dst, dst_ty);
+                    new_val = Value(dst_ty);
+                    // TODO: Assert that type is an array
+                    auto inner_ty = dst_ty.get_inner();
+                    size_t stride = inner_ty.get_size();
+
+                    size_t ofs = 0;
+                    for(const auto& v : re.vals)
+                    {
+                        new_val.write_value(ofs, state.param_to_value(v));
+                        ofs += stride;
+                    }
+                    } break;
+                TU_ARM(se.src, SizedArray, re) {
+                    ::HIR::TypeRef  dst_ty;
+                    state.get_value_and_type(se.dst, dst_ty);
+                    new_val = Value(dst_ty);
+                    // TODO: Assert that type is an array
+                    auto inner_ty = dst_ty.get_inner();
+                    size_t stride = inner_ty.get_size();
+
+                    size_t ofs = 0;
+                    for(size_t i = 0; i < re.count; i++)
+                    {
+                        new_val.write_value(ofs, state.param_to_value(re.val));
+                        ofs += stride;
+                    }
                     } break;
                 TU_ARM(se.src, Variant, re) {
                     // 1. Get the composite by path.
@@ -906,7 +930,18 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     }
                     } break;
                 TU_ARM(se.src, Struct, re) {
-                    LOG_TODO(stmt);
+                    const auto& data_ty = state.modtree.get_composite(re.path);
+
+                    ::HIR::TypeRef  dst_ty;
+                    state.get_value_and_type(se.dst, dst_ty);
+                    new_val = Value(dst_ty);
+                    LOG_ASSERT(dst_ty.composite_type == &data_ty, "Destination type of RValue::Struct isn't the same as the input");
+
+                    for(size_t i = 0; i < re.vals.size(); i++)
+                    {
+                        auto fld_ofs = data_ty.fields.at(i).first;
+                        new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                    }
                     } break;
                 }
                 LOG_DEBUG("- " << new_val);
@@ -918,41 +953,60 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             TU_ARM(stmt, Drop, se) {
                 if( se.flag_idx == ~0u || state.drop_flags.at(se.flag_idx) )
                 {
-                    ::HIR::TypeRef  ty;
-                    auto v = state.get_value_and_type(se.slot, ty);
-                    // If an owned borrow, deref to inner
-                    // If an array, drop all inners
-                    if( !ty.wrappers.empty() )
-                        LOG_TODO(stmt << " - " << ty);
-
-                    // If a composite, check for drop glue and drop if present
-                    if( ty.wrappers.empty() )
-                    {
-                        if( ty.inner_type == RawType::Composite )
+                    auto drop_value = [](ValueRef v, const ::HIR::TypeRef& ty) {
+                        if( ty.wrappers.empty() )
                         {
-                            if( ty.composite_type->drop_glue != ::HIR::Path() )
+                            if( ty.inner_type == RawType::Composite )
                             {
-                                LOG_TODO(stmt << " - " << ty);
+                                if( ty.composite_type->drop_glue != ::HIR::Path() )
+                                {
+                                    LOG_TODO("Drop - " << ty);
+                                }
+                                else
+                                {
+                                    // No drop glue
+                                }
+                            }
+                            else if( ty.inner_type == RawType::TraitObject )
+                            {
+                                LOG_TODO("Drop - " << ty);
                             }
                             else
                             {
-                                // No drop glue
+                                // No destructor
                             }
                         }
-                        else if( ty.inner_type == RawType::TraitObject )
+                        else if( ty.wrappers[0].type == TypeWrapper::Ty::Borrow )
                         {
-                            LOG_TODO(stmt << " - " << ty);
+                            if( ty.wrappers[0].size == static_cast<size_t>(::HIR::BorrowType::Move) )
+                            {
+                                LOG_TODO("Drop - " << ty << " - dereference and go to inner");
+                                // TODO: Clear validity on the entire inner value.
+                            }
+                            else
+                            {
+                                // No destructor
+                            }
                         }
+                        // TODO: Arrays
                         else
                         {
-                            // No destructor
+                            LOG_TODO("Drop - " << ty);
                         }
-                    }
+
+                        };
+
+                    ::HIR::TypeRef  ty;
+                    auto v = state.get_value_and_type(se.slot, ty);
+                    drop_value(v, ty);
+                    // TODO: Clear validity on the entire inner value.
                 }
                 } break;
-            case ::MIR::Statement::TAG_SetDropFlag:
-                LOG_TODO(stmt);
-                break;
+            TU_ARM(stmt, SetDropFlag, se) {
+                bool val = (se.other == ~0 ? false : state.drop_flags.at(se.other)) != se.new_val;
+                LOG_DEBUG("- " << val);
+                state.drop_flags.at(se.idx) = val;
+                } break;
             case ::MIR::Statement::TAG_ScopeEnd:
                 LOG_TODO(stmt);
                 break;

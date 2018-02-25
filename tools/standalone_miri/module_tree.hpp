@@ -58,6 +58,7 @@ public:
 // struct/union/enum
 struct DataType
 {
+    ::HIR::GenericPath my_path;
     // TODO: Store the name of this type for logging?
 
     // TODO: Metadata type! (indicates an unsized wrapper)

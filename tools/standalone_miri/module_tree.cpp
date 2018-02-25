@@ -164,6 +164,7 @@ bool Parser::parse_one()
         //::std::cout << "DEBUG: parse_one - type " << p << ::std::endl;
 
         auto rv = DataType {};
+        rv.my_path = p;
 
         lex.check_consume('{');
         lex.check_consume("SIZE");
@@ -1127,6 +1128,7 @@ RawType Parser::parse_core_type()
         {
             // TODO: Later on need to check if the type is valid.
             auto v = ::std::make_unique<DataType>(DataType {});
+            v->my_path = gp;
             auto ir = tree.data_types.insert(::std::make_pair( ::std::move(gp), ::std::move(v)) );
             it = ir.first;
         }
@@ -1192,6 +1194,7 @@ RawType Parser::parse_core_type()
         {
             // TODO: Later on need to check if the type is valid.
             auto v = ::std::make_unique<DataType>(DataType {});
+            v->my_path = path;
             auto ir = tree.data_types.insert(::std::make_pair( ::std::move(path), ::std::move(v)) );
             it = ir.first;
         }
