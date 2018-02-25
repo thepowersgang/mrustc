@@ -252,7 +252,7 @@ namespace {
                 << "typedef uint32_t RUST_CHAR;\n"
                 << "typedef struct { void* PTR; size_t META; } SLICE_PTR;\n"
                 << "typedef struct { void* PTR; void* META; } TRAITOBJ_PTR;\n"
-                << "typedef struct { size_t size; size_t align; void (*drop)(void*); } VTABLE_HDR;\n"
+                << "typedef struct { void (*drop)(void*); size_t size; size_t align; } VTABLE_HDR;\n"
                 ;
             if( m_options.disallow_empty_structs )
             {
@@ -441,7 +441,7 @@ namespace {
                 << "static inline TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
                 << "static inline size_t mrustc_max(size_t a, size_t b) { return a < b ? b : a; }\n"
-                << "static inline void noop_drop(void *p) {}\n"
+                << "static inline tUNIT noop_drop(tUNIT *p) {}\n"
                 << "\n"
                 // A linear (fast-fail) search of a list of strings
                 << "static inline size_t mrustc_string_search_linear(SLICE_PTR val, size_t count, SLICE_PTR* options) {\n"
@@ -806,13 +806,16 @@ namespace {
                 auto ty_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ty.clone());
                 ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), ty_ptr, args, empty_fcn };
                 m_mir_res = &mir_res;
-                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {";
-                auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-                auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
-                for(const auto& ity : te)
+                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {\n";
+                if( m_resolve.type_needs_drop_glue(sp, ty) )
                 {
-                    emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false, 1);
-                    fld_lv.as_Field().field_index ++;
+                    auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+                    auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                    for(const auto& ity : te)
+                    {
+                        emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false, 1);
+                        fld_lv.as_Field().field_index ++;
+                    }
                 }
                 m_of << "}\n";
             )
@@ -863,13 +866,6 @@ namespace {
             }
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
 
-            // HACK: For vtables, insert the alignment and size at the start
-            // TODO: This should be done in HIR, not here
-            if(is_vtable)
-            {
-                m_of << "\tVTABLE_HDR hdr;\n";
-            }
-
             ::std::vector<unsigned> fields;
             for(const auto& ent : repr->fields)
             {
@@ -899,7 +895,7 @@ namespace {
                     size_t s, a;
                     Target_GetSizeAndAlignOf(sp, m_resolve, ty, s, a);
                     if( s == 0 && m_options.disallow_empty_structs ) {
-                        m_of << "// ZST\n";
+                        m_of << "// ZST: " << ty << "\n";
                         continue ;
                     }
                     else {
@@ -962,19 +958,21 @@ namespace {
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, empty_fcn };
             m_mir_res = &mir_res;
             m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ") {\n";
-
-            // If this type has an impl of Drop, call that impl
-            if( item.m_markings.has_drop_impl ) {
-                m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
-            }
-
-            auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-            auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
-            for(size_t i = 0; i < repr->fields.size(); i++)
+            if( m_resolve.type_needs_drop_glue(sp, item_ty) )
             {
-                fld_lv.as_Field().field_index = i;
+                // If this type has an impl of Drop, call that impl
+                if( item.m_markings.has_drop_impl ) {
+                    m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
+                }
 
-                emit_destructor_call(fld_lv, repr->fields[i].ty, /*unsized_valid=*/true, /*indent=*/1);
+                auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+                auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                for(size_t i = 0; i < repr->fields.size(); i++)
+                {
+                    fld_lv.as_Field().field_index = i;
+
+                    emit_destructor_call(fld_lv, repr->fields[i].ty, /*unsized_valid=*/true, /*indent=*/1);
+                }
             }
             m_of << "}\n";
             m_mir_res = nullptr;
@@ -1159,40 +1157,42 @@ namespace {
             }
 
             m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
-
-            // If this type has an impl of Drop, call that impl
-            if( item.m_markings.has_drop_impl )
+            if( m_resolve.type_needs_drop_glue(sp, item_ty) )
             {
-                m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
-            }
-            auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-
-            if( const auto* e = repr->variants.opt_NonZero() )
-            {
-                unsigned idx = 1 - e->zero_variant;
-                // TODO: Fat pointers?
-                m_of << "\tif( (*rv)"; emit_enum_path(repr, e->field); m_of << " != 0 ) {\n";
-                emit_destructor_call( ::MIR::LValue::make_Downcast({ box$(self), idx }), repr->fields[idx].ty, false, 2 );
-                m_of << "\t}\n";
-            }
-            else if( repr->fields.size() <= 1 )
-            {
-                // Value enum
-                // Glue does nothing (except call the destructor, if there is one)
-            }
-            else if( const auto* e = repr->variants.opt_Values() )
-            {
-                auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
-
-                m_of << "\tswitch(rv->TAG) {\n";
-                for(unsigned int var_idx = 0; var_idx < e->values.size(); var_idx ++)
+                // If this type has an impl of Drop, call that impl
+                if( item.m_markings.has_drop_impl )
                 {
-                    var_lv.as_Downcast().variant_index = var_idx;
-                    m_of << "\tcase " << e->values[var_idx] << ":\n";
-                    emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
-                    m_of << "\tbreak;\n";
+                    m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
                 }
-                m_of << "\t}\n";
+                auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+
+                if( const auto* e = repr->variants.opt_NonZero() )
+                {
+                    unsigned idx = 1 - e->zero_variant;
+                    // TODO: Fat pointers?
+                    m_of << "\tif( (*rv)"; emit_enum_path(repr, e->field); m_of << " != 0 ) {\n";
+                    emit_destructor_call( ::MIR::LValue::make_Downcast({ box$(self), idx }), repr->fields[idx].ty, false, 2 );
+                    m_of << "\t}\n";
+                }
+                else if( repr->fields.size() <= 1 )
+                {
+                    // Value enum
+                    // Glue does nothing (except call the destructor, if there is one)
+                }
+                else if( const auto* e = repr->variants.opt_Values() )
+                {
+                    auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
+
+                    m_of << "\tswitch(rv->TAG) {\n";
+                    for(unsigned int var_idx = 0; var_idx < e->values.size(); var_idx ++)
+                    {
+                        var_lv.as_Downcast().variant_index = var_idx;
+                        m_of << "\tcase " << e->values[var_idx] << ":\n";
+                        emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
+                        m_of << "\tbreak;\n";
+                    }
+                    m_of << "\t}\n";
+                }
             }
             m_of << "}\n";
             m_mir_res = nullptr;
@@ -1299,13 +1299,22 @@ namespace {
             }
             m_of << ") {\n";
             m_of << "\tstruct s_" << Trans_Mangle(p) << " rv = {";
+            bool emitted = false;
             for(unsigned int i = 0; i < e.size(); i ++)
             {
-                if(i != 0)
+                if( this->type_is_bad_zst(monomorph(e[i].ent)) )
+                    continue ;
+                if(emitted)
                     m_of << ",";
+                emitted = true;
                 m_of << "\n\t\t_" << i;
             }
-            m_of << "\n\t\t};\n";
+            if( !emitted )
+            {
+                m_of << "\n\t\t0";
+            }
+            m_of << "\n";
+            m_of << "\t\t};\n";
             m_of << "\treturn rv;\n";
             m_of << "}\n";
         }
@@ -1753,25 +1762,23 @@ namespace {
             auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
 
             // Size, Alignment, and destructor
-            m_of << "\t{ ";
-            m_of << "sizeof("; emit_ctype(type); m_of << "),";
-            m_of << "ALIGNOF("; emit_ctype(type); m_of << "),";
             if( type.m_data.is_Borrow() || m_resolve.type_is_copy(sp, type) )
             {
-                m_of << "noop_drop,";
+                m_of << "\t""noop_drop,\n";
             }
             else
             {
-                m_of << "(void*)" << Trans_Mangle(::HIR::Path(type.clone(), "#drop_glue")) << ",";
+                m_of << "\t""(void*)" << Trans_Mangle(::HIR::Path(type.clone(), "#drop_glue")) << ",\n";
             }
-            m_of << "}";    // No newline, added below
+            m_of << "\t""sizeof("; emit_ctype(type); m_of << "),\n";
+            m_of << "\t""ALIGNOF("; emit_ctype(type); m_of << "),\n";
 
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
-                m_of << ",\n";
+                // Find the corresponding vtable entry
                 for(const auto& m : trait.m_value_indexes)
                 {
-                    if( m.second.first != i )
+                    if( m.second.first != 3+i )
                         continue ;
 
                     //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
@@ -1779,10 +1786,9 @@ namespace {
 
                     auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
                     // NOTE: `void*` cast avoids mismatched pointer type errors due to the receiver being &mut()/&() in the vtable
-                    m_of << "\t(void*)" << Trans_Mangle( ::HIR::Path(type.clone(), mv$(gpath), m.first) );
+                    m_of << "\t(void*)" << Trans_Mangle( ::HIR::Path(type.clone(), mv$(gpath), m.first) ) << ",\n";
                 }
             }
-            m_of << "\n";
             m_of << "\t};\n";
 
             m_mir_res = nullptr;
@@ -2186,6 +2192,21 @@ namespace {
         {
             return m_options.emulated_i128 && (ty == ::HIR::CoreType::I128 || ty == ::HIR::CoreType::U128);
         }
+        // Returns true if the input type is a ZST and ZSTs are not being emitted
+        bool type_is_bad_zst(const ::HIR::TypeRef& ty) const
+        {
+            if( m_options.disallow_empty_structs )
+            {
+                size_t  size, align;
+                // NOTE: Uses the Size+Align version because that doesn't panic on unsized
+                MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, ty, size, align), "Unexpected generic? " << ty);
+                return size == 0;
+            }
+            else
+            {
+                return false;
+            }
+        }
 
         void emit_statement(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level=1)
         {
@@ -2259,6 +2280,13 @@ namespace {
                         m_of << "abort()";
                         break;
                     }
+
+                    if( ve.is_Field() && this->type_is_bad_zst(ty) )
+                    {
+                        m_of << "/* ZST field */";
+                        break;
+                    }
+
                     emit_lvalue(e.dst);
                     m_of << " = ";
                     emit_lvalue(ve);
@@ -2317,6 +2345,64 @@ namespace {
                             special = true;
                         }
                     )
+                    else {
+                    }
+
+                    // NOTE: If disallow_empty_structs is set, structs don't include ZST fields
+                    // In this case, we need to avoid mentioning the removed fields
+                    if( !special && m_options.disallow_empty_structs && ve.val.is_Field() && this->type_is_bad_zst(ty) )
+                    {
+                        // Work backwards to the first non-ZST field
+                        const auto* val_fp = &ve.val.as_Field();
+                        while( val_fp->val->is_Field() )
+                        {
+                            ::HIR::TypeRef  tmp;
+                            const auto& ty = mir_res.get_lvalue_type(tmp, *val_fp->val);
+                            if( !this->type_is_bad_zst(ty) )
+                                break;
+                        }
+                        // Here, we have `val_fp` be a LValue::Field that refers to a ZST, but the inner of the field points to a non-ZST or a local
+
+                        emit_lvalue(e.dst);
+                        m_of << " = ";
+
+                        // If the index is zero, then the best option is to borrow the source
+                        if( val_fp->field_index == 0 )
+                        {
+                            m_of << "(void*)& "; emit_lvalue(*val_fp->val);
+                        }
+                        else
+                        {
+                            ::HIR::TypeRef  tmp;
+                            auto tmp_lv = ::MIR::LValue::make_Field({ box$(val_fp->val->clone()), val_fp->field_index - 1 });
+                            bool use_parent = false;
+                            for(;;)
+                            {
+                                const auto& ty = mir_res.get_lvalue_type(tmp, tmp_lv);
+                                if( !this->type_is_bad_zst(ty) )
+                                    break;
+                                if( tmp_lv.as_Field().field_index == 0 )
+                                {
+                                    use_parent = true;
+                                    break;
+                                }
+                                tmp_lv.as_Field().field_index -= 1;
+                            }
+
+                            // Reached index zero, with still ZST
+                            if( use_parent )
+                            {
+                                m_of << "(void*)& "; emit_lvalue(*val_fp->val);
+                            }
+                            // Use the address after the previous item
+                            else
+                            {
+                                m_of << "(void*)( & "; emit_lvalue(tmp_lv); m_of << " + 1 )";
+                            }
+                        }
+                        special = true;
+                    }
+
                     if( !special )
                     {
                         emit_lvalue(e.dst);
@@ -2535,8 +2621,25 @@ namespace {
                     emit_lvalue(e.dst);  m_of << ".META = "; emit_param(ve.meta_val);
                     ),
                 (Tuple,
-                    for(unsigned int j = 0; j < ve.vals.size(); j ++) {
-                        if( j != 0 )    m_of << ";\n" << indent;
+                    bool has_emitted = false;
+                    for(unsigned int j = 0; j < ve.vals.size(); j ++)
+                    {
+                        if( m_options.disallow_empty_structs )
+                        {
+                            ::HIR::TypeRef  tmp;
+                            const auto& ty = mir_res.get_param_type(tmp, ve.vals[j]);
+
+                            if( this->type_is_bad_zst(ty) )
+                            {
+                                continue ;
+                            }
+                        }
+
+                        if(has_emitted) {
+                            m_of << ";\n" << indent;
+                        }
+                        has_emitted = true;
+
                         emit_lvalue(e.dst);
                         m_of << "._" << j << " = ";
                         emit_param(ve.vals[j]);
@@ -2597,11 +2700,9 @@ namespace {
                     }
                     ),
                 (Struct,
-                    bool is_val_enum = false;
-
                     if( ve.vals.empty() )
                     {
-                        if( m_options.disallow_empty_structs && !is_val_enum)
+                        if( m_options.disallow_empty_structs )
                         {
                             emit_lvalue(e.dst);
                             m_of << "._d = 0";
@@ -2609,14 +2710,25 @@ namespace {
                     }
                     else
                     {
+                        bool has_emitted = false;
                         for(unsigned int j = 0; j < ve.vals.size(); j ++)
                         {
                             // HACK: Don't emit assignment of PhantomData
                             ::HIR::TypeRef  tmp;
-                            if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data( mir_res.get_lvalue_type(tmp, ve.vals[j].as_LValue())) )
+                            const auto& ty = mir_res.get_param_type(tmp, ve.vals[j]);
+                            if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data(ty) )
                                 continue ;
 
-                            if( j != 0 )    m_of << ";\n" << indent;
+                            if( this->type_is_bad_zst(ty) )
+                            {
+                                continue ;
+                            }
+
+                            if(has_emitted) {
+                                m_of << ";\n" << indent;
+                            }
+                            has_emitted = true;
+
                             emit_lvalue(e.dst);
                             m_of << "._" << j << " = ";
                             emit_param(ve.vals[j]);
@@ -3011,7 +3123,18 @@ namespace {
             m_of << "(";
             for(unsigned int j = 0; j < e.args.size(); j ++) {
                 if(j != 0)  m_of << ",";
-                m_of << " "; emit_param(e.args[j]);
+                m_of << " "; 
+                if( m_options.disallow_empty_structs && TU_TEST1(e.args[j], LValue, .is_Field()) )
+                {
+                    ::HIR::TypeRef tmp;
+                    const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
+                    if( this->type_is_bad_zst(ty) )
+                    {
+                        m_of << "{0}";
+                        continue;
+                    }
+                }
+                emit_param(e.args[j]);
             }
             m_of << " );\n";
         }
@@ -3420,7 +3543,6 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << " = ";
                 const auto& ty = params.m_types.at(0);
                 //TODO: Get the unsized type and use that in place of MetadataType
-                #if 1
                 auto inner_ty = get_inner_unsized_type(ty);
                 if( inner_ty == ::HIR::TypeRef() ) {
                     m_of << "sizeof("; emit_ctype(ty); m_of << ")";
@@ -3441,27 +3563,14 @@ namespace {
                     if( ! ty.m_data.is_TraitObject() ) {
                         m_of << "sizeof("; emit_ctype(ty); m_of << ") + ";
                     }
-                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->size";
+                    //auto vtable_path = inner_ty.m_data.as_TraitObject().m_trait.m_path.clone();
+                    //vtable_path.m_path.m_components.back() += "#vtable";
+                    //auto vtable_ty = ::HIR::TypeRef
+                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->_1";
                 }
                 else {
                     MIR_BUG(mir_res, "Unknown inner unsized type " << inner_ty << " for " << ty);
                 }
-                #else
-                switch( metadata_type(ty) )
-                {
-                case MetadataType::None:
-                    m_of << "sizeof("; emit_ctype(ty); m_of << ")";
-                    break;
-                case MetadataType::Slice: {
-                    // TODO: Have a function that fetches the inner type for types like `Path` or `str`
-                    const auto& ity = *ty.m_data.as_Slice().inner;
-                    emit_param(e.args.at(0)); m_of << ".META * sizeof("; emit_ctype(ity); m_of << ")";
-                    break; }
-                case MetadataType::TraitObject:
-                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->size";
-                    break;
-                }
-                #endif
             }
             else if( name == "min_align_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
@@ -4243,7 +4352,15 @@ namespace {
                 switch( metadata_type(ty) )
                 {
                 case MetadataType::None:
-                    m_of << indent << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
+
+                    if( this->type_is_bad_zst(ty) && slot.is_Field() )
+                    {
+                        m_of << indent << Trans_Mangle(p) << "((void*)&"; emit_lvalue(*slot.as_Field().val); m_of << ");\n";
+                    }
+                    else
+                    {
+                        m_of << indent << Trans_Mangle(p) << "(&"; emit_lvalue(slot); m_of << ");\n";
+                    }
                     break;
                 case MetadataType::Slice:
                     make_fcn = "make_sliceptr"; if(0)
