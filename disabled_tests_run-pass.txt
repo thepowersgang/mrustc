@@ -259,7 +259,7 @@ match-bot-2             # ^
 unreachable-code        # ^
 diverging-fn-tail-35849         # Validation error, assign to ! (return value) in unreachable branch
 if-ret  # "If condition wasn't bool"
-issue-15080 # Infinte loop from incorrect match generation
+issue-15080 # XXX: SplitSlice match edge case leading to DIVERGE being hit
 issue-17877 # TODO: SplitSlice on array
 vec-matching-fixed  # ^
 vec-tail-matching   # Trailing SplitSlice

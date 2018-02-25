@@ -504,6 +504,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         }
     }
 
+    // TODO: SplitSlice is buggy, make it fall back to simple?
+
     // TODO: Don't generate inner code until decisions are generated (keeps MIR flow nice)
     // - Challenging, as the decision code needs somewhere to jump to.
     // - Allocating a BB and then rewriting references to it is a possibility.
@@ -2526,7 +2528,7 @@ void MIR_LowerHIR_Match_Grouped(
     // Make the default infinite loop.
     // - Preferably, it'd abort.
     builder.set_cur_block(default_arm);
-    builder.end_block( ::MIR::Terminator::make_Goto(default_arm) );
+    builder.end_block( ::MIR::Terminator::make_Diverge({}) );
 }
 void MatchGenGrouped::gen_for_slice(t_rules_subset arm_rules, size_t ofs, ::MIR::BasicBlockId default_arm)
 {
