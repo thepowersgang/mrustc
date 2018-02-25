@@ -504,6 +504,7 @@ bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 
@@ -605,6 +606,8 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         change_happened |= MIR_Optimise_DeadDropFlags(state, fcn);
         // >> Remove assignments that are never read
         change_happened |= MIR_Optimise_DeadAssignments(state, fcn);
+        // >> Remove no-op assignments
+        change_happened |= MIR_Optimise_NoopRemoval(state, fcn);
 
         #if CHECK_AFTER_ALL
         MIR_Validate(resolve, path, fcn, args, ret_type);
@@ -651,6 +654,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #endif
         MIR_Optimise_UnifyBlocks(state, fcn);
         //MIR_Optimise_ConstPropagte(state, fcn);
+        MIR_Optimise_NoopRemoval(state, fcn);
     }
 
 
@@ -2188,6 +2192,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             }
                             break;
                         // TODO: Other binary operations
+                        // Could emit a TODO?
                         default:
                             break;
                         }
@@ -3234,6 +3239,52 @@ bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fc
     }
 
     // Locate assignments of locals then find the next assignment or read.
+    return changed;
+}
+
+// --------------------------------------------------------------------
+// Eliminate no-operation assignments that may have appeared
+// --------------------------------------------------------------------
+bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    // Remove useless operations
+    for(auto& bb : fcn.blocks)
+    {
+        for(auto it = bb.statements.begin(); it != bb.statements.end(); )
+        {
+            // `Value = Use(Value)`
+            if( it->is_Assign()
+                && it->as_Assign().src.is_Use()
+                && it->as_Assign().src.as_Use() == it->as_Assign().dst
+                )
+            {
+                DEBUG(state << "Useless assignment, remove - " << *it);
+                it = bb.statements.erase(it);
+                changed = true;
+
+                continue ;
+            }
+
+            // `Value = Borrow(Deref(Value))`
+            if( it->is_Assign()
+                && it->as_Assign().src.is_Borrow()
+                && it->as_Assign().src.as_Borrow().val.is_Deref()
+                && *it->as_Assign().src.as_Borrow().val.as_Deref().val == it->as_Assign().dst
+                )
+            {
+                DEBUG(state << "Useless assignment (v = &*v), remove - " << *it);
+                it = bb.statements.erase(it);
+                changed = true;
+
+                continue ;
+            }
+
+            ++ it;
+        }
+    }
 
     return changed;
 }
