@@ -902,7 +902,7 @@ namespace {
                 }
                 m_of << ";\n";
             }
-            if( sized_fields == 0 &&  m_options.disallow_empty_structs )
+            if( sized_fields == 0 && !has_unsized && m_options.disallow_empty_structs )
             {
                 m_of << "\tchar _d;\n";
             }
