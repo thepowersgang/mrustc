@@ -1456,12 +1456,18 @@ namespace {
                 if( ty.m_data.is_Array() )
                     m_of << "{";
                 m_of << "{";
+                bool emitted_field = false;
                 for(unsigned int i = 0; i < e.size(); i ++) {
-                    if(i != 0)  m_of << ",";
+                    const auto& ity = get_inner_type(0, i);
+                    // Don't emit ZSTs if they're being omitted
+                    if( this->type_is_bad_zst(ity) )
+                        continue ;
+                    if(emitted_field)   m_of << ",";
+                    emitted_field = true;
                     m_of << " ";
-                    emit_literal(get_inner_type(0, i), e[i], params);
+                    emit_literal(ity, e[i], params);
                 }
-                if( (ty.m_data.is_Path() || ty.m_data.is_Tuple()) && e.size() == 0 && m_options.disallow_empty_structs )
+                if( (ty.m_data.is_Path() || ty.m_data.is_Tuple()) && !emitted_field && m_options.disallow_empty_structs )
                     m_of << "0";
                 m_of << " }";
                 if( ty.m_data.is_Array() )
@@ -4578,10 +4584,19 @@ namespace {
                 }
                 else
                 {
+                    bool emitted_field = false;
                     for(unsigned int i = 0; i < e.size(); i ++) {
-                        if(i != 0)  m_of << ";\n\t";
+                        const auto& ity = get_inner_type(0, i);
+                        // Don't emit ZSTs if they're being omitted
+                        if( this->type_is_bad_zst(ity) )
+                            continue ;
+                        if(emitted_field)  m_of << ";\n\t";
+                        emitted_field = true;
                         assign_from_literal([&](){ emit_dst(); m_of << "._" << i; }, get_inner_type(0, i), e[i]);
                     }
+                    //if( !emitted_field )
+                    //{
+                    //}
                 }
                 ),
             (Variant,
