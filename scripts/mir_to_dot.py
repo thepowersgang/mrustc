@@ -1,5 +1,5 @@
 import re
-
+import argparse
 
 class Link(object):
     def __init__(self, src, dst, label):
@@ -13,13 +13,22 @@ def main():
     cratename,pat = 'std','fn resize.*HashMap'
     #cratename,pat = 'rustc', 'fn tables.*::"rustc"::ty::context::TyCtxt'
 
-    fp = open('output/lib'+cratename+'.hir_3_mir.rs');
+    argp = argparse.ArgumentParser()
+    argp.add_argument("--file", type=str)
+    argp.add_argument("--crate", type=str)
+    argp.add_argument("--fn-name", type=str, default='resize.*HashMap')
+    args = argp.parse_args()
+
+    pat = 'fn '+args.fn_name
+    infile = args.file or ('output/'+args.crate+'.hir_3_mir.rs')
+
+    fp = open(infile)
     start_pat = re.compile(pat)
     def_line = None
     for line in fp:
         line = line.strip()
         if start_pat.match(line) != None:
-            print "#",line
+            print "# ",line
             def_line = line
             break
 
@@ -103,6 +112,7 @@ def main():
 
 
     print "digraph {"
+    print "node [shape=box, labeljust=l; fontname=\"mono\"];"
     for l in links:
         print '"%s" -> "%s" [label="%s"];' % (l._src, l._dst, l._label)
 
@@ -110,7 +120,7 @@ def main():
     for idx,bb in enumerate(bbs):
         print '"bb%i" [label="BB%i:' % (idx,idx,),
         for stmt in bb:
-            print '\\n',stmt.replace('"', '\\"'),
+            print '\\l',stmt.replace('"', '\\"'),
         print '"];'
     print "}"
 
