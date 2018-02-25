@@ -192,9 +192,9 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 auto val = get_value_and_type(*e.val, ptr_ty);
                 ty = ptr_ty.get_inner();
                 // TODO: Slices and slice-like types have the same logic.
-                if( ty == RawType::Str )
+                if( ty == RawType::Str || (!ty.wrappers.empty() && ty.wrappers.front().type == TypeWrapper::Ty::Slice) )
                 {
-                    LOG_ASSERT(val.m_size == 2*POINTER_SIZE, "Deref of a &str that isn't a fat-pointer sized value");
+                    LOG_ASSERT(val.m_size == 2*POINTER_SIZE, "Deref of " << ty << " that isn't a fat-pointer sized value");
                     // There MUST be a relocation at this point with a valid allocation.
                     auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
                     LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
@@ -1125,11 +1125,25 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 }
 Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
+    // WinAPI functions used by libstd
     if( link_name == "AddVectoredExceptionHandler" )
     {
         LOG_DEBUG("Call `AddVectoredExceptionHandler` - Ignoring and returning non-null");
         auto rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, 1);
+        return rv;
+    }
+    // Allocators!
+    else if( link_name == "__rust_allocate" )
+    {
+        auto size = args.at(0).read_usize(0);
+        auto align = args.at(1).read_usize(0);
+        LOG_DEBUG("__rust_allocate(size=" << size << ", align=" << align << ")");
+        ::HIR::TypeRef  rty { RawType::Unit };
+        rty.wrappers.push_back({ TypeWrapper::Ty::Pointer, 0 });
+        Value rv = Value(rty);
+        // TODO: Use the alignment when making an allocation.
+        rv.allocation.alloc().relocations.push_back({ 0,  Allocation::new_alloc(size) });
         return rv;
     }
     else
@@ -1201,6 +1215,24 @@ Value MIRI_Invoke_Intrinsic(const ::std::string& name, const ::HIR::PathParams& 
         ptr_val.write_usize(0, new_ofs);
         ptr_val.allocation.alloc().relocations.push_back({ 0, r });
         return ptr_val;
+    }
+    // effectively ptr::write
+    else if( name == "move_val_init" )
+    {
+        auto& ptr_val = args.at(0);
+        auto& data_val = args.at(1);
+
+        LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "move_val_init of an address that isn't a pointer-sized value");
+
+        // There MUST be a relocation at this point with a valid allocation.
+        LOG_ASSERT(ptr_val.allocation, "Deref of a value with no allocation (hence no relocations)");
+        LOG_TRACE("Deref " << ptr_val.allocation.alloc());
+        auto alloc = ptr_val.allocation.alloc().get_relocation(0);
+        LOG_ASSERT(alloc, "Deref of a value with no relocation");
+
+        size_t ofs = ptr_val.read_usize(0);
+        const auto& ty = ty_params.tys.at(0);
+        alloc.alloc().write_value(ofs, ::std::move(data_val));
     }
     else
     {
