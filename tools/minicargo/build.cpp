@@ -266,7 +266,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         int complete_package(unsigned index, const ::std::vector<Entry>& list)
         {
             int rv = 0;
-            DEBUG("Completed " << list[index].package->name());
+            DEBUG("Completed " << list[index].package->name() << " (" << list[index].dependents.size() << " dependents)");
 
             for(auto d : list[index].dependents)
             {
@@ -463,6 +463,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         {
             return false;
         }
+        state = ::std::move(queue.state);
 #else
         while( !state.build_queue.empty() )
         {
