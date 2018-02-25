@@ -841,10 +841,6 @@ namespace {
             ::MIR::Function empty_fcn;
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
-            bool is_vtable; {
-                const auto& lc = p.m_path.m_components.back();
-                is_vtable = (lc.size() > 7 && ::std::strcmp(lc.c_str() + lc.size() - 7, "#vtable") == 0);
-                };
             bool is_packed = item.m_repr == ::HIR::Struct::Repr::Packed;
 
             TRACE_FUNCTION_F(p);
@@ -3041,6 +3037,27 @@ namespace {
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
             m_of << indent;
 
+            bool has_zst = false;
+            for(unsigned int j = 0; j < e.args.size(); j ++) {
+                if( m_options.disallow_empty_structs && TU_TEST1(e.args[j], LValue, .is_Field()) )
+                {
+                    ::HIR::TypeRef tmp;
+                    const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
+                    if( this->type_is_bad_zst(ty) )
+                    {
+                        if(!has_zst) {
+                            m_of << "{\n";
+                            indent.n ++ ;
+                            m_of << indent;
+                        }
+                        has_zst = true;
+                        emit_ctype(ty, FMT_CB(ss, ss << "zarg" << j;));
+                        m_of << " = {0};\n";
+                        m_of << indent;
+                    }
+                }
+            }
+
             TU_MATCHA( (e.fcn), (e2),
             (Value,
                 {
@@ -3130,13 +3147,19 @@ namespace {
                     const auto& ty = m_mir_res->get_param_type(tmp, e.args[j]);
                     if( this->type_is_bad_zst(ty) )
                     {
-                        m_of << "{0}";
+                        m_of << "zarg" << j;
                         continue;
                     }
                 }
                 emit_param(e.args[j]);
             }
             m_of << " );\n";
+
+            if( has_zst )
+            {
+                indent.n --;
+                m_of << indent << "}\n";
+            }
         }
         void emit_asm_gcc(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement::Data_Asm& e, unsigned indent_level)
         {
@@ -3566,7 +3589,7 @@ namespace {
                     //auto vtable_path = inner_ty.m_data.as_TraitObject().m_trait.m_path.clone();
                     //vtable_path.m_path.m_components.back() += "#vtable";
                     //auto vtable_ty = ::HIR::TypeRef
-                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->_1";
+                    m_of << "((VTABLE_HDR*)"; emit_param(e.args.at(0)); m_of << ".META)->size";
                 }
                 else {
                     MIR_BUG(mir_res, "Unknown inner unsized type " << inner_ty << " for " << ty);
