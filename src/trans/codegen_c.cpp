@@ -242,8 +242,7 @@ namespace {
             case Compiler::Msvc:
                 m_of
                     << "#include <windows.h>\n"
-                    << "#define INFINITY    ((float)(1e300*1e300))\n"
-                    << "#define NAN ((float)(INFINITY*0.0))\n"
+                    << "#include <math.h>\n"  // fabsf, ...
                     << "void abort(void);\n"
                     ;
                 break;
@@ -308,6 +307,14 @@ namespace {
                     << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
                     << "\treturn (v >> 32 != 0 ? __popcnt64(v>>32) : 32 + __popcnt64(v));\n"
                     << "}\n"
+                    << "static inline int __builtin_ctz(uint32_t v) { int rv; _BitScanReverse(&rv, v); return rv; }\n"
+                    << "static inline int __builtin_clz(uint32_t v) { int rv; _BitScanForward(&rv, v); return rv; }\n"
+                    << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
+                    << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
+                    << "}\n"
+                    << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
+                    << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
+                    << "}\n"
                     << "static inline bool __builtin_mul_overflow_u8(uint8_t a, uint8_t b, uint8_t* out) {\n"
                     << "\t*out = a*b;\n"
                     << "\tif(a > UINT8_MAX/b)  return true;\n"
@@ -360,6 +367,12 @@ namespace {
                     << "\tif( (b == -1) && (a == INT64_MIN))  return true;\n"
                     << "\treturn false;\n"
                     << "}\n"
+                    << "static inline bool __builtin_mul_overflow_usize(uintptr_t a, uintptr_t b, uintptr_t* out) {\n"
+                    << "\treturn __builtin_mul_overflow_u" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
+                    << "static inline bool __builtin_mul_overflow_isize(intptr_t a, intptr_t b, intptr_t* out) {\n"
+                    << "\treturn __builtin_mul_overflow_i" << Target_GetCurSpec().m_arch.m_pointer_bits << "(a, b, out);\n"
+                    << "}\n"
                     << "static inline _subcarry_u64(uint64_t a, uint64_t b, uint64_t* o) {\n"
                     << "\t""*o = a - b;\n"
                     << "\t""return (a > b ? *o >= b : *o > a);\n"
@@ -376,6 +389,7 @@ namespace {
                     << "\t""*o = a - b;\n"
                     << "\t""return (a > b ? *o >= b : *o > a);\n"
                     << "}\n"
+                    << "static inline uint64_t __builtin_bswap64(uint64_t v) { return _byteswap_uint64(v); }\n"
                     ;
                 break;
             }
@@ -3875,7 +3889,15 @@ namespace {
             }
             // Hints
             else if( name == "unreachable" ) {
-                m_of << "__builtin_unreachable()";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "__builtin_unreachable()";
+                    break;
+                case Compiler::Msvc:
+                    m_of << "for(;;)";
+                    break;
+                }
             }
             else if( name == "assume" ) {
                 // I don't assume :)
@@ -4008,7 +4030,7 @@ namespace {
                     switch(m_compiler)
                     {
                     case Compiler::Gcc:
-                        emit_lvalue(e.ret_val); m_of << "._1 = __builtin_sub_overflow";
+                        m_of << "__builtin_sub_overflow";
                         m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
                         break;
                     case Compiler::Msvc:
@@ -4031,9 +4053,17 @@ namespace {
                 }
                 else
                 {
-                    m_of << "__builtin_mul_overflow("; emit_param(e.args.at(0));
-                        m_of << ", "; emit_param(e.args.at(1));
-                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                    switch(m_compiler)
+                    {
+                    case Compiler::Gcc:
+                        m_of << "__builtin_mul_overflow";
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        break;
+                    case Compiler::Msvc:
+                        m_of << "__builtin_mul_overflow_" << params.m_types.at(0);
+                        m_of << "("; emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", &"; emit_lvalue(e.ret_val); m_of << ")";
+                        break;
+                    }
                 }
             }
             // Unchecked Arithmatic
