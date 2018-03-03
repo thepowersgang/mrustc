@@ -102,7 +102,7 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
             codegen->emit_function_proto(ent.first, fcn, ent.second->pp, is_extern);
         }
     }
-
+    // - External functions
     for(const auto& ent : list.m_functions)
     {
         //DEBUG("FUNCTION " << ent.first);
