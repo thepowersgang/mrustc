@@ -282,7 +282,7 @@ namespace {
                 break;
             case Compiler::Msvc:
                 m_of
-                    << "__declspec(noreturn) void _Unwind_Resume(void) { abort(); }\n"
+                    << "__declspec(noreturn) static void _Unwind_Resume(void) { abort(); }\n"
                     << "#define ALIGNOF(t) __alignof(t)\n"
                     ;
                 break;
@@ -485,7 +485,7 @@ namespace {
                 << "static inline TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
                 << "static inline size_t mrustc_max(size_t a, size_t b) { return a < b ? b : a; }\n"
-                << "static inline tUNIT noop_drop(tUNIT *p) {}\n"
+                << "static inline tUNIT noop_drop(tUNIT *p) { tUNIT v = {0}; return v; }\n"
                 << "\n"
                 // A linear (fast-fail) search of a list of strings
                 << "static inline size_t mrustc_string_search_linear(SLICE_PTR val, size_t count, SLICE_PTR* options) {\n"
@@ -634,6 +634,11 @@ namespace {
                     //args.push_back("/O2");
                     break;
                 }
+                if( opt.emit_debug_info )
+                {
+                    args.push_back("/DEBUG");
+                    args.push_back("/Zi");
+                }
                 if(is_executable)
                 {
                     args.push_back(FMT("/Fe" << m_outfile_path));
@@ -662,7 +667,7 @@ namespace {
 
                     // Command-line specified linker search directories
                     args.push_back("/link");
-                    args.push_back("/verbose");
+                    //args.push_back("/verbose");
                     for(const auto& path : link_dirs )
                     {
                         args.push_back(FMT("/LIBPATH:" << path));
@@ -1848,7 +1853,15 @@ namespace {
             TRACE_FUNCTION_F(p);
 
             m_of << "// EXTERN extern \"" << item.m_abi << "\" " << p << "\n";
-            m_of << "extern ";
+            // For MSVC, make a static wrapper that goes and calls the actual function
+            if( item.m_linkage.name != "" && m_compiler == Compiler::Msvc )
+            {
+                m_of << "static ";
+            }
+            else
+            {
+                m_of << "extern ";
+            }
             emit_function_header(p, item, params);
             if( item.m_linkage.name != "" )
             {
@@ -3565,7 +3578,8 @@ namespace {
                     emit_msvc_atomic_op("InterlockedCompareExchange", Ordering::SeqCst, true);  // TODO: Use ordering, but which one?
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
                     m_of << ";\n\t";
-                    emit_lvalue(e.ret_val); m_of << "._1 = ("; emit_lvalue(e.ret_val); m_of << "._0 == "; emit_param(e.args.at(2)); m_of << ")";
+                    // If the result equals the expected value, return true
+                    emit_lvalue(e.ret_val); m_of << "._1 = ("; emit_lvalue(e.ret_val); m_of << "._0 == "; emit_param(e.args.at(1)); m_of << ")";
                     break;
                 }
                 };
