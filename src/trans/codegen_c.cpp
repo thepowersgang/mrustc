@@ -485,7 +485,7 @@ namespace {
                 << "static inline TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
                 << "static inline size_t mrustc_max(size_t a, size_t b) { return a < b ? b : a; }\n"
-                << "static inline tUNIT noop_drop(tUNIT *p) { tUNIT v = {0}; return v; }\n"
+                << "static inline tUNIT noop_drop(tUNIT *p) { tUNIT v = {" << (m_options.disallow_empty_structs ? "0" : "") << "}; return v; }\n"
                 << "\n"
                 // A linear (fast-fail) search of a list of strings
                 << "static inline size_t mrustc_string_search_linear(SLICE_PTR val, size_t count, SLICE_PTR* options) {\n"
