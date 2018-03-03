@@ -3606,8 +3606,12 @@ namespace {
                     }
                     switch(op)
                     {
-                    case AtomicOp::Add: emit_msvc_atomic_op("InterlockedExchangeAdd", ordering);    break;
-                    case AtomicOp::Sub: emit_msvc_atomic_op("InterlockedExchangeSubtract", ordering);    break;
+                    case AtomicOp::Add: emit_msvc_atomic_op("InterlockedExchangeAdd", ordering, true);    break;
+                    case AtomicOp::Sub:
+                        emit_msvc_atomic_op("InterlockedExchangeAdd", ordering, true);
+                        emit_param(e.args.at(0)); m_of << ", ~(";
+                        emit_param(e.args.at(1)); m_of << ")+1)";
+                        return ;
                     case AtomicOp::And: emit_msvc_atomic_op("InterlockedAnd", ordering);    break;
                     case AtomicOp::Or:  emit_msvc_atomic_op("InterlockedOr", ordering);    break;
                     case AtomicOp::Xor: emit_msvc_atomic_op("InterlockedXor", ordering);    break;
