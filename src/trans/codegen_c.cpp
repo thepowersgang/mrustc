@@ -2774,13 +2774,16 @@ namespace {
                         {
                             // HACK: Don't emit assignment of PhantomData
                             ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_param_type(tmp, ve.vals[j]);
-                            if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data(ty) )
-                                continue ;
-
-                            if( this->type_is_bad_zst(ty) )
+                            if( ve.vals[j].is_LValue() )
                             {
-                                continue ;
+                                const auto& ty = mir_res.get_param_type(tmp, ve.vals[j]);
+                                if( ve.vals[j].is_LValue() && m_resolve.is_type_phantom_data(ty) )
+                                    continue ;
+
+                                if( this->type_is_bad_zst(ty) )
+                                {
+                                    continue ;
+                                }
                             }
 
                             if(has_emitted) {
