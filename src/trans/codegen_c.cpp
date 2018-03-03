@@ -3569,14 +3569,15 @@ namespace {
                     emit_lvalue(e.ret_val); m_of << "._0 = "; emit_param(e.args.at(1)); m_of << ";\n\t";
                     emit_lvalue(e.ret_val); m_of << "._1 = atomic_compare_exchange_" << (is_weak ? "weak" : "strong") << "_explicit(";
                         emit_atomic_cast(); emit_param(e.args.at(0));
-                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";
-                        m_of << ", "; emit_param(e.args.at(2));
+                        m_of << ", &"; emit_lvalue(e.ret_val); m_of << "._0";   // Expected (i.e. the check value)
+                        m_of << ", "; emit_param(e.args.at(2)); // `desired` (the new value for the slot if equal)
                         m_of << ", " << get_atomic_ty_gcc(o_succ) << ", " << get_atomic_ty_gcc(o_fail) << ")";
                     break;
                 case Compiler::Msvc:
                     emit_lvalue(e.ret_val); m_of << "._0 = ";
                     emit_msvc_atomic_op("InterlockedCompareExchange", Ordering::SeqCst, true);  // TODO: Use ordering, but which one?
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", "; emit_param(e.args.at(2)); m_of << ")";
+                    // Slot, Exchange (new value), Comparand (expected value) - Note different order to the gcc/stdc version
+                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(2)); m_of << ", "; emit_param(e.args.at(1)); m_of << ")";
                     m_of << ";\n\t";
                     // If the result equals the expected value, return true
                     emit_lvalue(e.ret_val); m_of << "._1 = ("; emit_lvalue(e.ret_val); m_of << "._0 == "; emit_param(e.args.at(1)); m_of << ")";
