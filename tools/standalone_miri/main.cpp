@@ -17,7 +17,7 @@ struct ProgramOptions
 
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args);
 Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
-Value MIRI_Invoke_Intrinsic(const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
+Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
 
 int main(int argc, const char* argv[])
 {
@@ -48,6 +48,196 @@ int main(int argc, const char* argv[])
 
     return 0;
 }
+class PrimitiveValue
+{
+public:
+    virtual ~PrimitiveValue() {}
+
+    virtual bool add(const PrimitiveValue& v) = 0;
+    virtual bool subtract(const PrimitiveValue& v) = 0;
+    virtual bool multiply(const PrimitiveValue& v) = 0;
+    virtual bool divide(const PrimitiveValue& v) = 0;
+    virtual bool modulo(const PrimitiveValue& v) = 0;
+    virtual void write_to_value(Value& tgt, size_t ofs) const = 0;
+
+    template<typename T>
+    const T& check(const char* opname) const
+    {
+        const auto* xp = dynamic_cast<const T*>(this);
+        LOG_ASSERT(xp, "Attempting to " << opname << " mismatched types, expected " << typeid(T).name() << " got " << typeid(*this).name());
+        return *xp;
+    }
+};
+template<typename T>
+struct PrimitiveUInt:
+    public PrimitiveValue
+{
+    typedef PrimitiveUInt<T>    Self;
+    T   v;
+
+    PrimitiveUInt(T v): v(v) {}
+    ~PrimitiveUInt() override {}
+
+    bool add(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("add");
+        T newv = this->v + xp->v;
+        bool did_overflow = newv < this->v;
+        this->v = newv;
+        return !did_overflow;
+    }
+    bool subtract(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("subtract");
+        T newv = this->v - xp->v;
+        bool did_overflow = newv > this->v;
+        this->v = newv;
+        return !did_overflow;
+    }
+    bool multiply(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("multiply");
+        T newv = this->v * xp->v;
+        bool did_overflow = newv < this->v && newv < xp->v;
+        this->v = newv;
+        return !did_overflow;
+    }
+    bool divide(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("divide");
+        if(xp->v == 0)  return false;
+        T newv = this->v / xp->v;
+        this->v = newv;
+        return true;
+    }
+    bool modulo(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("modulo");
+        if(xp->v == 0)  return false;
+        T newv = this->v % xp->v;
+        this->v = newv;
+        return true;
+    }
+};
+struct PrimitiveU64: public PrimitiveUInt<uint64_t>
+{
+    PrimitiveU64(uint64_t v): PrimitiveUInt(v) {}
+    void write_to_value(Value& tgt, size_t ofs) const override {
+        tgt.write_u64(ofs, this->v);
+    }
+};
+struct PrimitiveU32: public PrimitiveUInt<uint32_t>
+{
+    PrimitiveU32(uint32_t v): PrimitiveUInt(v) {}
+    void write_to_value(Value& tgt, size_t ofs) const override {
+        tgt.write_u32(ofs, this->v);
+    }
+};
+template<typename T>
+struct PrimitiveSInt:
+    public PrimitiveValue
+{
+    typedef PrimitiveSInt<T>    Self;
+    T   v;
+
+    PrimitiveSInt(T v): v(v) {}
+    ~PrimitiveSInt() override {}
+
+    // TODO: Make this correct.
+    bool add(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("add");
+        T newv = this->v + xp->v;
+        bool did_overflow = newv < this->v;
+        this->v = newv;
+        return !did_overflow;
+    }
+    bool subtract(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("subtract");
+        T newv = this->v - xp->v;
+        bool did_overflow = newv > this->v;
+        this->v = newv;
+        return !did_overflow;
+    }
+    bool multiply(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("multiply");
+        T newv = this->v * xp->v;
+        bool did_overflow = newv < this->v && newv < xp->v;
+        this->v = newv;
+        return !did_overflow;
+    }
+    bool divide(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("divide");
+        if(xp->v == 0)  return false;
+        T newv = this->v / xp->v;
+        this->v = newv;
+        return true;
+    }
+    bool modulo(const PrimitiveValue& x) override {
+        const auto* xp = &x.check<Self>("modulo");
+        if(xp->v == 0)  return false;
+        T newv = this->v % xp->v;
+        this->v = newv;
+        return true;
+    }
+};
+struct PrimitiveI64: public PrimitiveSInt<int64_t>
+{
+    PrimitiveI64(int64_t v): PrimitiveSInt(v) {}
+    void write_to_value(Value& tgt, size_t ofs) const override {
+        tgt.write_i64(ofs, this->v);
+    }
+};
+struct PrimitiveI32: public PrimitiveSInt<int32_t>
+{
+    PrimitiveI32(int32_t v): PrimitiveSInt(v) {}
+    void write_to_value(Value& tgt, size_t ofs) const override {
+        tgt.write_i32(ofs, this->v);
+    }
+};
+
+class PrimitiveValueVirt
+{
+    uint64_t    buf[3]; // Allows i128 plus a vtable pointer
+    PrimitiveValueVirt() {}
+public:
+    // HACK: No copy/move constructors, assumes that contained data is always POD
+    ~PrimitiveValueVirt() {
+        reinterpret_cast<PrimitiveValue*>(&this->buf)->~PrimitiveValue();
+    }
+    PrimitiveValue& get() { return *reinterpret_cast<PrimitiveValue*>(&this->buf); }
+    const PrimitiveValue& get() const { return *reinterpret_cast<const PrimitiveValue*>(&this->buf); }
+
+    static PrimitiveValueVirt from_value(const ::HIR::TypeRef& t, const ValueRef& v) {
+        PrimitiveValueVirt  rv;
+        LOG_ASSERT(t.wrappers.empty(), "PrimitiveValueVirt::from_value: " << t);
+        switch(t.inner_type)
+        {
+        case RawType::U32:
+            new(&rv.buf) PrimitiveU32(v.read_u32(0));
+            break;
+        case RawType::U64:
+            new(&rv.buf) PrimitiveU64(v.read_u64(0));
+            break;
+        case RawType::USize:
+            if( POINTER_SIZE == 8 )
+                new(&rv.buf) PrimitiveU64(v.read_u64(0));
+            else
+                new(&rv.buf) PrimitiveU32(v.read_u32(0));
+            break;
+
+        case RawType::I32:
+            new(&rv.buf) PrimitiveI32(v.read_i32(0));
+            break;
+        case RawType::I64:
+            new(&rv.buf) PrimitiveI64(v.read_i64(0));
+            break;
+        case RawType::ISize:
+            if( POINTER_SIZE == 8 )
+                new(&rv.buf) PrimitiveI64(v.read_i64(0));
+            else
+                new(&rv.buf) PrimitiveI32(v.read_i32(0));
+            break;
+        default:
+            LOG_TODO("PrimitiveValueVirt::from_value: " << t);
+        }
+        return rv;
+    }
+};
 
 struct Ops {
     template<typename T>
@@ -109,7 +299,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         State(ModuleTree& modtree, const Function& fcn, ::std::vector<Value> args):
             modtree(modtree),
             fcn(fcn),
-            ret(fcn.ret_ty),
+            ret(fcn.ret_ty == RawType::Unreachable ? ::HIR::TypeRef() : fcn.ret_ty),
             args(::std::move(args)),
             drop_flags(fcn.m_mir.drop_flags)
         {
@@ -180,10 +370,10 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             TU_ARM(lv, Downcast, e) {
                 ::HIR::TypeRef  composite_ty;
                 auto base_val = get_value_and_type(*e.val, composite_ty);
+                LOG_DEBUG("Downcast - " << composite_ty);
 
                 size_t inner_ofs;
                 ty = composite_ty.get_field(e.variant_index, inner_ofs);
-                LOG_TODO("Read from Downcast - " << lv);
                 base_val.m_offset += inner_ofs;
                 return base_val;
                 }
@@ -477,7 +667,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         // TODO: MUST be a thin pointer?
 
                         // TODO: MUST be an integer (usize only?)
-                        if( re.type != RawType::USize ) {
+                        if( re.type != RawType::USize && re.type != RawType::ISize ) {
                             LOG_ERROR("Casting from a pointer to non-usize - " << re.type << " to " << src_ty);
                             throw "ERROR";
                         }
@@ -569,7 +759,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         case RawType::I32:
                         case RawType::I64:
                             {
-                            uint64_t dst_val = 0.0;
+                            uint64_t dst_val = 0;
                             // Can be an integer, or F32 (pointer is impossible atm)
                             switch(src_ty.inner_type)
                             {
@@ -630,7 +820,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                                     new_val.write_u16(0, static_cast<uint16_t>(dst_val));
                                     break;
                                 case RawType::U32:
-                                    new_val.write_u32(0, dst_val);
+                                    new_val.write_u32(0, static_cast<uint32_t>(dst_val));
                                     break;
                                 case RawType::U64:
                                     new_val.write_u64(0, dst_val);
@@ -669,7 +859,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     Value   tmp_l, tmp_r;
                     auto v_l = state.get_value_ref_param(re.val_l, tmp_l, ty_l);
                     auto v_r = state.get_value_ref_param(re.val_r, tmp_r, ty_r);
-                    //LOG_DEBUG(v_l << " ? " << v_r);
+                    LOG_DEBUG(v_l << " ? " << v_r);
 
                     switch(re.op)
                     {
@@ -729,8 +919,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             // Compare fat metadata.
                             if( res == 0 && v_l.m_size > POINTER_SIZE )
                             {
-                                reloc_l = v_l.m_alloc ? v_l.m_alloc.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
-                                reloc_r = v_r.m_alloc ? v_r.m_alloc.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
+                                reloc_l = alloc_l ? alloc_l.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
+                                reloc_r = alloc_r ? alloc_r.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
 
                                 if( res == 0 && reloc_l != reloc_r )
                                 {
@@ -761,33 +951,20 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         } break;
                     default:
                         LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
-                        new_val = Value(ty_l);
-                        switch(ty_l.inner_type)
+                        auto val_l = PrimitiveValueVirt::from_value(ty_l, v_l);
+                        auto val_r = PrimitiveValueVirt::from_value(ty_r, v_r);
+                        switch(re.op)
                         {
-                        case RawType::U128:
-                            LOG_TODO("BinOp U128");
-                        case RawType::U64:
-                            new_val.write_u64( 0, Ops::do_unsigned(v_l.read_u64(0), v_r.read_u64(0), re.op) );
-                            break;
-                        case RawType::U32:
-                            new_val = Value(ty_l);
-                            new_val.write_u32( 0, Ops::do_unsigned(v_l.read_u32(0), v_r.read_u32(0), re.op) );
-                            break;
-                        case RawType::U16:
-                            new_val = Value(ty_l);
-                            new_val.write_u16( 0, Ops::do_unsigned(v_l.read_u16(0), v_r.read_u16(0), re.op) );
-                            break;
-                        case RawType::U8:
-                            new_val = Value(ty_l);
-                            new_val.write_u8 ( 0, Ops::do_unsigned(v_l.read_u8 (0), v_r.read_u8 (0), re.op) );
-                            break;
-                        case RawType::USize:
-                            new_val = Value(ty_l);
-                            new_val.write_usize( 0, Ops::do_unsigned(v_l.read_usize(0), v_r.read_usize(0), re.op) );
-                            break;
+                        case ::MIR::eBinOp::ADD:    val_l.get().add( val_r.get() ); break;
+                        case ::MIR::eBinOp::SUB:    val_l.get().subtract( val_r.get() ); break;
+                        case ::MIR::eBinOp::MUL:    val_l.get().multiply( val_r.get() ); break;
+                        case ::MIR::eBinOp::DIV:    val_l.get().divide( val_r.get() ); break;
+                        case ::MIR::eBinOp::MOD:    val_l.get().modulo( val_r.get() ); break;
                         default:
-                            LOG_TODO("Handle BinOp - w/ type " << ty_l);
+                            throw "";
                         }
+                        new_val = Value(ty_l);
+                        val_l.get().write_to_value(new_val, 0);
                         break;
                     }
                     } break;
@@ -1091,7 +1268,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             if( te.fcn.is_Intrinsic() )
             {
                 const auto& fe = te.fcn.as_Intrinsic();
-                state.write_lvalue(te.ret_val, MIRI_Invoke_Intrinsic(fe.name, fe.params, ::std::move(sub_args)));
+                state.write_lvalue(te.ret_val, MIRI_Invoke_Intrinsic(modtree, fe.name, fe.params, ::std::move(sub_args)));
             }
             else
             {
@@ -1146,15 +1323,36 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         rv.allocation.alloc().relocations.push_back({ 0,  Allocation::new_alloc(size) });
         return rv;
     }
+    else if( link_name == "__rust_reallocate" )
+    {
+        LOG_ASSERT(args.at(0).allocation, "__rust_reallocate first argument doesn't have an allocation");
+        auto alloc_ptr = args.at(0).allocation.alloc().get_relocation(0);
+        auto ptr_ofs = args.at(0).read_usize(0);
+        LOG_ASSERT(ptr_ofs == 0, "__rust_reallocate with offset pointer");
+        auto oldsize = args.at(1).read_usize(0);
+        auto newsize = args.at(2).read_usize(0);
+        auto align = args.at(3).read_usize(0);
+        LOG_DEBUG("__rust_reallocate(ptr=" << alloc_ptr << ", oldsize=" << oldsize << ", newsize=" << newsize << ", align=" << align << ")");
+
+        LOG_ASSERT(alloc_ptr, "__rust_reallocate with no backing allocation attached to pointer");
+        LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_reallocate with no backing allocation attached to pointer");
+        auto& alloc = alloc_ptr.alloc();
+        // TODO: Check old size and alignment against allocation.
+        alloc.data.resize(newsize);
+        // TODO: Should this instead make a new allocation to catch use-after-free?
+        return ::std::move(args.at(0));
+    }
     else
     {
         LOG_TODO("Call external function " << link_name);
     }
 }
-Value MIRI_Invoke_Intrinsic(const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
+Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
 {
     Value rv;
     TRACE_FUNCTION_R(name, rv);
+    for(const auto& a : args)
+        LOG_DEBUG("#" << (&a - args.data()) << ": " << a);
     if( name == "atomic_store" )
     {
         auto& ptr_val = args.at(0);
@@ -1234,6 +1432,75 @@ Value MIRI_Invoke_Intrinsic(const ::std::string& name, const ::HIR::PathParams& 
         const auto& ty = ty_params.tys.at(0);
         alloc.alloc().write_value(ofs, ::std::move(data_val));
     }
+    // ----------------------------------------------------------------
+    // Checked arithmatic
+    else if( name == "add_with_overflow" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+        bool didnt_overflow = lhs.get().add( rhs.get() );
+
+        // Get return type - a tuple of `(T, bool,)`
+        ::HIR::GenericPath  gp;
+        gp.m_params.tys.push_back(ty);
+        gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
+        const auto& dty = modtree.get_composite(gp);
+
+        rv = Value(::HIR::TypeRef(&dty));
+        lhs.get().write_to_value(rv, dty.fields[0].first);
+        rv.write_u8( dty.fields[1].first, didnt_overflow ? 0 : 1 ); // Returns true if overflow happened
+    }
+    else if( name == "sub_with_overflow" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+        bool didnt_overflow = lhs.get().subtract( rhs.get() );
+
+        // Get return type - a tuple of `(T, bool,)`
+        ::HIR::GenericPath  gp;
+        gp.m_params.tys.push_back(ty);
+        gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
+        const auto& dty = modtree.get_composite(gp);
+
+        rv = Value(::HIR::TypeRef(&dty));
+        lhs.get().write_to_value(rv, dty.fields[0].first);
+        rv.write_u8( dty.fields[1].first, didnt_overflow ? 0 : 1 ); // Returns true if overflow happened
+    }
+    else if( name == "mul_with_overflow" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+    
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+        bool didnt_overflow = lhs.get().multiply( rhs.get() );
+
+        // Get return type - a tuple of `(T, bool,)`
+        ::HIR::GenericPath  gp;
+        gp.m_params.tys.push_back(ty);
+        gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
+        const auto& dty = modtree.get_composite(gp);
+
+        rv = Value(::HIR::TypeRef(&dty));
+        lhs.get().write_to_value(rv, dty.fields[0].first);
+        rv.write_u8( dty.fields[1].first, didnt_overflow ? 0 : 1 ); // Returns true if overflow happened
+    }
+    // Overflowing artithmatic
+    else if( name == "overflowing_sub" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+        lhs.get().subtract( rhs.get() );
+
+        rv = Value(ty);
+        lhs.get().write_to_value(rv, 0);
+    }
+    // ----------------------------------------------------------------
     else
     {
         LOG_TODO("Call intrinsic \"" << name << "\"");
