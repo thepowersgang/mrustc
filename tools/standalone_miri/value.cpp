@@ -31,6 +31,13 @@ AllocationPtr AllocationPtr::new_string(const ::std::string* ptr)
     rv.m_ptr = reinterpret_cast<void*>( reinterpret_cast<uintptr_t>(ptr) + static_cast<uintptr_t>(Ty::StdString) );
     return rv;
 }
+AllocationPtr AllocationPtr::new_ffi(FFIPointer info)
+{
+    AllocationPtr   rv;
+    auto* ptr = new FFIPointer(info);
+    rv.m_ptr = reinterpret_cast<void*>( reinterpret_cast<uintptr_t>(ptr) + static_cast<uintptr_t>(Ty::FfiPointer) );
+    return rv;
+}
 AllocationPtr::AllocationPtr(const AllocationPtr& x):
     m_ptr(nullptr)
 {
@@ -55,8 +62,12 @@ AllocationPtr::AllocationPtr(const AllocationPtr& x):
             // No ownership semantics, just clone the pointer
             m_ptr = x.m_ptr;
             break;
-        case Ty::Unused2:
-            throw "BUG";
+        case Ty::FfiPointer: {
+            auto ptr_i = reinterpret_cast<uintptr_t>(new FFIPointer(x.ffi()));
+            assert( (ptr_i & 3) == 0 );
+            m_ptr = reinterpret_cast<void*>( ptr_i + static_cast<uintptr_t>(Ty::FfiPointer) );
+            assert(get_ty() == Ty::FfiPointer);
+            } break;
         }
     }
     else
@@ -86,7 +97,9 @@ AllocationPtr::~AllocationPtr()
         case Ty::StdString: {
             // No ownership semantics
             } break;
-        case Ty::Unused2: {
+        case Ty::FfiPointer: {
+            auto* ptr = const_cast<FFIPointer*>(&ffi());
+            delete ptr;
             } break;
         }
     }
@@ -107,7 +120,8 @@ AllocationPtr::~AllocationPtr()
         case AllocationPtr::Ty::StdString:
             os << "\"" << x.str() << "\"";
             break;
-        case AllocationPtr::Ty::Unused2:
+        case AllocationPtr::Ty::FfiPointer:
+            os << "FFI " << x.ffi().source_function << " " << x.ffi().ptr_value;
             break;
         }
     }
@@ -403,13 +417,24 @@ Value Value::new_fnptr(const ::HIR::Path& fn_path)
     rv.allocation.alloc().mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
     return rv;
 }
+Value Value::new_ffiptr(FFIPointer ffi)
+{
+    Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::USize }) );
+    rv.create_allocation();
+    rv.allocation.alloc().relocations.push_back(Relocation { 0, AllocationPtr::new_ffi(ffi) });
+    rv.allocation.alloc().data.at(0) = 0;
+    rv.allocation.alloc().mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
+    return rv;
+}
 
 void Value::create_allocation()
 {
     assert(!this->allocation);
     this->allocation = Allocation::new_alloc(this->direct_data.size);
-    this->allocation.alloc().mask[0] = this->direct_data.mask[0];
-    this->allocation.alloc().mask[1] = this->direct_data.mask[1];
+    if( this->direct_data.size > 0 )
+        this->allocation.alloc().mask[0] = this->direct_data.mask[0];
+    if( this->direct_data.size > 8 )
+        this->allocation.alloc().mask[1] = this->direct_data.mask[1];
     ::std::memcpy(this->allocation.alloc().data.data(), this->direct_data.data, this->direct_data.size);
 }
 void Value::check_bytes_valid(size_t ofs, size_t size) const

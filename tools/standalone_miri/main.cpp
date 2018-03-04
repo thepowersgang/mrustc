@@ -7,6 +7,10 @@
 #include <algorithm>
 #include <iomanip>
 #include "debug.hpp"
+#ifdef _WIN32
+# define NOMINMAX
+# include <Windows.h>
+#endif
 
 struct ProgramOptions
 {
@@ -40,11 +44,24 @@ int main(int argc, const char* argv[])
     val_argc.write_bytes(0, "\0\0\0", 4);
     val_argv.write_bytes(0, "\0\0\0\0\0\0\0", argv_ty.get_size());
 
-    ::std::vector<Value>    args;
-    args.push_back(::std::move(val_argc));
-    args.push_back(::std::move(val_argv));
-    auto rv = MIRI_Invoke( tree, tree.find_lang_item("start"), ::std::move(args) );
-    ::std::cout << rv << ::std::endl;
+    try
+    {
+        ::std::vector<Value>    args;
+        args.push_back(::std::move(val_argc));
+        args.push_back(::std::move(val_argv));
+        auto rv = MIRI_Invoke( tree, tree.find_lang_item("start"), ::std::move(args) );
+        ::std::cout << rv << ::std::endl;
+    }
+    catch(const DebugExceptionTodo& /*e*/)
+    {
+        ::std::cerr << "TODO Hit" << ::std::endl;
+        return 1;
+    }
+    catch(const DebugExceptionError& /*e*/)
+    {
+        ::std::cerr << "Error encountered" << ::std::endl;
+        throw;
+    }
 
     return 0;
 }
@@ -273,9 +290,20 @@ struct Ops {
 
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
 {
-    TRACE_FUNCTION_R(path, "");
+    Value   ret;
+    TRACE_FUNCTION_R(path, path << " = " << ret);
 
-    LOG_DEBUG(path);
+
+    // TODO: Support overriding certain functions
+    {
+        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "c", "SetThreadStackGuarantee" } } )
+        {
+            ret = Value(::HIR::TypeRef{RawType::I32});
+            ret.write_i32(0, 120);  // ERROR_CALL_NOT_IMPLEMENTED
+            return ret;
+        }
+    }
+
     const auto& fcn = modtree.get_function(path);
     for(size_t i = 0; i < args.size(); i ++)
     {
@@ -285,22 +313,25 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
     if( fcn.external.link_name != "" )
     {
         // External function!
-        return MIRI_Invoke_Extern(fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        ret = MIRI_Invoke_Extern(fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        return ret;
     }
+
+    ret = Value(fcn.ret_ty == RawType::Unreachable ? ::HIR::TypeRef() : fcn.ret_ty);
 
     struct State
     {
         ModuleTree& modtree;
         const Function& fcn;
-        Value   ret;
+        Value&  ret;
         ::std::vector<Value>    args;
         ::std::vector<Value>    locals;
         ::std::vector<bool>     drop_flags;
 
-        State(ModuleTree& modtree, const Function& fcn, ::std::vector<Value> args):
+        State(ModuleTree& modtree, const Function& fcn, Value& ret, ::std::vector<Value> args):
             modtree(modtree),
             fcn(fcn),
-            ret(fcn.ret_ty == RawType::Unreachable ? ::HIR::TypeRef() : fcn.ret_ty),
+            ret(ret),
             args(::std::move(args)),
             drop_flags(fcn.m_mir.drop_flags)
         {
@@ -552,7 +583,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             }
             throw "";
         }
-    } state { modtree, fcn, ::std::move(args) };
+    } state { modtree, fcn, ret, ::std::move(args) };
 
     size_t bb_idx = 0;
     for(;;)
@@ -764,18 +795,75 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             // Can be an integer, or F32 (pointer is impossible atm)
                             switch(src_ty.inner_type)
                             {
-                            case RawType::Unreachable:  throw "BUG";
-                            case RawType::Composite:    throw "ERROR";
-                            case RawType::TraitObject:  throw "ERROR";
+                            case RawType::Unreachable:
+                                LOG_BUG("Casting unreachable");
+                            case RawType::TraitObject:
+                            case RawType::Str:
+                                LOG_FATAL("Cast of unsized type - " << src_ty);
                             case RawType::Function:
                                 LOG_ASSERT(re.type.inner_type == RawType::USize, "");
                                 new_val = src_value.read_value(0, re.type.get_size());
                                 break;
-                            case RawType::Char: LOG_TODO("Cast char to integer (only u32)");
-                            case RawType::Str:  throw "ERROR";
-                            case RawType::Unit: throw "ERROR";
-                            case RawType::Bool: throw "ERROR";
-                            case RawType::F64:  throw "BUG";
+                            case RawType::Char:
+                                LOG_TODO("Cast char to integer (only u32)");
+                            case RawType::Unit:
+                                LOG_FATAL("Cast of unit");
+                            case RawType::Composite: {
+                                const auto& dt = *src_ty.composite_type;
+                                if( dt.variants.size() == 0 ) {
+                                    LOG_FATAL("Cast of composite - " << src_ty);
+                                }
+                                // TODO: Check that all variants have the same tag offset
+                                LOG_ASSERT(dt.fields.size() == 1, "");
+                                LOG_ASSERT(dt.fields[0].first == 0, "");
+                                for(size_t i = 0; i < dt.variants.size(); i ++ ) {
+                                    LOG_ASSERT(dt.variants[i].base_field == 0, "");
+                                    LOG_ASSERT(dt.variants[i].field_path.empty(), "");
+                                }
+                                ::HIR::TypeRef  tag_ty = dt.fields[0].second;
+                                LOG_ASSERT(tag_ty.wrappers.empty(), "");
+                                switch(tag_ty.inner_type)
+                                {
+                                case RawType::USize:
+                                    dst_val = static_cast<uint64_t>( src_value.read_usize(0) );
+                                    if(0)
+                                case RawType::ISize:
+                                    dst_val = static_cast<uint64_t>( src_value.read_isize(0) );
+                                    if(0)
+                                case RawType::U8:
+                                    dst_val = static_cast<uint64_t>( src_value.read_u8 (0) );
+                                    if(0)
+                                case RawType::I8:
+                                    dst_val = static_cast<uint64_t>( src_value.read_i8 (0) );
+                                    if(0)
+                                case RawType::U16:
+                                    dst_val = static_cast<uint64_t>( src_value.read_u16(0) );
+                                    if(0)
+                                case RawType::I16:
+                                    dst_val = static_cast<uint64_t>( src_value.read_i16(0) );
+                                    if(0)
+                                case RawType::U32:
+                                    dst_val = static_cast<uint64_t>( src_value.read_u32(0) );
+                                    if(0)
+                                case RawType::I32:
+                                    dst_val = static_cast<uint64_t>( src_value.read_i32(0) );
+                                    if(0)
+                                case RawType::U64:
+                                    dst_val = static_cast<uint64_t>( src_value.read_u64(0) );
+                                    if(0)
+                                case RawType::I64:
+                                    dst_val = static_cast<uint64_t>( src_value.read_i64(0) );
+                                    break;
+                                default:
+                                    LOG_FATAL("Bad tag type in cast - " << tag_ty);
+                                }
+                                } if(0)
+                            case RawType::Bool:
+                                dst_val = static_cast<uint64_t>( src_value.read_u8 (0) );
+                                if(0)
+                            case RawType::F64:
+                                dst_val = static_cast<uint64_t>( src_value.read_f64(0) );
+                                if(0)
                             case RawType::F32:
                                 dst_val = static_cast<uint64_t>( src_value.read_f32(0) );
                                 if(0)
@@ -889,21 +977,16 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         {
                             switch(ty_l.inner_type)
                             {
-                            case RawType::U64:
-                                res = res != 0 ? res : Ops::do_compare(v_l.read_u64(0), v_r.read_u64(0));
-                                break;
-                            case RawType::U32:
-                                res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0));
-                                break;
-                            case RawType::U16:
-                                res = res != 0 ? res : Ops::do_compare(v_l.read_u16(0), v_r.read_u16(0));
-                                break;
-                            case RawType::U8:
-                                res = res != 0 ? res : Ops::do_compare(v_l.read_u8(0), v_r.read_u8(0));
-                                break;
-                            case RawType::USize:
-                                res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0));
-                                break;
+                            case RawType::U64:  res = res != 0 ? res : Ops::do_compare(v_l.read_u64(0), v_r.read_u64(0));   break;
+                            case RawType::U32:  res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0));   break;
+                            case RawType::U16:  res = res != 0 ? res : Ops::do_compare(v_l.read_u16(0), v_r.read_u16(0));   break;
+                            case RawType::U8 :  res = res != 0 ? res : Ops::do_compare(v_l.read_u8 (0), v_r.read_u8 (0));   break;
+                            case RawType::I64:  res = res != 0 ? res : Ops::do_compare(v_l.read_i64(0), v_r.read_i64(0));   break;
+                            case RawType::I32:  res = res != 0 ? res : Ops::do_compare(v_l.read_i32(0), v_r.read_i32(0));   break;
+                            case RawType::I16:  res = res != 0 ? res : Ops::do_compare(v_l.read_i16(0), v_r.read_i16(0));   break;
+                            case RawType::I8 :  res = res != 0 ? res : Ops::do_compare(v_l.read_i8 (0), v_r.read_i8 (0));   break;
+                            case RawType::USize: res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0)); break;
+                            case RawType::ISize: res = res != 0 ? res : Ops::do_compare(v_l.read_isize(0), v_r.read_isize(0)); break;
                             default:
                                 LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                             }
@@ -1373,6 +1456,15 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         rv.write_usize(0, 1);
         return rv;
     }
+#ifdef _WIN32
+    else if( link_name == "GetModuleHandleW" )
+    {
+        const void* arg0 = (args.at(0).allocation ? args.at(0).allocation.alloc().data_ptr() : nullptr);
+        //extern void* GetModuleHandleW(const void* s);
+
+        return Value::new_ffiptr(FFIPointer { "GetModuleHandleW", GetModuleHandleW(static_cast<LPCWSTR>(arg0)) });
+    }
+#endif
     // Allocators!
     else if( link_name == "__rust_allocate" )
     {
@@ -1596,8 +1688,8 @@ Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name
         case AllocationPtr::Ty::Function:
             LOG_FATAL("Attempt to copy* a function");
             break;
-        case AllocationPtr::Ty::Unused2:
-            LOG_BUG("Unused tag");
+        case AllocationPtr::Ty::FfiPointer:
+            LOG_BUG("Trying to copy from a FFI pointer");
             break;
         }
     }
