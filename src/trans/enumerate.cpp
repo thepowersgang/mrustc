@@ -91,53 +91,64 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
 }
 
 namespace {
+    void Trans_Enumerate_ValItem(EnumState& state, const ::HIR::ValueItem& vi, bool is_visible, ::std::function<::HIR::SimplePath()> get_path)
+    {
+        switch(vi.tag())
+        {
+        case ::HIR::ValueItem::TAGDEAD: throw "";
+        TU_ARM(vi, Import, e) {
+            // TODO: If visible, ensure that target is visited.
+            if( is_visible )
+            {
+                if( ! e.is_variant && e.path.m_crate_name == state.crate.m_crate_name )
+                {
+                    const auto& vi2 = state.crate.get_valitem_by_path(Span(), e.path, false);
+                    Trans_Enumerate_ValItem(state, vi2, is_visible, [&](){ return e.path; });
+                }
+            }
+        } break;
+        TU_ARM(vi, StructConstant, e) {
+            } break;
+        TU_ARM(vi, StructConstructor, e) {
+            } break;
+        TU_ARM(vi, Constant, e) {
+            } break;
+        TU_ARM(vi, Static, e) {
+            if( is_visible )
+            {
+                // HACK: Refuse to emit unused generated statics
+                // - Needed because all items are visited (regardless of
+                // visibility)
+                if(e.m_type.m_data.is_Infer())
+                    continue ;
+                //state.enum_static(mod_path + vi.first, *e);
+                auto* ptr = state.rv.add_static( get_path() );
+                if(ptr)
+                    Trans_Enumerate_FillFrom(state, e, *ptr);
+            }
+            } break;
+        TU_ARM(vi, Function, e) {
+            if( e.m_params.m_types.size() == 0 )
+            {
+                if( is_visible ) {
+                    state.enum_fcn(get_path(), e, {});
+                }
+            }
+            else
+            {
+                const_cast<::HIR::Function&>(e).m_save_code = true;
+                // TODO: If generic, enumerate concrete functions used
+            }
+            } break;
+        }
+    }
     void Trans_Enumerate_Public_Mod(EnumState& state, ::HIR::Module& mod, ::HIR::SimplePath mod_path, bool is_visible)
     {
-        // TODO: Make this configurable, and debug cases where it breaks
-        // (needs to be `true` currently)
-        // - Errors likely caused by re-exports making items visible that
-        // aren't otherwise.
+        // TODO: Fix the TODO in Function above (scan generics for the concretes they use) and set this to false again
         const bool EMIT_ALL = true;
         for(auto& vi : mod.m_value_items)
         {
-            TU_MATCHA( (vi.second->ent), (e),
-            (Import,
-                // TODO: If visible, ensure that target is visited.
-                ),
-            (StructConstant,
-                ),
-            (StructConstructor,
-                ),
-            (Constant,
-                ),
-            (Static,
-                if( EMIT_ALL || (is_visible && vi.second->is_public) )
-                {
-                    // HACK: Refuse to emit unused generated statics
-                    // - Needed because all items are visited (regardless of
-                    // visibility)
-                    if(e.m_type.m_data.is_Infer())
-                        continue ;
-                    //state.enum_static(mod_path + vi.first, *e);
-                    auto* ptr = state.rv.add_static(mod_path + vi.first);
-                    if(ptr)
-                        Trans_Enumerate_FillFrom(state, e, *ptr);
-                }
-                ),
-            (Function,
-                if( e.m_params.m_types.size() == 0 )
-                {
-                    if( EMIT_ALL || (is_visible && vi.second->is_public) ) {
-                        state.enum_fcn(mod_path + vi.first, e, {});
-                    }
-                }
-                else
-                {
-                    const_cast<::HIR::Function&>(e).m_save_code = true;
-                    // TODO: If generic, enumerate concrete functions used
-                }
-                )
-            )
+            Trans_Enumerate_ValItem(state, vi.second->ent, EMIT_ALL || (is_visible && vi.second->is_public), [&](){ return mod_path + vi.first; });
         }
 
         for(auto& ti : mod.m_mod_items)

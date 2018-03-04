@@ -186,6 +186,18 @@ namespace {
             };
 
             VtableConstruct vtc { this, &tr, {} };
+            // - Drop glue pointer
+            ::HIR::FunctionType ft;
+            ft.is_unsafe = false;
+            ft.m_abi = ABI_RUST;
+            ft.m_rettype.reset( new ::HIR::TypeRef(::HIR::TypeRef::new_unit()) );
+            ft.m_arg_types.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ::HIR::TypeRef::new_unit()) );
+            vtc.fields.push_back(::std::make_pair( "#drop_glue", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::TypeRef(mv$(ft)) } ));
+            // - Size of data
+            vtc.fields.push_back(::std::make_pair( "#size", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::CoreType::Usize } ));
+            // - Alignment of data
+            vtc.fields.push_back(::std::make_pair( "#align", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::CoreType::Usize } ));
+            // - Add methods
             if( ! vtc.add_ents_from_trait(tr, trait_path) )
             {
                 tr.m_value_indexes.clear();
