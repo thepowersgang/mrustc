@@ -6,8 +6,10 @@
  * - MIR monomorphisation
  */
 #include "monomorphise.hpp"
+#include "hir_typeck/static.hpp"
 #include <mir/mir.hpp>
 #include <hir/hir.hpp>
+#include <mir/operations.hpp>   // Needed for post-monomorph checks and optimisations
 
 namespace {
     ::MIR::LValue monomorph_LValue(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::LValue& tpl)
@@ -333,3 +335,41 @@ namespace {
 
     return ::MIR::FunctionPointer( box$(output).release() );
 }
+
+/// Monomorphise all functions in a TransList
+void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
+{
+    ::StaticTraitResolve    resolve { crate };
+    for(auto& fcn_ent : list.m_functions)
+    {
+        const auto& fcn = *fcn_ent.second->ptr;
+        // Trait methods (which are the only case where `Self` can exist in the argument list at this stage) always need to be monomorphised.
+        bool is_method = ( fcn.m_args.size() > 0 && visit_ty_with(fcn.m_args[0].second, [&](const auto& x){return x == ::HIR::TypeRef("Self",0xFFFF);}) );
+        if(fcn_ent.second->pp.has_types() || is_method)
+        {
+            const auto& path = fcn_ent.first;
+            const auto& pp = fcn_ent.second->pp;
+            TRACE_FUNCTION_FR(path, path);
+
+            auto mir = Trans_Monomorphise(resolve, fcn_ent.second->pp, fcn.m_code.m_mir);
+
+            // TODO: Should these be moved to their own pass? Potentially not, the extra pass should just be an inlining optimise pass
+            auto ret_type = pp.monomorph(resolve, fcn.m_return);
+            ::HIR::Function::args_t args;
+            for(const auto& a : fcn.m_args)
+                args.push_back(::std::make_pair( ::HIR::Pattern{}, pp.monomorph(resolve, a.second) ));
+
+            ::std::string s = FMT(path);
+            ::HIR::ItemPath ip(s);
+            MIR_Validate(resolve, ip, *mir, args, ret_type);
+            MIR_Cleanup(resolve, ip, *mir, args, ret_type);
+            MIR_Optimise(resolve, ip, *mir, args, ret_type);
+            MIR_Validate(resolve, ip, *mir, args, ret_type);
+
+            fcn_ent.second->monomorphised.ret_ty = ::std::move(ret_type);
+            fcn_ent.second->monomorphised.arg_tys = ::std::move(args);
+            fcn_ent.second->monomorphised.code = ::std::move(mir);
+        }
+    }
+}
+

@@ -25,8 +25,12 @@ struct TransOptions
 };
 
 extern TransList Trans_Enumerate_Main(const ::HIR::Crate& crate);
-extern TransList Trans_Enumerate_Test(const ::HIR::Crate& crate);
 // NOTE: This also sets the saveout flags
 extern TransList Trans_Enumerate_Public(::HIR::Crate& crate);
+
+/// Re-run enumeration on monomorphised functions, removing now-unused items
+extern void Trans_Enumerate_Cleanup(const ::HIR::Crate& crate, TransList& list);
+
+extern void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list);
 
 extern void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const ::HIR::Crate& crate, const TransList& list, bool is_executable);

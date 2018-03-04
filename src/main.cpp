@@ -117,6 +117,8 @@ void init_debug_list()
 
     g_debug_disable_map.insert( "HIR Serialise" );
     g_debug_disable_map.insert( "Trans Enumerate" );
+    g_debug_disable_map.insert( "Trans Monomorph" );
+    g_debug_disable_map.insert( "MIR Optimise Inline" );
     g_debug_disable_map.insert( "Trans Codegen" );
 
     // Mutate this map using an environment variable
@@ -643,6 +645,9 @@ int main(int argc, char *argv[])
             #if 1
             // Generate a .o
             TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
+            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
+            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
+            //CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
             #endif
 
@@ -658,6 +663,8 @@ int main(int argc, char *argv[])
             #if 1
             // Generate a .o
             TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
+            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
+            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
             #endif
             // Save a loadable HIR dump
@@ -674,9 +681,13 @@ int main(int argc, char *argv[])
             // Can just emit the metadata and do miri?
             // - Requires MIR for EVERYTHING, not feasable.
             TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
+            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
+            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
 
             TransList items2 = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
+            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items2); });
+            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items2); });
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + "-plugin", trans_opt, *hir_crate, items2, true); });
 
             hir_crate->m_lang_items.clear();    // Make sure that we're not exporting any lang items
@@ -686,9 +697,11 @@ int main(int argc, char *argv[])
             // Generate a binary
             // - Enumerate items for translation
             TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
+            // - Monomorphise
+            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
+            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
             // - Perform codegen
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, trans_opt, *hir_crate, items, true); });
-            // - Invoke linker?
             break;
         }
     }
