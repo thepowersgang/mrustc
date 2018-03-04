@@ -348,6 +348,10 @@ namespace
             {
                 m_of << "\t" << e.offset << " = " << e.ty << ";\n";
             }
+            for(const auto& e : repr->fields)
+            {
+                m_of << "\t" << "#" << (&e - repr->fields.data()) << ";\n";
+            }
             m_of << "}\n";
 
             // TODO: Drop glue!

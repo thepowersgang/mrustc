@@ -581,13 +581,57 @@ void Value::write_usize(size_t ofs, uint64_t v)
 }
 extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
 {
-    if( v.m_alloc )
+    if( v.m_alloc || v.m_value->allocation )
     {
-        os << v.m_alloc.alloc();
+        const auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
+        // TODO: What if alloc_ptr isn't a data allocation?
+        const auto& alloc = alloc_ptr.alloc();
+
+        for(size_t i = v.m_offset; i < ::std::min(alloc.size(), v.m_offset + v.m_size); i++)
+        {
+            if( i != 0 )
+                os << " ";
+
+            if( alloc.mask[i/8] & (1 << i%8) )
+            {
+                os << ::std::setw(2) << ::std::setfill('0') << (int)alloc.data_ptr()[i];
+            }
+            else
+            {
+                os << "--";
+            }
+        }
+
+        os << " {";
+        for(const auto& r : alloc.relocations)
+        {
+            if( v.m_offset <= r.slot_ofs && r.slot_ofs < v.m_offset + v.m_size )
+            {
+                os << " @" << (r.slot_ofs - v.m_offset) << "=" << r.backing_alloc;
+            }
+        }
+        os << " }";
     }
     else
     {
-        os << *v.m_value;
+        const auto& direct = v.m_value->direct_data;
+
+        auto flags = os.flags();
+        os << ::std::hex;
+        for(size_t i = v.m_offset; i < ::std::min(static_cast<size_t>(direct.size), v.m_offset + v.m_size); i++)
+        {
+            if( i != 0 )
+                os << " ";
+            if( direct.mask[i/8] & (1 << i%8) )
+            {
+                os << ::std::setw(2) << ::std::setfill('0') << (int)direct.data[i];
+            }
+            else
+            {
+                os << "--";
+            }
+        }
+        os.setf(flags);
     }
     return os;
 }
