@@ -41,10 +41,17 @@ struct Trans_Params
     }
 };
 
+struct CachedFunction {
+    ::HIR::TypeRef  ret_ty;
+    ::HIR::Function::args_t arg_tys;
+    ::MIR::FunctionPointer  code;
+};
 struct TransList_Function
 {
     const ::HIR::Function*  ptr;
     Trans_Params    pp;
+    // If `pp.has_types` is true, the below is valid
+    CachedFunction  monomorphised;
 };
 struct TransList_Static
 {

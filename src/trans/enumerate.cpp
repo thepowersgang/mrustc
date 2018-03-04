@@ -332,6 +332,51 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
     return rv;
 }
 
+void Trans_Enumerate_Cleanup(const ::HIR::Crate& crate, TransList& list)
+{
+    EnumState   state { crate };
+
+    // TODO: Get a list of "root" functions (e.g. main, public functions, things used by public generics) and re-enumerate based on that.
+
+    // Visit every function used
+    for(const auto& ent : list.m_functions)
+    {
+        if( ent.second->monomorphised.code )
+        {
+            Trans_Enumerate_FillFrom_MIR(state, *ent.second->monomorphised.code, {});
+        }
+        else if( ent.second->ptr->m_code.m_mir )
+        {
+            Trans_Enumerate_FillFrom_MIR(state, *ent.second->ptr->m_code.m_mir, {});
+        }
+        else
+        {
+        }
+    }
+
+    // Remove any item in `list.m_functions` that doesn't appear in `state.rv.m_functions`
+    for(auto it = list.m_functions.begin(); it != list.m_functions.end();)
+    {
+        auto it2 = state.rv.m_functions.find(it->first);
+        if( it2 == state.rv.m_functions.end() )
+        {
+            DEBUG("Remove " << it->first);
+            it = list.m_functions.erase(it);
+        }
+        else
+        {
+            DEBUG("Keep " << it->first);
+            ++ it;
+        }
+    }
+
+    // Sanity check: all items in `state.rv.m_functions` must exist in `list.m_functions`
+    for(const auto& e : state.rv.m_functions)
+    {
+        auto it = list.m_functions.find(e.first);
+        ASSERT_BUG(Span(), it != list.m_functions.end(), "Enumerate Error - New function appeared after monomorphisation - " << e.first);
+    }
+}
 
 /// Common post-processing
 void Trans_Enumerate_CommonPost_Run(EnumState& state)

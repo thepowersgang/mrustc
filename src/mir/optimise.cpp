@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <trans/target.hpp>
+#include <trans/trans_list.hpp> // Note: This is included for inlining after enumeration and monomorph
 
 #include <hir/expr.hpp> // HACK
 
@@ -281,8 +282,32 @@ namespace {
             return monomorphise_type_get_cb(sp, self_ty, &impl_params, fcn_params, nullptr);
         }
     };
-    const ::MIR::Function* get_called_mir(const ::MIR::TypeResolve& state, const ::HIR::Path& path, ParamsSet& params)
+    const ::MIR::Function* get_called_mir(const ::MIR::TypeResolve& state, const TransList* list, const ::HIR::Path& path, ParamsSet& params)
     {
+        // If a TransList is avaliable, then all referenced functions must be in it.
+        if( list )
+        {
+            auto it = list->m_functions.find(path);
+            if( it == list->m_functions.end() )
+            {
+                MIR_BUG(state, "Enumeration failure - Function " << path << " not in TransList");
+            }
+            const auto& hir_fcn = *it->second->ptr;
+            if( it->second->monomorphised.code ) {
+                return &*it->second->monomorphised.code;
+            }
+            else if( hir_fcn.m_code.m_mir ) {
+                MIR_ASSERT(state, hir_fcn.m_params.m_types.empty(), "Enumeration failure - Function had params, but wasn't monomorphised - " << path);
+                // TODO: Check for trait methods too?
+                return &*hir_fcn.m_code.m_mir;
+            }
+            else {
+                MIR_ASSERT(state, !hir_fcn.m_code, "LowerMIR failure - No MIR but HIR is present?! - " << path);
+                // External function (no MIR present)
+                return nullptr;
+            }
+        }
+
         TU_MATCHA( (path.m_data), (pe),
         (Generic,
             const auto& fcn = state.m_crate.get_function_by_path(state.sp, pe.m_path);
@@ -492,8 +517,10 @@ namespace {
     }
 }
 
+// TODO: Move this block of definitions+code above the namespace above.
+
 bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal);
+bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal, const TransList* list=nullptr);
 bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
 bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Function& fcn);
@@ -540,6 +567,40 @@ void MIR_OptimiseMin(const StaticTraitResolve& resolve, const ::HIR::ItemPath& p
     MIR_Validate(resolve, path, fcn, args, ret_type);
 #endif
     return ;
+}
+/// Optimise doing inlining then cleaning up the mess
+///
+/// Returns true if any optimisation was performed
+///
+/// NOTE: This function can only be called after enumeration and monomorphisation, so it takes the TransList by reference not nullable pointer
+bool MIR_OptimiseInline(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type, const TransList& list)
+{
+    static Span sp;
+    bool rv = false;
+    TRACE_FUNCTION_FR(path, rv);
+    ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
+
+    while( MIR_Optimise_Inlining(state, fcn, false, &list) )
+    {
+        MIR_Cleanup(resolve, path, fcn, args, ret_type);
+#if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+        rv = true;
+    }
+
+    MIR_Optimise_BlockSimplify(state, fcn);
+    MIR_Optimise_UnifyBlocks(state, fcn);
+
+    MIR_Optimise_GarbageCollect(state, fcn);
+    //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
+    MIR_SortBlocks(resolve, path, fcn);
+
+#if CHECK_AFTER_DONE > 1
+    MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+
+    return rv;
 }
 void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
 {
@@ -772,7 +833,7 @@ bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 // --------------------------------------------------------------------
 // If two temporaries don't overlap in lifetime (blocks in which they're valid), unify the two
 // --------------------------------------------------------------------
-bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal)
+bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal, const TransList* list/*=nullptr*/)
 {
     bool inline_happened = false;
     TRACE_FUNCTION_FR("", inline_happened);
@@ -1191,7 +1252,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             const auto& path = te->fcn.as_Path();
 
             Cloner  cloner { state.sp, state.m_resolve, *te };
-            const auto* called_mir = get_called_mir(state, path,  cloner.params);
+            const auto* called_mir = get_called_mir(state, list, path,  cloner.params);
             if( !called_mir )
                 continue ;
             if( called_mir == &fcn )
@@ -3655,3 +3716,45 @@ void MIR_OptimiseCrate(::HIR::Crate& crate, bool do_minimal_optimisation)
     ov.visit_crate(crate);
 }
 
+void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
+{
+    ::StaticTraitResolve    resolve { crate };
+
+    bool did_inline_on_pass;
+
+    size_t  MAX_ITERATIONS = 5; // TODO: Tune this.
+    size_t  num_iterations = 0;
+    do
+    {
+        did_inline_on_pass = false;
+
+        for(auto& fcn_ent : list.m_functions)
+        {
+            const auto& path = fcn_ent.first;
+            const auto& pp = fcn_ent.second->pp;
+            auto& hir_fcn = *const_cast<::HIR::Function*>(fcn_ent.second->ptr);
+            auto& mono_fcn = fcn_ent.second->monomorphised;
+
+            ::std::string s = FMT(path);
+            ::HIR::ItemPath ip(s);
+
+            if( mono_fcn.code )
+            {
+                did_inline_on_pass |= MIR_OptimiseInline(resolve, ip, *mono_fcn.code, mono_fcn.arg_tys, mono_fcn.ret_ty, list);
+            }
+            else if( hir_fcn.m_code.m_mir)
+            {
+                did_inline_on_pass |= MIR_OptimiseInline(resolve, ip, *hir_fcn.m_code.m_mir, hir_fcn.m_args, hir_fcn.m_return, list);
+            }
+            else
+            {
+                // Extern, no optimisations
+            }
+        }
+    } while( did_inline_on_pass && num_iterations < MAX_ITERATIONS );
+
+    if( did_inline_on_pass )
+    {
+        DEBUG("Ran inlining optimise pass to exhaustion (maximum of " << MAX_ITERATIONS << " hit");
+    }
+}
