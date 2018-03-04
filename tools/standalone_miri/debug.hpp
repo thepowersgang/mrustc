@@ -72,11 +72,26 @@ FunctionTrace<T,U> FunctionTrace_d(const char* fname, const char* file, unsigned
     return FunctionTrace<T,U>(fname, file, line, entry, exit);
 }
 
+struct DebugExceptionTodo:
+    public ::std::exception
+{
+    const char* what() const {
+        return "TODO hit";
+    }
+};
+struct DebugExceptionError:
+    public ::std::exception
+{
+    const char* what() const {
+        return "error";
+    }
+};
+
 #define TRACE_FUNCTION_R(entry, exit) auto ftg##__LINE__ = FunctionTrace_d(__FUNCTION__,__FILE__,__LINE__,[&](DebugSink& FunctionTrace_ss){FunctionTrace_ss << entry;}, [&](DebugSink& FunctionTrace_ss) {FunctionTrace_ss << exit;} )
 #define LOG_TRACE(strm) do { if(DebugSink::enabled(__FUNCTION__)) DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Trace) << strm; } while(0)
 #define LOG_DEBUG(strm) do { if(DebugSink::enabled(__FUNCTION__)) DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Debug) << strm; } while(0)
-#define LOG_ERROR(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Error) << strm; exit(1); } while(0)
+#define LOG_ERROR(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Error) << strm; throw DebugExceptionError{}; } while(0)
 #define LOG_FATAL(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Fatal) << strm; exit(1); } while(0)
-#define LOG_TODO(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "TODO: " << strm; abort(); } while(0)
+#define LOG_TODO(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "TODO: " << strm; throw DebugExceptionTodo{}; } while(0)
 #define LOG_BUG(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "BUG: " << strm; abort(); } while(0)
 #define LOG_ASSERT(cnd,strm) do { if( !(cnd) ) { LOG_BUG("Assertion failure: " #cnd " - " << strm); } } while(0)

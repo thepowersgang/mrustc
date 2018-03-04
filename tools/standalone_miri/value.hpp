@@ -15,6 +15,12 @@ namespace HIR {
 class Allocation;
 struct Value;
 
+struct FFIPointer
+{
+    const char* source_function;
+    void*   ptr_value;
+};
+
 class AllocationPtr
 {
     friend class Allocation;
@@ -26,7 +32,7 @@ public:
         Allocation,
         Function,   // m_ptr is a pointer to the function.
         StdString,
-        Unused2,
+        FfiPointer,
     };
 
 private:
@@ -44,6 +50,7 @@ public:
     static AllocationPtr new_fcn(::HIR::Path p);
     //static AllocationPtr new_rawdata(const void* buf, size_t len);
     static AllocationPtr new_string(const ::std::string* s);    // NOTE: The string must have a stable pointer
+    static AllocationPtr new_ffi(FFIPointer info);
 
     AllocationPtr& operator=(const AllocationPtr& x) = delete;
     AllocationPtr& operator=(AllocationPtr&& x) {
@@ -76,6 +83,11 @@ public:
         assert(*this);
         assert(get_ty() == Ty::StdString);
         return *static_cast<const ::std::string*>(get_ptr());
+    }
+    const FFIPointer& ffi() const {
+        assert(*this);
+        assert(get_ty() == Ty::FfiPointer);
+        return *static_cast<const FFIPointer*>(get_ptr());
     }
 
     Ty get_ty() const {
@@ -172,6 +184,7 @@ struct Value
     Value();
     Value(::HIR::TypeRef ty);
     static Value new_fnptr(const ::HIR::Path& fn_path);
+    static Value new_ffiptr(FFIPointer ffi);
 
     void create_allocation();
     size_t size() const { return allocation ? allocation.alloc().size() : direct_data.size; }
