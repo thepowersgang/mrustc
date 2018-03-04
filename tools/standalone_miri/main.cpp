@@ -256,16 +256,17 @@ struct Ops {
             return 1;
         }
     }
-    static uint64_t do_unsigned(uint64_t l, uint64_t r, ::MIR::eBinOp op) {
+    template<typename T>
+    static T do_bitwise(T l, T r, ::MIR::eBinOp op) {
         switch(op)
         {
-        case ::MIR::eBinOp::ADD:    return l + r;
-        case ::MIR::eBinOp::SUB:    return l - r;
-        case ::MIR::eBinOp::MUL:    return l * r;
-        case ::MIR::eBinOp::DIV:    return l / r;
-        case ::MIR::eBinOp::MOD:    return l % r;
+        case ::MIR::eBinOp::BIT_AND:    return l & r;
+        case ::MIR::eBinOp::BIT_OR:     return l | r;
+        case ::MIR::eBinOp::BIT_XOR:    return l ^ r;
+        case ::MIR::eBinOp::BIT_SHL:    return l << r;
+        case ::MIR::eBinOp::BIT_SHR:    return l >> r;
         default:
-            LOG_BUG("Unexpected operation in Ops::do_unsigned");
+            LOG_BUG("Unexpected operation in Ops::do_bitwise");
         }
     }
 };
@@ -859,13 +860,10 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     Value   tmp_l, tmp_r;
                     auto v_l = state.get_value_ref_param(re.val_l, tmp_l, ty_l);
                     auto v_r = state.get_value_ref_param(re.val_r, tmp_r, ty_r);
-                    LOG_DEBUG(v_l << " ? " << v_r);
+                    LOG_DEBUG(v_l << " (" << ty_l <<") ? " << v_r << " (" << ty_r <<")");
 
                     switch(re.op)
                     {
-                    case ::MIR::eBinOp::BIT_SHL:
-                    case ::MIR::eBinOp::BIT_SHR:
-                        LOG_TODO("BinOp SHL/SHR - can have mismatched types - " << se.src);
                     case ::MIR::eBinOp::EQ:
                     case ::MIR::eBinOp::NE:
                     case ::MIR::eBinOp::GT:
@@ -878,8 +876,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
                         const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
                         const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
-                        auto reloc_l = alloc_l ? alloc_l.alloc().get_relocation(0) : AllocationPtr();
-                        auto reloc_r = alloc_r ? alloc_r.alloc().get_relocation(0) : AllocationPtr();
+                        auto reloc_l = alloc_l ? alloc_l.alloc().get_relocation(v_l.m_offset) : AllocationPtr();
+                        auto reloc_r = alloc_r ? alloc_r.alloc().get_relocation(v_r.m_offset) : AllocationPtr();
 
                         if( reloc_l != reloc_r )
                         {
@@ -949,6 +947,68 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         new_val = Value(::HIR::TypeRef(RawType::Bool));
                         new_val.write_u8(0, res_bool ? 1 : 0);
                         } break;
+                    case ::MIR::eBinOp::BIT_SHL:
+                    case ::MIR::eBinOp::BIT_SHR: {
+                        LOG_ASSERT(ty_l.wrappers.empty(), "Bitwise operator on non-primitive - " << ty_l);
+                        LOG_ASSERT(ty_r.wrappers.empty(), "Bitwise operator with non-primitive - " << ty_r);
+                        size_t max_bits = ty_r.get_size() * 8;
+                        uint8_t shift;
+                        auto check_cast = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
+                        switch(ty_r.inner_type)
+                        {
+                        case RawType::U64:  shift = check_cast(v_r.read_u64(0));    break;
+                        case RawType::U32:  shift = check_cast(v_r.read_u32(0));    break;
+                        case RawType::U16:  shift = check_cast(v_r.read_u16(0));    break;
+                        case RawType::U8 :  shift = check_cast(v_r.read_u8 (0));    break;
+                        case RawType::I64:  shift = check_cast(v_r.read_i64(0));    break;
+                        case RawType::I32:  shift = check_cast(v_r.read_i32(0));    break;
+                        case RawType::I16:  shift = check_cast(v_r.read_i16(0));    break;
+                        case RawType::I8 :  shift = check_cast(v_r.read_i8 (0));    break;
+                        case RawType::USize:  shift = check_cast(v_r.read_usize(0));    break;
+                        case RawType::ISize:  shift = check_cast(v_r.read_isize(0));    break;
+                        default:
+                            LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
+                        }
+                        new_val = Value(ty_l);
+                        switch(ty_l.inner_type)
+                        {
+                        case RawType::U64:  new_val.write_u64(0, Ops::do_bitwise(v_l.read_u64(0), static_cast<uint64_t>(shift), re.op));   break;
+                        case RawType::U32:  new_val.write_u32(0, Ops::do_bitwise(v_l.read_u32(0), static_cast<uint32_t>(shift), re.op));   break;
+                        case RawType::U16:  new_val.write_u16(0, Ops::do_bitwise(v_l.read_u16(0), static_cast<uint16_t>(shift), re.op));   break;
+                        case RawType::U8 :  new_val.write_u8 (0, Ops::do_bitwise(v_l.read_u8 (0), static_cast<uint8_t >(shift), re.op));   break;
+                        case RawType::USize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
+                        default:
+                            LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
+                        }
+                        } break;
+                    case ::MIR::eBinOp::BIT_AND:
+                    case ::MIR::eBinOp::BIT_OR:
+                    case ::MIR::eBinOp::BIT_XOR:
+                        LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
+                        LOG_ASSERT(ty_l.wrappers.empty(), "Bitwise operator on non-primitive - " << ty_l);
+                        new_val = Value(ty_l);
+                        switch(ty_l.inner_type)
+                        {
+                        case RawType::U64:
+                            new_val.write_u64( 0, Ops::do_bitwise(v_l.read_u64(0), v_r.read_u64(0), re.op) );
+                            break;
+                        case RawType::U32:
+                            new_val.write_u32( 0, static_cast<uint32_t>(Ops::do_bitwise(v_l.read_u32(0), v_r.read_u32(0), re.op)) );
+                            break;
+                        case RawType::U16:
+                            new_val.write_u16( 0, static_cast<uint16_t>(Ops::do_bitwise(v_l.read_u16(0), v_r.read_u16(0), re.op)) );
+                            break;
+                        case RawType::U8:
+                            new_val.write_u8 ( 0, static_cast<uint8_t >(Ops::do_bitwise(v_l.read_u8 (0), v_r.read_u8 (0), re.op)) );
+                            break;
+                        case RawType::USize:
+                            new_val.write_usize( 0, Ops::do_bitwise(v_l.read_usize(0), v_r.read_usize(0), re.op) );
+                            break;
+                        default:
+                            LOG_TODO("BinOp bitwise - " << se.src << " w/ " << ty_l);
+                        }
+
+                        break;
                     default:
                         LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
                         auto val_l = PrimitiveValueVirt::from_value(ty_l, v_l);
@@ -960,8 +1020,9 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         case ::MIR::eBinOp::MUL:    val_l.get().multiply( val_r.get() ); break;
                         case ::MIR::eBinOp::DIV:    val_l.get().divide( val_r.get() ); break;
                         case ::MIR::eBinOp::MOD:    val_l.get().modulo( val_r.get() ); break;
+
                         default:
-                            throw "";
+                            LOG_TODO("Unsupported binary operator?");
                         }
                         new_val = Value(ty_l);
                         val_l.get().write_to_value(new_val, 0);
@@ -1204,6 +1265,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             bb_idx = te;
             continue;
         TU_ARM(bb.terminator, Return, _te)
+            LOG_DEBUG("RETURN " << state.ret);
             return state.ret;
         TU_ARM(bb.terminator, If, te) {
             uint8_t v = state.get_value_ref(te.cond).read_u8(0);
@@ -1291,6 +1353,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
                 LOG_DEBUG("Call " << *fcn_p);
                 state.write_lvalue(te.ret_val, MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args)));
+                LOG_DEBUG("resume " << path);
             }
             bb_idx = te.ret_block;
             } continue;
@@ -1432,6 +1495,10 @@ Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name
         const auto& ty = ty_params.tys.at(0);
         alloc.alloc().write_value(ofs, ::std::move(data_val));
     }
+    else if( name == "uninit" )
+    {
+        return Value(ty_params.tys.at(0));
+    }
     // ----------------------------------------------------------------
     // Checked arithmatic
     else if( name == "add_with_overflow" )
@@ -1501,6 +1568,39 @@ Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name
         lhs.get().write_to_value(rv, 0);
     }
     // ----------------------------------------------------------------
+    // memcpy
+    else if( name == "copy_nonoverlapping" )
+    {
+        auto src_ofs = args.at(0).read_usize(0);
+        auto src_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        auto dst_ofs = args.at(1).read_usize(0);
+        auto dst_alloc = args.at(1).allocation.alloc().get_relocation(0);
+        auto byte_count = args.at(2).read_usize(0);
+
+        LOG_ASSERT(src_alloc, "Source of copy* must have an allocation");
+        LOG_ASSERT(dst_alloc, "Destination of copy* must be a memory allocation");
+        LOG_ASSERT(dst_alloc.is_alloc(), "Destination of copy* must be a memory allocation");
+
+        switch(src_alloc.get_ty())
+        {
+        case AllocationPtr::Ty::Allocation: {
+            auto v = src_alloc.alloc().read_value(src_ofs, byte_count);
+            dst_alloc.alloc().write_value(dst_ofs, ::std::move(v));
+            } break;
+        case AllocationPtr::Ty::StdString:
+            LOG_ASSERT(src_ofs <= src_alloc.str().size(), "");
+            LOG_ASSERT(byte_count <= src_alloc.str().size(), "");
+            LOG_ASSERT(src_ofs + byte_count <= src_alloc.str().size(), "");
+            dst_alloc.alloc().write_bytes(dst_ofs, src_alloc.str().data() + src_ofs, byte_count);
+            break;
+        case AllocationPtr::Ty::Function:
+            LOG_FATAL("Attempt to copy* a function");
+            break;
+        case AllocationPtr::Ty::Unused2:
+            LOG_BUG("Unused tag");
+            break;
+        }
+    }
     else
     {
         LOG_TODO("Call intrinsic \"" << name << "\"");
