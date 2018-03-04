@@ -119,6 +119,15 @@ AllocationPtr::~AllocationPtr()
 }
 
 
+void Allocation::resize(size_t new_size)
+{
+    //size_t old_size = this->size();
+    //size_t extra_bytes = (new_size > old_size ? new_size - old_size : 0);
+
+    this->data.resize( (new_size + 8-1) / 8 );
+    this->mask.resize( (new_size + 8-1) / 8 );
+}
+
 void Allocation::check_bytes_valid(size_t ofs, size_t size) const
 {
     if( !(ofs + size <= this->size()) ) {
@@ -452,7 +461,7 @@ void Value::mark_bytes_valid(size_t ofs, size_t size)
 Value Value::read_value(size_t ofs, size_t size) const
 {
     Value   rv;
-    LOG_DEBUG("(" << ofs << ", " << size << ") - " << *this);
+    //TRACE_FUNCTION_R(ofs << ", " << size << ") - " << *this, rv);
     if( this->allocation )
     {
         rv = this->allocation.alloc().read_value(ofs, size);
@@ -465,7 +474,6 @@ Value Value::read_value(size_t ofs, size_t size) const
         rv.direct_data.mask[0] = this->direct_data.mask[0];
         rv.direct_data.mask[1] = this->direct_data.mask[1];
     }
-    LOG_DEBUG("RETURN " << rv);
     return rv;
 }
 void Value::read_bytes(size_t ofs, void* dst, size_t count) const
@@ -568,6 +576,18 @@ void Value::write_usize(size_t ofs, uint64_t v)
             }
         }
         os.setf(flags);
+    }
+    return os;
+}
+extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
+{
+    if( v.m_alloc )
+    {
+        os << v.m_alloc.alloc();
+    }
+    else
+    {
+        os << *v.m_value;
     }
     return os;
 }

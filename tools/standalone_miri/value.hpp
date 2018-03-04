@@ -119,6 +119,8 @@ public:
         return AllocationPtr();
     }
 
+    void resize(size_t new_size);
+
     void check_bytes_valid(size_t ofs, size_t size) const;
     void mark_bytes_valid(size_t ofs, size_t size);
 
@@ -223,8 +225,13 @@ struct ValueRef
 
     ValueRef(AllocationPtr ptr, size_t ofs, size_t size):
         m_alloc(ptr),
+        m_value(nullptr),
         m_offset(ofs),
         m_size(size)
+    {
+    }
+    ValueRef(Value& val):
+        ValueRef(val, 0, val.size())
     {
     }
     ValueRef(Value& val, size_t ofs, size_t size):
@@ -273,3 +280,4 @@ struct ValueRef
     uint64_t read_usize(size_t ofs) const;
     int64_t read_isize(size_t ofs) const { return static_cast<int64_t>(read_usize(ofs)); }
 };
+extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v);
