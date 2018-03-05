@@ -1540,7 +1540,7 @@ bool MIR_Optimise_CommonStatements(::MIR::TypeResolve& state, ::MIR::Function& f
         bool skip = false;
         ::std::vector<size_t>   sources;
         // Find source blocks
-        for(size_t bb2_idx = 0; bb2_idx < fcn.blocks.size(); bb2_idx ++)
+        for(size_t bb2_idx = 0; bb2_idx < fcn.blocks.size() && !skip; bb2_idx ++)
         {
             const auto& blk = fcn.blocks[bb2_idx];
             // TODO: Handle non-Goto branches? (e.g. calls)
@@ -1566,6 +1566,7 @@ bool MIR_Optimise_CommonStatements(::MIR::TypeResolve& state, ::MIR::Function& f
             else
             {
                 visit_terminator_target(blk.terminator, [&](const auto& dst_idx) {
+                    // If this terminator points to the current BB, don't attempt to merge
                     if( dst_idx == bb_idx ) {
                         DEBUG(state << " BB" << bb2_idx << " doesn't end Goto - instead " << blk.terminator);
                         skip = true;
@@ -1576,6 +1577,8 @@ bool MIR_Optimise_CommonStatements(::MIR::TypeResolve& state, ::MIR::Function& f
 
         if( !skip && sources.size() > 1 )
         {
+            // TODO: Should this search for any common statements?
+            
             // Found a common assignment, add to the start and remove from sources.
             auto stmt = ::std::move(fcn.blocks[sources.front()].statements.back());
             MIR_DEBUG(state, "Move common final statements from " << sources << " to " << bb_idx << " - " << stmt);
