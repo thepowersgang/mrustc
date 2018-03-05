@@ -106,7 +106,7 @@ namespace {
                     Trans_Enumerate_ValItem(state, vi2, is_visible, [&](){ return e.path; });
                 }
             }
-        } break;
+            } break;
         TU_ARM(vi, StructConstant, e) {
             } break;
         TU_ARM(vi, StructConstructor, e) {
