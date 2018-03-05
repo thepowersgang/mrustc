@@ -30,6 +30,246 @@
 #define DUMP_AFTER_DONE     0
 #define CHECK_AFTER_DONE    2   // 1 = Check before GC, 2 = check before and after GC
 
+// ----
+// List of optimisations avaliable
+// ----
+bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal, const TransList* list=nullptr);
+bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn); // Eliminate useless temporaries
+bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_CommonStatements(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
+
+/// A minimum set of optimisations:
+/// - Inlines `#[inline(always)]` functions
+/// - Simplifies the call graph (by removing chained gotos)
+/// - Sorts blocks into a rough flow order
+void MIR_OptimiseMin(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
+{
+    static Span sp;
+    TRACE_FUNCTION_F(path);
+    ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
+
+    while( MIR_Optimise_Inlining(state, fcn, true) )
+    {
+        MIR_Cleanup(resolve, path, fcn, args, ret_type);
+        //MIR_Dump_Fcn(::std::cout, fcn);
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
+    }
+
+    MIR_Optimise_BlockSimplify(state, fcn);
+    MIR_Optimise_UnifyBlocks(state, fcn);
+
+    //MIR_Optimise_GarbageCollect_Partial(state, fcn);
+
+    MIR_Optimise_GarbageCollect(state, fcn);
+    //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
+    MIR_SortBlocks(resolve, path, fcn);
+
+#if CHECK_AFTER_DONE > 1
+    MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+    return ;
+}
+/// Perfom inlining only, using a list of monomorphised functions, then cleans up the flow graph
+///
+/// Returns true if any optimisation was performed
+bool MIR_OptimiseInline(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type, const TransList& list)
+{
+    static Span sp;
+    bool rv = false;
+    TRACE_FUNCTION_FR(path, rv);
+    ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
+
+    while( MIR_Optimise_Inlining(state, fcn, false, &list) )
+    {
+        MIR_Cleanup(resolve, path, fcn, args, ret_type);
+#if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+        rv = true;
+    }
+
+    if( rv )
+    {
+        // - Constant propagation (inlining may have lead to some more constant information
+        MIR_Optimise_ConstPropagte(state, fcn);
+        // - Unify non-overlapping locals
+        if(MIR_Optimise_UnifyTemporaries(state, fcn))
+        {
+#if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+        }
+        // - Remove no-op statements
+        MIR_Optimise_NoopRemoval(state, fcn);
+
+        // - Simplify the CFG then unify equal blocks
+        MIR_Optimise_BlockSimplify(state, fcn);
+        MIR_Optimise_UnifyBlocks(state, fcn);
+
+        // - Remove dead code
+        MIR_Optimise_GarbageCollect(state, fcn);
+        // - Sort blocks into a rough flow
+        MIR_SortBlocks(resolve, path, fcn);
+
+#if CHECK_AFTER_DONE > 1
+        //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+    }
+
+    return rv;
+}
+void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
+{
+    static Span sp;
+    TRACE_FUNCTION_F(path);
+    ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
+
+    bool change_happened;
+    unsigned int pass_num = 0;
+    do
+    {
+        MIR_ASSERT(state, pass_num < 100, "Too many MIR optimisation iterations");
+
+        change_happened = false;
+        TRACE_FUNCTION_FR("Pass " << pass_num, change_happened);
+
+        // >> Simplify call graph (removes gotos to blocks with a single use)
+        MIR_Optimise_BlockSimplify(state, fcn);
+
+        // >> Apply known constants
+        change_happened |= MIR_Optimise_ConstPropagte(state, fcn);
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
+
+        // Attempt to remove useless temporaries
+        while( MIR_Optimise_DeTemporary(state, fcn) )
+        {
+            change_happened = true;
+        }
+#if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+
+        // TODO: Split apart aggregates (just tuples?) where it's never used
+        // as an aggregate. (Written once, never used directly)
+        change_happened |= MIR_Optimise_SplitAggregates(state, fcn);
+
+        // >> Replace values from composites if they're known
+        //   - Undoes the inefficiencies from the `match (a, b) { ... }` pattern
+        change_happened |= MIR_Optimise_PropagateKnownValues(state, fcn);
+#if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+
+        // TODO: Convert `&mut *mut_foo` into `mut_foo` if the source is movable and not used afterwards
+
+#if DUMP_BEFORE_ALL || DUMP_BEFORE_PSA
+        if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
+#endif
+        // >> Propagate/remove dead assignments
+        while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
+            change_happened = true;
+#if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+
+        // >> Move common statements (assignments) across gotos.
+        change_happened |= MIR_Optimise_CommonStatements(state, fcn);
+
+        // >> Combine Duplicate Blocks
+        change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
+        // >> Remove assignments of unsed drop flags
+        change_happened |= MIR_Optimise_DeadDropFlags(state, fcn);
+        // >> Remove assignments that are never read
+        change_happened |= MIR_Optimise_DeadAssignments(state, fcn);
+        // >> Remove no-op assignments
+        change_happened |= MIR_Optimise_NoopRemoval(state, fcn);
+
+        #if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+        #endif
+
+        // >> Inline short functions
+        if( !change_happened )
+        {
+            bool inline_happened = MIR_Optimise_Inlining(state, fcn, false);
+            if( inline_happened )
+            {
+                // Apply cleanup again (as monomorpisation in inlining may have exposed a vtable call)
+                MIR_Cleanup(resolve, path, fcn, args, ret_type);
+                //MIR_Dump_Fcn(::std::cout, fcn);
+                change_happened = true;
+            }
+            #if CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+            #endif
+        }
+
+        if( change_happened )
+        {
+            #if DUMP_AFTER_PASS
+            if( debug_enabled() ) {
+                MIR_Dump_Fcn(::std::cout, fcn);
+            }
+            #endif
+            #if CHECK_AFTER_PASS && !CHECK_AFTER_ALL
+            MIR_Validate(resolve, path, fcn, args, ret_type);
+            #endif
+        }
+
+        MIR_Optimise_GarbageCollect_Partial(state, fcn);
+        pass_num += 1;
+    } while( change_happened );
+
+    // Run UnifyTemporaries last, then unify blocks, then run some
+    // optimisations that might be affected
+    if(MIR_Optimise_UnifyTemporaries(state, fcn))
+    {
+#if CHECK_AFTER_ALL
+        MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+        MIR_Optimise_UnifyBlocks(state, fcn);
+        //MIR_Optimise_ConstPropagte(state, fcn);
+        MIR_Optimise_NoopRemoval(state, fcn);
+    }
+
+
+    #if DUMP_AFTER_DONE
+    if( debug_enabled() ) {
+        MIR_Dump_Fcn(::std::cout, fcn);
+    }
+    #endif
+    #if CHECK_AFTER_DONE
+    // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
+    MIR_Validate(resolve, path, fcn, args, ret_type);
+    #endif
+    // GC pass on blocks and variables
+    // - Find unused blocks, then delete and rewrite all references.
+    MIR_Optimise_GarbageCollect(state, fcn);
+
+    //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
+
+    MIR_SortBlocks(resolve, path, fcn);
+#if CHECK_AFTER_DONE > 1
+    MIR_Validate(resolve, path, fcn, args, ret_type);
+#endif
+}
+
 namespace {
     ::MIR::BasicBlockId get_new_target(const ::MIR::TypeResolve& state, ::MIR::BasicBlockId bb)
     {
@@ -517,231 +757,6 @@ namespace {
     }
 }
 
-// TODO: Move this block of definitions+code above the namespace above.
-
-bool MIR_Optimise_BlockSimplify(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool minimal, const TransList* list=nullptr);
-bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn); // Eliminate useless temporaries
-bool MIR_Optimise_UnifyTemporaries(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_CommonStatements(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_UnifyBlocks(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_DeadAssignments(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_NoopRemoval(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_GarbageCollect_Partial(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn);
-
-/// A minimum set of optimisations:
-/// - Inlines `#[inline(always)]` functions
-/// - Simplifies the call graph (by removing chained gotos)
-/// - Sorts blocks into a rough flow order
-void MIR_OptimiseMin(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
-{
-    static Span sp;
-    TRACE_FUNCTION_F(path);
-    ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
-
-    while( MIR_Optimise_Inlining(state, fcn, true) )
-    {
-        MIR_Cleanup(resolve, path, fcn, args, ret_type);
-        //MIR_Dump_Fcn(::std::cout, fcn);
-        #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
-    }
-
-    MIR_Optimise_BlockSimplify(state, fcn);
-    MIR_Optimise_UnifyBlocks(state, fcn);
-
-    //MIR_Optimise_GarbageCollect_Partial(state, fcn);
-
-    MIR_Optimise_GarbageCollect(state, fcn);
-    //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
-    MIR_SortBlocks(resolve, path, fcn);
-
-#if CHECK_AFTER_DONE > 1
-    MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
-    return ;
-}
-/// Optimise doing inlining then cleaning up the mess
-///
-/// Returns true if any optimisation was performed
-///
-/// NOTE: This function can only be called after enumeration and monomorphisation, so it takes the TransList by reference not nullable pointer
-bool MIR_OptimiseInline(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type, const TransList& list)
-{
-    static Span sp;
-    bool rv = false;
-    TRACE_FUNCTION_FR(path, rv);
-    ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
-
-    while( MIR_Optimise_Inlining(state, fcn, false, &list) )
-    {
-        MIR_Cleanup(resolve, path, fcn, args, ret_type);
-#if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
-        rv = true;
-    }
-
-    if( rv )
-    {
-        MIR_Optimise_BlockSimplify(state, fcn);
-        MIR_Optimise_UnifyBlocks(state, fcn);
-
-        MIR_Optimise_GarbageCollect(state, fcn);
-        //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
-        MIR_SortBlocks(resolve, path, fcn);
-
-#if CHECK_AFTER_DONE > 1
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
-    }
-
-    return rv;
-}
-void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
-{
-    static Span sp;
-    TRACE_FUNCTION_F(path);
-    ::MIR::TypeResolve   state { sp, resolve, FMT_CB(ss, ss << path;), ret_type, args, fcn };
-
-    bool change_happened;
-    unsigned int pass_num = 0;
-    do
-    {
-        MIR_ASSERT(state, pass_num < 100, "Too many MIR optimisation iterations");
-
-        change_happened = false;
-        TRACE_FUNCTION_FR("Pass " << pass_num, change_happened);
-
-        // >> Simplify call graph (removes gotos to blocks with a single use)
-        MIR_Optimise_BlockSimplify(state, fcn);
-
-        // >> Apply known constants
-        change_happened |= MIR_Optimise_ConstPropagte(state, fcn);
-        #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
-
-        // Attempt to remove useless temporaries
-        while( MIR_Optimise_DeTemporary(state, fcn) )
-        {
-            change_happened = true;
-        }
-#if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
-
-        // TODO: Split apart aggregates (just tuples?) where it's never used
-        // as an aggregate. (Written once, never used directly)
-        change_happened |= MIR_Optimise_SplitAggregates(state, fcn);
-
-        // >> Replace values from composites if they're known
-        //   - Undoes the inefficiencies from the `match (a, b) { ... }` pattern
-        change_happened |= MIR_Optimise_PropagateKnownValues(state, fcn);
-#if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
-
-        // TODO: Convert `&mut *mut_foo` into `mut_foo` if the source is movable and not used afterwards
-
-#if DUMP_BEFORE_ALL || DUMP_BEFORE_PSA
-        if( debug_enabled() ) MIR_Dump_Fcn(::std::cout, fcn);
-#endif
-        // >> Propagate/remove dead assignments
-        while( MIR_Optimise_PropagateSingleAssignments(state, fcn) )
-            change_happened = true;
-#if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
-
-        // >> Move common statements (assignments) across gotos.
-        change_happened |= MIR_Optimise_CommonStatements(state, fcn);
-
-        // >> Combine Duplicate Blocks
-        change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
-        // >> Remove assignments of unsed drop flags
-        change_happened |= MIR_Optimise_DeadDropFlags(state, fcn);
-        // >> Remove assignments that are never read
-        change_happened |= MIR_Optimise_DeadAssignments(state, fcn);
-        // >> Remove no-op assignments
-        change_happened |= MIR_Optimise_NoopRemoval(state, fcn);
-
-        #if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-        #endif
-
-        // >> Inline short functions
-        if( !change_happened )
-        {
-            bool inline_happened = MIR_Optimise_Inlining(state, fcn, false);
-            if( inline_happened )
-            {
-                // Apply cleanup again (as monomorpisation in inlining may have exposed a vtable call)
-                MIR_Cleanup(resolve, path, fcn, args, ret_type);
-                //MIR_Dump_Fcn(::std::cout, fcn);
-                change_happened = true;
-            }
-            #if CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-            #endif
-        }
-
-        if( change_happened )
-        {
-            #if DUMP_AFTER_PASS
-            if( debug_enabled() ) {
-                MIR_Dump_Fcn(::std::cout, fcn);
-            }
-            #endif
-            #if CHECK_AFTER_PASS && !CHECK_AFTER_ALL
-            MIR_Validate(resolve, path, fcn, args, ret_type);
-            #endif
-        }
-
-        MIR_Optimise_GarbageCollect_Partial(state, fcn);
-        pass_num += 1;
-    } while( change_happened );
-
-    // Run UnifyTemporaries last, then unify blocks, then run some
-    // optimisations that might be affected
-    if(MIR_Optimise_UnifyTemporaries(state, fcn))
-    {
-#if CHECK_AFTER_ALL
-        MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
-        MIR_Optimise_UnifyBlocks(state, fcn);
-        //MIR_Optimise_ConstPropagte(state, fcn);
-        MIR_Optimise_NoopRemoval(state, fcn);
-    }
-
-
-    #if DUMP_AFTER_DONE
-    if( debug_enabled() ) {
-        MIR_Dump_Fcn(::std::cout, fcn);
-    }
-    #endif
-    #if CHECK_AFTER_DONE
-    // DEFENCE: Run validation _before_ GC (so validation errors refer to the pre-gc numbers)
-    MIR_Validate(resolve, path, fcn, args, ret_type);
-    #endif
-    // GC pass on blocks and variables
-    // - Find unused blocks, then delete and rewrite all references.
-    MIR_Optimise_GarbageCollect(state, fcn);
-
-    //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
-
-    MIR_SortBlocks(resolve, path, fcn);
-#if CHECK_AFTER_DONE > 1
-    MIR_Validate(resolve, path, fcn, args, ret_type);
-#endif
-}
 
 // --------------------------------------------------------------------
 // Performs basic simplications on the call graph (merging/removing blocks)
