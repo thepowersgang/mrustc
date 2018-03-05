@@ -589,16 +589,19 @@ bool MIR_OptimiseInline(const StaticTraitResolve& resolve, const ::HIR::ItemPath
         rv = true;
     }
 
-    MIR_Optimise_BlockSimplify(state, fcn);
-    MIR_Optimise_UnifyBlocks(state, fcn);
+    if( rv )
+    {
+        MIR_Optimise_BlockSimplify(state, fcn);
+        MIR_Optimise_UnifyBlocks(state, fcn);
 
-    MIR_Optimise_GarbageCollect(state, fcn);
-    //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
-    MIR_SortBlocks(resolve, path, fcn);
+        MIR_Optimise_GarbageCollect(state, fcn);
+        //MIR_Validate_Full(resolve, path, fcn, args, ret_type);
+        MIR_SortBlocks(resolve, path, fcn);
 
 #if CHECK_AFTER_DONE > 1
-    MIR_Validate(resolve, path, fcn, args, ret_type);
+        MIR_Validate(resolve, path, fcn, args, ret_type);
 #endif
+    }
 
     return rv;
 }
@@ -3731,7 +3734,7 @@ void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
         for(auto& fcn_ent : list.m_functions)
         {
             const auto& path = fcn_ent.first;
-            const auto& pp = fcn_ent.second->pp;
+            //const auto& pp = fcn_ent.second->pp;
             auto& hir_fcn = *const_cast<::HIR::Function*>(fcn_ent.second->ptr);
             auto& mono_fcn = fcn_ent.second->monomorphised;
 
