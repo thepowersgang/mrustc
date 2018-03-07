@@ -119,7 +119,9 @@ namespace HIR {
 
         size_t get_size(size_t ofs=0) const;
         bool has_slice_meta() const;    // The attached metadata is a count
+        const TypeRef* get_meta_type() const;
         TypeRef get_inner() const;
+        TypeRef wrap(TypeWrapper::Ty ty, size_t size) const;
         TypeRef get_field(size_t idx, size_t& ofs) const;
 
         bool operator==(const RawType& x) const {

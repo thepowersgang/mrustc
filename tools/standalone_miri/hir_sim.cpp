@@ -74,7 +74,9 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
                 {
                     return POINTER_SIZE;
                 }
-                LOG_TODO("Handle unsized struct " << *this);
+
+                // TODO: Ideally, this inner type wouldn't be unsized itself... but checking that would be interesting.
+                return POINTER_SIZE + this->composite_type->dst_meta.get_size();
             }
             else if( this->inner_type == RawType::Str )
                 return POINTER_SIZE*2;
@@ -94,7 +96,7 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
             return POINTER_SIZE;
         }
     case TypeWrapper::Ty::Slice:
-        throw "Invalid";
+        LOG_BUG("Getting size of a slice - " << *this);
     }
     throw "";
 }
@@ -128,6 +130,40 @@ HIR::TypeRef HIR::TypeRef::get_inner() const
     ity.wrappers.erase(ity.wrappers.begin());
     return ity;
 }
+HIR::TypeRef HIR::TypeRef::wrap(TypeWrapper::Ty ty, size_t size) const
+{
+    auto rv = *this;
+    rv.wrappers.insert(rv.wrappers.begin(), { ty, size });
+    return rv;
+}
+const HIR::TypeRef* HIR::TypeRef::get_meta_type() const
+{
+    static ::HIR::TypeRef   static_usize = ::HIR::TypeRef(RawType::USize);
+    if( this->wrappers.empty() )
+    {
+        switch(this->inner_type)
+        {
+        case RawType::Composite:
+            if( this->composite_type->dst_meta == RawType::Unreachable )
+                return nullptr;
+            return &this->composite_type->dst_meta;
+        case RawType::TraitObject:
+            LOG_TODO("get_meta_type on TraitObject - " << *this);
+        case RawType::Str:
+            return &static_usize;
+        default:
+            return nullptr;
+        }
+    }
+    else if( this->wrappers[0].type == TypeWrapper::Ty::Slice )
+    {
+        return &static_usize;
+    }
+    else
+    {
+        return nullptr;
+    }
+}
 
 HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
 {
@@ -135,6 +171,7 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
     {
         if( this->inner_type == RawType::Composite )
         {
+            LOG_ASSERT(idx < this->composite_type->fields.size(), "Field " << idx << " out of bounds in type " << *this);
             ofs = this->composite_type->fields.at(idx).first;
             return this->composite_type->fields.at(idx).second;
         }
