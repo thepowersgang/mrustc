@@ -191,7 +191,7 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
                 else if( vi.second.is_Function() && vi.second.as_Function().m_params.m_types.size() > 0 )
                     ;
                 // VTable, magic
-                else if( vi.first == "#vtable" )
+                else if( vi.first == "vtable#" )
                     ;
                 else
                 {
@@ -1226,7 +1226,7 @@ namespace {
                         is_spec = it->second.is_specialisable;
                         ),
                     (Static,
-                        if( pe->item == "#vtable" ) {
+                        if( pe->item == "vtable#" ) {
                             is_spec = true;
                             break;
                         }
@@ -1281,7 +1281,7 @@ namespace {
                 TODO(sp, "Associated constant - " << path);
                 ),
             (Static,
-                if( pe->item == "#vtable" )
+                if( pe->item == "vtable#" )
                 {
                     DEBUG("VTable, autogen");
                     return EntPtr::make_AutoGenerate( {} );
@@ -1357,7 +1357,7 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
             state.rv.m_constructors.insert( mv$(path_mono.m_data.as_Generic()) );
         }
         // - <T as U>::#vtable
-        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().item == "#vtable" )
+        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().item == "vtable#" )
         {
             if( state.rv.add_vtable( path_mono.clone(), {} ) )
             {

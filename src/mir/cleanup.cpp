@@ -376,7 +376,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
                 ::HIR::TypeRef tmp;
                 const auto& ty = state.get_static_type(tmp, path);
 
-                auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : ty.clone(), tep->m_trait.m_path.clone(), "#vtable");
+                auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : ty.clone(), tep->m_trait.m_path.clone(), "vtable#");
 
                 auto vtable_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(mv$(vtable_path)) );
 
@@ -678,7 +678,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             {
                 MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
 
-                ::HIR::Path vtable { src_ty.clone(), trait_path.m_path.clone(), "#vtable" };
+                ::HIR::Path vtable { src_ty.clone(), trait_path.m_path.clone(), "vtable#" };
                 out_meta_val = ::MIR::Constant::make_ItemAddr(mv$(vtable));
             }
         }
