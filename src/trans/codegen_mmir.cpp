@@ -197,35 +197,102 @@ namespace
                     const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
                     MIR_ASSERT(*m_mir_res, repr, "No repr for tuple " << ty);
 
+                    bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, ty);
+                    auto drop_glue_path = ::HIR::Path(ty.clone(), "drop_glue#");
+
                     m_of << "type " << ty << " {\n";
                     m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
+                    if( has_drop_glue )
+                    {
+                        m_of << "\tDROP " << drop_glue_path << ";\n";
+                    }
                     for(const auto& e : repr->fields)
                     {
                         m_of << "\t" << e.offset << " = " << e.ty << ";\n";
                     }
                     m_of << "}\n";
+
+                    if( has_drop_glue )
+                    {
+                        m_of << "fn " << drop_glue_path << "(&move " << ty << ") {\n";
+                        m_of << "\tlet unit: ();\n";
+
+                        m_of << "\t0: {\n";
+
+                        auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
+                        auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                        for(const auto& e : repr->fields)
+                        {
+                            if( !m_resolve.type_is_copy(sp, e.ty) ) {
+                                m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
+                            }
+                            fld_lv.as_Field().field_index += 1;
+                        }
+                        m_of << "\t\t""RETURN\n";
+                        m_of << "\t}\n";
+                        m_of << "}\n";
+                    }
                 }
-#if 0
-                auto drop_glue_path = ::HIR::Path(ty.clone(), "#drop_glue");
-                auto args = ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> >();
-                auto ty_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ty.clone());
-                ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), ty_ptr, args, empty_fcn };
-                m_mir_res = &mir_res;
-                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {";
-                auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-                auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
-                for(const auto& ity : te)
-                {
-                    emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false, 1);
-                    fld_lv.as_Field().field_index ++;
-                }
-                m_of << "}\n";
-#endif
             }
             else {
             }
 
             m_mir_res = nullptr;
+        }
+
+        // TODO: Move this to a more common location
+        MetadataType metadata_type(const ::HIR::TypeRef& ty) const
+        {
+            if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
+                return MetadataType::Slice;
+            }
+            else if( ty.m_data.is_TraitObject() ) {
+                return MetadataType::TraitObject;
+            }
+            else if( ty.m_data.is_Path() )
+            {
+                const auto& te = ty.m_data.as_Path();
+                switch( te.binding.tag() )
+                {
+                TU_ARM(te.binding, Struct, tpb) {
+                    switch( tpb->m_struct_markings.dst_type )
+                    {
+                    case ::HIR::StructMarkings::DstType::None:
+                        return MetadataType::None;
+                    case ::HIR::StructMarkings::DstType::Possible: {
+                        // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
+                        const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
+                        const auto& str = *ty.m_data.as_Path().binding.as_Struct();
+                        auto monomorph = [&](const auto& tpl) {
+                            auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
+                            m_resolve.expand_associated_types(sp, rv);
+                            return rv;
+                        };
+                        TU_MATCHA( (str.m_data), (se),
+                            (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
+                            (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
+                            (Named, return metadata_type( monomorph(se.back().second.ent) ); )
+                        )
+                            //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
+                            return MetadataType::None;
+                    }
+                    case ::HIR::StructMarkings::DstType::Slice:
+                        return MetadataType::Slice;
+                    case ::HIR::StructMarkings::DstType::TraitObject:
+                        return MetadataType::TraitObject;
+                    }
+                    } break;
+                TU_ARM(te.binding, Union, tpb)
+                    return MetadataType::None;
+                TU_ARM(te.binding, Enum, tpb)
+                    return MetadataType::None;
+                default:
+                    MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
+                }
+            }
+            else {
+                return MetadataType::None;
+            }
         }
 
         void emit_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
@@ -236,20 +303,51 @@ namespace
 
             auto drop_glue_path = ::HIR::Path(::HIR::TypeRef(p.clone(), &item), "drop_glue#");
 
-            bool is_vtable; {
-                const auto& lc = p.m_path.m_components.back();
-                is_vtable = (lc.size() > 7 && ::std::strcmp(lc.c_str() + lc.size() - 7, "#vtable") == 0);
-            };
-
             TRACE_FUNCTION_F(p);
             ::HIR::TypeRef  ty = ::HIR::TypeRef::new_path(p.clone(), &item);
 
-            // HACK: For vtables, insert the alignment and size at the start
-            // TODO: Add this to the vtable in the HIR instead
-            if(is_vtable)
-            {
-                //m_of << "\tVTABLE_HDR hdr;\n";
-            }
+            struct H {
+                static ::HIR::TypeRef get_metadata_type(const Span& sp, const ::StaticTraitResolve& resolve, const TypeRepr& r)
+                {
+                    ASSERT_BUG(sp, r.fields.size() > 0, "");
+                    auto& t = r.fields.back().ty;
+                    if( t == ::HIR::CoreType::Str ) {
+                        return ::HIR::CoreType::Usize;
+                    }
+                    else if( t.m_data.is_Slice() ) {
+                        return ::HIR::CoreType::Usize;
+                    }
+                    else if( t.m_data.is_TraitObject() ) { 
+                        const auto& te = t.m_data.as_TraitObject();
+                        //auto vtp = t.m_data.as_TraitObject().m_trait.m_path;
+
+                        auto vtable_gp = te.m_trait.m_path.clone();
+                        vtable_gp.m_path.m_components.back() += "#vtable";
+                        const auto& trait = resolve.m_crate.get_trait_by_path(sp, te.m_trait.m_path.m_path);
+                        vtable_gp.m_params.m_types.resize( vtable_gp.m_params.m_types.size() + trait.m_type_indexes.size() );
+                        for(const auto& ty : trait.m_type_indexes) {
+                            auto aty = te.m_trait.m_type_bounds.at(ty.first).clone();
+                            vtable_gp.m_params.m_types.at(ty.second) = ::std::move(aty);
+                        }
+                        for(auto& e : vtable_gp.m_params.m_types)
+                        {
+                            ASSERT_BUG(sp, e != ::HIR::TypeRef(), "");
+                        }
+
+                        const auto& vtable_ref = resolve.m_crate.get_struct_by_path(sp, vtable_gp.m_path);
+                        return ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_path( ::std::move(vtable_gp), &vtable_ref ));
+                    }
+                    else if( t.m_data.is_Path() ) {
+                        auto* repr = Target_GetTypeRepr(sp, resolve, t);
+                        ASSERT_BUG(sp, repr, "No repr for " << t);
+                        return get_metadata_type(sp, resolve, *repr);
+                    }
+                    else {
+                        BUG(sp, "Unexpected type in get_metadata_type - " << t);
+                    }
+                }
+            };
+
 
             // TODO: Generate the drop glue (and determine if there is any)
             bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, ty);
@@ -258,6 +356,10 @@ namespace
             MIR_ASSERT(*m_mir_res, repr, "No repr for struct " << ty);
             m_of << "type " << p << " {\n";
             m_of << "\tSIZE " << repr->size << ", ALIGN " << repr->align << ";\n";
+            if( repr->size == SIZE_MAX )
+            {
+                m_of << "\tDSTMETA " << H::get_metadata_type(sp, m_resolve, *repr) << ";\n";
+            }
             if( has_drop_glue )
             {
                 m_of << "\tDROP " << drop_glue_path << ";\n";
@@ -319,10 +421,10 @@ namespace
                     auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
                     for(const auto& e : repr->fields)
                     {
-                        fld_lv.as_Field().field_index += 1;
                         if( !m_resolve.type_is_copy(sp, e.ty) ) {
                             m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                         }
+                        fld_lv.as_Field().field_index += 1;
                     }
                 }
                 m_of << "\t\t""RETURN\n";
@@ -432,7 +534,7 @@ namespace
                     m_of << "\\0";
                 }
                 m_of << "\";\n";
-                m_of << "\t#" << int(1 - e.zero_variant) << ";\n";
+                m_of << "\t#" << int(1 - e.zero_variant) << " =" << int(1 - e.zero_variant) << ";\n";
                 } break;
             }
             m_of << "}\n";
@@ -913,7 +1015,7 @@ namespace
                             m_of << "DSTPTR " << fmt(e.val);
                             break;
                         TU_ARM(se.src, MakeDst, e)
-                            m_of << "MAKEDST " << fmt(e.ptr_val) << ", " << fmt(e.ptr_val);
+                            m_of << "MAKEDST " << fmt(e.ptr_val) << ", " << fmt(e.meta_val);
                             break;
                         TU_ARM(se.src, Variant, e)
                             m_of << "VARIANT " << e.path << " " << e.index << " " << fmt(e.val);

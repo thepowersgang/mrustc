@@ -165,7 +165,7 @@ namespace {
                                 ) );
                             ),
                         (Static,
-                            if( vi.first != "#vtable" )
+                            if( vi.first != "vtable#" )
                             {
                                 TODO(Span(), "Associated static in vtable");
                             }
@@ -229,7 +229,7 @@ namespace {
             ::HIR::GenericPath  path( mv$(item_path), mv$(params) );
 
             tr.m_values.insert( ::std::make_pair(
-                "#vtable",
+                "vtable#",
                 ::HIR::TraitValueItem(::HIR::Static { ::HIR::Linkage(), false, ::HIR::TypeRef( mv$(path) ), {},{} })
                 ) );
         }
@@ -269,7 +269,7 @@ namespace {
                 }
 
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
-                impl.m_statics.insert(::std::make_pair( "#vtable", ::HIR::TraitImpl::ImplEnt<::HIR::Static> { true, ::HIR::Static {
+                impl.m_statics.insert(::std::make_pair( "vtable#", ::HIR::TraitImpl::ImplEnt<::HIR::Static> { true, ::HIR::Static {
                     ::HIR::Linkage(),
                     false,
                     ::HIR::TypeRef::new_path(::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref),

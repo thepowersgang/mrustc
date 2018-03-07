@@ -13,6 +13,7 @@
  * $P = + symbol
  * $E = = symbol
  * $C = , symbol
+ * $H = # symbol
  * $pL/$pR = Left/right paren
  * $aL/$aR = Left/right angle (<>)
  */
@@ -104,10 +105,8 @@ namespace {
             ss << "_as_";
             ss << Trans_Mangle(pe.trait);
             ss << "$aR";
-            if( pe.item[0] == '#' )
-                ss << (pe.item.size()-1+2) << "$H" << (pe.item.c_str()+1);
-            else
-                ss << pe.item;
+            auto v = escape_str(pe.item);
+            ss << v.size() << v;
             ss << emit_params(pe.params);
             );
         ),
@@ -116,10 +115,8 @@ namespace {
             ss << "_ZRI$aL";
             ss << Trans_Mangle(*pe.type);
             ss << "$aR";
-            if( pe.item[0] == '#' )
-                ss << (pe.item.size()-1+2) << "$H" << (pe.item.c_str()+1);
-            else
-                ss << pe.item;
+            auto v = escape_str(pe.item);
+            ss << v.size() << v;
             ss << emit_params(pe.params);
             );
         )

@@ -1651,7 +1651,7 @@ namespace {
                             const auto& trait_path = to.m_trait.m_path;
                             MIR_ASSERT(*m_mir_res, vi.is_Static(), "BorrowOf returning &TraitObject not of a static - " << pe.m_path << " is " << vi.tag_str());
                             const auto& stat = vi.as_Static();
-                            auto vtable_path = ::HIR::Path(stat.m_type.clone(), trait_path.clone(), "#vtable");
+                            auto vtable_path = ::HIR::Path(stat.m_type.clone(), trait_path.clone(), "vtable#");
                             m_of << "{ &" << Trans_Mangle( params.monomorph(m_resolve, e)) << ", &" << Trans_Mangle(vtable_path) << "}";
                             return ;
                         }
