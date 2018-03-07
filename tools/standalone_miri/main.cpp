@@ -60,7 +60,7 @@ int main(int argc, const char* argv[])
     catch(const DebugExceptionError& /*e*/)
     {
         ::std::cerr << "Error encountered" << ::std::endl;
-        throw;
+        return 1;
     }
 
     return 0;
@@ -291,7 +291,8 @@ struct Ops {
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
 {
     Value   ret;
-    TRACE_FUNCTION_R(path, path << " = " << ret);
+
+    const auto& fcn = modtree.get_function(path);
 
 
     // TODO: Support overriding certain functions
@@ -304,17 +305,18 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         }
     }
 
-    const auto& fcn = modtree.get_function(path);
-    for(size_t i = 0; i < args.size(); i ++)
-    {
-        LOG_DEBUG("- Argument(" << i << ") = " << args[i]);
-    }
-
     if( fcn.external.link_name != "" )
     {
         // External function!
         ret = MIRI_Invoke_Extern(fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        LOG_DEBUG(path << " = " << ret);
         return ret;
+    }
+
+    TRACE_FUNCTION_R(path, path << " = " << ret);
+    for(size_t i = 0; i < args.size(); i ++)
+    {
+        LOG_DEBUG("- Argument(" << i << ") = " << args[i]);
     }
 
     ret = Value(fcn.ret_ty == RawType::Unreachable ? ::HIR::TypeRef() : fcn.ret_ty);
@@ -393,10 +395,16 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             TU_ARM(lv, Field, e) {
                 ::HIR::TypeRef  composite_ty;
                 auto base_val = get_value_and_type(*e.val, composite_ty);
-                LOG_DEBUG("Field - " << composite_ty);
+                // TODO: if there's metadata present in the base, but the inner doesn't have metadata, clear the metadata
                 size_t inner_ofs;
                 ty = composite_ty.get_field(e.field_index, inner_ofs);
+                LOG_DEBUG("Field - " << composite_ty << "#" << e.field_index << " = @" << inner_ofs << " " << ty);
                 base_val.m_offset += inner_ofs;
+                if( !ty.get_meta_type() )
+                {
+                    LOG_ASSERT(base_val.m_size >= ty.get_size(), "Field didn't fit in the value - " << ty.get_size() << " required, but " << base_val.m_size << " avail");
+                    base_val.m_size = ty.get_size();
+                }
                 return base_val;
                 }
             TU_ARM(lv, Downcast, e) {
@@ -413,33 +421,46 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 ::HIR::TypeRef  ptr_ty;
                 auto val = get_value_and_type(*e.val, ptr_ty);
                 ty = ptr_ty.get_inner();
-                // TODO: Slices and slice-like types have the same logic.
-                if( ty == RawType::Str || (!ty.wrappers.empty() && ty.wrappers.front().type == TypeWrapper::Ty::Slice) )
+                LOG_DEBUG("val = " << val);
+
+                LOG_ASSERT(val.m_size >= POINTER_SIZE, "Deref of a value that doesn't fit a pointer - " << ty);
+                size_t ofs = val.read_usize(0);
+
+                // There MUST be a relocation at this point with a valid allocation.
+                auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
+                LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
+                LOG_ASSERT(val_alloc.is_alloc(), "Deref of a value with a non-data allocation");
+                LOG_TRACE("Deref " << val_alloc.alloc() << " + " << ofs << " to give value of type " << ty);
+                auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
+                LOG_ASSERT(alloc, "Deref of a value with no relocation");
+                if( alloc.is_alloc() )
                 {
-                    LOG_ASSERT(val.m_size == 2*POINTER_SIZE, "Deref of " << ty << " that isn't a fat-pointer sized value");
-                    // There MUST be a relocation at this point with a valid allocation.
-                    auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
-                    LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
-                    LOG_TRACE("Deref " << val_alloc.alloc());
-                    auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
-                    LOG_ASSERT(alloc, "Deref of a value with no relocation");
-                    size_t ofs = val.read_usize(0);
-                    size_t size = val.read_usize(POINTER_SIZE);
-                    return ValueRef(::std::move(alloc), ofs, size);
+                    LOG_DEBUG("> " << lv << " alloc=" << alloc.alloc());
                 }
-                // TODO: Trait objects and trait-object likes
+                size_t size;
+
+                const auto* meta_ty = ty.get_meta_type();
+                ::std::shared_ptr<Value>    meta_val;
+                // If the type has metadata, store it.
+                if( meta_ty )
+                {
+                    auto meta_size = meta_ty->get_size();
+                    LOG_ASSERT(val.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
+                    meta_val = ::std::make_shared<Value>( val.read_value(POINTER_SIZE, meta_size) );
+
+                    // TODO: Get a more sane size from the metadata
+                    LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
+                    size = alloc.get_size() - ofs;
+                }
                 else
                 {
-                    LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value");
-                    // There MUST be a relocation at this point with a valid allocation.
-                    auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
-                    LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
-                    LOG_TRACE("Deref " << val_alloc.alloc());
-                    auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
-                    LOG_ASSERT(alloc, "Deref of a value with no relocation");
-                    size_t ofs = val.read_usize(0);
-                    return ValueRef(::std::move(alloc), ofs, ty.get_size());
+                    LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << val.m_size << ") - " << val << ": " << ptr_ty);
+                    size = ty.get_size();
                 }
+
+                auto rv = ValueRef(::std::move(alloc), ofs, size);
+                rv.m_metadata = ::std::move(meta_val);
+                return rv;
                 } break;
             }
             throw "";
@@ -624,15 +645,17 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     else
                         LOG_DEBUG("- alloc=" << alloc);
                     size_t ofs = src_base_value.m_offset;
+                    const auto* meta = src_ty.get_meta_type();
                     bool is_slice_like = src_ty.has_slice_meta();
                     src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
 
                     new_val = Value(src_ty);
                     // ^ Pointer value
                     new_val.write_usize(0, ofs);
-                    if( is_slice_like )
+                    if( meta )
                     {
-                        new_val.write_usize(POINTER_SIZE, src_base_value.m_size);
+                        LOG_ASSERT(src_base_value.m_metadata, "Borrow of an unsized value, but no metadata avaliable");
+                        new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
                     }
                     // - Add the relocation after writing the value (writing clears the relocations)
                     new_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
@@ -801,11 +824,13 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             case RawType::Str:
                                 LOG_FATAL("Cast of unsized type - " << src_ty);
                             case RawType::Function:
-                                LOG_ASSERT(re.type.inner_type == RawType::USize, "");
+                                LOG_ASSERT(re.type.inner_type == RawType::USize, "Function pointers can only be casted to usize, instead " << re.type);
                                 new_val = src_value.read_value(0, re.type.get_size());
                                 break;
                             case RawType::Char:
-                                LOG_TODO("Cast char to integer (only u32)");
+                                LOG_ASSERT(re.type.inner_type == RawType::U32, "Char can only be casted to u32, instead " << re.type);
+                                new_val = src_value.read_value(0, 4);
+                                break;
                             case RawType::Unit:
                                 LOG_FATAL("Cast of unit");
                             case RawType::Composite: {
@@ -964,8 +989,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
                         const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
                         const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
-                        auto reloc_l = alloc_l ? alloc_l.alloc().get_relocation(v_l.m_offset) : AllocationPtr();
-                        auto reloc_r = alloc_r ? alloc_r.alloc().get_relocation(v_r.m_offset) : AllocationPtr();
+                        auto reloc_l = alloc_l ? v_l.get_relocation(v_l.m_offset) : AllocationPtr();
+                        auto reloc_r = alloc_r ? v_r.get_relocation(v_r.m_offset) : AllocationPtr();
 
                         if( reloc_l != reloc_r )
                         {
@@ -1179,7 +1204,17 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     LOG_TODO(stmt);
                     } break;
                 TU_ARM(se.src, MakeDst, re) {
-                    LOG_TODO(stmt);
+                    // - Get target type, just for some assertions
+                    ::HIR::TypeRef  dst_ty;
+                    state.get_value_and_type(se.dst, dst_ty);
+                    new_val = Value(dst_ty);
+
+                    auto ptr  = state.param_to_value(re.ptr_val );
+                    auto meta = state.param_to_value(re.meta_val);
+                    LOG_DEBUG("ty=" << dst_ty << ", ptr=" << ptr << ", meta=" << meta);
+
+                    new_val.write_value(0, ::std::move(ptr));
+                    new_val.write_value(POINTER_SIZE, ::std::move(meta));
                     } break;
                 TU_ARM(se.src, Tuple, re) {
                     ::HIR::TypeRef  dst_ty;
@@ -1227,6 +1262,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     const auto& data_ty = state.modtree.get_composite(re.path);
                     auto dst_ty = ::HIR::TypeRef(&data_ty);
                     new_val = Value(dst_ty);
+                    LOG_DEBUG("Variant " << new_val);
                     // Three cases:
                     // - Unions (no tag)
                     // - Data enums (tag and data)
@@ -1238,6 +1274,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
                         new_val.write_value(fld.first, state.param_to_value(re.val));
                     }
+                    LOG_DEBUG("Variant " << new_val);
                     if( var.base_field != SIZE_MAX )
                     {
                         ::HIR::TypeRef  tag_ty;
@@ -1249,6 +1286,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     {
                         // Union, no tag
                     }
+                    LOG_DEBUG("Variant " << new_val);
                     } break;
                 TU_ARM(se.src, Struct, re) {
                     const auto& data_ty = state.modtree.get_composite(re.path);
@@ -1274,14 +1312,35 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             TU_ARM(stmt, Drop, se) {
                 if( se.flag_idx == ~0u || state.drop_flags.at(se.flag_idx) )
                 {
-                    auto drop_value = [](ValueRef v, const ::HIR::TypeRef& ty) {
+                    auto drop_value = [&](ValueRef v, const ::HIR::TypeRef& ty) {
                         if( ty.wrappers.empty() )
                         {
                             if( ty.inner_type == RawType::Composite )
                             {
                                 if( ty.composite_type->drop_glue != ::HIR::Path() )
                                 {
-                                    LOG_TODO("Drop - " << ty);
+                                    LOG_DEBUG("Drop - " << ty);
+
+                                    // - Take a pointer to the inner
+                                    auto alloc = v.m_alloc;
+                                    if( !alloc )
+                                    {
+                                        if( !v.m_value->allocation )
+                                        {
+                                            v.m_value->create_allocation();
+                                        }
+                                        alloc = AllocationPtr(v.m_value->allocation);
+                                    }
+                                    size_t ofs = v.m_offset;
+                                    assert(!ty.get_meta_type());
+
+                                    auto ptr_ty = ty.wrap(TypeWrapper::Ty::Borrow, 2);
+
+                                    auto ptr_val = Value(ptr_ty);
+                                    ptr_val.write_usize(0, ofs);
+                                    ptr_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
+
+                                    MIRI_Invoke(modtree, ty.composite_type->drop_glue, { ptr_val });
                                 }
                                 else
                                 {
@@ -1290,7 +1349,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                             }
                             else if( ty.inner_type == RawType::TraitObject )
                             {
-                                LOG_TODO("Drop - " << ty);
+                                LOG_TODO("Drop - " << ty << " - trait object");
                             }
                             else
                             {
@@ -1312,7 +1371,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         // TODO: Arrays
                         else
                         {
-                            LOG_TODO("Drop - " << ty);
+                            LOG_TODO("Drop - " << ty << " - array");
                         }
 
                         };
@@ -1384,6 +1443,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     // Read the value bytes
                     ::std::vector<char> tmp( var.tag_data.size() );
                     v.read_bytes(tag_ofs, const_cast<char*>(tmp.data()), tmp.size());
+                    if( v.get_relocation(tag_ofs) )
+                        continue ;
                     if( ::std::memcmp(tmp.data(), var.tag_data.data(), tmp.size()) == 0 )
                     {
                         found_target = i;
@@ -1435,8 +1496,9 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 }
 
                 LOG_DEBUG("Call " << *fcn_p);
-                state.write_lvalue(te.ret_val, MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args)));
-                LOG_DEBUG("resume " << path);
+                auto v = MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args));
+                LOG_DEBUG(te.ret_val << " = " << v << " (resume " << path << ")");
+                state.write_lvalue(te.ret_val, ::std::move(v));
             }
             bb_idx = te.ret_block;
             } continue;
@@ -1448,25 +1510,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 }
 Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
-    // WinAPI functions used by libstd
-    if( link_name == "AddVectoredExceptionHandler" )
-    {
-        LOG_DEBUG("Call `AddVectoredExceptionHandler` - Ignoring and returning non-null");
-        auto rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.write_usize(0, 1);
-        return rv;
-    }
-#ifdef _WIN32
-    else if( link_name == "GetModuleHandleW" )
-    {
-        const void* arg0 = (args.at(0).allocation ? args.at(0).allocation.alloc().data_ptr() : nullptr);
-        //extern void* GetModuleHandleW(const void* s);
-
-        return Value::new_ffiptr(FFIPointer { "GetModuleHandleW", GetModuleHandleW(static_cast<LPCWSTR>(arg0)) });
-    }
-#endif
-    // Allocators!
-    else if( link_name == "__rust_allocate" )
+    if( link_name == "__rust_allocate" )
     {
         auto size = args.at(0).read_usize(0);
         auto align = args.at(1).read_usize(0);
@@ -1474,7 +1518,8 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         ::HIR::TypeRef  rty { RawType::Unit };
         rty.wrappers.push_back({ TypeWrapper::Ty::Pointer, 0 });
         Value rv = Value(rty);
-        // TODO: Use the alignment when making an allocation.
+        rv.write_usize(0, 0);
+        // TODO: Use the alignment when making an allocation?
         rv.allocation.alloc().relocations.push_back({ 0,  Allocation::new_alloc(size) });
         return rv;
     }
@@ -1493,10 +1538,76 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_reallocate with no backing allocation attached to pointer");
         auto& alloc = alloc_ptr.alloc();
         // TODO: Check old size and alignment against allocation.
-        alloc.data.resize(newsize);
+        alloc.data.resize( (newsize + 8-1) / 8 );
+        alloc.mask.resize( (newsize + 8-1) / 8 );
         // TODO: Should this instead make a new allocation to catch use-after-free?
         return ::std::move(args.at(0));
     }
+#ifdef _WIN32
+    // WinAPI functions used by libstd
+    else if( link_name == "AddVectoredExceptionHandler" )
+    {
+        LOG_DEBUG("Call `AddVectoredExceptionHandler` - Ignoring and returning non-null");
+        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.write_usize(0, 1);
+        return rv;
+    }
+    else if( link_name == "GetModuleHandleW" )
+    {
+        LOG_ASSERT(args.at(0).allocation.is_alloc(), "");
+        const auto& tgt_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        const void* arg0 = (tgt_alloc ? tgt_alloc.alloc().data_ptr() : nullptr);
+        //extern void* GetModuleHandleW(const void* s);
+        if(arg0) {
+            LOG_DEBUG("GetModuleHandleW(" << tgt_alloc.alloc() << ")");
+        }
+        else {
+            LOG_DEBUG("GetModuleHandleW(NULL)");
+        }
+
+        auto rv = GetModuleHandleW(static_cast<LPCWSTR>(arg0));
+        if(rv)
+        {
+            return Value::new_ffiptr(FFIPointer { "GetModuleHandleW", rv });
+        }
+        else
+        {
+            auto rv = Value(::HIR::TypeRef(RawType::USize));
+            rv.create_allocation();
+            rv.write_usize(0,0);
+            return rv;
+        }
+    }
+    else if( link_name == "GetProcAddress" )
+    {
+        LOG_ASSERT(args.at(0).allocation.is_alloc(), "");
+        const auto& handle_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        LOG_ASSERT(args.at(1).allocation.is_alloc(), "");
+        const auto& sym_alloc = args.at(1).allocation.alloc().get_relocation(0);
+
+        // TODO: Ensure that first arg is a FFI pointer with offset+size of zero
+        void* handle = handle_alloc.ffi().ptr_value;
+        // TODO: Get either a FFI data pointer, or a inner data pointer
+        const void* symname = sym_alloc.alloc().data_ptr();
+        // TODO: Sanity check that it's a valid c string within its allocation
+        LOG_DEBUG("FFI GetProcAddress(" << handle << ", \"" << static_cast<const char*>(symname) << "\")");
+
+        auto rv = GetProcAddress(static_cast<HMODULE>(handle), static_cast<LPCSTR>(symname));
+
+        if( rv )
+        {
+            return Value::new_ffiptr(FFIPointer { "GetProcAddress", rv });
+        }
+        else
+        {
+            auto rv = Value(::HIR::TypeRef(RawType::USize));
+            rv.create_allocation();
+            rv.write_usize(0,0);
+            return rv;
+        }
+    }
+#endif
+    // Allocators!
     else
     {
         LOG_TODO("Call external function " << link_name);
@@ -1558,16 +1669,15 @@ Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name
 
         auto r = ptr_val.allocation.alloc().get_relocation(0);
         auto orig_ofs = ptr_val.read_usize(0);
-        auto delta_ofs = ptr_val.read_usize(0);
-        auto new_ofs = orig_ofs + delta_ofs;
+        auto delta_counts = ofs_val.read_usize(0);
+        auto new_ofs = orig_ofs + delta_counts * ty_params.tys.at(0).get_size();
         if(POINTER_SIZE != 8) {
             new_ofs &= 0xFFFFFFFF;
         }
 
-
         ptr_val.write_usize(0, new_ofs);
         ptr_val.allocation.alloc().relocations.push_back({ 0, r });
-        return ptr_val;
+        rv = ::std::move(ptr_val);
     }
     // effectively ptr::write
     else if( name == "move_val_init" )
@@ -1579,17 +1689,18 @@ Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name
 
         // There MUST be a relocation at this point with a valid allocation.
         LOG_ASSERT(ptr_val.allocation, "Deref of a value with no allocation (hence no relocations)");
-        LOG_TRACE("Deref " << ptr_val.allocation.alloc());
+        LOG_TRACE("Deref " << ptr_val << " and store " << data_val);
         auto alloc = ptr_val.allocation.alloc().get_relocation(0);
         LOG_ASSERT(alloc, "Deref of a value with no relocation");
 
         size_t ofs = ptr_val.read_usize(0);
         const auto& ty = ty_params.tys.at(0);
         alloc.alloc().write_value(ofs, ::std::move(data_val));
+        LOG_DEBUG(alloc.alloc());
     }
     else if( name == "uninit" )
     {
-        return Value(ty_params.tys.at(0));
+        rv = Value(ty_params.tys.at(0));
     }
     // ----------------------------------------------------------------
     // Checked arithmatic
@@ -1667,7 +1778,9 @@ Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name
         auto src_alloc = args.at(0).allocation.alloc().get_relocation(0);
         auto dst_ofs = args.at(1).read_usize(0);
         auto dst_alloc = args.at(1).allocation.alloc().get_relocation(0);
-        auto byte_count = args.at(2).read_usize(0);
+        size_t ent_count = args.at(2).read_usize(0);
+        size_t ent_size = ty_params.tys.at(0).get_size();
+        auto byte_count = ent_count * ent_size;
 
         LOG_ASSERT(src_alloc, "Source of copy* must have an allocation");
         LOG_ASSERT(dst_alloc, "Destination of copy* must be a memory allocation");

@@ -265,7 +265,7 @@ bool Parser::parse_one()
             }
             else
             {
-                LOG_BUG("");
+                LOG_BUG("Unexpected token in `type` - " << lex.next());
             }
         }
         lex.check_consume('}');

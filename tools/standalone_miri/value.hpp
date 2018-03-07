@@ -60,8 +60,10 @@ public:
         return *this;
     }
 
+    size_t get_size() const;
+
     operator bool() const { return m_ptr != 0; }
-    bool is_alloc() {
+    bool is_alloc() const {
         return *this && get_ty() == Ty::Allocation;
     }
     Allocation& alloc() {
@@ -183,6 +185,7 @@ struct Value
 
     Value();
     Value(::HIR::TypeRef ty);
+    static Value with_size(size_t size, bool have_allocation);
     static Value new_fnptr(const ::HIR::Path& fn_path);
     static Value new_ffiptr(FFIPointer ffi);
 
@@ -233,8 +236,9 @@ struct ValueRef
     // Either an AllocationPtr, or a Value pointer
     AllocationPtr   m_alloc;
     Value*  m_value;
-    size_t  m_offset;
-    size_t  m_size;
+    size_t  m_offset;   // Offset within the value
+    size_t  m_size; // Size in bytes of the referenced value
+    ::std::shared_ptr<Value>    m_metadata;
 
     ValueRef(AllocationPtr ptr, size_t ofs, size_t size):
         m_alloc(ptr),
@@ -242,6 +246,21 @@ struct ValueRef
         m_offset(ofs),
         m_size(size)
     {
+        switch(m_alloc.get_ty())
+        {
+        case AllocationPtr::Ty::Allocation:
+            assert(ofs < m_alloc.alloc().size());
+            assert(size <= m_alloc.alloc().size());
+            assert(ofs+size <= m_alloc.alloc().size());
+            break;
+        case AllocationPtr::Ty::StdString:
+            assert(ofs < m_alloc.str().size());
+            assert(size <= m_alloc.str().size());
+            assert(ofs+size <= m_alloc.str().size());
+            break;
+        default:
+            throw "TODO";
+        }
     }
     ValueRef(Value& val):
         ValueRef(val, 0, val.size())
@@ -254,6 +273,26 @@ struct ValueRef
     {
     }
 
+    AllocationPtr get_relocation(size_t ofs) const {
+        if(m_alloc)
+        {
+            if( m_alloc.is_alloc() )
+                return m_alloc.alloc().get_relocation(ofs);
+            else
+                return AllocationPtr();
+        }
+        else if( m_value->allocation )
+        {
+            if( m_value->allocation.is_alloc() )
+                return m_value->allocation.alloc().get_relocation(ofs);
+            else
+                return AllocationPtr();
+        }
+        else
+        {
+            return AllocationPtr();
+        }
+    }
     Value read_value(size_t ofs, size_t size) const {
         if( size == 0 )
             return Value();
@@ -261,7 +300,23 @@ struct ValueRef
         assert(size <= m_size);
         assert(ofs+size <= m_size);
         if( m_alloc ) {
-            return m_alloc.alloc().read_value(m_offset + ofs, size);
+            switch(m_alloc.get_ty())
+            {
+            case AllocationPtr::Ty::Allocation:
+                return m_alloc.alloc().read_value(m_offset + ofs, size);
+            case AllocationPtr::Ty::StdString: {
+                auto rv = Value::with_size(size, false);
+                //ASSERT_BUG(ofs <= m_alloc.str().size(), "");
+                //ASSERT_BUG(size <= m_alloc.str().size(), "");
+                //ASSERT_BUG(ofs+size <= m_alloc.str().size(), "");
+                assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
+                rv.write_bytes(0, m_alloc.str().data() + m_offset + ofs, size);
+                return rv;
+                }
+            default:
+                //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
+                throw "TODO";
+            }
         }
         else {
             return m_value->read_value(m_offset + ofs, size);
@@ -274,7 +329,19 @@ struct ValueRef
         assert(size <= m_size);
         assert(ofs+size <= m_size);
         if( m_alloc ) {
-            m_alloc.alloc().read_bytes(m_offset + ofs, dst, size);
+            switch(m_alloc.get_ty())
+            {
+            case AllocationPtr::Ty::Allocation:
+                m_alloc.alloc().read_bytes(m_offset + ofs, dst, size);
+                break;
+            case AllocationPtr::Ty::StdString:
+                assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
+                ::std::memcpy(dst, m_alloc.str().data() + m_offset + ofs, size);
+                break;
+            default:
+                //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
+                throw "TODO";
+            }
         }
         else {
             m_value->read_bytes(m_offset + ofs, dst, size);

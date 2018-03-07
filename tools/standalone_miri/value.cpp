@@ -104,6 +104,24 @@ AllocationPtr::~AllocationPtr()
         }
     }
 }
+size_t AllocationPtr::get_size() const
+{
+    if( !*this )
+        return 0;
+    switch(get_ty())
+    {
+    case Ty::Allocation:
+        return alloc().size();
+    case Ty::Function:
+        return 0;
+    case Ty::StdString:
+        return str().size();
+    case Ty::FfiPointer:
+        return 0;
+        //return ffi().size;
+    }
+    throw "Unreachable";
+}
 
 ::std::ostream& operator<<(::std::ostream& os, const AllocationPtr& x)
 {
@@ -167,6 +185,7 @@ void Allocation::mark_bytes_valid(size_t ofs, size_t size)
 Value Allocation::read_value(size_t ofs, size_t size) const
 {
     Value rv;
+
     // TODO: Determine if this can become an inline allocation.
     bool has_reloc = false;
     for(const auto& r : this->relocations)
@@ -189,11 +208,44 @@ Value Allocation::read_value(size_t ofs, size_t size) const
                 rv.allocation.alloc().relocations.push_back({ r.slot_ofs - ofs, r.backing_alloc });
             }
         }
+
+        // Copy the mask bits
+        for(size_t i = 0; i < size; i ++)
+        {
+            size_t j = ofs + i;
+            bool v = (this->mask[j/8] & (1 << j%8)) != 0;
+            if( v )
+            {
+                rv.allocation.alloc().mask[i/8] |= (1 << i%8);
+            }
+            else
+            {
+                rv.allocation.alloc().mask[i/8] &= ~(1 << i%8);
+            }
+        }
     }
     else
     {
         rv.direct_data.size = static_cast<uint8_t>(size);
+
         rv.write_bytes(0, this->data_ptr() + ofs, size);
+        rv.direct_data.mask[0] = 0;
+        rv.direct_data.mask[1] = 0;
+
+        // Copy the mask bits
+        for(size_t i = 0; i < size; i ++)
+        {
+            size_t j = ofs + i;
+            bool v = (this->mask[j/8] & (1 << j%8)) != 0;
+            if( v )
+            {
+                rv.direct_data.mask[i/8] |= (1 << i%8);
+            }
+            //else
+            //{
+            //    rv.direct_data.mask[i/8] &= ~(1 << i%8);
+            //}
+        }
     }
     return rv;
 }
@@ -240,7 +292,7 @@ void Allocation::write_value(size_t ofs, Value v)
             // 2. Move the new relocations into this allocation
             for(auto& r : new_relocs)
             {
-                LOG_TRACE("Insert " << r.backing_alloc);
+                //LOG_TRACE("Insert " << r.backing_alloc);
                 r.slot_ofs += ofs;
                 this->relocations.push_back( ::std::move(r) );
             }
@@ -307,7 +359,7 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
     {
         if( ofs <= it->slot_ofs && it->slot_ofs < ofs + count)
         {
-            LOG_TRACE("Delete " << it->backing_alloc);
+            //LOG_TRACE("Delete " << it->backing_alloc);
             it = this_relocs.erase(it);
         }
         else 
@@ -325,6 +377,8 @@ void Allocation::write_usize(size_t ofs, uint64_t v)
 }
 ::std::ostream& operator<<(::std::ostream& os, const Allocation& x)
 {
+    auto flags = os.flags();
+    os << ::std::hex;
     for(size_t i = 0; i < x.size(); i++)
     {
         if( i != 0 )
@@ -339,6 +393,7 @@ void Allocation::write_usize(size_t ofs, uint64_t v)
             os << "--";
         }
     }
+    os.setf(flags);
 
     os << " {";
     for(const auto& r : x.relocations)
@@ -408,6 +463,21 @@ Value::Value(::HIR::TypeRef ty)
     //LOG_TRACE(" Creating allocation for " << ty);
     this->allocation = Allocation::new_alloc(size);
 }
+Value Value::with_size(size_t size, bool have_allocation)
+{
+    Value   rv;
+    if(have_allocation)
+    {
+        rv.allocation = Allocation::new_alloc(size);
+    }
+    else
+    {
+        rv.direct_data.size = static_cast<uint8_t>(size);
+        rv.direct_data.mask[0] = 0;
+        rv.direct_data.mask[1] = 0;
+    }
+    return rv;
+}
 Value Value::new_fnptr(const ::HIR::Path& fn_path)
 {
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::Function }) );
@@ -476,7 +546,7 @@ void Value::mark_bytes_valid(size_t ofs, size_t size)
     }
     else
     {
-        for(size_t i = 0; i < this->direct_data.size; i++)
+        for(size_t i = ofs; i < ofs+size; i++)
         {
             this->direct_data.mask[i/8] |= (1 << i%8);
         }
@@ -567,8 +637,17 @@ void Value::write_value(size_t ofs, Value v)
         }
         else
         {
-            v.check_bytes_valid(0, v.direct_data.size);
             write_bytes(ofs, v.direct_data.data, v.direct_data.size);
+
+            // Lazy way, sets/clears individual bits
+            for(size_t i = 0; i < v.direct_data.size; i ++)
+            {
+                uint8_t dbit = 1 << ((ofs+i) % 8);
+                if( v.direct_data.mask[i/8] & (1 << (i %8)) )
+                    this->direct_data.mask[ (ofs+i) / 8 ] |= dbit;
+                else
+                    this->direct_data.mask[ (ofs+i) / 8 ] &= ~dbit;
+            }
         }
     }
 }
@@ -606,36 +685,65 @@ void Value::write_usize(size_t ofs, uint64_t v)
 }
 extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
 {
+    if( v.m_size == 0 )
+        return os;
     if( v.m_alloc || v.m_value->allocation )
     {
         const auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
         // TODO: What if alloc_ptr isn't a data allocation?
-        const auto& alloc = alloc_ptr.alloc();
-
-        for(size_t i = v.m_offset; i < ::std::min(alloc.size(), v.m_offset + v.m_size); i++)
+        switch(alloc_ptr.get_ty())
         {
-            if( i != 0 )
-                os << " ";
+        case AllocationPtr::Ty::Allocation: {
+            const auto& alloc = alloc_ptr.alloc();
+            
+            auto flags = os.flags();
+            os << ::std::hex;
+            for(size_t i = v.m_offset; i < ::std::min(alloc.size(), v.m_offset + v.m_size); i++)
+            {
+                if( i != 0 )
+                    os << " ";
 
-            if( alloc.mask[i/8] & (1 << i%8) )
-            {
-                os << ::std::setw(2) << ::std::setfill('0') << (int)alloc.data_ptr()[i];
+                if( alloc.mask[i/8] & (1 << i%8) )
+                {
+                    os << ::std::setw(2) << ::std::setfill('0') << (int)alloc.data_ptr()[i];
+                }
+                else
+                {
+                    os << "--";
+                }
             }
-            else
-            {
-                os << "--";
-            }
-        }
+            os.setf(flags);
 
-        os << " {";
-        for(const auto& r : alloc.relocations)
-        {
-            if( v.m_offset <= r.slot_ofs && r.slot_ofs < v.m_offset + v.m_size )
+            os << " {";
+            for(const auto& r : alloc.relocations)
             {
-                os << " @" << (r.slot_ofs - v.m_offset) << "=" << r.backing_alloc;
+                if( v.m_offset <= r.slot_ofs && r.slot_ofs < v.m_offset + v.m_size )
+                {
+                    os << " @" << (r.slot_ofs - v.m_offset) << "=" << r.backing_alloc;
+                }
             }
+            os << " }";
+            } break;
+        case AllocationPtr::Ty::Function:
+            LOG_TODO("ValueRef to " << alloc_ptr);
+            break;
+        case AllocationPtr::Ty::StdString: {
+            const auto& s = alloc_ptr.str();
+            assert(v.m_offset < s.size());
+            assert(v.m_size < s.size());
+            assert(v.m_offset + v.m_size <= s.size());
+            auto flags = os.flags();
+            os << ::std::hex;
+            for(size_t i = v.m_offset; i < v.m_offset + v.m_size; i++)
+            {
+                os << ::std::setw(2) << ::std::setfill('0') << (int)s.data()[i];
+            }
+            os.setf(flags);
+            } break;
+        case AllocationPtr::Ty::FfiPointer:
+            LOG_TODO("ValueRef to " << alloc_ptr);
+            break;
         }
-        os << " }";
     }
     else
     {
