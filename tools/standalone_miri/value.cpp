@@ -772,18 +772,18 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
 uint64_t ValueRef::read_usize(size_t ofs) const
 {
     uint64_t    v = 0;
-    this->read_bytes(0, &v, POINTER_SIZE);
+    this->read_bytes(ofs, &v, POINTER_SIZE);
     return v;
 }
 uint64_t Value::read_usize(size_t ofs) const
 {
     uint64_t    v = 0;
-    this->read_bytes(0, &v, POINTER_SIZE);
+    this->read_bytes(ofs, &v, POINTER_SIZE);
     return v;
 }
 uint64_t Allocation::read_usize(size_t ofs) const
 {
     uint64_t    v = 0;
-    this->read_bytes(0, &v, POINTER_SIZE);
+    this->read_bytes(ofs, &v, POINTER_SIZE);
     return v;
 }

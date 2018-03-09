@@ -119,6 +119,7 @@ namespace HIR {
 
         size_t get_size(size_t ofs=0) const;
         bool has_slice_meta() const;    // The attached metadata is a count
+        const TypeRef* get_usized_type(size_t& running_inner_size) const;
         const TypeRef* get_meta_type() const;
         TypeRef get_inner() const;
         TypeRef wrap(TypeWrapper::Ty ty, size_t size) const;

@@ -21,7 +21,7 @@ struct ProgramOptions
 
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args);
 Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
-Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
+Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
 
 int main(int argc, const char* argv[])
 {
@@ -287,6 +287,56 @@ struct Ops {
         }
     }
 };
+
+namespace
+{
+
+    void drop_value(ModuleTree& modtree, Value ptr, const ::HIR::TypeRef& ty)
+    {
+        if( ty.wrappers.empty() )
+        {
+            if( ty.inner_type == RawType::Composite )
+            {
+                if( ty.composite_type->drop_glue != ::HIR::Path() )
+                {
+                    LOG_DEBUG("Drop - " << ty);
+
+                    MIRI_Invoke(modtree, ty.composite_type->drop_glue, { ptr });
+                }
+                else
+                {
+                    // No drop glue
+                }
+            }
+            else if( ty.inner_type == RawType::TraitObject )
+            {
+                LOG_TODO("Drop - " << ty << " - trait object");
+            }
+            else
+            {
+                // No destructor
+            }
+        }
+        else if( ty.wrappers[0].type == TypeWrapper::Ty::Borrow )
+        {
+            if( ty.wrappers[0].size == static_cast<size_t>(::HIR::BorrowType::Move) )
+            {
+                LOG_TODO("Drop - " << ty << " - dereference and go to inner");
+                // TODO: Clear validity on the entire inner value.
+            }
+            else
+            {
+                // No destructor
+            }
+        }
+        // TODO: Arrays
+        else
+        {
+            LOG_TODO("Drop - " << ty << " - array?");
+        }
+    }
+
+}
 
 Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
 {
@@ -1312,74 +1362,31 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             TU_ARM(stmt, Drop, se) {
                 if( se.flag_idx == ~0u || state.drop_flags.at(se.flag_idx) )
                 {
-                    auto drop_value = [&](ValueRef v, const ::HIR::TypeRef& ty) {
-                        if( ty.wrappers.empty() )
-                        {
-                            if( ty.inner_type == RawType::Composite )
-                            {
-                                if( ty.composite_type->drop_glue != ::HIR::Path() )
-                                {
-                                    LOG_DEBUG("Drop - " << ty);
-
-                                    // - Take a pointer to the inner
-                                    auto alloc = v.m_alloc;
-                                    if( !alloc )
-                                    {
-                                        if( !v.m_value->allocation )
-                                        {
-                                            v.m_value->create_allocation();
-                                        }
-                                        alloc = AllocationPtr(v.m_value->allocation);
-                                    }
-                                    size_t ofs = v.m_offset;
-                                    assert(!ty.get_meta_type());
-
-                                    auto ptr_ty = ty.wrap(TypeWrapper::Ty::Borrow, 2);
-
-                                    auto ptr_val = Value(ptr_ty);
-                                    ptr_val.write_usize(0, ofs);
-                                    ptr_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
-
-                                    MIRI_Invoke(modtree, ty.composite_type->drop_glue, { ptr_val });
-                                }
-                                else
-                                {
-                                    // No drop glue
-                                }
-                            }
-                            else if( ty.inner_type == RawType::TraitObject )
-                            {
-                                LOG_TODO("Drop - " << ty << " - trait object");
-                            }
-                            else
-                            {
-                                // No destructor
-                            }
-                        }
-                        else if( ty.wrappers[0].type == TypeWrapper::Ty::Borrow )
-                        {
-                            if( ty.wrappers[0].size == static_cast<size_t>(::HIR::BorrowType::Move) )
-                            {
-                                LOG_TODO("Drop - " << ty << " - dereference and go to inner");
-                                // TODO: Clear validity on the entire inner value.
-                            }
-                            else
-                            {
-                                // No destructor
-                            }
-                        }
-                        // TODO: Arrays
-                        else
-                        {
-                            LOG_TODO("Drop - " << ty << " - array");
-                        }
-
-                        };
-
                     ::HIR::TypeRef  ty;
                     auto v = state.get_value_and_type(se.slot, ty);
-                    drop_value(v, ty);
+
+                    // - Take a pointer to the inner
+                    auto alloc = v.m_alloc;
+                    if( !alloc )
+                    {
+                        if( !v.m_value->allocation )
+                        {
+                            v.m_value->create_allocation();
+                        }
+                        alloc = AllocationPtr(v.m_value->allocation);
+                    }
+                    size_t ofs = v.m_offset;
+                    assert(!ty.get_meta_type());
+
+                    auto ptr_ty = ty.wrap(TypeWrapper::Ty::Borrow, 2);
+
+                    auto ptr_val = Value(ptr_ty);
+                    ptr_val.write_usize(0, ofs);
+                    ptr_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
+
+                    drop_value(modtree, ptr_val, ty);
                     // TODO: Clear validity on the entire inner value.
+                    //alloc.mark_as_freed();
                 }
                 } break;
             TU_ARM(stmt, SetDropFlag, se) {
@@ -1489,9 +1496,10 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     // TODO: Assert offset/content.
                     assert(v.read_usize(v.m_offset) == 0);
                     auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
-                    LOG_ASSERT(alloc_ptr, "");
+                    LOG_ASSERT(alloc_ptr, "Calling value that can't be a pointer (no allocation)");
                     auto& fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
-                    LOG_ASSERT(fcn_alloc_ptr, "");
+                    LOG_ASSERT(fcn_alloc_ptr, "Calling value with no relocation");
+                    LOG_ASSERT(fcn_alloc_ptr.get_ty() == AllocationPtr::Ty::Function, "Calling value that isn't a function pointer");
                     fcn_p = &fcn_alloc_ptr.fcn();
                 }
 
@@ -1542,6 +1550,23 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         alloc.mask.resize( (newsize + 8-1) / 8 );
         // TODO: Should this instead make a new allocation to catch use-after-free?
         return ::std::move(args.at(0));
+    }
+    else if( link_name == "__rust_deallocate" )
+    {
+        LOG_ASSERT(args.at(0).allocation, "__rust_deallocate first argument doesn't have an allocation");
+        auto alloc_ptr = args.at(0).allocation.alloc().get_relocation(0);
+        auto ptr_ofs = args.at(0).read_usize(0);
+        LOG_ASSERT(ptr_ofs == 0, "__rust_deallocate with offset pointer");
+
+        LOG_ASSERT(alloc_ptr, "__rust_deallocate with no backing allocation attached to pointer");
+        LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_deallocate with no backing allocation attached to pointer");
+        auto& alloc = alloc_ptr.alloc();
+        // TODO: Figure out how to prevent this ever being written again.
+        //alloc.mark_as_freed();
+        for(auto& v : alloc.mask)
+            v = 0;
+        // Just let it drop.
+        return Value();
     }
 #ifdef _WIN32
     // WinAPI functions used by libstd
@@ -1612,8 +1637,9 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
     {
         LOG_TODO("Call external function " << link_name);
     }
+    throw "";
 }
-Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
+Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
 {
     Value rv;
     TRACE_FUNCTION_R(name, rv);
@@ -1701,6 +1727,82 @@ Value MIRI_Invoke_Intrinsic(const ModuleTree& modtree, const ::std::string& name
     else if( name == "uninit" )
     {
         rv = Value(ty_params.tys.at(0));
+    }
+    // - Unsized stuff
+    else if( name == "size_of_val" )
+    {
+        auto& val = args.at(0);
+        const auto& ty = ty_params.tys.at(0);
+        rv = Value(::HIR::TypeRef(RawType::USize));
+        // Get unsized type somehow.
+        // - _HAS_ to be the last type, so that makes it easier
+        size_t fixed_size = 0;
+        if( const auto* ity = ty.get_usized_type(fixed_size) )
+        {
+            const auto& meta_ty = *ty.get_meta_type();
+            LOG_DEBUG("size_of_val - " << ty << " ity=" << *ity << " meta_ty=" << meta_ty << " fixed_size=" << fixed_size);
+            size_t flex_size = 0;
+            if( !ity->wrappers.empty() )
+            {
+                LOG_ASSERT(ity->wrappers[0].type == TypeWrapper::Ty::Slice, "");
+                size_t item_size = ity->get_inner().get_size();
+                size_t item_count = val.read_usize(POINTER_SIZE);
+                flex_size = item_count * item_size;
+                LOG_DEBUG("> item_size=" << item_size << " item_count=" << item_count << " flex_size=" << flex_size);
+            }
+            else if( ity->inner_type == RawType::Str )
+            {
+                flex_size = val.read_usize(POINTER_SIZE);
+            }
+            else if( ity->inner_type == RawType::TraitObject )
+            {
+                LOG_TODO("size_of_val - Trait Object - " << ty);
+            }
+            else
+            {
+                LOG_BUG("Inner unsized type unknown - " << *ity);
+            }
+
+            rv.write_usize(0, fixed_size + flex_size);
+        }
+        else
+        {
+            rv.write_usize(0, ty.get_size());
+        }
+    }
+    else if( name == "drop_in_place" )
+    {
+        auto& val = args.at(0);
+        const auto& ty = ty_params.tys.at(0);
+        if( !ty.wrappers.empty() )
+        {
+            size_t item_count = 0;
+            switch(ty.wrappers[0].type)
+            {
+            case TypeWrapper::Ty::Slice:
+            case TypeWrapper::Ty::Array:
+                item_count = (ty.wrappers[0].type == TypeWrapper::Ty::Slice ? val.read_usize(POINTER_SIZE) : ty.wrappers[0].size);
+                break;
+            case TypeWrapper::Ty::Pointer:
+                break;
+            case TypeWrapper::Ty::Borrow:
+                break;
+            }
+            LOG_ASSERT(ty.wrappers[0].type == TypeWrapper::Ty::Slice, "drop_in_place should only exist for slices - " << ty);
+            const auto& ity = ty.get_inner();
+            size_t item_size = ity.get_size();
+
+            auto ptr = val.read_value(0, POINTER_SIZE);;
+            for(size_t i = 0; i < item_count; i ++)
+            {
+                drop_value(modtree, ptr, ity);
+                ptr.write_usize(0, ptr.read_usize(0) + item_size);
+            }
+        }
+        else
+        {
+            LOG_TODO("drop_in_place - " << ty);
+        }
     }
     // ----------------------------------------------------------------
     // Checked arithmatic
