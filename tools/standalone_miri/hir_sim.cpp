@@ -136,6 +136,36 @@ HIR::TypeRef HIR::TypeRef::wrap(TypeWrapper::Ty ty, size_t size) const
     rv.wrappers.insert(rv.wrappers.begin(), { ty, size });
     return rv;
 }
+const HIR::TypeRef* HIR::TypeRef::get_usized_type(size_t& running_inner_size) const
+{
+    if( this->wrappers.empty() )
+    {
+        switch(this->inner_type)
+        {
+        case RawType::Composite:
+            if(!this->composite_type->variants.empty())
+                return nullptr;
+            if(this->composite_type->fields.empty())
+                return nullptr;
+            running_inner_size = this->composite_type->fields.back().first;
+            size_t tmp;
+            return this->composite_type->fields.back().second.get_usized_type(tmp);
+        case RawType::TraitObject:
+        case RawType::Str:
+            return this;
+        default:
+            return nullptr;
+        }
+    }
+    else if( this->wrappers[0].type == TypeWrapper::Ty::Slice )
+    {
+        return this;
+    }
+    else
+    {
+        return nullptr;
+    }
+}
 const HIR::TypeRef* HIR::TypeRef::get_meta_type() const
 {
     static ::HIR::TypeRef   static_usize = ::HIR::TypeRef(RawType::USize);

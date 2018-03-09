@@ -223,7 +223,7 @@ namespace
                         auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
                         for(const auto& e : repr->fields)
                         {
-                            if( !m_resolve.type_is_copy(sp, e.ty) ) {
+                            if( m_resolve.type_needs_drop_glue(sp, e.ty) ) {
                                 m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                             }
                             fld_lv.as_Field().field_index += 1;
@@ -386,7 +386,7 @@ namespace
                     fld_p_lv = ::MIR::LValue::make_Field({ box$(fld_p_lv), 0 });
                     fld_p_lv = ::MIR::LValue::make_Field({ box$(fld_p_lv), 0 });
 
-                    if( !m_resolve.type_is_copy(sp, *ity) ) {
+                    if( m_resolve.type_needs_drop_glue(sp, *ity) ) {
                         auto fld_lv = ::MIR::LValue::make_Deref({ box$(fld_p_lv.clone()) });
                         m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                     }
@@ -421,7 +421,7 @@ namespace
                     auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
                     for(const auto& e : repr->fields)
                     {
-                        if( !m_resolve.type_is_copy(sp, e.ty) ) {
+                        if( m_resolve.type_needs_drop_glue(sp, e.ty) ) {
                             m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                         }
                         fld_lv.as_Field().field_index += 1;

@@ -132,6 +132,10 @@ public:
         }
         return AllocationPtr();
     }
+    //void mark_as_freed() {
+    //    for(auto& v : mask)
+    //        v = 0;
+    //}
 
     void resize(size_t new_size);
 
