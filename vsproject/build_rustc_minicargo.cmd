@@ -1,5 +1,5 @@
 @echo off
-call build_std_and_hello.cmd
+call build_std.cmd
 if %errorlevel% neq 0 exit /b %errorlevel%
 
 mkdir output\rustc-build
