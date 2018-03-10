@@ -489,8 +489,16 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
     si.cb = sizeof(si);
     si.dwFlags = STARTF_USESTDHANDLES;
     si.hStdInput = NULL;
-    si.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
     si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
+    {
+        SECURITY_ATTRIBUTES sa = { 0 };
+        sa.nLength = sizeof(sa);
+        sa.bInheritHandle = TRUE;
+        si.hStdOutput = CreateFile( outfile.str().c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL );
+        //DWORD   tmp;
+        //WriteFile(si.hStdOutput, cmdline_str.data(), static_cast<DWORD>(cmdline_str.size()), &tmp, NULL);
+        //WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
+    }
     PROCESS_INFORMATION pi = { 0 };
     CreateProcessA(exe_name.str().c_str(), (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
     CloseHandle(si.hStdOutput);
