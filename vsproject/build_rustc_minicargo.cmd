@@ -1,17 +1,7 @@
 @echo off
-x64\Release\minicargo.exe ..\rustc-1.19.0-src\src\libstd --script-overrides ..\script-overrides\stable-1.19.0
-if %errorlevel% neq 0 exit /b %errorlevel%
-x64\Release\minicargo.exe ..\rustc-1.19.0-src\src\libpanic_unwind --script-overrides ..\script-overrides\stable-1.19.0
-if %errorlevel% neq 0 exit /b %errorlevel%
-x64\Release\minicargo.exe ..\rustc-1.19.0-src\src\libtest --script-overrides ..\script-overrides\stable-1.19.0
+call build_std_and_hello.cmd
 if %errorlevel% neq 0 exit /b %errorlevel%
 
-x64\Release\mrustc.exe ..\rustc-1.19.0-src\src\test\run-pass\hello.rs -L output -o output\hello.exe -g
+mkdir output\rustc-build
+x64\Release\minicargo.exe ..\rustc-1.19.0-src\src\rustc -L output --output-dir output\rustc-build --vendor-dir ..\rustc-1.19.0-src\src\vendor
 if %errorlevel% neq 0 exit /b %errorlevel%
-output\hello.exe
-if %errorlevel% neq 0 exit /b %errorlevel%
-
-
-rem mkdir output\rustc-build
-rem x64\Release\minicargo.exe ..\rustc-1.19.0-src\src\rustc -L output --output-dir output\rustc-build --vendor-dir ..\rustc-1.19.0-src\src\vendor
-rem if %errorlevel% neq 0 exit /b %errorlevel%
