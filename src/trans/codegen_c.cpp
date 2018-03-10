@@ -872,9 +872,20 @@ namespace {
                 emit_type_fn(ty);
                 m_of << " // " << ty << "\n";
             )
-            else TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Array, te,
-                m_of << "typedef struct "; emit_ctype(ty); m_of << " { "; emit_ctype(*te.inner); m_of << " DATA[" << te.size_val << "]; } "; emit_ctype(ty); m_of << ";\n";
-            )
+            else if( const auto* te = ty.m_data.opt_Array() )
+            {
+                m_of << "typedef struct "; emit_ctype(ty); m_of << " { ";
+                if( te->size_val == 0 && m_options.disallow_empty_structs )
+                {
+                    m_of << "char _d;";
+                }
+                else
+                {
+                    emit_ctype(*te->inner); m_of << " DATA[" << te->size_val << "];";
+                }
+                m_of << " } "; emit_ctype(ty); m_of << ";";
+                m_of << " // " << ty << "\n";
+            }
             else if( ty.m_data.is_ErasedType() ) {
                 // TODO: Is this actually a bug?
                 return ;
@@ -1502,9 +1513,18 @@ namespace {
             TU_MATCHA( (lit), (e),
             (Invalid, m_of << "/* INVALID */"; ),
             (List,
-                if( ty.m_data.is_Array() )
-                    m_of << "{";
                 m_of << "{";
+                if( ty.m_data.is_Array() )
+                {
+                    if( ty.m_data.as_Array().size_val == 0 && m_options.disallow_empty_structs)
+                    {
+                        m_of << "0";
+                    }
+                    else
+                    {
+                        m_of << "{";
+                    }
+                }
                 bool emitted_field = false;
                 for(unsigned int i = 0; i < e.size(); i ++) {
                     const auto& ity = get_inner_type(0, i);
@@ -1518,9 +1538,9 @@ namespace {
                 }
                 if( (ty.m_data.is_Path() || ty.m_data.is_Tuple()) && !emitted_field && m_options.disallow_empty_structs )
                     m_of << "0";
-                m_of << " }";
-                if( ty.m_data.is_Array() )
+                if( ty.m_data.is_Array() && !(ty.m_data.as_Array().size_val == 0 && m_options.disallow_empty_structs) )
                     m_of << "}";
+                m_of << " }";
                 ),
             (Variant,
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "");
