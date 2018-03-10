@@ -139,7 +139,14 @@ void Repository::load_vendored(const ::helpers::path& path)
             {
                 throw "TODO: Download package";
             }
-            best->loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(best->manifest_path)) );
+            try
+            {
+                best->loaded_manifest = ::std::shared_ptr<PackageManifest>( new PackageManifest(PackageManifest::load_from_toml(best->manifest_path)) );
+            }
+            catch(const ::std::exception& e)
+            {
+                throw ::std::runtime_error( format("Error loading manifest '", best->manifest_path, "' - ", e.what()) );
+            }
         }
 
         return best->loaded_manifest;

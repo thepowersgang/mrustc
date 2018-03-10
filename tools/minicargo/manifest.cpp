@@ -64,7 +64,14 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             }
             else if( key == "version" )
             {
-                rv.m_version = PackageVersion::from_string(key_val.value.as_string());
+                try
+                {
+                    rv.m_version = PackageVersion::from_string(key_val.value.as_string());
+                }
+                catch(const ::std::invalid_argument& e)
+                {
+                    throw ::std::runtime_error(format("Unable to parse package verison in '", path, "' - ", e.what()));
+                }
             }
             else if( key == "build" )
             {
@@ -609,7 +616,14 @@ void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_
         }
 
         const auto& version_spec_str = key_val.value.as_string();
-        this->m_version = PackageVersionSpec::from_string(version_spec_str);
+        try
+        {
+            this->m_version = PackageVersionSpec::from_string(version_spec_str);
+        }
+        catch(const ::std::invalid_argument& e)
+        {
+            throw ::std::runtime_error(format("Unable to parse dependency verison for ", this->m_name, " - ", e.what()));
+        }
     }
     else
     {
@@ -636,7 +650,14 @@ void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_
         {
             assert(key_val.path.size() == base_idx+1);
             // Parse version specifier
-            this->m_version = PackageVersionSpec::from_string(key_val.value.as_string());
+            try
+            {
+                this->m_version = PackageVersionSpec::from_string(key_val.value.as_string());
+            }
+            catch(const ::std::invalid_argument& e)
+            {
+                throw ::std::runtime_error(format("Unable to parse dependency verison for '", this->m_name, "' - ", e.what()));
+            }
         }
         else if( attr == "optional" )
         {
@@ -924,7 +945,14 @@ void PackageRef::load_manifest(Repository& repo, const ::helpers::path& base_pat
             auto path = base_path / ::helpers::path(m_path) / "Cargo.toml";
             if( ::std::ifstream(path.str()).good() )
             {
-                m_manifest = repo.from_path(path);
+                try
+                {
+                    m_manifest = repo.from_path(path);
+                }
+                catch(const ::std::exception& e)
+                {
+                    throw ::std::runtime_error( format("Error loading manifest '", path, "' - ", e.what()) );
+                }
             }
         }
 
@@ -973,6 +1001,17 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             pos ++;
         if(pos == s.size())
             break ;
+        // - Special case for wildcard
+        if( s[pos] == '*' )
+        {
+            rv.m_bounds.push_back(PackageVersionSpec::Bound { PackageVersionSpec::Bound::Type::GreaterEqual, PackageVersion {} });
+
+            while( pos < s.size() && isblank(s[pos]) )
+                pos ++;
+            if(pos == s.size())
+                break ;
+            continue ;
+        }
         auto ty = PackageVersionSpec::Bound::Type::Compatible;
         switch(s[pos])
         {
