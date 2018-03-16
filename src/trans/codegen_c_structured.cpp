@@ -10,10 +10,16 @@
 #include <algorithm>
 #include "codegen_c.hpp"
 
+NodeRef::NodeRef(size_t idx):
+    bb_idx(idx)
+{
+    DEBUG("NodeRef(" << idx << ")");
+}
 NodeRef::NodeRef(Node node_data):
     node(new Node(mv$(node_data))),
     bb_idx(SIZE_MAX)
 {
+    DEBUG("NodeRef(node)");
 }
 bool NodeRef::has_target() const
 {
@@ -112,6 +118,7 @@ public:
         for(;;)
         {
             DEBUG("bb_idx = " << bb_idx);
+            assert(bb_idx != SIZE_MAX);
             bool stop = false;
             assert( !m_blocks_used[bb_idx] );
             m_blocks_used[bb_idx] = true;
@@ -132,30 +139,39 @@ public:
                 ),
             (Diverge,
                 stop = true;
+                bb_idx = SIZE_MAX;
                 ),
             (Return,
                 stop = true;
+                bb_idx = SIZE_MAX;
                 ),
             (If,
                 auto arm0 = process_node_ref(te.bb0);
                 auto arm1 = process_node_ref(te.bb1);
+                bb_idx = SIZE_MAX;
                 if( arm0.has_target() && arm1.has_target() ) {
                     if( arm0.target() == arm1.target() ) {
+                        DEBUG("If targets " << arm0.target() << " == " << arm1.target());
                         bb_idx = arm0.target();
                     }
                     else {
                         stop = true;
+                        DEBUG("If targets " << arm0.target() << " != " << arm1.target());
+                        // TODO: Pick one?
                     }
                 }
                 else if( arm0.has_target() ) {
+                    DEBUG("If targets " << arm0.target() << ", NONE");
                     bb_idx = arm0.target();
                 }
                 else if( arm1.has_target() ) {
+                    DEBUG("If targets NONE, " << arm1.target());
                     bb_idx = arm1.target();
                 }
                 else {
                     // No target from either arm
-                    stop = false;
+                    DEBUG("If targets NONE, NONE");
+                    stop = true;
                 }
                 refs.push_back(Node::make_If({ bb_idx, &te.cond, mv$(arm0), mv$(arm1) }));
                 ),
@@ -196,8 +212,9 @@ public:
                     }
                 }
                 refs.push_back(Node::make_Switch({ exit_bb, &te.val, mv$(arms) }));
-                // TODO: Continue with the exit bb?
-                stop = true;
+                bb_idx = exit_bb;
+                if( bb_idx == SIZE_MAX )
+                    stop = true;
                 ),
             (SwitchValue,
                 ::std::vector<NodeRef>  arms;
@@ -252,6 +269,8 @@ public:
                 )
             )
 
+            assert(refs.empty() || refs.back().node || refs.back().bb_idx != SIZE_MAX);
+
             if( stop )
             {
                 break;
@@ -261,11 +280,12 @@ public:
             auto it = ::std::find(refs.begin(), refs.end(), bb_idx);
             if( it != refs.end() )
             {
-                // Wrap ibb_idxms from `it` to `refs.end()` in a `loop` block
+                // Wrap bb_idx-s from `it` to `refs.end()` in a `loop` block
                 ::std::vector<NodeRef> loop_blocks;
                 loop_blocks.reserve(refs.end() - it);
                 for(auto it2 = it; it2 != refs.end(); ++it2)
                     loop_blocks.push_back( mv$(*it2) );
+                refs.erase(it, refs.end());
                 auto loop_node = NodeRef( Node::make_Block({ SIZE_MAX, mv$(loop_blocks) }) );
 
                 refs.push_back( Node::make_Loop({ SIZE_MAX, mv$(loop_node) }) );
@@ -283,6 +303,16 @@ public:
             }
         }
 
+        DEBUG("Block, target=" << bb_idx);
+        for(auto& v : refs)
+        {
+            if( v.node )
+                DEBUG((&v - refs.data()) << ": node");
+            else
+                DEBUG((&v - refs.data()) << ": bb" << v.bb_idx);
+        }
+        for(auto& v : refs)
+            ASSERT_BUG(Span(), v.node || v.bb_idx != SIZE_MAX, (&v - refs.data()));
         return Node::make_Block({ bb_idx, mv$(refs) });
     }
 };

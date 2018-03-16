@@ -2030,14 +2030,110 @@ namespace {
             }
 
             const bool EMIT_STRUCTURED = false; // Saves time.
-            const bool USE_STRUCTURED = false;  // Still not correct.
+            const bool USE_STRUCTURED = true;  // Still not correct.
             if( EMIT_STRUCTURED )
             {
                 m_of << "#if " << USE_STRUCTURED << "\n";
                 auto nodes = MIR_To_Structured(*code);
+
+                ::std::set<unsigned> goto_targets;
+                struct H {
+                    static void find_goto_targets(const Node& n, ::std::set<unsigned>& goto_targets) {
+                        switch(n.tag())
+                        {
+                        case Node::TAGDEAD: throw "";
+                        TU_ARM(n, Block, ne) {
+                            for(const auto& sn : ne.nodes)
+                            {
+                                if(sn.node)
+                                    find_goto_targets(*sn.node, goto_targets);
+                            }
+                            if(ne.next_bb != SIZE_MAX)
+                                goto_targets.insert(ne.next_bb);
+                            } break;
+                        TU_ARM(n, If, ne) {
+                            find_goto_targets_ref(ne.arm_true, goto_targets);
+                            find_goto_targets_ref(ne.arm_false, goto_targets);
+                            if(ne.next_bb != SIZE_MAX)
+                                goto_targets.insert(ne.next_bb);
+                            } break;
+                        TU_ARM(n, Switch, ne) {
+                            for(const auto& sn : ne.arms) {
+                                find_goto_targets_ref(sn, goto_targets);
+                                if( sn.has_target() && sn.target() != ne.next_bb )
+                                {
+                                    goto_targets.insert(sn.target());
+                                }
+                            }
+                            if(ne.next_bb != SIZE_MAX)
+                                goto_targets.insert(ne.next_bb);
+                            } break;
+                        TU_ARM(n, SwitchValue, ne) {
+                            for(const auto& sn : ne.arms)
+                            {
+                                find_goto_targets_ref(sn, goto_targets);
+                                if( sn.has_target() && sn.target() != ne.next_bb )
+                                {
+                                    goto_targets.insert(sn.target());
+                                }
+                            }
+                            find_goto_targets_ref(ne.def_arm, goto_targets);
+                            if( ne.def_arm.has_target() && ne.def_arm.target() != ne.next_bb )
+                            {
+                                goto_targets.insert(ne.def_arm.target());
+                            }
+                            if(ne.next_bb != SIZE_MAX)
+                                goto_targets.insert(ne.next_bb);
+                            } break;
+                        TU_ARM(n, Loop, ne) {
+                            assert(ne.code.node);
+                            find_goto_targets(*ne.code.node, goto_targets);
+                            if(ne.next_bb != SIZE_MAX)
+                                goto_targets.insert(ne.next_bb);
+                            } break;
+                        }
+                    }
+                    static void find_goto_targets_ref(const NodeRef& r, ::std::set<unsigned>& goto_targets) {
+                        if(r.node)
+                            find_goto_targets(*r.node, goto_targets);
+                        else
+                            goto_targets.insert(r.bb_idx);
+                    }
+                };
                 for(const auto& node : nodes)
                 {
-                    emit_fcn_node(mir_res, node, 1);
+                    H::find_goto_targets(node, goto_targets);
+                }
+
+                for(const auto& node : nodes)
+                {
+                    m_of << "\t" << "// Node\n";
+                    emit_fcn_node(mir_res, node, 1,  goto_targets);
+
+                    switch(node.tag())
+                    {
+                    case Node::TAGDEAD: throw "";
+                    TU_ARM(node, Block, e)
+                        if( e.next_bb != SIZE_MAX )
+                            m_of << "\t""goto bb" << e.next_bb << ";\n";
+                        break;
+                    TU_ARM(node, If, e)
+                        if( e.next_bb != SIZE_MAX )
+                            m_of << "\t""goto bb" << e.next_bb << ";\n";
+                        break;
+                    TU_ARM(node, Switch, e)
+                        if( e.next_bb != SIZE_MAX )
+                            m_of << "\t""goto bb" << e.next_bb << ";\n";
+                        break;
+                    TU_ARM(node, SwitchValue, e)
+                        if( e.next_bb != SIZE_MAX )
+                            m_of << "\t""goto bb" << e.next_bb << ";\n";
+                        break;
+                    TU_ARM(node, Loop, e)
+                        if( e.next_bb != SIZE_MAX )
+                            m_of << "\t""goto bb" << e.next_bb << ";\n";
+                        break;
+                    }
                 }
 
                 m_of << "#else\n";
@@ -2153,20 +2249,25 @@ namespace {
             m_mir_res = nullptr;
         }
 
-        void emit_fcn_node(::MIR::TypeResolve& mir_res, const Node& node, unsigned indent_level)
+        void emit_fcn_node(::MIR::TypeResolve& mir_res, const Node& node, unsigned indent_level,  const ::std::set<unsigned>& goto_targets)
         {
+            TRACE_FUNCTION_F(node.tag_str());
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
-            TU_MATCHA( (node), (e),
-            (Block,
+            switch(node.tag())
+            {
+            case Node::TAGDEAD: throw "";
+            TU_ARM(node, Block, e) {
                 for(size_t i = 0; i < e.nodes.size(); i ++)
                 {
                     const auto& snr = e.nodes[i];
                     if( snr.node ) {
-                        emit_fcn_node(mir_res, *snr.node, indent_level);
+                        emit_fcn_node(mir_res, *snr.node, indent_level,  goto_targets);
                     }
                     else {
-                        DEBUG(mir_res << "BB" << snr.bb_idx);
-                        m_of << indent << "bb" << snr.bb_idx << ":\n";
+                        DEBUG(mir_res << "Block BB" << snr.bb_idx);
+                        // TODO: Only emit the label if it's ever used as a goto target
+                        if( goto_targets.count(snr.bb_idx) )
+                            m_of << indent << "bb" << snr.bb_idx << ": (void)0;\n";
                         const auto& bb = mir_res.m_fcn.blocks.at(snr.bb_idx);
                         for(const auto& stmt : bb.statements)
                         {
@@ -2190,6 +2291,7 @@ namespace {
                             ),
                         (If,
                             //assert(i == e.nodes.size()-1 && "If");
+                            // - This is valid, the next node should be a If (but could be a loop)
                             ),
                         (Call,
                             emit_term_call(mir_res, te, indent_level);
@@ -2203,11 +2305,13 @@ namespace {
                         )
                     }
                 }
-                ),
-            (If,
+                } break;
+            TU_ARM(node, If, e) {
                 m_of << indent << "if("; emit_lvalue(*e.val); m_of << ") {\n";
                 if( e.arm_true.node ) {
-                    emit_fcn_node(mir_res, *e.arm_true.node, indent_level+1);
+                    emit_fcn_node(mir_res, *e.arm_true.node, indent_level+1,  goto_targets);
+                    if( e.arm_true.has_target() && e.arm_true.target() != e.next_bb )
+                        m_of << indent << "\tgoto bb" << e.arm_true.target() << ";\n";
                 }
                 else {
                     m_of << indent << "\tgoto bb" << e.arm_true.bb_idx << ";\n";
@@ -2215,38 +2319,40 @@ namespace {
                 m_of << indent << "}\n";
                 m_of << indent << "else {\n";
                 if( e.arm_false.node ) {
-                    emit_fcn_node(mir_res, *e.arm_false.node, indent_level+1);
+                    emit_fcn_node(mir_res, *e.arm_false.node, indent_level+1,  goto_targets);
+                    if( e.arm_false.has_target() && e.arm_false.target() != e.next_bb )
+                        m_of << indent << "\tgoto bb" << e.arm_false.target() << ";\n";
                 }
                 else {
                     m_of << indent << "\tgoto bb" << e.arm_false.bb_idx << ";\n";
                 }
                 m_of << indent << "}\n";
-                ),
-            (Switch,
+                } break;
+            TU_ARM(node, Switch, e) {
                 this->emit_term_switch(mir_res, *e.val, e.arms.size(), indent_level, [&](auto idx) {
                     const auto& arm = e.arms.at(idx);
                     if( arm.node ) {
                         m_of << "{\n";
-                        this->emit_fcn_node(mir_res, *arm.node, indent_level+1);
-                        m_of << indent  << "\t} ";
+                        this->emit_fcn_node(mir_res, *arm.node, indent_level+1,  goto_targets);
                         if( arm.has_target() && arm.target() != e.next_bb ) {
-                            m_of << "goto bb" << arm.target() << ";";
+                            m_of << indent << "\t" << "goto bb" << arm.target() << ";\n";
                         }
                         else {
-                            m_of << "break;";
+                            //m_of << "break;";
                         }
+                        m_of << indent  << "\t}";
                     }
                     else {
                         m_of << "goto bb" << arm.bb_idx << ";";
                     }
                     });
-                ),
-            (SwitchValue,
+                } break;
+            TU_ARM(node, SwitchValue, e) {
                 this->emit_term_switchvalue(mir_res, *e.val, *e.vals, indent_level, [&](auto idx) {
                     const auto& arm = (idx == SIZE_MAX ? e.def_arm : e.arms.at(idx));
                     if( arm.node ) {
                         m_of << "{\n";
-                        this->emit_fcn_node(mir_res, *arm.node, indent_level+1);
+                        this->emit_fcn_node(mir_res, *arm.node, indent_level+1,  goto_targets);
                         m_of << indent  << "\t} ";
                         if( arm.has_target() && arm.target() != e.next_bb ) {
                             m_of << "goto bb" << arm.target() << ";";
@@ -2256,15 +2362,15 @@ namespace {
                         m_of << "goto bb" << arm.bb_idx << ";";
                     }
                     });
-                ),
-            (Loop,
+                } break;
+            TU_ARM(node, Loop, e) {
                 m_of << indent << "for(;;) {\n";
                 assert(e.code.node);
                 assert(e.code.node->is_Block());
-                this->emit_fcn_node(mir_res, *e.code.node, indent_level+1);
+                this->emit_fcn_node(mir_res, *e.code.node, indent_level+1,  goto_targets);
                 m_of << indent << "}\n";
-                )
-            )
+                } break;
+            }
         }
 
         bool type_is_emulated_i128(const ::HIR::TypeRef& ty) const
@@ -2768,7 +2874,7 @@ namespace {
                         }
                         else
                         {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index); m_of << ";\n\t";
+                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index); m_of << ";\n" << indent;
                             emit_lvalue(e.dst); m_of << ".DATA";
                             m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
                         }
@@ -3047,7 +3153,7 @@ namespace {
                         m_of << indent << "case " << e->values[j] << ": ";
                     }
                     cb(j);
-                    m_of << "\n";
+                    m_of << "break;\n";
                 }
                 m_of << indent << "default: abort();\n";
                 m_of << indent << "}\n";
