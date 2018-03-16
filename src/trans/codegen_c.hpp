@@ -11,7 +11,7 @@ struct NodeRef
     ::std::unique_ptr<Node>    node;
     size_t  bb_idx;
 
-    NodeRef(size_t idx): bb_idx(idx) {}
+    NodeRef(size_t idx);
     NodeRef(Node node);
 
     bool has_target() const;
@@ -22,6 +22,7 @@ struct NodeRef
     }
 };
 
+// A node corresponds to a C statement/block
 TAGGED_UNION(Node, Block,
 (Block, struct {
     size_t  next_bb;
@@ -30,8 +31,8 @@ TAGGED_UNION(Node, Block,
 (If, struct {
     size_t  next_bb;
     const ::MIR::LValue* val;
-    NodeRef arm_false;
     NodeRef arm_true;
+    NodeRef arm_false;
     }),
 (Switch, struct {
     size_t  next_bb;
