@@ -1124,8 +1124,19 @@ namespace {
             m_of << "// enum " << p << "\n";
             m_of << "struct e_" << Trans_Mangle(p) << " {\n";
 
+            // HACK: For NonZero optimised enums, emit a struct with a single field
+            // - This avoids a bug in GCC5 where it would generate incorrect code if there's a union here.
+            if( const auto* ve = repr->variants.opt_NonZero() )
+            {
+                m_of << "\tstruct {\n";
+                m_of << "\t\t";
+                unsigned idx = 1 - ve->zero_variant;
+                emit_ctype(repr->fields.at(idx).ty, FMT_CB(os, os << "var_" << idx));
+                m_of << ";\n";
+                m_of << "\t} DATA;";
+            }
             // If there multiple fields with the same offset, they're the data variants
-            if( union_fields.size() > 0 )
+            else if( union_fields.size() > 0 )
             {
                 assert(1 + union_fields.size() + 1 >= repr->fields.size());
                 // Make the union!
