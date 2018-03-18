@@ -1,7 +1,7 @@
 #pragma once
 
 #include "manifest.h"
-#include "path.h"
+#include <path.h>
 
 class StringList;
 class StringListKV;

@@ -40,7 +40,9 @@ endif
 CXXFLAGS += -std=c++14
 #CXXFLAGS += -Wextra
 CXXFLAGS += -O2
+
 CPPFLAGS := -I src/include/ -I src/
+CPPFLAGS += -I tools/common/
 
 CXXFLAGS += -Wno-pessimizing-move
 CXXFLAGS += -Wno-misleading-indentation
@@ -300,10 +302,10 @@ output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(B
 # -------------------------------
 # Compile rules for mrustc itself
 # -------------------------------
-$(BIN): $(OBJ)
+$(BIN): $(OBJ) tools/bin/common_lib.a
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
-	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJ) $(LIBS)
+	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJ) tools/bin/common_lib.a $(LIBS)
 ifeq ($(OS),Windows_NT)
 else
 	objcopy --only-keep-debug $(BIN) $(BIN).debug
@@ -322,6 +324,9 @@ src/main.cpp: $(PCHS:%=src/%.gch)
 	@echo [CXX] -o $@
 	$V$(CXX) -std=c++14 -o $@ $< $(CPPFLAGS) -MMD -MP -MF $@.dep
 
+tools/bin/common_lib.a:
+	make -C tools/common
+	
 -include $(OBJ:%=%.dep)
 
 # vim: noexpandtab ts=4
