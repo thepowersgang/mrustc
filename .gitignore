@@ -19,21 +19,21 @@
 /output
 /vsproject/Win32
 /vsproject/x64
-/vsproject/tu_test/Win32
-/vsproject/tu_test/x64
-/vsproject/minicargo/Win32
-/vsproject/minicargo/x64
-/vsproject/testrunner/Win32
-/vsproject/testrunner/x64
+/vsproject/*/Win32
+/vsproject/*/x64
 /vsproject/packages
 /vsproject/*.sdf
 /vsproject/*.VC.db
 /vsproject/*.depend
 /vsproject/*.opendb
 /vsproject/*.user
-
 /vsproject/*/*.opendb
 /vsproject/*/*.user
+/vsproject/output
+/vsproject/output_mmir
+/vsproject/*.obj
+/vsproject/*.pdb
+
 
 /run_rustc/output
 
@@ -52,6 +52,3 @@
 /bnf/rust.tab.h
 /bnf/rust.output
 /bnf/test.bin
-/vsproject/output
-/vsproject/output_mmir
-/vsproject/standalone_miri/x64
