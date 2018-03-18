@@ -15,27 +15,27 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\tools\minicargo\main.cpp">
+    <ClCompile Include="..\..\tools\common\debug.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\tools\minicargo\build.cpp">
+    <ClCompile Include="..\..\tools\common\path.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\tools\minicargo\manifest.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="..\..\tools\minicargo\repository.cpp">
+    <ClCompile Include="..\..\tools\common\toml.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\tools\minicargo\manifest.h">
+    <ClInclude Include="..\..\tools\common\debug.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\tools\minicargo\repository.h">
+    <ClInclude Include="..\..\tools\common\path.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\tools\minicargo\build.h">
+    <ClInclude Include="..\..\tools\common\toml.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\tools\common\helpers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

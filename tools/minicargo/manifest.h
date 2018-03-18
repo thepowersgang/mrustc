@@ -5,8 +5,7 @@
 #include <map>
 #include <memory>
 #include <functional>
-#include "path.h"
-#include <functional>
+#include <path.h>
 
 class PackageManifest;
 class Repository;

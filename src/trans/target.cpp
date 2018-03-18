@@ -12,18 +12,19 @@
 #include <map>
 #include <hir/hir.hpp>
 #include <hir_typeck/helpers.hpp>
+#include <toml.h>   // tools/common
 
-TargetArch ARCH_X86_64 = {
+const TargetArch ARCH_X86_64 = {
     "x86_64",
     64, false,
     { /*atomic(u8)=*/true, false, true, true,  true }
     };
-TargetArch ARCH_X86 = {
+const TargetArch ARCH_X86 = {
     "x86",
     32, false,
     { /*atomic(u8)=*/true, false, true, false,  true }
 };
-TargetArch ARCH_ARM32 = {
+const TargetArch ARCH_ARM32 = {
     "arm",
     32, false,
     { /*atomic(u8)=*/true, false, true, false,  true }
@@ -37,25 +38,182 @@ namespace
 {
     TargetSpec load_spec_from_file(const ::std::string& filename)
     {
-        throw "";
+        TargetSpec  rv;
+
+        TomlFile    toml_file(filename);
+        for(auto key_val : toml_file)
+        {
+            // Assertion: The way toml works, there has to be at least two entries in every path.
+            assert(key_val.path.size() > 1);
+            DEBUG(key_val.path << " = " << key_val.value);
+
+            auto check_path_length = [&](const TomlKeyValue& kv, unsigned len) {
+                if( kv.path.size() != len ) {
+                    // TODO: Error.
+                }
+                };
+
+            try
+            {
+                if( key_val.path[0] == "target" )
+                {
+                    if( key_val.path[1] == "family" )
+                    {
+                        check_path_length(key_val, 2);
+                        rv.m_family = key_val.value.as_string();
+                    }
+                    else if( key_val.path[1] == "os-name" )
+                    {
+                        check_path_length(key_val, 2);
+                        rv.m_os_name = key_val.value.as_string();
+                    }
+                    else if( key_val.path[1] == "env-name" )
+                    {
+                        check_path_length(key_val, 2);
+                        rv.m_env_name = key_val.value.as_string();
+                    }
+                    else if( key_val.path[1] == "env-name" )
+                    {
+                        check_path_length(key_val, 2);
+                        rv.m_env_name = key_val.value.as_string();
+                    }
+                    else if( key_val.path[1] == "arch" )
+                    {
+                        check_path_length(key_val, 2);
+                        if( key_val.value.as_string() == ARCH_ARM32.m_name )
+                        {
+                            rv.m_arch = ARCH_ARM32;
+                        }
+                        else if( key_val.value.as_string() == ARCH_X86.m_name )
+                        {
+                            rv.m_arch = ARCH_X86;
+                        }
+                        else if( key_val.value.as_string() == ARCH_X86_64.m_name )
+                        {
+                            rv.m_arch = ARCH_X86_64;
+                        }
+                        else
+                        {
+                            // TODO: Error.
+                        }
+                    }
+                    else
+                    {
+                        // TODO: Error/warning
+                    }
+                }
+                else if( key_val.path[0] == "backend" )
+                {
+                    if( key_val.path[1] == "c" )
+                    {
+                        if( key_val.path.size() <= 2 ) {
+                            // TODO: Error.
+                            continue ;
+                        }
+
+                        if( key_val.path[2] == "variant" )
+                        {
+                            check_path_length(key_val, 3);
+                            if( key_val.value.as_string() == "msvc" )
+                            {
+                                rv.m_codegen_mode = CodegenMode::Msvc;
+                            }
+                            else if( key_val.value.as_string() == "gnu" )
+                            {
+                                rv.m_codegen_mode = CodegenMode::Gnu11;
+                            }
+                            else
+                            {
+                                // TODO: Error.
+                            }
+                        }
+                        else if( key_val.path[2] == "target" )
+                        {
+                            check_path_length(key_val, 3);
+                            rv.m_c_compiler = key_val.value.as_string();
+                        }
+                        else
+                        {
+                            // TODO: Warning/error
+                        }
+                    }
+                    // Does MMIR need configuration?
+                    else
+                    {
+                        // TODO: Error/warning
+                    }
+                }
+                else if( key_val.path[0] == "arch" )
+                {
+                    if( key_val.path[1] == "name" )
+                    {
+                        rv.m_arch.m_name = key_val.value.as_string();
+                    }
+                    else if( key_val.path[1] == "pointer-bits" )
+                    {
+                        rv.m_arch.m_pointer_bits = key_val.value.as_int();
+                    }
+                    else if( key_val.path[1] == "is-big-endian" )
+                    {
+                        rv.m_arch.m_big_endian = key_val.value.as_bool();
+                    }
+                    else if( key_val.path[1] == "has-atomic-u8" )
+                    {
+                        rv.m_arch.m_atomics.u8 = key_val.value.as_bool();
+                    }
+                    else if( key_val.path[1] == "has-atomic-u16" )
+                    {
+                        rv.m_arch.m_atomics.u16 = key_val.value.as_bool();
+                    }
+                    else if( key_val.path[1] == "has-atomic-u32" )
+                    {
+                        rv.m_arch.m_atomics.u32 = key_val.value.as_bool();
+                    }
+                    else if( key_val.path[1] == "has-atomic-u64" )
+                    {
+                        rv.m_arch.m_atomics.u64 = key_val.value.as_bool();
+                    }
+                    else if( key_val.path[1] == "has-atomic-ptr" )
+                    {
+                        rv.m_arch.m_atomics.ptr = key_val.value.as_bool();
+                    }
+                    else
+                    {
+                        // TODO: warning/error
+                    }
+                }
+                else
+                {
+                }
+            }
+            catch(const TomlValue::TypeError& e)
+            {
+                // TODO: error
+            }
+        }
+
+        // TODO: Ensure that everything is set
+
+        return rv;
     }
     TargetSpec init_from_spec_name(const ::std::string& target_name)
     {
-        if( ::std::ifstream(target_name).is_open() )
+        // TODO: If there's a '/' or a '\' in the filename, open it as a path, otherwise it has to be a triple.
+        if( target_name.find('/') != ::std::string::npos || target_name.find('\\') != ::std::string::npos )
         {
             return load_spec_from_file(target_name);
         }
         else if(target_name == "i586-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, "i586-pc-linux-gnu",
+                "unix", "linux", "gnu", CodegenMode::Gnu11, "i586-linux-gnu",
                 ARCH_X86
                 };
         }
         else if(target_name == "x86_64-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, "x86_64-pc-linux-gnu",
+                "unix", "linux", "gnu", CodegenMode::Gnu11, "x86_64-linux-gnu",
                 ARCH_X86_64
                 };
         }

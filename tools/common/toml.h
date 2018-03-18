@@ -97,6 +97,18 @@ struct TomlValue
         }
         return m_int_value != 0;
     }
+    uint64_t as_int() const {
+        if(m_type != Type::Integer) {
+            throw TypeError { m_type, Type::Integer };
+        }
+        return m_int_value;
+    }
+    const ::std::vector<TomlValue>& as_list() const {
+        if(m_type != Type::List) {
+            throw TypeError { m_type, Type::List };
+        }
+        return m_sub_values;
+    }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const TomlValue& x) {
         switch(x.m_type)

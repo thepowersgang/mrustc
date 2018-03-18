@@ -4,17 +4,26 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 VisualStudioVersion = 14.0.25420.1
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "mrustc", "mrustc.vcxproj", "{12AA9964-C1BD-406A-9545-43EE63230EBE}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4} = {C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tu_test", "tu_test\tu_test.vcxproj", "{F0A80ABB-A11A-492C-B5FC-E26C29A988D8}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "minicargo", "minicargo\minicargo.vcxproj", "{15F3D38B-14FF-4872-805D-6D9C52920842}"
 	ProjectSection(ProjectDependencies) = postProject
 		{12AA9964-C1BD-406A-9545-43EE63230EBE} = {12AA9964-C1BD-406A-9545-43EE63230EBE}
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4} = {C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}
 	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "testrunner", "testrunner\testrunner.vcxproj", "{A6679301-7BF1-4B37-9468-687769472E24}"
+	ProjectSection(ProjectDependencies) = postProject
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4} = {C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}
+	EndProjectSection
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "standalone_miri", "standalone_miri\standalone_miri.vcxproj", "{253306D0-355B-41F2-A2F6-033DED548878}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "common_lib", "common_lib\common_lib.vcxproj", "{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -64,6 +73,14 @@ Global
 		{253306D0-355B-41F2-A2F6-033DED548878}.Release|x64.Build.0 = Release|x64
 		{253306D0-355B-41F2-A2F6-033DED548878}.Release|x86.ActiveCfg = Release|Win32
 		{253306D0-355B-41F2-A2F6-033DED548878}.Release|x86.Build.0 = Release|Win32
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Debug|x64.ActiveCfg = Debug|x64
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Debug|x64.Build.0 = Debug|x64
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Debug|x86.ActiveCfg = Debug|Win32
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Debug|x86.Build.0 = Debug|Win32
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Release|x64.ActiveCfg = Release|x64
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Release|x64.Build.0 = Release|x64
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Release|x86.ActiveCfg = Release|Win32
+		{C2AE52D0-1EA5-4072-BE90-E4CEEB5002C4}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

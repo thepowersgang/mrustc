@@ -26,8 +26,8 @@ $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
-# - Include files from minicargo
-$(OBJDIR)%.o: ../minicargo/%.cpp
+# - Include files from common (TODO: Be less hacky)
+$(OBJDIR)%.o: ../common/%.cpp
 	@mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep

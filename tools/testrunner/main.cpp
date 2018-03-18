@@ -7,8 +7,8 @@
 #include <vector>
 #include <fstream>
 #include <cctype>   // std::isblank
-#include "../minicargo/debug.h"
-#include "../minicargo/path.h"
+#include "../common/debug.h"
+#include "../common/path.h"
 #ifdef _WIN32
 # include <Windows.h>
 # define MRUSTC_PATH    "x64\\Release\\mrustc.exe"

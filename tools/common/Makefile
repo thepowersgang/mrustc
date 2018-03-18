@@ -3,21 +3,15 @@
 # - Interprets Cargo.toml files and emits makefiles
 # - Supports overriding build script output
 #
-ifeq ($(OS),Windows_NT)
-  EXESUF ?= .exe
-endif
-EXESUF ?=
 
 V ?= @
 
 OBJDIR := .obj/
 
-BIN := ../bin/minicargo$(EXESUF)
-OBJS := main.o build.o manifest.o repository.o
+BIN := ../bin/common_lib.a
+OBJS = toml.o path.o debug.o
 
-LINKFLAGS := -g -lpthread
 CXXFLAGS := -Wall -std=c++14 -g -O2
-CXXFLAGS += -I ../common
 
 OBJS := $(OBJS:%=$(OBJDIR)%)
 
@@ -28,18 +22,15 @@ all: $(BIN)
 clean:
 	rm $(BIN) $(OBJS)
 
-$(BIN): $(OBJS) ../bin/common_lib.a
+$(BIN): $(OBJS)
 	@mkdir -p $(dir $@)
-	@echo [CXX] -o $@
-	$V$(CXX) -o $@ $(OBJS) ../bin/common_lib.a $(LINKFLAGS)
+	@echo [AR] rcu $@
+	$V$(AR) rcu $@ $(OBJS)
 
 $(OBJDIR)%.o: %.cpp
 	@mkdir -p $(dir $@)
 	@echo [CXX] $<
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) -MMD -MP -MF $@.dep
-
-../bin/common_lib.a:
-	make -C ../common
 
 -include $(OBJS:%.o=%.o.dep)
 
