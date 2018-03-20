@@ -797,7 +797,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
      int    stdout_pipes[2];
     if( pipe(stdout_pipes) != 0)
     {
-        BUG(sp, "Unable to create stdin pipe pair for proc macro, " << strerror(errno));
+        BUG(sp, "Unable to create stdout pipe pair for proc macro, " << strerror(errno));
     }
     this->child_stdout = stdout_pipes[0]; // Read end
 
