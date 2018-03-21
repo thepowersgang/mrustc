@@ -38,10 +38,10 @@ RValues (usable values)
 - `LVALUE as TYPE` - Primitive cast operation
 - `LVALUE <op> LVALUE` - Binary operation (on numeric primitives only)
 - `<op> LVALUE` - Unary operation (numeric primitives and booleans only)
-- `[LVALUE; LVALUE]` - Construct a sized array
-- `[LVALUE, ...]` - Construct a literal array
-- `(LVALUE, ...)` - Construct a tuple
-- `PATH { f: LVALUE, ... }` - Construct a named struct
+- `[RVALUE; RVALUE]` - Construct a sized array
+- `[RVALUE, ...]` - Construct a literal array
+- `(RVALUE, ...)` - Construct a tuple
+- `PATH { f: RVALUE, ... }` - Construct a named struct
 - `meta(LVALUE)` - Extract the fat pointer metadata for an lvalue
 - `fatptr(LVALUE, LVALUE)` - Construct a fat pointer from a pair of lvalues
 - `CONSTANT` - Subset of RValues that are known at compile-time
