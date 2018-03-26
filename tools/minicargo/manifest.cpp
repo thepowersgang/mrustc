@@ -14,6 +14,10 @@
 # define TARGET_NAME    "i586-windows-msvc"
 # define CFG_UNIX   false
 # define CFG_WINDOWS true
+#elif defined(__NetBSD__)
+# define TARGET_NAME "x86_64-unknown-netbsd"
+# define CFG_UNIX   true
+# define CFG_WINDOWS false
 #else
 # define TARGET_NAME "x86_64-unknown-linux-gnu"
 # define CFG_UNIX   true
