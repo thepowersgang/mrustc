@@ -6,7 +6,7 @@ Intro
 ===
 This project is an attempt at creating a simple rust compiler in C++, with the ultimate goal of being a separate re-implementation.
 
-`mrustc` works by comping assumed-valid rust code (i.e. without borrow checking) into a high-level assembly (currently using C, but LLVM/cretonne or even direct machine code could work) and getting an external code generator to turn that into optimised machine code. This works because the borrow checker doesn't have any impact on the generated code, just in checking that the code would be valid.
+`mrustc` works by compiling assumed-valid rust code (i.e. without borrow checking) into a high-level assembly (currently using C, but LLVM/cretonne or even direct machine code could work) and getting an external code generator to turn that into optimised machine code. This works because the borrow checker doesn't have any impact on the generated code, just in checking that the code would be valid.
 
 Progress
 --------
