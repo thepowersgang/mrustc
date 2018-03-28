@@ -51,6 +51,9 @@ extern int _putenv_s(const char*, const char*);
 #  define HOST_TARGET "x86_64-windows-gnu"
 # else
 # endif
+#elif defined(__NetBSD__)
+# define EXESUF ""
+# define HOST_TARGET "x86_64-unknown-netbsd"
 #else
 # define EXESUF ""
 # define HOST_TARGET "x86_64-unknown-linux-gnu"

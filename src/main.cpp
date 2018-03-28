@@ -52,6 +52,10 @@
 # else
 #  define DEFAULT_TARGET_NAME "i586-windows-gnu"
 # endif
+#elif defined(__NetBSD__)
+# if defined(__amd64__)
+#  define DEFAULT_TARGET_NAME "x86_64-unknown-netbsd"
+# endif
 #elif defined(__OpenBSD__)
 # if defined(__amd64__)
 #  define DEFAULT_TARGET_NAME "x86_64-unknown-openbsd"
