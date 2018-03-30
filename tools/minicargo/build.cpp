@@ -644,7 +644,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     }
     if( true /*this->enable_debug*/ ) {
         args.push_back("-g");
-        //args.push_back("--cfg"); args.push_back("debug_assertions");
+        args.push_back("--cfg"); args.push_back("debug_assertions");
     }
     if( true /*this->enable_optimise*/ ) {
         args.push_back("-O");
