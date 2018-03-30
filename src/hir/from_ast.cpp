@@ -1206,8 +1206,12 @@ namespace {
     bool force_emit = false;
     if( const auto* a = attrs.get("inline") )
     {
-        (void)a;
-        force_emit = true;
+        if( a->has_sub_items() && ::std::any_of(a->items().begin(), a->items().end(), [](const auto& v){ return v.name() == "never"; }) ) {
+            // Inline(never)
+        }
+        else {
+            force_emit = true;
+        }
     }
 
     ::HIR::Linkage  linkage;
