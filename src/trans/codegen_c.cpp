@@ -213,6 +213,7 @@ namespace {
                 {
                     m_options.emulated_i128 = true;
                 }
+                m_options.disallow_empty_structs = true;
                 break;
             case CodegenMode::Msvc:
                 m_compiler = Compiler::Msvc;
@@ -706,10 +707,20 @@ namespace {
                 ::std::cerr << "INVOKE CC: " << cmd_ss.str() << ::std::endl;
                 ::std::ofstream(opt.build_command_file) << cmd_ss.str() << ::std::endl;
             }
-            else if( system(cmd_ss.str().c_str()) != 0 )
+            else
             {
-                ::std::cerr << "C Compiler failed to execute" << ::std::endl;
-                abort();
+                int ec = system(cmd_ss.str().c_str());
+                if( ec == -1 )
+                {
+                    ::std::cerr << "C Compiler failed to execute (system returned -1)" << ::std::endl;
+                    perror("system");
+                    exit(1);
+                }
+                else if( ec != 0 )
+                {
+                    ::std::cerr << "C Compiler failed to execute - error code " << ec << ::std::endl;
+                    exit(1);
+                }
             }
         }
 
@@ -3337,6 +3348,11 @@ namespace {
                 const auto& name = e.fcn.as_Intrinsic().name;
                 const auto& params = e.fcn.as_Intrinsic().params;
                 emit_intrinsic_call(name, params, e);
+                if( has_zst )
+                {
+                    indent.n --;
+                    m_of << indent << "}\n";
+                }
                 return ;
                 )
             )
@@ -3968,7 +3984,10 @@ namespace {
                 m_of << "memset( &"; emit_lvalue(e.ret_val); m_of << ", 0, sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
             }
             else if( name == "move_val_init" ) {
-                m_of << "*"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
+                if( !this->type_is_bad_zst(params.m_types.at(0)) )
+                {
+                    m_of << "*"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
+                }
             }
             else if( name == "abort" ) {
                 m_of << "abort()";
