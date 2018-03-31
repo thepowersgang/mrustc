@@ -855,8 +855,16 @@ namespace {
                     for(unsigned int i = 0; i < te.size(); i++)
                     {
                         m_of << "\t";
-                        emit_ctype(te[i], FMT_CB(ss, ss << "_" << i;));
-                        m_of << ";\n";
+                        size_t s, a;
+                        Target_GetSizeAndAlignOf(sp, m_resolve, te[i], s, a);
+                        if( s == 0 && m_options.disallow_empty_structs ) {
+                            m_of << "// ZST: " << te[i] << "\n";
+                            continue ;
+                        }
+                        else {
+                            emit_ctype(te[i], FMT_CB(ss, ss << "_" << i;));
+                            m_of << ";\n";
+                        }
                     }
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
                 }
@@ -873,6 +881,7 @@ namespace {
                     auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
                     for(const auto& ity : te)
                     {
+                        // TODO: What if it's a ZST?
                         emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false, 1);
                         fld_lv.as_Field().field_index ++;
                     }
@@ -2479,6 +2488,15 @@ namespace {
                 const auto& e = stmt.as_Assign();
                 DEBUG("- " << e.dst << " = " << e.src);
                 m_of << indent;
+
+                ::HIR::TypeRef  tmp;
+                const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
+                if( e.dst.is_Deref() && this->type_is_bad_zst(ty) )
+                {
+                    m_of << "/* ZST deref */";
+                    break;
+                }
+
                 TU_MATCHA( (e.src), (ve),
                 (Use,
                     ::HIR::TypeRef  tmp;
@@ -3900,7 +3918,11 @@ namespace {
                 const auto& ty_dst = params.m_types.at(0);
                 const auto& ty_src = params.m_types.at(1);
                 auto is_ptr = [](const ::HIR::TypeRef& ty){ return ty.m_data.is_Borrow() || ty.m_data.is_Pointer(); };
-                if( e.args.at(0).is_Constant() )
+                if( this->type_is_bad_zst(ty_dst) )
+                {
+                    m_of << "/* zst */";
+                }
+                else if( e.args.at(0).is_Constant() )
                 {
                     m_of << "{ "; emit_ctype(ty_src, FMT_CB(s, s << "v";)); m_of << " = "; emit_param(e.args.at(0)); m_of << ";";
                     m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &v, sizeof("; emit_ctype(ty_dst); m_of << ")); ";
@@ -3938,6 +3960,10 @@ namespace {
                 }
             }
             else if( name == "copy_nonoverlapping" || name == "copy" ) {
+                if( this->type_is_bad_zst(params.m_types.at(0)) ) {
+                    m_of << "/* zst */";
+                    return ;
+                }
                 if( name == "copy" ) {
                     m_of << "memmove";
                 }
@@ -3951,6 +3977,10 @@ namespace {
                     m_of << ")";
             }
             else if( name == "write_bytes" ) {
+                if( this->type_is_bad_zst(params.m_types.at(0)) ) {
+                    m_of << "/* zst */";
+                    return ;
+                }
                 // 0: Destination, 1: Value, 2: Count
                 m_of << "if( "; emit_param(e.args.at(2)); m_of << " > 0) memset( "; emit_param(e.args.at(0));
                     m_of << ", "; emit_param(e.args.at(1));
@@ -5288,7 +5318,9 @@ namespace {
                 else {
                     m_of << "TUP_" << te.size();
                     for(const auto& t : te)
+                    {
                         m_of << "_" << Trans_Mangle(t);
+                    }
                 }
                 m_of << " " << inner;
                 ),
