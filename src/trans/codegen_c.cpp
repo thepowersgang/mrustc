@@ -1287,7 +1287,11 @@ namespace {
 
         void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::Enum& item, size_t var_idx) override
         {
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "enum cons " << path;), ::HIR::TypeRef(), {}, empty_fcn };
+            m_mir_res = &top_mir_res;
             TRACE_FUNCTION_F(path << " var_idx=" << var_idx);
+
             ::HIR::TypeRef  tmp;
             auto monomorph = [&](const auto& x)->const auto& {
                 if( monomorphise_type_needed(x) ) {
@@ -1349,17 +1353,25 @@ namespace {
             else
             {
                 m_of << " .DATA = { .var_" << var_idx << " = {";
-                for(unsigned int i = 0; i < e.size(); i ++)
+                if( this->type_is_bad_zst(repr->fields[var_idx].ty) )
                 {
-                    if(i != 0)
-                    m_of << ",";
-                    m_of << "\n\t\t_" << i;
+                    m_of << "\n\t\t0";
+                }
+                else
+                {
+                    for(unsigned int i = 0; i < e.size(); i ++)
+                    {
+                        if(i != 0)
+                        m_of << ",";
+                        m_of << "\n\t\t_" << i;
+                    }
                 }
                 m_of << "\n\t\t}";
             }
             m_of << " }};\n";
             m_of << "\treturn rv;\n";
             m_of << "}\n";
+            m_mir_res = nullptr;
         }
         void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
         {
