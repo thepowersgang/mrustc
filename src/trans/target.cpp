@@ -24,6 +24,11 @@ const TargetArch ARCH_X86 = {
     32, false,
     { /*atomic(u8)=*/true, false, true, false,  true }
 };
+const TargetArch ARCH_ARM64 = {
+    "aarch64",
+    64, false,
+    { /*atomic(u8)=*/true, true, true, true,  true }
+};
 const TargetArch ARCH_ARM32 = {
     "arm",
     32, false,
@@ -83,6 +88,10 @@ namespace
                         if( key_val.value.as_string() == ARCH_ARM32.m_name )
                         {
                             rv.m_arch = ARCH_ARM32;
+                        }
+                        else if( key_val.value.as_string() == ARCH_ARM64.m_name )
+                        {
+                            rv.m_arch = ARCH_ARM64;
                         }
                         else if( key_val.value.as_string() == ARCH_X86.m_name )
                         {
@@ -224,6 +233,13 @@ namespace
                 ARCH_ARM32
                 };
         }
+        else if(target_name == "aarch64-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", CodegenMode::Gnu11, "aarch64-linux-gnu",
+                ARCH_ARM64
+                };
+        }
         else if(target_name == "i586-windows-gnu")
         {
             return TargetSpec {
@@ -278,6 +294,13 @@ namespace
             return TargetSpec {
                 "unix", "openbsd", "gnu", CodegenMode::Gnu11, "arm-unknown-openbsd",
                 ARCH_ARM32
+                };
+        }
+        else if(target_name == "aarch64-unknown-openbsd")
+        {
+            return TargetSpec {
+                "unix", "openbsd", "gnu", CodegenMode::Gnu11, "aarch64-unknown-openbsd",
+                ARCH_ARM64
                 };
         }
         else
