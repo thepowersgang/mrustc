@@ -15,7 +15,7 @@ OBJS := $(OBJS:%=$(OBJDIR)%)
 all: $(BIN)
 
 clean:
-	rm $(BIN) $(OBJS)
+	rm $(BIN) $(OBJS) $(OBJS:%.o=%.o.dep)
 
 $(BIN): $(OBJS)
 	@mkdir -p $(dir $@)
