@@ -38,7 +38,7 @@
 # if defined(__amd64__)
 #  define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
 # elif defined(__aarch64__)
-#  define DEFAULT_TARGET_NAME "arm64-linux-gnu"
+#  define DEFAULT_TARGET_NAME "aarch64-linux-gnu"
 # elif defined(__arm__)
 #  define DEFAULT_TARGET_NAME "arm-linux-gnu"
 # elif defined(__i386__)
@@ -60,7 +60,7 @@
 # if defined(__amd64__)
 #  define DEFAULT_TARGET_NAME "x86_64-unknown-openbsd"
 # elif defined(__aarch64__)
-#  define DEFAULT_TARGET_NAME "arm64-unknown-openbsd"
+#  define DEFAULT_TARGET_NAME "aarch64-unknown-openbsd"
 # elif defined(__arm__)
 #  define DEFAULT_TARGET_NAME "arm-unknown-openbsd"
 # elif defined(__i386__)
