@@ -163,6 +163,7 @@ namespace {
                 for(const auto& var : e->variants)
                 {
                     m_os << indent() << var.name;
+                    m_os << ",\n";
                 }
             }
             else
@@ -178,8 +179,8 @@ namespace {
                     {
                         m_os << " " << var.type << (var.is_struct ? "/*struct*/" : "");
                     }
+                    m_os << ",\n";
                 }
-                m_os << ",\n";
             }
             dec_indent();
             m_os << indent() << "}\n";
