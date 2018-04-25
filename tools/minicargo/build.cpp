@@ -803,7 +803,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
     auto out_dir = output_dir_abs / "build_" + manifest.name().c_str();
-    
+
     bool run_build_script = false;
     // TODO: Handle a pre-existing script containing `cargo:rerun-if-changed`
     auto script_exe = this->build_build_script(manifest, is_for_host, &run_build_script);
@@ -813,7 +813,8 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         return ::helpers::path();
     }
 
-    if( run_build_script )
+    // If the script changed, OR the output file doesn't exist
+    if( run_build_script || Timestamp::for_file(out_file) == Timestamp::infinite_past() )
     {
         auto script_exe_abs = script_exe.to_absolute();
 
