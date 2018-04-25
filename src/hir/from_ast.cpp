@@ -1290,7 +1290,8 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             auto& submod = *submod_ptr;
             ::std::string name = FMT("#" << i);
             auto item_path = ::HIR::ItemPath(path, name.c_str());
-            _add_mod_ns_item( mod,  mv$(name), false, ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, item_path, mod.m_traits) ) );
+            auto ti = ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, item_path, mod.m_traits) );
+            _add_mod_ns_item( mod,  mv$(name), false, mv$(ti) );
         }
     }
 
