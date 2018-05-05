@@ -46,6 +46,18 @@ Windows
 - Run `vsproject/build_rustc_minicargo.cmd` to attempt to build libstd
 
 
+Building non-rustc code
+=======================
+
+To build your own code with mrustc, first you need to build at least libcore (and probably the full standard library).
+This can be done on linux by running `make -f minicargo.mk LIBS`, or on windows with `build_std.cmd`.
+
+Next, run
+- `minicargo -L <path_to_libstd> <crate_path>` to build a cargo project.
+- or, `mrustc -L <path_to_libstd> --out-dir <output_directory> <path_to_main.rs>` to directly invoke mrustc.
+
+For additional options, both programs have a `--help` option.
+
 Diagnosing Issues and Reporting Bugs
 ====================================
 
@@ -77,6 +89,8 @@ Current Features
 - Functional cargo clone (minicargo)
   - Includes build script support
 - Procedural macros (custom derive)
+- Custom target specifications
+  - See `docs/target.md`
 
 Plans
 =====
