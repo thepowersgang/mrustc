@@ -54,7 +54,18 @@ namespace
 
             auto check_path_length = [&](const TomlKeyValue& kv, unsigned len) {
                 if( kv.path.size() != len ) {
-                    // TODO: Error.
+                    if( kv.path.size() > len ) {
+                        ::std::cerr << "ERROR: Unexpected sub-node to  " << kv.path << " in " << filename << ::std::endl;
+                    }
+                    else {
+                        ::std::cerr << "ERROR: Expected sub-nodes in  " << kv.path << " in " << filename << ::std::endl;
+                    }
+                    exit(1);
+                }
+                };
+            auto check_path_length_min = [&](const TomlKeyValue& kv, unsigned len) {
+                if( kv.path.size() < len ) {
+                    ::std::cerr << "ERROR: Expected sub-nodes in " << kv.path << " in " << filename << ::std::endl;
                 }
                 };
 
@@ -62,6 +73,7 @@ namespace
             {
                 if( key_val.path[0] == "target" )
                 {
+                    check_path_length_min(key_val, 2);
                     if( key_val.path[1] == "family" )
                     {
                         check_path_length(key_val, 2);
@@ -71,11 +83,6 @@ namespace
                     {
                         check_path_length(key_val, 2);
                         rv.m_os_name = key_val.value.as_string();
-                    }
-                    else if( key_val.path[1] == "env-name" )
-                    {
-                        check_path_length(key_val, 2);
-                        rv.m_env_name = key_val.value.as_string();
                     }
                     else if( key_val.path[1] == "env-name" )
                     {
@@ -103,22 +110,23 @@ namespace
                         }
                         else
                         {
-                            // TODO: Error.
+                            // Error.
+                            ::std::cerr << "ERROR: Unknown architecture name '" << key_val.value.as_string() << "' in " << filename << ::std::endl;
+                            exit(1);
                         }
                     }
                     else
                     {
-                        // TODO: Error/warning
+                        // Warning
+                        ::std::cerr << "Warning: Unknown configuration item " << key_val.path[0] << "." << key_val.path[1] << " in " << filename << ::std::endl;
                     }
                 }
                 else if( key_val.path[0] == "backend" )
                 {
+                    check_path_length_min(key_val, 2);
                     if( key_val.path[1] == "c" )
                     {
-                        if( key_val.path.size() <= 2 ) {
-                            // TODO: Error.
-                            continue ;
-                        }
+                        check_path_length_min(key_val, 3);
 
                         if( key_val.path[2] == "variant" )
                         {
@@ -133,7 +141,8 @@ namespace
                             }
                             else
                             {
-                                // TODO: Error.
+                                ::std::cerr << "ERROR: Unknown C variant name '" << key_val.value.as_string() << "' in " << filename << ::std::endl;
+                                exit(1);
                             }
                         }
                         else if( key_val.path[2] == "target" )
@@ -143,71 +152,90 @@ namespace
                         }
                         else
                         {
-                            // TODO: Warning/error
+                            ::std::cerr << "WARNING: Unknown field backend.c." << key_val.path[2] << " in " << filename << ::std::endl;
                         }
                     }
                     // Does MMIR need configuration?
                     else
                     {
-                        // TODO: Error/warning
+                        ::std::cerr << "WARNING: Unknown configuration item backend." << key_val.path[1] << " in " << filename << ::std::endl;
                     }
                 }
                 else if( key_val.path[0] == "arch" )
                 {
+                    check_path_length_min(key_val, 2);
                     if( key_val.path[1] == "name" )
                     {
+                        check_path_length(key_val, 2);
+                        if( rv.m_arch.m_name != "" ) {
+                            ::std::cerr << "ERROR: Architecture already specified to be '" << rv.m_arch.m_name << "'" << ::std::endl;
+                            exit(1);
+                        }
                         rv.m_arch.m_name = key_val.value.as_string();
                     }
                     else if( key_val.path[1] == "pointer-bits" )
                     {
+                        check_path_length(key_val, 2);
                         rv.m_arch.m_pointer_bits = key_val.value.as_int();
                     }
                     else if( key_val.path[1] == "is-big-endian" )
                     {
+                        check_path_length(key_val, 2);
                         rv.m_arch.m_big_endian = key_val.value.as_bool();
                     }
                     else if( key_val.path[1] == "has-atomic-u8" )
                     {
+                        check_path_length(key_val, 2);
                         rv.m_arch.m_atomics.u8 = key_val.value.as_bool();
                     }
                     else if( key_val.path[1] == "has-atomic-u16" )
                     {
+                        check_path_length(key_val, 2);
                         rv.m_arch.m_atomics.u16 = key_val.value.as_bool();
                     }
                     else if( key_val.path[1] == "has-atomic-u32" )
                     {
+                        check_path_length(key_val, 2);
                         rv.m_arch.m_atomics.u32 = key_val.value.as_bool();
                     }
                     else if( key_val.path[1] == "has-atomic-u64" )
                     {
+                        check_path_length(key_val, 2);
                         rv.m_arch.m_atomics.u64 = key_val.value.as_bool();
                     }
                     else if( key_val.path[1] == "has-atomic-ptr" )
                     {
+                        check_path_length(key_val, 2);
                         rv.m_arch.m_atomics.ptr = key_val.value.as_bool();
                     }
                     else
                     {
-                        // TODO: warning/error
+                        ::std::cerr << "WARNING: Unknown field arch." << key_val.path[1] << " in " << filename << ::std::endl;
                     }
                 }
                 else
                 {
+                    ::std::cerr << "WARNING: Unknown configuration item " << key_val.path[0] << " in " << filename << ::std::endl;
                 }
             }
             catch(const TomlValue::TypeError& e)
             {
-                // TODO: error
+                ::std::cerr << "ERROR: Invalid type for " << key_val.path << " - " << e << ::std::endl;
+                exit(1);
             }
         }
 
         // TODO: Ensure that everything is set
+        if( rv.m_arch.m_name == "" ) {
+            ::std::cerr << "ERROR: Architecture not specified in " << filename << ::std::endl;
+            exit(1);
+        }
 
         return rv;
     }
     TargetSpec init_from_spec_name(const ::std::string& target_name)
     {
-        // TODO: If there's a '/' or a '\' in the filename, open it as a path, otherwise it has to be a triple.
+        // If there's a '/' or a '\' in the filename, open it as a path, otherwise assume it's a triple.
         if( target_name.find('/') != ::std::string::npos || target_name.find('\\') != ::std::string::npos )
         {
             return load_spec_from_file(target_name);
@@ -355,6 +383,9 @@ void Target_SetCfg(const ::std::string& target_name)
     Cfg_SetValue("target_arch", g_target.m_arch.m_name);
     Cfg_SetValueCb("target_has_atomic", [&](const ::std::string& s) {
         if(s == "8")    return g_target.m_arch.m_atomics.u8;    // Has an atomic byte
+        if(s == "16")   return g_target.m_arch.m_atomics.u16;
+        if(s == "32")   return g_target.m_arch.m_atomics.u32;
+        if(s == "64")   return g_target.m_arch.m_atomics.u64;
         if(s == "ptr")  return g_target.m_arch.m_atomics.ptr;   // Has an atomic pointer-sized value
         return false;
         });

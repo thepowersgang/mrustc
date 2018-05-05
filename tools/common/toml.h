@@ -42,7 +42,18 @@ struct TomlValue
         String,
         Integer,
         List,
+
     };
+    friend ::std::ostream& operator<<(::std::ostream& os, const Type& e) {
+        switch(e)
+        {
+        case Type::Boolean: os << "boolean";    break;
+        case Type::String:  os << "string";     break;
+        case Type::Integer: os << "integer";    break;
+        case Type::List:    os << "list";       break;
+        }
+        return os;
+    }
     struct TypeError:
         public ::std::exception
     {
@@ -57,6 +68,10 @@ struct TomlValue
 
         const char* what() const noexcept override {
             return "toml type error";
+        }
+        friend ::std::ostream& operator<<(::std::ostream& os, const TypeError& e) {
+            os << "expected " << e.exp << ", got " << e.have;
+            return os;
         }
     };
 
