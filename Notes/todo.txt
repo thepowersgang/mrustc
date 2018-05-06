@@ -23,11 +23,11 @@ TODO:
 - Only generate destructors if needed (removes C warnings)
 - Cache specialisation tree
 - Dependency files from mrustc
-- Allow disabling C codegen (and/or emitting a makefile stub for it)
+  - Partally done, not complete
 
 
 ## Optimisations
-- Argument propagation: replace assignments from Argument(_) if target is only
+- Argument propagation: replace assignments from `Argument(_)` if target is only
   written once
 - Dead assignment removal (Delete `<val> = Use(<val>)`
 - Tuple destructure removal

@@ -29,6 +29,43 @@ optimization-fuel-0 # -Z fuel=foo=0
 optimization-fuel-1 # ^
 warn-ctypes-inhibit # -D improper-ctypes
 
+# Requires unwinding panics
+unwind-resource
+backtrace
+backtrace-debuginfo
+backtrace-debuginfo-aux
+issue-24313     # Not sure if this is unwinding or TLS problems...
+box-of-array-of-drop-1
+box-of-array-of-drop-2
+catch-unwind-bang
+cleanup-rvalue-temp-during-incomplete-alloc
+drop-trait-enum
+dynamic-drop
+intrinsic-move-val-cleanups
+issue-14875
+issue-25089
+issue-26655
+issue-29485
+issue-29948
+issue-30018-panic
+issue-8460  # .. except it fails because there's no overflow checks
+multi-panic
+nested-vec-3
+panic-handler-chain
+panic-handler-flail-wildly
+panic-handler-set-twice
+panic-in-dtor-drops-fields
+panic-recover-propagate
+reachable-unnameable-items
+slice-panic-1
+slice-panic-2
+task-stderr
+terminate-in-initializer
+test-should-fail-good-message
+unit-like-struct-drop-run
+unwind-unique
+vector-sort-panic-safe
+
 # LEX
 lex-bare-cr-nondoc-comment  # Don't treat \r as a new line
 
@@ -82,43 +119,6 @@ sync-send-iterators-in-libcollections   # macro_rules - :expr matching bare ..
 trait-item-inside-macro # TODO: Allow macro invocations in traits
 try-operator-custom # TODO: use the ops::Try trait instead of try! desugar
 type-macros-simple  # macro_rules ordering with nested items
-
-# Requires unwinding panics
-unwind-resource
-backtrace
-backtrace-debuginfo
-backtrace-debuginfo-aux
-issue-24313     # Not sure if this is unwinding or TLS problems...
-box-of-array-of-drop-1
-box-of-array-of-drop-2
-catch-unwind-bang
-cleanup-rvalue-temp-during-incomplete-alloc
-drop-trait-enum
-dynamic-drop
-intrinsic-move-val-cleanups
-issue-14875
-issue-25089
-issue-26655
-issue-29485
-issue-29948
-issue-30018-panic
-issue-8460  # .. except it fails because there's no overflow checks
-multi-panic
-nested-vec-3
-panic-handler-chain
-panic-handler-flail-wildly
-panic-handler-set-twice
-panic-in-dtor-drops-fields
-panic-recover-propagate
-reachable-unnameable-items
-slice-panic-1
-slice-panic-2
-task-stderr
-terminate-in-initializer
-test-should-fail-good-message
-unit-like-struct-drop-run
-unwind-unique
-vector-sort-panic-safe
 
 # CONST EVAL
 associated-const-type-parameters    # TODO: Associated const referred from associated const
