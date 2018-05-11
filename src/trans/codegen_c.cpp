@@ -559,12 +559,24 @@ namespace {
             switch( m_compiler )
             {
             case Compiler::Gcc:
-                if( getenv("CC") ) {
-                    args.push_back( getenv("CC") );
-                }
-                else {
-                    //args.push_back( Target_GetCurSpec().m_c_compiler + "-gcc" );
-                    args.push_back( "gcc" );
+                // Pick the compiler
+                // - from `CC-${TRIPLE}` environment variable
+                // - from the $CC environment variable
+                // - `gcc-${TRIPLE}` (if available)
+                // - `gcc` as fallback
+                {
+                    ::std::string varname = "CC-" +  Target_GetCurSpec().m_c_compiler;
+                    if( getenv(varname.c_str()) ) {
+                        args.push_back( getenv(varname.c_str()) );
+                    }
+                    else if( getenv("CC") ) {
+                        args.push_back( getenv("CC") );
+                    }
+                    else {
+                        // TODO: Determine if the compiler can't be found, and fall back to `gcc` if that's the case
+                        args.push_back( Target_GetCurSpec().m_c_compiler + "-gcc" );
+                        //args.push_back( "gcc" );
+                    }
                 }
                 args.push_back("-ffunction-sections");
                 args.push_back("-pthread");
