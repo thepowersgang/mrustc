@@ -16,6 +16,7 @@ OBJS := main.o debug.o mir.o lex.o value.o module_tree.o hir_sim.o
 LINKFLAGS := -g -lpthread
 CXXFLAGS := -Wall -std=c++14 -g -O2
 CXXFLAGS += -I ../common -I ../../src/include -I .
+CXXFLAGS += -Wno-misleading-indentation	# Gets REALLY confused by the TU_ARM macro
 
 OBJS := $(OBJS:%=$(OBJDIR)%)
 

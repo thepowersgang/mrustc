@@ -1266,10 +1266,16 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     }
                     } break;
                 TU_ARM(se.src, DstMeta, re) {
-                    LOG_TODO(stmt);
+                    auto ptr = state.get_value_ref(re.val);
+
+                    ::HIR::TypeRef  dst_ty;
+                    state.get_value_and_type(se.dst, dst_ty);
+                    new_val = ptr.read_value(POINTER_SIZE, dst_ty.get_size());
                     } break;
                 TU_ARM(se.src, DstPtr, re) {
-                    LOG_TODO(stmt);
+                    auto ptr = state.get_value_ref(re.val);
+
+                    new_val = ptr.read_value(0, POINTER_SIZE);
                     } break;
                 TU_ARM(se.src, MakeDst, re) {
                     // - Get target type, just for some assertions
@@ -1655,14 +1661,6 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         }
     }
 #else
-    // std C
-    else if( link_name == "signal" )
-    {
-        LOG_DEBUG("Call `signal` - Ignoring and returning SIG_IGN");
-        auto rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.write_usize(0, 1);
-        return rv;
-    }
     // POSIX
     else if( link_name == "sysconf" )
     {
@@ -1674,6 +1672,41 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         return rv;
     }
 #endif
+    // std C
+    else if( link_name == "signal" )
+    {
+        LOG_DEBUG("Call `signal` - Ignoring and returning SIG_IGN");
+        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.write_usize(0, 1);
+        return rv;
+    }
+    // - `void *memchr(const void *s, int c, size_t n);`
+    else if( link_name == "memchr" )
+    {
+        LOG_ASSERT(args.at(0).allocation.is_alloc(), "");
+        //size_t    ptr_space;
+        //void* ptr = args.at(0).read_pointer(0, ptr_space);
+        auto ptr_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        void* ptr = ptr_alloc.alloc().data_ptr() + args.at(0).read_usize(0);
+        auto c = args.at(1).read_i32(0);
+        auto n = args.at(2).read_usize(0);
+        // TODO: Check range of `n`
+
+        void* ret = memchr(ptr, c, n);
+
+        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.create_allocation();
+        if( ret )
+        {
+            rv.write_usize(0, args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) ));
+            rv.allocation.alloc().relocations.push_back({ 0, ptr_alloc });
+        }
+        else
+        {
+            rv.write_usize(0, 0);
+        }
+        return rv;
+    }
     // Allocators!
     else
     {
