@@ -110,46 +110,13 @@ struct Relocation
     size_t  slot_ofs;
     AllocationPtr   backing_alloc;
 };
-class Allocation
+
+struct ValueCommon
 {
-    friend class AllocationPtr;
-    size_t  refcount;
-    // TODO: Read-only flag?
-public:
-    static AllocationPtr new_alloc(size_t size);
+    virtual AllocationPtr get_relocation(size_t ofs) const = 0;
+    virtual void read_bytes(size_t ofs, void* dst, size_t count) const = 0;
+    virtual void write_bytes(size_t ofs, const void* src, size_t count) = 0;
 
-    const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->data.data()); }
-          uint8_t* data_ptr()       { return reinterpret_cast<      uint8_t*>(this->data.data()); }
-    size_t size() const { return this->data.size() * 8; }
-
-    ::std::vector<uint64_t> data;
-    ::std::vector<uint8_t> mask;
-    ::std::vector<Relocation>   relocations;
-
-    AllocationPtr get_relocation(size_t ofs) const {
-        for(const auto& r : relocations) {
-            if(r.slot_ofs == ofs)
-                return r.backing_alloc;
-        }
-        return AllocationPtr();
-    }
-    //void mark_as_freed() {
-    //    for(auto& v : mask)
-    //        v = 0;
-    //}
-
-    void resize(size_t new_size);
-
-    void check_bytes_valid(size_t ofs, size_t size) const;
-    void mark_bytes_valid(size_t ofs, size_t size);
-
-    Value read_value(size_t ofs, size_t size) const;
-    void read_bytes(size_t ofs, void* dst, size_t count) const;
-
-    void write_value(size_t ofs, Value v);
-    void write_bytes(size_t ofs, const void* src, size_t count);
-
-    // TODO: Make this block common
     void write_u8 (size_t ofs, uint8_t  v) { write_bytes(ofs, &v, 1); }
     void write_u16(size_t ofs, uint16_t v) { write_bytes(ofs, &v, 2); }
     void write_u32(size_t ofs, uint32_t v) { write_bytes(ofs, &v, 4); }
@@ -175,10 +142,70 @@ public:
     double read_f64(size_t ofs) const { double rv; read_bytes(ofs, &rv, 8); return rv; }
     uint64_t read_usize(size_t ofs) const;
     int64_t read_isize(size_t ofs) const { return static_cast<int64_t>(read_usize(ofs)); }
+
+    /// Read a pointer from the value, requiring at least `req_valid` valid bytes, saves avaliable space in `size`
+    void* read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& size, bool& is_mut) const;
+    /// Read a pointer, requiring `req_len` valid bytes
+    const void* read_pointer_const(size_t rd_ofs, size_t req_len) const {
+        size_t  tmp;
+        bool is_mut;
+        return read_pointer_unsafe(rd_ofs, req_len, tmp, is_mut);
+    }
+    /// Read a pointer, not requiring that the target be initialised
+    void* read_pointer_uninit(size_t rd_ofs, size_t& out_size) {
+        bool is_mut;
+        void* rv = read_pointer_unsafe(rd_ofs, 0, out_size, is_mut);
+        if(!is_mut)
+            throw "";
+            //LOG_FATAL("Attempting to get an uninit pointer to immutable data");
+        return rv;
+    }
+};
+
+class Allocation:
+    public ValueCommon
+{
+    friend class AllocationPtr;
+    size_t  refcount;
+    // TODO: Read-only flag?
+public:
+    static AllocationPtr new_alloc(size_t size);
+
+    const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->data.data()); }
+          uint8_t* data_ptr()       { return reinterpret_cast<      uint8_t*>(this->data.data()); }
+    size_t size() const { return this->data.size() * 8; }
+
+    ::std::vector<uint64_t> data;
+    ::std::vector<uint8_t> mask;
+    ::std::vector<Relocation>   relocations;
+
+    AllocationPtr get_relocation(size_t ofs) const override {
+        for(const auto& r : relocations) {
+            if(r.slot_ofs == ofs)
+                return r.backing_alloc;
+        }
+        return AllocationPtr();
+    }
+    //void mark_as_freed() {
+    //    for(auto& v : mask)
+    //        v = 0;
+    //}
+
+    void resize(size_t new_size);
+
+    void check_bytes_valid(size_t ofs, size_t size) const;
+    void mark_bytes_valid(size_t ofs, size_t size);
+
+    Value read_value(size_t ofs, size_t size) const;
+    void read_bytes(size_t ofs, void* dst, size_t count) const override;
+
+    void write_value(size_t ofs, Value v);
+    void write_bytes(size_t ofs, const void* src, size_t count) override;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 
-struct Value
+struct Value:
+    public ValueCommon
 {
     // If NULL, data is direct
     AllocationPtr   allocation;
@@ -197,46 +224,27 @@ struct Value
     void create_allocation();
     size_t size() const { return allocation ? allocation.alloc().size() : direct_data.size; }
 
+    AllocationPtr get_relocation(size_t ofs) const override {
+        if( this->allocation && this->allocation.is_alloc() )
+            return this->allocation.alloc().get_relocation(ofs);
+        else
+            return AllocationPtr();
+    }
+
     void check_bytes_valid(size_t ofs, size_t size) const;
     void mark_bytes_valid(size_t ofs, size_t size);
 
     Value read_value(size_t ofs, size_t size) const;
-    void read_bytes(size_t ofs, void* dst, size_t count) const;
+    void read_bytes(size_t ofs, void* dst, size_t count) const override;
 
     void write_value(size_t ofs, Value v);
-    void write_bytes(size_t ofs, const void* src, size_t count);
-
-    // TODO: Make this block common
-    void write_u8 (size_t ofs, uint8_t  v) { write_bytes(ofs, &v, 1); }
-    void write_u16(size_t ofs, uint16_t v) { write_bytes(ofs, &v, 2); }
-    void write_u32(size_t ofs, uint32_t v) { write_bytes(ofs, &v, 4); }
-    void write_u64(size_t ofs, uint64_t v) { write_bytes(ofs, &v, 8); }
-    void write_i8 (size_t ofs, int8_t  v) { write_u8 (ofs, static_cast<uint8_t >(v)); }
-    void write_i16(size_t ofs, int16_t v) { write_u16(ofs, static_cast<uint16_t>(v)); }
-    void write_i32(size_t ofs, int32_t v) { write_u32(ofs, static_cast<uint32_t>(v)); }
-    void write_i64(size_t ofs, int64_t v) { write_u64(ofs, static_cast<uint64_t>(v)); }
-    void write_f32(size_t ofs, float  v) { write_bytes(ofs, &v, 4); }
-    void write_f64(size_t ofs, double v) { write_bytes(ofs, &v, 8); }
-    void write_usize(size_t ofs, uint64_t v);
-    void write_isize(size_t ofs, int64_t v) { write_usize(ofs, static_cast<uint64_t>(v)); }
-
-    uint8_t read_u8(size_t ofs) const { uint8_t rv; read_bytes(ofs, &rv, 1); return rv; }
-    uint16_t read_u16(size_t ofs) const { uint16_t rv; read_bytes(ofs, &rv, 2); return rv; }
-    uint32_t read_u32(size_t ofs) const { uint32_t rv; read_bytes(ofs, &rv, 4); return rv; }
-    uint64_t read_u64(size_t ofs) const { uint64_t rv; read_bytes(ofs, &rv, 8); return rv; }
-    int8_t read_i8(size_t ofs) const { return static_cast<int8_t>(read_u8(ofs)); }
-    int16_t read_i16(size_t ofs) const { return static_cast<int16_t>(read_u16(ofs)); }
-    int32_t read_i32(size_t ofs) const { return static_cast<int32_t>(read_u32(ofs)); }
-    int64_t read_i64(size_t ofs) const { return static_cast<int64_t>(read_u64(ofs)); }
-    float  read_f32(size_t ofs) const { float rv; read_bytes(ofs, &rv, 4); return rv; }
-    double read_f64(size_t ofs) const { double rv; read_bytes(ofs, &rv, 8); return rv; }
-    uint64_t read_usize(size_t ofs) const;
-    int64_t read_isize(size_t ofs) const { return static_cast<int64_t>(read_usize(ofs)); }
+    void write_bytes(size_t ofs, const void* src, size_t count) override;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Value& v);
 
 // A read-only reference to a value (to write, you have to go through it)
 struct ValueRef
+    //:public ValueCommon
 {
     // Either an AllocationPtr, or a Value pointer
     AllocationPtr   m_alloc;
@@ -352,6 +360,8 @@ struct ValueRef
             m_value->read_bytes(m_offset + ofs, dst, size);
         }
     }
+
+    // TODO: Figure out how to make this use `ValueCommon` when it can't write.
     uint8_t read_u8(size_t ofs) const { uint8_t rv; read_bytes(ofs, &rv, 1); return rv; }
     uint16_t read_u16(size_t ofs) const { uint16_t rv; read_bytes(ofs, &rv, 2); return rv; }
     uint32_t read_u32(size_t ofs) const { uint32_t rv; read_bytes(ofs, &rv, 4); return rv; }

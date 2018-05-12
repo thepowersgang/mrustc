@@ -150,6 +150,68 @@ size_t AllocationPtr::get_size() const
     return os;
 }
 
+uint64_t ValueCommon::read_usize(size_t ofs) const
+{
+    uint64_t    v = 0;
+    this->read_bytes(ofs, &v, POINTER_SIZE);
+    return v;
+}
+void ValueCommon::write_usize(size_t ofs, uint64_t v)
+{
+    this->write_bytes(ofs, &v, POINTER_SIZE);
+}
+void* ValueCommon::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& out_size, bool& out_is_mut) const
+{
+    auto ofs = read_usize(rd_ofs);
+    auto reloc = get_relocation(rd_ofs);
+    if( !reloc )
+    {
+        if( ofs != 0 ) {
+            LOG_FATAL("Read a non-zero offset with no relocation");
+        }
+        out_is_mut = false;
+        out_size = 0;
+        return nullptr;
+    }
+    else
+    {
+        switch(reloc.get_ty())
+        {
+        case AllocationPtr::Ty::Allocation: {
+            auto& a = reloc.alloc();
+            if( ofs > a.size() )
+                LOG_FATAL("Out-of-bounds pointer");
+            if( ofs + req_valid > a.size() )
+                LOG_FATAL("Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << a.size());
+            a.check_bytes_valid( ofs, req_valid );
+            out_size = a.size() - ofs;
+            out_is_mut = true;
+            return a.data_ptr() + ofs;
+            }
+        case AllocationPtr::Ty::StdString: {
+            const auto& s = reloc.str();
+            if( ofs > s.size() )
+                LOG_FATAL("Out-of-bounds pointer");
+            if( ofs + req_valid > s.size() )
+                LOG_FATAL("Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << s.size());
+            out_size = s.size() - ofs;
+            out_is_mut = false;
+            return const_cast<void*>( static_cast<const void*>(s.data() + ofs) );
+            }
+        case AllocationPtr::Ty::Function:
+            LOG_FATAL("read_pointer w/ function");
+        case AllocationPtr::Ty::FfiPointer:
+            if( req_valid )
+                LOG_FATAL("Can't request valid data from a FFI pointer");
+            // TODO: Have an idea of mutability and available size from FFI
+            out_size = 0;
+            out_is_mut = false;
+            return reloc.ffi().ptr_value /* + ofs */;
+        }
+        throw "";
+    }
+}
+
 
 void Allocation::resize(size_t new_size)
 {
@@ -370,10 +432,6 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 
     ::std::memcpy(this->data_ptr() + ofs, src, count);
     mark_bytes_valid(ofs, count);
-}
-void Allocation::write_usize(size_t ofs, uint64_t v)
-{
-    this->write_bytes(ofs, &v, POINTER_SIZE);
 }
 ::std::ostream& operator<<(::std::ostream& os, const Allocation& x)
 {
@@ -651,10 +709,6 @@ void Value::write_value(size_t ofs, Value v)
         }
     }
 }
-void Value::write_usize(size_t ofs, uint64_t v)
-{
-    this->write_bytes(ofs, &v, POINTER_SIZE);
-}
 
 ::std::ostream& operator<<(::std::ostream& os, const Value& v)
 {
@@ -770,18 +824,6 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
 }
 
 uint64_t ValueRef::read_usize(size_t ofs) const
-{
-    uint64_t    v = 0;
-    this->read_bytes(ofs, &v, POINTER_SIZE);
-    return v;
-}
-uint64_t Value::read_usize(size_t ofs) const
-{
-    uint64_t    v = 0;
-    this->read_bytes(ofs, &v, POINTER_SIZE);
-    return v;
-}
-uint64_t Allocation::read_usize(size_t ofs) const
 {
     uint64_t    v = 0;
     this->read_bytes(ofs, &v, POINTER_SIZE);
