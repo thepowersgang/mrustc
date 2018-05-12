@@ -605,47 +605,50 @@ namespace
             const ::HIR::Path* p;
             ::std::string   bytes;
         };
+        void emit_str_byte(uint8_t b) {
+            if( b == 0 ) {
+                m_of << "\\0";
+            }
+            else if( b == '\\' ) {
+                m_of << "\\\\";
+            }
+            else if( b == '"' ) {
+                m_of << "\\\"";
+            }
+            else if( ' ' <= b && b <= 'z' && b != '\\' ) {
+                m_of << b;
+            }
+            else if( b < 16 ) {
+                m_of << "\\x0" << ::std::hex << int(b) << ::std::dec;
+            }
+            else {
+                m_of << "\\x" << ::std::hex << int(b) << ::std::dec;
+            }
+        }
+        void emit_str_u32(uint32_t v) {
+            emit_str_byte(v & 0xFF);
+            emit_str_byte(v >> 8);
+            emit_str_byte(v >> 16);
+            emit_str_byte(v >> 24);
+        }
+        void emit_str_usize(uint64_t v) {
+            if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 ) {
+                emit_str_u32(v      );
+                emit_str_u32(v >> 32);
+            }
+            else if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 ) {
+                emit_str_u32(v   );
+            }
+            else {
+                emit_str_u32(v   );
+            }
+        }
         void emit_literal_as_bytes(const ::HIR::Literal& lit, const ::HIR::TypeRef& ty, ::std::vector<Reloc>& out_relocations, size_t base_ofs)
         {
             TRACE_FUNCTION_F(lit << ", " << ty);
-            auto putb = [&](uint8_t b) {
-                if( b == 0 ) {
-                    m_of << "\\0";
-                }
-                else if( b == '\\' ) {
-                    m_of << "\\\\";
-                }
-                else if( b == '"' ) {
-                    m_of << "\\\"";
-                }
-                else if( ' ' <= b && b <= 'z' && b != '\\' ) {
-                    m_of << b;
-                }
-                else if( b < 16 ) {
-                    m_of << "\\x0" << ::std::hex << int(b) << ::std::dec;
-                }
-                else {
-                    m_of << "\\x" << ::std::hex << int(b) << ::std::dec;
-                }
-                };
-            auto putu32 = [&](uint32_t v) {
-                putb(v & 0xFF);
-                putb(v >> 8);
-                putb(v >> 16);
-                putb(v >> 24);
-                };
-            auto putsize = [&](uint64_t v) {
-                if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 ) {
-                    putu32(v      );
-                    putu32(v >> 32);
-                }
-                else if( Target_GetCurSpec().m_arch.m_pointer_bits == 64 ) {
-                    putu32(v   );
-                }
-                else {
-                    putu32(v   );
-                }
-                };
+            auto putb = [&](uint8_t b) { emit_str_byte(b); };
+            auto putu32 = [&](uint32_t v) { emit_str_u32(v); };
+            auto putsize = [&](uint64_t v) { emit_str_usize(v); };
             switch(ty.m_data.tag())
             {
             case ::HIR::TypeRef::Data::TAGDEAD: throw "";
@@ -876,6 +879,69 @@ namespace
             m_of << ";\n";
 
             m_mir_res = nullptr;
+        }
+        void emit_vtable(const ::HIR::Path& p, const ::HIR::Trait& trait) override
+        {
+            ::MIR::Function empty_fcn;
+            ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "vtable " << p;), ::HIR::TypeRef(), {}, empty_fcn };
+
+            const size_t ptr_size = Target_GetCurSpec().m_arch.m_pointer_bits / 8;
+            const auto& trait_path = p.m_data.as_UfcsKnown().trait;
+            const auto& type = *p.m_data.as_UfcsKnown().type;
+
+            ::HIR::TypeRef  vtable_ty;
+            {
+                auto vtable_sp = trait_path.m_path;
+                vtable_sp.m_components.back() += "#vtable";
+                auto vtable_params = trait_path.m_params.clone();
+                for(const auto& ty : trait.m_type_indexes) {
+                    auto aty = ::HIR::TypeRef( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ) );
+                    m_resolve.expand_associated_types(sp, aty);
+                    vtable_params.m_types.push_back( mv$(aty) );
+                }
+                const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
+                vtable_ty = ::HIR::TypeRef( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
+            }
+
+            size_t  size, align;
+            MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, type, size, align), "Unexpected generic? " << type);
+            m_of << "static " << p << ": " << vtable_ty << " = \"";
+            // - Data
+            // Drop
+            emit_str_usize(0);
+            // Align
+            emit_str_usize(align);
+            // Size
+            emit_str_usize(size);
+            // Methods
+            for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
+            {
+                emit_str_usize(0);
+            }
+            m_of << "\" {";
+
+            // - Relocations
+            auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
+            // Drop
+            // - TODO: Some types don't have drop glue
+            m_of << "@0+" << ptr_size << " = " << ::HIR::Path(type.clone(), "drop_glue#") << ", ";
+            // Methods
+            for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
+            {
+                // Find the corresponding vtable entry
+                for(const auto& m : trait.m_value_indexes)
+                {
+                    if( m.second.first != 3+i )
+                        continue ;
+
+                    //MIR_ASSERT(*m_mir_res, tr.m_values.at(m.first).is_Function(), "TODO: Handle generating vtables with non-function items");
+                    DEBUG("- " << m.second.first << " = " << m.second.second << " :: " << m.first);
+
+                    auto gpath = monomorphise_genericpath_with(sp, m.second.second, monomorph_cb_trait, false);
+                    m_of << "@" << (3 + i) * ptr_size << "+" << ptr_size << " = " << ::HIR::Path(type.clone(), mv$(gpath), m.first) << ", ";
+                }
+            }
+            m_of << "};\n";
         }
         void emit_function_ext(const ::HIR::Path& p, const ::HIR::Function& item, const Trans_Params& params) override
         {
