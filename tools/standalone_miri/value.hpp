@@ -6,6 +6,7 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <cstring>	// memcpy
 #include <cassert>
 
 namespace HIR {

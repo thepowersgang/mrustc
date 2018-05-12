@@ -390,6 +390,10 @@ void Lexer::advance()
             {
                 m_cur = Token { TokenClass::Symbol, "<<" };
             }
+            else if( ch == '=' )
+            {
+                m_cur = Token { TokenClass::Symbol, "<=" };
+            }
             else
             {
                 m_if.unget();

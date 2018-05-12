@@ -75,14 +75,14 @@ FunctionTrace<T,U> FunctionTrace_d(const char* fname, const char* file, unsigned
 struct DebugExceptionTodo:
     public ::std::exception
 {
-    const char* what() const {
+    const char* what() const noexcept override {
         return "TODO hit";
     }
 };
 struct DebugExceptionError:
     public ::std::exception
 {
-    const char* what() const {
+    const char* what() const noexcept override {
         return "error";
     }
 };

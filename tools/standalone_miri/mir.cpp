@@ -7,6 +7,7 @@
  */
 #include "../../src/mir/mir.hpp"
 #include "hir_sim.hpp"
+#include <iostream>
 
 namespace std {
     template <typename T>

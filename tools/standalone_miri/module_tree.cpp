@@ -5,6 +5,7 @@
 #include "lex.hpp"
 #include "value.hpp"
 #include <iostream>
+#include <algorithm>	// std::find
 #include "debug.hpp"
 
 ModuleTree::ModuleTree()

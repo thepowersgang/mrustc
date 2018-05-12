@@ -353,6 +353,21 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             ret.write_i32(0, 120);  // ERROR_CALL_NOT_IMPLEMENTED
             return ret;
         }
+
+        // - No guard page needed
+        if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } } )
+        {
+            ret = Value::with_size(16, false);
+            ret.write_u64(0, 0);
+            ret.write_u64(8, 0);
+            return ret;
+        }
+        
+        // - No stack overflow handling needed
+        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "stack_overflow", "imp", "init" } } )
+        {
+            return ret;
+        }
     }
 
     if( fcn.external.link_name != "" )
@@ -1162,6 +1177,9 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         case RawType::USize:
                             new_val.write_usize( 0, Ops::do_bitwise(v_l.read_usize(0), v_r.read_usize(0), re.op) );
                             break;
+                        case RawType::I32:
+                            new_val.write_i32( 0, static_cast<int32_t>(Ops::do_bitwise(v_l.read_i32(0), v_r.read_i32(0), re.op)) );
+                            break;
                         default:
                             LOG_TODO("BinOp bitwise - " << se.src << " w/ " << ty_l);
                         }
@@ -1497,7 +1515,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     assert(v.read_usize(v.m_offset) == 0);
                     auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
                     LOG_ASSERT(alloc_ptr, "Calling value that can't be a pointer (no allocation)");
-                    auto& fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
+                    const auto& fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
                     LOG_ASSERT(fcn_alloc_ptr, "Calling value with no relocation");
                     LOG_ASSERT(fcn_alloc_ptr.get_ty() == AllocationPtr::Ty::Function, "Calling value that isn't a function pointer");
                     fcn_p = &fcn_alloc_ptr.fcn();
@@ -1516,6 +1534,11 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
     throw "";
 }
+
+extern "C" {
+    long sysconf(int);
+}
+
 Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
     if( link_name == "__rust_allocate" )
@@ -1631,6 +1654,25 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
             return rv;
         }
     }
+#else
+    // std C
+    else if( link_name == "signal" )
+    {
+        LOG_DEBUG("Call `signal` - Ignoring and returning SIG_IGN");
+        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.write_usize(0, 1);
+        return rv;
+    }
+    // POSIX
+    else if( link_name == "sysconf" )
+    {
+        auto name = args.at(0).read_i32(0);
+        LOG_DEBUG("FFI sysconf(" << name << ")");
+        long val = sysconf(name);
+        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.write_usize(0, val);
+        return rv;
+    }
 #endif
     // Allocators!
     else
@@ -1727,6 +1769,11 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, const ::std::string& name, cons
     else if( name == "uninit" )
     {
         rv = Value(ty_params.tys.at(0));
+    }
+    else if( name == "init" )
+    {
+        rv = Value(ty_params.tys.at(0));
+        rv.mark_bytes_valid(0, rv.size());
     }
     // - Unsized stuff
     else if( name == "size_of_val" )
