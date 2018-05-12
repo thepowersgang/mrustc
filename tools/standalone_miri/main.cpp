@@ -378,6 +378,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
         return ret;
     }
 
+    // TODO: Recursion limit.
+
     TRACE_FUNCTION_R(path, path << " = " << ret);
     for(size_t i = 0; i < args.size(); i ++)
     {
@@ -809,11 +811,13 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                         switch(re.type.inner_type)
                         {
                         case RawType::Unreachable:  throw "BUG";
-                        case RawType::Composite:    throw "ERROR";
-                        case RawType::TraitObject:    throw "ERROR";
-                        case RawType::Function:    throw "ERROR";
-                        case RawType::Str:    throw "ERROR";
-                        case RawType::Unit:   throw "ERROR";
+                        case RawType::Composite:
+                        case RawType::TraitObject:
+                        case RawType::Function:
+                        case RawType::Str:
+                        case RawType::Unit:
+                            LOG_ERROR("Casting to " << re.type << " is invalid");
+                            throw "ERROR";
                         case RawType::F32: {
                             float dst_val = 0.0;
                             // Can be an integer, or F64 (pointer is impossible atm)

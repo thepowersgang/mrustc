@@ -147,13 +147,14 @@ bool Parser::parse_one()
                     // TODO: Figure out how to create this allocation...
                     //s.val.allocation.alloc().relocations.push_back({ ofs, AllocationPtr::new_string(reloc_str) });
                 }
-                else if( lex.next() == "::" )
+                else if( lex.next() == "::" || lex.next() == "<" )
                 {
                     auto reloc_path = parse_path();
                     s.val.allocation.alloc().relocations.push_back({ ofs, AllocationPtr::new_fcn(reloc_path) });
                 }
                 else
                 {
+                    LOG_FATAL(lex << "Unexepcted token " << lex.next() << " in relocation value");
                     throw "ERROR";
                 }
                 if( ! lex.consume_if(',') ) {
