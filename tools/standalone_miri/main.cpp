@@ -433,8 +433,9 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 return ValueRef(args.at(e.idx), 0, args.at(e.idx).size());
                 } break;
             TU_ARM(lv, Static, e) {
-                // TODO: Type!
-                return ValueRef(modtree.get_static(e), 0, modtree.get_static(e).size());
+                /*const*/ auto& s = modtree.get_static(e);
+                ty = s.ty;
+                return ValueRef(s.val, 0, s.val.size());
                 } break;
             TU_ARM(lv, Index, e) {
                 auto idx = get_value_ref(*e.idx).read_usize(0);
@@ -678,7 +679,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
 
         for(const auto& stmt : bb.statements)
         {
-            LOG_DEBUG("BB" << bb_idx << "/" << (&stmt - bb.statements.data()) << ": " << stmt);
+            LOG_DEBUG("=== BB" << bb_idx << "/" << (&stmt - bb.statements.data()) << ": " << stmt);
             switch(stmt.tag())
             {
             case ::MIR::Statement::TAGDEAD: throw "";
@@ -1424,7 +1425,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             }
         }
 
-        LOG_DEBUG("BB" << bb_idx << "/TERM: " << bb.terminator);
+        LOG_DEBUG("=== BB" << bb_idx << "/TERM: " << bb.terminator);
         switch(bb.terminator.tag())
         {
         case ::MIR::Terminator::TAGDEAD:    throw "";
@@ -1522,7 +1523,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
                     LOG_ASSERT(alloc_ptr, "Calling value that can't be a pointer (no allocation)");
                     const auto& fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
-                    LOG_ASSERT(fcn_alloc_ptr, "Calling value with no relocation");
+                    if( !fcn_alloc_ptr )
+                        LOG_FATAL("Calling value with no relocation - " << v);
                     LOG_ASSERT(fcn_alloc_ptr.get_ty() == AllocationPtr::Ty::Function, "Calling value that isn't a function pointer");
                     fcn_p = &fcn_alloc_ptr.fcn();
                 }
@@ -1671,6 +1673,30 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         rv.write_usize(0, val);
         return rv;
     }
+    else if( link_name == "pthread_mutex_init" || link_name == "pthread_mutex_lock" || link_name == "pthread_mutex_unlock" )
+    {
+        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, 0);
+        return rv;
+    }
+    else if( link_name == "pthread_mutexattr_init" || link_name == "pthread_mutexattr_settype" || link_name == "pthread_mutexattr_destroy" )
+    {
+        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, 0);
+        return rv;
+    }
+    else if( link_name == "pthread_condattr_init" || link_name == "pthread_condattr_destroy" || link_name == "pthread_condattr_setclock" )
+    {
+        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, 0);
+        return rv;
+    }
+    else if( link_name == "pthread_cond_init" || link_name == "pthread_cond_destroy" )
+    {
+        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, 0);
+        return rv;
+    }
 #endif
     // std C
     else if( link_name == "signal" )
@@ -1684,15 +1710,12 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
     else if( link_name == "memchr" )
     {
         LOG_ASSERT(args.at(0).allocation.is_alloc(), "");
-        //size_t    ptr_space;
-        //void* ptr = args.at(0).read_pointer(0, ptr_space);
         auto ptr_alloc = args.at(0).allocation.alloc().get_relocation(0);
-        void* ptr = ptr_alloc.alloc().data_ptr() + args.at(0).read_usize(0);
         auto c = args.at(1).read_i32(0);
         auto n = args.at(2).read_usize(0);
-        // TODO: Check range of `n`
+        const void* ptr = args.at(0).read_pointer_const(0, n);
 
-        void* ret = memchr(ptr, c, n);
+        const void* ret = memchr(ptr, c, n);
 
         auto rv = Value(::HIR::TypeRef(RawType::USize));
         rv.create_allocation();

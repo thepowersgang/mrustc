@@ -154,10 +154,12 @@ bool Parser::parse_one()
         }
         lex.check_consume(';');
 
-        Value val = Value(ty);
-        val.write_bytes(0, data.data(), data.size());
+        Static s;
+        s.val = Value(ty);
+        s.val.write_bytes(0, data.data(), data.size());
+        s.ty = ty;
 
-        tree.statics.insert(::std::make_pair( ::std::move(p), ::std::move(val) ));
+        tree.statics.insert(::std::make_pair( ::std::move(p), ::std::move(s) ));
     }
     else if( lex.consume_if("type") )
     {
@@ -1311,7 +1313,7 @@ const Function* ModuleTree::get_function_opt(const ::HIR::Path& p) const
     }
     return &it->second;
 }
-Value& ModuleTree::get_static(const ::HIR::Path& p)
+Static& ModuleTree::get_static(const ::HIR::Path& p)
 {
     auto it = statics.find(p);
     if(it == statics.end())
@@ -1321,7 +1323,7 @@ Value& ModuleTree::get_static(const ::HIR::Path& p)
     }
     return it->second;
 }
-Value* ModuleTree::get_static_opt(const ::HIR::Path& p)
+Static* ModuleTree::get_static_opt(const ::HIR::Path& p)
 {
     auto it = statics.find(p);
     if(it == statics.end())
