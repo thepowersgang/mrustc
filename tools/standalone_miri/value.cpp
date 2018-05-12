@@ -211,6 +211,20 @@ void* ValueCommon::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& 
         throw "";
     }
 }
+ValueRef ValueCommon::read_pointer_valref_mut(size_t rd_ofs, size_t size)
+{
+    auto ofs = read_usize(rd_ofs);
+    auto reloc = get_relocation(rd_ofs);
+    if( !reloc )
+    {
+        LOG_ERROR("Getting ValRef to null pointer (no relocation)");
+    }
+    else
+    {
+        // TODO: Validate size
+        return ValueRef(reloc, ofs, size);
+    }
+}
 
 
 void Allocation::resize(size_t new_size)
@@ -231,7 +245,7 @@ void Allocation::check_bytes_valid(size_t ofs, size_t size) const
     {
         if( !(this->mask[i/8] & (1 << i%8)) )
         {
-            ::std::cerr << "ERROR: Invalid bytes in value" << ::std::endl;
+            LOG_ERROR("Invalid bytes in value");
             throw "ERROR";
         }
     }
@@ -749,7 +763,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
         {
         case AllocationPtr::Ty::Allocation: {
             const auto& alloc = alloc_ptr.alloc();
-            
+
             auto flags = os.flags();
             os << ::std::hex;
             for(size_t i = v.m_offset; i < ::std::min(alloc.size(), v.m_offset + v.m_size); i++)
@@ -823,6 +837,41 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
     return os;
 }
 
+Value ValueRef::read_value(size_t ofs, size_t size) const
+{
+    if( size == 0 )
+        return Value();
+    if( !(ofs < m_size && size <= m_size && ofs + size <= m_size) ) {
+        LOG_ERROR("Read exceeds bounds, " << ofs << " + " << size << " > " << m_size << " - from " << *this);
+    }
+    if( m_alloc ) {
+        switch(m_alloc.get_ty())
+        {
+        case AllocationPtr::Ty::Allocation:
+            return m_alloc.alloc().read_value(m_offset + ofs, size);
+        case AllocationPtr::Ty::StdString: {
+            auto rv = Value::with_size(size, false);
+            //ASSERT_BUG(ofs <= m_alloc.str().size(), "");
+            //ASSERT_BUG(size <= m_alloc.str().size(), "");
+            //ASSERT_BUG(ofs+size <= m_alloc.str().size(), "");
+            assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
+            rv.write_bytes(0, m_alloc.str().data() + m_offset + ofs, size);
+            return rv;
+            }
+        default:
+            //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
+            throw "TODO";
+        }
+    }
+    else {
+        return m_value->read_value(m_offset + ofs, size);
+    }
+}
+bool ValueRef::compare(const void* other, size_t other_len) const
+{
+    check_bytes_valid(0, other_len);
+    return ::std::memcmp(data_ptr(), other, other_len) == 0;
+}
 uint64_t ValueRef::read_usize(size_t ofs) const
 {
     uint64_t    v = 0;

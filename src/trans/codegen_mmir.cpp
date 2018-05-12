@@ -157,7 +157,7 @@ namespace
         {
             if( is_executable )
             {
-                m_of << "fn ::main#(i32, *const *const i8): i32 {\n";
+                m_of << "fn ::main#(isize, *const *const i8): i32 {\n";
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");
                 if( c_start_path == ::HIR::SimplePath() )
                 {

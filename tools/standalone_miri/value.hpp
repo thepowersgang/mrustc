@@ -15,6 +15,7 @@ namespace HIR {
 }
 class Allocation;
 struct Value;
+struct ValueRef;
 
 struct FFIPointer
 {
@@ -160,6 +161,8 @@ struct ValueCommon
             //LOG_FATAL("Attempting to get an uninit pointer to immutable data");
         return rv;
     }
+    /// Read a pointer and return a ValueRef to it (mutable data)
+    ValueRef read_pointer_valref_mut(size_t rd_ofs, size_t size);
 };
 
 class Allocation:
@@ -223,6 +226,8 @@ struct Value:
 
     void create_allocation();
     size_t size() const { return allocation ? allocation.alloc().size() : direct_data.size; }
+    const uint8_t* data_ptr() const { return allocation ? allocation.alloc().data_ptr() : direct_data.data; }
+          uint8_t* data_ptr()       { return allocation ? allocation.alloc().data_ptr() : direct_data.data; }
 
     AllocationPtr get_relocation(size_t ofs) const override {
         if( this->allocation && this->allocation.is_alloc() )
@@ -259,20 +264,23 @@ struct ValueRef
         m_offset(ofs),
         m_size(size)
     {
-        switch(m_alloc.get_ty())
+        if( m_alloc )
         {
-        case AllocationPtr::Ty::Allocation:
-            assert(ofs < m_alloc.alloc().size());
-            assert(size <= m_alloc.alloc().size());
-            assert(ofs+size <= m_alloc.alloc().size());
-            break;
-        case AllocationPtr::Ty::StdString:
-            assert(ofs < m_alloc.str().size());
-            assert(size <= m_alloc.str().size());
-            assert(ofs+size <= m_alloc.str().size());
-            break;
-        default:
-            throw "TODO";
+            switch(m_alloc.get_ty())
+            {
+            case AllocationPtr::Ty::Allocation:
+                assert(ofs < m_alloc.alloc().size());
+                assert(size <= m_alloc.alloc().size());
+                assert(ofs+size <= m_alloc.alloc().size());
+                break;
+            case AllocationPtr::Ty::StdString:
+                assert(ofs < m_alloc.str().size());
+                assert(size <= m_alloc.str().size());
+                assert(ofs+size <= m_alloc.str().size());
+                break;
+            default:
+                throw "TODO";
+            }
         }
     }
     ValueRef(Value& val):
@@ -294,7 +302,7 @@ struct ValueRef
             else
                 return AllocationPtr();
         }
-        else if( m_value->allocation )
+        else if( m_value && m_value->allocation )
         {
             if( m_value->allocation.is_alloc() )
                 return m_value->allocation.alloc().get_relocation(ofs);
@@ -306,33 +314,25 @@ struct ValueRef
             return AllocationPtr();
         }
     }
-    Value read_value(size_t ofs, size_t size) const {
-        if( size == 0 )
-            return Value();
-        assert(ofs < m_size);
-        assert(size <= m_size);
-        assert(ofs+size <= m_size);
+    Value read_value(size_t ofs, size_t size) const;
+    const uint8_t* data_ptr() const {
         if( m_alloc ) {
             switch(m_alloc.get_ty())
             {
             case AllocationPtr::Ty::Allocation:
-                return m_alloc.alloc().read_value(m_offset + ofs, size);
-            case AllocationPtr::Ty::StdString: {
-                auto rv = Value::with_size(size, false);
-                //ASSERT_BUG(ofs <= m_alloc.str().size(), "");
-                //ASSERT_BUG(size <= m_alloc.str().size(), "");
-                //ASSERT_BUG(ofs+size <= m_alloc.str().size(), "");
-                assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
-                rv.write_bytes(0, m_alloc.str().data() + m_offset + ofs, size);
-                return rv;
-                }
+                return m_alloc.alloc().data_ptr() + m_offset;
+                break;
+            case AllocationPtr::Ty::StdString:
+                return reinterpret_cast<const uint8_t*>(m_alloc.str().data() + m_offset);
             default:
-                //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
                 throw "TODO";
             }
         }
+        else if( m_value ) {
+            return m_value->data_ptr() + m_offset;
+        }
         else {
-            return m_value->read_value(m_offset + ofs, size);
+            return nullptr;
         }
     }
     void read_bytes(size_t ofs, void* dst, size_t size) const {
@@ -360,6 +360,32 @@ struct ValueRef
             m_value->read_bytes(m_offset + ofs, dst, size);
         }
     }
+    void check_bytes_valid(size_t ofs, size_t size) const {
+        if( size == 0 )
+            return ;
+        assert(ofs < m_size);
+        assert(size <= m_size);
+        assert(ofs+size <= m_size);
+        if( m_alloc ) {
+            switch(m_alloc.get_ty())
+            {
+            case AllocationPtr::Ty::Allocation:
+                m_alloc.alloc().check_bytes_valid(m_offset + ofs, size);
+                break;
+            case AllocationPtr::Ty::StdString:
+                assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
+                break;
+            default:
+                //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
+                throw "TODO";
+            }
+        }
+        else {
+            m_value->check_bytes_valid(m_offset + ofs, size);
+        }
+    }
+
+    bool compare(const void* other, size_t other_len) const;
 
     // TODO: Figure out how to make this use `ValueCommon` when it can't write.
     uint8_t read_u8(size_t ofs) const { uint8_t rv; read_bytes(ofs, &rv, 1); return rv; }

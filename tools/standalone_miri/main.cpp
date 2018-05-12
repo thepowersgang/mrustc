@@ -19,9 +19,31 @@ struct ProgramOptions
     int parse(int argc, const char* argv[]);
 };
 
-Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args);
-Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
-Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
+struct ThreadState
+{
+    static unsigned s_next_tls_key;
+    unsigned call_stack_depth;
+    ::std::vector<uint64_t> tls_values;
+
+    ThreadState():
+        call_stack_depth(0)
+    {
+    }
+
+    struct DecOnDrop {
+        unsigned* p;
+        ~DecOnDrop() { (*p) --; }
+    };
+    DecOnDrop enter_function() {
+        this->call_stack_depth ++;
+        return DecOnDrop { &this->call_stack_depth };
+    }
+};
+unsigned ThreadState::s_next_tls_key = 1;
+
+Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::std::vector<Value> args);
+Value MIRI_Invoke_Extern(ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
+Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread,  const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
 
 int main(int argc, const char* argv[])
 {
@@ -36,20 +58,21 @@ int main(int argc, const char* argv[])
 
     tree.load_file(opts.infile);
 
-    auto val_argc = Value( ::HIR::TypeRef{RawType::I32} );
+    auto val_argc = Value( ::HIR::TypeRef{RawType::ISize} );
     ::HIR::TypeRef  argv_ty { RawType::I8 };
     argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
     argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
     auto val_argv = Value(argv_ty);
-    val_argc.write_bytes(0, "\0\0\0", 4);
+    val_argc.write_bytes(0, "\0\0\0\0\0\0\0", 8);
     val_argv.write_bytes(0, "\0\0\0\0\0\0\0", argv_ty.get_size());
 
     try
     {
+        ThreadState ts;
         ::std::vector<Value>    args;
         args.push_back(::std::move(val_argc));
         args.push_back(::std::move(val_argv));
-        auto rv = MIRI_Invoke( tree, tree.find_lang_item("start"), ::std::move(args) );
+        auto rv = MIRI_Invoke( tree, ts, tree.find_lang_item("start"), ::std::move(args) );
         ::std::cout << rv << ::std::endl;
     }
     catch(const DebugExceptionTodo& /*e*/)
@@ -291,7 +314,7 @@ struct Ops {
 namespace
 {
 
-    void drop_value(ModuleTree& modtree, Value ptr, const ::HIR::TypeRef& ty)
+    void drop_value(ModuleTree& modtree, ThreadState& thread, Value ptr, const ::HIR::TypeRef& ty)
     {
         if( ty.wrappers.empty() )
         {
@@ -301,7 +324,7 @@ namespace
                 {
                     LOG_DEBUG("Drop - " << ty);
 
-                    MIRI_Invoke(modtree, ty.composite_type->drop_glue, { ptr });
+                    MIRI_Invoke(modtree, thread, ty.composite_type->drop_glue, { ptr });
                 }
                 else
                 {
@@ -338,7 +361,7 @@ namespace
 
 }
 
-Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> args)
+Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::std::vector<Value> args)
 {
     Value   ret;
 
@@ -373,17 +396,22 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
     if( fcn.external.link_name != "" )
     {
         // External function!
-        ret = MIRI_Invoke_Extern(fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        ret = MIRI_Invoke_Extern(thread, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
         LOG_DEBUG(path << " = " << ret);
         return ret;
     }
 
-    // TODO: Recursion limit.
+    // Recursion limit.
+    if( thread.call_stack_depth > 40 ) {
+        LOG_ERROR("Recursion limit exceeded");
+    }
+    auto _ = thread.enter_function();
 
     TRACE_FUNCTION_R(path, path << " = " << ret);
     for(size_t i = 0; i < args.size(); i ++)
     {
         LOG_DEBUG("- Argument(" << i << ") = " << args[i]);
+        // TODO: Check argument sizes against prototype?
     }
 
     ret = Value(fcn.ret_ty == RawType::Unreachable ? ::HIR::TypeRef() : fcn.ret_ty);
@@ -489,7 +517,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 ::HIR::TypeRef  ptr_ty;
                 auto val = get_value_and_type(*e.val, ptr_ty);
                 ty = ptr_ty.get_inner();
-                LOG_DEBUG("val = " << val);
+                LOG_DEBUG("val = " << val << ", (inner) ty=" << ty);
 
                 LOG_ASSERT(val.m_size >= POINTER_SIZE, "Deref of a value that doesn't fit a pointer - " << ty);
                 size_t ofs = val.read_usize(0);
@@ -500,7 +528,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 LOG_ASSERT(val_alloc.is_alloc(), "Deref of a value with a non-data allocation");
                 LOG_TRACE("Deref " << val_alloc.alloc() << " + " << ofs << " to give value of type " << ty);
                 auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
-                LOG_ASSERT(alloc, "Deref of a value with no relocation");
+                // NOTE: No alloc can happen when dereferencing a zero-sized pointer
                 if( alloc.is_alloc() )
                 {
                     LOG_DEBUG("> " << lv << " alloc=" << alloc.alloc());
@@ -517,15 +545,26 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     meta_val = ::std::make_shared<Value>( val.read_value(POINTER_SIZE, meta_size) );
 
                     // TODO: Get a more sane size from the metadata
-                    LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
-                    size = alloc.get_size() - ofs;
+                    if( alloc )
+                    {
+                        LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
+                        size = alloc.get_size() - ofs;
+                    }
+                    else
+                    {
+                        size = 0;
+                    }
                 }
                 else
                 {
                     LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << val.m_size << ") - " << val << ": " << ptr_ty);
                     size = ty.get_size();
+                    if( !alloc ) {
+                        LOG_ERROR("Deref of a value with no relocation - " << val);
+                    }
                 }
 
+                LOG_DEBUG("alloc=" << alloc << ", ofs=" << ofs << ", size=" << size);
                 auto rv = ValueRef(::std::move(alloc), ofs, size);
                 rv.m_metadata = ::std::move(meta_val);
                 return rv;
@@ -709,7 +748,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     ::HIR::TypeRef  src_ty;
                     ValueRef src_base_value = state.get_value_and_type(re.val, src_ty);
                     auto alloc = src_base_value.m_alloc;
-                    if( !alloc )
+                    if( !alloc && src_base_value.m_value )
                     {
                         if( !src_base_value.m_value->allocation )
                         {
@@ -1422,7 +1461,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     ptr_val.write_usize(0, ofs);
                     ptr_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
 
-                    drop_value(modtree, ptr_val, ty);
+                    drop_value(modtree, thread, ptr_val, ty);
                     // TODO: Clear validity on the entire inner value.
                     //alloc.mark_as_freed();
                 }
@@ -1515,11 +1554,12 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             for(const auto& a : te.args)
             {
                 sub_args.push_back( state.param_to_value(a) );
+                LOG_DEBUG("#" << (sub_args.size() - 1) << " " << sub_args.back());
             }
             if( te.fcn.is_Intrinsic() )
             {
                 const auto& fe = te.fcn.as_Intrinsic();
-                state.write_lvalue(te.ret_val, MIRI_Invoke_Intrinsic(modtree, fe.name, fe.params, ::std::move(sub_args)));
+                state.write_lvalue(te.ret_val, MIRI_Invoke_Intrinsic(modtree, thread, fe.name, fe.params, ::std::move(sub_args)));
             }
             else
             {
@@ -1534,7 +1574,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                     LOG_DEBUG("> Indirect call " << v);
                     // TODO: Assert type
                     // TODO: Assert offset/content.
-                    assert(v.read_usize(v.m_offset) == 0);
+                    assert(v.read_usize(0) == 0);
                     auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
                     LOG_ASSERT(alloc_ptr, "Calling value that can't be a pointer (no allocation)");
                     fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
@@ -1545,7 +1585,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 }
 
                 LOG_DEBUG("Call " << *fcn_p);
-                auto v = MIRI_Invoke(modtree, *fcn_p, ::std::move(sub_args));
+                auto v = MIRI_Invoke(modtree, thread, *fcn_p, ::std::move(sub_args));
                 LOG_DEBUG(te.ret_val << " = " << v << " (resume " << path << ")");
                 state.write_lvalue(te.ret_val, ::std::move(v));
             }
@@ -1562,7 +1602,7 @@ extern "C" {
     long sysconf(int);
 }
 
-Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
+Value MIRI_Invoke_Extern(ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
     if( link_name == "__rust_allocate" )
     {
@@ -1712,7 +1752,45 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         rv.write_i32(0, 0);
         return rv;
     }
-    else if( link_name == "pthread_key_create" || link_name == "pthread_key_delete" )
+    else if( link_name == "pthread_key_create" )
+    {
+        size_t  size;
+        auto key_ref = args.at(0).read_pointer_valref_mut(0, 4);
+
+        auto key = ThreadState::s_next_tls_key ++;
+        key_ref.m_alloc.alloc().write_u32( key_ref.m_offset, key );
+        
+        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, 0);
+        return rv;
+    }
+    else if( link_name == "pthread_getspecific" )
+    {
+        auto key = args.at(0).read_u32(0);
+
+        // Get a pointer-sized value from storage
+        uint64_t v = key < thread.tls_values.size() ? thread.tls_values[key] : 0;
+
+        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.write_usize(0, v);
+        return rv;
+    }
+    else if( link_name == "pthread_setspecific" )
+    {
+        auto key = args.at(0).read_u32(0);
+        auto v = args.at(1).read_u64(0);
+
+        // Get a pointer-sized value from storage
+        if( key >= thread.tls_values.size() ) {
+            thread.tls_values.resize(key+1);
+        }
+        thread.tls_values[key] = v;
+
+        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, 0);
+        return rv;
+    }
+    else if( link_name == "pthread_key_delete" )
     {
         auto rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
@@ -1758,7 +1836,7 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
     }
     throw "";
 }
-Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
+Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
 {
     Value rv;
     TRACE_FUNCTION_R(name, rv);
@@ -1797,6 +1875,24 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, const ::std::string& name, cons
         size_t ofs = ptr_val.read_usize(0);
         const auto& ty = ty_params.tys.at(0);
         rv = alloc.alloc().read_value(ofs, ty.get_size());
+    }
+    else if( name == "atomic_cxchg" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        // TODO: Get a ValueRef to the target location
+        auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
+        const auto& old_v = args.at(1);
+        const auto& new_v = args.at(1);
+        rv = Value::with_size( ty_T.get_size() + 1, false );
+        rv.write_value(0, data_ref.read_value(0, old_v.size()));
+        if( data_ref.compare(old_v.data_ptr(), old_v.size()) == 0 ) {
+            data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
+            rv.write_u8( old_v.size(), 1 );
+        }
+        else {
+            rv.write_u8( old_v.size(), 0 );
+        }
+        return rv;
     }
     else if( name == "transmute" )
     {
@@ -1919,7 +2015,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, const ::std::string& name, cons
             auto ptr = val.read_value(0, POINTER_SIZE);;
             for(size_t i = 0; i < item_count; i ++)
             {
-                drop_value(modtree, ptr, ity);
+                drop_value(modtree, thread, ptr, ity);
                 ptr.write_usize(0, ptr.read_usize(0) + item_size);
             }
         }
