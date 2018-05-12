@@ -121,6 +121,15 @@ bool Parser::parse_one()
         lex.check_consume('=');
         lex.check(TokenClass::String);
         auto data = ::std::move(lex.consume().strval);
+
+        Static s;
+        s.val = Value(ty);
+        // - Statics need to always have an allocation (for references)
+        if( !s.val.allocation )
+            s.val.create_allocation();
+        s.val.write_bytes(0, data.data(), data.size());
+        s.ty = ty;
+
         if( lex.consume_if('{') )
         {
             while( !lex.consume_if('}') )
@@ -135,12 +144,13 @@ bool Parser::parse_one()
                 if( lex.next() == TokenClass::String )
                 {
                     auto reloc_str = ::std::move(lex.consume().strval);
-                    // TODO: Add relocation
+                    // TODO: Figure out how to create this allocation...
+                    //s.val.allocation.alloc().relocations.push_back({ ofs, AllocationPtr::new_string(reloc_str) });
                 }
                 else if( lex.next() == "::" )
                 {
                     auto reloc_path = parse_path();
-                    // TODO: Add relocation
+                    s.val.allocation.alloc().relocations.push_back({ ofs, AllocationPtr::new_fcn(reloc_path) });
                 }
                 else
                 {
@@ -153,11 +163,6 @@ bool Parser::parse_one()
             }
         }
         lex.check_consume(';');
-
-        Static s;
-        s.val = Value(ty);
-        s.val.write_bytes(0, data.data(), data.size());
-        s.ty = ty;
 
         tree.statics.insert(::std::make_pair( ::std::move(p), ::std::move(s) ));
     }

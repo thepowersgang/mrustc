@@ -627,9 +627,18 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             TU_ARM(c, ItemAddr, ce) {
                 // Create a value with a special backing allocation of zero size that references the specified item.
                 if( const auto* fn = modtree.get_function_opt(ce) ) {
+                    ty = ::HIR::TypeRef(RawType::Function);
                     return Value::new_fnptr(ce);
                 }
-                LOG_TODO("Constant::ItemAddr - statics?");
+                if( const auto* s = modtree.get_static_opt(ce) ) {
+                    ty = s->ty;
+                    ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
+                    Value val = Value(ty);
+                    val.write_usize(0, 0);
+                    val.allocation.alloc().relocations.push_back(Relocation { 0, s->val.allocation });
+                    return val;
+                }
+                LOG_TODO("Constant::ItemAddr - " << ce << " - not found");
                 } break;
             }
             throw "";
@@ -1510,6 +1519,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
             }
             else
             {
+                AllocationPtr   fcn_alloc_ptr;
                 const ::HIR::Path* fcn_p;
                 if( te.fcn.is_Path() ) {
                     fcn_p = &te.fcn.as_Path();
@@ -1517,12 +1527,13 @@ Value MIRI_Invoke(ModuleTree& modtree, ::HIR::Path path, ::std::vector<Value> ar
                 else {
                     ::HIR::TypeRef ty;
                     auto v = state.get_value_and_type(te.fcn.as_Value(), ty);
+                    LOG_DEBUG("> Indirect call " << v);
                     // TODO: Assert type
                     // TODO: Assert offset/content.
                     assert(v.read_usize(v.m_offset) == 0);
                     auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
                     LOG_ASSERT(alloc_ptr, "Calling value that can't be a pointer (no allocation)");
-                    const auto& fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
+                    fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
                     if( !fcn_alloc_ptr )
                         LOG_FATAL("Calling value with no relocation - " << v);
                     LOG_ASSERT(fcn_alloc_ptr.get_ty() == AllocationPtr::Ty::Function, "Calling value that isn't a function pointer");
@@ -1697,6 +1708,12 @@ Value MIRI_Invoke_Extern(const ::std::string& link_name, const ::std::string& ab
         rv.write_i32(0, 0);
         return rv;
     }
+    else if( link_name == "pthread_key_create" || link_name == "pthread_key_delete" )
+    {
+        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, 0);
+        return rv;
+    }
 #endif
     // std C
     else if( link_name == "signal" )
@@ -1761,7 +1778,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, const ::std::string& name, cons
         const auto& ty = ty_params.tys.at(0);
         alloc.alloc().write_value(ofs, ::std::move(data_val));
     }
-    else if( name == "atomic_load" )
+    else if( name == "atomic_load" || name == "atomic_load_relaxed" )
     {
         auto& ptr_val = args.at(0);
         LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
