@@ -1127,6 +1127,12 @@ namespace {
                     m_of << ".PTR";
                 }
             }
+            else if( const auto* te = ty->m_data.opt_Pointer() )
+            {
+                if( metadata_type(*te->inner) != MetadataType::None ) {
+                    m_of << ".PTR";
+                }
+            }
         }
 
         void emit_enum(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Enum& item) override

@@ -876,6 +876,13 @@ namespace {
                         return true;
                     }
                 }
+                // Handle the NonZero lang item (TODO: Cleaner?)
+                if( te.path.m_data.as_Generic().m_path == resolve.m_crate.get_lang_item_path(sp, "non_zero") )
+                {
+                    out_path.sub_fields.push_back(0);
+                    out_path.size = r->size;
+                    return true;
+                }
             }
             } break;
         TU_ARM(ty.m_data, Borrow, _te) { (void)_te;
@@ -919,6 +926,7 @@ namespace {
             {
                 nz_path.index = 1;
                 ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
+                DEBUG("nz_path = " << nz_path.sub_fields);
                 size_t  max_size = 0;
                 size_t  max_align = 0;
                 for(auto& t : mono_types)
