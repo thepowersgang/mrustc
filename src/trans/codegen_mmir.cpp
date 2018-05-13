@@ -157,7 +157,7 @@ namespace
         {
             if( is_executable )
             {
-                m_of << "fn ::main#(isize, *const *const i8): i32 {\n";
+                m_of << "fn ::main#(isize, *const *const i8): isize {\n";
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");
                 if( c_start_path == ::HIR::SimplePath() )
                 {
@@ -1018,6 +1018,12 @@ namespace
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << p;), ret_type, arg_types, *code };
             m_mir_res = &mir_res;
 
+            if( item.m_linkage.name != "" )
+            {
+                // TODO: Save the linkage name.
+            }
+
+            // - Signature
             m_of << "fn " << p << "(";
             for(unsigned int i = 0; i < item.m_args.size(); i ++)
             {
@@ -1025,6 +1031,7 @@ namespace
                 m_of << params.monomorph(m_resolve, item.m_args[i].second);
             }
             m_of << "): " << ret_type << " {\n";
+            // - Locals
             for(unsigned int i = 0; i < code->locals.size(); i ++) {
                 DEBUG("var" << i << " : " << code->locals[i]);
                 m_of << "\tlet var" << i << ": " << code->locals[i] << ";\n";
@@ -1033,7 +1040,7 @@ namespace
                 m_of << "\tlet df" << i << " = " << code->drop_flags[i] << ";\n";
             }
 
-            
+
             for(unsigned int i = 0; i < code->blocks.size(); i ++)
             {
                 TRACE_FUNCTION_F(p << " bb" << i);
