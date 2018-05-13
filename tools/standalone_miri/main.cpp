@@ -674,7 +674,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                 } break;
             TU_ARM(c, ItemAddr, ce) {
                 // Create a value with a special backing allocation of zero size that references the specified item.
-                if( const auto* fn = modtree.get_function_opt(ce) ) {
+                if( /*const auto* fn =*/ modtree.get_function_opt(ce) ) {
                     ty = ::HIR::TypeRef(RawType::Function);
                     return Value::new_fnptr(ce);
                 }
@@ -769,7 +769,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                         LOG_DEBUG("- alloc=" << alloc);
                     size_t ofs = src_base_value.m_offset;
                     const auto meta = src_ty.get_meta_type();
-                    bool is_slice_like = src_ty.has_slice_meta();
+                    //bool is_slice_like = src_ty.has_slice_meta();
                     src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
 
                     new_val = Value(src_ty);
@@ -1205,11 +1205,13 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                         new_val = Value(ty_l);
                         switch(ty_l.inner_type)
                         {
+                        // TODO: U128
                         case RawType::U64:  new_val.write_u64(0, Ops::do_bitwise(v_l.read_u64(0), static_cast<uint64_t>(shift), re.op));   break;
                         case RawType::U32:  new_val.write_u32(0, Ops::do_bitwise(v_l.read_u32(0), static_cast<uint32_t>(shift), re.op));   break;
                         case RawType::U16:  new_val.write_u16(0, Ops::do_bitwise(v_l.read_u16(0), static_cast<uint16_t>(shift), re.op));   break;
                         case RawType::U8 :  new_val.write_u8 (0, Ops::do_bitwise(v_l.read_u8 (0), static_cast<uint8_t >(shift), re.op));   break;
                         case RawType::USize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
+                        // TODO: Is signed allowed?
                         default:
                             LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
                         }
@@ -1222,23 +1224,26 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                         new_val = Value(ty_l);
                         switch(ty_l.inner_type)
                         {
+                        // TODO: U128/I128
                         case RawType::U64:
+                        case RawType::I64:
                             new_val.write_u64( 0, Ops::do_bitwise(v_l.read_u64(0), v_r.read_u64(0), re.op) );
                             break;
                         case RawType::U32:
+                        case RawType::I32:
                             new_val.write_u32( 0, static_cast<uint32_t>(Ops::do_bitwise(v_l.read_u32(0), v_r.read_u32(0), re.op)) );
                             break;
                         case RawType::U16:
+                        case RawType::I16:
                             new_val.write_u16( 0, static_cast<uint16_t>(Ops::do_bitwise(v_l.read_u16(0), v_r.read_u16(0), re.op)) );
                             break;
                         case RawType::U8:
+                        case RawType::I8:
                             new_val.write_u8 ( 0, static_cast<uint8_t >(Ops::do_bitwise(v_l.read_u8 (0), v_r.read_u8 (0), re.op)) );
                             break;
                         case RawType::USize:
+                        case RawType::ISize:
                             new_val.write_usize( 0, Ops::do_bitwise(v_l.read_usize(0), v_r.read_usize(0), re.op) );
-                            break;
-                        case RawType::I32:
-                            new_val.write_i32( 0, static_cast<int32_t>(Ops::do_bitwise(v_l.read_i32(0), v_r.read_i32(0), re.op)) );
                             break;
                         default:
                             LOG_TODO("BinOp bitwise - " << se.src << " w/ " << ty_l);
@@ -1276,20 +1281,26 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                         switch(ty.inner_type)
                         {
                         case RawType::U128:
+                        case RawType::I128:
                             LOG_TODO("UniOp::INV U128");
                         case RawType::U64:
+                        case RawType::I64:
                             new_val.write_u64( 0, ~v.read_u64(0) );
                             break;
                         case RawType::U32:
+                        case RawType::I32:
                             new_val.write_u32( 0, ~v.read_u32(0) );
                             break;
                         case RawType::U16:
+                        case RawType::I16:
                             new_val.write_u16( 0, ~v.read_u16(0) );
                             break;
                         case RawType::U8:
+                        case RawType::I8:
                             new_val.write_u8 ( 0, ~v.read_u8 (0) );
                             break;
                         case RawType::USize:
+                        case RawType::ISize:
                             new_val.write_usize( 0, ~v.read_usize(0) );
                             break;
                         case RawType::Bool:
@@ -1320,7 +1331,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                             new_val.write_isize( 0, -v.read_isize(0) );
                             break;
                         default:
-                            LOG_TODO("UniOp::INV - w/ type " << ty);
+                            LOG_ERROR("UniOp::INV not valid on type " << ty);
                         }
                         break;
                     }
@@ -1474,7 +1485,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                 }
                 } break;
             TU_ARM(stmt, SetDropFlag, se) {
-                bool val = (se.other == ~0 ? false : state.drop_flags.at(se.other)) != se.new_val;
+                bool val = (se.other == ~0u ? false : state.drop_flags.at(se.other)) != se.new_val;
                 LOG_DEBUG("- " << val);
                 state.drop_flags.at(se.idx) = val;
                 } break;
@@ -1782,7 +1793,6 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
     }
     else if( link_name == "pthread_key_create" )
     {
-        size_t  size;
         auto key_ref = args.at(0).read_pointer_valref_mut(0, 4);
 
         auto key = ThreadState::s_next_tls_key ++;
@@ -1907,7 +1917,6 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
 
         // TODO: Atomic side of this?
         size_t ofs = ptr_val.read_usize(0);
-        const auto& ty = ty_params.tys.at(0);
         alloc.alloc().write_value(ofs, ::std::move(data_val));
     }
     else if( name == "atomic_load" || name == "atomic_load_relaxed" )
@@ -2007,7 +2016,6 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         LOG_ASSERT(alloc, "Deref of a value with no relocation");
 
         size_t ofs = ptr_val.read_usize(0);
-        const auto& ty = ty_params.tys.at(0);
         alloc.alloc().write_value(ofs, ::std::move(data_val));
         LOG_DEBUG(alloc.alloc());
     }
