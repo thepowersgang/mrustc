@@ -32,6 +32,8 @@ struct Parser
     RawType parse_core_type();
     ::HIR::TypeRef parse_type();
     ::HIR::GenericPath parse_tuple();
+
+    const DataType* get_composite(::HIR::GenericPath gp);
 };
 
 void ModuleTree::load_file(const ::std::string& path)
@@ -1130,19 +1132,8 @@ RawType Parser::parse_core_type()
         // Tuples! Should point to a composite
         ::HIR::GenericPath  gp = parse_tuple();
 
-        // Look up this type, then create a TypeRef referring to the type in the datastore
-        // - May need to create an unpopulated type?
-        auto it = tree.data_types.find(gp);
-        if( it == tree.data_types.end() )
-        {
-            // TODO: Later on need to check if the type is valid.
-            auto v = ::std::make_unique<DataType>(DataType {});
-            v->my_path = gp;
-            auto ir = tree.data_types.insert(::std::make_pair( ::std::move(gp), ::std::move(v)) );
-            it = ir.first;
-        }
         // Good.
-        return ::HIR::TypeRef(it->second.get());
+        return ::HIR::TypeRef( this->get_composite(::std::move(gp)) );
     }
     else if( lex.consume_if('[') )
     {
@@ -1155,7 +1146,6 @@ RawType Parser::parse_core_type()
         }
         else
         {
-            // TODO: How to handle arrays?
             rv.wrappers.insert( rv.wrappers.begin(), { TypeWrapper::Ty::Slice, 0 });
         }
         lex.check_consume(']');
@@ -1196,19 +1186,7 @@ RawType Parser::parse_core_type()
     else if( lex.next() == "::" )
     {
         auto path = parse_genericpath();
-        // Look up this type, then create a TypeRef referring to the type in the datastore
-        // - May need to create an unpopulated type?
-        auto it = tree.data_types.find(path);
-        if( it == tree.data_types.end() )
-        {
-            // TODO: Later on need to check if the type is valid.
-            auto v = ::std::make_unique<DataType>(DataType {});
-            v->my_path = path;
-            auto ir = tree.data_types.insert(::std::make_pair( ::std::move(path), ::std::move(v)) );
-            it = ir.first;
-        }
-        // Good.
-        return ::HIR::TypeRef(it->second.get());
+        return ::HIR::TypeRef( this->get_composite(::std::move(path)));
     }
     else if( lex.next() == "extern" || lex.next() == "fn" || lex.next() == "unsafe" )
     {
@@ -1282,8 +1260,17 @@ RawType Parser::parse_core_type()
             markers.push_back(parse_genericpath());
         }
         lex.consume_if(')');
-        return ::HIR::TypeRef(RawType::TraitObject);
-        // TODO: Generate the vtable path and locate that struct
+
+        auto rv = ::HIR::TypeRef(RawType::TraitObject);
+        if( base_trait != ::HIR::GenericPath() )
+        {
+            // Generate vtable path
+            auto vtable_path = base_trait;
+            vtable_path.m_simplepath.ents.back() += "#vtable";
+            // - TODO: Associated types?
+            rv.composite_type = this->get_composite( ::std::move(vtable_path) );
+        }
+        return rv;
     }
     else if( lex.next() == TokenClass::Ident )
     {
@@ -1294,6 +1281,19 @@ RawType Parser::parse_core_type()
         ::std::cerr << lex << "Unexpected token in type - " << lex.next() << ::std::endl;
         throw "ERROR";
     }
+}
+const DataType* Parser::get_composite(::HIR::GenericPath gp)
+{
+    auto it = tree.data_types.find(gp);
+    if( it == tree.data_types.end() )
+    {
+        // TODO: Later on need to check if the type is valid.
+        auto v = ::std::make_unique<DataType>(DataType {});
+        v->my_path = gp;
+        auto ir = tree.data_types.insert(::std::make_pair( ::std::move(gp), ::std::move(v)) );
+        it = ir.first;
+    }
+    return it->second.get();
 }
 
 ::HIR::SimplePath ModuleTree::find_lang_item(const char* name) const

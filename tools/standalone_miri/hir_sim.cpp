@@ -166,32 +166,34 @@ const HIR::TypeRef* HIR::TypeRef::get_usized_type(size_t& running_inner_size) co
         return nullptr;
     }
 }
-const HIR::TypeRef* HIR::TypeRef::get_meta_type() const
+HIR::TypeRef HIR::TypeRef::get_meta_type() const
 {
-    static ::HIR::TypeRef   static_usize = ::HIR::TypeRef(RawType::USize);
     if( this->wrappers.empty() )
     {
         switch(this->inner_type)
         {
         case RawType::Composite:
             if( this->composite_type->dst_meta == RawType::Unreachable )
-                return nullptr;
-            return &this->composite_type->dst_meta;
-        case RawType::TraitObject:
-            LOG_TODO("get_meta_type on TraitObject - " << *this);
+                return TypeRef(RawType::Unreachable);
+            return this->composite_type->dst_meta;
+        case RawType::TraitObject: {
+            auto rv = ::HIR::TypeRef( this->composite_type );
+            rv.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, static_cast<size_t>(BorrowType::Shared) });
+            return rv;
+            }
         case RawType::Str:
-            return &static_usize;
+            return TypeRef(RawType::USize);
         default:
-            return nullptr;
+            return TypeRef(RawType::Unreachable);
         }
     }
     else if( this->wrappers[0].type == TypeWrapper::Ty::Slice )
     {
-        return &static_usize;
+        return TypeRef(RawType::USize);
     }
     else
     {
-        return nullptr;
+        return TypeRef(RawType::Unreachable);
     }
 }
 
@@ -305,7 +307,11 @@ namespace HIR {
             os << "function_?";
             break;
         case RawType::TraitObject:
-            os << "traitobject_?";
+            os << "dyn ";
+            if( x.composite_type )
+                os << x.composite_type->my_path;
+            else
+                os << "?";
             break;
         case RawType::Bool: os << "bool"; break;
         case RawType::Char: os << "char"; break;

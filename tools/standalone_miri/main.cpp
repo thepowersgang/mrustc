@@ -503,7 +503,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                 ty = composite_ty.get_field(e.field_index, inner_ofs);
                 LOG_DEBUG("Field - " << composite_ty << "#" << e.field_index << " = @" << inner_ofs << " " << ty);
                 base_val.m_offset += inner_ofs;
-                if( !ty.get_meta_type() )
+                if( ty.get_meta_type() == HIR::TypeRef(RawType::Unreachable) )
                 {
                     LOG_ASSERT(base_val.m_size >= ty.get_size(), "Field didn't fit in the value - " << ty.get_size() << " required, but " << base_val.m_size << " avail");
                     base_val.m_size = ty.get_size();
@@ -542,12 +542,12 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                 }
                 size_t size;
 
-                const auto* meta_ty = ty.get_meta_type();
+                const auto meta_ty = ty.get_meta_type();
                 ::std::shared_ptr<Value>    meta_val;
                 // If the type has metadata, store it.
-                if( meta_ty )
+                if( meta_ty != RawType::Unreachable )
                 {
-                    auto meta_size = meta_ty->get_size();
+                    auto meta_size = meta_ty.get_size();
                     LOG_ASSERT(val.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
                     meta_val = ::std::make_shared<Value>( val.read_value(POINTER_SIZE, meta_size) );
 
@@ -768,14 +768,14 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                     else
                         LOG_DEBUG("- alloc=" << alloc);
                     size_t ofs = src_base_value.m_offset;
-                    const auto* meta = src_ty.get_meta_type();
+                    const auto meta = src_ty.get_meta_type();
                     bool is_slice_like = src_ty.has_slice_meta();
                     src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
 
                     new_val = Value(src_ty);
                     // ^ Pointer value
                     new_val.write_usize(0, ofs);
-                    if( meta )
+                    if( meta != RawType::Unreachable )
                     {
                         LOG_ASSERT(src_base_value.m_metadata, "Borrow of an unsized value, but no metadata avaliable");
                         new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
@@ -1460,7 +1460,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                         alloc = AllocationPtr(v.m_value->allocation);
                     }
                     size_t ofs = v.m_offset;
-                    assert(!ty.get_meta_type());
+                    assert(ty.get_meta_type() == RawType::Unreachable);
 
                     auto ptr_ty = ty.wrap(TypeWrapper::Ty::Borrow, 2);
 
@@ -1954,20 +1954,21 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
     }
     else if( name == "offset" )
     {
-        auto ptr_val = ::std::move(args.at(0));
+        auto ptr_alloc = args.at(0).get_relocation(0);
+        auto ptr_ofs = args.at(0).read_usize(0);
         auto& ofs_val = args.at(1);
 
-        auto r = ptr_val.allocation.alloc().get_relocation(0);
-        auto orig_ofs = ptr_val.read_usize(0);
         auto delta_counts = ofs_val.read_usize(0);
-        auto new_ofs = orig_ofs + delta_counts * ty_params.tys.at(0).get_size();
+        auto new_ofs = ptr_ofs + delta_counts * ty_params.tys.at(0).get_size();
         if(POINTER_SIZE != 8) {
             new_ofs &= 0xFFFFFFFF;
         }
 
-        ptr_val.write_usize(0, new_ofs);
-        ptr_val.allocation.alloc().relocations.push_back({ 0, r });
-        rv = ::std::move(ptr_val);
+        rv = ::std::move(args.at(0));
+        rv.write_usize(0, new_ofs);
+        if( ptr_alloc ) {
+            rv.allocation.alloc().relocations.push_back({ 0, ptr_alloc });
+        }
     }
     // effectively ptr::write
     else if( name == "move_val_init" )
@@ -2008,7 +2009,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         size_t fixed_size = 0;
         if( const auto* ity = ty.get_usized_type(fixed_size) )
         {
-            const auto& meta_ty = *ty.get_meta_type();
+            const auto meta_ty = ty.get_meta_type();
             LOG_DEBUG("size_of_val - " << ty << " ity=" << *ity << " meta_ty=" << meta_ty << " fixed_size=" << fixed_size);
             size_t flex_size = 0;
             if( !ity->wrappers.empty() )

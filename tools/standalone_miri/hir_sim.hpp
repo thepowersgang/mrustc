@@ -23,7 +23,7 @@ struct DataType;
 enum class RawType
 {
     Unreachable,
-    Function,
+    Function,   // TODO: Needs a way of indicating the signature?
     Unit,
 
     Bool,
@@ -39,7 +39,7 @@ enum class RawType
     Char, Str,
 
     Composite,  // Struct, Enum, Union, tuple, ...
-    TraitObject,    // Data pointer is `*const ()`, metadata type stored in `composite_type`
+    TraitObject,    // Data pointer is `*const ()`, vtable type stored in `composite_type`
 };
 struct TypeWrapper
 {
@@ -120,7 +120,7 @@ namespace HIR {
         size_t get_size(size_t ofs=0) const;
         bool has_slice_meta() const;    // The attached metadata is a count
         const TypeRef* get_usized_type(size_t& running_inner_size) const;
-        const TypeRef* get_meta_type() const;
+        TypeRef get_meta_type() const;
         TypeRef get_inner() const;
         TypeRef wrap(TypeWrapper::Ty ty, size_t size) const;
         TypeRef get_field(size_t idx, size_t& ofs) const;
