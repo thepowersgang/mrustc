@@ -41,9 +41,58 @@ struct ThreadState
 };
 unsigned ThreadState::s_next_tls_key = 1;
 
-Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::std::vector<Value> args);
-Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
-Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread,  const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
+class InterpreterThread
+{
+    friend struct MirHelpers;
+    struct StackFrame
+    {
+        ::std::function<bool(Value&,Value)> cb;
+        const Function& fcn;
+        Value ret;
+        ::std::vector<Value>    args;
+        ::std::vector<Value>    locals;
+        ::std::vector<bool>     drop_flags;
+        
+        unsigned    bb_idx;
+        unsigned    stmt_idx;
+        
+        StackFrame(const Function& fcn, ::std::vector<Value> args);
+        static StackFrame make_wrapper(::std::function<bool(Value&,Value)> cb) {
+            static Function f;
+            StackFrame  rv(f, {});
+            rv.cb = ::std::move(cb);
+            return rv;
+        }
+    };
+
+    ModuleTree& m_modtree;
+    ThreadState m_thread;
+    ::std::vector<StackFrame>   m_stack;
+    
+public:
+    InterpreterThread(ModuleTree& modtree):
+        m_modtree(modtree)
+    {
+    }
+    ~InterpreterThread();
+    
+    void start(const ::HIR::Path& p, ::std::vector<Value> args);
+    // Returns `true` if the call stack empties
+    bool step_one(Value& out_thread_result);
+
+private:
+    bool pop_stack(Value& out_thread_result);
+
+    // Returns true if the call was resolved instantly
+    bool call_path(Value& ret_val, const ::HIR::Path& p, ::std::vector<Value> args);
+    // Returns true if the call was resolved instantly
+    bool call_extern(Value& ret_val, const ::std::string& name, const ::std::string& abi, ::std::vector<Value> args);
+    // Returns true if the call was resolved instantly
+    bool call_intrinsic(Value& ret_val, const ::std::string& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
+
+    // Returns true if the call was resolved instantly
+    bool drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow=false);
+};
 
 int main(int argc, const char* argv[])
 {
@@ -63,16 +112,22 @@ int main(int argc, const char* argv[])
     argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
     argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
     auto val_argv = Value(argv_ty);
-    val_argc.write_bytes(0, "\0\0\0\0\0\0\0", 8);
-    val_argv.write_bytes(0, "\0\0\0\0\0\0\0", argv_ty.get_size());
+    val_argc.write_isize(0, 0);
+    val_argv.write_usize(0, 0);
 
     try
     {
-        ThreadState ts;
+        InterpreterThread   root_thread(tree);
+        
         ::std::vector<Value>    args;
         args.push_back(::std::move(val_argc));
         args.push_back(::std::move(val_argv));
-        auto rv = MIRI_Invoke( tree, ts, tree.find_lang_item("start"), ::std::move(args) );
+        Value   rv;
+        root_thread.start(tree.find_lang_item("start"), ::std::move(args));
+        while( !root_thread.step_one(rv) )
+        {
+        }
+
         ::std::cout << rv << ::std::endl;
     }
     catch(const DebugExceptionTodo& /*e*/)
@@ -311,726 +366,573 @@ struct Ops {
     }
 };
 
-namespace
+struct MirHelpers
 {
+    InterpreterThread&  thread;
+    InterpreterThread::StackFrame&  frame;
 
-    void drop_value(ModuleTree& modtree, ThreadState& thread, Value ptr, const ::HIR::TypeRef& ty, bool is_shallow=false)
+    MirHelpers(InterpreterThread& thread, InterpreterThread::StackFrame& frame):
+        thread(thread),
+        frame(frame)
     {
-        if( is_shallow )
-        {
-            // HACK: Only works for Box<T> where the first pointer is the data pointer
-            auto box_ptr_vr = ptr.read_pointer_valref_mut(0, POINTER_SIZE);
-            auto ofs = box_ptr_vr.read_usize(0);
-            auto alloc = box_ptr_vr.get_relocation(0);
-            if( ofs != 0 || !alloc || !alloc.is_alloc() ) {
-                LOG_ERROR("Attempting to shallow drop with invalid pointer (no relocation or non-zero offset) - " << box_ptr_vr);
-            }
-            
-            LOG_DEBUG("drop_value SHALLOW deallocate " << alloc);
-            alloc.alloc().mark_as_freed();
-            return ;
-        }
-        if( ty.wrappers.empty() )
-        {
-            if( ty.inner_type == RawType::Composite )
-            {
-                if( ty.composite_type->drop_glue != ::HIR::Path() )
-                {
-                    LOG_DEBUG("Drop - " << ty);
+    }
 
-                    MIRI_Invoke(modtree, thread, ty.composite_type->drop_glue, { ptr });
-                }
-                else
-                {
-                    // No drop glue
-                }
-            }
-            else if( ty.inner_type == RawType::TraitObject )
+    ValueRef get_value_and_type(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
+    {
+        switch(lv.tag())
+        {
+        case ::MIR::LValue::TAGDEAD:    throw "";
+        // --> Slots
+        TU_ARM(lv, Return, _e) {
+            ty = this->frame.fcn.ret_ty;
+            return ValueRef(this->frame.ret);
+            } break;
+        TU_ARM(lv, Local, e) {
+            ty = this->frame.fcn.m_mir.locals.at(e);
+            return ValueRef(this->frame.locals.at(e));
+            } break;
+        TU_ARM(lv, Argument, e) {
+            ty = this->frame.fcn.args.at(e.idx);
+            return ValueRef(this->frame.args.at(e.idx));
+            } break;
+        TU_ARM(lv, Static, e) {
+            /*const*/ auto& s = this->thread.m_modtree.get_static(e);
+            ty = s.ty;
+            return ValueRef(s.val);
+            } break;
+        // --> Modifiers
+        TU_ARM(lv, Index, e) {
+            auto idx = get_value_ref(*e.idx).read_usize(0);
+            ::HIR::TypeRef  array_ty;
+            auto base_val = get_value_and_type(*e.val, array_ty);
+            if( array_ty.wrappers.empty() )
+                LOG_ERROR("Indexing non-array/slice - " << array_ty);
+            if( array_ty.wrappers.front().type == TypeWrapper::Ty::Array )
             {
-                LOG_TODO("Drop - " << ty << " - trait object");
+                ty = array_ty.get_inner();
+                base_val.m_offset += ty.get_size() * idx;
+                return base_val;
+            }
+            else if( array_ty.wrappers.front().type == TypeWrapper::Ty::Slice )
+            {
+                LOG_TODO("Slice index");
             }
             else
             {
-                // No destructor
+                LOG_ERROR("Indexing non-array/slice - " << array_ty);
+                throw "ERROR";
             }
-        }
-        else
-        {
-            switch( ty.wrappers[0].type )
+            } break;
+        TU_ARM(lv, Field, e) {
+            ::HIR::TypeRef  composite_ty;
+            auto base_val = get_value_and_type(*e.val, composite_ty);
+            // TODO: if there's metadata present in the base, but the inner doesn't have metadata, clear the metadata
+            size_t inner_ofs;
+            ty = composite_ty.get_field(e.field_index, inner_ofs);
+            LOG_DEBUG("Field - " << composite_ty << "#" << e.field_index << " = @" << inner_ofs << " " << ty);
+            base_val.m_offset += inner_ofs;
+            if( ty.get_meta_type() == HIR::TypeRef(RawType::Unreachable) )
             {
-            case TypeWrapper::Ty::Borrow:
-                if( ty.wrappers[0].size == static_cast<size_t>(::HIR::BorrowType::Move) )
+                LOG_ASSERT(base_val.m_size >= ty.get_size(), "Field didn't fit in the value - " << ty.get_size() << " required, but " << base_val.m_size << " avail");
+                base_val.m_size = ty.get_size();
+            }
+            return base_val;
+            }
+        TU_ARM(lv, Downcast, e) {
+            ::HIR::TypeRef  composite_ty;
+            auto base_val = get_value_and_type(*e.val, composite_ty);
+            LOG_DEBUG("Downcast - " << composite_ty);
+
+            size_t inner_ofs;
+            ty = composite_ty.get_field(e.variant_index, inner_ofs);
+            base_val.m_offset += inner_ofs;
+            return base_val;
+            }
+        TU_ARM(lv, Deref, e) {
+            ::HIR::TypeRef  ptr_ty;
+            auto val = get_value_and_type(*e.val, ptr_ty);
+            ty = ptr_ty.get_inner();
+            LOG_DEBUG("val = " << val << ", (inner) ty=" << ty);
+
+            LOG_ASSERT(val.m_size >= POINTER_SIZE, "Deref of a value that doesn't fit a pointer - " << ty);
+            size_t ofs = val.read_usize(0);
+
+            // There MUST be a relocation at this point with a valid allocation.
+            auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
+            LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
+            LOG_ASSERT(val_alloc.is_alloc(), "Deref of a value with a non-data allocation");
+            LOG_TRACE("Deref " << val_alloc.alloc() << " + " << ofs << " to give value of type " << ty);
+            auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
+            // NOTE: No alloc can happen when dereferencing a zero-sized pointer
+            if( alloc.is_alloc() )
+            {
+                LOG_DEBUG("> " << lv << " alloc=" << alloc.alloc());
+            }
+            size_t size;
+
+            const auto meta_ty = ty.get_meta_type();
+            ::std::shared_ptr<Value>    meta_val;
+            // If the type has metadata, store it.
+            if( meta_ty != RawType::Unreachable )
+            {
+                auto meta_size = meta_ty.get_size();
+                LOG_ASSERT(val.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
+                meta_val = ::std::make_shared<Value>( val.read_value(POINTER_SIZE, meta_size) );
+
+                // TODO: Get a more sane size from the metadata
+                if( alloc )
                 {
-                    LOG_TODO("Drop - " << ty << " - dereference and go to inner");
-                    // TODO: Clear validity on the entire inner value.
+                    LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
+                    size = alloc.get_size() - ofs;
                 }
                 else
                 {
-                    // No destructor
+                    size = 0;
                 }
-                break;
-            case TypeWrapper::Ty::Pointer:
-                // No destructor
-                break;
-            // TODO: Arrays
-            default:
-                LOG_TODO("Drop - " << ty << " - array?");
-                break;
             }
-        }
-    }
-
-}
-
-Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::std::vector<Value> args)
-{
-    Value   ret;
-
-    const auto& fcn = modtree.get_function(path);
-
-
-    // TODO: Support overriding certain functions
-    {
-        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "c", "SetThreadStackGuarantee" } } )
-        {
-            ret = Value(::HIR::TypeRef{RawType::I32});
-            ret.write_i32(0, 120);  // ERROR_CALL_NOT_IMPLEMENTED
-            return ret;
-        }
-
-        // - No guard page needed
-        if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } } )
-        {
-            ret = Value::with_size(16, false);
-            ret.write_u64(0, 0);
-            ret.write_u64(8, 0);
-            return ret;
-        }
-        
-        // - No stack overflow handling needed
-        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "stack_overflow", "imp", "init" } } )
-        {
-            return ret;
-        }
-    }
-
-    if( fcn.external.link_name != "" )
-    {
-        // External function!
-        ret = MIRI_Invoke_Extern(modtree, thread, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
-        LOG_DEBUG(path << " = " << ret);
-        return ret;
-    }
-
-    // Recursion limit.
-    if( thread.call_stack_depth > 40 ) {
-        LOG_ERROR("Recursion limit exceeded");
-    }
-    auto _ = thread.enter_function();
-
-    TRACE_FUNCTION_R(path, path << " = " << ret);
-    for(size_t i = 0; i < args.size(); i ++)
-    {
-        LOG_DEBUG("- Argument(" << i << ") = " << args[i]);
-        // TODO: Check argument sizes against prototype?
-    }
-
-    ret = Value(fcn.ret_ty == RawType::Unreachable ? ::HIR::TypeRef() : fcn.ret_ty);
-
-    struct State
-    {
-        ModuleTree& modtree;
-        const Function& fcn;
-        Value&  ret;
-        ::std::vector<Value>    args;
-        ::std::vector<Value>    locals;
-        ::std::vector<bool>     drop_flags;
-
-        State(ModuleTree& modtree, const Function& fcn, Value& ret, ::std::vector<Value> args):
-            modtree(modtree),
-            fcn(fcn),
-            ret(ret),
-            args(::std::move(args)),
-            drop_flags(fcn.m_mir.drop_flags)
-        {
-            locals.reserve(fcn.m_mir.locals.size());
-            for(const auto& ty : fcn.m_mir.locals)
+            else
             {
-                if( ty == RawType::Unreachable ) {
-                    // HACK: Locals can be !, but they can NEVER be accessed
-                    locals.push_back(Value());
-                }
-                else {
-                    locals.push_back(Value(ty));
+                LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << val.m_size << ") - " << val << ": " << ptr_ty);
+                size = ty.get_size();
+                if( !alloc ) {
+                    LOG_ERROR("Deref of a value with no relocation - " << val);
                 }
             }
+
+            LOG_DEBUG("alloc=" << alloc << ", ofs=" << ofs << ", size=" << size);
+            auto rv = ValueRef(::std::move(alloc), ofs, size);
+            rv.m_metadata = ::std::move(meta_val);
+            return rv;
+            } break;
         }
+        throw "";
+    }
+    ValueRef get_value_ref(const ::MIR::LValue& lv)
+    {
+        ::HIR::TypeRef  tmp;
+        return get_value_and_type(lv, tmp);
+    }
 
-        ValueRef get_value_and_type(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
+    ::HIR::TypeRef get_lvalue_ty(const ::MIR::LValue& lv)
+    {
+        ::HIR::TypeRef  ty;
+        get_value_and_type(lv, ty);
+        return ty;
+    }
+
+    Value read_lvalue_with_ty(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
+    {
+        auto base_value = get_value_and_type(lv, ty);
+
+        return base_value.read_value(0, ty.get_size());
+    }
+    Value read_lvalue(const ::MIR::LValue& lv)
+    {
+        ::HIR::TypeRef  ty;
+        return read_lvalue_with_ty(lv, ty);
+    }
+    void write_lvalue(const ::MIR::LValue& lv, Value val)
+    {
+        //LOG_DEBUG(lv << " = " << val);
+        ::HIR::TypeRef  ty;
+        auto base_value = get_value_and_type(lv, ty);
+
+        if(base_value.m_alloc) {
+            base_value.m_alloc.alloc().write_value(base_value.m_offset, ::std::move(val));
+        }
+        else {
+            base_value.m_value->write_value(base_value.m_offset, ::std::move(val));
+        }
+    }
+
+    Value const_to_value(const ::MIR::Constant& c, ::HIR::TypeRef& ty)
+    {
+        switch(c.tag())
         {
-            switch(lv.tag())
-            {
-            case ::MIR::LValue::TAGDEAD:    throw "";
-            TU_ARM(lv, Return, _e) {
-                ty = fcn.ret_ty;
-                return ValueRef(ret, 0, ret.size());
-                } break;
-            TU_ARM(lv, Local, e) {
-                ty = fcn.m_mir.locals.at(e);
-                return ValueRef(locals.at(e), 0, locals.at(e).size());
-                } break;
-            TU_ARM(lv, Argument, e) {
-                ty = fcn.args.at(e.idx);
-                return ValueRef(args.at(e.idx), 0, args.at(e.idx).size());
-                } break;
-            TU_ARM(lv, Static, e) {
-                /*const*/ auto& s = modtree.get_static(e);
-                ty = s.ty;
-                return ValueRef(s.val, 0, s.val.size());
-                } break;
-            TU_ARM(lv, Index, e) {
-                auto idx = get_value_ref(*e.idx).read_usize(0);
-                ::HIR::TypeRef  array_ty;
-                auto base_val = get_value_and_type(*e.val, array_ty);
-                if( array_ty.wrappers.empty() )
-                    throw "ERROR";
-                if( array_ty.wrappers.front().type == TypeWrapper::Ty::Array )
-                {
-                    ty = array_ty.get_inner();
-                    base_val.m_offset += ty.get_size() * idx;
-                    return base_val;
-                }
-                else if( array_ty.wrappers.front().type == TypeWrapper::Ty::Slice )
-                {
-                    throw "TODO";
-                }
-                else
-                {
-                    throw "ERROR";
-                }
-                } break;
-            TU_ARM(lv, Field, e) {
-                ::HIR::TypeRef  composite_ty;
-                auto base_val = get_value_and_type(*e.val, composite_ty);
-                // TODO: if there's metadata present in the base, but the inner doesn't have metadata, clear the metadata
-                size_t inner_ofs;
-                ty = composite_ty.get_field(e.field_index, inner_ofs);
-                LOG_DEBUG("Field - " << composite_ty << "#" << e.field_index << " = @" << inner_ofs << " " << ty);
-                base_val.m_offset += inner_ofs;
-                if( ty.get_meta_type() == HIR::TypeRef(RawType::Unreachable) )
-                {
-                    LOG_ASSERT(base_val.m_size >= ty.get_size(), "Field didn't fit in the value - " << ty.get_size() << " required, but " << base_val.m_size << " avail");
-                    base_val.m_size = ty.get_size();
-                }
-                return base_val;
-                }
-            TU_ARM(lv, Downcast, e) {
-                ::HIR::TypeRef  composite_ty;
-                auto base_val = get_value_and_type(*e.val, composite_ty);
-                LOG_DEBUG("Downcast - " << composite_ty);
-
-                size_t inner_ofs;
-                ty = composite_ty.get_field(e.variant_index, inner_ofs);
-                base_val.m_offset += inner_ofs;
-                return base_val;
-                }
-            TU_ARM(lv, Deref, e) {
-                ::HIR::TypeRef  ptr_ty;
-                auto val = get_value_and_type(*e.val, ptr_ty);
-                ty = ptr_ty.get_inner();
-                LOG_DEBUG("val = " << val << ", (inner) ty=" << ty);
-
-                LOG_ASSERT(val.m_size >= POINTER_SIZE, "Deref of a value that doesn't fit a pointer - " << ty);
-                size_t ofs = val.read_usize(0);
-
-                // There MUST be a relocation at this point with a valid allocation.
-                auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
-                LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
-                LOG_ASSERT(val_alloc.is_alloc(), "Deref of a value with a non-data allocation");
-                LOG_TRACE("Deref " << val_alloc.alloc() << " + " << ofs << " to give value of type " << ty);
-                auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
-                // NOTE: No alloc can happen when dereferencing a zero-sized pointer
-                if( alloc.is_alloc() )
-                {
-                    LOG_DEBUG("> " << lv << " alloc=" << alloc.alloc());
-                }
-                size_t size;
-
-                const auto meta_ty = ty.get_meta_type();
-                ::std::shared_ptr<Value>    meta_val;
-                // If the type has metadata, store it.
-                if( meta_ty != RawType::Unreachable )
-                {
-                    auto meta_size = meta_ty.get_size();
-                    LOG_ASSERT(val.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
-                    meta_val = ::std::make_shared<Value>( val.read_value(POINTER_SIZE, meta_size) );
-
-                    // TODO: Get a more sane size from the metadata
-                    if( alloc )
-                    {
-                        LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
-                        size = alloc.get_size() - ofs;
-                    }
-                    else
-                    {
-                        size = 0;
-                    }
-                }
-                else
-                {
-                    LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << val.m_size << ") - " << val << ": " << ptr_ty);
-                    size = ty.get_size();
-                    if( !alloc ) {
-                        LOG_ERROR("Deref of a value with no relocation - " << val);
-                    }
-                }
-
-                LOG_DEBUG("alloc=" << alloc << ", ofs=" << ofs << ", size=" << size);
-                auto rv = ValueRef(::std::move(alloc), ofs, size);
-                rv.m_metadata = ::std::move(meta_val);
-                return rv;
-                } break;
+        case ::MIR::Constant::TAGDEAD:  throw "";
+        TU_ARM(c, Int, ce) {
+            ty = ::HIR::TypeRef(ce.t);
+            Value val = Value(ty);
+            val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
+            // TODO: If the write was clipped, sign-extend
+            return val;
+            } break;
+        TU_ARM(c, Uint, ce) {
+            ty = ::HIR::TypeRef(ce.t);
+            Value val = Value(ty);
+            val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
+            return val;
+            } break;
+        TU_ARM(c, Bool, ce) {
+            Value val = Value(::HIR::TypeRef { RawType::Bool });
+            val.write_bytes(0, &ce.v, 1);
+            return val;
+            } break;
+        TU_ARM(c, Float, ce) {
+            ty = ::HIR::TypeRef(ce.t);
+            Value val = Value(ty);
+            if( ce.t.raw_type == RawType::F64 ) {
+                val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian/format?
             }
-            throw "";
-        }
-        ValueRef get_value_ref(const ::MIR::LValue& lv)
-        {
-            ::HIR::TypeRef  tmp;
-            return get_value_and_type(lv, tmp);
-        }
-
-        ::HIR::TypeRef get_lvalue_ty(const ::MIR::LValue& lv)
-        {
-            ::HIR::TypeRef  ty;
-            get_value_and_type(lv, ty);
-            return ty;
-        }
-
-        Value read_lvalue_with_ty(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
-        {
-            auto base_value = get_value_and_type(lv, ty);
-
-            return base_value.read_value(0, ty.get_size());
-        }
-        Value read_lvalue(const ::MIR::LValue& lv)
-        {
-            ::HIR::TypeRef  ty;
-            return read_lvalue_with_ty(lv, ty);
-        }
-        void write_lvalue(const ::MIR::LValue& lv, Value val)
-        {
-            //LOG_DEBUG(lv << " = " << val);
-            ::HIR::TypeRef  ty;
-            auto base_value = get_value_and_type(lv, ty);
-
-            if(base_value.m_alloc) {
-                base_value.m_alloc.alloc().write_value(base_value.m_offset, ::std::move(val));
+            else if( ce.t.raw_type == RawType::F32 ) {
+                float v = static_cast<float>(ce.v);
+                val.write_bytes(0, &v, ::std::min(ty.get_size(), sizeof(v)));  // TODO: Endian/format?
             }
             else {
-                base_value.m_value->write_value(base_value.m_offset, ::std::move(val));
+                throw ::std::runtime_error("BUG: Invalid type in Constant::Float");
             }
-        }
-
-        Value const_to_value(const ::MIR::Constant& c, ::HIR::TypeRef& ty)
-        {
-            switch(c.tag())
-            {
-            case ::MIR::Constant::TAGDEAD:  throw "";
-            TU_ARM(c, Int, ce) {
-                ty = ::HIR::TypeRef(ce.t);
-                Value val = Value(ty);
-                val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
-                // TODO: If the write was clipped, sign-extend
-                return val;
-                } break;
-            TU_ARM(c, Uint, ce) {
-                ty = ::HIR::TypeRef(ce.t);
-                Value val = Value(ty);
-                val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
-                return val;
-                } break;
-            TU_ARM(c, Bool, ce) {
-                Value val = Value(::HIR::TypeRef { RawType::Bool });
-                val.write_bytes(0, &ce.v, 1);
-                return val;
-                } break;
-            TU_ARM(c, Float, ce) {
-                ty = ::HIR::TypeRef(ce.t);
-                Value val = Value(ty);
-                if( ce.t.raw_type == RawType::F64 ) {
-                    val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian/format?
-                }
-                else if( ce.t.raw_type == RawType::F32 ) {
-                    float v = static_cast<float>(ce.v);
-                    val.write_bytes(0, &v, ::std::min(ty.get_size(), sizeof(v)));  // TODO: Endian/format?
-                }
-                else {
-                    throw ::std::runtime_error("BUG: Invalid type in Constant::Float");
-                }
-                return val;
-                } break;
-            TU_ARM(c, Const, ce) {
-                LOG_BUG("Constant::Const in mmir");
-                } break;
-            TU_ARM(c, Bytes, ce) {
-                LOG_TODO("Constant::Bytes");
-                } break;
-            TU_ARM(c, StaticString, ce) {
-                ty = ::HIR::TypeRef(RawType::Str);
+            return val;
+            } break;
+        TU_ARM(c, Const, ce) {
+            LOG_BUG("Constant::Const in mmir");
+            } break;
+        TU_ARM(c, Bytes, ce) {
+            LOG_TODO("Constant::Bytes");
+            } break;
+        TU_ARM(c, StaticString, ce) {
+            ty = ::HIR::TypeRef(RawType::Str);
+            ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
+            Value val = Value(ty);
+            val.write_usize(0, 0);
+            val.write_usize(POINTER_SIZE, ce.size());
+            val.allocation.alloc().relocations.push_back(Relocation { 0, AllocationPtr::new_string(&ce) });
+            LOG_DEBUG(c << " = " << val);
+            //return Value::new_dataptr(ce.data());
+            return val;
+            } break;
+        // --> Accessor
+        TU_ARM(c, ItemAddr, ce) {
+            // Create a value with a special backing allocation of zero size that references the specified item.
+            if( /*const auto* fn =*/ this->thread.m_modtree.get_function_opt(ce) ) {
+                ty = ::HIR::TypeRef(RawType::Function);
+                return Value::new_fnptr(ce);
+            }
+            if( const auto* s = this->thread.m_modtree.get_static_opt(ce) ) {
+                ty = s->ty;
                 ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
                 Value val = Value(ty);
                 val.write_usize(0, 0);
-                val.write_usize(POINTER_SIZE, ce.size());
-                val.allocation.alloc().relocations.push_back(Relocation { 0, AllocationPtr::new_string(&ce) });
-                LOG_DEBUG(c << " = " << val);
-                //return Value::new_dataptr(ce.data());
+                val.allocation.alloc().relocations.push_back(Relocation { 0, s->val.allocation });
                 return val;
-                } break;
-            TU_ARM(c, ItemAddr, ce) {
-                // Create a value with a special backing allocation of zero size that references the specified item.
-                if( /*const auto* fn =*/ modtree.get_function_opt(ce) ) {
-                    ty = ::HIR::TypeRef(RawType::Function);
-                    return Value::new_fnptr(ce);
-                }
-                if( const auto* s = modtree.get_static_opt(ce) ) {
-                    ty = s->ty;
-                    ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
-                    Value val = Value(ty);
-                    val.write_usize(0, 0);
-                    val.allocation.alloc().relocations.push_back(Relocation { 0, s->val.allocation });
-                    return val;
-                }
-                LOG_TODO("Constant::ItemAddr - " << ce << " - not found");
-                } break;
             }
-            throw "";
+            LOG_ERROR("Constant::ItemAddr - " << ce << " - not found");
+            } break;
         }
-        Value const_to_value(const ::MIR::Constant& c)
-        {
-            ::HIR::TypeRef  ty;
-            return const_to_value(c, ty);
-        }
-        Value param_to_value(const ::MIR::Param& p, ::HIR::TypeRef& ty)
-        {
-            switch(p.tag())
-            {
-            case ::MIR::Param::TAGDEAD: throw "";
-            TU_ARM(p, Constant, pe)
-                return const_to_value(pe, ty);
-            TU_ARM(p, LValue, pe)
-                return read_lvalue_with_ty(pe, ty);
-            }
-            throw "";
-        }
-        Value param_to_value(const ::MIR::Param& p)
-        {
-            ::HIR::TypeRef  ty;
-            return param_to_value(p, ty);
-        }
-
-        ValueRef get_value_ref_param(const ::MIR::Param& p, Value& tmp, ::HIR::TypeRef& ty)
-        {
-            switch(p.tag())
-            {
-            case ::MIR::Param::TAGDEAD: throw "";
-            TU_ARM(p, Constant, pe)
-                tmp = const_to_value(pe, ty);
-                return ValueRef(tmp, 0, ty.get_size());
-            TU_ARM(p, LValue, pe)
-                return get_value_and_type(pe, ty);
-            }
-            throw "";
-        }
-    } state { modtree, fcn, ret, ::std::move(args) };
-
-    size_t bb_idx = 0;
-    for(;;)
+        throw "";
+    }
+    Value const_to_value(const ::MIR::Constant& c)
     {
-        const auto& bb = fcn.m_mir.blocks.at(bb_idx);
-
-        for(const auto& stmt : bb.statements)
+        ::HIR::TypeRef  ty;
+        return const_to_value(c, ty);
+    }
+    Value param_to_value(const ::MIR::Param& p, ::HIR::TypeRef& ty)
+    {
+        switch(p.tag())
         {
-            LOG_DEBUG("=== BB" << bb_idx << "/" << (&stmt - bb.statements.data()) << ": " << stmt);
-            switch(stmt.tag())
+        case ::MIR::Param::TAGDEAD: throw "";
+        TU_ARM(p, Constant, pe)
+            return const_to_value(pe, ty);
+        TU_ARM(p, LValue, pe)
+            return read_lvalue_with_ty(pe, ty);
+        }
+        throw "";
+    }
+    Value param_to_value(const ::MIR::Param& p)
+    {
+        ::HIR::TypeRef  ty;
+        return param_to_value(p, ty);
+    }
+
+    ValueRef get_value_ref_param(const ::MIR::Param& p, Value& tmp, ::HIR::TypeRef& ty)
+    {
+        switch(p.tag())
+        {
+        case ::MIR::Param::TAGDEAD: throw "";
+        TU_ARM(p, Constant, pe)
+            tmp = const_to_value(pe, ty);
+            return ValueRef(tmp, 0, ty.get_size());
+        TU_ARM(p, LValue, pe)
+            return get_value_and_type(pe, ty);
+        }
+        throw "";
+    }
+};
+
+// ====================================================================
+//
+// ====================================================================
+InterpreterThread::~InterpreterThread()
+{
+    for(size_t i = 0; i < m_stack.size(); i++)
+    {
+        const auto& frame = m_stack[m_stack.size() - 1 - i];
+        ::std::cout << "#" << i << ": " << frame.fcn.my_path << " BB" << frame.bb_idx << "/";
+        if( frame.stmt_idx == frame.fcn.m_mir.blocks.at(frame.bb_idx).statements.size() )
+            ::std::cout << "TERM";
+        else
+            ::std::cout << frame.stmt_idx;
+        ::std::cout << ::std::endl;
+    }
+}
+void InterpreterThread::start(const ::HIR::Path& p, ::std::vector<Value> args)
+{
+    Value   v;
+    if( this->call_path(v, p, ::std::move(args)) )
+    {
+        LOG_TODO("Handle immediate return thread entry");
+    }
+}
+bool InterpreterThread::step_one(Value& out_thread_result)
+{
+    assert( !this->m_stack.empty() );
+    assert( !this->m_stack.back().cb );
+    auto& cur_frame = this->m_stack.back();
+    TRACE_FUNCTION_R(cur_frame.fcn.my_path, "");
+    const auto& bb = cur_frame.fcn.m_mir.blocks.at( cur_frame.bb_idx );
+
+    MirHelpers  state { *this, cur_frame };
+
+    if( cur_frame.stmt_idx < bb.statements.size() )
+    {
+        const auto& stmt = bb.statements[cur_frame.stmt_idx];
+        LOG_DEBUG("=== BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx << ": " << stmt);
+        switch(stmt.tag())
+        {
+        case ::MIR::Statement::TAGDEAD: throw "";
+        TU_ARM(stmt, Assign, se) {
+            Value   new_val;
+            switch(se.src.tag())
             {
-            case ::MIR::Statement::TAGDEAD: throw "";
-            TU_ARM(stmt, Assign, se) {
-                Value   new_val;
-                switch(se.src.tag())
+            case ::MIR::RValue::TAGDEAD: throw "";
+            TU_ARM(se.src, Use, re) {
+                new_val = state.read_lvalue(re);
+                } break;
+            TU_ARM(se.src, Constant, re) {
+                new_val = state.const_to_value(re);
+                } break;
+            TU_ARM(se.src, Borrow, re) {
+                ::HIR::TypeRef  src_ty;
+                ValueRef src_base_value = state.get_value_and_type(re.val, src_ty);
+                auto alloc = src_base_value.m_alloc;
+                if( !alloc && src_base_value.m_value )
                 {
-                case ::MIR::RValue::TAGDEAD: throw "";
-                TU_ARM(se.src, Use, re) {
-                    new_val = state.read_lvalue(re);
-                    } break;
-                TU_ARM(se.src, Constant, re) {
-                    new_val = state.const_to_value(re);
-                    } break;
-                TU_ARM(se.src, Borrow, re) {
-                    ::HIR::TypeRef  src_ty;
-                    ValueRef src_base_value = state.get_value_and_type(re.val, src_ty);
-                    auto alloc = src_base_value.m_alloc;
-                    if( !alloc && src_base_value.m_value )
+                    if( !src_base_value.m_value->allocation )
                     {
-                        if( !src_base_value.m_value->allocation )
-                        {
-                            src_base_value.m_value->create_allocation();
-                        }
-                        alloc = AllocationPtr(src_base_value.m_value->allocation);
+                        src_base_value.m_value->create_allocation();
                     }
-                    if( alloc.is_alloc() )
-                        LOG_DEBUG("- alloc=" << alloc << " (" << alloc.alloc() << ")");
-                    else
-                        LOG_DEBUG("- alloc=" << alloc);
-                    size_t ofs = src_base_value.m_offset;
-                    const auto meta = src_ty.get_meta_type();
-                    //bool is_slice_like = src_ty.has_slice_meta();
-                    src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
+                    alloc = AllocationPtr(src_base_value.m_value->allocation);
+                }
+                if( alloc.is_alloc() )
+                    LOG_DEBUG("- alloc=" << alloc << " (" << alloc.alloc() << ")");
+                else
+                    LOG_DEBUG("- alloc=" << alloc);
+                size_t ofs = src_base_value.m_offset;
+                const auto meta = src_ty.get_meta_type();
+                //bool is_slice_like = src_ty.has_slice_meta();
+                src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
 
-                    new_val = Value(src_ty);
-                    // ^ Pointer value
-                    new_val.write_usize(0, ofs);
-                    if( meta != RawType::Unreachable )
-                    {
-                        LOG_ASSERT(src_base_value.m_metadata, "Borrow of an unsized value, but no metadata avaliable");
-                        new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
-                    }
-                    // - Add the relocation after writing the value (writing clears the relocations)
-                    new_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
-                    } break;
-                TU_ARM(se.src, Cast, re) {
-                    // Determine the type of cast, is it a reinterpret or is it a value transform?
-                    // - Float <-> integer is a transform, anything else should be a reinterpret.
-                    ::HIR::TypeRef  src_ty;
-                    auto src_value = state.get_value_and_type(re.val, src_ty);
+                new_val = Value(src_ty);
+                // ^ Pointer value
+                new_val.write_usize(0, ofs);
+                if( meta != RawType::Unreachable )
+                {
+                    LOG_ASSERT(src_base_value.m_metadata, "Borrow of an unsized value, but no metadata avaliable");
+                    new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
+                }
+                // - Add the relocation after writing the value (writing clears the relocations)
+                new_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
+                } break;
+            TU_ARM(se.src, Cast, re) {
+                // Determine the type of cast, is it a reinterpret or is it a value transform?
+                // - Float <-> integer is a transform, anything else should be a reinterpret.
+                ::HIR::TypeRef  src_ty;
+                auto src_value = state.get_value_and_type(re.val, src_ty);
 
-                    new_val = Value(re.type);
-                    if( re.type == src_ty )
-                    {
-                        // No-op cast
-                        new_val = src_value.read_value(0, re.type.get_size());
+                new_val = Value(re.type);
+                if( re.type == src_ty )
+                {
+                    // No-op cast
+                    new_val = src_value.read_value(0, re.type.get_size());
+                }
+                else if( !re.type.wrappers.empty() )
+                {
+                    // Destination can only be a raw pointer
+                    if( re.type.wrappers.at(0).type != TypeWrapper::Ty::Pointer ) {
+                        throw "ERROR";
                     }
-                    else if( !re.type.wrappers.empty() )
+                    if( !src_ty.wrappers.empty() )
                     {
-                        // Destination can only be a raw pointer
-                        if( re.type.wrappers.at(0).type != TypeWrapper::Ty::Pointer ) {
-                            throw "ERROR";
-                        }
-                        if( !src_ty.wrappers.empty() )
-                        {
-                            // Source can be either
-                            if( src_ty.wrappers.at(0).type != TypeWrapper::Ty::Pointer
-                                && src_ty.wrappers.at(0).type != TypeWrapper::Ty::Borrow ) {
-                                throw "ERROR";
-                            }
-
-                            if( src_ty.get_size() > re.type.get_size() ) {
-                                // TODO: How to casting fat to thin?
-                                //LOG_TODO("Handle casting fat to thin, " << src_ty << " -> " << re.type);
-                                new_val = src_value.read_value(0, re.type.get_size());
-                            }
-                            else 
-                            {
-                                new_val = src_value.read_value(0, re.type.get_size());
-                            }
-                        }
-                        else
-                        {
-                            if( src_ty == RawType::Function )
-                            {
-                            }
-                            else if( src_ty == RawType::USize )
-                            {
-                            }
-                            else
-                            {
-                                ::std::cerr << "ERROR: Trying to pointer (" << re.type <<" ) from invalid type (" << src_ty << ")\n";
-                                throw "ERROR";
-                            }
-                            new_val = src_value.read_value(0, re.type.get_size());
-                        }
-                    }
-                    else if( !src_ty.wrappers.empty() )
-                    {
-                        // TODO: top wrapper MUST be a pointer
+                        // Source can be either
                         if( src_ty.wrappers.at(0).type != TypeWrapper::Ty::Pointer
                             && src_ty.wrappers.at(0).type != TypeWrapper::Ty::Borrow ) {
                             throw "ERROR";
                         }
-                        // TODO: MUST be a thin pointer?
 
-                        // TODO: MUST be an integer (usize only?)
-                        if( re.type != RawType::USize && re.type != RawType::ISize ) {
-                            LOG_ERROR("Casting from a pointer to non-usize - " << re.type << " to " << src_ty);
+                        if( src_ty.get_size() > re.type.get_size() ) {
+                            // TODO: How to casting fat to thin?
+                            //LOG_TODO("Handle casting fat to thin, " << src_ty << " -> " << re.type);
+                            new_val = src_value.read_value(0, re.type.get_size());
+                        }
+                        else 
+                        {
+                            new_val = src_value.read_value(0, re.type.get_size());
+                        }
+                    }
+                    else
+                    {
+                        if( src_ty == RawType::Function )
+                        {
+                        }
+                        else if( src_ty == RawType::USize )
+                        {
+                        }
+                        else
+                        {
+                            ::std::cerr << "ERROR: Trying to pointer (" << re.type <<" ) from invalid type (" << src_ty << ")\n";
                             throw "ERROR";
                         }
                         new_val = src_value.read_value(0, re.type.get_size());
                     }
-                    else
+                }
+                else if( !src_ty.wrappers.empty() )
+                {
+                    // TODO: top wrapper MUST be a pointer
+                    if( src_ty.wrappers.at(0).type != TypeWrapper::Ty::Pointer
+                        && src_ty.wrappers.at(0).type != TypeWrapper::Ty::Borrow ) {
+                        throw "ERROR";
+                    }
+                    // TODO: MUST be a thin pointer?
+
+                    // TODO: MUST be an integer (usize only?)
+                    if( re.type != RawType::USize && re.type != RawType::ISize ) {
+                        LOG_ERROR("Casting from a pointer to non-usize - " << re.type << " to " << src_ty);
+                        throw "ERROR";
+                    }
+                    new_val = src_value.read_value(0, re.type.get_size());
+                }
+                else
+                {
+                    // TODO: What happens if there'a cast of something with a relocation?
+                    switch(re.type.inner_type)
                     {
-                        // TODO: What happens if there'a cast of something with a relocation?
-                        switch(re.type.inner_type)
+                    case RawType::Unreachable:  throw "BUG";
+                    case RawType::Composite:
+                    case RawType::TraitObject:
+                    case RawType::Function:
+                    case RawType::Str:
+                    case RawType::Unit:
+                        LOG_ERROR("Casting to " << re.type << " is invalid");
+                        throw "ERROR";
+                    case RawType::F32: {
+                        float dst_val = 0.0;
+                        // Can be an integer, or F64 (pointer is impossible atm)
+                        switch(src_ty.inner_type)
                         {
                         case RawType::Unreachable:  throw "BUG";
-                        case RawType::Composite:
+                        case RawType::Composite:    throw "ERROR";
+                        case RawType::TraitObject:  throw "ERROR";
+                        case RawType::Function:     throw "ERROR";
+                        case RawType::Char: throw "ERROR";
+                        case RawType::Str:  throw "ERROR";
+                        case RawType::Unit: throw "ERROR";
+                        case RawType::Bool: throw "ERROR";
+                        case RawType::F32:  throw "BUG";
+                        case RawType::F64:  dst_val = static_cast<float>( src_value.read_f64(0) ); break;
+                        case RawType::USize:    throw "TODO";// /*dst_val = src_value.read_usize();*/   break;
+                        case RawType::ISize:    throw "TODO";// /*dst_val = src_value.read_isize();*/   break;
+                        case RawType::U8:   dst_val = static_cast<float>( src_value.read_u8 (0) );  break;
+                        case RawType::I8:   dst_val = static_cast<float>( src_value.read_i8 (0) );  break;
+                        case RawType::U16:  dst_val = static_cast<float>( src_value.read_u16(0) );  break;
+                        case RawType::I16:  dst_val = static_cast<float>( src_value.read_i16(0) );  break;
+                        case RawType::U32:  dst_val = static_cast<float>( src_value.read_u32(0) );  break;
+                        case RawType::I32:  dst_val = static_cast<float>( src_value.read_i32(0) );  break;
+                        case RawType::U64:  dst_val = static_cast<float>( src_value.read_u64(0) );  break;
+                        case RawType::I64:  dst_val = static_cast<float>( src_value.read_i64(0) );  break;
+                        case RawType::U128: throw "TODO";// /*dst_val = src_value.read_u128();*/ break;
+                        case RawType::I128: throw "TODO";// /*dst_val = src_value.read_i128();*/ break;
+                        }
+                        new_val.write_f32(0, dst_val);
+                        } break;
+                    case RawType::F64: {
+                        double dst_val = 0.0;
+                        // Can be an integer, or F32 (pointer is impossible atm)
+                        switch(src_ty.inner_type)
+                        {
+                        case RawType::Unreachable:  throw "BUG";
+                        case RawType::Composite:    throw "ERROR";
+                        case RawType::TraitObject:  throw "ERROR";
+                        case RawType::Function:     throw "ERROR";
+                        case RawType::Char: throw "ERROR";
+                        case RawType::Str:  throw "ERROR";
+                        case RawType::Unit: throw "ERROR";
+                        case RawType::Bool: throw "ERROR";
+                        case RawType::F64:  throw "BUG";
+                        case RawType::F32:  dst_val = static_cast<double>( src_value.read_f32(0) ); break;
+                        case RawType::USize:    dst_val = static_cast<double>( src_value.read_usize(0) );   break;
+                        case RawType::ISize:    dst_val = static_cast<double>( src_value.read_isize(0) );   break;
+                        case RawType::U8:   dst_val = static_cast<double>( src_value.read_u8 (0) );  break;
+                        case RawType::I8:   dst_val = static_cast<double>( src_value.read_i8 (0) );  break;
+                        case RawType::U16:  dst_val = static_cast<double>( src_value.read_u16(0) );  break;
+                        case RawType::I16:  dst_val = static_cast<double>( src_value.read_i16(0) );  break;
+                        case RawType::U32:  dst_val = static_cast<double>( src_value.read_u32(0) );  break;
+                        case RawType::I32:  dst_val = static_cast<double>( src_value.read_i32(0) );  break;
+                        case RawType::U64:  dst_val = static_cast<double>( src_value.read_u64(0) );  break;
+                        case RawType::I64:  dst_val = static_cast<double>( src_value.read_i64(0) );  break;
+                        case RawType::U128: throw "TODO"; /*dst_val = src_value.read_u128();*/ break;
+                        case RawType::I128: throw "TODO"; /*dst_val = src_value.read_i128();*/ break;
+                        }
+                        new_val.write_f64(0, dst_val);
+                        } break;
+                    case RawType::Bool:
+                        LOG_TODO("Cast to " << re.type);
+                    case RawType::Char:
+                        LOG_TODO("Cast to " << re.type);
+                    case RawType::USize:
+                    case RawType::U8:
+                    case RawType::U16:
+                    case RawType::U32:
+                    case RawType::U64:
+                    case RawType::ISize:
+                    case RawType::I8:
+                    case RawType::I16:
+                    case RawType::I32:
+                    case RawType::I64:
+                        {
+                        uint64_t dst_val = 0;
+                        // Can be an integer, or F32 (pointer is impossible atm)
+                        switch(src_ty.inner_type)
+                        {
+                        case RawType::Unreachable:
+                            LOG_BUG("Casting unreachable");
                         case RawType::TraitObject:
-                        case RawType::Function:
                         case RawType::Str:
-                        case RawType::Unit:
-                            LOG_ERROR("Casting to " << re.type << " is invalid");
-                            throw "ERROR";
-                        case RawType::F32: {
-                            float dst_val = 0.0;
-                            // Can be an integer, or F64 (pointer is impossible atm)
-                            switch(src_ty.inner_type)
-                            {
-                            case RawType::Unreachable:  throw "BUG";
-                            case RawType::Composite:    throw "ERROR";
-                            case RawType::TraitObject:  throw "ERROR";
-                            case RawType::Function:     throw "ERROR";
-                            case RawType::Char: throw "ERROR";
-                            case RawType::Str:  throw "ERROR";
-                            case RawType::Unit: throw "ERROR";
-                            case RawType::Bool: throw "ERROR";
-                            case RawType::F32:  throw "BUG";
-                            case RawType::F64:  dst_val = static_cast<float>( src_value.read_f64(0) ); break;
-                            case RawType::USize:    throw "TODO";// /*dst_val = src_value.read_usize();*/   break;
-                            case RawType::ISize:    throw "TODO";// /*dst_val = src_value.read_isize();*/   break;
-                            case RawType::U8:   dst_val = static_cast<float>( src_value.read_u8 (0) );  break;
-                            case RawType::I8:   dst_val = static_cast<float>( src_value.read_i8 (0) );  break;
-                            case RawType::U16:  dst_val = static_cast<float>( src_value.read_u16(0) );  break;
-                            case RawType::I16:  dst_val = static_cast<float>( src_value.read_i16(0) );  break;
-                            case RawType::U32:  dst_val = static_cast<float>( src_value.read_u32(0) );  break;
-                            case RawType::I32:  dst_val = static_cast<float>( src_value.read_i32(0) );  break;
-                            case RawType::U64:  dst_val = static_cast<float>( src_value.read_u64(0) );  break;
-                            case RawType::I64:  dst_val = static_cast<float>( src_value.read_i64(0) );  break;
-                            case RawType::U128: throw "TODO";// /*dst_val = src_value.read_u128();*/ break;
-                            case RawType::I128: throw "TODO";// /*dst_val = src_value.read_i128();*/ break;
-                            }
-                            new_val.write_f32(0, dst_val);
-                            } break;
-                        case RawType::F64: {
-                            double dst_val = 0.0;
-                            // Can be an integer, or F32 (pointer is impossible atm)
-                            switch(src_ty.inner_type)
-                            {
-                            case RawType::Unreachable:  throw "BUG";
-                            case RawType::Composite:    throw "ERROR";
-                            case RawType::TraitObject:  throw "ERROR";
-                            case RawType::Function:     throw "ERROR";
-                            case RawType::Char: throw "ERROR";
-                            case RawType::Str:  throw "ERROR";
-                            case RawType::Unit: throw "ERROR";
-                            case RawType::Bool: throw "ERROR";
-                            case RawType::F64:  throw "BUG";
-                            case RawType::F32:  dst_val = static_cast<double>( src_value.read_f32(0) ); break;
-                            case RawType::USize:    dst_val = static_cast<double>( src_value.read_usize(0) );   break;
-                            case RawType::ISize:    dst_val = static_cast<double>( src_value.read_isize(0) );   break;
-                            case RawType::U8:   dst_val = static_cast<double>( src_value.read_u8 (0) );  break;
-                            case RawType::I8:   dst_val = static_cast<double>( src_value.read_i8 (0) );  break;
-                            case RawType::U16:  dst_val = static_cast<double>( src_value.read_u16(0) );  break;
-                            case RawType::I16:  dst_val = static_cast<double>( src_value.read_i16(0) );  break;
-                            case RawType::U32:  dst_val = static_cast<double>( src_value.read_u32(0) );  break;
-                            case RawType::I32:  dst_val = static_cast<double>( src_value.read_i32(0) );  break;
-                            case RawType::U64:  dst_val = static_cast<double>( src_value.read_u64(0) );  break;
-                            case RawType::I64:  dst_val = static_cast<double>( src_value.read_i64(0) );  break;
-                            case RawType::U128: throw "TODO"; /*dst_val = src_value.read_u128();*/ break;
-                            case RawType::I128: throw "TODO"; /*dst_val = src_value.read_i128();*/ break;
-                            }
-                            new_val.write_f64(0, dst_val);
-                            } break;
-                        case RawType::Bool:
-                            LOG_TODO("Cast to " << re.type);
+                            LOG_FATAL("Cast of unsized type - " << src_ty);
+                        case RawType::Function:
+                            LOG_ASSERT(re.type.inner_type == RawType::USize, "Function pointers can only be casted to usize, instead " << re.type);
+                            new_val = src_value.read_value(0, re.type.get_size());
+                            break;
                         case RawType::Char:
-                            LOG_TODO("Cast to " << re.type);
-                        case RawType::USize:
-                        case RawType::U8:
-                        case RawType::U16:
-                        case RawType::U32:
-                        case RawType::U64:
-                        case RawType::ISize:
-                        case RawType::I8:
-                        case RawType::I16:
-                        case RawType::I32:
-                        case RawType::I64:
+                            LOG_ASSERT(re.type.inner_type == RawType::U32, "Char can only be casted to u32, instead " << re.type);
+                            new_val = src_value.read_value(0, 4);
+                            break;
+                        case RawType::Unit:
+                            LOG_FATAL("Cast of unit");
+                        case RawType::Composite: {
+                            const auto& dt = *src_ty.composite_type;
+                            if( dt.variants.size() == 0 ) {
+                                LOG_FATAL("Cast of composite - " << src_ty);
+                            }
+                            // TODO: Check that all variants have the same tag offset
+                            LOG_ASSERT(dt.fields.size() == 1, "");
+                            LOG_ASSERT(dt.fields[0].first == 0, "");
+                            for(size_t i = 0; i < dt.variants.size(); i ++ ) {
+                                LOG_ASSERT(dt.variants[i].base_field == 0, "");
+                                LOG_ASSERT(dt.variants[i].field_path.empty(), "");
+                            }
+                            ::HIR::TypeRef  tag_ty = dt.fields[0].second;
+                            LOG_ASSERT(tag_ty.wrappers.empty(), "");
+                            switch(tag_ty.inner_type)
                             {
-                            uint64_t dst_val = 0;
-                            // Can be an integer, or F32 (pointer is impossible atm)
-                            switch(src_ty.inner_type)
-                            {
-                            case RawType::Unreachable:
-                                LOG_BUG("Casting unreachable");
-                            case RawType::TraitObject:
-                            case RawType::Str:
-                                LOG_FATAL("Cast of unsized type - " << src_ty);
-                            case RawType::Function:
-                                LOG_ASSERT(re.type.inner_type == RawType::USize, "Function pointers can only be casted to usize, instead " << re.type);
-                                new_val = src_value.read_value(0, re.type.get_size());
-                                break;
-                            case RawType::Char:
-                                LOG_ASSERT(re.type.inner_type == RawType::U32, "Char can only be casted to u32, instead " << re.type);
-                                new_val = src_value.read_value(0, 4);
-                                break;
-                            case RawType::Unit:
-                                LOG_FATAL("Cast of unit");
-                            case RawType::Composite: {
-                                const auto& dt = *src_ty.composite_type;
-                                if( dt.variants.size() == 0 ) {
-                                    LOG_FATAL("Cast of composite - " << src_ty);
-                                }
-                                // TODO: Check that all variants have the same tag offset
-                                LOG_ASSERT(dt.fields.size() == 1, "");
-                                LOG_ASSERT(dt.fields[0].first == 0, "");
-                                for(size_t i = 0; i < dt.variants.size(); i ++ ) {
-                                    LOG_ASSERT(dt.variants[i].base_field == 0, "");
-                                    LOG_ASSERT(dt.variants[i].field_path.empty(), "");
-                                }
-                                ::HIR::TypeRef  tag_ty = dt.fields[0].second;
-                                LOG_ASSERT(tag_ty.wrappers.empty(), "");
-                                switch(tag_ty.inner_type)
-                                {
-                                case RawType::USize:
-                                    dst_val = static_cast<uint64_t>( src_value.read_usize(0) );
-                                    if(0)
-                                case RawType::ISize:
-                                    dst_val = static_cast<uint64_t>( src_value.read_isize(0) );
-                                    if(0)
-                                case RawType::U8:
-                                    dst_val = static_cast<uint64_t>( src_value.read_u8 (0) );
-                                    if(0)
-                                case RawType::I8:
-                                    dst_val = static_cast<uint64_t>( src_value.read_i8 (0) );
-                                    if(0)
-                                case RawType::U16:
-                                    dst_val = static_cast<uint64_t>( src_value.read_u16(0) );
-                                    if(0)
-                                case RawType::I16:
-                                    dst_val = static_cast<uint64_t>( src_value.read_i16(0) );
-                                    if(0)
-                                case RawType::U32:
-                                    dst_val = static_cast<uint64_t>( src_value.read_u32(0) );
-                                    if(0)
-                                case RawType::I32:
-                                    dst_val = static_cast<uint64_t>( src_value.read_i32(0) );
-                                    if(0)
-                                case RawType::U64:
-                                    dst_val = static_cast<uint64_t>( src_value.read_u64(0) );
-                                    if(0)
-                                case RawType::I64:
-                                    dst_val = static_cast<uint64_t>( src_value.read_i64(0) );
-                                    break;
-                                default:
-                                    LOG_FATAL("Bad tag type in cast - " << tag_ty);
-                                }
-                                } if(0)
-                            case RawType::Bool:
-                                dst_val = static_cast<uint64_t>( src_value.read_u8 (0) );
-                                if(0)
-                            case RawType::F64:
-                                dst_val = static_cast<uint64_t>( src_value.read_f64(0) );
-                                if(0)
-                            case RawType::F32:
-                                dst_val = static_cast<uint64_t>( src_value.read_f32(0) );
-                                if(0)
                             case RawType::USize:
                                 dst_val = static_cast<uint64_t>( src_value.read_usize(0) );
                                 if(0)
@@ -1060,457 +962,503 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                                 if(0)
                             case RawType::I64:
                                 dst_val = static_cast<uint64_t>( src_value.read_i64(0) );
-
-                                switch(re.type.inner_type)
-                                {
-                                case RawType::USize:
-                                    new_val.write_usize(0, dst_val);
-                                    break;
-                                case RawType::U8:
-                                    new_val.write_u8(0, static_cast<uint8_t>(dst_val));
-                                    break;
-                                case RawType::U16:
-                                    new_val.write_u16(0, static_cast<uint16_t>(dst_val));
-                                    break;
-                                case RawType::U32:
-                                    new_val.write_u32(0, static_cast<uint32_t>(dst_val));
-                                    break;
-                                case RawType::U64:
-                                    new_val.write_u64(0, dst_val);
-                                    break;
-                                case RawType::ISize:
-                                    new_val.write_usize(0, static_cast<int64_t>(dst_val));
-                                    break;
-                                case RawType::I8:
-                                    new_val.write_i8(0, static_cast<int8_t>(dst_val));
-                                    break;
-                                case RawType::I16:
-                                    new_val.write_i16(0, static_cast<int16_t>(dst_val));
-                                    break;
-                                case RawType::I32:
-                                    new_val.write_i32(0, static_cast<int32_t>(dst_val));
-                                    break;
-                                case RawType::I64:
-                                    new_val.write_i64(0, static_cast<int64_t>(dst_val));
-                                    break;
-                                default:
-                                    throw "";
-                                }
                                 break;
-                            case RawType::U128: throw "TODO"; /*dst_val = src_value.read_u128();*/ break;
-                            case RawType::I128: throw "TODO"; /*dst_val = src_value.read_i128();*/ break;
-                            }
-                            } break;
-                        case RawType::U128:
-                        case RawType::I128:
-                            LOG_TODO("Cast to " << re.type);
-                        }
-                    }
-                    } break;
-                TU_ARM(se.src, BinOp, re) {
-                    ::HIR::TypeRef  ty_l, ty_r;
-                    Value   tmp_l, tmp_r;
-                    auto v_l = state.get_value_ref_param(re.val_l, tmp_l, ty_l);
-                    auto v_r = state.get_value_ref_param(re.val_r, tmp_r, ty_r);
-                    LOG_DEBUG(v_l << " (" << ty_l <<") ? " << v_r << " (" << ty_r <<")");
-
-                    switch(re.op)
-                    {
-                    case ::MIR::eBinOp::EQ:
-                    case ::MIR::eBinOp::NE:
-                    case ::MIR::eBinOp::GT:
-                    case ::MIR::eBinOp::GE:
-                    case ::MIR::eBinOp::LT:
-                    case ::MIR::eBinOp::LE: {
-                        LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
-                        int res = 0;
-                        // TODO: Handle comparison of the relocations too
-
-                        const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
-                        const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
-                        auto reloc_l = alloc_l ? v_l.get_relocation(v_l.m_offset) : AllocationPtr();
-                        auto reloc_r = alloc_r ? v_r.get_relocation(v_r.m_offset) : AllocationPtr();
-
-                        if( reloc_l != reloc_r )
-                        {
-                            res = (reloc_l < reloc_r ? -1 : 1);
-                        }
-                        LOG_DEBUG("res=" << res << ", " << reloc_l << " ? " << reloc_r);
-
-                        if( ty_l.wrappers.empty() )
-                        {
-                            switch(ty_l.inner_type)
-                            {
-                            case RawType::U64:  res = res != 0 ? res : Ops::do_compare(v_l.read_u64(0), v_r.read_u64(0));   break;
-                            case RawType::U32:  res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0));   break;
-                            case RawType::U16:  res = res != 0 ? res : Ops::do_compare(v_l.read_u16(0), v_r.read_u16(0));   break;
-                            case RawType::U8 :  res = res != 0 ? res : Ops::do_compare(v_l.read_u8 (0), v_r.read_u8 (0));   break;
-                            case RawType::I64:  res = res != 0 ? res : Ops::do_compare(v_l.read_i64(0), v_r.read_i64(0));   break;
-                            case RawType::I32:  res = res != 0 ? res : Ops::do_compare(v_l.read_i32(0), v_r.read_i32(0));   break;
-                            case RawType::I16:  res = res != 0 ? res : Ops::do_compare(v_l.read_i16(0), v_r.read_i16(0));   break;
-                            case RawType::I8 :  res = res != 0 ? res : Ops::do_compare(v_l.read_i8 (0), v_r.read_i8 (0));   break;
-                            case RawType::USize: res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0)); break;
-                            case RawType::ISize: res = res != 0 ? res : Ops::do_compare(v_l.read_isize(0), v_r.read_isize(0)); break;
                             default:
-                                LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
+                                LOG_FATAL("Bad tag type in cast - " << tag_ty);
                             }
-                        }
-                        else if( ty_l.wrappers.front().type == TypeWrapper::Ty::Pointer )
-                        {
-                            // TODO: Technically only EQ/NE are valid.
+                            } if(0)
+                        case RawType::Bool:
+                            dst_val = static_cast<uint64_t>( src_value.read_u8 (0) );
+                            if(0)
+                        case RawType::F64:
+                            dst_val = static_cast<uint64_t>( src_value.read_f64(0) );
+                            if(0)
+                        case RawType::F32:
+                            dst_val = static_cast<uint64_t>( src_value.read_f32(0) );
+                            if(0)
+                        case RawType::USize:
+                            dst_val = static_cast<uint64_t>( src_value.read_usize(0) );
+                            if(0)
+                        case RawType::ISize:
+                            dst_val = static_cast<uint64_t>( src_value.read_isize(0) );
+                            if(0)
+                        case RawType::U8:
+                            dst_val = static_cast<uint64_t>( src_value.read_u8 (0) );
+                            if(0)
+                        case RawType::I8:
+                            dst_val = static_cast<uint64_t>( src_value.read_i8 (0) );
+                            if(0)
+                        case RawType::U16:
+                            dst_val = static_cast<uint64_t>( src_value.read_u16(0) );
+                            if(0)
+                        case RawType::I16:
+                            dst_val = static_cast<uint64_t>( src_value.read_i16(0) );
+                            if(0)
+                        case RawType::U32:
+                            dst_val = static_cast<uint64_t>( src_value.read_u32(0) );
+                            if(0)
+                        case RawType::I32:
+                            dst_val = static_cast<uint64_t>( src_value.read_i32(0) );
+                            if(0)
+                        case RawType::U64:
+                            dst_val = static_cast<uint64_t>( src_value.read_u64(0) );
+                            if(0)
+                        case RawType::I64:
+                            dst_val = static_cast<uint64_t>( src_value.read_i64(0) );
 
-                            res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0));
-
-                            // Compare fat metadata.
-                            if( res == 0 && v_l.m_size > POINTER_SIZE )
+                            switch(re.type.inner_type)
                             {
-                                reloc_l = alloc_l ? alloc_l.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
-                                reloc_r = alloc_r ? alloc_r.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
-
-                                if( res == 0 && reloc_l != reloc_r )
-                                {
-                                    res = (reloc_l < reloc_r ? -1 : 1);
-                                }
-                                res = res != 0 ? res : Ops::do_compare(v_l.read_usize(POINTER_SIZE), v_r.read_usize(POINTER_SIZE));
+                            case RawType::USize:
+                                new_val.write_usize(0, dst_val);
+                                break;
+                            case RawType::U8:
+                                new_val.write_u8(0, static_cast<uint8_t>(dst_val));
+                                break;
+                            case RawType::U16:
+                                new_val.write_u16(0, static_cast<uint16_t>(dst_val));
+                                break;
+                            case RawType::U32:
+                                new_val.write_u32(0, static_cast<uint32_t>(dst_val));
+                                break;
+                            case RawType::U64:
+                                new_val.write_u64(0, dst_val);
+                                break;
+                            case RawType::ISize:
+                                new_val.write_usize(0, static_cast<int64_t>(dst_val));
+                                break;
+                            case RawType::I8:
+                                new_val.write_i8(0, static_cast<int8_t>(dst_val));
+                                break;
+                            case RawType::I16:
+                                new_val.write_i16(0, static_cast<int16_t>(dst_val));
+                                break;
+                            case RawType::I32:
+                                new_val.write_i32(0, static_cast<int32_t>(dst_val));
+                                break;
+                            case RawType::I64:
+                                new_val.write_i64(0, static_cast<int64_t>(dst_val));
+                                break;
+                            default:
+                                throw "";
                             }
+                            break;
+                        case RawType::U128: throw "TODO"; /*dst_val = src_value.read_u128();*/ break;
+                        case RawType::I128: throw "TODO"; /*dst_val = src_value.read_i128();*/ break;
                         }
-                        else
+                        } break;
+                    case RawType::U128:
+                    case RawType::I128:
+                        LOG_TODO("Cast to " << re.type);
+                    }
+                }
+                } break;
+            TU_ARM(se.src, BinOp, re) {
+                ::HIR::TypeRef  ty_l, ty_r;
+                Value   tmp_l, tmp_r;
+                auto v_l = state.get_value_ref_param(re.val_l, tmp_l, ty_l);
+                auto v_r = state.get_value_ref_param(re.val_r, tmp_r, ty_r);
+                LOG_DEBUG(v_l << " (" << ty_l <<") ? " << v_r << " (" << ty_r <<")");
+
+                switch(re.op)
+                {
+                case ::MIR::eBinOp::EQ:
+                case ::MIR::eBinOp::NE:
+                case ::MIR::eBinOp::GT:
+                case ::MIR::eBinOp::GE:
+                case ::MIR::eBinOp::LT:
+                case ::MIR::eBinOp::LE: {
+                    LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
+                    int res = 0;
+                    // TODO: Handle comparison of the relocations too
+
+                    const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
+                    const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
+                    auto reloc_l = alloc_l ? v_l.get_relocation(v_l.m_offset) : AllocationPtr();
+                    auto reloc_r = alloc_r ? v_r.get_relocation(v_r.m_offset) : AllocationPtr();
+
+                    if( reloc_l != reloc_r )
+                    {
+                        res = (reloc_l < reloc_r ? -1 : 1);
+                    }
+                    LOG_DEBUG("res=" << res << ", " << reloc_l << " ? " << reloc_r);
+
+                    if( ty_l.wrappers.empty() )
+                    {
+                        switch(ty_l.inner_type)
                         {
+                        case RawType::U64:  res = res != 0 ? res : Ops::do_compare(v_l.read_u64(0), v_r.read_u64(0));   break;
+                        case RawType::U32:  res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0));   break;
+                        case RawType::U16:  res = res != 0 ? res : Ops::do_compare(v_l.read_u16(0), v_r.read_u16(0));   break;
+                        case RawType::U8 :  res = res != 0 ? res : Ops::do_compare(v_l.read_u8 (0), v_r.read_u8 (0));   break;
+                        case RawType::I64:  res = res != 0 ? res : Ops::do_compare(v_l.read_i64(0), v_r.read_i64(0));   break;
+                        case RawType::I32:  res = res != 0 ? res : Ops::do_compare(v_l.read_i32(0), v_r.read_i32(0));   break;
+                        case RawType::I16:  res = res != 0 ? res : Ops::do_compare(v_l.read_i16(0), v_r.read_i16(0));   break;
+                        case RawType::I8 :  res = res != 0 ? res : Ops::do_compare(v_l.read_i8 (0), v_r.read_i8 (0));   break;
+                        case RawType::USize: res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0)); break;
+                        case RawType::ISize: res = res != 0 ? res : Ops::do_compare(v_l.read_isize(0), v_r.read_isize(0)); break;
+                        default:
                             LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                         }
-                        bool res_bool;
-                        switch(re.op)
-                        {
-                        case ::MIR::eBinOp::EQ: res_bool = (res == 0);  break;
-                        case ::MIR::eBinOp::NE: res_bool = (res != 0);  break;
-                        case ::MIR::eBinOp::GT: res_bool = (res == 1);  break;
-                        case ::MIR::eBinOp::GE: res_bool = (res == 1 || res == 0);  break;
-                        case ::MIR::eBinOp::LT: res_bool = (res == -1); break;
-                        case ::MIR::eBinOp::LE: res_bool = (res == -1 || res == 0); break;
-                            break;
-                        default:
-                            LOG_BUG("Unknown comparison");
-                        }
-                        new_val = Value(::HIR::TypeRef(RawType::Bool));
-                        new_val.write_u8(0, res_bool ? 1 : 0);
-                        } break;
-                    case ::MIR::eBinOp::BIT_SHL:
-                    case ::MIR::eBinOp::BIT_SHR: {
-                        LOG_ASSERT(ty_l.wrappers.empty(), "Bitwise operator on non-primitive - " << ty_l);
-                        LOG_ASSERT(ty_r.wrappers.empty(), "Bitwise operator with non-primitive - " << ty_r);
-                        size_t max_bits = ty_r.get_size() * 8;
-                        uint8_t shift;
-                        auto check_cast = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
-                        switch(ty_r.inner_type)
-                        {
-                        case RawType::U64:  shift = check_cast(v_r.read_u64(0));    break;
-                        case RawType::U32:  shift = check_cast(v_r.read_u32(0));    break;
-                        case RawType::U16:  shift = check_cast(v_r.read_u16(0));    break;
-                        case RawType::U8 :  shift = check_cast(v_r.read_u8 (0));    break;
-                        case RawType::I64:  shift = check_cast(v_r.read_i64(0));    break;
-                        case RawType::I32:  shift = check_cast(v_r.read_i32(0));    break;
-                        case RawType::I16:  shift = check_cast(v_r.read_i16(0));    break;
-                        case RawType::I8 :  shift = check_cast(v_r.read_i8 (0));    break;
-                        case RawType::USize:  shift = check_cast(v_r.read_usize(0));    break;
-                        case RawType::ISize:  shift = check_cast(v_r.read_isize(0));    break;
-                        default:
-                            LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
-                        }
-                        new_val = Value(ty_l);
-                        switch(ty_l.inner_type)
-                        {
-                        // TODO: U128
-                        case RawType::U64:  new_val.write_u64(0, Ops::do_bitwise(v_l.read_u64(0), static_cast<uint64_t>(shift), re.op));   break;
-                        case RawType::U32:  new_val.write_u32(0, Ops::do_bitwise(v_l.read_u32(0), static_cast<uint32_t>(shift), re.op));   break;
-                        case RawType::U16:  new_val.write_u16(0, Ops::do_bitwise(v_l.read_u16(0), static_cast<uint16_t>(shift), re.op));   break;
-                        case RawType::U8 :  new_val.write_u8 (0, Ops::do_bitwise(v_l.read_u8 (0), static_cast<uint8_t >(shift), re.op));   break;
-                        case RawType::USize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
-                        // TODO: Is signed allowed?
-                        default:
-                            LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
-                        }
-                        } break;
-                    case ::MIR::eBinOp::BIT_AND:
-                    case ::MIR::eBinOp::BIT_OR:
-                    case ::MIR::eBinOp::BIT_XOR:
-                        LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
-                        LOG_ASSERT(ty_l.wrappers.empty(), "Bitwise operator on non-primitive - " << ty_l);
-                        new_val = Value(ty_l);
-                        switch(ty_l.inner_type)
-                        {
-                        // TODO: U128/I128
-                        case RawType::U64:
-                        case RawType::I64:
-                            new_val.write_u64( 0, Ops::do_bitwise(v_l.read_u64(0), v_r.read_u64(0), re.op) );
-                            break;
-                        case RawType::U32:
-                        case RawType::I32:
-                            new_val.write_u32( 0, static_cast<uint32_t>(Ops::do_bitwise(v_l.read_u32(0), v_r.read_u32(0), re.op)) );
-                            break;
-                        case RawType::U16:
-                        case RawType::I16:
-                            new_val.write_u16( 0, static_cast<uint16_t>(Ops::do_bitwise(v_l.read_u16(0), v_r.read_u16(0), re.op)) );
-                            break;
-                        case RawType::U8:
-                        case RawType::I8:
-                            new_val.write_u8 ( 0, static_cast<uint8_t >(Ops::do_bitwise(v_l.read_u8 (0), v_r.read_u8 (0), re.op)) );
-                            break;
-                        case RawType::USize:
-                        case RawType::ISize:
-                            new_val.write_usize( 0, Ops::do_bitwise(v_l.read_usize(0), v_r.read_usize(0), re.op) );
-                            break;
-                        default:
-                            LOG_TODO("BinOp bitwise - " << se.src << " w/ " << ty_l);
-                        }
-
-                        break;
-                    default:
-                        LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
-                        auto val_l = PrimitiveValueVirt::from_value(ty_l, v_l);
-                        auto val_r = PrimitiveValueVirt::from_value(ty_r, v_r);
-                        switch(re.op)
-                        {
-                        case ::MIR::eBinOp::ADD:    val_l.get().add( val_r.get() ); break;
-                        case ::MIR::eBinOp::SUB:    val_l.get().subtract( val_r.get() ); break;
-                        case ::MIR::eBinOp::MUL:    val_l.get().multiply( val_r.get() ); break;
-                        case ::MIR::eBinOp::DIV:    val_l.get().divide( val_r.get() ); break;
-                        case ::MIR::eBinOp::MOD:    val_l.get().modulo( val_r.get() ); break;
-
-                        default:
-                            LOG_TODO("Unsupported binary operator?");
-                        }
-                        new_val = Value(ty_l);
-                        val_l.get().write_to_value(new_val, 0);
-                        break;
                     }
-                    } break;
-                TU_ARM(se.src, UniOp, re) {
-                    ::HIR::TypeRef  ty;
-                    auto v = state.get_value_and_type(re.val, ty);
-                    LOG_ASSERT(ty.wrappers.empty(), "UniOp on wrapped type - " << ty);
-                    new_val = Value(ty);
-                    switch(re.op)
+                    else if( ty_l.wrappers.front().type == TypeWrapper::Ty::Pointer )
                     {
-                    case ::MIR::eUniOp::INV:
-                        switch(ty.inner_type)
+                        // TODO: Technically only EQ/NE are valid.
+
+                        res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0));
+
+                        // Compare fat metadata.
+                        if( res == 0 && v_l.m_size > POINTER_SIZE )
                         {
-                        case RawType::U128:
-                        case RawType::I128:
-                            LOG_TODO("UniOp::INV U128");
-                        case RawType::U64:
-                        case RawType::I64:
-                            new_val.write_u64( 0, ~v.read_u64(0) );
-                            break;
-                        case RawType::U32:
-                        case RawType::I32:
-                            new_val.write_u32( 0, ~v.read_u32(0) );
-                            break;
-                        case RawType::U16:
-                        case RawType::I16:
-                            new_val.write_u16( 0, ~v.read_u16(0) );
-                            break;
-                        case RawType::U8:
-                        case RawType::I8:
-                            new_val.write_u8 ( 0, ~v.read_u8 (0) );
-                            break;
-                        case RawType::USize:
-                        case RawType::ISize:
-                            new_val.write_usize( 0, ~v.read_usize(0) );
-                            break;
-                        case RawType::Bool:
-                            new_val.write_u8 ( 0, v.read_u8 (0) == 0 );
-                            break;
-                        default:
-                            LOG_TODO("UniOp::INV - w/ type " << ty);
+                            reloc_l = alloc_l ? alloc_l.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
+                            reloc_r = alloc_r ? alloc_r.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
+
+                            if( res == 0 && reloc_l != reloc_r )
+                            {
+                                res = (reloc_l < reloc_r ? -1 : 1);
+                            }
+                            res = res != 0 ? res : Ops::do_compare(v_l.read_usize(POINTER_SIZE), v_r.read_usize(POINTER_SIZE));
                         }
-                        break;
-                    case ::MIR::eUniOp::NEG:
-                        switch(ty.inner_type)
-                        {
-                        case RawType::I128:
-                            LOG_TODO("UniOp::NEG I128");
-                        case RawType::I64:
-                            new_val.write_i64( 0, -v.read_i64(0) );
-                            break;
-                        case RawType::I32:
-                            new_val.write_i32( 0, -v.read_i32(0) );
-                            break;
-                        case RawType::I16:
-                            new_val.write_i16( 0, -v.read_i16(0) );
-                            break;
-                        case RawType::I8:
-                            new_val.write_i8 ( 0, -v.read_i8 (0) );
-                            break;
-                        case RawType::ISize:
-                            new_val.write_isize( 0, -v.read_isize(0) );
-                            break;
-                        default:
-                            LOG_ERROR("UniOp::INV not valid on type " << ty);
-                        }
-                        break;
-                    }
-                    } break;
-                TU_ARM(se.src, DstMeta, re) {
-                    auto ptr = state.get_value_ref(re.val);
-
-                    ::HIR::TypeRef  dst_ty;
-                    state.get_value_and_type(se.dst, dst_ty);
-                    new_val = ptr.read_value(POINTER_SIZE, dst_ty.get_size());
-                    } break;
-                TU_ARM(se.src, DstPtr, re) {
-                    auto ptr = state.get_value_ref(re.val);
-
-                    new_val = ptr.read_value(0, POINTER_SIZE);
-                    } break;
-                TU_ARM(se.src, MakeDst, re) {
-                    // - Get target type, just for some assertions
-                    ::HIR::TypeRef  dst_ty;
-                    state.get_value_and_type(se.dst, dst_ty);
-                    new_val = Value(dst_ty);
-
-                    auto ptr  = state.param_to_value(re.ptr_val );
-                    auto meta = state.param_to_value(re.meta_val);
-                    LOG_DEBUG("ty=" << dst_ty << ", ptr=" << ptr << ", meta=" << meta);
-
-                    new_val.write_value(0, ::std::move(ptr));
-                    new_val.write_value(POINTER_SIZE, ::std::move(meta));
-                    } break;
-                TU_ARM(se.src, Tuple, re) {
-                    ::HIR::TypeRef  dst_ty;
-                    state.get_value_and_type(se.dst, dst_ty);
-                    new_val = Value(dst_ty);
-
-                    for(size_t i = 0; i < re.vals.size(); i++)
-                    {
-                        auto fld_ofs = dst_ty.composite_type->fields.at(i).first;
-                        new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
-                    }
-                    } break;
-                TU_ARM(se.src, Array, re) {
-                    ::HIR::TypeRef  dst_ty;
-                    state.get_value_and_type(se.dst, dst_ty);
-                    new_val = Value(dst_ty);
-                    // TODO: Assert that type is an array
-                    auto inner_ty = dst_ty.get_inner();
-                    size_t stride = inner_ty.get_size();
-
-                    size_t ofs = 0;
-                    for(const auto& v : re.vals)
-                    {
-                        new_val.write_value(ofs, state.param_to_value(v));
-                        ofs += stride;
-                    }
-                    } break;
-                TU_ARM(se.src, SizedArray, re) {
-                    ::HIR::TypeRef  dst_ty;
-                    state.get_value_and_type(se.dst, dst_ty);
-                    new_val = Value(dst_ty);
-                    // TODO: Assert that type is an array
-                    auto inner_ty = dst_ty.get_inner();
-                    size_t stride = inner_ty.get_size();
-
-                    size_t ofs = 0;
-                    for(size_t i = 0; i < re.count; i++)
-                    {
-                        new_val.write_value(ofs, state.param_to_value(re.val));
-                        ofs += stride;
-                    }
-                    } break;
-                TU_ARM(se.src, Variant, re) {
-                    // 1. Get the composite by path.
-                    const auto& data_ty = state.modtree.get_composite(re.path);
-                    auto dst_ty = ::HIR::TypeRef(&data_ty);
-                    new_val = Value(dst_ty);
-                    LOG_DEBUG("Variant " << new_val);
-                    // Three cases:
-                    // - Unions (no tag)
-                    // - Data enums (tag and data)
-                    // - Value enums (no data)
-                    const auto& var = data_ty.variants.at(re.index);
-                    if( var.data_field != SIZE_MAX )
-                    {
-                        const auto& fld = data_ty.fields.at(re.index);
-
-                        new_val.write_value(fld.first, state.param_to_value(re.val));
-                    }
-                    LOG_DEBUG("Variant " << new_val);
-                    if( var.base_field != SIZE_MAX )
-                    {
-                        ::HIR::TypeRef  tag_ty;
-                        size_t tag_ofs = dst_ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
-                        LOG_ASSERT(tag_ty.get_size() == var.tag_data.size(), "");
-                        new_val.write_bytes(tag_ofs, var.tag_data.data(), var.tag_data.size());
                     }
                     else
                     {
-                        // Union, no tag
+                        LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                     }
-                    LOG_DEBUG("Variant " << new_val);
-                    } break;
-                TU_ARM(se.src, Struct, re) {
-                    const auto& data_ty = state.modtree.get_composite(re.path);
-
-                    ::HIR::TypeRef  dst_ty;
-                    state.get_value_and_type(se.dst, dst_ty);
-                    new_val = Value(dst_ty);
-                    LOG_ASSERT(dst_ty.composite_type == &data_ty, "Destination type of RValue::Struct isn't the same as the input");
-
-                    for(size_t i = 0; i < re.vals.size(); i++)
+                    bool res_bool;
+                    switch(re.op)
                     {
-                        auto fld_ofs = data_ty.fields.at(i).first;
-                        new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                    case ::MIR::eBinOp::EQ: res_bool = (res == 0);  break;
+                    case ::MIR::eBinOp::NE: res_bool = (res != 0);  break;
+                    case ::MIR::eBinOp::GT: res_bool = (res == 1);  break;
+                    case ::MIR::eBinOp::GE: res_bool = (res == 1 || res == 0);  break;
+                    case ::MIR::eBinOp::LT: res_bool = (res == -1); break;
+                    case ::MIR::eBinOp::LE: res_bool = (res == -1 || res == 0); break;
+                        break;
+                    default:
+                        LOG_BUG("Unknown comparison");
+                    }
+                    new_val = Value(::HIR::TypeRef(RawType::Bool));
+                    new_val.write_u8(0, res_bool ? 1 : 0);
+                    } break;
+                case ::MIR::eBinOp::BIT_SHL:
+                case ::MIR::eBinOp::BIT_SHR: {
+                    LOG_ASSERT(ty_l.wrappers.empty(), "Bitwise operator on non-primitive - " << ty_l);
+                    LOG_ASSERT(ty_r.wrappers.empty(), "Bitwise operator with non-primitive - " << ty_r);
+                    size_t max_bits = ty_r.get_size() * 8;
+                    uint8_t shift;
+                    auto check_cast = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
+                    switch(ty_r.inner_type)
+                    {
+                    case RawType::U64:  shift = check_cast(v_r.read_u64(0));    break;
+                    case RawType::U32:  shift = check_cast(v_r.read_u32(0));    break;
+                    case RawType::U16:  shift = check_cast(v_r.read_u16(0));    break;
+                    case RawType::U8 :  shift = check_cast(v_r.read_u8 (0));    break;
+                    case RawType::I64:  shift = check_cast(v_r.read_i64(0));    break;
+                    case RawType::I32:  shift = check_cast(v_r.read_i32(0));    break;
+                    case RawType::I16:  shift = check_cast(v_r.read_i16(0));    break;
+                    case RawType::I8 :  shift = check_cast(v_r.read_i8 (0));    break;
+                    case RawType::USize:  shift = check_cast(v_r.read_usize(0));    break;
+                    case RawType::ISize:  shift = check_cast(v_r.read_isize(0));    break;
+                    default:
+                        LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
+                    }
+                    new_val = Value(ty_l);
+                    switch(ty_l.inner_type)
+                    {
+                    // TODO: U128
+                    case RawType::U64:  new_val.write_u64(0, Ops::do_bitwise(v_l.read_u64(0), static_cast<uint64_t>(shift), re.op));   break;
+                    case RawType::U32:  new_val.write_u32(0, Ops::do_bitwise(v_l.read_u32(0), static_cast<uint32_t>(shift), re.op));   break;
+                    case RawType::U16:  new_val.write_u16(0, Ops::do_bitwise(v_l.read_u16(0), static_cast<uint16_t>(shift), re.op));   break;
+                    case RawType::U8 :  new_val.write_u8 (0, Ops::do_bitwise(v_l.read_u8 (0), static_cast<uint8_t >(shift), re.op));   break;
+                    case RawType::USize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
+                    // TODO: Is signed allowed?
+                    default:
+                        LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
                     }
                     } break;
+                case ::MIR::eBinOp::BIT_AND:
+                case ::MIR::eBinOp::BIT_OR:
+                case ::MIR::eBinOp::BIT_XOR:
+                    LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
+                    LOG_ASSERT(ty_l.wrappers.empty(), "Bitwise operator on non-primitive - " << ty_l);
+                    new_val = Value(ty_l);
+                    switch(ty_l.inner_type)
+                    {
+                    // TODO: U128/I128
+                    case RawType::U64:
+                    case RawType::I64:
+                        new_val.write_u64( 0, Ops::do_bitwise(v_l.read_u64(0), v_r.read_u64(0), re.op) );
+                        break;
+                    case RawType::U32:
+                    case RawType::I32:
+                        new_val.write_u32( 0, static_cast<uint32_t>(Ops::do_bitwise(v_l.read_u32(0), v_r.read_u32(0), re.op)) );
+                        break;
+                    case RawType::U16:
+                    case RawType::I16:
+                        new_val.write_u16( 0, static_cast<uint16_t>(Ops::do_bitwise(v_l.read_u16(0), v_r.read_u16(0), re.op)) );
+                        break;
+                    case RawType::U8:
+                    case RawType::I8:
+                        new_val.write_u8 ( 0, static_cast<uint8_t >(Ops::do_bitwise(v_l.read_u8 (0), v_r.read_u8 (0), re.op)) );
+                        break;
+                    case RawType::USize:
+                    case RawType::ISize:
+                        new_val.write_usize( 0, Ops::do_bitwise(v_l.read_usize(0), v_r.read_usize(0), re.op) );
+                        break;
+                    default:
+                        LOG_TODO("BinOp bitwise - " << se.src << " w/ " << ty_l);
+                    }
+
+                    break;
+                default:
+                    LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
+                    auto val_l = PrimitiveValueVirt::from_value(ty_l, v_l);
+                    auto val_r = PrimitiveValueVirt::from_value(ty_r, v_r);
+                    switch(re.op)
+                    {
+                    case ::MIR::eBinOp::ADD:    val_l.get().add( val_r.get() ); break;
+                    case ::MIR::eBinOp::SUB:    val_l.get().subtract( val_r.get() ); break;
+                    case ::MIR::eBinOp::MUL:    val_l.get().multiply( val_r.get() ); break;
+                    case ::MIR::eBinOp::DIV:    val_l.get().divide( val_r.get() ); break;
+                    case ::MIR::eBinOp::MOD:    val_l.get().modulo( val_r.get() ); break;
+
+                    default:
+                        LOG_TODO("Unsupported binary operator?");
+                    }
+                    new_val = Value(ty_l);
+                    val_l.get().write_to_value(new_val, 0);
+                    break;
                 }
-                LOG_DEBUG("- " << new_val);
-                state.write_lvalue(se.dst, ::std::move(new_val));
                 } break;
-            case ::MIR::Statement::TAG_Asm:
-                LOG_TODO(stmt);
-                break;
-            TU_ARM(stmt, Drop, se) {
-                if( se.flag_idx == ~0u || state.drop_flags.at(se.flag_idx) )
+            TU_ARM(se.src, UniOp, re) {
+                ::HIR::TypeRef  ty;
+                auto v = state.get_value_and_type(re.val, ty);
+                LOG_ASSERT(ty.wrappers.empty(), "UniOp on wrapped type - " << ty);
+                new_val = Value(ty);
+                switch(re.op)
                 {
-                    ::HIR::TypeRef  ty;
-                    auto v = state.get_value_and_type(se.slot, ty);
-
-                    // - Take a pointer to the inner
-                    auto alloc = v.m_alloc;
-                    if( !alloc )
+                case ::MIR::eUniOp::INV:
+                    switch(ty.inner_type)
                     {
-                        if( !v.m_value->allocation )
-                        {
-                            v.m_value->create_allocation();
-                        }
-                        alloc = AllocationPtr(v.m_value->allocation);
+                    case RawType::U128:
+                    case RawType::I128:
+                        LOG_TODO("UniOp::INV U128");
+                    case RawType::U64:
+                    case RawType::I64:
+                        new_val.write_u64( 0, ~v.read_u64(0) );
+                        break;
+                    case RawType::U32:
+                    case RawType::I32:
+                        new_val.write_u32( 0, ~v.read_u32(0) );
+                        break;
+                    case RawType::U16:
+                    case RawType::I16:
+                        new_val.write_u16( 0, ~v.read_u16(0) );
+                        break;
+                    case RawType::U8:
+                    case RawType::I8:
+                        new_val.write_u8 ( 0, ~v.read_u8 (0) );
+                        break;
+                    case RawType::USize:
+                    case RawType::ISize:
+                        new_val.write_usize( 0, ~v.read_usize(0) );
+                        break;
+                    case RawType::Bool:
+                        new_val.write_u8 ( 0, v.read_u8 (0) == 0 );
+                        break;
+                    default:
+                        LOG_TODO("UniOp::INV - w/ type " << ty);
                     }
-                    size_t ofs = v.m_offset;
-                    assert(ty.get_meta_type() == RawType::Unreachable);
-
-                    auto ptr_ty = ty.wrap(TypeWrapper::Ty::Borrow, 2);
-
-                    auto ptr_val = Value(ptr_ty);
-                    ptr_val.write_usize(0, ofs);
-                    ptr_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
-
-                    // TODO: Shallow drop
-                    drop_value(modtree, thread, ptr_val, ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW);
-                    // TODO: Clear validity on the entire inner value.
-                    //alloc.mark_as_freed();
+                    break;
+                case ::MIR::eUniOp::NEG:
+                    switch(ty.inner_type)
+                    {
+                    case RawType::I128:
+                        LOG_TODO("UniOp::NEG I128");
+                    case RawType::I64:
+                        new_val.write_i64( 0, -v.read_i64(0) );
+                        break;
+                    case RawType::I32:
+                        new_val.write_i32( 0, -v.read_i32(0) );
+                        break;
+                    case RawType::I16:
+                        new_val.write_i16( 0, -v.read_i16(0) );
+                        break;
+                    case RawType::I8:
+                        new_val.write_i8 ( 0, -v.read_i8 (0) );
+                        break;
+                    case RawType::ISize:
+                        new_val.write_isize( 0, -v.read_isize(0) );
+                        break;
+                    default:
+                        LOG_ERROR("UniOp::INV not valid on type " << ty);
+                    }
+                    break;
                 }
                 } break;
-            TU_ARM(stmt, SetDropFlag, se) {
-                bool val = (se.other == ~0u ? false : state.drop_flags.at(se.other)) != se.new_val;
-                LOG_DEBUG("- " << val);
-                state.drop_flags.at(se.idx) = val;
-                } break;
-            case ::MIR::Statement::TAG_ScopeEnd:
-                LOG_TODO(stmt);
-                break;
-            }
-        }
+            TU_ARM(se.src, DstMeta, re) {
+                auto ptr = state.get_value_ref(re.val);
 
-        LOG_DEBUG("=== BB" << bb_idx << "/TERM: " << bb.terminator);
+                ::HIR::TypeRef  dst_ty;
+                state.get_value_and_type(se.dst, dst_ty);
+                new_val = ptr.read_value(POINTER_SIZE, dst_ty.get_size());
+                } break;
+            TU_ARM(se.src, DstPtr, re) {
+                auto ptr = state.get_value_ref(re.val);
+
+                new_val = ptr.read_value(0, POINTER_SIZE);
+                } break;
+            TU_ARM(se.src, MakeDst, re) {
+                // - Get target type, just for some assertions
+                ::HIR::TypeRef  dst_ty;
+                state.get_value_and_type(se.dst, dst_ty);
+                new_val = Value(dst_ty);
+
+                auto ptr  = state.param_to_value(re.ptr_val );
+                auto meta = state.param_to_value(re.meta_val);
+                LOG_DEBUG("ty=" << dst_ty << ", ptr=" << ptr << ", meta=" << meta);
+
+                new_val.write_value(0, ::std::move(ptr));
+                new_val.write_value(POINTER_SIZE, ::std::move(meta));
+                } break;
+            TU_ARM(se.src, Tuple, re) {
+                ::HIR::TypeRef  dst_ty;
+                state.get_value_and_type(se.dst, dst_ty);
+                new_val = Value(dst_ty);
+
+                for(size_t i = 0; i < re.vals.size(); i++)
+                {
+                    auto fld_ofs = dst_ty.composite_type->fields.at(i).first;
+                    new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                }
+                } break;
+            TU_ARM(se.src, Array, re) {
+                ::HIR::TypeRef  dst_ty;
+                state.get_value_and_type(se.dst, dst_ty);
+                new_val = Value(dst_ty);
+                // TODO: Assert that type is an array
+                auto inner_ty = dst_ty.get_inner();
+                size_t stride = inner_ty.get_size();
+
+                size_t ofs = 0;
+                for(const auto& v : re.vals)
+                {
+                    new_val.write_value(ofs, state.param_to_value(v));
+                    ofs += stride;
+                }
+                } break;
+            TU_ARM(se.src, SizedArray, re) {
+                ::HIR::TypeRef  dst_ty;
+                state.get_value_and_type(se.dst, dst_ty);
+                new_val = Value(dst_ty);
+                // TODO: Assert that type is an array
+                auto inner_ty = dst_ty.get_inner();
+                size_t stride = inner_ty.get_size();
+
+                size_t ofs = 0;
+                for(size_t i = 0; i < re.count; i++)
+                {
+                    new_val.write_value(ofs, state.param_to_value(re.val));
+                    ofs += stride;
+                }
+                } break;
+            TU_ARM(se.src, Variant, re) {
+                // 1. Get the composite by path.
+                const auto& data_ty = this->m_modtree.get_composite(re.path);
+                auto dst_ty = ::HIR::TypeRef(&data_ty);
+                new_val = Value(dst_ty);
+                LOG_DEBUG("Variant " << new_val);
+                // Three cases:
+                // - Unions (no tag)
+                // - Data enums (tag and data)
+                // - Value enums (no data)
+                const auto& var = data_ty.variants.at(re.index);
+                if( var.data_field != SIZE_MAX )
+                {
+                    const auto& fld = data_ty.fields.at(re.index);
+
+                    new_val.write_value(fld.first, state.param_to_value(re.val));
+                }
+                LOG_DEBUG("Variant " << new_val);
+                if( var.base_field != SIZE_MAX )
+                {
+                    ::HIR::TypeRef  tag_ty;
+                    size_t tag_ofs = dst_ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
+                    LOG_ASSERT(tag_ty.get_size() == var.tag_data.size(), "");
+                    new_val.write_bytes(tag_ofs, var.tag_data.data(), var.tag_data.size());
+                }
+                else
+                {
+                    // Union, no tag
+                }
+                LOG_DEBUG("Variant " << new_val);
+                } break;
+            TU_ARM(se.src, Struct, re) {
+                const auto& data_ty = m_modtree.get_composite(re.path);
+
+                ::HIR::TypeRef  dst_ty;
+                state.get_value_and_type(se.dst, dst_ty);
+                new_val = Value(dst_ty);
+                LOG_ASSERT(dst_ty.composite_type == &data_ty, "Destination type of RValue::Struct isn't the same as the input");
+
+                for(size_t i = 0; i < re.vals.size(); i++)
+                {
+                    auto fld_ofs = data_ty.fields.at(i).first;
+                    new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                }
+                } break;
+            }
+            LOG_DEBUG("- " << new_val);
+            state.write_lvalue(se.dst, ::std::move(new_val));
+            } break;
+        case ::MIR::Statement::TAG_Asm:
+            LOG_TODO(stmt);
+            break;
+        TU_ARM(stmt, Drop, se) {
+            if( se.flag_idx == ~0u || cur_frame.drop_flags.at(se.flag_idx) )
+            {
+                ::HIR::TypeRef  ty;
+                auto v = state.get_value_and_type(se.slot, ty);
+
+                // - Take a pointer to the inner
+                auto alloc = v.m_alloc;
+                if( !alloc )
+                {
+                    if( !v.m_value->allocation )
+                    {
+                        v.m_value->create_allocation();
+                    }
+                    alloc = AllocationPtr(v.m_value->allocation);
+                }
+                size_t ofs = v.m_offset;
+                assert(ty.get_meta_type() == RawType::Unreachable);
+
+                auto ptr_ty = ty.wrap(TypeWrapper::Ty::Borrow, 2);
+
+                auto ptr_val = Value(ptr_ty);
+                ptr_val.write_usize(0, ofs);
+                ptr_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
+
+                if( !drop_value(ptr_val, ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW) )
+                {
+                    return false;
+                }
+            }
+            } break;
+        TU_ARM(stmt, SetDropFlag, se) {
+            bool val = (se.other == ~0u ? false : cur_frame.drop_flags.at(se.other)) != se.new_val;
+            LOG_DEBUG("- " << val);
+            cur_frame.drop_flags.at(se.idx) = val;
+            } break;
+        case ::MIR::Statement::TAG_ScopeEnd:
+            LOG_TODO(stmt);
+            break;
+        }
+        
+        cur_frame.stmt_idx += 1;
+    }
+    else
+    {
+        LOG_DEBUG("=== BB" << cur_frame.bb_idx << "/TERM: " << bb.terminator);
         switch(bb.terminator.tag())
         {
         case ::MIR::Terminator::TAGDEAD:    throw "";
@@ -1521,16 +1469,16 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
         TU_ARM(bb.terminator, Panic, _te)
             LOG_TODO("Terminator::Panic");
         TU_ARM(bb.terminator, Goto, te)
-            bb_idx = te;
-            continue;
+            cur_frame.bb_idx = te;
+            break;
         TU_ARM(bb.terminator, Return, _te)
-            LOG_DEBUG("RETURN " << state.ret);
-            return state.ret;
+            LOG_DEBUG("RETURN " << cur_frame.ret);
+            return this->pop_stack(out_thread_result);
         TU_ARM(bb.terminator, If, te) {
             uint8_t v = state.get_value_ref(te.cond).read_u8(0);
             LOG_ASSERT(v == 0 || v == 1, "");
-            bb_idx = v ? te.bb0 : te.bb1;
-            } continue;
+            cur_frame.bb_idx = v ? te.bb0 : te.bb1;
+            } break;
         TU_ARM(bb.terminator, Switch, te) {
             ::HIR::TypeRef ty;
             auto v = state.get_value_and_type(te.val, ty);
@@ -1578,8 +1526,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
             {
                 LOG_FATAL("Terminator::Switch on " << ty << " didn't find a variant");
             }
-            bb_idx = te.targets.at(found_target);
-            } continue;
+            cur_frame.bb_idx = te.targets.at(found_target);
+            } break;
         TU_ARM(bb.terminator, SwitchValue, _te)
             LOG_TODO("Terminator::SwitchValue");
         TU_ARM(bb.terminator, Call, te) {
@@ -1589,10 +1537,15 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                 sub_args.push_back( state.param_to_value(a) );
                 LOG_DEBUG("#" << (sub_args.size() - 1) << " " << sub_args.back());
             }
+            Value   rv;
             if( te.fcn.is_Intrinsic() )
             {
                 const auto& fe = te.fcn.as_Intrinsic();
-                state.write_lvalue(te.ret_val, MIRI_Invoke_Intrinsic(modtree, thread, fe.name, fe.params, ::std::move(sub_args)));
+                if( !this->call_intrinsic(rv, fe.name, fe.params, ::std::move(sub_args)) )
+                {
+                    // Early return, don't want to update stmt_idx yet
+                    return false;
+                }
             }
             else
             {
@@ -1618,25 +1571,140 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                 }
 
                 LOG_DEBUG("Call " << *fcn_p);
-                auto v = MIRI_Invoke(modtree, thread, *fcn_p, ::std::move(sub_args));
-                LOG_DEBUG(te.ret_val << " = " << v << " (resume " << path << ")");
-                state.write_lvalue(te.ret_val, ::std::move(v));
+                if( !this->call_path(rv, *fcn_p, ::std::move(sub_args)) )
+                {
+                    // Early return, don't want to update stmt_idx yet
+                    return false;
+                }
             }
-            bb_idx = te.ret_block;
-            } continue;
+            LOG_DEBUG(te.ret_val << " = " << rv << " (resume " << cur_frame.fcn.my_path << ")");
+            state.write_lvalue(te.ret_val, rv);
+            cur_frame.bb_idx = te.ret_block;
+            } break;
         }
-        throw "";
+        cur_frame.stmt_idx = 0;
+    }
+    
+    return false;
+}
+bool InterpreterThread::pop_stack(Value& out_thread_result)
+{
+    assert( !this->m_stack.empty() );
+
+    auto res_v = ::std::move(this->m_stack.back().ret);
+    this->m_stack.pop_back();
+    
+    if( this->m_stack.empty() )
+    {
+        LOG_DEBUG("Thread complete, result " << res_v);
+        out_thread_result = ::std::move(res_v);
+        return true;
+    }
+    else
+    {
+        // Handle callback wrappers (e.g. for __rust_maybe_catch_panic)
+        if( this->m_stack.back().cb )
+        {
+            if( !this->m_stack.back().cb(res_v, ::std::move(res_v)) )
+            {
+                return false;
+            }
+            this->m_stack.pop_back();
+            assert( !this->m_stack.empty() );
+            assert( !this->m_stack.back().cb );
+        }
+
+        auto& cur_frame = this->m_stack.back();
+        MirHelpers  state { *this, cur_frame };
+
+        const auto& blk = cur_frame.fcn.m_mir.blocks.at( cur_frame.bb_idx );
+        if( cur_frame.stmt_idx < blk.statements.size() )
+        {
+            assert( blk.statements[cur_frame.stmt_idx].is_Drop() );
+            cur_frame.stmt_idx ++;
+            LOG_DEBUG("DROP complete (resume " << cur_frame.fcn.my_path << ")");
+        }
+        else
+        {
+            assert( blk.terminator.is_Call() );
+            const auto& te = blk.terminator.as_Call();
+
+            LOG_DEBUG(te.ret_val << " = " << res_v << " (resume " << cur_frame.fcn.my_path << ")");
+
+            state.write_lvalue(te.ret_val, res_v);
+            cur_frame.stmt_idx = 0;
+            cur_frame.bb_idx = te.ret_block;
+        }
+
+        return false;
+    }
+}
+
+InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Value> args):
+    fcn(fcn),
+    ret( fcn.ret_ty ),
+    args( ::std::move(args) ),
+    locals( ),
+    drop_flags( fcn.m_mir.drop_flags ),
+    bb_idx(0),
+    stmt_idx(0)
+{
+    this->locals.reserve( fcn.m_mir.locals.size() );
+    for(const auto& ty : fcn.m_mir.locals)
+    {
+        if( ty == RawType::Unreachable ) {
+            // HACK: Locals can be !, but they can NEVER be accessed
+            this->locals.push_back( Value() );
+        }
+        else {
+            this->locals.push_back( Value(ty) );
+        }
+    }
+}
+bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::vector<Value> args)
+{
+    // TODO: Support overriding certain functions
+    {
+        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "c", "SetThreadStackGuarantee" } } )
+        {
+            ret = Value(::HIR::TypeRef{RawType::I32});
+            ret.write_i32(0, 120);  // ERROR_CALL_NOT_IMPLEMENTED
+            return true;
+        }
+
+        // - No guard page needed
+        if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } } )
+        {
+            ret = Value::with_size(16, false);
+            ret.write_u64(0, 0);
+            ret.write_u64(8, 0);
+            return true;
+        }
+        
+        // - No stack overflow handling needed
+        if( path == ::HIR::SimplePath { "std", { "sys", "imp", "stack_overflow", "imp", "init" } } )
+        {
+            return true;
+        }
     }
 
-    throw "";
+    const auto& fcn = m_modtree.get_function(path);
+
+    if( fcn.external.link_name != "" )
+    {
+        // External function!
+        return this->call_extern(ret, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+    }
+    
+    this->m_stack.push_back(StackFrame(fcn, ::std::move(args)));
+    return false;
 }
 
 extern "C" {
     long sysconf(int);
     ssize_t write(int, const void*, size_t);
 }
-
-Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
+bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
     if( link_name == "__rust_allocate" )
     {
@@ -1645,11 +1713,11 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         LOG_DEBUG("__rust_allocate(size=" << size << ", align=" << align << ")");
         ::HIR::TypeRef  rty { RawType::Unit };
         rty.wrappers.push_back({ TypeWrapper::Ty::Pointer, 0 });
-        Value rv = Value(rty);
+
+        rv = Value(rty);
         rv.write_usize(0, 0);
         // TODO: Use the alignment when making an allocation?
         rv.allocation.alloc().relocations.push_back({ 0,  Allocation::new_alloc(size) });
-        return rv;
     }
     else if( link_name == "__rust_reallocate" )
     {
@@ -1669,7 +1737,7 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         alloc.data.resize( (newsize + 8-1) / 8 );
         alloc.mask.resize( (newsize + 8-1) / 8 );
         // TODO: Should this instead make a new allocation to catch use-after-free?
-        return ::std::move(args.at(0));
+        rv = ::std::move(args.at(0));
     }
     else if( link_name == "__rust_deallocate" )
     {
@@ -1684,7 +1752,7 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         auto& alloc = alloc_ptr.alloc();
         alloc.mark_as_freed();
         // Just let it drop.
-        return Value();
+        rv = Value();
     }
     else if( link_name == "__rust_maybe_catch_panic" )
     {
@@ -1696,12 +1764,23 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         ::std::vector<Value>    sub_args;
         sub_args.push_back( ::std::move(arg) );
 
-        // TODO: Catch the panic out of this.
-        MIRI_Invoke(modtree, thread, fcn_path, ::std::move(sub_args));
+        this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)->bool{
+            out_rv = Value(::HIR::TypeRef(RawType::U32));
+            out_rv.write_u32(0, 0);
+            return true;
+            }));
 
-        auto rv = Value(::HIR::TypeRef(RawType::U32));
-        rv.write_u32(0,0);
-        return rv;
+        // TODO: Catch the panic out of this.
+        if( this->call_path(rv, fcn_path, ::std::move(sub_args)) )
+        {
+            bool v = this->pop_stack(rv);
+            assert( v == false );
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
     else if( link_name == "__rust_start_panic" )
     {
@@ -1716,9 +1795,8 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
     else if( link_name == "AddVectoredExceptionHandler" )
     {
         LOG_DEBUG("Call `AddVectoredExceptionHandler` - Ignoring and returning non-null");
-        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, 1);
-        return rv;
     }
     else if( link_name == "GetModuleHandleW" )
     {
@@ -1733,17 +1811,16 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
             LOG_DEBUG("GetModuleHandleW(NULL)");
         }
 
-        auto rv = GetModuleHandleW(static_cast<LPCWSTR>(arg0));
-        if(rv)
+        auto ret = GetModuleHandleW(static_cast<LPCWSTR>(arg0));
+        if(ret)
         {
-            return Value::new_ffiptr(FFIPointer { "GetModuleHandleW", rv });
+            rv = Value::new_ffiptr(FFIPointer { "GetModuleHandleW", ret });
         }
         else
         {
-            auto rv = Value(::HIR::TypeRef(RawType::USize));
+            rv = Value(::HIR::TypeRef(RawType::USize));
             rv.create_allocation();
             rv.write_usize(0,0);
-            return rv;
         }
     }
     else if( link_name == "GetProcAddress" )
@@ -1760,18 +1837,17 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         // TODO: Sanity check that it's a valid c string within its allocation
         LOG_DEBUG("FFI GetProcAddress(" << handle << ", \"" << static_cast<const char*>(symname) << "\")");
 
-        auto rv = GetProcAddress(static_cast<HMODULE>(handle), static_cast<LPCSTR>(symname));
+        auto ret = GetProcAddress(static_cast<HMODULE>(handle), static_cast<LPCSTR>(symname));
 
-        if( rv )
+        if( ret )
         {
-            return Value::new_ffiptr(FFIPointer { "GetProcAddress", rv });
+            rv = Value::new_ffiptr(FFIPointer { "GetProcAddress", ret });
         }
         else
         {
-            auto rv = Value(::HIR::TypeRef(RawType::USize));
+            rv = Value(::HIR::TypeRef(RawType::USize));
             rv.create_allocation();
             rv.write_usize(0,0);
-            return rv;
         }
     }
 #else
@@ -1784,48 +1860,43 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
 
         ssize_t val = write(fd, buf, count);
 
-        auto rv = Value(::HIR::TypeRef(RawType::ISize));
+        rv = Value(::HIR::TypeRef(RawType::ISize));
         rv.write_isize(0, val);
-        return rv;
     }
     else if( link_name == "sysconf" )
     {
         auto name = args.at(0).read_i32(0);
         LOG_DEBUG("FFI sysconf(" << name << ")");
+
         long val = sysconf(name);
-        auto rv = Value(::HIR::TypeRef(RawType::USize));
+
+        rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, val);
-        return rv;
     }
     else if( link_name == "pthread_mutex_init" || link_name == "pthread_mutex_lock" || link_name == "pthread_mutex_unlock" || link_name == "pthread_mutex_destroy" )
     {
-        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
-        return rv;
     }
     else if( link_name == "pthread_rwlock_rdlock" )
     {
-        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
-        return rv;
     }
     else if( link_name == "pthread_mutexattr_init" || link_name == "pthread_mutexattr_settype" || link_name == "pthread_mutexattr_destroy" )
     {
-        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
-        return rv;
     }
     else if( link_name == "pthread_condattr_init" || link_name == "pthread_condattr_destroy" || link_name == "pthread_condattr_setclock" )
     {
-        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
-        return rv;
     }
     else if( link_name == "pthread_cond_init" || link_name == "pthread_cond_destroy" )
     {
-        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
-        return rv;
     }
     else if( link_name == "pthread_key_create" )
     {
@@ -1834,20 +1905,18 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         auto key = ThreadState::s_next_tls_key ++;
         key_ref.m_alloc.alloc().write_u32( key_ref.m_offset, key );
         
-        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
-        return rv;
     }
     else if( link_name == "pthread_getspecific" )
     {
         auto key = args.at(0).read_u32(0);
 
         // Get a pointer-sized value from storage
-        uint64_t v = key < thread.tls_values.size() ? thread.tls_values[key] : 0;
+        uint64_t v = key < m_thread.tls_values.size() ? m_thread.tls_values[key] : 0;
 
-        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, v);
-        return rv;
     }
     else if( link_name == "pthread_setspecific" )
     {
@@ -1855,29 +1924,26 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         auto v = args.at(1).read_u64(0);
 
         // Get a pointer-sized value from storage
-        if( key >= thread.tls_values.size() ) {
-            thread.tls_values.resize(key+1);
+        if( key >= m_thread.tls_values.size() ) {
+            m_thread.tls_values.resize(key+1);
         }
-        thread.tls_values[key] = v;
+        m_thread.tls_values[key] = v;
 
-        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
-        return rv;
     }
     else if( link_name == "pthread_key_delete" )
     {
-        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
-        return rv;
     }
 #endif
     // std C
     else if( link_name == "signal" )
     {
         LOG_DEBUG("Call `signal` - Ignoring and returning SIG_IGN");
-        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, 1);
-        return rv;
     }
     // - `void *memchr(const void *s, int c, size_t n);`
     else if( link_name == "memchr" )
@@ -1890,7 +1956,7 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
 
         const void* ret = memchr(ptr, c, n);
 
-        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv = Value(::HIR::TypeRef(RawType::USize));
         rv.create_allocation();
         if( ret )
         {
@@ -1901,7 +1967,6 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         {
             rv.write_usize(0, 0);
         }
-        return rv;
     }
     else if( link_name == "memrchr" )
     {
@@ -1912,7 +1977,7 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
 
         const void* ret = memrchr(ptr, c, n);
 
-        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv = Value(::HIR::TypeRef(RawType::USize));
         rv.create_allocation();
         if( ret )
         {
@@ -1923,18 +1988,17 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         {
             rv.write_usize(0, 0);
         }
-        return rv;
     }
     // Allocators!
     else
     {
         LOG_TODO("Call external function " << link_name);
     }
-    throw "";
+    return true;
 }
-Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
+
+bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
 {
-    Value rv;
     TRACE_FUNCTION_R(name, rv);
     for(const auto& a : args)
         LOG_DEBUG("#" << (&a - args.data()) << ": " << a);
@@ -1953,7 +2017,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
     }
     else if( name == "atomic_fence" || name == "atomic_fence_acq" )
     {
-        return Value();
+        rv = Value();
     }
     else if( name == "atomic_store" )
     {
@@ -1986,6 +2050,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
 
         size_t ofs = ptr_val.read_usize(0);
         const auto& ty = ty_params.tys.at(0);
+
         rv = alloc.alloc().read_value(ofs, ty.get_size());
     }
     else if( name == "atomic_xadd" || name == "atomic_xadd_relaxed" )
@@ -2056,7 +2121,6 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         else {
             rv.write_u8( old_v.size(), 0 );
         }
-        return rv;
     }
     else if( name == "transmute" )
     {
@@ -2180,13 +2244,17 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
             auto ptr = val.read_value(0, POINTER_SIZE);
             for(size_t i = 0; i < item_count; i ++)
             {
-                drop_value(modtree, thread, ptr, ity);
+                // TODO: Nested calls?
+                if( !drop_value(ptr, ity) )
+                {
+                    LOG_DEBUG("Handle multiple queued calls");
+                }
                 ptr.write_usize(0, ptr.read_usize(0) + item_size);
             }
         }
         else
         {
-            drop_value(modtree, thread, val, ty);
+            return drop_value(val, ty);
         }
     }
     // ----------------------------------------------------------------
@@ -2203,7 +2271,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         ::HIR::GenericPath  gp;
         gp.m_params.tys.push_back(ty);
         gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
-        const auto& dty = modtree.get_composite(gp);
+        const auto& dty = m_modtree.get_composite(gp);
 
         rv = Value(::HIR::TypeRef(&dty));
         lhs.get().write_to_value(rv, dty.fields[0].first);
@@ -2221,7 +2289,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         ::HIR::GenericPath  gp;
         gp.m_params.tys.push_back(ty);
         gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
-        const auto& dty = modtree.get_composite(gp);
+        const auto& dty = m_modtree.get_composite(gp);
 
         rv = Value(::HIR::TypeRef(&dty));
         lhs.get().write_to_value(rv, dty.fields[0].first);
@@ -2239,7 +2307,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         ::HIR::GenericPath  gp;
         gp.m_params.tys.push_back(ty);
         gp.m_params.tys.push_back(::HIR::TypeRef { RawType::Bool });
-        const auto& dty = modtree.get_composite(gp);
+        const auto& dty = m_modtree.get_composite(gp);
 
         rv = Value(::HIR::TypeRef(&dty));
         lhs.get().write_to_value(rv, dty.fields[0].first);
@@ -2298,7 +2366,75 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
     {
         LOG_TODO("Call intrinsic \"" << name << "\"");
     }
-    return rv;
+    return true;
+}
+
+bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow/*=false*/)
+{
+    if( is_shallow )
+    {
+        // HACK: Only works for Box<T> where the first pointer is the data pointer
+        auto box_ptr_vr = ptr.read_pointer_valref_mut(0, POINTER_SIZE);
+        auto ofs = box_ptr_vr.read_usize(0);
+        auto alloc = box_ptr_vr.get_relocation(0);
+        if( ofs != 0 || !alloc || !alloc.is_alloc() ) {
+            LOG_ERROR("Attempting to shallow drop with invalid pointer (no relocation or non-zero offset) - " << box_ptr_vr);
+        }
+        
+        LOG_DEBUG("drop_value SHALLOW deallocate " << alloc);
+        alloc.alloc().mark_as_freed();
+        return true;
+    }
+    if( ty.wrappers.empty() )
+    {
+        if( ty.inner_type == RawType::Composite )
+        {
+            if( ty.composite_type->drop_glue != ::HIR::Path() )
+            {
+                LOG_DEBUG("Drop - " << ty);
+
+                Value   tmp;
+                return this->call_path(tmp, ty.composite_type->drop_glue, { ptr });
+            }
+            else
+            {
+                // No drop glue
+            }
+        }
+        else if( ty.inner_type == RawType::TraitObject )
+        {
+            LOG_TODO("Drop - " << ty << " - trait object");
+        }
+        else
+        {
+            // No destructor
+        }
+    }
+    else
+    {
+        switch( ty.wrappers[0].type )
+        {
+        case TypeWrapper::Ty::Borrow:
+            if( ty.wrappers[0].size == static_cast<size_t>(::HIR::BorrowType::Move) )
+            {
+                LOG_TODO("Drop - " << ty << " - dereference and go to inner");
+                // TODO: Clear validity on the entire inner value.
+            }
+            else
+            {
+                // No destructor
+            }
+            break;
+        case TypeWrapper::Ty::Pointer:
+            // No destructor
+            break;
+        // TODO: Arrays
+        default:
+            LOG_TODO("Drop - " << ty << " - array?");
+            break;
+        }
+    }
+    return true;
 }
 
 int ProgramOptions::parse(int argc, const char* argv[])
