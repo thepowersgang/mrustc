@@ -146,8 +146,11 @@ bool Parser::parse_one()
                 if( lex.next() == TokenClass::String )
                 {
                     auto reloc_str = ::std::move(lex.consume().strval);
-                    // TODO: Figure out how to create this allocation...
-                    //s.val.allocation.alloc().relocations.push_back({ ofs, AllocationPtr::new_string(reloc_str) });
+
+                    auto a = Allocation::new_alloc( reloc_str.size() );
+                    //a.alloc().set_tag();
+                    a.alloc().write_bytes(0, reloc_str.data(), reloc_str.size());
+                    s.val.allocation.alloc().relocations.push_back({ ofs, ::std::move(a) });
                 }
                 else if( lex.next() == "::" || lex.next() == "<" )
                 {
