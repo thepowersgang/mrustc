@@ -102,6 +102,7 @@ bool Parser::parse_one()
             auto abi = ::std::move(lex.check_consume(TokenClass::String).strval);
             lex.check_consume(';');
 
+            LOG_DEBUG("fn " << p);
             auto p2 = p;
             tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {link_name, abi}, {} }) );
         }
@@ -109,6 +110,7 @@ bool Parser::parse_one()
         {
             auto body = parse_body();
 
+            LOG_DEBUG("fn " << p);
             auto p2 = p;
             tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {}, ::std::move(body) }) );
         }
@@ -170,6 +172,7 @@ bool Parser::parse_one()
         }
         lex.check_consume(';');
 
+        LOG_DEBUG("static " << p);
         tree.statics.insert(::std::make_pair( ::std::move(p), ::std::move(s) ));
     }
     else if( lex.consume_if("type") )
@@ -290,6 +293,7 @@ bool Parser::parse_one()
             throw "ERROR";
         }
 
+        LOG_DEBUG("type " << p);
         auto it = this->tree.data_types.find(p);
         if( it != this->tree.data_types.end() )
         {

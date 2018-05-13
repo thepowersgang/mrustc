@@ -1803,6 +1803,12 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         rv.write_i32(0, 0);
         return rv;
     }
+    else if( link_name == "pthread_rwlock_rdlock" )
+    {
+        auto rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, 0);
+        return rv;
+    }
     else if( link_name == "pthread_mutexattr_init" || link_name == "pthread_mutexattr_settype" || link_name == "pthread_mutexattr_destroy" )
     {
         auto rv = Value(::HIR::TypeRef(RawType::I32));
@@ -1932,7 +1938,20 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
     TRACE_FUNCTION_R(name, rv);
     for(const auto& a : args)
         LOG_DEBUG("#" << (&a - args.data()) << ": " << a);
-    if( name == "atomic_fence" || name == "atomic_fence_acq" )
+    if( name == "type_id" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        static ::std::vector<HIR::TypeRef>  type_ids;
+        auto it = ::std::find(type_ids.begin(), type_ids.end(), ty_T);
+        if( it == type_ids.end() )
+        {
+            it = type_ids.insert(it, ty_T);
+        }
+        
+        rv = Value::with_size(POINTER_SIZE, false);
+        rv.write_usize(0, it - type_ids.begin());
+    }
+    else if( name == "atomic_fence" || name == "atomic_fence_acq" )
     {
         return Value();
     }
@@ -2011,16 +2030,26 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
 
         val_l.get().write_to_value( ptr_alloc.alloc(), ptr_ofs );
     }
+    else if( name == "atomic_xchg" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
+        const auto& new_v = args.at(1);
+
+        rv = data_ref.read_value(0, new_v.size());
+        data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
+    }
     else if( name == "atomic_cxchg" )
     {
         const auto& ty_T = ty_params.tys.at(0);
         // TODO: Get a ValueRef to the target location
         auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
         const auto& old_v = args.at(1);
-        const auto& new_v = args.at(1);
+        const auto& new_v = args.at(2);
         rv = Value::with_size( ty_T.get_size() + 1, false );
         rv.write_value(0, data_ref.read_value(0, old_v.size()));
-        if( data_ref.compare(old_v.data_ptr(), old_v.size()) == 0 ) {
+        LOG_DEBUG("> *ptr = " << data_ref);
+        if( data_ref.compare(old_v.data_ptr(), old_v.size()) == true ) {
             data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
             rv.write_u8( old_v.size(), 1 );
         }
