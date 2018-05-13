@@ -433,6 +433,43 @@ namespace
             }
             m_mir_res = nullptr;
         }
+        void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
+        {
+            TRACE_FUNCTION_F(p);
+            ::HIR::TypeRef  tmp;
+            auto monomorph = [&](const auto& x)->const auto& {
+                if( monomorphise_type_needed(x) ) {
+                    tmp = monomorphise_type(sp, item.m_params, p.m_params, x);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return x;
+                }
+                };
+            // Crate constructor function
+            const auto& e = item.m_data.as_Tuple();
+            m_of << "fn " << p << "(";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ", ";
+                m_of << monomorph(e[i].ent);
+            }
+            m_of << "): " << p << " {\n";
+            m_of << "\t0: {\n";
+            m_of << "\t\tASSIGN RETURN = { ";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ", ";
+                m_of << "arg" << i;
+            }
+            m_of << " }: " << p << ";\n";
+            m_of << "\t\tRETURN\n";
+            m_of << "\t}\n";
+            m_of << "}\n";
+        }
         void emit_union(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Union& item) override
         {
             ::MIR::Function empty_fcn;
@@ -452,7 +489,7 @@ namespace
             }
             for(const auto& e : repr->fields)
             {
-                m_of << "\t" << "#" << (&e - repr->fields.data()) << ";\n";
+                m_of << "\t" << "#" << (&e - repr->fields.data()) << " =" << (&e - repr->fields.data()) << ";\n";
             }
             m_of << "}\n";
 
