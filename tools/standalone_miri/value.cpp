@@ -232,6 +232,8 @@ ValueRef ValueCommon::read_pointer_valref_mut(size_t rd_ofs, size_t size)
 
 void Allocation::resize(size_t new_size)
 {
+    if( this->is_freed )
+        LOG_ERROR("Use of freed memory " << this);
     //size_t old_size = this->size();
     //size_t extra_bytes = (new_size > old_size ? new_size - old_size : 0);
 
@@ -246,9 +248,9 @@ void Allocation::check_bytes_valid(size_t ofs, size_t size) const
     }
     for(size_t i = ofs; i < ofs + size; i++)
     {
-        if( !(this->mask[i/8] & (1 << i%8)) )
+        if( !(this->mask[i/8] & (1 << (i%8))) )
         {
-            LOG_ERROR("Invalid bytes in value");
+            LOG_ERROR("Invalid bytes in value - " << ofs << "+" << size << " - " << *this);
             throw "ERROR";
         }
     }
@@ -258,14 +260,18 @@ void Allocation::mark_bytes_valid(size_t ofs, size_t size)
     assert( ofs+size <= this->mask.size() * 8 );
     for(size_t i = ofs; i < ofs + size; i++)
     {
-        this->mask[i/8] |= (1 << i%8);
+        this->mask[i/8] |= (1 << (i%8));
     }
 }
 Value Allocation::read_value(size_t ofs, size_t size) const
 {
     Value rv;
+    TRACE_FUNCTION_R("Allocation::read_value " << this << " " << ofs << "+" << size, *this << " | " << rv);
+    if( this->is_freed )
+        LOG_ERROR("Use of freed memory " << this);
+    LOG_DEBUG(*this);
 
-    // TODO: Determine if this can become an inline allocation.
+    // Determine if this can become an inline allocation.
     bool has_reloc = false;
     for(const auto& r : this->relocations)
     {
@@ -292,14 +298,12 @@ Value Allocation::read_value(size_t ofs, size_t size) const
         for(size_t i = 0; i < size; i ++)
         {
             size_t j = ofs + i;
-            bool v = (this->mask[j/8] & (1 << j%8)) != 0;
+            const uint8_t test_mask = (1 << (j%8));
+            const uint8_t set_mask = (1 << (i%8));
+            bool v = (this->mask[j/8] & test_mask) != 0;
             if( v )
             {
-                rv.allocation.alloc().mask[i/8] |= (1 << i%8);
-            }
-            else
-            {
-                rv.allocation.alloc().mask[i/8] &= ~(1 << i%8);
+                rv.allocation.alloc().mask[i/8] |= set_mask;
             }
         }
     }
@@ -315,21 +319,23 @@ Value Allocation::read_value(size_t ofs, size_t size) const
         for(size_t i = 0; i < size; i ++)
         {
             size_t j = ofs + i;
-            bool v = (this->mask[j/8] & (1 << j%8)) != 0;
+            const uint8_t tst_mask = 1 << (j%8);
+            const uint8_t set_mask = 1 << (i%8);
+            bool v = (this->mask[j/8] & tst_mask) != 0;
             if( v )
             {
-                rv.direct_data.mask[i/8] |= (1 << i%8);
+                rv.direct_data.mask[i/8] |= set_mask;
             }
-            //else
-            //{
-            //    rv.direct_data.mask[i/8] &= ~(1 << i%8);
-            //}
         }
     }
     return rv;
 }
 void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
 {
+    if( this->is_freed )
+        LOG_ERROR("Use of freed memory " << this);
+
+    LOG_DEBUG("Allocation::read_bytes " << this << " " << ofs << "+" << count);
     if(count == 0)
         return ;
 
@@ -352,6 +358,11 @@ void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
 }
 void Allocation::write_value(size_t ofs, Value v)
 {
+    TRACE_FUNCTION_R("Allocation::write_value " << this << " " << ofs << "+" << v.size() << " " << v, *this);
+    if( this->is_freed )
+        LOG_ERROR("Use of freed memory " << this);
+    //if( this->is_read_only )
+    //    LOG_ERROR("Writing to read-only allocation " << this);
     if( v.allocation )
     {
         size_t  v_size = v.allocation.alloc().size();
@@ -416,8 +427,15 @@ void Allocation::write_value(size_t ofs, Value v)
 }
 void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 {
+    //LOG_DEBUG("Allocation::write_bytes " << this << " " << ofs << "+" << count);
+    if( this->is_freed )
+        LOG_ERROR("Use of freed memory " << this);
+    //if( this->is_read_only )
+    //    LOG_ERROR("Writing to read-only allocation " << this);
+
     if(count == 0)
         return ;
+    TRACE_FUNCTION_R("Allocation::write_bytes " << this << " " << ofs << "+" << count, *this);
     if(ofs >= this->size() ) {
         LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
@@ -459,7 +477,7 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
         if( i != 0 )
             os << " ";
 
-        if( x.mask[i/8] & (1 << i%8) )
+        if( x.mask[i/8] & (1 << (i%8)) )
         {
             os << ::std::setw(2) << ::std::setfill('0') << (int)x.data_ptr()[i];
         }

@@ -675,7 +675,7 @@ bool Parser::parse_one()
                     case '<':
                         if( t.strval[1] == '<' )
                             op = ::MIR::eBinOp::BIT_SHL;
-                        else if( lex.consume_if('=') )
+                        else if( t.strval[1] == '=' )
                             op = ::MIR::eBinOp::LE;
                         else
                             op = ::MIR::eBinOp::LT;

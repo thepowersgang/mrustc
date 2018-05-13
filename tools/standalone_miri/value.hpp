@@ -171,6 +171,7 @@ class Allocation:
     friend class AllocationPtr;
     size_t  refcount;
     // TODO: Read-only flag?
+    bool is_freed = false;
 public:
     static AllocationPtr new_alloc(size_t size);
 
@@ -189,10 +190,12 @@ public:
         }
         return AllocationPtr();
     }
-    //void mark_as_freed() {
-    //    for(auto& v : mask)
-    //        v = 0;
-    //}
+    void mark_as_freed() {
+        is_freed = true;
+        relocations.clear();
+        for(auto& v : mask)
+            v = 0;
+    }
 
     void resize(size_t new_size);
 

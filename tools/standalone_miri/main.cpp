@@ -314,8 +314,22 @@ struct Ops {
 namespace
 {
 
-    void drop_value(ModuleTree& modtree, ThreadState& thread, Value ptr, const ::HIR::TypeRef& ty)
+    void drop_value(ModuleTree& modtree, ThreadState& thread, Value ptr, const ::HIR::TypeRef& ty, bool is_shallow=false)
     {
+        if( is_shallow )
+        {
+            // HACK: Only works for Box<T> where the first pointer is the data pointer
+            auto box_ptr_vr = ptr.read_pointer_valref_mut(0, POINTER_SIZE);
+            auto ofs = box_ptr_vr.read_usize(0);
+            auto alloc = box_ptr_vr.get_relocation(0);
+            if( ofs != 0 || !alloc || !alloc.is_alloc() ) {
+                LOG_ERROR("Attempting to shallow drop with invalid pointer (no relocation or non-zero offset) - " << box_ptr_vr);
+            }
+            
+            LOG_DEBUG("drop_value SHALLOW deallocate " << alloc);
+            alloc.alloc().mark_as_freed();
+            return ;
+        }
         if( ty.wrappers.empty() )
         {
             if( ty.inner_type == RawType::Composite )
@@ -1479,7 +1493,8 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                     ptr_val.write_usize(0, ofs);
                     ptr_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
 
-                    drop_value(modtree, thread, ptr_val, ty);
+                    // TODO: Shallow drop
+                    drop_value(modtree, thread, ptr_val, ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW);
                     // TODO: Clear validity on the entire inner value.
                     //alloc.mark_as_freed();
                 }
@@ -1618,6 +1633,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
 
 extern "C" {
     long sysconf(int);
+    ssize_t write(int, const void*, size_t);
 }
 
 Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
@@ -1661,14 +1677,12 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         auto alloc_ptr = args.at(0).allocation.alloc().get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
         LOG_ASSERT(ptr_ofs == 0, "__rust_deallocate with offset pointer");
+        LOG_DEBUG("__rust_deallocate(ptr=" << alloc_ptr << ")");
 
         LOG_ASSERT(alloc_ptr, "__rust_deallocate with no backing allocation attached to pointer");
         LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_deallocate with no backing allocation attached to pointer");
         auto& alloc = alloc_ptr.alloc();
-        // TODO: Figure out how to prevent this ever being written again.
-        //alloc.mark_as_freed();
-        for(auto& v : alloc.mask)
-            v = 0;
+        alloc.mark_as_freed();
         // Just let it drop.
         return Value();
     }
@@ -1692,6 +1706,10 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
     else if( link_name == "__rust_start_panic" )
     {
         LOG_TODO("__rust_start_panic");
+    }
+    else if( link_name == "rust_begin_unwind" )
+    {
+        LOG_TODO("rust_begin_unwind");
     }
 #ifdef _WIN32
     // WinAPI functions used by libstd
@@ -1758,6 +1776,18 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
     }
 #else
     // POSIX
+    else if( link_name == "write" )
+    {
+        auto fd = args.at(0).read_i32(0);
+        auto count = args.at(2).read_isize(0);
+        const auto* buf = args.at(1).read_pointer_const(0, count);
+
+        ssize_t val = write(fd, buf, count);
+
+        auto rv = Value(::HIR::TypeRef(RawType::ISize));
+        rv.write_isize(0, val);
+        return rv;
+    }
     else if( link_name == "sysconf" )
     {
         auto name = args.at(0).read_i32(0);
@@ -1767,7 +1797,7 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         rv.write_usize(0, val);
         return rv;
     }
-    else if( link_name == "pthread_mutex_init" || link_name == "pthread_mutex_lock" || link_name == "pthread_mutex_unlock" )
+    else if( link_name == "pthread_mutex_init" || link_name == "pthread_mutex_lock" || link_name == "pthread_mutex_unlock" || link_name == "pthread_mutex_destroy" )
     {
         auto rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, 0);
@@ -1902,7 +1932,11 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
     TRACE_FUNCTION_R(name, rv);
     for(const auto& a : args)
         LOG_DEBUG("#" << (&a - args.data()) << ": " << a);
-    if( name == "atomic_store" )
+    if( name == "atomic_fence" || name == "atomic_fence_acq" )
+    {
+        return Value();
+    }
+    else if( name == "atomic_store" )
     {
         auto& ptr_val = args.at(0);
         auto& data_val = args.at(1);
@@ -1953,6 +1987,27 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         auto val_l = PrimitiveValueVirt::from_value(ty_T, rv);
         const auto val_r = PrimitiveValueVirt::from_value(ty_T, v);
         val_l.get().add( val_r.get() );
+
+        val_l.get().write_to_value( ptr_alloc.alloc(), ptr_ofs );
+    }
+    else if( name == "atomic_xsub" || name == "atomic_xsub_relaxed" || name == "atomic_xsub_rel" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        auto ptr_ofs = args.at(0).read_usize(0);
+        auto ptr_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        auto v = args.at(1).read_value(0, ty_T.get_size());
+
+        // TODO: Atomic lock the allocation.
+        if( !ptr_alloc || !ptr_alloc.is_alloc() ) {
+            LOG_ERROR("atomic pointer has no allocation");
+        }
+
+        // - Result is the original value
+        rv = ptr_alloc.alloc().read_value(ptr_ofs, ty_T.get_size());
+
+        auto val_l = PrimitiveValueVirt::from_value(ty_T, rv);
+        const auto val_r = PrimitiveValueVirt::from_value(ty_T, v);
+        val_l.get().subtract( val_r.get() );
 
         val_l.get().write_to_value( ptr_alloc.alloc(), ptr_ofs );
     }
@@ -2086,13 +2141,14 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
             case TypeWrapper::Ty::Pointer:
                 break;
             case TypeWrapper::Ty::Borrow:
+                // TODO: Only &move has a destructor
                 break;
             }
             LOG_ASSERT(ty.wrappers[0].type == TypeWrapper::Ty::Slice, "drop_in_place should only exist for slices - " << ty);
             const auto& ity = ty.get_inner();
             size_t item_size = ity.get_size();
 
-            auto ptr = val.read_value(0, POINTER_SIZE);;
+            auto ptr = val.read_value(0, POINTER_SIZE);
             for(size_t i = 0; i < item_count; i ++)
             {
                 drop_value(modtree, thread, ptr, ity);
@@ -2101,7 +2157,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         }
         else
         {
-            LOG_TODO("drop_in_place - " << ty);
+            drop_value(modtree, thread, val, ty);
         }
     }
     // ----------------------------------------------------------------
