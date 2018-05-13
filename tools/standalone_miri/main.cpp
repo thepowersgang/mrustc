@@ -42,7 +42,7 @@ struct ThreadState
 unsigned ThreadState::s_next_tls_key = 1;
 
 Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::std::vector<Value> args);
-Value MIRI_Invoke_Extern(ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
+Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args);
 Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread,  const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args);
 
 int main(int argc, const char* argv[])
@@ -98,7 +98,7 @@ public:
     virtual bool multiply(const PrimitiveValue& v) = 0;
     virtual bool divide(const PrimitiveValue& v) = 0;
     virtual bool modulo(const PrimitiveValue& v) = 0;
-    virtual void write_to_value(Value& tgt, size_t ofs) const = 0;
+    virtual void write_to_value(ValueCommon& tgt, size_t ofs) const = 0;
 
     template<typename T>
     const T& check(const char* opname) const
@@ -157,14 +157,14 @@ struct PrimitiveUInt:
 struct PrimitiveU64: public PrimitiveUInt<uint64_t>
 {
     PrimitiveU64(uint64_t v): PrimitiveUInt(v) {}
-    void write_to_value(Value& tgt, size_t ofs) const override {
+    void write_to_value(ValueCommon& tgt, size_t ofs) const override {
         tgt.write_u64(ofs, this->v);
     }
 };
 struct PrimitiveU32: public PrimitiveUInt<uint32_t>
 {
     PrimitiveU32(uint32_t v): PrimitiveUInt(v) {}
-    void write_to_value(Value& tgt, size_t ofs) const override {
+    void write_to_value(ValueCommon& tgt, size_t ofs) const override {
         tgt.write_u32(ofs, this->v);
     }
 };
@@ -218,14 +218,14 @@ struct PrimitiveSInt:
 struct PrimitiveI64: public PrimitiveSInt<int64_t>
 {
     PrimitiveI64(int64_t v): PrimitiveSInt(v) {}
-    void write_to_value(Value& tgt, size_t ofs) const override {
+    void write_to_value(ValueCommon& tgt, size_t ofs) const override {
         tgt.write_i64(ofs, this->v);
     }
 };
 struct PrimitiveI32: public PrimitiveSInt<int32_t>
 {
     PrimitiveI32(int32_t v): PrimitiveSInt(v) {}
-    void write_to_value(Value& tgt, size_t ofs) const override {
+    void write_to_value(ValueCommon& tgt, size_t ofs) const override {
         tgt.write_i32(ofs, this->v);
     }
 };
@@ -340,22 +340,29 @@ namespace
                 // No destructor
             }
         }
-        else if( ty.wrappers[0].type == TypeWrapper::Ty::Borrow )
-        {
-            if( ty.wrappers[0].size == static_cast<size_t>(::HIR::BorrowType::Move) )
-            {
-                LOG_TODO("Drop - " << ty << " - dereference and go to inner");
-                // TODO: Clear validity on the entire inner value.
-            }
-            else
-            {
-                // No destructor
-            }
-        }
-        // TODO: Arrays
         else
         {
-            LOG_TODO("Drop - " << ty << " - array?");
+            switch( ty.wrappers[0].type )
+            {
+            case TypeWrapper::Ty::Borrow:
+                if( ty.wrappers[0].size == static_cast<size_t>(::HIR::BorrowType::Move) )
+                {
+                    LOG_TODO("Drop - " << ty << " - dereference and go to inner");
+                    // TODO: Clear validity on the entire inner value.
+                }
+                else
+                {
+                    // No destructor
+                }
+                break;
+            case TypeWrapper::Ty::Pointer:
+                // No destructor
+                break;
+            // TODO: Arrays
+            default:
+                LOG_TODO("Drop - " << ty << " - array?");
+                break;
+            }
         }
     }
 
@@ -396,7 +403,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
     if( fcn.external.link_name != "" )
     {
         // External function!
-        ret = MIRI_Invoke_Extern(thread, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        ret = MIRI_Invoke_Extern(modtree, thread, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
         LOG_DEBUG(path << " = " << ret);
         return ret;
     }
@@ -1515,7 +1522,7 @@ Value MIRI_Invoke(ModuleTree& modtree, ThreadState& thread, ::HIR::Path path, ::
                     // Save as the default, error for multiple defaults
                     if( default_target != SIZE_MAX )
                     {
-                        LOG_FATAL("Two variants with no tag in Switch");
+                        LOG_FATAL("Two variants with no tag in Switch - " << ty);
                     }
                     default_target = i;
                 }
@@ -1602,7 +1609,7 @@ extern "C" {
     long sysconf(int);
 }
 
-Value MIRI_Invoke_Extern(ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
+Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
     if( link_name == "__rust_allocate" )
     {
@@ -1653,6 +1660,27 @@ Value MIRI_Invoke_Extern(ThreadState& thread, const ::std::string& link_name, co
             v = 0;
         // Just let it drop.
         return Value();
+    }
+    else if( link_name == "__rust_maybe_catch_panic" )
+    {
+        auto fcn_path = args.at(0).get_relocation(0).fcn();
+        auto arg = args.at(1);
+        auto data_ptr = args.at(2).read_pointer_valref_mut(0, POINTER_SIZE);
+        auto vtable_ptr = args.at(3).read_pointer_valref_mut(0, POINTER_SIZE);
+        
+        ::std::vector<Value>    sub_args;
+        sub_args.push_back( ::std::move(arg) );
+
+        // TODO: Catch the panic out of this.
+        MIRI_Invoke(modtree, thread, fcn_path, ::std::move(sub_args));
+
+        auto rv = Value(::HIR::TypeRef(RawType::U32));
+        rv.write_u32(0,0);
+        return rv;
+    }
+    else if( link_name == "__rust_start_panic" )
+    {
+        LOG_TODO("__rust_start_panic");
     }
 #ifdef _WIN32
     // WinAPI functions used by libstd
@@ -1870,11 +1898,32 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         LOG_TRACE("Deref " << ptr_val.allocation.alloc());
         auto alloc = ptr_val.allocation.alloc().get_relocation(0);
         LOG_ASSERT(alloc, "Deref of a value with no relocation");
+        // TODO: Atomic lock the allocation.
 
-        // TODO: Atomic side of this?
         size_t ofs = ptr_val.read_usize(0);
         const auto& ty = ty_params.tys.at(0);
         rv = alloc.alloc().read_value(ofs, ty.get_size());
+    }
+    else if( name == "atomic_xadd" || name == "atomic_xadd_relaxed" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+        auto ptr_ofs = args.at(0).read_usize(0);
+        auto ptr_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        auto v = args.at(1).read_value(0, ty_T.get_size());
+
+        // TODO: Atomic lock the allocation.
+        if( !ptr_alloc || !ptr_alloc.is_alloc() ) {
+            LOG_ERROR("atomic pointer has no allocation");
+        }
+
+        // - Result is the original value
+        rv = ptr_alloc.alloc().read_value(ptr_ofs, ty_T.get_size());
+
+        auto val_l = PrimitiveValueVirt::from_value(ty_T, rv);
+        const auto val_r = PrimitiveValueVirt::from_value(ty_T, v);
+        val_l.get().add( val_r.get() );
+
+        val_l.get().write_to_value( ptr_alloc.alloc(), ptr_ofs );
     }
     else if( name == "atomic_cxchg" )
     {
@@ -2112,6 +2161,7 @@ Value MIRI_Invoke_Intrinsic(ModuleTree& modtree, ThreadState& thread, const ::st
         {
         case AllocationPtr::Ty::Allocation: {
             auto v = src_alloc.alloc().read_value(src_ofs, byte_count);
+            LOG_DEBUG("v = " << v);
             dst_alloc.alloc().write_value(dst_ofs, ::std::move(v));
             } break;
         case AllocationPtr::Ty::StdString:
