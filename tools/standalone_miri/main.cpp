@@ -1857,6 +1857,28 @@ Value MIRI_Invoke_Extern(ModuleTree& modtree, ThreadState& thread, const ::std::
         }
         return rv;
     }
+    else if( link_name == "memrchr" )
+    {
+        auto ptr_alloc = args.at(0).get_relocation(0);
+        auto c = args.at(1).read_i32(0);
+        auto n = args.at(2).read_usize(0);
+        const void* ptr = args.at(0).read_pointer_const(0, n);
+
+        const void* ret = memrchr(ptr, c, n);
+
+        auto rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.create_allocation();
+        if( ret )
+        {
+            rv.write_usize(0, args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) ));
+            rv.allocation.alloc().relocations.push_back({ 0, ptr_alloc });
+        }
+        else
+        {
+            rv.write_usize(0, 0);
+        }
+        return rv;
+    }
     // Allocators!
     else
     {

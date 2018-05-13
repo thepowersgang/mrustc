@@ -169,6 +169,9 @@ void* ValueCommon::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& 
         if( ofs != 0 ) {
             LOG_FATAL("Read a non-zero offset with no relocation");
         }
+        if( req_valid > 0 ) {
+            LOG_ERROR("Attempting to read a null pointer");
+        }
         out_is_mut = false;
         out_size = 0;
         return nullptr;
