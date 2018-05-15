@@ -153,7 +153,7 @@ public:
     virtual bool multiply(const PrimitiveValue& v) = 0;
     virtual bool divide(const PrimitiveValue& v) = 0;
     virtual bool modulo(const PrimitiveValue& v) = 0;
-    virtual void write_to_value(ValueCommon& tgt, size_t ofs) const = 0;
+    virtual void write_to_value(ValueCommonWrite& tgt, size_t ofs) const = 0;
 
     template<typename T>
     const T& check(const char* opname) const
@@ -212,14 +212,14 @@ struct PrimitiveUInt:
 struct PrimitiveU64: public PrimitiveUInt<uint64_t>
 {
     PrimitiveU64(uint64_t v): PrimitiveUInt(v) {}
-    void write_to_value(ValueCommon& tgt, size_t ofs) const override {
+    void write_to_value(ValueCommonWrite& tgt, size_t ofs) const override {
         tgt.write_u64(ofs, this->v);
     }
 };
 struct PrimitiveU32: public PrimitiveUInt<uint32_t>
 {
     PrimitiveU32(uint32_t v): PrimitiveUInt(v) {}
-    void write_to_value(ValueCommon& tgt, size_t ofs) const override {
+    void write_to_value(ValueCommonWrite& tgt, size_t ofs) const override {
         tgt.write_u32(ofs, this->v);
     }
 };
@@ -273,14 +273,14 @@ struct PrimitiveSInt:
 struct PrimitiveI64: public PrimitiveSInt<int64_t>
 {
     PrimitiveI64(int64_t v): PrimitiveSInt(v) {}
-    void write_to_value(ValueCommon& tgt, size_t ofs) const override {
+    void write_to_value(ValueCommonWrite& tgt, size_t ofs) const override {
         tgt.write_i64(ofs, this->v);
     }
 };
 struct PrimitiveI32: public PrimitiveSInt<int32_t>
 {
     PrimitiveI32(int32_t v): PrimitiveSInt(v) {}
-    void write_to_value(ValueCommon& tgt, size_t ofs) const override {
+    void write_to_value(ValueCommonWrite& tgt, size_t ofs) const override {
         tgt.write_i32(ofs, this->v);
     }
 };
@@ -458,11 +458,8 @@ struct MirHelpers
             size_t ofs = val.read_usize(0);
 
             // There MUST be a relocation at this point with a valid allocation.
-            auto& val_alloc = val.m_alloc ? val.m_alloc : val.m_value->allocation;
-            LOG_ASSERT(val_alloc, "Deref of a value with no allocation (hence no relocations)");
-            LOG_ASSERT(val_alloc.is_alloc(), "Deref of a value with a non-data allocation");
-            LOG_TRACE("Deref " << val_alloc.alloc() << " + " << ofs << " to give value of type " << ty);
-            auto alloc = val_alloc.alloc().get_relocation(val.m_offset);
+            auto alloc = val.get_relocation(val.m_offset);
+            LOG_TRACE("Deref " << alloc << " + " << ofs << " to give value of type " << ty);
             // NOTE: No alloc can happen when dereferencing a zero-sized pointer
             if( alloc.is_alloc() )
             {
@@ -595,7 +592,7 @@ struct MirHelpers
             Value val = Value(ty);
             val.write_usize(0, 0);
             val.write_usize(POINTER_SIZE, ce.size());
-            val.allocation.alloc().relocations.push_back(Relocation { 0, AllocationPtr::new_string(&ce) });
+            val.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_string(&ce) });
             LOG_DEBUG(c << " = " << val);
             //return Value::new_dataptr(ce.data());
             return val;
@@ -612,7 +609,7 @@ struct MirHelpers
                 ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
                 Value val = Value(ty);
                 val.write_usize(0, 0);
-                val.allocation.alloc().relocations.push_back(Relocation { 0, s->val.allocation });
+                val.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_alloc(s->val.allocation) });
                 return val;
             }
             LOG_ERROR("Constant::ItemAddr - " << ce << " - not found");
@@ -676,6 +673,7 @@ InterpreterThread::~InterpreterThread()
 }
 void InterpreterThread::start(const ::HIR::Path& p, ::std::vector<Value> args)
 {
+    assert( this->m_stack.empty() );
     Value   v;
     if( this->call_path(v, p, ::std::move(args)) )
     {
@@ -720,7 +718,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     {
                         src_base_value.m_value->create_allocation();
                     }
-                    alloc = AllocationPtr(src_base_value.m_value->allocation);
+                    alloc = RelocationPtr::new_alloc( src_base_value.m_value->allocation );
                 }
                 if( alloc.is_alloc() )
                     LOG_DEBUG("- alloc=" << alloc << " (" << alloc.alloc() << ")");
@@ -740,7 +738,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
                 }
                 // - Add the relocation after writing the value (writing clears the relocations)
-                new_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
+                new_val.allocation->relocations.push_back(Relocation { 0, ::std::move(alloc) });
                 } break;
             TU_ARM(se.src, Cast, re) {
                 // Determine the type of cast, is it a reinterpret or is it a value transform?
@@ -1073,8 +1071,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
 
                     const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
                     const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
-                    auto reloc_l = alloc_l ? v_l.get_relocation(v_l.m_offset) : AllocationPtr();
-                    auto reloc_r = alloc_r ? v_r.get_relocation(v_r.m_offset) : AllocationPtr();
+                    auto reloc_l = alloc_l ? v_l.get_relocation(v_l.m_offset) : RelocationPtr();
+                    auto reloc_r = alloc_r ? v_r.get_relocation(v_r.m_offset) : RelocationPtr();
 
                     if( reloc_l != reloc_r )
                     {
@@ -1109,8 +1107,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         // Compare fat metadata.
                         if( res == 0 && v_l.m_size > POINTER_SIZE )
                         {
-                            reloc_l = alloc_l ? alloc_l.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
-                            reloc_r = alloc_r ? alloc_r.alloc().get_relocation(POINTER_SIZE) : AllocationPtr();
+                            reloc_l = v_l.get_relocation(POINTER_SIZE);
+                            reloc_r = v_r.get_relocation(POINTER_SIZE);
 
                             if( res == 0 && reloc_l != reloc_r )
                             {
@@ -1427,7 +1425,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     {
                         v.m_value->create_allocation();
                     }
-                    alloc = AllocationPtr(v.m_value->allocation);
+                    alloc = RelocationPtr::new_alloc( v.m_value->allocation );
                 }
                 size_t ofs = v.m_offset;
                 assert(ty.get_meta_type() == RawType::Unreachable);
@@ -1436,7 +1434,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
 
                 auto ptr_val = Value(ptr_ty);
                 ptr_val.write_usize(0, ofs);
-                ptr_val.allocation.alloc().relocations.push_back(Relocation { 0, ::std::move(alloc) });
+                ptr_val.allocation->relocations.push_back(Relocation { 0, ::std::move(alloc) });
 
                 if( !drop_value(ptr_val, ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW) )
                 {
@@ -1549,7 +1547,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             }
             else
             {
-                AllocationPtr   fcn_alloc_ptr;
+                RelocationPtr   fcn_alloc_ptr;
                 const ::HIR::Path* fcn_p;
                 if( te.fcn.is_Path() ) {
                     fcn_p = &te.fcn.as_Path();
@@ -1561,12 +1559,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     // TODO: Assert type
                     // TODO: Assert offset/content.
                     assert(v.read_usize(0) == 0);
-                    auto& alloc_ptr = v.m_alloc ? v.m_alloc : v.m_value->allocation;
-                    LOG_ASSERT(alloc_ptr, "Calling value that can't be a pointer (no allocation)");
-                    fcn_alloc_ptr = alloc_ptr.alloc().get_relocation(v.m_offset);
+                    fcn_alloc_ptr = v.get_relocation(v.m_offset);
                     if( !fcn_alloc_ptr )
                         LOG_FATAL("Calling value with no relocation - " << v);
-                    LOG_ASSERT(fcn_alloc_ptr.get_ty() == AllocationPtr::Ty::Function, "Calling value that isn't a function pointer");
+                    LOG_ASSERT(fcn_alloc_ptr.get_ty() == RelocationPtr::Ty::Function, "Calling value that isn't a function pointer");
                     fcn_p = &fcn_alloc_ptr.fcn();
                 }
 
@@ -1717,12 +1713,12 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         rv = Value(rty);
         rv.write_usize(0, 0);
         // TODO: Use the alignment when making an allocation?
-        rv.allocation.alloc().relocations.push_back({ 0,  Allocation::new_alloc(size) });
+        rv.allocation->relocations.push_back({ 0,  RelocationPtr::new_alloc(Allocation::new_alloc(size)) });
     }
     else if( link_name == "__rust_reallocate" )
     {
         LOG_ASSERT(args.at(0).allocation, "__rust_reallocate first argument doesn't have an allocation");
-        auto alloc_ptr = args.at(0).allocation.alloc().get_relocation(0);
+        auto alloc_ptr = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
         LOG_ASSERT(ptr_ofs == 0, "__rust_reallocate with offset pointer");
         auto oldsize = args.at(1).read_usize(0);
@@ -1742,7 +1738,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "__rust_deallocate" )
     {
         LOG_ASSERT(args.at(0).allocation, "__rust_deallocate first argument doesn't have an allocation");
-        auto alloc_ptr = args.at(0).allocation.alloc().get_relocation(0);
+        auto alloc_ptr = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
         LOG_ASSERT(ptr_ofs == 0, "__rust_deallocate with offset pointer");
         LOG_DEBUG("__rust_deallocate(ptr=" << alloc_ptr << ")");
@@ -1948,8 +1944,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     // - `void *memchr(const void *s, int c, size_t n);`
     else if( link_name == "memchr" )
     {
-        LOG_ASSERT(args.at(0).allocation.is_alloc(), "");
-        auto ptr_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        auto ptr_alloc = args.at(0).get_relocation(0);
         auto c = args.at(1).read_i32(0);
         auto n = args.at(2).read_usize(0);
         const void* ptr = args.at(0).read_pointer_const(0, n);
@@ -1961,7 +1956,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         if( ret )
         {
             rv.write_usize(0, args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) ));
-            rv.allocation.alloc().relocations.push_back({ 0, ptr_alloc });
+            rv.allocation->relocations.push_back({ 0, ptr_alloc });
         }
         else
         {
@@ -1982,7 +1977,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         if( ret )
         {
             rv.write_usize(0, args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) ));
-            rv.allocation.alloc().relocations.push_back({ 0, ptr_alloc });
+            rv.allocation->relocations.push_back({ 0, ptr_alloc });
         }
         else
         {
@@ -2027,9 +2022,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
 
         // There MUST be a relocation at this point with a valid allocation.
-        LOG_ASSERT(ptr_val.allocation, "Deref of a value with no allocation (hence no relocations)");
-        LOG_TRACE("Deref " << ptr_val.allocation.alloc());
-        auto alloc = ptr_val.allocation.alloc().get_relocation(0);
+        auto alloc = ptr_val.get_relocation(0);
         LOG_ASSERT(alloc, "Deref of a value with no relocation");
 
         // TODO: Atomic side of this?
@@ -2042,9 +2035,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         LOG_ASSERT(ptr_val.size() == POINTER_SIZE, "atomic_store of a value that isn't a pointer-sized value");
 
         // There MUST be a relocation at this point with a valid allocation.
-        LOG_ASSERT(ptr_val.allocation, "Deref of a value with no allocation (hence no relocations)");
-        LOG_TRACE("Deref " << ptr_val.allocation.alloc());
-        auto alloc = ptr_val.allocation.alloc().get_relocation(0);
+        auto alloc = ptr_val.get_relocation(0);
         LOG_ASSERT(alloc, "Deref of a value with no relocation");
         // TODO: Atomic lock the allocation.
 
@@ -2057,7 +2048,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     {
         const auto& ty_T = ty_params.tys.at(0);
         auto ptr_ofs = args.at(0).read_usize(0);
-        auto ptr_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        auto ptr_alloc = args.at(0).get_relocation(0);
         auto v = args.at(1).read_value(0, ty_T.get_size());
 
         // TODO: Atomic lock the allocation.
@@ -2078,7 +2069,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     {
         const auto& ty_T = ty_params.tys.at(0);
         auto ptr_ofs = args.at(0).read_usize(0);
-        auto ptr_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        auto ptr_alloc = args.at(0).get_relocation(0);
         auto v = args.at(1).read_value(0, ty_T.get_size());
 
         // TODO: Atomic lock the allocation.
@@ -2146,7 +2137,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         rv = ::std::move(args.at(0));
         rv.write_usize(0, new_ofs);
         if( ptr_alloc ) {
-            rv.allocation.alloc().relocations.push_back({ 0, ptr_alloc });
+            rv.allocation->relocations.push_back({ 0, ptr_alloc });
         }
     }
     // effectively ptr::write
@@ -2160,12 +2151,13 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         // There MUST be a relocation at this point with a valid allocation.
         LOG_ASSERT(ptr_val.allocation, "Deref of a value with no allocation (hence no relocations)");
         LOG_TRACE("Deref " << ptr_val << " and store " << data_val);
-        auto alloc = ptr_val.allocation.alloc().get_relocation(0);
-        LOG_ASSERT(alloc, "Deref of a value with no relocation");
+
+        auto ptr_alloc = ptr_val.get_relocation(0);
+        LOG_ASSERT(ptr_alloc, "Deref of a value with no relocation");
 
         size_t ofs = ptr_val.read_usize(0);
-        alloc.alloc().write_value(ofs, ::std::move(data_val));
-        LOG_DEBUG(alloc.alloc());
+        ptr_alloc.alloc().write_value(ofs, ::std::move(data_val));
+        LOG_DEBUG(ptr_alloc.alloc());
     }
     else if( name == "uninit" )
     {
@@ -2330,9 +2322,9 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     else if( name == "copy_nonoverlapping" )
     {
         auto src_ofs = args.at(0).read_usize(0);
-        auto src_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        auto src_alloc = args.at(0).get_relocation(0);
         auto dst_ofs = args.at(1).read_usize(0);
-        auto dst_alloc = args.at(1).allocation.alloc().get_relocation(0);
+        auto dst_alloc = args.at(1).get_relocation(0);
         size_t ent_count = args.at(2).read_usize(0);
         size_t ent_size = ty_params.tys.at(0).get_size();
         auto byte_count = ent_count * ent_size;
@@ -2343,21 +2335,21 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
 
         switch(src_alloc.get_ty())
         {
-        case AllocationPtr::Ty::Allocation: {
+        case RelocationPtr::Ty::Allocation: {
             auto v = src_alloc.alloc().read_value(src_ofs, byte_count);
             LOG_DEBUG("v = " << v);
             dst_alloc.alloc().write_value(dst_ofs, ::std::move(v));
             } break;
-        case AllocationPtr::Ty::StdString:
+        case RelocationPtr::Ty::StdString:
             LOG_ASSERT(src_ofs <= src_alloc.str().size(), "");
             LOG_ASSERT(byte_count <= src_alloc.str().size(), "");
             LOG_ASSERT(src_ofs + byte_count <= src_alloc.str().size(), "");
             dst_alloc.alloc().write_bytes(dst_ofs, src_alloc.str().data() + src_ofs, byte_count);
             break;
-        case AllocationPtr::Ty::Function:
+        case RelocationPtr::Ty::Function:
             LOG_FATAL("Attempt to copy* a function");
             break;
-        case AllocationPtr::Ty::FfiPointer:
+        case RelocationPtr::Ty::FfiPointer:
             LOG_BUG("Trying to copy from a FFI pointer");
             break;
         }

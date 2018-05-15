@@ -151,13 +151,13 @@ bool Parser::parse_one()
 
                     auto a = Allocation::new_alloc( reloc_str.size() );
                     //a.alloc().set_tag();
-                    a.alloc().write_bytes(0, reloc_str.data(), reloc_str.size());
-                    s.val.allocation.alloc().relocations.push_back({ ofs, ::std::move(a) });
+                    a->write_bytes(0, reloc_str.data(), reloc_str.size());
+                    s.val.allocation->relocations.push_back({ ofs, RelocationPtr::new_alloc(::std::move(a)) });
                 }
                 else if( lex.next() == "::" || lex.next() == "<" )
                 {
                     auto reloc_path = parse_path();
-                    s.val.allocation.alloc().relocations.push_back({ ofs, AllocationPtr::new_fcn(reloc_path) });
+                    s.val.allocation->relocations.push_back({ ofs, RelocationPtr::new_fcn(reloc_path) });
                 }
                 else
                 {

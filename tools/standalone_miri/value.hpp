@@ -23,12 +23,46 @@ struct FFIPointer
     void*   ptr_value;
 };
 
-class AllocationPtr
+class AllocationHandle
 {
     friend class Allocation;
-    void* m_ptr;
-public:
+    friend class RelocationPtr;
+    Allocation* m_ptr;
 
+private:
+    AllocationHandle(Allocation* p):
+        m_ptr(p)
+    {
+    }
+public:
+    AllocationHandle(): m_ptr(nullptr) {}
+    AllocationHandle(AllocationHandle&& x): m_ptr(x.m_ptr) {
+        x.m_ptr = nullptr;
+    }
+    AllocationHandle(const AllocationHandle& x);
+    ~AllocationHandle();
+
+    AllocationHandle& operator=(const AllocationHandle& x) = delete;
+    AllocationHandle& operator=(AllocationHandle&& x) {
+        this->~AllocationHandle();
+        this->m_ptr = x.m_ptr;
+        x.m_ptr = nullptr;
+        return *this;
+    }
+
+    operator bool() const { return m_ptr != 0; }
+    const Allocation& operator*() const { assert(m_ptr); return *m_ptr; }
+          Allocation& operator*()       { assert(m_ptr); return *m_ptr; }
+    const Allocation* operator->() const { assert(m_ptr); return m_ptr; }
+          Allocation* operator->()       { assert(m_ptr); return m_ptr; }
+};
+
+// TODO: Split into RelocationPtr and AllocationHandle
+class RelocationPtr
+{
+    void* m_ptr;
+
+public:
     enum class Ty
     {
         Allocation,
@@ -37,26 +71,20 @@ public:
         FfiPointer,
     };
 
-private:
-    AllocationPtr(Allocation* p):
-        m_ptr(p)
-    {
-    }
-public:
-    AllocationPtr(): m_ptr(nullptr) {}
-    AllocationPtr(AllocationPtr&& x): m_ptr(x.m_ptr) {
+    RelocationPtr(): m_ptr(nullptr) {}
+    RelocationPtr(RelocationPtr&& x): m_ptr(x.m_ptr) {
         x.m_ptr = nullptr;
     }
-    AllocationPtr(const AllocationPtr& x);
-    ~AllocationPtr();
-    static AllocationPtr new_fcn(::HIR::Path p);
-    //static AllocationPtr new_rawdata(const void* buf, size_t len);
-    static AllocationPtr new_string(const ::std::string* s);    // NOTE: The string must have a stable pointer
-    static AllocationPtr new_ffi(FFIPointer info);
+    RelocationPtr(const RelocationPtr& x);
+    ~RelocationPtr();
+    static RelocationPtr new_alloc(AllocationHandle h);
+    static RelocationPtr new_fcn(::HIR::Path p);
+    static RelocationPtr new_string(const ::std::string* s);    // NOTE: The string must have a stable pointer
+    static RelocationPtr new_ffi(FFIPointer info);
 
-    AllocationPtr& operator=(const AllocationPtr& x) = delete;
-    AllocationPtr& operator=(AllocationPtr&& x) {
-        this->~AllocationPtr();
+    RelocationPtr& operator=(const RelocationPtr& x) = delete;
+    RelocationPtr& operator=(RelocationPtr&& x) {
+        this->~RelocationPtr();
         this->m_ptr = x.m_ptr;
         x.m_ptr = nullptr;
         return *this;
@@ -98,7 +126,7 @@ public:
         return static_cast<Ty>( reinterpret_cast<uintptr_t>(m_ptr) & 3 );
     }
 
-    friend ::std::ostream& operator<<(::std::ostream& os, const AllocationPtr& x);
+    friend ::std::ostream& operator<<(::std::ostream& os, const RelocationPtr& x);
 private:
     void* get_ptr() const {
         return reinterpret_cast<void*>( reinterpret_cast<uintptr_t>(m_ptr) & ~3 );
@@ -109,27 +137,14 @@ struct Relocation
     // Offset within parent allocation where this relocation is performed.
     // TODO: Size?
     size_t  slot_ofs;
-    AllocationPtr   backing_alloc;
+    RelocationPtr   backing_alloc;
 };
 
-struct ValueCommon
+// TODO: Split write and read
+struct ValueCommonRead
 {
-    virtual AllocationPtr get_relocation(size_t ofs) const = 0;
+    virtual RelocationPtr get_relocation(size_t ofs) const = 0;
     virtual void read_bytes(size_t ofs, void* dst, size_t count) const = 0;
-    virtual void write_bytes(size_t ofs, const void* src, size_t count) = 0;
-
-    void write_u8 (size_t ofs, uint8_t  v) { write_bytes(ofs, &v, 1); }
-    void write_u16(size_t ofs, uint16_t v) { write_bytes(ofs, &v, 2); }
-    void write_u32(size_t ofs, uint32_t v) { write_bytes(ofs, &v, 4); }
-    void write_u64(size_t ofs, uint64_t v) { write_bytes(ofs, &v, 8); }
-    void write_i8 (size_t ofs, int8_t  v) { write_u8 (ofs, static_cast<uint8_t >(v)); }
-    void write_i16(size_t ofs, int16_t v) { write_u16(ofs, static_cast<uint16_t>(v)); }
-    void write_i32(size_t ofs, int32_t v) { write_u32(ofs, static_cast<uint32_t>(v)); }
-    void write_i64(size_t ofs, int64_t v) { write_u64(ofs, static_cast<uint64_t>(v)); }
-    void write_f32(size_t ofs, float  v) { write_bytes(ofs, &v, 4); }
-    void write_f64(size_t ofs, double v) { write_bytes(ofs, &v, 8); }
-    void write_usize(size_t ofs, uint64_t v);
-    void write_isize(size_t ofs, int64_t v) { write_usize(ofs, static_cast<uint64_t>(v)); }
 
     uint8_t read_u8(size_t ofs) const { uint8_t rv; read_bytes(ofs, &rv, 1); return rv; }
     uint16_t read_u16(size_t ofs) const { uint16_t rv; read_bytes(ofs, &rv, 2); return rv; }
@@ -164,16 +179,34 @@ struct ValueCommon
     /// Read a pointer and return a ValueRef to it (mutable data)
     ValueRef read_pointer_valref_mut(size_t rd_ofs, size_t size);
 };
+struct ValueCommonWrite:
+    public ValueCommonRead
+{
+    virtual void write_bytes(size_t ofs, const void* src, size_t count) = 0;
+
+    void write_u8 (size_t ofs, uint8_t  v) { write_bytes(ofs, &v, 1); }
+    void write_u16(size_t ofs, uint16_t v) { write_bytes(ofs, &v, 2); }
+    void write_u32(size_t ofs, uint32_t v) { write_bytes(ofs, &v, 4); }
+    void write_u64(size_t ofs, uint64_t v) { write_bytes(ofs, &v, 8); }
+    void write_i8 (size_t ofs, int8_t  v) { write_u8 (ofs, static_cast<uint8_t >(v)); }
+    void write_i16(size_t ofs, int16_t v) { write_u16(ofs, static_cast<uint16_t>(v)); }
+    void write_i32(size_t ofs, int32_t v) { write_u32(ofs, static_cast<uint32_t>(v)); }
+    void write_i64(size_t ofs, int64_t v) { write_u64(ofs, static_cast<uint64_t>(v)); }
+    void write_f32(size_t ofs, float  v) { write_bytes(ofs, &v, 4); }
+    void write_f64(size_t ofs, double v) { write_bytes(ofs, &v, 8); }
+    void write_usize(size_t ofs, uint64_t v);
+    void write_isize(size_t ofs, int64_t v) { write_usize(ofs, static_cast<uint64_t>(v)); }
+};
 
 class Allocation:
-    public ValueCommon
+    public ValueCommonWrite
 {
-    friend class AllocationPtr;
+    friend class AllocationHandle;
     size_t  refcount;
     // TODO: Read-only flag?
     bool is_freed = false;
 public:
-    static AllocationPtr new_alloc(size_t size);
+    static AllocationHandle new_alloc(size_t size);
 
     const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->data.data()); }
           uint8_t* data_ptr()       { return reinterpret_cast<      uint8_t*>(this->data.data()); }
@@ -183,12 +216,12 @@ public:
     ::std::vector<uint8_t> mask;
     ::std::vector<Relocation>   relocations;
 
-    AllocationPtr get_relocation(size_t ofs) const override {
+    RelocationPtr get_relocation(size_t ofs) const override {
         for(const auto& r : relocations) {
             if(r.slot_ofs == ofs)
                 return r.backing_alloc;
         }
-        return AllocationPtr();
+        return RelocationPtr();
     }
     void mark_as_freed() {
         is_freed = true;
@@ -211,10 +244,10 @@ public:
 extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 
 struct Value:
-    public ValueCommon
+    public ValueCommonWrite
 {
     // If NULL, data is direct
-    AllocationPtr   allocation;
+    AllocationHandle    allocation;
     struct {
         uint8_t data[2*sizeof(size_t)-3];   // 16-3 = 13, fits in 16 bits of mask
         uint8_t mask[2];
@@ -228,15 +261,15 @@ struct Value:
     static Value new_ffiptr(FFIPointer ffi);
 
     void create_allocation();
-    size_t size() const { return allocation ? allocation.alloc().size() : direct_data.size; }
-    const uint8_t* data_ptr() const { return allocation ? allocation.alloc().data_ptr() : direct_data.data; }
-          uint8_t* data_ptr()       { return allocation ? allocation.alloc().data_ptr() : direct_data.data; }
+    size_t size() const { return allocation ? allocation->size() : direct_data.size; }
+    const uint8_t* data_ptr() const { return allocation ? allocation->data_ptr() : direct_data.data; }
+          uint8_t* data_ptr()       { return allocation ? allocation->data_ptr() : direct_data.data; }
 
-    AllocationPtr get_relocation(size_t ofs) const override {
-        if( this->allocation && this->allocation.is_alloc() )
-            return this->allocation.alloc().get_relocation(ofs);
+    RelocationPtr get_relocation(size_t ofs) const override {
+        if( this->allocation && this->allocation )
+            return this->allocation->get_relocation(ofs);
         else
-            return AllocationPtr();
+            return RelocationPtr();
     }
 
     void check_bytes_valid(size_t ofs, size_t size) const;
@@ -251,17 +284,17 @@ struct Value:
 extern ::std::ostream& operator<<(::std::ostream& os, const Value& v);
 
 // A read-only reference to a value (to write, you have to go through it)
-struct ValueRef
-    //:public ValueCommon
+struct ValueRef:
+    public ValueCommonRead
 {
-    // Either an AllocationPtr, or a Value pointer
-    AllocationPtr   m_alloc;
+    // Either an AllocationHandle, or a Value pointer
+    RelocationPtr   m_alloc;
     Value*  m_value;
     size_t  m_offset;   // Offset within the value
     size_t  m_size; // Size in bytes of the referenced value
     ::std::shared_ptr<Value>    m_metadata;
 
-    ValueRef(AllocationPtr ptr, size_t ofs, size_t size):
+    ValueRef(RelocationPtr ptr, size_t ofs, size_t size):
         m_alloc(ptr),
         m_value(nullptr),
         m_offset(ofs),
@@ -271,12 +304,12 @@ struct ValueRef
         {
             switch(m_alloc.get_ty())
             {
-            case AllocationPtr::Ty::Allocation:
+            case RelocationPtr::Ty::Allocation:
                 assert(ofs < m_alloc.alloc().size());
                 assert(size <= m_alloc.alloc().size());
                 assert(ofs+size <= m_alloc.alloc().size());
                 break;
-            case AllocationPtr::Ty::StdString:
+            case RelocationPtr::Ty::StdString:
                 assert(ofs < m_alloc.str().size());
                 assert(size <= m_alloc.str().size());
                 assert(ofs+size <= m_alloc.str().size());
@@ -297,24 +330,21 @@ struct ValueRef
     {
     }
 
-    AllocationPtr get_relocation(size_t ofs) const {
+    RelocationPtr get_relocation(size_t ofs) const override {
         if(m_alloc)
         {
             if( m_alloc.is_alloc() )
                 return m_alloc.alloc().get_relocation(ofs);
             else
-                return AllocationPtr();
+                return RelocationPtr();
         }
-        else if( m_value && m_value->allocation )
+        else if( m_value )
         {
-            if( m_value->allocation.is_alloc() )
-                return m_value->allocation.alloc().get_relocation(ofs);
-            else
-                return AllocationPtr();
+            return m_value->get_relocation(ofs);
         }
         else
         {
-            return AllocationPtr();
+            return RelocationPtr();
         }
     }
     Value read_value(size_t ofs, size_t size) const;
@@ -322,10 +352,10 @@ struct ValueRef
         if( m_alloc ) {
             switch(m_alloc.get_ty())
             {
-            case AllocationPtr::Ty::Allocation:
+            case RelocationPtr::Ty::Allocation:
                 return m_alloc.alloc().data_ptr() + m_offset;
                 break;
-            case AllocationPtr::Ty::StdString:
+            case RelocationPtr::Ty::StdString:
                 return reinterpret_cast<const uint8_t*>(m_alloc.str().data() + m_offset);
             default:
                 throw "TODO";
@@ -347,10 +377,10 @@ struct ValueRef
         if( m_alloc ) {
             switch(m_alloc.get_ty())
             {
-            case AllocationPtr::Ty::Allocation:
+            case RelocationPtr::Ty::Allocation:
                 m_alloc.alloc().read_bytes(m_offset + ofs, dst, size);
                 break;
-            case AllocationPtr::Ty::StdString:
+            case RelocationPtr::Ty::StdString:
                 assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
                 ::std::memcpy(dst, m_alloc.str().data() + m_offset + ofs, size);
                 break;
@@ -372,10 +402,10 @@ struct ValueRef
         if( m_alloc ) {
             switch(m_alloc.get_ty())
             {
-            case AllocationPtr::Ty::Allocation:
+            case RelocationPtr::Ty::Allocation:
                 m_alloc.alloc().check_bytes_valid(m_offset + ofs, size);
                 break;
-            case AllocationPtr::Ty::StdString:
+            case RelocationPtr::Ty::StdString:
                 assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
                 break;
             default:
@@ -389,19 +419,5 @@ struct ValueRef
     }
 
     bool compare(const void* other, size_t other_len) const;
-
-    // TODO: Figure out how to make this use `ValueCommon` when it can't write.
-    uint8_t read_u8(size_t ofs) const { uint8_t rv; read_bytes(ofs, &rv, 1); return rv; }
-    uint16_t read_u16(size_t ofs) const { uint16_t rv; read_bytes(ofs, &rv, 2); return rv; }
-    uint32_t read_u32(size_t ofs) const { uint32_t rv; read_bytes(ofs, &rv, 4); return rv; }
-    uint64_t read_u64(size_t ofs) const { uint64_t rv; read_bytes(ofs, &rv, 8); return rv; }
-    int8_t read_i8(size_t ofs) const { return static_cast<int8_t>(read_u8(ofs)); }
-    int16_t read_i16(size_t ofs) const { return static_cast<int16_t>(read_u16(ofs)); }
-    int32_t read_i32(size_t ofs) const { return static_cast<int32_t>(read_u32(ofs)); }
-    int64_t read_i64(size_t ofs) const { return static_cast<int64_t>(read_u64(ofs)); }
-    float  read_f32(size_t ofs) const { float rv; read_bytes(ofs, &rv, 4); return rv; }
-    double read_f64(size_t ofs) const { double rv; read_bytes(ofs, &rv, 8); return rv; }
-    uint64_t read_usize(size_t ofs) const;
-    int64_t read_isize(size_t ofs) const { return static_cast<int64_t>(read_usize(ofs)); }
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v);
