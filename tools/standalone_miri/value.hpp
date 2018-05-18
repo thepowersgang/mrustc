@@ -21,6 +21,7 @@ struct FFIPointer
 {
     const char* source_function;
     void*   ptr_value;
+    size_t  size;
 };
 
 class AllocationHandle

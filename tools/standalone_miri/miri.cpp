@@ -1682,7 +1682,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto ret = GetModuleHandleW(static_cast<LPCWSTR>(arg0));
         if(ret)
         {
-            rv = Value::new_ffiptr(FFIPointer { "GetModuleHandleW", ret });
+            rv = Value::new_ffiptr(FFIPointer { "GetModuleHandleW", ret, 0 });
         }
         else
         {
@@ -1709,7 +1709,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         if( ret )
         {
-            rv = Value::new_ffiptr(FFIPointer { "GetProcAddress", ret });
+            rv = Value::new_ffiptr(FFIPointer { "GetProcAddress", ret, 0 });
         }
         else
         {
