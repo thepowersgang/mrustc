@@ -18,7 +18,58 @@
 
 size_t HIR::TypeRef::get_size(size_t ofs) const
 {
-    if( this->wrappers.size() <= ofs )
+    if( const auto* w = this->get_wrapper(ofs) )
+    {
+        switch(w->type)
+        {
+        case TypeWrapper::Ty::Array:
+            return this->get_size(1) * w->size;
+        case TypeWrapper::Ty::Borrow:
+        case TypeWrapper::Ty::Pointer:
+            if( const auto* next_w = this->get_wrapper(ofs+1) )
+            {
+                if( next_w->type == TypeWrapper::Ty::Slice )
+                {
+                    return POINTER_SIZE*2;
+                }
+                else
+                {
+                    return POINTER_SIZE;
+                }
+            }
+            else
+            {
+                // Need to look up the metadata type for the actual type
+                if( this->inner_type == RawType::Composite )
+                {
+                    if( this->composite_type->dst_meta == RawType::Unreachable )
+                    {
+                        return POINTER_SIZE;
+                    }
+                    // Special case: extern types (which appear when a type is only ever used by pointer)
+                    if( this->composite_type->dst_meta == RawType::Unit )
+                    {
+                        return POINTER_SIZE;
+                    }
+
+                    // TODO: Ideally, this inner type wouldn't be unsized itself... but checking that would be interesting.
+                    return POINTER_SIZE + this->composite_type->dst_meta.get_size();
+                }
+                else if( this->inner_type == RawType::Str )
+                    return POINTER_SIZE*2;
+                else if( this->inner_type == RawType::TraitObject )
+                    return POINTER_SIZE*2;
+                else
+                {
+                    return POINTER_SIZE;
+                }
+            }
+        case TypeWrapper::Ty::Slice:
+            LOG_BUG("Getting size of a slice - " << *this);
+        }
+        throw "";
+    }
+    else
     {
         switch(this->inner_type)
         {
@@ -59,56 +110,15 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
         }
         throw "";
     }
-
-    switch(this->wrappers[ofs].type)
-    {
-    case TypeWrapper::Ty::Array:
-        return this->get_size(1) * this->wrappers[ofs].size;
-    case TypeWrapper::Ty::Borrow:
-    case TypeWrapper::Ty::Pointer:
-        if( this->wrappers.size() == ofs+1 )
-        {
-            // Need to look up the metadata type for the actual type
-            if( this->inner_type == RawType::Composite )
-            {
-                if( this->composite_type->dst_meta == RawType::Unreachable )
-                {
-                    return POINTER_SIZE;
-                }
-                // Special case: extern types (which appear when a type is only ever used by pointer)
-                if( this->composite_type->dst_meta == RawType::Unit )
-                {
-                    return POINTER_SIZE;
-                }
-
-                // TODO: Ideally, this inner type wouldn't be unsized itself... but checking that would be interesting.
-                return POINTER_SIZE + this->composite_type->dst_meta.get_size();
-            }
-            else if( this->inner_type == RawType::Str )
-                return POINTER_SIZE*2;
-            else if( this->inner_type == RawType::TraitObject )
-                return POINTER_SIZE*2;
-            else
-            {
-                return POINTER_SIZE;
-            }
-        }
-        else if( this->wrappers[ofs+1].type == TypeWrapper::Ty::Slice )
-        {
-            return POINTER_SIZE*2;
-        }
-        else
-        {
-            return POINTER_SIZE;
-        }
-    case TypeWrapper::Ty::Slice:
-        LOG_BUG("Getting size of a slice - " << *this);
-    }
-    throw "";
 }
 bool HIR::TypeRef::has_slice_meta(size_t& out_inner_size) const
 {
-    if( this->wrappers.size() == 0 )
+    if( const auto* w = this->get_wrapper() )
+    {
+        out_inner_size = this->get_size(1);
+        return (w->type == TypeWrapper::Ty::Slice);
+    }
+    else
     {
         if(this->inner_type == RawType::Composite)
         {
@@ -122,22 +132,20 @@ bool HIR::TypeRef::has_slice_meta(size_t& out_inner_size) const
             return (this->inner_type == RawType::Str);
         }
     }
-    else
-    {
-        out_inner_size = this->get_size(1);
-        return (this->wrappers[0].type == TypeWrapper::Ty::Slice);
-    }
 }
 
 HIR::TypeRef HIR::TypeRef::get_inner() const
 {
     if( this->wrappers.empty() )
     {
-        throw "ERROR";
+        LOG_ERROR("Getting inner of a non-wrapped type - " << *this);
     }
-    auto ity = *this;
-    ity.wrappers.erase(ity.wrappers.begin());
-    return ity;
+    else
+    {
+        auto ity = *this;
+        ity.wrappers.erase(ity.wrappers.begin());
+        return ity;
+    }
 }
 HIR::TypeRef HIR::TypeRef::wrap(TypeWrapper::Ty ty, size_t size)&&
 {
@@ -172,7 +180,18 @@ bool HIR::TypeRef::has_pointer() const
 }
 const HIR::TypeRef* HIR::TypeRef::get_unsized_type(size_t& running_inner_size) const
 {
-    if( this->wrappers.empty() )
+    if( const auto* w = this->get_wrapper() )
+    {
+        if( w->type == TypeWrapper::Ty::Slice )
+        {
+            return this;
+        }
+        else
+        {
+            return nullptr;
+        }
+    }
+    else
     {
         switch(this->inner_type)
         {
@@ -191,18 +210,21 @@ const HIR::TypeRef* HIR::TypeRef::get_unsized_type(size_t& running_inner_size) c
             return nullptr;
         }
     }
-    else if( this->wrappers[0].type == TypeWrapper::Ty::Slice )
-    {
-        return this;
-    }
-    else
-    {
-        return nullptr;
-    }
 }
 HIR::TypeRef HIR::TypeRef::get_meta_type() const
 {
-    if( this->wrappers.empty() )
+    if( const auto* w = this->get_wrapper() )
+    {
+        if( w->type == TypeWrapper::Ty::Slice )
+        {
+            return TypeRef(RawType::USize);
+        }
+        else
+        {
+            return TypeRef(RawType::Unreachable);
+        }
+    }
+    else
     {
         switch(this->inner_type)
         {
@@ -210,30 +232,38 @@ HIR::TypeRef HIR::TypeRef::get_meta_type() const
             if( this->composite_type->dst_meta == RawType::Unreachable )
                 return TypeRef(RawType::Unreachable);
             return this->composite_type->dst_meta;
-        case RawType::TraitObject: {
-            auto rv = ::HIR::TypeRef( this->composite_type );
-            rv.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, static_cast<size_t>(BorrowType::Shared) });
-            return rv;
-            }
+        case RawType::TraitObject:
+            return ::HIR::TypeRef(this->composite_type).wrap( TypeWrapper::Ty::Pointer, static_cast<size_t>(BorrowType::Shared) );
         case RawType::Str:
             return TypeRef(RawType::USize);
         default:
             return TypeRef(RawType::Unreachable);
         }
     }
-    else if( this->wrappers[0].type == TypeWrapper::Ty::Slice )
-    {
-        return TypeRef(RawType::USize);
-    }
-    else
-    {
-        return TypeRef(RawType::Unreachable);
-    }
 }
 
 HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
 {
-    if( this->wrappers.empty() )
+    if( const auto* w = this->get_wrapper() )
+    {
+        if( w->type == TypeWrapper::Ty::Slice )
+        {
+            // TODO
+            throw "TODO";
+        }
+        else if( w->type == TypeWrapper::Ty::Array )
+        {
+            LOG_ASSERT(idx < w->size, "Getting field on array with OOB index - " << idx << " >= " << w->size << " - " << *this);
+            auto ity = this->get_inner();
+            ofs = ity.get_size() * idx;
+            return ity;
+        }
+        else
+        {
+            throw "ERROR";
+        }
+    }
+    else
     {
         if( this->inner_type == RawType::Composite )
         {
@@ -246,21 +276,6 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
             ::std::cerr << *this << " doesn't have fields" << ::std::endl;
             throw "ERROR";
         }
-    }
-    else if( this->wrappers.front().type == TypeWrapper::Ty::Slice )
-    {
-        // TODO
-        throw "TODO";
-    }
-    else if( this->wrappers.front().type == TypeWrapper::Ty::Array )
-    {
-        auto ity = this->get_inner();
-        ofs = ity.get_size() * idx;
-        return ity;
-    }
-    else
-    {
-        throw "ERROR";
     }
 }
 size_t HIR::TypeRef::get_field_ofs(size_t base_idx, const ::std::vector<size_t>& other_idx,  TypeRef& ty) const
