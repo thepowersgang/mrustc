@@ -1,6 +1,10 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * main.cpp
+ * - Program entrypoint
+ */
 #include <iostream>
 #include "module_tree.hpp"
 #include "value.hpp"
@@ -17,8 +21,10 @@ struct ProgramOptions
     //::std::string   archname;
     //TODO: Loadable FFI descriptions
     //::std::vector<const char*>  ffi_api_files;
-    //TODO: Logfile
-    //::std::string   logfile;
+
+    // Output logfile
+    ::std::string   logfile;
+    // Arguments for the program
     ::std::vector<const char*>  args;
 
     int parse(int argc, const char* argv[]);
@@ -34,10 +40,17 @@ int main(int argc, const char* argv[])
         return 1;
     }
 
-    auto tree = ModuleTree {};
+    // Configure logging
+    if( opts.logfile != "" )
+    {
+        DebugSink::set_output_file(opts.logfile);
+    }
 
+    // Load HIR tree
+    auto tree = ModuleTree {};
     tree.load_file(opts.infile);
 
+    // Construct argc/argv values
     auto val_argc = Value( ::HIR::TypeRef{RawType::ISize} );
     ::HIR::TypeRef  argv_ty { RawType::I8 };
     argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
@@ -54,9 +67,11 @@ int main(int argc, const char* argv[])
         argv_alloc->write_usize((1 + i) * POINTER_SIZE, 0);
         argv_alloc->relocations.push_back({ (1 + i) * POINTER_SIZE, RelocationPtr::new_ffi({ "", (void*)(opts.args[0]), ::std::strlen(opts.args[0]) + 1 }) });
     }
+    //val_argv.write_ptr(0,  0, RelocationPtr::new_alloc(argv_alloc));
     val_argv.write_usize(0, 0);
     val_argv.allocation->relocations.push_back({ 0 * POINTER_SIZE, RelocationPtr::new_alloc(argv_alloc) });
 
+    // Catch various exceptions from the interpreter
     try
     {
         InterpreterThread   root_thread(tree);
@@ -70,16 +85,24 @@ int main(int argc, const char* argv[])
         {
         }
 
-        ::std::cout << rv << ::std::endl;
+        LOG_NOTICE("Return code: " << rv);
     }
     catch(const DebugExceptionTodo& /*e*/)
     {
         ::std::cerr << "TODO Hit" << ::std::endl;
+        if(opts.logfile != "")
+        {
+            ::std::cerr << "- See '" << opts.logfile << "' for details" << ::std::endl;
+        }
         return 1;
     }
     catch(const DebugExceptionError& /*e*/)
     {
         ::std::cerr << "Error encountered" << ::std::endl;
+        if(opts.logfile != "")
+        {
+            ::std::cerr << "- See '" << opts.logfile << "' for details" << ::std::endl;
+        }
         return 1;
     }
 
@@ -89,26 +112,31 @@ int main(int argc, const char* argv[])
 int ProgramOptions::parse(int argc, const char* argv[])
 {
     bool all_free = false;
+    // TODO: use getopt? POSIX only
     for(int argidx = 1; argidx < argc; argidx ++)
     {
         const char* arg = argv[argidx]; 
         if( arg[0] != '-' || all_free )
         {
-            // Free
+            // Free arguments
+            // - First is the input file
             if( this->infile == "" )
             {
                 this->infile = arg;
             }
             else
             {
+                // Any subsequent arguments are passed to the taget
                 this->args.push_back(arg);
             }
         }
         else if( arg[1] != '-' )
         {
-            // Short
+            // Short arguments
             if( arg[2] != '\0' ) {
                 // Error?
+                ::std::cerr << "Unexpected option " << arg << ::std::endl;
+                return 1;
             }
             switch(arg[1])
             {
@@ -116,8 +144,8 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 this->show_help(argv[0]);
                 exit(0);
             default:
-                // TODO: Error
-                break;
+                ::std::cerr << "Unexpected option -" << arg[1] << ::std::endl;
+                return 1;
             }
         }
         else if( arg[2] != '\0' )
@@ -127,10 +155,19 @@ int ProgramOptions::parse(int argc, const char* argv[])
                 this->show_help(argv[0]);
                 exit(0);
             }
+            else if( ::std::strcmp(arg, "--logfile") == 0 ) {
+                if( argidx + 1 == argc ) {
+                    ::std::cerr << "Option " << arg << " requires an argument" << ::std::endl;
+                    return 1;
+                }
+                const char* opt = argv[++argidx];
+                this->logfile = opt;
+            }
             //else if( ::std::strcmp(arg, "--api") == 0 ) {
             //}
             else {
-                // TODO: Error
+                ::std::cerr << "Unexpected option " << arg << ::std::endl;
+                return 1;
             }
         }
         else

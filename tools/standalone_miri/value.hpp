@@ -1,6 +1,10 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * value.hpp
+ * - Runtime values
+ */
 #pragma once
 
 #include <vector>
@@ -257,9 +261,12 @@ struct Value:
 
     Value();
     Value(::HIR::TypeRef ty);
+
     static Value with_size(size_t size, bool have_allocation);
     static Value new_fnptr(const ::HIR::Path& fn_path);
     static Value new_ffiptr(FFIPointer ffi);
+    //static Value new_usize(uint64_t v);
+    //static Value new_isize(int64_t v);
 
     void create_allocation();
     size_t size() const { return allocation ? allocation->size() : direct_data.size; }
@@ -281,6 +288,8 @@ struct Value:
 
     void write_value(size_t ofs, Value v);
     void write_bytes(size_t ofs, const void* src, size_t count) override;
+
+    //void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc);
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Value& v);
 

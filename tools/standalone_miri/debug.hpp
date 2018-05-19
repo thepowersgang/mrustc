@@ -1,10 +1,15 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * debug.hpp
+ * - Interpreter debug logging
+ */
 #pragma once
 
 #include <iostream>
 #include <functional>
+#include <memory>
 
 enum class DebugLevel {
     Trace,
@@ -19,6 +24,7 @@ enum class DebugLevel {
 class DebugSink
 {
     static unsigned s_indent;
+    static ::std::unique_ptr<std::ofstream> s_out_file;
     ::std::ostream& m_inner;
     DebugSink(::std::ostream& inner);
 public:
@@ -27,6 +33,7 @@ public:
     template<typename T>
     ::std::ostream& operator<<(const T& v) { return m_inner << v; }
 
+    static bool set_output_file(const ::std::string& s);
     static bool enabled(const char* fcn_name);
     static DebugSink get(const char* fcn_name, const char* file, unsigned line, DebugLevel lvl);
     // TODO: Add a way to insert an annotation before/after an abort/warning/... that indicates what input location caused it.
@@ -90,6 +97,7 @@ struct DebugExceptionError:
 #define TRACE_FUNCTION_R(entry, exit) auto ftg##__LINE__ = FunctionTrace_d(__FUNCTION__,__FILE__,__LINE__,[&](DebugSink& FunctionTrace_ss){FunctionTrace_ss << entry;}, [&](DebugSink& FunctionTrace_ss) {FunctionTrace_ss << exit;} )
 #define LOG_TRACE(strm) do { if(DebugSink::enabled(__FUNCTION__)) DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Trace) << strm; } while(0)
 #define LOG_DEBUG(strm) do { if(DebugSink::enabled(__FUNCTION__)) DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Debug) << strm; } while(0)
+#define LOG_NOTICE(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Notice) << strm; } while(0)
 #define LOG_ERROR(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Error) << strm; throw DebugExceptionError{}; } while(0)
 #define LOG_FATAL(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Fatal) << strm; exit(1); } while(0)
 #define LOG_TODO(strm) do { DebugSink::get(__FUNCTION__,__FILE__,__LINE__,DebugLevel::Bug) << "TODO: " << strm; throw DebugExceptionTodo{}; } while(0)

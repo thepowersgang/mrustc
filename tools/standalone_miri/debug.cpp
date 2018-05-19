@@ -1,6 +1,15 @@
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * debug.cpp
+ * - Interpreter debug logging
+ */
 #include "debug.hpp"
+#include <fstream>
 
 unsigned DebugSink::s_indent = 0;
+::std::unique_ptr<std::ofstream> DebugSink::s_out_file;
 
 DebugSink::DebugSink(::std::ostream& inner):
     m_inner(inner)
@@ -10,39 +19,44 @@ DebugSink::~DebugSink()
 {
     m_inner << "\n";
 }
+bool DebugSink::set_output_file(const ::std::string& s)
+{
+    s_out_file.reset(new ::std::ofstream(s));
+}
 bool DebugSink::enabled(const char* fcn_name)
 {
     return true;
 }
 DebugSink DebugSink::get(const char* fcn_name, const char* file, unsigned line, DebugLevel lvl)
 {
+    auto& sink = s_out_file ? *s_out_file : ::std::cout;
     for(size_t i = s_indent; i--;)
-        ::std::cout << " ";
+        sink << " ";
     switch(lvl)
     {
     case DebugLevel::Trace:
-        ::std::cout << "Trace: " << file << ":" << line << ": ";
+        sink << "Trace: " << file << ":" << line << ": ";
         break;
     case DebugLevel::Debug:
-        ::std::cout << "DEBUG: " << fcn_name << ": ";
+        sink << "DEBUG: " << fcn_name << ": ";
         break;
     case DebugLevel::Notice:
-        ::std::cout << "NOTE: ";
+        sink << "NOTE: ";
         break;
     case DebugLevel::Warn:
-        ::std::cout << "WARN: ";
+        sink << "WARN: ";
         break;
     case DebugLevel::Error:
-        ::std::cout << "ERROR: ";
+        sink << "ERROR: ";
         break;
     case DebugLevel::Fatal:
-        ::std::cout << "FATAL: ";
+        sink << "FATAL: ";
         break;
     case DebugLevel::Bug:
-        ::std::cout << "BUG: " << file << ":" << line << ": ";
+        sink << "BUG: " << file << ":" << line << ": ";
         break;
     }
-    return DebugSink(::std::cout);
+    return DebugSink(sink);
 }
 void DebugSink::inc_indent()
 {

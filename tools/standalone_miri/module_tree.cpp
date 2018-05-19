@@ -40,12 +40,11 @@ void ModuleTree::load_file(const ::std::string& path)
 {
     if( !loaded_files.insert(path).second )
     {
-        ::std::cout << "DEBUG: load_file(" << path << ") - Already loaded" << ::std::endl;
+        LOG_DEBUG("load_file(" << path << ") - Already loaded");
         return ;
     }
 
-    ::std::cout << "DEBUG: load_file(" << path << ")" << ::std::endl;
-    //TRACE_FUNCTION_F(path);
+    TRACE_FUNCTION_R(path, "");
     auto parse = Parser { *this, path };
 
     while(parse.parse_one())
@@ -56,7 +55,7 @@ void ModuleTree::load_file(const ::std::string& path)
 // Parse a single item from a .mir file
 bool Parser::parse_one()
 {
-    //::std::cout << "DEBUG: parse_one" << ::std::endl;
+    //TRACE_FUNCTION_F("");
     if( lex.next() == "" )  // EOF?
     {
         return false;
@@ -68,7 +67,7 @@ bool Parser::parse_one()
         lex.check(TokenClass::String);
         auto path = ::std::move(lex.next().strval);
         lex.consume();
-        //::std::cout << "DEBUG: parse_one - crate '" << path << "'" << ::std::endl;
+        //LOG_TRACE(lex << "crate '" << path << "'");
 
         lex.check_consume(';');
 
@@ -78,7 +77,7 @@ bool Parser::parse_one()
     else if( lex.consume_if("fn") )
     {
         auto p = parse_path();
-        //::std::cout << "DEBUG: parse_one - fn " << p << ::std::endl;
+        //LOG_TRACE(lex << "fn " << p);
 
         lex.check_consume('(');
         ::std::vector<::HIR::TypeRef>  arg_tys;
@@ -94,7 +93,7 @@ bool Parser::parse_one()
         {
             rv_ty = parse_type();
         }
-        
+
         if( lex.consume_if('=') )
         {
             auto link_name = ::std::move(lex.check_consume(TokenClass::String).strval);
@@ -102,7 +101,7 @@ bool Parser::parse_one()
             auto abi = ::std::move(lex.check_consume(TokenClass::String).strval);
             lex.check_consume(';');
 
-            LOG_DEBUG("fn " << p);
+            LOG_DEBUG(lex << "extern fn " << p);
             auto p2 = p;
             tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {link_name, abi}, {} }) );
         }
@@ -110,7 +109,7 @@ bool Parser::parse_one()
         {
             auto body = parse_body();
 
-            LOG_DEBUG("fn " << p);
+            LOG_DEBUG(lex << "fn " << p);
             auto p2 = p;
             tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {}, ::std::move(body) }) );
         }
@@ -118,7 +117,7 @@ bool Parser::parse_one()
     else if( lex.consume_if("static") )
     {
         auto p = parse_path();
-        //::std::cout << "DEBUG: parse_one - static " << p << ::std::endl;
+        //LOG_TRACE(lex << "static " << p);
         lex.check_consume(':');
         auto ty = parse_type();
         // TODO: externs?
@@ -152,12 +151,12 @@ bool Parser::parse_one()
                     auto a = Allocation::new_alloc( reloc_str.size() );
                     //a.alloc().set_tag();
                     a->write_bytes(0, reloc_str.data(), reloc_str.size());
-                    s.val.allocation->relocations.push_back({ ofs, RelocationPtr::new_alloc(::std::move(a)) });
+                    s.val.allocation->relocations.push_back({ ofs, /*size,*/ RelocationPtr::new_alloc(::std::move(a)) });
                 }
                 else if( lex.next() == "::" || lex.next() == "<" )
                 {
                     auto reloc_path = parse_path();
-                    s.val.allocation->relocations.push_back({ ofs, RelocationPtr::new_fcn(reloc_path) });
+                    s.val.allocation->relocations.push_back({ ofs, /*size,*/ RelocationPtr::new_fcn(reloc_path) });
                 }
                 else
                 {
@@ -172,13 +171,13 @@ bool Parser::parse_one()
         }
         lex.check_consume(';');
 
-        LOG_DEBUG("static " << p);
+        LOG_DEBUG(lex << "static " << p);
         tree.statics.insert(::std::make_pair( ::std::move(p), ::std::move(s) ));
     }
     else if( lex.consume_if("type") )
     {
         auto p = (lex.consume_if('(')) ? parse_tuple() : parse_genericpath();
-        //::std::cout << "DEBUG: parse_one - type " << p << ::std::endl;
+        //LOG_TRACE("type " << p);
 
         auto rv = DataType {};
         rv.my_path = p;
@@ -223,7 +222,7 @@ bool Parser::parse_one()
                 lex.check_consume('=');
                 auto ty = parse_type();
                 lex.check_consume(';');
-                //::std::cout << ofs << " " << ty << ::std::endl;
+                //LOG_DEBUG(ofs << " " << ty);
 
                 rv.fields.push_back(::std::make_pair(ofs, ::std::move(ty)));
             }
@@ -289,11 +288,10 @@ bool Parser::parse_one()
 
         if( rv.alignment == 0 && rv.fields.size() != 0 )
         {
-            ::std::cerr << lex << "Alignment of zero with fields is invalid, " << p << ::std::endl;
-            throw "ERROR";
+            LOG_ERROR(lex << "Alignment of zero with fields is invalid, " << p);
         }
 
-        LOG_DEBUG("type " << p);
+        LOG_DEBUG(lex << "type " << p);
         auto it = this->tree.data_types.find(p);
         if( it != this->tree.data_types.end() )
         {
@@ -303,10 +301,7 @@ bool Parser::parse_one()
             }
             else
             {
-                //::std::cerr << lex << "Duplicate definition of " << p << ::std::endl;
-
-                // Not really an error, can happen when loading crates
-                //throw "ERROR";
+                //LOG_ERROR(lex << "Duplicate definition of " << p);
             }
         }
         else
@@ -316,7 +311,7 @@ bool Parser::parse_one()
     }
     else
     {
-        ::std::cerr << lex << "Unexpected token at root - " << lex.next() << ::std::endl;
+        LOG_ERROR(lex << "Unexpected token at root - " << lex.next());
 
         // Unknown item type
         throw "ERROR";
@@ -360,8 +355,7 @@ bool Parser::parse_one()
                         lv = ::MIR::LValue::make_Argument({ idx });
                     }
                     catch(const ::std::exception& e) {
-                        ::std::cerr << lex << "Invalid argument name - " << name << " - " << e.what() << ::std::endl;
-                        throw "ERROR";
+                        LOG_ERROR(lex << "Invalid argument name - " << name << " - " << e.what());
                     }
                 }
                 // Hard-coded "RETURN" lvalue
@@ -372,8 +366,7 @@ bool Parser::parse_one()
                 else {
                     auto it = ::std::find(var_names.begin(), var_names.end(), name);
                     if( it == var_names.end() ) {
-                        ::std::cerr << lex << "Cannot find variable named '" << name << "'" << ::std::endl;
-                        throw "ERROR";
+                        LOG_ERROR(lex << "Cannot find variable named '" << name << "'");
                     }
                     lv = ::MIR::LValue::make_Local(static_cast<unsigned>(it - var_names.begin()));
                 }
@@ -384,8 +377,7 @@ bool Parser::parse_one()
                 lv = ::MIR::LValue( ::std::move(path) );
             }
             else {
-                ::std::cerr << lex << "Unexpected token in LValue - " << lex.next() << ::std::endl;
-                throw "ERROR";
+                LOG_ERROR(lex << "Unexpected token in LValue - " << lex.next());
             }
             for(;;)
             {
@@ -455,8 +447,7 @@ bool Parser::parse_one()
                 }
                 else
                 {
-                    ::std::cerr << p.lex << "Expected an integer or float, got " << p.lex.next() << ::std::endl;
-                    throw "ERROR";
+                    LOG_ERROR(p.lex << "Expected an integer or float, got " << p.lex.next());
                 }
             }
             else if( p.lex.consume_if("true") ) {
@@ -471,8 +462,7 @@ bool Parser::parse_one()
                 return ::MIR::Constant::make_ItemAddr({ ::std::move(path) });
             }
             else {
-                ::std::cerr << p.lex << "BUG? " << p.lex.next() << ::std::endl;
-                throw "ERROR";
+                LOG_BUG(p.lex << "BUG? " << p.lex.next());
             }
         }
 
@@ -653,8 +643,7 @@ bool Parser::parse_one()
                         op = ::MIR::eUniOp::NEG;
                     }
                     else {
-                        ::std::cerr << lex << "Unexpected token in uniop - " << lex.next() << ::std::endl;
-                        throw "ERROR";
+                        LOG_ERROR(lex << "Unexpected token in uniop - " << lex.next());
                     }
 
                     auto lv = H::parse_lvalue(*this, var_names);
@@ -701,8 +690,7 @@ bool Parser::parse_one()
                         lex.check_consume('=');
                         break;
                     default:
-                        ::std::cerr << lex << "Unexpected token " << t << " in BINOP" << ::std::endl;
-                        throw "ERROR";
+                        LOG_ERROR(lex << "Unexpected token " << t << " in BINOP");
                     }
                     auto lv2 = H::parse_param(*this, var_names);
 
@@ -723,8 +711,7 @@ bool Parser::parse_one()
                     src_rval = ::MIR::RValue::make_DstMeta({ ::std::move(lv) });
                 }
                 else {
-                    ::std::cerr << lex << "Unexpected token in RValue - " << lex.next() << ::std::endl;
-                    throw "ERROR";
+                    LOG_ERROR(lex << "Unexpected token in RValue - " << lex.next());
                 }
 
                 stmts.push_back(::MIR::Statement::make_Assign({ ::std::move(dst_val), ::std::move(src_rval) }));
@@ -735,8 +722,7 @@ bool Parser::parse_one()
                 auto name = ::std::move(lex.consume().strval);
                 auto df_it = ::std::find(drop_flag_names.begin(), drop_flag_names.end(), name);
                 if( df_it == drop_flag_names.end() ) {
-                    ::std::cerr << lex << "Unable to find drop flag '" << name << "'" << ::std::endl;
-                    throw "ERROR";
+                    LOG_ERROR(lex << "Unable to find drop flag '" << name << "'");
                 }
                 auto df_idx = static_cast<unsigned>( df_it - drop_flag_names.begin() );
                 lex.check_consume('=');
@@ -754,8 +740,7 @@ bool Parser::parse_one()
                     auto name = ::std::move(lex.consume().strval);
                     df_it = ::std::find(drop_flag_names.begin(), drop_flag_names.end(), name);
                     if( df_it == drop_flag_names.end() ) {
-                        ::std::cerr << lex << "Unable to find drop flag '" << name << "'" << ::std::endl;
-                        throw "ERROR";
+                        LOG_ERROR(lex << "Unable to find drop flag '" << name << "'");
                     }
                     auto other_idx = static_cast<unsigned>( df_it - drop_flag_names.begin() );
 
@@ -777,8 +762,7 @@ bool Parser::parse_one()
                     auto name = ::std::move(lex.consume().strval);
                     auto df_it = ::std::find(drop_flag_names.begin(), drop_flag_names.end(), name);
                     if( df_it == drop_flag_names.end() ) {
-                        ::std::cerr << lex << "Unable to find drop flag '" << name << "'" << ::std::endl;
-                        throw "ERROR";
+                        LOG_ERROR(lex << "Unable to find drop flag '" << name << "'");
                     }
                     flag_idx = static_cast<unsigned>( df_it - drop_flag_names.begin() );
                 }
@@ -842,7 +826,7 @@ bool Parser::parse_one()
                 break;
             }
             lex.check_consume(';');
-            //::std::cout << stmts.back() << ::std::endl;
+            //LOG_TRACE(stmts.back());
         }
 
         lex.check(TokenClass::Ident);
@@ -928,8 +912,7 @@ bool Parser::parse_one()
                 vals = ::MIR::SwitchValues::make_String(::std::move(values));
             }
             else {
-                ::std::cerr << lex << "Unexpected token for SWITCHVALUE value - " << lex.next() << ::std::endl;
-                throw "ERROR";
+                LOG_ERROR(lex << "Unexpected token for SWITCHVALUE value - " << lex.next());
             }
             lex.check_consume('_');
             lex.check_consume('=');
@@ -976,8 +959,7 @@ bool Parser::parse_one()
         }
         else
         {
-            ::std::cerr << lex << "Unexpected token at terminator - " << lex.next() << ::std::endl;
-            throw "ERROR";
+            LOG_ERROR(lex << "Unexpected token at terminator - " << lex.next());
         }
 
         lex.check_consume('}');
@@ -1068,7 +1050,7 @@ bool Parser::parse_one()
 }
 RawType Parser::parse_core_type()
 {
-    //::std::cout << lex.next() << ::std::endl;
+    //LOG_TRACE(lex.next());
     lex.check(TokenClass::Ident);
     auto tok = lex.consume();
     // Primitive type.
@@ -1124,8 +1106,7 @@ RawType Parser::parse_core_type()
         return RawType::Str;
     }
     else {
-        ::std::cerr << lex << "Unknown core type " << tok << "'" << ::std::endl;
-        throw "ERROR";
+        LOG_ERROR(lex << "Unknown core type " << tok << "'");
     }
 }
 ::HIR::TypeRef Parser::parse_type()
@@ -1285,8 +1266,7 @@ RawType Parser::parse_core_type()
     }
     else
     {
-        ::std::cerr << lex << "Unexpected token in type - " << lex.next() << ::std::endl;
-        throw "ERROR";
+        LOG_ERROR(lex << "Unexpected token in type - " << lex.next());
     }
 }
 const DataType* Parser::get_composite(::HIR::GenericPath gp)
@@ -1312,8 +1292,7 @@ const Function& ModuleTree::get_function(const ::HIR::Path& p) const
     auto it = functions.find(p);
     if(it == functions.end())
     {
-        ::std::cerr << "Unable to find function " << p << " for invoke" << ::std::endl;
-        throw "";
+        LOG_ERROR("Unable to find function " << p << " for invoke");
     }
     return it->second;
 }
@@ -1331,8 +1310,7 @@ Static& ModuleTree::get_static(const ::HIR::Path& p)
     auto it = statics.find(p);
     if(it == statics.end())
     {
-        ::std::cerr << "Unable to find static " << p << " for invoke" << ::std::endl;
-        throw "";
+        LOG_ERROR("Unable to find static " << p << " for invoke");
     }
     return it->second;
 }

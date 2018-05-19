@@ -1,6 +1,10 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * value.cpp
+ * - Runtime values
+ */
 #include "value.hpp"
 #include "hir_sim.hpp"
 #include "module_tree.hpp"

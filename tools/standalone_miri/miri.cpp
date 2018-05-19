@@ -1,6 +1,10 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * miri.cpp
+ * - Interpreter core
+ */
 #include <iostream>
 #include "module_tree.hpp"
 #include "value.hpp"
