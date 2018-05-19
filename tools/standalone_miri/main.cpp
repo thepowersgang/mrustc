@@ -62,9 +62,7 @@ int main(int argc, const char* argv[])
     
     // Construct argc/argv values
     auto val_argc = Value::new_isize(1 + opts.args.size());
-    ::HIR::TypeRef  argv_ty { RawType::I8 };
-    argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
-    argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
+    auto argv_ty = ::HIR::TypeRef(RawType::I8).wrap(TypeWrapper::Ty::Pointer, 0 ).wrap(TypeWrapper::Ty::Pointer, 0);
     auto val_argv = Value::new_pointer(argv_ty, 0, RelocationPtr::new_alloc(argv_alloc));
 
     // Catch various exceptions from the interpreter

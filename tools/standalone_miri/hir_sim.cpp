@@ -1,7 +1,12 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * value.cpp
+ * - Copy of the various HIR types from the compiler
+ */
 #include <iostream>
+#include <algorithm>
 
 #include "hir_sim.hpp"
 #include "module_tree.hpp"
@@ -140,7 +145,32 @@ HIR::TypeRef HIR::TypeRef::wrap(TypeWrapper::Ty ty, size_t size)&&
     rv.wrappers.insert(rv.wrappers.begin(), { ty, size });
     return rv;
 }
-const HIR::TypeRef* HIR::TypeRef::get_usized_type(size_t& running_inner_size) const
+bool HIR::TypeRef::has_pointer() const
+{
+    // If ALL of the (potentially non) wrappers are Array, look deeper
+    // - Don't need to worry about unsized types here
+    if( ::std::all_of(this->wrappers.begin(), this->wrappers.end(), [](const auto& x){ return x.type == TypeWrapper::Ty::Array; }) )
+    {
+        // TODO: Function pointers should be _pointers_
+        if( this->inner_type == RawType::Function )
+        {
+            return true;
+        }
+        // Check the inner type
+        if( this->inner_type == RawType::Composite )
+        {
+            // Still not sure, check the inner for any pointers.
+            for(const auto& fld : this->composite_type->fields)
+            {
+                if( fld.second.has_pointer() )
+                    return true;
+            }
+        }
+        return false;
+    }
+    return true;
+}
+const HIR::TypeRef* HIR::TypeRef::get_unsized_type(size_t& running_inner_size) const
 {
     if( this->wrappers.empty() )
     {
@@ -153,7 +183,7 @@ const HIR::TypeRef* HIR::TypeRef::get_usized_type(size_t& running_inner_size) co
                 return nullptr;
             running_inner_size = this->composite_type->fields.back().first;
             size_t tmp;
-            return this->composite_type->fields.back().second.get_usized_type(tmp);
+            return this->composite_type->fields.back().second.get_unsized_type(tmp);
         case RawType::TraitObject:
         case RawType::Str:
             return this;

@@ -175,7 +175,7 @@ public:
 
     static PrimitiveValueVirt from_value(const ::HIR::TypeRef& t, const ValueRef& v) {
         PrimitiveValueVirt  rv;
-        LOG_ASSERT(t.wrappers.empty(), "PrimitiveValueVirt::from_value: " << t);
+        LOG_ASSERT(t.get_wrapper() == nullptr, "PrimitiveValueVirt::from_value: " << t);
         switch(t.inner_type)
         {
         case RawType::U32:
@@ -281,15 +281,18 @@ struct MirHelpers
             auto idx = get_value_ref(*e.idx).read_usize(0);
             ::HIR::TypeRef  array_ty;
             auto base_val = get_value_and_type(*e.val, array_ty);
-            if( array_ty.wrappers.empty() )
+            const auto* wrapper = array_ty.get_wrapper();
+            if( !wrapper )
+            {
                 LOG_ERROR("Indexing non-array/slice - " << array_ty);
-            if( array_ty.wrappers.front().type == TypeWrapper::Ty::Array )
+            }
+            else if( wrapper->type == TypeWrapper::Ty::Array )
             {
                 ty = array_ty.get_inner();
                 base_val.m_offset += ty.get_size() * idx;
                 return base_val;
             }
-            else if( array_ty.wrappers.front().type == TypeWrapper::Ty::Slice )
+            else if( wrapper->type == TypeWrapper::Ty::Slice )
             {
                 LOG_TODO("Slice index");
             }
@@ -354,7 +357,7 @@ struct MirHelpers
 
                 size_t    slice_inner_size;
                 if( ty.has_slice_meta(slice_inner_size) ) {
-                    size = (ty.wrappers.empty() ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
+                    size = (ty.get_wrapper() == nullptr ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
                 }
                 //else if( ty == RawType::TraitObject) {
                 //    // NOTE: Getting the size from the allocation is semi-valid, as you can't sub-slice trait objects
@@ -468,8 +471,7 @@ struct MirHelpers
             LOG_TODO("Constant::Bytes");
             } break;
         TU_ARM(c, StaticString, ce) {
-            ty = ::HIR::TypeRef(RawType::Str);
-            ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
+            ty = ::HIR::TypeRef(RawType::Str).wrap(TypeWrapper::Ty::Borrow, 0);
             Value val = Value(ty);
             val.write_ptr(0,  0, RelocationPtr::new_string(&ce));
             val.write_usize(POINTER_SIZE, ce.size());
@@ -484,8 +486,7 @@ struct MirHelpers
                 return Value::new_fnptr(ce);
             }
             if( const auto* s = this->thread.m_modtree.get_static_opt(ce) ) {
-                ty = s->ty;
-                ty.wrappers.insert(ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
+                ty = s->ty.wrapped(TypeWrapper::Ty::Borrow, 0);
                 return Value::new_pointer(ty, 0, RelocationPtr::new_alloc(s->val.allocation));
             }
             LOG_ERROR("Constant::ItemAddr - " << ce << " - not found");
@@ -602,10 +603,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_DEBUG("- alloc=" << alloc);
                 size_t ofs = src_base_value.m_offset;
                 const auto meta = src_ty.get_meta_type();
-                src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
+                auto dst_ty = src_ty.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type));
 
                 // Create the pointer
-                new_val = Value(src_ty);
+                new_val = Value(dst_ty);
                 new_val.write_ptr(0, ofs, ::std::move(alloc));
                 // - Add metadata if required
                 if( meta != RawType::Unreachable )
@@ -626,26 +627,24 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     // No-op cast
                     new_val = src_value.read_value(0, re.type.get_size());
                 }
-                else if( !re.type.wrappers.empty() )
+                else if( const auto* dst_w = re.type.get_wrapper() )
                 {
                     // Destination can only be a raw pointer
-                    if( re.type.wrappers.at(0).type != TypeWrapper::Ty::Pointer ) {
-                        throw "ERROR";
+                    if( dst_w->type != TypeWrapper::Ty::Pointer ) {
+                        LOG_ERROR("Attempting to cast to a type other than a raw pointer - " << re.type);
                     }
-                    if( !src_ty.wrappers.empty() )
+                    if( const auto* src_w = src_ty.get_wrapper() )
                     {
                         // Source can be either
-                        if( src_ty.wrappers.at(0).type != TypeWrapper::Ty::Pointer
-                            && src_ty.wrappers.at(0).type != TypeWrapper::Ty::Borrow ) {
-                            throw "ERROR";
+                        if( src_w->type != TypeWrapper::Ty::Pointer && src_w->type != TypeWrapper::Ty::Borrow ) {
+                            LOG_ERROR("Attempting to cast to a pointer from a non-pointer - " << src_ty);
                         }
 
-                        if( src_ty.get_size() > re.type.get_size() ) {
-                            // TODO: How to casting fat to thin?
-                            //LOG_TODO("Handle casting fat to thin, " << src_ty << " -> " << re.type);
-                            new_val = src_value.read_value(0, re.type.get_size());
+                        if( src_ty.get_size() < re.type.get_size() )
+                        {
+                            LOG_ERROR("Casting to a fatter pointer, " << src_ty << " -> " << re.type);
                         }
-                        else 
+                        else
                         {
                             new_val = src_value.read_value(0, re.type.get_size());
                         }
@@ -660,18 +659,15 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         }
                         else
                         {
-                            ::std::cerr << "ERROR: Trying to pointer (" << re.type <<" ) from invalid type (" << src_ty << ")\n";
-                            throw "ERROR";
+                            LOG_ERROR("Trying to cast to pointer (" << re.type <<" ) from invalid type (" << src_ty << ")\n");
                         }
                         new_val = src_value.read_value(0, re.type.get_size());
                     }
                 }
-                else if( !src_ty.wrappers.empty() )
+                else if( const auto* src_w = src_ty.get_wrapper() )
                 {
-                    // TODO: top wrapper MUST be a pointer
-                    if( src_ty.wrappers.at(0).type != TypeWrapper::Ty::Pointer
-                        && src_ty.wrappers.at(0).type != TypeWrapper::Ty::Borrow ) {
-                        throw "ERROR";
+                    if( src_w->type != TypeWrapper::Ty::Pointer && src_w->type != TypeWrapper::Ty::Borrow ) {
+                        LOG_ERROR("Attempting to cast to a non-pointer - " << src_ty);
                     }
                     // TODO: MUST be a thin pointer?
 
@@ -802,7 +798,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                                 LOG_ASSERT(dt.variants[i].field_path.empty(), "");
                             }
                             ::HIR::TypeRef  tag_ty = dt.fields[0].second;
-                            LOG_ASSERT(tag_ty.wrappers.empty(), "");
+                            LOG_ASSERT(tag_ty.get_wrapper() == nullptr, "");
                             switch(tag_ty.inner_type)
                             {
                             case RawType::USize:
@@ -954,7 +950,33 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     }
                     LOG_DEBUG("res=" << res << ", " << reloc_l << " ? " << reloc_r);
 
-                    if( ty_l.wrappers.empty() )
+                    if( const auto* w = ty_l.get_wrapper() )
+                    {
+                        if( w->type == TypeWrapper::Ty::Pointer )
+                        {
+                            // TODO: Technically only EQ/NE are valid.
+
+                            res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0));
+
+                            // Compare fat metadata.
+                            if( res == 0 && v_l.m_size > POINTER_SIZE )
+                            {
+                                reloc_l = v_l.get_relocation(POINTER_SIZE);
+                                reloc_r = v_r.get_relocation(POINTER_SIZE);
+
+                                if( res == 0 && reloc_l != reloc_r )
+                                {
+                                    res = (reloc_l < reloc_r ? -1 : 1);
+                                }
+                                res = res != 0 ? res : Ops::do_compare(v_l.read_usize(POINTER_SIZE), v_r.read_usize(POINTER_SIZE));
+                            }
+                        }
+                        else
+                        {
+                            LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
+                        }
+                    }
+                    else
                     {
                         switch(ty_l.inner_type)
                         {
@@ -971,29 +993,6 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         default:
                             LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                         }
-                    }
-                    else if( ty_l.wrappers.front().type == TypeWrapper::Ty::Pointer )
-                    {
-                        // TODO: Technically only EQ/NE are valid.
-
-                        res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0));
-
-                        // Compare fat metadata.
-                        if( res == 0 && v_l.m_size > POINTER_SIZE )
-                        {
-                            reloc_l = v_l.get_relocation(POINTER_SIZE);
-                            reloc_r = v_r.get_relocation(POINTER_SIZE);
-
-                            if( res == 0 && reloc_l != reloc_r )
-                            {
-                                res = (reloc_l < reloc_r ? -1 : 1);
-                            }
-                            res = res != 0 ? res : Ops::do_compare(v_l.read_usize(POINTER_SIZE), v_r.read_usize(POINTER_SIZE));
-                        }
-                    }
-                    else
-                    {
-                        LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                     }
                     bool res_bool;
                     switch(re.op)
@@ -1013,8 +1012,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     } break;
                 case ::MIR::eBinOp::BIT_SHL:
                 case ::MIR::eBinOp::BIT_SHR: {
-                    LOG_ASSERT(ty_l.wrappers.empty(), "Bitwise operator on non-primitive - " << ty_l);
-                    LOG_ASSERT(ty_r.wrappers.empty(), "Bitwise operator with non-primitive - " << ty_r);
+                    LOG_ASSERT(ty_l.get_wrapper() == nullptr, "Bitwise operator on non-primitive - " << ty_l);
+                    LOG_ASSERT(ty_r.get_wrapper() == nullptr, "Bitwise operator with non-primitive - " << ty_r);
                     size_t max_bits = ty_r.get_size() * 8;
                     uint8_t shift;
                     auto check_cast = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
@@ -1051,7 +1050,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 case ::MIR::eBinOp::BIT_OR:
                 case ::MIR::eBinOp::BIT_XOR:
                     LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
-                    LOG_ASSERT(ty_l.wrappers.empty(), "Bitwise operator on non-primitive - " << ty_l);
+                    LOG_ASSERT(ty_l.get_wrapper() == nullptr, "Bitwise operator on non-primitive - " << ty_l);
                     new_val = Value(ty_l);
                     switch(ty_l.inner_type)
                     {
@@ -1104,7 +1103,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             TU_ARM(se.src, UniOp, re) {
                 ::HIR::TypeRef  ty;
                 auto v = state.get_value_and_type(re.val, ty);
-                LOG_ASSERT(ty.wrappers.empty(), "UniOp on wrapped type - " << ty);
+                LOG_ASSERT(ty.get_wrapper() == nullptr, "UniOp on wrapped type - " << ty);
                 new_val = Value(ty);
                 switch(re.op)
                 {
@@ -1238,7 +1237,6 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 const auto& data_ty = this->m_modtree.get_composite(re.path);
                 auto dst_ty = ::HIR::TypeRef(&data_ty);
                 new_val = Value(dst_ty);
-                LOG_DEBUG("Variant " << new_val);
                 // Three cases:
                 // - Unions (no tag)
                 // - Data enums (tag and data)
@@ -1250,7 +1248,6 @@ bool InterpreterThread::step_one(Value& out_thread_result)
 
                     new_val.write_value(fld.first, state.param_to_value(re.val));
                 }
-                LOG_DEBUG("Variant " << new_val);
                 if( var.base_field != SIZE_MAX )
                 {
                     ::HIR::TypeRef  tag_ty;
@@ -1279,7 +1276,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 }
                 } break;
             }
-            LOG_DEBUG("- " << new_val);
+            LOG_DEBUG("- new_val=" << new_val);
             state.write_lvalue(se.dst, ::std::move(new_val));
             } break;
         case ::MIR::Statement::TAG_Asm:
@@ -1352,8 +1349,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
         TU_ARM(bb.terminator, Switch, te) {
             ::HIR::TypeRef ty;
             auto v = state.get_value_and_type(te.val, ty);
-            LOG_ASSERT(ty.wrappers.size() == 0, "" << ty);
-            LOG_ASSERT(ty.inner_type == RawType::Composite, "" << ty);
+            LOG_ASSERT(ty.get_wrapper() == nullptr, "Matching on wrapped value - " << ty);
+            LOG_ASSERT(ty.inner_type == RawType::Composite, "Matching on non-coposite - " << ty);
 
             // TODO: Convert the variant list into something that makes it easier to switch on.
             size_t found_target = SIZE_MAX;
@@ -1578,8 +1575,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto size = args.at(0).read_usize(0);
         auto align = args.at(1).read_usize(0);
         LOG_DEBUG("__rust_allocate(size=" << size << ", align=" << align << ")");
-        ::HIR::TypeRef  rty { RawType::Unit };
-        rty.wrappers.push_back({ TypeWrapper::Ty::Pointer, 0 });
+        auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
 
         // TODO: Use the alignment when making an allocation?
         rv = Value::new_pointer(rty, 0, RelocationPtr::new_alloc(Allocation::new_alloc(size)));
@@ -2051,14 +2047,14 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         // Get unsized type somehow.
         // - _HAS_ to be the last type, so that makes it easier
         size_t fixed_size = 0;
-        if( const auto* ity = ty.get_usized_type(fixed_size) )
+        if( const auto* ity = ty.get_unsized_type(fixed_size) )
         {
             const auto meta_ty = ty.get_meta_type();
             LOG_DEBUG("size_of_val - " << ty << " ity=" << *ity << " meta_ty=" << meta_ty << " fixed_size=" << fixed_size);
             size_t flex_size = 0;
-            if( !ity->wrappers.empty() )
+            if( const auto* w = ity->get_wrapper() )
             {
-                LOG_ASSERT(ity->wrappers[0].type == TypeWrapper::Ty::Slice, "");
+                LOG_ASSERT(w->type == TypeWrapper::Ty::Slice, "size_of_val on wrapped type that isn't a slice - " << *ity);
                 size_t item_size = ity->get_inner().get_size();
                 size_t item_count = val.read_usize(POINTER_SIZE);
                 flex_size = item_count * item_size;
@@ -2088,40 +2084,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     {
         auto& val = args.at(0);
         const auto& ty = ty_params.tys.at(0);
-        if( !ty.wrappers.empty() )
-        {
-            size_t item_count = 0;
-            switch(ty.wrappers[0].type)
-            {
-            case TypeWrapper::Ty::Slice:
-            case TypeWrapper::Ty::Array:
-                item_count = (ty.wrappers[0].type == TypeWrapper::Ty::Slice ? val.read_usize(POINTER_SIZE) : ty.wrappers[0].size);
-                break;
-            case TypeWrapper::Ty::Pointer:
-                break;
-            case TypeWrapper::Ty::Borrow:
-                // TODO: Only &move has a destructor
-                break;
-            }
-            LOG_ASSERT(ty.wrappers[0].type == TypeWrapper::Ty::Slice, "drop_in_place should only exist for slices - " << ty);
-            const auto& ity = ty.get_inner();
-            size_t item_size = ity.get_size();
-
-            auto ptr = val.read_value(0, POINTER_SIZE);
-            for(size_t i = 0; i < item_count; i ++)
-            {
-                // TODO: Nested calls?
-                if( !drop_value(ptr, ity) )
-                {
-                    LOG_DEBUG("Handle multiple queued calls");
-                }
-                ptr.write_usize(0, ptr.read_usize(0) + item_size);
-            }
-        }
-        else
-        {
-            return drop_value(val, ty);
-        }
+        return drop_value(val, ty);
     }
     // ----------------------------------------------------------------
     // Checked arithmatic
@@ -2249,12 +2212,55 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
         if( ofs != 0 || !alloc || !alloc.is_alloc() ) {
             LOG_ERROR("Attempting to shallow drop with invalid pointer (no relocation or non-zero offset) - " << box_ptr_vr);
         }
-        
+
         LOG_DEBUG("drop_value SHALLOW deallocate " << alloc);
         alloc.alloc().mark_as_freed();
         return true;
     }
-    if( ty.wrappers.empty() )
+    if( const auto* w = ty.get_wrapper() )
+    {
+        switch( w->type )
+        {
+        case TypeWrapper::Ty::Borrow:
+            if( w->size == static_cast<size_t>(::HIR::BorrowType::Move) )
+            {
+                LOG_TODO("Drop - " << ty << " - dereference and go to inner");
+                // TODO: Clear validity on the entire inner value.
+                //auto iptr = ptr.read_value(0, ty.get_size());
+                //drop_value(iptr, ty.get_inner());
+            }
+            else
+            {
+                // No destructor
+            }
+            break;
+        case TypeWrapper::Ty::Pointer:
+            // No destructor
+            break;
+        case TypeWrapper::Ty::Slice: {
+            // - Get thin pointer and count
+            auto ofs = ptr.read_usize(0);
+            auto ptr_reloc = ptr.get_relocation(0);
+            auto count = ptr.read_usize(POINTER_SIZE);
+
+            auto ity = ty.get_inner();
+            auto pty = ity.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(::HIR::BorrowType::Move));
+            for(uint64_t i = 0; i < count; i ++)
+            {
+                auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
+                if( !drop_value(ptr, ity) ) {
+                    LOG_TODO("Handle closure looping when dropping a slice");
+                }
+                ofs += ity.get_size();
+            }
+            } break;
+        // TODO: Arrays?
+        default:
+            LOG_TODO("Drop - " << ty << " - array?");
+            break;
+        }
+    }
+    else
     {
         if( ty.inner_type == RawType::Composite )
         {
@@ -2277,30 +2283,6 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
         else
         {
             // No destructor
-        }
-    }
-    else
-    {
-        switch( ty.wrappers[0].type )
-        {
-        case TypeWrapper::Ty::Borrow:
-            if( ty.wrappers[0].size == static_cast<size_t>(::HIR::BorrowType::Move) )
-            {
-                LOG_TODO("Drop - " << ty << " - dereference and go to inner");
-                // TODO: Clear validity on the entire inner value.
-            }
-            else
-            {
-                // No destructor
-            }
-            break;
-        case TypeWrapper::Ty::Pointer:
-            // No destructor
-            break;
-        // TODO: Arrays
-        default:
-            LOG_TODO("Drop - " << ty << " - array?");
-            break;
         }
     }
     return true;

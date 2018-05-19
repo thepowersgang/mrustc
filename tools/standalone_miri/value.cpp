@@ -545,38 +545,12 @@ Value::Value()
 Value::Value(::HIR::TypeRef ty)
 {
     size_t size = ty.get_size();
-#if 1
+
     // Support inline data if the data will fit within the inline region (which is the size of the metadata)
     if( ty.get_size() <= sizeof(this->direct_data.data) )
     {
-        struct H
-        {
-            static bool has_pointer(const ::HIR::TypeRef& ty)
-            {
-                if( ty.wrappers.empty() || ::std::all_of(ty.wrappers.begin(), ty.wrappers.end(), [](const auto& x){ return x.type == TypeWrapper::Ty::Array; }) )
-                {
-                    // TODO: Function pointers should be _pointers_
-                    if( ty.inner_type == RawType::Function )
-                    {
-                        return true;
-                    }
-                    // Check the inner type
-                    if( ty.inner_type != RawType::Composite )
-                    {
-                        return false;
-                    }
-                    // Still not sure, check the inner for any pointers.
-                    for(const auto& fld : ty.composite_type->fields)
-                    {
-                        if( H::has_pointer(fld.second) )
-                            return true;
-                    }
-                    return false;
-                }
-                return true;
-            }
-        };
-        if( ! H::has_pointer(ty) )
+        // AND the type doesn't contain a pointer (of any kind)
+        if( ! ty.has_pointer() )
         {
             // Will fit in a inline allocation, nice.
             //LOG_TRACE("No pointers in " << ty << ", storing inline");
@@ -586,7 +560,6 @@ Value::Value(::HIR::TypeRef ty)
             return ;
         }
     }
-#endif
 
     // Fallback: Make a new allocation
     //LOG_TRACE(" Creating allocation for " << ty);
@@ -626,8 +599,8 @@ Value Value::new_ffiptr(FFIPointer ffi)
     return rv;
 }
 Value Value::new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r) {
-    assert(!ty.wrappers.empty());
-    assert(ty.wrappers[0].type == TypeWrapper::Ty::Borrow || ty.wrappers[0].type == TypeWrapper::Ty::Pointer);
+    assert(ty.get_wrapper());
+    assert(ty.get_wrapper()->type == TypeWrapper::Ty::Borrow || ty.get_wrapper()->type == TypeWrapper::Ty::Pointer);
     Value   rv(ty);
     rv.write_usize(0, v);
     rv.allocation->relocations.push_back(Relocation { 0, /*POINTER_SIZE,*/ ::std::move(r) });

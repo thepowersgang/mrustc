@@ -266,7 +266,7 @@ bool Parser::parse_one()
                     //const auto* tag_ty = &rv.fields.at(base_idx).second;
                     //for(auto idx : other_idx)
                     //{
-                    //    assert(tag_ty->wrappers.size() == 0);
+                    //    assert(tag_ty->get_wrapper() == nullptr);
                     //    assert(tag_ty->inner_type == RawType::Composite);
                     //    LOG_TODO(lex << "Calculate tag offset with nested tag - " << idx << " ty=" << *tag_ty);
                     //}
@@ -1130,14 +1130,14 @@ RawType Parser::parse_core_type()
         {
             size_t size = lex.next().integer();
             lex.consume();
-            rv.wrappers.insert( rv.wrappers.begin(), { TypeWrapper::Ty::Array, size });
+            lex.check_consume(']');
+            return ::std::move(rv).wrap( TypeWrapper::Ty::Array, size );
         }
         else
         {
-            rv.wrappers.insert( rv.wrappers.begin(), { TypeWrapper::Ty::Slice, 0 });
+            lex.check_consume(']');
+            return ::std::move(rv).wrap( TypeWrapper::Ty::Slice, 0 );
         }
-        lex.check_consume(']');
-        return rv;
     }
     else if( lex.consume_if('!') )
     {
@@ -1152,9 +1152,7 @@ RawType Parser::parse_core_type()
             bt = ::HIR::BorrowType::Unique;
         else
             ; // keep as shared
-        auto rv = parse_type();
-        rv.wrappers.insert( rv.wrappers.begin(), { TypeWrapper::Ty::Borrow, static_cast<size_t>(bt) });
-        return rv;
+        return parse_type().wrap( TypeWrapper::Ty::Borrow, static_cast<size_t>(bt) );
     }
     else if( lex.consume_if('*') )
     {
@@ -1167,9 +1165,7 @@ RawType Parser::parse_core_type()
             ; // keep as shared
         else
             throw "ERROR";
-        auto rv = parse_type();
-        rv.wrappers.insert( rv.wrappers.begin(), { TypeWrapper::Ty::Pointer, static_cast<size_t>(bt) });
-        return rv;
+        return parse_type().wrap( TypeWrapper::Ty::Pointer, static_cast<size_t>(bt) );
     }
     else if( lex.next() == "::" )
     {
