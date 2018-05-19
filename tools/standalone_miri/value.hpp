@@ -315,6 +315,11 @@ struct ValueRef:
                 assert(size <= m_alloc.str().size());
                 assert(ofs+size <= m_alloc.str().size());
                 break;
+            case RelocationPtr::Ty::FfiPointer:
+                assert(ofs < m_alloc.ffi().size);
+                assert(size <= m_alloc.ffi().size);
+                assert(ofs+size <= m_alloc.ffi().size);
+                break;
             default:
                 throw "TODO";
             }

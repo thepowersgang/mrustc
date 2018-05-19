@@ -14,10 +14,15 @@ struct ProgramOptions
 {
     ::std::string   infile;
     //TODO: Architecture file
+    //::std::string   archname;
     //TODO: Loadable FFI descriptions
+    //::std::vector<const char*>  ffi_api_files;
     //TODO: Logfile
+    //::std::string   logfile;
+    ::std::vector<const char*>  args;
 
     int parse(int argc, const char* argv[]);
+    void show_help(const char* prog) const;
 };
 
 int main(int argc, const char* argv[])
@@ -38,8 +43,19 @@ int main(int argc, const char* argv[])
     argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
     argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
     auto val_argv = Value(argv_ty);
-    val_argc.write_isize(0, 0);
+
+    // Create argc/argv based on input arguments
+    val_argc.write_isize(0, 1 + opts.args.size());
+    auto argv_alloc = Allocation::new_alloc((1 + opts.args.size()) * POINTER_SIZE);
+    argv_alloc->write_usize(0 * POINTER_SIZE, 0);
+    argv_alloc->relocations.push_back({ 0 * POINTER_SIZE, RelocationPtr::new_ffi(FFIPointer { "", (void*)(opts.infile.c_str()), opts.infile.size() + 1 }) });
+    for(size_t i = 0; i < opts.args.size(); i ++)
+    {
+        argv_alloc->write_usize((1 + i) * POINTER_SIZE, 0);
+        argv_alloc->relocations.push_back({ (1 + i) * POINTER_SIZE, RelocationPtr::new_ffi({ "", (void*)(opts.args[0]), ::std::strlen(opts.args[0]) + 1 }) });
+    }
     val_argv.write_usize(0, 0);
+    val_argv.allocation->relocations.push_back({ 0 * POINTER_SIZE, RelocationPtr::new_alloc(argv_alloc) });
 
     try
     {
@@ -85,16 +101,37 @@ int ProgramOptions::parse(int argc, const char* argv[])
             }
             else
             {
-                // TODO: Too many free arguments
+                this->args.push_back(arg);
             }
         }
         else if( arg[1] != '-' )
         {
             // Short
+            if( arg[2] != '\0' ) {
+                // Error?
+            }
+            switch(arg[1])
+            {
+            case 'h':
+                this->show_help(argv[0]);
+                exit(0);
+            default:
+                // TODO: Error
+                break;
+            }
         }
         else if( arg[2] != '\0' )
         {
             // Long
+            if( ::std::strcmp(arg, "--help") == 0 ) {
+                this->show_help(argv[0]);
+                exit(0);
+            }
+            //else if( ::std::strcmp(arg, "--api") == 0 ) {
+            //}
+            else {
+                // TODO: Error
+            }
         }
         else
         {
@@ -102,4 +139,9 @@ int ProgramOptions::parse(int argc, const char* argv[])
         }
     }
     return 0;
+}
+
+void ProgramOptions::show_help(const char* prog) const
+{
+    ::std::cout << "USAGE: " << prog << " <infile> <... args>" << ::std::endl;
 }

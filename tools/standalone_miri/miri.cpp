@@ -1856,6 +1856,24 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             rv.write_usize(0, 0);
         }
     }
+    else if( link_name == "strlen" )
+    {
+        // strlen - custom implementation to ensure validity
+        bool _is_mut;
+        size_t  size;
+        const char* ptr = reinterpret_cast<const char*>( args.at(0).read_pointer_unsafe(0, 1, size, _is_mut) );
+        size_t len = 0;
+        while(size -- && *ptr)
+        {
+            ptr ++;
+            len ++;
+        }
+        args.at(0).read_pointer_const(0, len + 1);
+
+        //rv = Value::new_usize(len);
+        rv = Value(::HIR::TypeRef(RawType::USize));
+        rv.write_usize(0, len);
+    }
     // Allocators!
     else
     {
@@ -2222,7 +2240,10 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
             LOG_FATAL("Attempt to copy* a function");
             break;
         case RelocationPtr::Ty::FfiPointer:
-            LOG_BUG("Trying to copy from a FFI pointer");
+            LOG_ASSERT(src_ofs <= src_alloc.ffi().size, "");
+            LOG_ASSERT(byte_count <= src_alloc.ffi().size, "");
+            LOG_ASSERT(src_ofs + byte_count <= src_alloc.ffi().size, "");
+            dst_alloc.alloc().write_bytes(dst_ofs, src_alloc.ffi().ptr_value + src_ofs, byte_count);
             break;
         }
     }

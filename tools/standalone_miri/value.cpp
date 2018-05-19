@@ -227,13 +227,16 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
             }
         case RelocationPtr::Ty::Function:
             LOG_FATAL("read_pointer w/ function");
-        case RelocationPtr::Ty::FfiPointer:
-            if( req_valid )
-                LOG_FATAL("Can't request valid data from a FFI pointer");
+        case RelocationPtr::Ty::FfiPointer: {
+            const auto& f = reloc.ffi();
+            // TODO: Validity?
+            //if( req_valid )
+            //    LOG_FATAL("Can't request valid data from a FFI pointer");
             // TODO: Have an idea of mutability and available size from FFI
-            out_size = 0;
+            out_size = f.size - ofs;
             out_is_mut = false;
-            return reloc.ffi().ptr_value /* + ofs */;
+            return reloc.ffi().ptr_value + ofs;
+            }
         }
         throw "";
     }
