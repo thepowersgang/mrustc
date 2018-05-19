@@ -20,6 +20,7 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
         case RawType::Unit:
             return 0;
         case RawType::Composite:
+            // NOTE: Don't care if the type has metadata
             return this->composite_type->size;
         case RawType::Unreachable:
             LOG_BUG("Attempting to get size of an unreachable type, " << *this);
@@ -53,7 +54,7 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
         }
         throw "";
     }
-    
+
     switch(this->wrappers[ofs].type)
     {
     case TypeWrapper::Ty::Array:
@@ -100,22 +101,25 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
     }
     throw "";
 }
-bool HIR::TypeRef::has_slice_meta() const
+bool HIR::TypeRef::has_slice_meta(size_t& out_inner_size) const
 {
     if( this->wrappers.size() == 0 )
     {
         if(this->inner_type == RawType::Composite)
         {
-            // TODO: Handle metadata better
+            // TODO: This type could be wrapping a slice, needs to return the inner type size.
+            // - Also need to know which field is the unsized one
             return false;
         }
         else
         {
+            out_inner_size = 1;
             return (this->inner_type == RawType::Str);
         }
     }
     else
     {
+        out_inner_size = this->get_size(1);
         return (this->wrappers[0].type == TypeWrapper::Ty::Slice);
     }
 }
@@ -130,9 +134,9 @@ HIR::TypeRef HIR::TypeRef::get_inner() const
     ity.wrappers.erase(ity.wrappers.begin());
     return ity;
 }
-HIR::TypeRef HIR::TypeRef::wrap(TypeWrapper::Ty ty, size_t size) const
+HIR::TypeRef HIR::TypeRef::wrap(TypeWrapper::Ty ty, size_t size)&&
 {
-    auto rv = *this;
+    auto rv = ::std::move(*this);
     rv.wrappers.insert(rv.wrappers.begin(), { ty, size });
     return rv;
 }

@@ -201,6 +201,7 @@ struct ValueCommonWrite:
     void write_f64(size_t ofs, double v) { write_bytes(ofs, &v, 8); }
     void write_usize(size_t ofs, uint64_t v);
     void write_isize(size_t ofs, int64_t v) { write_usize(ofs, static_cast<uint64_t>(v)); }
+    virtual void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) = 0;
 };
 
 class Allocation:
@@ -245,6 +246,7 @@ public:
 
     void write_value(size_t ofs, Value v);
     void write_bytes(size_t ofs, const void* src, size_t count) override;
+    void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) override;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 
@@ -254,7 +256,8 @@ struct Value:
     // If NULL, data is direct
     AllocationHandle    allocation;
     struct {
-        uint8_t data[2*sizeof(size_t)-3];   // 16-3 = 13, fits in 16 bits of mask
+        // NOTE: Can't pack the mask+size tighter, need 4 bits of size (8-15) leaving 12 bits of mask
+        uint8_t data[2*8-3];   // 13 data bytes, plus 16bit mask, plus size = 16 bytes
         uint8_t mask[2];
         uint8_t size;
     } direct_data;
@@ -265,8 +268,11 @@ struct Value:
     static Value with_size(size_t size, bool have_allocation);
     static Value new_fnptr(const ::HIR::Path& fn_path);
     static Value new_ffiptr(FFIPointer ffi);
-    //static Value new_usize(uint64_t v);
-    //static Value new_isize(int64_t v);
+    static Value new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r);
+    static Value new_usize(uint64_t v);
+    static Value new_isize(int64_t v);
+    static Value new_u32(uint32_t v);
+    static Value new_i32(int32_t v);
 
     void create_allocation();
     size_t size() const { return allocation ? allocation->size() : direct_data.size; }
@@ -289,7 +295,7 @@ struct Value:
     void write_value(size_t ofs, Value v);
     void write_bytes(size_t ofs, const void* src, size_t count) override;
 
-    //void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc);
+    void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) override;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Value& v);
 

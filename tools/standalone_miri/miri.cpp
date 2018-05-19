@@ -352,15 +352,17 @@ struct MirHelpers
                 LOG_ASSERT(val.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
                 meta_val = ::std::make_shared<Value>( val.read_value(POINTER_SIZE, meta_size) );
 
-                // TODO: Get a more sane size from the metadata
-                if( alloc )
-                {
+                size_t    slice_inner_size;
+                if( ty.has_slice_meta(slice_inner_size) ) {
+                    size = (ty.wrappers.empty() ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
+                }
+                //else if( ty == RawType::TraitObject) {
+                //    // NOTE: Getting the size from the allocation is semi-valid, as you can't sub-slice trait objects
+                //    size = alloc.get_size() - ofs;
+                //}
+                else {
                     LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
                     size = alloc.get_size() - ofs;
-                }
-                else
-                {
-                    size = 0;
                 }
             }
             else
@@ -406,6 +408,7 @@ struct MirHelpers
     }
     void write_lvalue(const ::MIR::LValue& lv, Value val)
     {
+        // TODO: Ensure that target is writable? Or should write_value do that?
         //LOG_DEBUG(lv << " = " << val);
         ::HIR::TypeRef  ty;
         auto base_value = get_value_and_type(lv, ty);
@@ -428,12 +431,14 @@ struct MirHelpers
             Value val = Value(ty);
             val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
             // TODO: If the write was clipped, sign-extend
+            // TODO: i128/u128 need the upper bytes cleared+valid
             return val;
             } break;
         TU_ARM(c, Uint, ce) {
             ty = ::HIR::TypeRef(ce.t);
             Value val = Value(ty);
             val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
+            // TODO: i128/u128 need the upper bytes cleared+valid
             return val;
             } break;
         TU_ARM(c, Bool, ce) {
@@ -466,11 +471,9 @@ struct MirHelpers
             ty = ::HIR::TypeRef(RawType::Str);
             ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
             Value val = Value(ty);
-            val.write_usize(0, 0);
+            val.write_ptr(0,  0, RelocationPtr::new_string(&ce));
             val.write_usize(POINTER_SIZE, ce.size());
-            val.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_string(&ce) });
             LOG_DEBUG(c << " = " << val);
-            //return Value::new_dataptr(ce.data());
             return val;
             } break;
         // --> Accessor
@@ -482,11 +485,8 @@ struct MirHelpers
             }
             if( const auto* s = this->thread.m_modtree.get_static_opt(ce) ) {
                 ty = s->ty;
-                ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
-                Value val = Value(ty);
-                val.write_usize(0, 0);
-                val.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_alloc(s->val.allocation) });
-                return val;
+                ty.wrappers.insert(ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, 0 });
+                return Value::new_pointer(ty, 0, RelocationPtr::new_alloc(s->val.allocation));
             }
             LOG_ERROR("Constant::ItemAddr - " << ce << " - not found");
             } break;
@@ -602,19 +602,17 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_DEBUG("- alloc=" << alloc);
                 size_t ofs = src_base_value.m_offset;
                 const auto meta = src_ty.get_meta_type();
-                //bool is_slice_like = src_ty.has_slice_meta();
                 src_ty.wrappers.insert(src_ty.wrappers.begin(), TypeWrapper { TypeWrapper::Ty::Borrow, static_cast<size_t>(re.type) });
 
+                // Create the pointer
                 new_val = Value(src_ty);
-                // ^ Pointer value
-                new_val.write_usize(0, ofs);
+                new_val.write_ptr(0, ofs, ::std::move(alloc));
+                // - Add metadata if required
                 if( meta != RawType::Unreachable )
                 {
                     LOG_ASSERT(src_base_value.m_metadata, "Borrow of an unsized value, but no metadata avaliable");
                     new_val.write_value(POINTER_SIZE, *src_base_value.m_metadata);
                 }
-                // - Add the relocation after writing the value (writing clears the relocations)
-                new_val.allocation->relocations.push_back(Relocation { 0, ::std::move(alloc) });
                 } break;
             TU_ARM(se.src, Cast, re) {
                 // Determine the type of cast, is it a reinterpret or is it a value transform?
@@ -1306,11 +1304,9 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 size_t ofs = v.m_offset;
                 assert(ty.get_meta_type() == RawType::Unreachable);
 
-                auto ptr_ty = ty.wrap(TypeWrapper::Ty::Borrow, 2);
+                auto ptr_ty = ty.wrapped(TypeWrapper::Ty::Borrow, 2);
 
-                auto ptr_val = Value(ptr_ty);
-                ptr_val.write_usize(0, ofs);
-                ptr_val.allocation->relocations.push_back(Relocation { 0, ::std::move(alloc) });
+                auto ptr_val = Value::new_pointer(ptr_ty, ofs, ::std::move(alloc));
 
                 if( !drop_value(ptr_val, ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW) )
                 {
@@ -1327,7 +1323,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             LOG_TODO(stmt);
             break;
         }
-        
+
         cur_frame.stmt_idx += 1;
     }
     else
@@ -1456,7 +1452,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
         }
         cur_frame.stmt_idx = 0;
     }
-    
+
     return false;
 }
 bool InterpreterThread::pop_stack(Value& out_thread_result)
@@ -1465,7 +1461,7 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
 
     auto res_v = ::std::move(this->m_stack.back().ret);
     this->m_stack.pop_back();
-    
+
     if( this->m_stack.empty() )
     {
         LOG_DEBUG("Thread complete, result " << res_v);
@@ -1539,8 +1535,7 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
     {
         if( path == ::HIR::SimplePath { "std", { "sys", "imp", "c", "SetThreadStackGuarantee" } } )
         {
-            ret = Value(::HIR::TypeRef{RawType::I32});
-            ret.write_i32(0, 120);  // ERROR_CALL_NOT_IMPLEMENTED
+            ret = Value::new_i32(120);  //ERROR_CALL_NOT_IMPLEMENTED
             return true;
         }
 
@@ -1552,7 +1547,7 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
             ret.write_u64(8, 0);
             return true;
         }
-        
+
         // - No stack overflow handling needed
         if( path == ::HIR::SimplePath { "std", { "sys", "imp", "stack_overflow", "imp", "init" } } )
         {
@@ -1567,7 +1562,7 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
         // External function!
         return this->call_extern(ret, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
     }
-    
+
     this->m_stack.push_back(StackFrame(fcn, ::std::move(args)));
     return false;
 }
@@ -1586,10 +1581,8 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         ::HIR::TypeRef  rty { RawType::Unit };
         rty.wrappers.push_back({ TypeWrapper::Ty::Pointer, 0 });
 
-        rv = Value(rty);
-        rv.write_usize(0, 0);
         // TODO: Use the alignment when making an allocation?
-        rv.allocation->relocations.push_back({ 0,  RelocationPtr::new_alloc(Allocation::new_alloc(size)) });
+        rv = Value::new_pointer(rty, 0, RelocationPtr::new_alloc(Allocation::new_alloc(size)));
     }
     else if( link_name == "__rust_reallocate" )
     {
@@ -1632,13 +1625,12 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto arg = args.at(1);
         auto data_ptr = args.at(2).read_pointer_valref_mut(0, POINTER_SIZE);
         auto vtable_ptr = args.at(3).read_pointer_valref_mut(0, POINTER_SIZE);
-        
+
         ::std::vector<Value>    sub_args;
         sub_args.push_back( ::std::move(arg) );
 
         this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)->bool{
-            out_rv = Value(::HIR::TypeRef(RawType::U32));
-            out_rv.write_u32(0, 0);
+            out_rv = Value::new_u32(0);
             return true;
             }));
 
@@ -1667,8 +1659,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "AddVectoredExceptionHandler" )
     {
         LOG_DEBUG("Call `AddVectoredExceptionHandler` - Ignoring and returning non-null");
-        rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.write_usize(0, 1);
+        rv = Value::new_usize(1);
     }
     else if( link_name == "GetModuleHandleW" )
     {
@@ -1732,8 +1723,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         ssize_t val = write(fd, buf, count);
 
-        rv = Value(::HIR::TypeRef(RawType::ISize));
-        rv.write_isize(0, val);
+        rv = Value::new_isize(val);
     }
     else if( link_name == "sysconf" )
     {
@@ -1742,33 +1732,27 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         long val = sysconf(name);
 
-        rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.write_usize(0, val);
+        rv = Value::new_usize(val);
     }
     else if( link_name == "pthread_mutex_init" || link_name == "pthread_mutex_lock" || link_name == "pthread_mutex_unlock" || link_name == "pthread_mutex_destroy" )
     {
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, 0);
+        rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_rwlock_rdlock" )
     {
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, 0);
+        rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_mutexattr_init" || link_name == "pthread_mutexattr_settype" || link_name == "pthread_mutexattr_destroy" )
     {
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, 0);
+        rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_condattr_init" || link_name == "pthread_condattr_destroy" || link_name == "pthread_condattr_setclock" )
     {
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, 0);
+        rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_cond_init" || link_name == "pthread_cond_destroy" )
     {
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, 0);
+        rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_key_create" )
     {
@@ -1776,9 +1760,8 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         auto key = ThreadState::s_next_tls_key ++;
         key_ref.m_alloc.alloc().write_u32( key_ref.m_offset, key );
-        
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, 0);
+
+        rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_getspecific" )
     {
@@ -1787,8 +1770,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         // Get a pointer-sized value from storage
         uint64_t v = key < m_thread.tls_values.size() ? m_thread.tls_values[key] : 0;
 
-        rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.write_usize(0, v);
+        rv = Value::new_usize(v);
     }
     else if( link_name == "pthread_setspecific" )
     {
@@ -1801,13 +1783,11 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         }
         m_thread.tls_values[key] = v;
 
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, 0);
+        rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_key_delete" )
     {
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, 0);
+        rv = Value::new_i32(0);
     }
 #endif
     // std C

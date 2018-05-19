@@ -118,11 +118,14 @@ namespace HIR {
         }
 
         size_t get_size(size_t ofs=0) const;
-        bool has_slice_meta() const;    // The attached metadata is a count
+        bool has_slice_meta(size_t& out_inner_size) const;    // The attached metadata is a count of elements
         const TypeRef* get_usized_type(size_t& running_inner_size) const;
         TypeRef get_meta_type() const;
         TypeRef get_inner() const;
-        TypeRef wrap(TypeWrapper::Ty ty, size_t size) const;
+        TypeRef wrap(TypeWrapper::Ty ty, size_t size)&&;
+        TypeRef wrapped(TypeWrapper::Ty ty, size_t size) const {
+            return TypeRef(*this).wrap(ty, size);
+        }
         TypeRef get_field(size_t idx, size_t& ofs) const;
 
         bool operator==(const RawType& x) const {

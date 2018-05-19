@@ -499,6 +499,11 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
     ::std::memcpy(this->data_ptr() + ofs, src, count);
     mark_bytes_valid(ofs, count);
 }
+void Allocation::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
+{
+    this->write_usize(ofs, ptr_ofs);
+    this->relocations.push_back(Relocation { ofs, /*POINTER_SIZE,*/ ::std::move(reloc) });
+}
 ::std::ostream& operator<<(::std::ostream& os, const Allocation& x)
 {
     auto flags = os.flags();
@@ -618,6 +623,34 @@ Value Value::new_ffiptr(FFIPointer ffi)
     rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_ffi(ffi) });
     rv.allocation->data.at(0) = 0;
     rv.allocation->mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
+    return rv;
+}
+Value Value::new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r) {
+    assert(!ty.wrappers.empty());
+    assert(ty.wrappers[0].type == TypeWrapper::Ty::Borrow || ty.wrappers[0].type == TypeWrapper::Ty::Pointer);
+    Value   rv(ty);
+    rv.write_usize(0, v);
+    rv.allocation->relocations.push_back(Relocation { 0, /*POINTER_SIZE,*/ ::std::move(r) });
+    return rv;
+}
+Value Value::new_usize(uint64_t v) {
+    Value   rv( ::HIR::TypeRef(RawType::USize) );
+    rv.write_usize(0, v);
+    return rv;
+}
+Value Value::new_isize(int64_t v) {
+    Value   rv( ::HIR::TypeRef(RawType::ISize) );
+    rv.write_isize(0, v);
+    return rv;
+}
+Value Value::new_u32(uint32_t v) {
+    Value   rv( ::HIR::TypeRef(RawType::U32) );
+    rv.write_u32(0, v);
+    return rv;
+}
+Value Value::new_i32(int32_t v) {
+    Value   rv( ::HIR::TypeRef(RawType::I32) );
+    rv.write_i32(0, v);
     return rv;
 }
 
@@ -774,6 +807,14 @@ void Value::write_value(size_t ofs, Value v)
             }
         }
     }
+}
+void Value::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
+{
+    if( !this->allocation )
+    {
+        LOG_ERROR("Writing a pointer with no allocation");
+    }
+    this->allocation->write_ptr(ofs, ptr_ofs, ::std::move(reloc));
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const Value& v)

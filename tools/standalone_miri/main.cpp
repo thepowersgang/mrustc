@@ -50,15 +50,7 @@ int main(int argc, const char* argv[])
     auto tree = ModuleTree {};
     tree.load_file(opts.infile);
 
-    // Construct argc/argv values
-    auto val_argc = Value( ::HIR::TypeRef{RawType::ISize} );
-    ::HIR::TypeRef  argv_ty { RawType::I8 };
-    argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
-    argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
-    auto val_argv = Value(argv_ty);
-
     // Create argc/argv based on input arguments
-    val_argc.write_isize(0, 1 + opts.args.size());
     auto argv_alloc = Allocation::new_alloc((1 + opts.args.size()) * POINTER_SIZE);
     argv_alloc->write_usize(0 * POINTER_SIZE, 0);
     argv_alloc->relocations.push_back({ 0 * POINTER_SIZE, RelocationPtr::new_ffi(FFIPointer { "", (void*)(opts.infile.c_str()), opts.infile.size() + 1 }) });
@@ -67,9 +59,13 @@ int main(int argc, const char* argv[])
         argv_alloc->write_usize((1 + i) * POINTER_SIZE, 0);
         argv_alloc->relocations.push_back({ (1 + i) * POINTER_SIZE, RelocationPtr::new_ffi({ "", (void*)(opts.args[0]), ::std::strlen(opts.args[0]) + 1 }) });
     }
-    //val_argv.write_ptr(0,  0, RelocationPtr::new_alloc(argv_alloc));
-    val_argv.write_usize(0, 0);
-    val_argv.allocation->relocations.push_back({ 0 * POINTER_SIZE, RelocationPtr::new_alloc(argv_alloc) });
+    
+    // Construct argc/argv values
+    auto val_argc = Value::new_isize(1 + opts.args.size());
+    ::HIR::TypeRef  argv_ty { RawType::I8 };
+    argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
+    argv_ty.wrappers.push_back(TypeWrapper { TypeWrapper::Ty::Pointer, 0 });
+    auto val_argv = Value::new_pointer(argv_ty, 0, RelocationPtr::new_alloc(argv_alloc));
 
     // Catch various exceptions from the interpreter
     try
