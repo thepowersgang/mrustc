@@ -21,7 +21,7 @@ MacroDef*   g_macros_list = nullptr;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandDecorator> >  g_decorators;
 ::std::map< ::std::string, ::std::unique_ptr<ExpandProcMacro> >  g_macros;
 
-void Expand_Attrs(const ::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::MetaItem& a)> f);
+void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const ExpandDecorator& d,const ::AST::Attribute& a)> f);
 void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, unsigned int first_item = 0);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, AST::Expr& node);
 void Expand_Expr(::AST::Crate& crate, LList<const AST::Module*> modstack, ::std::shared_ptr<AST::ExprNode>& node);
@@ -43,12 +43,12 @@ void Register_Synext_Macro_Static(MacroDef* def) {
 }
 
 
-void ExpandDecorator::unexpected(const Span& sp, const AST::MetaItem& mi, const char* loc_str) const
+void ExpandDecorator::unexpected(const Span& sp, const AST::Attribute& mi, const char* loc_str) const
 {
     WARNING(sp, W0000, "Unexpected attribute " << mi.name() << " on " << loc_str);
 }
 
-void Expand_Attr(const Span& sp, const ::AST::MetaItem& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
+void Expand_Attr(const Span& sp, const ::AST::Attribute& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
     for( auto& d : g_decorators ) {
         if( d.first == a.name() ) {
@@ -59,29 +59,30 @@ void Expand_Attr(const Span& sp, const ::AST::MetaItem& a, AttrStage stage,  ::s
         }
     }
 }
-void Expand_Attrs(/*const */::AST::MetaItems& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::MetaItem& a)> f)
+void Expand_Attrs(/*const */::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
     for( auto& a : attrs.m_items )
     {
         if( a.name() == "cfg_attr" ) {
-            if( check_cfg(attrs.m_span, a.items().at(0)) ) {
+            if( check_cfg(a.span(), a.items().at(0)) ) {
+                // Wait? Why move?
                 auto inner_attr = mv$(a.items().at(1));
-                Expand_Attr(attrs.m_span, inner_attr, stage, f);
+                Expand_Attr(inner_attr.span(), inner_attr, stage, f);
                 a = mv$(inner_attr);
             }
             else {
             }
         }
         else {
-            Expand_Attr(attrs.m_span, a, stage, f);
+            Expand_Attr(a.span(), a, stage, f);
         }
     }
 }
-void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
+void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
 {
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ if(!item.is_None()) d.handle(sp, a, crate, path, mod, item); });
 }
-void Expand_Attrs(::AST::MetaItems& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
+void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
 {
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mod, impl); });
 }
@@ -1293,7 +1294,7 @@ void Expand(::AST::Crate& crate)
         crate.m_extern_crates.at("std").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );
             });
-        crate.m_root_module.add_ext_crate(false, "std", "std", ::AST::MetaItems {});
+        crate.m_root_module.add_ext_crate(false, "std", "std", ::AST::AttributeList {});
         break;
     case ::AST::Crate::LOAD_CORE:
         if( crate.m_prelude_path == AST::Path() )
@@ -1301,7 +1302,7 @@ void Expand(::AST::Crate& crate)
         crate.m_extern_crates.at("core").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );
             });
-        crate.m_root_module.add_ext_crate(false, "core", "core", ::AST::MetaItems {});
+        crate.m_root_module.add_ext_crate(false, "core", "core", ::AST::AttributeList {});
         break;
     case ::AST::Crate::LOAD_NONE:
         break;

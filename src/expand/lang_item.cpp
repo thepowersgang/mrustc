@@ -125,7 +125,7 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
@@ -154,7 +154,7 @@ public:
         )
     }
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
         const ::std::string& name = mi.string();
 
              if( name == "i8" ) {}
@@ -193,7 +193,7 @@ class Decorator_Main:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         if( i.is_None() ) {
             // Ignore.
@@ -217,7 +217,7 @@ class Decorator_Start:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::MetaItem& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TU_IFLET(::AST::Item, i, Function, e,
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-start"), ::AST::Path(path) ));

@@ -30,7 +30,7 @@ void Cfg_SetValueCb(::std::string name, ::std::function<bool(const ::std::string
     g_cfg_value_fcns.insert( ::std::make_pair(mv$(name), mv$(cb)) );
 }
 
-bool check_cfg(Span sp, const ::AST::MetaItem& mi) {
+bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
 
     if( mi.has_sub_items() ) {
         // Must be `any`/`not`/`all`
@@ -117,7 +117,7 @@ class CCfgHandler:
     AttrStage   stage() const override { return AttrStage::Pre; }
 
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         DEBUG("#[cfg] crate - " << mi);
         // Ignore, as #[cfg] on a crate is handled in expand/mod.cpp
         if( check_cfg(sp, mi) ) {
@@ -126,7 +126,7 @@ class CCfgHandler:
             crate.m_root_module.items().clear();
         }
     }
-    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         TRACE_FUNCTION_FR("#[cfg] item - " << mi, (i.is_None() ? "Deleted" : ""));
         if( check_cfg(sp, mi) ) {
             // Leave
@@ -135,7 +135,7 @@ class CCfgHandler:
             i = AST::Item::make_None({});
         }
     }
-    void handle(const Span& sp, const AST::MetaItem& mi, ::AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const override {
         DEBUG("#[cfg] expr - " << mi);
         if( check_cfg(sp, mi) ) {
             // Leave
@@ -144,7 +144,7 @@ class CCfgHandler:
             expr.reset();
         }
     }
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const override {
         DEBUG("#[cfg] impl - " << mi);
         if( check_cfg(sp, mi) ) {
             // Leave
@@ -154,32 +154,32 @@ class CCfgHandler:
         }
     }
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::StructItem& si) const override {
         DEBUG("#[cfg] struct item - " << mi);
         if( !check_cfg(sp, mi) ) {
             si.m_name = "";
         }
     }
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::TupleItem& i) const override {
         DEBUG("#[cfg] tuple item - " << mi);
         if( !check_cfg(sp, mi) ) {
             i.m_type = ::TypeRef(sp);
         }
     }
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::EnumVariant& i) const override {
         DEBUG("#[cfg] enum variant - " << mi);
         if( !check_cfg(sp, mi) ) {
             i.m_name = "";
         }
     }
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& i) const override {
         DEBUG("#[cfg] match arm - " << mi);
         if( !check_cfg(sp, mi) ) {
             i.m_patterns.clear();
         }
     }
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_StructLiteral::Ent& i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNode_StructLiteral::Ent& i) const override {
         DEBUG("#[cfg] struct lit - " << mi);
         if( !check_cfg(sp, mi) ) {
             i.value.reset();

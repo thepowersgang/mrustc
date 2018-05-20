@@ -25,7 +25,7 @@ class NodeVisitor;
 
 class ExprNode
 {
-    MetaItems   m_attrs;
+    AttributeList   m_attrs;
     Span    m_span;
 public:
     virtual ~ExprNode() = 0;
@@ -37,10 +37,10 @@ public:
     void set_span(Span s) { m_span = ::std::move(s); }
     const Span& span() const { return m_span; }
 
-    void set_attrs(MetaItems&& mi) {
+    void set_attrs(AttributeList&& mi) {
         m_attrs = mv$(mi);
     }
-    MetaItems& attrs() { return m_attrs; }
+    AttributeList& attrs() { return m_attrs; }
 
     static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
@@ -263,7 +263,7 @@ struct ExprNode_Loop:
 
 struct ExprNode_Match_Arm
 {
-    MetaItems   m_attrs;
+    AttributeList   m_attrs;
     ::std::vector<Pattern>  m_patterns;
     unique_ptr<ExprNode>    m_cond;
 
@@ -418,7 +418,7 @@ struct ExprNode_StructLiteral:
     public ExprNode
 {
     struct Ent {
-        MetaItems   attrs;
+        AttributeList   attrs;
         ::std::string   name;
         unique_ptr<ExprNode>    value;
     };

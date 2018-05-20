@@ -18,7 +18,7 @@
 #include <limits.h>
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
-::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::MetaItems& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
+::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
@@ -836,7 +836,7 @@ namespace {
     }
 }
 
-::HIR::Struct LowerHIR_Struct(::HIR::ItemPath path, const ::AST::Struct& ent, const ::AST::MetaItems& attrs)
+::HIR::Struct LowerHIR_Struct(::HIR::ItemPath path, const ::AST::Struct& ent, const ::AST::AttributeList& attrs)
 {
     TRACE_FUNCTION_F(path);
     ::HIR::Struct::Data data;
@@ -879,7 +879,7 @@ namespace {
                 is_packed = true;
             }
             else {
-                TODO(attrs.m_span, "Handle struct repr '" << repr_str << "'");
+                TODO(a.span(), "Handle struct repr '" << repr_str << "'");
             }
         }
 
@@ -900,7 +900,7 @@ namespace {
         };
 }
 
-::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::MetaItems& attrs, ::std::function<void(::std::string, ::HIR::Struct)> push_struct)
+::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(::std::string, ::HIR::Struct)> push_struct)
 {
 
     // 1. Figure out what sort of enum this is (value or data)
@@ -1050,7 +1050,7 @@ namespace {
         mv$(data)
         };
 }
-::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f, const ::AST::MetaItems& attrs)
+::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f, const ::AST::AttributeList& attrs)
 {
     auto repr = ::HIR::Union::Repr::Rust;
 
@@ -1064,7 +1064,7 @@ namespace {
             repr = ::HIR::Union::Repr::C;
         }
         else {
-            ERROR(attrs.m_span, E0000, "Unknown union repr '" << repr_str << "'");
+            ERROR(attr_repr->span(), E0000, "Unknown union repr '" << repr_str << "'");
         }
     }
 
@@ -1186,7 +1186,7 @@ namespace {
 
     return rv;
 }
-::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::MetaItems& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type)
+::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type)
 {
     static Span sp;
 

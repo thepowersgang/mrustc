@@ -712,7 +712,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
     case MacroPatEnt::PAT_ITEM: {
         assert( lex.parse_state().module );
         const auto& cur_mod = *lex.parse_state().module;
-        return InterpolatedFragment( Parse_Mod_Item_S(lex, cur_mod.m_file_info, cur_mod.path(), AST::MetaItems{}) );
+        return InterpolatedFragment( Parse_Mod_Item_S(lex, cur_mod.m_file_info, cur_mod.path(), AST::AttributeList{}) );
         } break;
     case MacroPatEnt::PAT_IDENT:
         // TODO: Any reserved word is also valid as an ident

@@ -10,7 +10,7 @@ namespace AST {
     class Pattern;
     class Path;
     class ExprNode;
-    class MetaItem;
+    class Attribute;
     template<typename T> struct Named;
     class Item;
 };
@@ -44,7 +44,7 @@ public:
     InterpolatedFragment(::AST::Pattern);
     InterpolatedFragment(::AST::Path);
     InterpolatedFragment(::TypeRef);
-    InterpolatedFragment(::AST::MetaItem );
+    InterpolatedFragment(::AST::Attribute );
     InterpolatedFragment(::AST::Named<AST::Item> );
     ~InterpolatedFragment();
     InterpolatedFragment(Type , ::AST::ExprNode*);

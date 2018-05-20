@@ -13,7 +13,7 @@
 class TypeRef;
 namespace AST {
     class Crate;
-    class MetaItem;
+    class Attribute;
     class Path;
 
     struct StructItem;
@@ -38,26 +38,26 @@ enum class AttrStage
 
 class ExpandDecorator
 {
-    void unexpected(const Span& sp, const AST::MetaItem& mi, const char* loc_str) const;
+    void unexpected(const Span& sp, const AST::Attribute& mi, const char* loc_str) const;
 public:
     virtual AttrStage   stage() const = 0;
 
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const { unexpected(sp, mi, "item"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const { unexpected(sp, mi, "item"); }
     // NOTE: To delete, set the type to `_`
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const { unexpected(sp, mi, "impl"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, const AST::Module& mod, AST::ImplDef& impl) const { unexpected(sp, mi, "impl"); }
     // NOTE: To delete, clear the name
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::StructItem& si) const { unexpected(sp, mi, "struct item"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::StructItem& si) const { unexpected(sp, mi, "struct item"); }
     // NOTE: To delete, make the type invalid
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::TupleItem& si) const { unexpected(sp, mi, "tuple item"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::TupleItem& si) const { unexpected(sp, mi, "tuple item"); }
     // NOTE: To delete, clear the name
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const { unexpected(sp, mi, "enum variant"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::EnumVariant& ev) const { unexpected(sp, mi, "enum variant"); }
 
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const { unexpected(sp, mi, "expression"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::std::unique_ptr<AST::ExprNode>& expr) const { unexpected(sp, mi, "expression"); }
     // NOTE: To delete, clear the patterns vector
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const { unexpected(sp, mi, "match arm"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNode_Match_Arm& expr) const { unexpected(sp, mi, "match arm"); }
     // NOTE: To delete, clear the value
-    virtual void    handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate, ::AST::ExprNode_StructLiteral::Ent& expr) const { unexpected(sp, mi, "struct literal ent"); }
+    virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate, ::AST::ExprNode_StructLiteral::Ent& expr) const { unexpected(sp, mi, "struct literal ent"); }
 };
 
 struct DecoratorDef;

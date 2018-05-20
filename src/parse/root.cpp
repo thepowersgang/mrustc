@@ -41,10 +41,10 @@ Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
     return input;
 }
 
-AST::MetaItems Parse_ItemAttrs(TokenStream& lex);
-void Parse_ParentAttrs(TokenStream& lex, AST::MetaItems& out);
-AST::MetaItem   Parse_MetaItem(TokenStream& lex);
-void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs);
+AST::AttributeList Parse_ItemAttrs(TokenStream& lex);
+void Parse_ParentAttrs(TokenStream& lex, AST::AttributeList& out);
+AST::Attribute  Parse_MetaItem(TokenStream& lex);
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::AttributeList& mod_attrs);
 bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv);
 
 //::AST::Path Parse_Publicity(TokenStream& lex)
@@ -127,7 +127,7 @@ bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
     ::std::vector< ::std::string>   lifetimes;
     GET_CHECK_TOK(tok, lex, TOK_LT);
     do {
-        ::AST::MetaItems attrs = Parse_ItemAttrs(lex);
+        auto attrs = Parse_ItemAttrs(lex);
         (void)attrs;    // TODO: Attributes on generic params
 
         switch(GET_TOK(tok, lex))
@@ -198,7 +198,7 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
         }
 
         PUTBACK(tok, lex);
-        ::AST::MetaItems attrs = Parse_ItemAttrs(lex);
+        auto attrs = Parse_ItemAttrs(lex);
         (void)attrs;    // TODO: Attributes on generic params
 
         GET_TOK(tok, lex);
@@ -523,7 +523,7 @@ AST::TypeAlias Parse_TypeAlias(TokenStream& lex)
     return AST::TypeAlias( ::std::move(params), ::std::move(type) );
 }
 
-AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
+AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
 {
     TRACE_FUNCTION;
 
@@ -547,7 +547,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
         ::std::vector<AST::TupleItem>  refs;
         while(lex.lookahead(0) != TOK_PAREN_CLOSE)
         {
-            AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
+            auto item_attrs = Parse_ItemAttrs(lex);
             SET_ATTRS(lex, item_attrs);
 
             bool    is_pub = Parse_Publicity(lex, /*allow_restricted=*/false);  // HACK: Disable `pub(restricted)` syntax in tuple structs, due to ambiguity
@@ -582,7 +582,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
         {
             PUTBACK(tok, lex);
 
-            AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
+            auto item_attrs = Parse_ItemAttrs(lex);
             SET_ATTRS(lex, item_attrs);
 
             bool is_pub = Parse_Publicity(lex);
@@ -607,7 +607,7 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::MetaItems& meta_items)
     }
 }
 
-AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
+AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items)
 {
     TRACE_FUNCTION;
 
@@ -662,7 +662,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     {
         PUTBACK(tok, lex);
 
-        AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
+        auto item_attrs = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, item_attrs);
 
         auto ps = lex.start_span();
@@ -795,7 +795,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::MetaItems& meta_items)
     return trait;
 }
 
-AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
+AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
 {
     TRACE_FUNCTION;
 
@@ -823,7 +823,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
         auto sp = lex.start_span();
         PUTBACK(tok, lex);
 
-        AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
+        auto item_attrs = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, item_attrs);
 
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -841,7 +841,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
                     break;
                 }
 
-                AST::MetaItems  field_attrs = Parse_ItemAttrs(lex);
+                auto field_attrs = Parse_ItemAttrs(lex);
                 (void)field_attrs;  // TODO^
 
                 types.push_back( Parse_Type(lex) );
@@ -862,7 +862,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
                     break;
                 }
 
-                AST::MetaItems  field_attrs = Parse_ItemAttrs(lex);
+                auto field_attrs = Parse_ItemAttrs(lex);
 
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
                 auto name = mv$(tok.str());
@@ -897,7 +897,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
     return AST::Enum( mv$(params), mv$(variants) );
 }
 
-::AST::Union Parse_Union(TokenStream& lex, AST::MetaItems& meta_items)
+::AST::Union Parse_Union(TokenStream& lex, AST::AttributeList& meta_items)
 {
     Token   tok;
 
@@ -924,7 +924,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
             break ;
         }
 
-        AST::MetaItems item_attrs = Parse_ItemAttrs(lex);
+        auto item_attrs = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, item_attrs);
 
         bool is_pub = Parse_Publicity(lex);
@@ -943,9 +943,9 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::MetaItems& meta_items)
     return ::AST::Union( mv$(params), mv$(variants) );
 }
 
-AST::MetaItems Parse_ItemAttrs(TokenStream& lex)
+AST::AttributeList Parse_ItemAttrs(TokenStream& lex)
 {
-    AST::MetaItems  rv;
+    AST::AttributeList  rv;
     Token   tok;
     while( lex.lookahead(0) == TOK_HASH )
     {
@@ -956,7 +956,7 @@ AST::MetaItems Parse_ItemAttrs(TokenStream& lex)
     }
     return rv;
 }
-void Parse_ParentAttrs(TokenStream& lex, AST::MetaItems& out)
+void Parse_ParentAttrs(TokenStream& lex, AST::AttributeList& out)
 {
     Token   tok;
     while( lex.lookahead(0) == TOK_HASH && lex.lookahead(1) == TOK_EXCLAM )
@@ -969,7 +969,7 @@ void Parse_ParentAttrs(TokenStream& lex, AST::MetaItems& out)
     }
 }
 /// Parse a meta-item declaration (either #![ or #[)
-AST::MetaItem Parse_MetaItem(TokenStream& lex)
+AST::Attribute Parse_MetaItem(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -979,6 +979,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
         return mv$(tok.frag_meta());
     }
 
+    auto ps = lex.start_span();
     CHECK_TOK(tok, TOK_IDENT);
     ::std::string   name = mv$(tok.str());
     switch(GET_TOK(tok, lex))
@@ -987,24 +988,26 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
         switch(GET_TOK(tok, lex))
         {
         case TOK_STRING:
-            return AST::MetaItem(name, tok.str());
+            return AST::Attribute(lex.end_span(ps), name, tok.str());
         case TOK_INTERPOLATED_EXPR: {
             auto n = tok.take_frag_node();
             if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
             {
-                return AST::MetaItem(name, mv$(v->m_value));
+                return AST::Attribute(lex.end_span(ps), name, mv$(v->m_value));
             }
             else
             {
+                // - Force an error.
                 CHECK_TOK(tok, TOK_STRING);
             }
             break; }
         default:
+            // - Force an error.
             CHECK_TOK(tok, TOK_STRING);
         }
         throw "";
     case TOK_PAREN_OPEN: {
-        ::std::vector<AST::MetaItem>    items;
+        ::std::vector<AST::Attribute>    items;
         do {
             if(LOOK_AHEAD(lex) == TOK_PAREN_CLOSE) {
                 GET_TOK(tok, lex);
@@ -1013,14 +1016,14 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
             items.push_back(Parse_MetaItem(lex));
         } while(GET_TOK(tok, lex) == TOK_COMMA);
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
-        return AST::MetaItem(name, mv$(items)); }
+        return AST::Attribute(lex.end_span(ps), name, mv$(items)); }
     default:
         PUTBACK(tok, lex);
-        return AST::MetaItem(name);
+        return AST::Attribute(lex.end_span(ps), name);
     }
 }
 
-::AST::Item Parse_Impl(TokenStream& lex, AST::MetaItems attrs, bool is_unsafe=false)
+::AST::Item Parse_Impl(TokenStream& lex, AST::AttributeList attrs, bool is_unsafe=false)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -1057,7 +1060,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
         // negative impls can't have any content
         GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
 
-        return ::AST::Item::make_NegImpl( AST::ImplDef(lex.end_span(ps), mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ) );
+        return ::AST::Item::make_NegImpl(AST::ImplDef( mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ));
     }
 
     // - Don't care which at this stage
@@ -1102,7 +1105,7 @@ AST::MetaItem Parse_MetaItem(TokenStream& lex)
 
     Parse_ParentAttrs(lex,  attrs);
 
-    AST::Impl   impl( AST::ImplDef( lex.end_span(ps), mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ) );
+    auto impl = AST::Impl(AST::ImplDef( mv$(attrs), mv$(params), mv$(trait_path), mv$(impl_type) ));
 
     // A sequence of method implementations
     while( lex.lookahead(0) != TOK_BRACE_CLOSE )
@@ -1119,7 +1122,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     TRACE_FUNCTION;
     Token   tok;
 
-    AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
+    auto item_attrs = Parse_ItemAttrs(lex);
     SET_ATTRS(lex, item_attrs);
 
     {
@@ -1216,7 +1219,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
     impl.items().back().data->attrs = mv$(item_attrs);    // Empty for functions
 }
 
-AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::MetaItems& block_attrs)
+AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::AttributeList& block_attrs)
 {
     TRACE_FUNCTION;
     Token   tok;
@@ -1228,7 +1231,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::M
     while( GET_TOK(tok, lex) != TOK_BRACE_CLOSE )
     {
         PUTBACK(tok, lex);
-        AST::MetaItems  meta_items = Parse_ItemAttrs(lex);
+        auto meta_items = Parse_ItemAttrs(lex);
         SET_ATTRS(lex, meta_items);
 
         auto ps = lex.start_span();
@@ -1452,7 +1455,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
     return true;
 }
 
-::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, AST::MetaItems meta_items)
+::AST::Named<::AST::Item> Parse_Mod_Item_S(TokenStream& lex, const AST::Module::FileInfo& mod_fileinfo, const ::AST::Path& mod_path, AST::AttributeList meta_items)
 {
     TRACE_FUNCTION_F("mod_path="<<mod_path<<", meta_items="<<meta_items);
     Token   tok;
@@ -1644,7 +1647,6 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
     // `unsafe trait`
     // `unsafe impl`
     case TOK_RWORD_UNSAFE:
-        meta_items.push_back( AST::MetaItem("#UNSAFE") );
         switch(GET_TOK(tok, lex))
         {
         // `unsafe extern fn`
@@ -1669,16 +1671,27 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
             item_data = ::AST::Item( Parse_FunctionDefWithCode(lex, ABI_RUST, false,  true,false/*unsafe,const*/) );
             break;
         // `unsafe trait`
-        case TOK_RWORD_TRAIT:
+        case TOK_RWORD_TRAIT: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
             item_name = mv$(tok.str());
-            // TODO: Mark as unsafe
-            meta_items.push_back( AST::MetaItem("#UNSAFE") );
-            item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
-            break;
+            auto tr = Parse_TraitDef(lex, meta_items);
+            tr.set_is_unsafe();
+            item_data = ::AST::Item( ::std::move(tr) );
+            break; }
         // `unsafe impl`
-        case TOK_RWORD_IMPL:
-            return ::AST::Named< ::AST::Item> { "", Parse_Impl(lex, mv$(meta_items), true), false };
+        case TOK_RWORD_IMPL: {
+            auto impl = Parse_Impl(lex, mv$(meta_items), true);
+            if( impl.is_Impl() ) {
+                impl.as_Impl().def().set_is_unsafe();
+            }
+            else if( impl.is_NegImpl() ) {
+                impl.as_NegImpl().set_is_unsafe();
+            }
+            else {
+                BUG(lex.point_span(), "Parse_Impl returned a variant other than Impl or NegImpl");
+            }
+            return ::AST::Named< ::AST::Item> { "", mv$(impl), false };
+            }
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_TRAIT, TOK_RWORD_IMPL});
         }
@@ -1772,10 +1785,10 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
 
         // Check #[cfg] and don't load if it fails
         struct H {
-            static bool check_item_cfg(const ::AST::MetaItems& attrs)
+            static bool check_item_cfg(const ::AST::AttributeList& attrs)
             {
                 for(const auto& at : attrs.m_items) {
-                    if( at.name() == "cfg" && !check_cfg(attrs.m_span, at) ) {
+                    if( at.name() == "cfg" && !check_cfg(at.span(), at) ) {
                         return false;
                     }
                 }
@@ -1853,7 +1866,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
     return ::AST::Named< ::AST::Item> { mv$(item_name), mv$(item_data), is_public };
 }
 
-void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::MetaItems meta_items)
+void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::AttributeList meta_items)
 {
     SET_MODULE(lex, mod);
     lex.parse_state().parent_attrs = &meta_items;
@@ -1899,14 +1912,14 @@ void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod)
         }
 
         // Attributes on the following item
-        AST::MetaItems  meta_items = Parse_ItemAttrs(lex);
+        auto meta_items = Parse_ItemAttrs(lex);
         DEBUG("meta_items = " << meta_items);
 
         Parse_Mod_Item(lex, mod, mv$(meta_items));
     }
 }
 
-void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::MetaItems& mod_attrs)
+void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::AttributeList& mod_attrs)
 {
     TRACE_FUNCTION;
 

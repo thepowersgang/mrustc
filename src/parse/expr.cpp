@@ -66,7 +66,7 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
         DEBUG("tok = " << tok);
 
         // NOTE: Doc comments can appear within a function and apply to the function
-        ::AST::MetaItems    node_attrs;
+        ::AST::AttributeList node_attrs;
         Parse_ParentAttrs(lex, node_attrs);
         (void)node_attrs;   // TODO: Use these attributes
         if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE )
@@ -98,7 +98,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
 {
     Token   tok;
 
-    AST::MetaItems  item_attrs = Parse_ItemAttrs(lex);
+    auto item_attrs = Parse_ItemAttrs(lex);
     GET_TOK(tok, lex);
 
     // `union Ident` - contextual keyword
@@ -584,7 +584,7 @@ ExprNodeP Parse_Expr0(TokenStream& lex)
     //TRACE_FUNCTION;
     Token tok;
 
-    ::AST::MetaItems  expr_attrs = Parse_ItemAttrs(lex);
+    auto expr_attrs = Parse_ItemAttrs(lex);
 
     ExprNodeP rv = Parse_Expr1(lex);
     auto op = AST::ExprNode_Assign::NONE;
@@ -996,7 +996,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
     ::AST::ExprNode_StructLiteral::t_values items;
     while( GET_TOK(tok, lex) == TOK_IDENT || tok.type() == TOK_HASH )
     {
-        ::AST::MetaItems    attrs;
+        ::AST::AttributeList attrs;    // Note: Parse_ItemAttrs uses lookahead, so can't use it here.
         if( tok.type() == TOK_HASH )
         {
             PUTBACK(tok, lex);

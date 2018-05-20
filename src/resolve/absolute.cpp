@@ -2069,7 +2069,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                 Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
 
                 if( e.items().size() != 0 ) {
-                    ERROR(def.span(), E0000, "impl Trait for .. with methods");
+                    ERROR(i.data.span, E0000, "impl Trait for .. with methods");
                 }
 
                 item_context.pop(def.params());
@@ -2102,7 +2102,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 
             Resolve_Absolute_Type(item_context, impl_def.type());
             if( !impl_def.trait().ent.is_valid() )
-                BUG(impl_def.span(), "Encountered negative impl with no trait");
+                BUG(i.data.span, "Encountered negative impl with no trait");
             Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
 
             // No items

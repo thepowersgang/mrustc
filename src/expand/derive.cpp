@@ -303,7 +303,7 @@ class Deriver_Debug:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, debug_trait, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, debug_trait), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, debug_trait), type.clone() ) );
         rv.add_function(false, false, "fmt", mv$(fcn));
         return mv$(rv);
     }
@@ -488,7 +488,7 @@ class Deriver_PartialEq:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "eq", mv$(fcn));
         return mv$(rv);
     }
@@ -667,7 +667,7 @@ class Deriver_PartialOrd:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "partial_cmp", mv$(fcn));
         return mv$(rv);
     }
@@ -910,7 +910,7 @@ class Deriver_Eq:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "assert_receiver_is_total_eq", mv$(fcn));
         return mv$(rv);
     }
@@ -1062,7 +1062,7 @@ class Deriver_Ord:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "cmp", mv$(fcn));
         return mv$(rv);
     }
@@ -1294,7 +1294,7 @@ class Deriver_Clone:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "clone", mv$(fcn));
         return mv$(rv);
     }
@@ -1439,7 +1439,7 @@ class Deriver_Copy:
 
         AST::GenericParams params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         return mv$(rv);
     }
 
@@ -1486,7 +1486,7 @@ class Deriver_Default:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "default", mv$(fcn));
         return mv$(rv);
     }
@@ -1573,7 +1573,7 @@ class Deriver_Hash:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "hash", mv$(fcn));
         return mv$(rv);
     }
@@ -1727,7 +1727,7 @@ class Deriver_RustcEncodable:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "encode", mv$(fcn));
         return mv$(rv);
     }
@@ -1961,7 +1961,7 @@ class Deriver_RustcDecodable:
 
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
-        AST::Impl   rv( AST::ImplDef( sp, AST::MetaItems(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
+        AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
         rv.add_function(false, false, "decode", mv$(fcn));
         return mv$(rv);
     }
@@ -2185,7 +2185,7 @@ static const Deriver* find_impl(const ::std::string& trait_name)
 }
 
 template<typename T>
-static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::MetaItem& attr, const AST::Path& path, const T& item)
+static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::Path& path, const T& item)
 {
     if( !attr.has_sub_items() ) {
         //ERROR(sp, E0000, "#[derive()] requires a list of known traits to derive");
@@ -2257,7 +2257,7 @@ class Decorator_Derive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::MetaItem& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (

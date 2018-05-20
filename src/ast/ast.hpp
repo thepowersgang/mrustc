@@ -51,14 +51,14 @@ enum eItemType
 
 struct StructItem
 {
-    ::AST::MetaItems    m_attrs;
+    ::AST::AttributeList   m_attrs;
     bool    m_is_public;
     ::std::string   m_name;
     TypeRef m_type;
 
     //StructItem() {}
 
-    StructItem(::AST::MetaItems attrs, bool is_pub, ::std::string name, TypeRef ty):
+    StructItem(::AST::AttributeList attrs, bool is_pub, ::std::string name, TypeRef ty):
         m_attrs( mv$(attrs) ),
         m_is_public(is_pub),
         m_name( mv$(name) ),
@@ -75,13 +75,13 @@ struct StructItem
 
 struct TupleItem
 {
-    ::AST::MetaItems    m_attrs;
+    ::AST::AttributeList    m_attrs;
     bool    m_is_public;
     TypeRef m_type;
 
     //TupleItem() {}
 
-    TupleItem(::AST::MetaItems attrs, bool is_pub, TypeRef ty):
+    TupleItem(::AST::AttributeList attrs, bool is_pub, TypeRef ty):
         m_attrs( mv$(attrs) ),
         m_is_public(is_pub),
         m_type( mv$(ty) )
@@ -129,9 +129,6 @@ private:
     TypeRef m_type;
     Expr    m_value;
 public:
-    //Static():
-    //    m_class(CONST)
-    //{}
     Static(Class s_class, TypeRef type, Expr value):
         m_class(s_class),
         m_type( move(type) ),
@@ -155,13 +152,11 @@ public:
 
 private:
     Span    m_span;
-    //::std::string   m_lifetime;
     GenericParams  m_params;
     Expr    m_code;
     TypeRef m_rettype;
     Arglist m_args;
 
-    // TODO: ABI, const, and unsafe
     ::std::string   m_abi;
     bool    m_is_const;
     bool    m_is_unsafe;
@@ -172,7 +167,6 @@ public:
     Function(Function&&) = default;
     Function& operator=(Function&&) = default;
 
-    //Function() {}
     Function(Span sp, GenericParams params, ::std::string abi, bool is_unsafe, bool is_const, bool is_variadic, TypeRef ret_type, Arglist args);
 
     void set_code(Expr code) { m_code = ::std::move(code); }
@@ -200,15 +194,18 @@ class Trait
     ::std::vector< Spanned<AST::Path> > m_supertraits;
 
     bool m_is_marker;
+    bool m_is_unsafe;
     NamedList<Item> m_items;
 public:
     Trait():
-        m_is_marker(false)
+        m_is_marker(false),
+        m_is_unsafe(false)
     {}
     Trait(GenericParams params, ::std::vector< Spanned<Path> > supertraits):
         m_params( mv$(params) ),
         m_supertraits( mv$(supertraits) ),
-        m_is_marker(false)
+        m_is_marker(false),
+        m_is_unsafe(false)
     {
     }
 
@@ -220,12 +217,14 @@ public:
     const NamedList<Item>& items() const { return m_items; }
           NamedList<Item>& items()       { return m_items; }
 
-    void add_type(::std::string name, MetaItems attrs, TypeRef type);
-    void add_function(::std::string name, MetaItems attrs, Function fcn);
-    void add_static(::std::string name, MetaItems attrs, Static v);
+    void add_type(::std::string name, AttributeList attrs, TypeRef type);
+    void add_function(::std::string name, AttributeList attrs, Function fcn);
+    void add_static(::std::string name, AttributeList attrs, Static v);
 
     void set_is_marker();
     bool is_marker() const;
+    void set_is_unsafe() { m_is_unsafe = true; }
+    bool is_unsafe() const { return m_is_unsafe; }
 
     bool has_named_item(const ::std::string& name, bool& out_is_fcn) const;
 
@@ -252,7 +251,7 @@ TAGGED_UNION_EX(EnumVariantData, (), Value,
 
 struct EnumVariant
 {
-    MetaItems   m_attrs;
+    AttributeList   m_attrs;
     ::std::string   m_name;
     EnumVariantData m_data;
 
@@ -260,21 +259,21 @@ struct EnumVariant
     {
     }
 
-    EnumVariant(MetaItems attrs, ::std::string name, Expr&& value):
+    EnumVariant(AttributeList attrs, ::std::string name, Expr&& value):
         m_attrs( mv$(attrs) ),
         m_name( mv$(name) ),
         m_data( EnumVariantData::make_Value({mv$(value)}) )
     {
     }
 
-    EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<TypeRef> sub_types):
+    EnumVariant(AttributeList attrs, ::std::string name, ::std::vector<TypeRef> sub_types):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
         m_data( EnumVariantData::make_Tuple( {mv$(sub_types)} ) )
     {
     }
 
-    EnumVariant(MetaItems attrs, ::std::string name, ::std::vector<StructItem> fields):
+    EnumVariant(AttributeList attrs, ::std::string name, ::std::vector<StructItem> fields):
         m_attrs( mv$(attrs) ),
         m_name( ::std::move(name) ),
         m_data( EnumVariantData::make_Struct( {mv$(fields)} ) )
@@ -380,27 +379,29 @@ public:
 
 class ImplDef
 {
-    Span    m_span;
-    MetaItems   m_attrs;
+    AttributeList   m_attrs;
+    bool    m_is_unsafe;
     GenericParams  m_params;
     Spanned<Path>   m_trait;
     TypeRef m_type;
 public:
-    //ImplDef() {}
-    ImplDef(ImplDef&&) /*noexcept*/ = default;
-    ImplDef(Span sp, MetaItems attrs, GenericParams params, Spanned<Path> trait_type, TypeRef impl_type):
-        m_span( mv$(sp) ),
+    ImplDef(AttributeList attrs, GenericParams params, Spanned<Path> trait_type, TypeRef impl_type):
         m_attrs( mv$(attrs) ),
+        m_is_unsafe( false ),
         m_params( mv$(params) ),
         m_trait( mv$(trait_type) ),
         m_type( mv$(impl_type) )
     {}
+
+    ImplDef(ImplDef&&) /*noexcept*/ = default;
     ImplDef& operator=(ImplDef&&) = default;
 
+    void set_is_unsafe() { m_is_unsafe = true; }
+    bool is_unsafe() const { return m_is_unsafe; }
+
     // Accessors
-    const Span& span() const { return m_span; }
-    const MetaItems& attrs() const { return m_attrs; }
-          MetaItems& attrs()       { return m_attrs; }
+    const AttributeList& attrs() const { return m_attrs; }
+          AttributeList& attrs()       { return m_attrs; }
 
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
@@ -426,7 +427,6 @@ public:
 
 private:
     ImplDef m_def;
-    Span    m_span;
 
     ::std::vector< ImplItem >   m_items;
     //NamedList<TypeRef>   m_types;
@@ -434,7 +434,6 @@ private:
     //NamedList<Static>    m_statics;
 
 public:
-    //Impl() {}
     Impl(Impl&&) /*noexcept*/ = default;
     Impl(ImplDef def):
         m_def( mv$(def) )
@@ -464,8 +463,6 @@ struct UseStmt
     ::AST::Path path;
     ::AST::PathBinding  alt_binding;
 
-    UseStmt()
-    {}
     UseStmt(Span sp, Path p):
         sp(sp),
         path(p)
@@ -553,9 +550,9 @@ public:
     ::std::shared_ptr<AST::Module> add_anon();
 
     void add_item(Named<Item> item);
-    void add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs);
-    void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs);
-    void add_alias(bool is_public, UseStmt path, ::std::string name, MetaItems attrs);
+    void add_item(bool is_pub, ::std::string name, Item it, AttributeList attrs);
+    void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, AttributeList attrs);
+    void add_alias(bool is_public, UseStmt path, ::std::string name, AttributeList attrs);
     void add_macro_invocation(MacroInvocation item);
 
     void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
@@ -609,7 +606,7 @@ TAGGED_UNION_EX(Item, (), None,
     (, attrs(mv$(x.attrs))), (attrs = mv$(x.attrs);),
     (
     public:
-        MetaItems   attrs;
+        AttributeList  attrs;
         Span    span;
 
         Item clone() const;

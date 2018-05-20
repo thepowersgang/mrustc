@@ -35,7 +35,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::MetaItem& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -609,7 +609,7 @@ namespace {
             TODO(sp, "ExprNode_UniOp");
         }
 
-        void visit_attrs(const ::AST::MetaItems& attrs)
+        void visit_attrs(const ::AST::AttributeList& attrs)
         {
             for(const auto& a : attrs.m_items)
             {
@@ -622,7 +622,7 @@ namespace {
                 }
             }
         }
-        void visit_meta_item(const ::AST::MetaItem& i)
+        void visit_meta_item(const ::AST::Attribute& i)
         {
             m_pmi.send_ident(i.name().c_str());
             if( i.has_noarg() ) {

@@ -33,7 +33,7 @@ Token::~Token()
         delete reinterpret_cast<AST::ExprNode*>(m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_META:
-        delete reinterpret_cast<AST::MetaItem*>(m_data.as_Fragment());
+        delete reinterpret_cast<AST::Attribute*>(m_data.as_Fragment());
         break;
     default:
         break;
@@ -92,7 +92,7 @@ Token::Token(const InterpolatedFragment& frag)
         break;
     case InterpolatedFragment::META:
         m_type = TOK_INTERPOLATED_META;
-        m_data = new AST::MetaItem( reinterpret_cast<const AST::MetaItem*>(frag.m_ptr)->clone() );
+        m_data = new AST::Attribute( reinterpret_cast<const AST::Attribute*>(frag.m_ptr)->clone() );
         break;
     case InterpolatedFragment::ITEM: {
         m_type = TOK_INTERPOLATED_ITEM;
@@ -197,11 +197,11 @@ Token Token::clone() const
             rv.m_data = reinterpret_cast<AST::ExprNode*>(e)->clone().release();
             break;
         case TOK_INTERPOLATED_META:
-            rv.m_data = new AST::MetaItem( reinterpret_cast<AST::MetaItem*>(e)->clone() );
+            rv.m_data = new AST::Attribute( reinterpret_cast<AST::Attribute*>(e)->clone() );
             break;
         case TOK_INTERPOLATED_ITEM:
             TODO(m_pos, "clone interpolated item");
-            //rv.m_data = new AST::Named( AST::Item( reinterpret_cast<AST::MetaItem*>(e)->clone() ) );
+            //rv.m_data = new AST::Named( AST::Item( reinterpret_cast<AST::Attribute*>(e)->clone() ) );
             break;
         default:
             BUG(m_pos, "Fragment with invalid token type (" << *this << ")");
@@ -553,7 +553,7 @@ SERIALISE_TYPE(Token::, "Token", {
         os << ":" << *reinterpret_cast<AST::ExprNode*>(tok.m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_META:
-        os << ":" << *reinterpret_cast<AST::MetaItem*>(tok.m_data.as_Fragment());
+        os << ":" << *reinterpret_cast<AST::Attribute*>(tok.m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_ITEM: {
         const auto& named_item = *reinterpret_cast<const AST::Named<AST::Item>*>(tok.m_data.as_Fragment());
