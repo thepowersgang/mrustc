@@ -15,6 +15,7 @@
 #include "visitor.hpp"
 #include <macro_rules/macro_rules.hpp>
 #include <hir/item_path.hpp>
+#include <limits.h>
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
 ::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::MetaItems& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
@@ -63,7 +64,7 @@
             (IsTrait,
                 auto type = LowerHIR_Type(e.type);
 
-                // TODO: Check for `Sized`
+                // TODO: Check if this trait is `Sized` and ignore if it is
 
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({ mv$(type), LowerHIR_TraitPath(bound.span, e.trait) }));
                 rv.m_bounds.back().as_TraitBound().trait.m_hrls = e.hrls;
@@ -478,7 +479,7 @@
             };
         )
     )
-    throw ::std::runtime_error("TODO: LowerHIR_Pattern");
+    throw "unreachable";
 }
 
 ::HIR::ExprPtr LowerHIR_Expr(const ::std::shared_ptr< ::AST::ExprNode>& e)
@@ -722,7 +723,9 @@
             {
                 if( ptr->m_datatype == CORETYPE_UINT || ptr->m_datatype == CORETYPE_ANY )
                 {
-                    // TODO: Limit check.
+                    if( ptr->m_value > UINT_MAX ) {
+                        ERROR(ty.span(), E0000, "Array size out of bounds - " << ptr->m_value << " > " << UINT_MAX);
+                    }
                     auto size_val = static_cast<unsigned int>( ptr->m_value );
                     return ::HIR::TypeRef::new_array( mv$(inner), size_val );
                 }
@@ -833,7 +836,7 @@ namespace {
     }
 }
 
-::HIR::Struct LowerHIR_Struct(::HIR::ItemPath path, const ::AST::Struct& ent)
+::HIR::Struct LowerHIR_Struct(::HIR::ItemPath path, const ::AST::Struct& ent, const ::AST::MetaItems& attrs)
 {
     TRACE_FUNCTION_F(path);
     ::HIR::Struct::Data data;
@@ -858,10 +861,41 @@ namespace {
         )
     )
 
+    auto struct_repr = ::HIR::Struct::Repr::Rust;
+    if( const auto* attr_repr = attrs.get("repr") )
+    {
+        ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
+        bool is_c = false;
+        bool is_packed = false;
+        ASSERT_BUG(Span(), attr_repr->items().size() > 0, "#[repr] attribute malformed, " << *attr_repr);
+        for( const auto& a : attr_repr->items() )
+        {
+            ASSERT_BUG(Span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+            const auto& repr_str = a.name();
+            if( repr_str == "C" ) {
+                is_c = true;
+            }
+            else if( repr_str == "packed" ) {
+                is_packed = true;
+            }
+            else {
+                TODO(attrs.m_span, "Handle struct repr '" << repr_str << "'");
+            }
+        }
+
+        if( is_packed ) {
+            struct_repr = ::HIR::Struct::Repr::Packed;
+        }
+        else if( is_c ) {
+            struct_repr = ::HIR::Struct::Repr::C;
+        }
+        else {
+        }
+    }
+
     return ::HIR::Struct {
         LowerHIR_GenericParams(ent.params(), nullptr),
-        // TODO: Get repr from attributes
-        ::HIR::Struct::Repr::Rust,
+        struct_repr,
         mv$(data)
         };
 }
@@ -933,7 +967,6 @@ namespace {
                 repr = ::HIR::Enum::Repr::Usize;
             }
             else {
-                // TODO: Other repr types
                 ERROR(Span(), E0000, "Unknown enum repr '" << repr_str << "'");
             }
         }
@@ -1031,7 +1064,7 @@ namespace {
             repr = ::HIR::Union::Repr::C;
         }
         else {
-            // TODO: Error?
+            ERROR(attrs.m_span, E0000, "Unknown union repr '" << repr_str << "'");
         }
     }
 
@@ -1240,7 +1273,7 @@ namespace {
         // Leave linkage.name as empty
     }
 
-    // If there's no code, demangle the name (TODO: By ABI) and set linkage.
+    // If there's no code, mangle the name (According to the ABI) and set linkage.
     if( linkage.name == "" && ! f.code().is_valid() )
     {
         linkage.name = p.get_name();
@@ -1336,10 +1369,10 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             }
             ),
         (Impl,
-            //TODO(sp, "Expand Item::Impl");
+            // NOTE: impl blocks are handled in a second pass
             ),
         (NegImpl,
-            //TODO(sp, "Expand Item::NegImpl");
+            // NOTE: impl blocks are handled in a second pass
             ),
         (Use,
             // Ignore - The index is used to add `Import`s
@@ -1365,7 +1398,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             }
             else {
             }
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(item_path, e) );
+            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(item_path, e, item.data.attrs) );
             ),
         (Enum,
             auto enm = LowerHIR_Enum(item_path, e, item.data.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, item.is_pub, mv$(str)); });
@@ -1771,7 +1804,8 @@ public:
     // Set all pointers in the HIR to the correct (now fixed) locations
     IndexVisitor(rv).visit_crate( rv );
 
-    // TODO: If the current crate is libcore, store the paths to various non-lang ops items
+    // HACK: If the current crate is libcore, store the paths to various non-lang ops items
+    // - Some operators aren't tagged with #[lang], so this works around that
     if( crate.m_crate_name == "core" )
     {
         struct H {
@@ -1831,7 +1865,7 @@ public:
                 }
             }
         };
-        // TODO: Check for existing defintions of lang items
+        // Check for existing defintions of lang items before adding magic ones
         if( rv.m_lang_items.count("boxed_trait") == 0 )
         {
             rv.m_lang_items.insert(::std::make_pair( ::std::string("boxed_trait"),  H::resolve_path(rv, false, {"ops", "Boxed"}) ));

@@ -445,7 +445,7 @@ namespace {
             {
             case ::HIR::Struct::Repr::Packed:
                 packed = true;
-                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen help
+                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen to know to pack the structure
                 break;
             case ::HIR::Struct::Repr::C:
                 // No sorting, no packing
@@ -525,8 +525,6 @@ const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitResolve&
     auto ires = s_cache.insert(::std::make_pair( ty.clone(), make_struct_repr(sp, resolve, ty) ));
     return ires.first->second.get();
 }
-
-// TODO: Include NonZero and other repr optimisations here
 
 bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
@@ -684,8 +682,7 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         return true;
         ),
     (Closure,
-        // TODO.
-        DEBUG("TODO Closure - " << ty);
+        BUG(sp, "Encountered closure type at trans stage - " << ty);
         )
     )
     return false;
@@ -769,8 +766,9 @@ namespace {
             switch(str.m_repr)
             {
             case ::HIR::Struct::Repr::Packed:
+                // packed, not sorted
                 packed = true;
-                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen help
+                // NOTE: codegen_c checks m_repr for packing too
                 break;
             case ::HIR::Struct::Repr::C:
                 // No sorting, no packing
@@ -792,10 +790,6 @@ namespace {
                     DEBUG("Can't get size/align of " << t);
                     return nullptr;
                 }
-                if( size == SIZE_MAX )
-                {
-                    TODO(sp, "Unsized type in struct - " << t);
-                }
                 ents.push_back(Ent { idx++, size, align });
                 fields.push_back(TypeRepr::Field { 0, t.clone() });
             }
@@ -808,9 +802,12 @@ namespace {
 
         if( allow_sort )
         {
-            // TODO: Sort by alignment then size (largest first)
-            // - Requires codegen to use this information
+            // Sort by alignment then size (largest first)
             // - NOTE: ?Sized fields (which includes unsized fields) MUST be at the end, even after monomorph
+            // - This means that this code needs to know if a field was ?Sized
+            // TODO: Determine if a field was from a ?Sized generic (so should be fixed as last)
+            //auto cmpfn_lt = [](const Ent& a, const Ent& b){ return a.align == b.align ? a.size < b.size : a.align < b.size; };
+            //::std::sort(ents.begin(), ents.end(), cmpfn_lt);
         }
 
         TypeRepr  rv;
@@ -831,7 +828,7 @@ namespace {
             fields[e.field].offset = cur_ofs;
             if( e.size == SIZE_MAX )
             {
-                // TODO: Ensure that this is the last item
+                // Ensure that this is the last item
                 ASSERT_BUG(sp, &e == &ents.back(), "Unsized item isn't the last item in " << ty);
                 cur_ofs = SIZE_MAX;
             }
@@ -876,7 +873,7 @@ namespace {
                         return true;
                     }
                 }
-                // Handle the NonZero lang item (TODO: Cleaner?)
+                // Handle the NonZero lang item (Note: Checks just the simplepath part)
                 if( te.path.m_data.as_Generic().m_path == resolve.m_crate.get_lang_item_path(sp, "non_zero") )
                 {
                     out_path.sub_fields.push_back(0);
@@ -977,7 +974,7 @@ namespace {
                         max_size ++;
                 }
                 size_t tag_size = 0;
-                // TODO: repr(C) enums
+                // TODO: repr(C) enums - they have different rules
                 if( mono_types.size() == 0 ) {
                     // Unreachable
                 }
@@ -1022,8 +1019,6 @@ namespace {
                 {
                     ASSERT_BUG(sp, max_size == 0, "Zero alignment, but non-zero size");
                 }
-
-                // TODO: Variants.
             }
             } break;
         TU_ARM(enm.m_data, Value, e) {

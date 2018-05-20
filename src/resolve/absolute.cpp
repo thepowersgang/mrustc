@@ -714,7 +714,7 @@ namespace {
             TU_MATCH(::HIR::ValueItem, (it->second->ent), (e),
             (Import,
                 // Wait? is this even valid?
-                TODO(sp, "HIR Import item pointed to an import");
+                BUG(sp, "HIR Import item pointed to an import");
                 ),
             (Constant,
                 pb = ::AST::PathBinding::make_Static({nullptr, nullptr});
@@ -741,7 +741,7 @@ namespace {
             TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
             (Import,
                 // Wait? is this even valid?
-                TODO(sp, "HIR Import item pointed to an import");
+                BUG(sp, "HIR Import item pointed to an import");
                 ),
             (Module,
                 pb = ::AST::PathBinding::make_Module({nullptr, &e});
@@ -787,7 +787,7 @@ namespace {
                 path.bind( ::AST::PathBinding::make_Module({nullptr, &crate.m_hir->m_root_module}) );
                 return ;
             default:
-                TODO(sp, "");
+                TODO(sp, "Looking up a non-namespace, but pointed to crate root");
             }
         }
 
@@ -1180,7 +1180,6 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 ),
             (Module,
                 if( name_ref.is_import ) {
-                    //TODO(sp, "Replace path component with new path - " << path << "[.."<<i+1<<"] with " << name_ref.path);
                     auto newpath = name_ref.path;
                     for(unsigned int j = i+1; j < path_abs.nodes.size(); j ++)
                     {
@@ -1304,8 +1303,6 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     }
                     if( !found )
                     {
-                        //TODO(sp, "Switch back to primitive from " << p << " for " << path);
-                        //p = ::AST::Path( ::AST::Path::TagLocal(), e.nodes[0].name() );
                         auto ct = coretype_fromstring(e.nodes[0].name());
                         p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                     }
