@@ -54,11 +54,29 @@ int main(int argc, const char* argv[])
         return 1;
     }
 
-    Debug_DisablePhase("Load Repository");
-    Debug_DisablePhase("Load Root");
-    Debug_DisablePhase("Load Dependencies");
-    Debug_DisablePhase("Enumerate Build");
-    //Debug_DisablePhase("Run Build");
+    {
+        Debug_DisablePhase("Load Repository");
+        Debug_DisablePhase("Load Root");
+        Debug_DisablePhase("Load Dependencies");
+        Debug_DisablePhase("Enumerate Build");
+        Debug_DisablePhase("Run Build");
+
+        if( const char* e = getenv("MINICARGO_DEBUG") )
+        {
+            while( *e )
+            {
+                const char* colon = ::std::strchr(e, ':');
+                size_t len = colon ? colon - e : ::std::strlen(e);
+
+                Debug_EnablePhase(::std::string(e, len).c_str());
+
+                if( colon )
+                    e = colon + 1;
+                else
+                    e = e + len;
+            }
+        }
+    }
 
     try
     {

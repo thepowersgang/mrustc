@@ -45,31 +45,31 @@ LIBS: $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(OUTDIR)libpanic_unwind.hir $(OU
 
 $(MRUSTC):
 	$(MAKE) -f Makefile all
-	test -e $@
+	@test -e $@
 
 $(MINICARGO):
 	$(MAKE) -C tools/minicargo/
-	test -e $@
+	@test -e $@
 
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
 $(OUTDIR)libstd.hir: $(MRUSTC) $(MINICARGO)
 	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 $(OUTDIR)libpanic_unwind.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
 	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 $(OUTDIR)libtest.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libpanic_unwind.hir
 	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 $(OUTDIR)libgetopts.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
 	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 # MRustC custom version of libproc_macro
 $(OUTDIR)libproc_macro.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
 	$(MINICARGO) lib/libproc_macro --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	test -e $@
+	@test -e $@
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 RUSTC_ENV_VARS += LLVM_CONFIG=$(abspath $(LLVM_CONFIG))

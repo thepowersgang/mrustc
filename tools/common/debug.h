@@ -7,6 +7,7 @@
 typedef ::std::function<void(::std::ostream& os)> dbg_cb_t;
 extern void Debug_SetPhase(const char* phase_name);
 extern void Debug_DisablePhase(const char* phase_name);
+extern void Debug_EnablePhase(const char* phase_name);
 extern bool Debug_IsEnabled();
 extern void Debug_EnterScope(const char* name, dbg_cb_t );
 extern void Debug_LeaveScope(const char* name, dbg_cb_t );
