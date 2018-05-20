@@ -336,6 +336,12 @@ int main(int argc, const char* argv[])
                         continue;
                 }
 
+                // If there's no pre-build files (dependencies), clear the dependency path (cleaner output)
+                if( test.m_pre_build.empty() )
+                {
+                    depdir = ::helpers::path();
+                }
+
                 auto compile_logfile = outdir / test.m_name + "-build.log";
                 if( !run_compiler(test.m_path, outfile, test.m_extra_flags, depdir) )
                 {
@@ -355,6 +361,13 @@ int main(int argc, const char* argv[])
                 if( !run_executable(outfile, { outfile.str().c_str() }, run_out_file) )
                 {
                     DEBUG("RUN FAIL " << test.m_name);
+
+                    // Move the failing output file
+                    auto fail_file = run_out_file + "_failed";
+                    remove(fail_file.str().c_str());
+                    rename(run_out_file.str().c_str(), fail_file.str().c_str());
+                    DEBUG("- Output in " << fail_file);
+
                     n_fail ++;
                     if( opts.fail_fast )
                         return 1;
