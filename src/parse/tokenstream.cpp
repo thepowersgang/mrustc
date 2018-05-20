@@ -141,7 +141,7 @@ Ident TokenStream::get_ident(Token tok) const
         return Ident(getHygiene(), tok.str());
     }
     else if( tok.type() == TOK_INTERPOLATED_IDENT ) {
-        TODO(getPosition(), "");
+        TODO(getPosition(), "get_ident from TOK_INTERPOLATED_IDENT");
     }
     else {
         throw ParseError::Unexpected(*this, tok);

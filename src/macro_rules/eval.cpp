@@ -715,12 +715,13 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
         return InterpolatedFragment( Parse_Mod_Item_S(lex, cur_mod.m_file_info, cur_mod.path(), AST::AttributeList{}) );
         } break;
     case MacroPatEnt::PAT_IDENT:
-        // TODO: Any reserved word is also valid as an ident
+        // NOTE: Any reserved word is also valid as an ident
         GET_TOK(tok, lex);
         if( tok.type() == TOK_IDENT || is_reserved_word(tok.type()) )
             ;
         else
             CHECK_TOK(tok, TOK_IDENT);
+        // TODO: TOK_INTERPOLATED_IDENT
         return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
     }
     throw "";

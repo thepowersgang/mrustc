@@ -20,7 +20,7 @@
 
 using AST::ExprNode;
 using AST::ExprNodeP;
-// TODO: Use a ProtoSpan
+// TODO: Use a ProtoSpan instead of a point span?
 static inline ExprNodeP mk_exprnodep(const TokenStream& lex, AST::ExprNode* en){en->set_span(lex.point_span()); return ExprNodeP(en); }
 #define NEWNODE(type, ...)  mk_exprnodep(lex, new type(__VA_ARGS__))
 
@@ -66,9 +66,10 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
         DEBUG("tok = " << tok);
 
         // NOTE: Doc comments can appear within a function and apply to the function
-        ::AST::AttributeList node_attrs;
-        Parse_ParentAttrs(lex, node_attrs);
-        (void)node_attrs;   // TODO: Use these attributes
+        if( lex.parse_state().parent_attrs )
+        {
+            Parse_ParentAttrs(lex, *lex.parse_state().parent_attrs);
+        }
         if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE )
             break;
 
@@ -162,6 +163,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         }
         else if( item_attrs.m_items.size() > 0 ) {
             // TODO: Is this an error? - Attributes on a expression that didn't yeild a node.
+            // - They should have applied to the item that was parsed?
         }
         else {
         }
@@ -740,7 +742,6 @@ ExprNodeP Parse_Expr1_1(TokenStream& lex)
 
     return NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE, ::std::move(left), ::std::move(right) );
 }
-// TODO: Is this left associative?
 LEFTASSOC(Parse_Expr1_2, Parse_Expr1_5,
     case TOK_TRIPLE_DOT:
         rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, mv$(rv), next(lex) );
@@ -915,8 +916,7 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
             break;
         case TOK_DOT:
-            // Field access / method call
-            // TODO: What about tuple indexing?
+            // Field access / method call / tuple index
             switch(GET_TOK(tok, lex))
             {
             case TOK_IDENT: {
@@ -1097,7 +1097,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return tok.take_frag_node();
 
 
-    // TODO: Return/break/continue/... here?
+    // Return/break/continue/... also parsed here (but recurses back up to actually handle them)
     case TOK_RWORD_RETURN:
     case TOK_RWORD_CONTINUE:
     case TOK_RWORD_BREAK:
@@ -1177,7 +1177,6 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
             return NEWNODE( AST::ExprNode_NamedValue, ::std::move(path) );
         }
     case TOK_RWORD_MOVE:
-        // TODO: Annotate closure as move
         GET_TOK(tok, lex);
         if(tok.type() == TOK_PIPE)
             return Parse_ExprVal_Closure(lex, true);
@@ -1271,7 +1270,9 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
 }
 ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
 {
-    ASSERT_BUG(lex.point_span(), path.is_trivial(), "TODO: Support path macros - " << path);
+    if( !path.is_trivial() ) {
+        TODO(lex.point_span(), "Support path macros - " << path);
+    }
 
     Token   tok;
     ::std::string name = path.m_class.is_Local() ? path.m_class.as_Local().name : path.nodes()[0].name();

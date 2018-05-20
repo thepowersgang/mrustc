@@ -346,9 +346,9 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
     if( tok.type() == TOK_AMP )
     {
         // By-reference method?
-        // TODO: If a lifetime is seen (and not a prototype), it is definitely a self binding
 
         unsigned int ofs = 0;
+        // Handle a lifetime parameter name
         if( lex.lookahead(0) == TOK_LIFETIME )
             ofs ++;
 
@@ -362,22 +362,16 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             }
             auto ty_sp = lex.end_span(ps);
 
+            bool is_mut = false;
             if( tok.type() == TOK_RWORD_MUT )
             {
-                GET_CHECK_TOK(tok, lex, TOK_RWORD_SELF);
-                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), ty_sp, true, TypeRef(ty_sp, "Self", 0xFFFF))) );
+                is_mut = true;
+                GET_TOK(tok, lex);
             }
-            else
-            {
-                args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), ty_sp, false, TypeRef(ty_sp, "Self", 0xFFFF))) );
-            }
-            DEBUG("TODO: UFCS / self lifetimes");
+            CHECK_TOK(tok, TOK_RWORD_SELF);
+            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), ty_sp, is_mut, TypeRef(ty_sp, "Self", 0xFFFF))) );
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
-            //args.push_back( ::std::make_pair(
-            //    AST::Pattern(),
-            //    TypeRef(TypeRef::TagReference(), lifetime, (fcn_class == AST::Function::CLASS_MUTMETHOD), )
-            //) );
 
             // Prime tok for next step
             GET_TOK(tok, lex);
@@ -486,7 +480,7 @@ AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, boo
     Token   tok;
     auto ret = Parse_FunctionDef(lex, abi, allow_self, false,  is_unsafe, is_const);
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
-    // Enter a new hygine scope (TODO: Should this be in Parse_ExprBlock?)
+    // Enter a new hygine scope for the function (TODO: Should this be in Parse_ExprBlock?)
     lex.push_hygine();
     PUTBACK(tok, lex);
     ret.set_code( Parse_ExprBlock(lex) );
@@ -645,7 +639,6 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
         } while( GET_TOK(tok, lex) == TOK_PLUS );
     }
 
-    // TODO: Support "for Sized?"
     if(tok.type() == TOK_RWORD_WHERE)
     {
         //if( params.ty_params().size() == 0 )
@@ -747,7 +740,6 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
             break; }
 
         // Functions (possibly unsafe)
-        // TODO: Const?
         case TOK_RWORD_UNSAFE:
             fn_is_unsafe = true;
             if( GET_TOK(tok, lex) == TOK_RWORD_EXTERN )
@@ -770,8 +762,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
             if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
             {
                 PUTBACK(tok, lex);
-                // Enter a new hygine scope for the function body.
-                // - TODO: Should this just happen in Parse_ExprBlock?
+                // Enter a new hygine scope for the function body. (TODO: Should this be in Parse_ExprBlock?)
                 lex.push_hygine();
                 fcn.set_code( Parse_ExprBlock(lex) );
                 lex.pop_hygine();
@@ -784,7 +775,6 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
             {
                 throw ParseError::Unexpected(lex, tok);
             }
-            // TODO: Store `item_attrs`
             trait.add_function( ::std::move(name), mv$(item_attrs), ::std::move(fcn) );
             break; }
         default:
@@ -842,7 +832,7 @@ AST::Enum Parse_EnumDef(TokenStream& lex, const AST::AttributeList& meta_items)
                 }
 
                 auto field_attrs = Parse_ItemAttrs(lex);
-                (void)field_attrs;  // TODO^
+                (void)field_attrs;  // TODO: Store field_attrs
 
                 types.push_back( Parse_Type(lex) );
             } while( GET_TOK(tok, lex) == TOK_COMMA );
@@ -1176,8 +1166,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
                 GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
                 auto i = ::AST::Static(AST::Static::CONST, mv$(ty), mv$(val));
-                // TODO: Attributes on associated constants
-                impl.add_static( is_public, is_specialisable, mv$(name),  mv$(i) /*, mv$(item_attrs)*/ );
+                impl.add_static( is_public, is_specialisable, mv$(name),  mv$(i) );
                 break ;
             }
             else if( tok.type() == TOK_RWORD_UNSAFE )

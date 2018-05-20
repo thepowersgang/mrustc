@@ -297,7 +297,7 @@ struct EscapedString {
         reinterpret_cast<const ::AST::Path*>(m_data.as_Fragment())->print_pretty(ss, true);
         return ss.str();
     case TOK_INTERPOLATED_PATTERN:
-        // TODO: Use a configurable print
+        // TODO: Use a pretty printer too?
         return FMT( *reinterpret_cast<const ::AST::Pattern*>(m_data.as_Fragment()) );
     case TOK_INTERPOLATED_STMT:
     case TOK_INTERPOLATED_BLOCK:
@@ -312,9 +312,21 @@ struct EscapedString {
     // Value tokens
     case TOK_IDENT:     return m_data.as_String();
     case TOK_LIFETIME:  return "'" + m_data.as_String();
-    case TOK_INTEGER:   return FMT(m_data.as_Integer().m_intval);    // TODO: suffix for type
+    case TOK_INTEGER:
+        if( m_data.as_Integer().m_datatype == CORETYPE_ANY ) {
+            return FMT(m_data.as_Integer().m_intval);
+        }
+        else {
+            return FMT(m_data.as_Integer().m_intval << "_" << m_data.as_Integer().m_datatype);
+        }
     case TOK_CHAR:      return FMT("'\\u{"<< ::std::hex << m_data.as_Integer().m_intval << "}");
-    case TOK_FLOAT:     return FMT(m_data.as_Float().m_floatval);
+    case TOK_FLOAT:
+        if( m_data.as_Float().m_datatype == CORETYPE_ANY ) {
+            return FMT(m_data.as_Float().m_floatval);
+        }
+        else {
+            return FMT(m_data.as_Float().m_floatval << "_" << m_data.as_Float().m_datatype);
+        }
     case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"");
     case TOK_BYTESTRING:return FMT("b\"" << m_data.as_String() << "\"");
     case TOK_HASH:  return "#";
