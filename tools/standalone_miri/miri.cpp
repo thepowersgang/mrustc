@@ -1467,7 +1467,7 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
     }
     else
     {
-        // Handle callback wrappers (e.g. for __rust_maybe_catch_panic)
+        // Handle callback wrappers (e.g. for __rust_maybe_catch_panic, drop_value)
         if( this->m_stack.back().cb )
         {
             if( !this->m_stack.back().cb(res_v, ::std::move(res_v)) )
@@ -2201,8 +2201,10 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
     return true;
 }
 
+// TODO: Use a ValueRef instead?
 bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow/*=false*/)
 {
+    // TODO: After the drop is done, flag the backing allocation for `ptr` as freed
     if( is_shallow )
     {
         // HACK: Only works for Box<T> where the first pointer is the data pointer
