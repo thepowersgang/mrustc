@@ -30,8 +30,8 @@ public:
     // Move present
     AttributeList(AttributeList&&) = default;
     AttributeList& operator=(AttributeList&&) = default;
-    // No copy
-    AttributeList(const AttributeList&) = delete;
+    // No copy assign, but explicit copy
+    explicit AttributeList(const AttributeList&) = default;
     AttributeList& operator=(const AttributeList&) = delete;
     // Explicit clone
     AttributeList clone() const;
@@ -97,7 +97,22 @@ public:
     {
     }
 
-    Attribute(const Attribute& ) = delete;
+    explicit Attribute(const Attribute& x):
+        m_span(x.m_span),
+        m_name(x.m_name),
+        m_is_used(x.m_is_used)
+    {
+        TU_MATCHA( (x.m_data), (e),
+        (None,
+            ),
+        (String,
+            m_data = AttributeData::make_String({ e.val });
+            ),
+        (List,
+            m_data = AttributeData::make_List({ ::std::vector<Attribute>(e.sub_items) });
+            )
+        )
+    }
     Attribute& operator=(const Attribute&& ) = delete;
     Attribute(Attribute&& ) = default;
     Attribute& operator=(Attribute&& ) = default;

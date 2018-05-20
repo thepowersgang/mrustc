@@ -119,12 +119,12 @@ bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
     }
 }
 
-::std::vector< ::std::string> Parse_HRB(TokenStream& lex)
+::AST::HigherRankedBounds Parse_HRB(TokenStream& lex)
 {
     TRACE_FUNCTION;
     Token   tok;
 
-    ::std::vector< ::std::string>   lifetimes;
+    ::AST::HigherRankedBounds   rv;
     GET_CHECK_TOK(tok, lex, TOK_LT);
     do {
         auto attrs = Parse_ItemAttrs(lex);
@@ -133,17 +133,25 @@ bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
         switch(GET_TOK(tok, lex))
         {
         case TOK_LIFETIME:
-            lifetimes.push_back(tok.str());
+            rv.m_lifetimes.push_back(::AST::LifetimeParam(lex.point_span(), ::std::move(attrs), Ident(lex.getHygiene(), tok.str())));
             break;
         default:
             throw ParseError::Unexpected(lex, tok, Token(TOK_LIFETIME));
         }
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_GT);
-    return lifetimes;
+    return rv;
+}
+
+namespace {
+    AST::LifetimeRef get_LifetimeRef(TokenStream& lex, Token tok)
+    {
+        CHECK_TOK(tok, TOK_LIFETIME);
+        return AST::LifetimeRef(/*lex.point_span(), */Ident(lex.getHygiene(), mv$(tok.str())));
+    }
 }
 /// Parse type parameters in a definition
-void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_type, ::std::vector< ::std::string> lifetimes = {})
+void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_type, AST::HigherRankedBounds outer_hrbs = {})
 {
     TRACE_FUNCTION;
     Token tok;
@@ -156,10 +164,9 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
         //    return;
         //}
 
-        ::std::vector< ::std::string>   hrls;
         if(GET_TOK(tok, lex) == TOK_LIFETIME) {
             ret.add_bound(AST::GenericBound::make_TypeLifetime( {
-                checked_type.clone(), tok.str()
+                checked_type.clone(), get_LifetimeRef(lex, mv$(tok))
                 } ));
         }
         else if( tok.type() == TOK_QMARK ) {
@@ -168,17 +175,17 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
                 } ));
         }
         else {
+            ::AST::HigherRankedBounds inner_hrls;
             if( tok.type() == TOK_RWORD_FOR )
             {
-                hrls = Parse_HRB(lex);
+                inner_hrls = Parse_HRB(lex);
             }
             else {
                 PUTBACK(tok, lex);
             }
-            (void)hrls; // TODO: HRLs
 
             ret.add_bound( AST::GenericBound::make_IsTrait({
-                checked_type.clone(), mv$(lifetimes), Parse_Path(lex, PATH_GENERIC_TYPE)
+                mv$(outer_hrbs), checked_type.clone(), mv$(inner_hrls), Parse_Path(lex, PATH_GENERIC_TYPE)
                 }) );
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
@@ -199,14 +206,12 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
 
         PUTBACK(tok, lex);
         auto attrs = Parse_ItemAttrs(lex);
-        (void)attrs;    // TODO: Attributes on generic params
 
         GET_TOK(tok, lex);
         if( tok.type() == TOK_IDENT )
         {
-            // TODO: Hygine
             ::std::string param_name = mv$(tok.str());
-            ret.add_ty_param( AST::TypeParam( param_name ) );
+            ret.add_ty_param( AST::TypeParam( lex.point_span(), ::std::move(attrs), param_name ) );
 
             auto param_ty = TypeRef(lex.point_span(), param_name);
             if( GET_TOK(tok, lex) == TOK_COLON )
@@ -223,14 +228,14 @@ AST::GenericParams Parse_GenericParams(TokenStream& lex)
         }
         else if( tok.type() == TOK_LIFETIME )
         {
-            // TODO: Should lifetimes have hygine?
-            ::std::string param_name = tok.str();
-            ret.add_lft_param( param_name );
+            auto param_name = tok.str();
+            auto ref = get_LifetimeRef(lex, mv$(tok));
+            ret.add_lft_param(::AST::LifetimeParam(lex.point_span(), ::std::move(attrs), Ident(lex.getHygiene(), param_name) ));
             if( GET_TOK(tok, lex) == TOK_COLON )
             {
                 do {
                     GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-                    ret.add_bound(AST::GenericBound::make_Lifetime( {param_name, tok.str()} ));
+                    ret.add_bound(AST::GenericBound::make_Lifetime({ AST::LifetimeRef(ref), get_LifetimeRef(lex, mv$(tok)) }));
                 } while( GET_TOK(tok, lex) == TOK_PLUS );
             }
         }
@@ -258,11 +263,11 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
 
         if( tok.type() == TOK_LIFETIME )
         {
-            auto lhs = mv$(tok.str());
+            auto lhs = get_LifetimeRef(lex, mv$(tok));
             GET_CHECK_TOK(tok, lex, TOK_COLON);
             do {
                 GET_CHECK_TOK(tok, lex, TOK_LIFETIME);
-                auto rhs = mv$(tok.str());
+                auto rhs = get_LifetimeRef(lex, mv$(tok));
                 params.add_bound( AST::GenericBound::make_Lifetime({lhs, rhs}) );
             } while( GET_TOK(tok, lex) == TOK_PLUS );
             PUTBACK(tok, lex);
@@ -270,11 +275,11 @@ void Parse_WhereClause(TokenStream& lex, AST::GenericParams& params)
         // Higher-ranked types/lifetimes
         else if( tok.type() == TOK_RWORD_FOR )
         {
-            ::std::vector< ::std::string>   lifetimes = Parse_HRB(lex);
+            auto hrbs = Parse_HRB(lex);
 
             TypeRef type = Parse_Type(lex);
             GET_CHECK_TOK(tok, lex, TOK_COLON);
-            Parse_TypeBound(lex,params, mv$(type), mv$(lifetimes));
+            Parse_TypeBound(lex,params, mv$(type), mv$(hrbs));
         }
         else
         {
@@ -355,9 +360,9 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         if( lex.lookahead(ofs) == TOK_RWORD_SELF || (lex.lookahead(ofs) == TOK_RWORD_MUT && lex.lookahead(ofs+1) == TOK_RWORD_SELF) )
         {
             auto ps = lex.start_span();
-            ::std::string   lifetime;
+            AST::LifetimeRef lifetime;
             if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
-                lifetime = tok.str();
+                lifetime = get_LifetimeRef(lex, mv$(tok));
                 GET_TOK(tok, lex);
             }
             auto ty_sp = lex.end_span(ps);
@@ -622,6 +627,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
         do {
             if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
                 // TODO: Need a better way of indiciating 'static than just an invalid path
+                // TODO: Ensure that it's 'static
                 supertraits.push_back( make_spanned( Span(tok.get_pos()), AST::Path() ) );
             }
             else if( tok.type() == TOK_BRACE_OPEN ) {

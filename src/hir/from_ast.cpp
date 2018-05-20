@@ -28,6 +28,11 @@
 ::HIR::Crate*   g_crate_ptr = nullptr;
 
 // --------------------------------------------------------------------
+::std::string LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
+{
+    return r.name().name;
+}
+
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp, bool* self_is_sized)
 {
     ::HIR::GenericParams    rv;
@@ -41,24 +46,26 @@
     }
     if( gp.lft_params().size() > 0 )
     {
-        for(const auto& lft_name : gp.lft_params())
-            rv.m_lifetimes.push_back( lft_name );
+        for(const auto& lft_def : gp.lft_params())
+            rv.m_lifetimes.push_back( lft_def.name().name );
     }
     if( gp.bounds().size() > 0 )
     {
         for(const auto& bound : gp.bounds())
         {
             TU_MATCH(::AST::GenericBound, (bound), (e),
+            (None,
+                ),
             (Lifetime,
                 rv.m_bounds.push_back(::HIR::GenericBound::make_Lifetime({
-                    e.test,
-                    e.bound
+                    LowerHIR_LifetimeRef(e.test),
+                    LowerHIR_LifetimeRef(e.bound)
                     }));
                 ),
             (TypeLifetime,
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
                     LowerHIR_Type(e.type),
-                    e.bound
+                    LowerHIR_LifetimeRef(e.bound)
                     }));
                 ),
             (IsTrait,
@@ -66,8 +73,8 @@
 
                 // TODO: Check if this trait is `Sized` and ignore if it is
 
-                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({ mv$(type), LowerHIR_TraitPath(bound.span, e.trait) }));
-                rv.m_bounds.back().as_TraitBound().trait.m_hrls = e.hrls;
+                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({ /*LowerHIR_HigherRankedBounds(e.outer_hrbs),*/ mv$(type), LowerHIR_TraitPath(bound.span, e.trait) }));
+                //rv.m_bounds.back().as_TraitBound().trait.m_hrls = LowerHIR_HigherRankedBounds(e.inner_hrbs);
                 ),
             (MaybeTrait,
                 auto type = LowerHIR_Type(e.type);
@@ -755,47 +762,59 @@
         }
         ),
     (TraitObject,
-        //if( e.hrls.size() > 0 )
-        //    TODO(ty.span(), "TraitObjects with HRLS - " << ty);
         ::HIR::TypeRef::Data::Data_TraitObject  v;
         // TODO: Lifetime
         for(const auto& t : e.traits)
         {
-            DEBUG("t = " << t);
-            const auto& tb = t.binding().as_Trait();
+            DEBUG("t = " << t.path);
+            const auto& tb = t.path.binding().as_Trait();
             assert( tb.trait_ || tb.hir );
-            if( (tb.trait_ ? tb.trait_->is_marker() : tb.hir->m_is_marker) ) {
+            if( (tb.trait_ ? tb.trait_->is_marker() : tb.hir->m_is_marker) )
+            {
                 if( tb.hir ) {
                     DEBUG(tb.hir->m_values.size());
                 }
-                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t) );
+                // TODO: If this has HRBs, what?
+                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t.path) );
             }
             else {
                 // TraitPath -> GenericPath -> SimplePath
                 if( v.m_trait.m_path.m_path.m_components.size() > 0 ) {
                     ERROR(ty.span(), E0000, "Multiple data traits in trait object - " << ty);
                 }
-                v.m_trait = LowerHIR_TraitPath(ty.span(), t);
+                // TODO: Handle HRBs
+                v.m_trait = LowerHIR_TraitPath(ty.span(), t.path);
             }
         }
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
         ),
     (ErasedType,
-        //if( e.hrls.size() > 0 )
-        //    TODO(ty.span(), "ErasedType with HRLS - " << ty);
         ASSERT_BUG(ty.span(), e.traits.size() > 0, "ErasedType with no traits");
 
         ::std::vector< ::HIR::TraitPath>    traits;
         for(const auto& t : e.traits)
         {
-            DEBUG("t = " << t);
-            traits.push_back( LowerHIR_TraitPath(ty.span(), t) );
+            DEBUG("t = " << t.path);
+            // TODO: Pass the HRBs down
+            traits.push_back( LowerHIR_TraitPath(ty.span(), t.path) );
+        }
+        ::HIR::LifetimeRef  lft;
+        if( e.lifetimes.size() == 0 )
+        {
+        }
+        else if( e.lifetimes.size() == 1 )
+        {
+            // TODO: Convert the lifetime reference
+        }
+        else
+        {
+            TODO(ty.span(), "Handle multiple lifetime parameters - " << ty);
         }
         // Leave `m_origin` until the bind pass
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_ErasedType(::HIR::TypeRef::Data::Data_ErasedType {
             ::HIR::Path(::HIR::SimplePath()), 0,
             mv$(traits),
-            ::HIR::LifetimeRef()    // TODO: Lifetime ref
+            lft
             } ) );
         ),
     (Function,

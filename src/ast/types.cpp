@@ -141,6 +141,15 @@ TypeRef TypeRef::clone() const
     throw "";
 }
 
+Ordering Type_TraitPath::ord(const Type_TraitPath& x) const
+{
+    Ordering    rv;
+
+    rv = ::ord( this->path, x.path );
+    if(rv != OrdEqual)  return rv;
+
+    return rv;
+}
 Ordering TypeRef::ord(const TypeRef& x) const
 {
     Ordering    rv;
@@ -277,7 +286,8 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
         for( const auto& it : ent.traits ) {
             if( &it != &ent.traits.front() )
                 os << "+";
-            it.print_pretty(os, true, is_debug);
+            os << it.hrbs;
+            it.path.print_pretty(os, true, is_debug);
         }
         os << ")";
         )
@@ -286,7 +296,8 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
         for( const auto& it : ent.traits ) {
             if( &it != &ent.traits.front() )
                 os << "+";
-            it.print_pretty(os, true, is_debug);
+            os << it.hrbs;
+            it.path.print_pretty(os, true, is_debug);
         }
         os << "";
         )
@@ -301,5 +312,23 @@ void TypeRef::print(::std::ostream& os, bool is_debug/*=false*/) const
 ::std::ostream& operator<<(::std::ostream& os, const PrettyPrintType& x) {
     x.m_type.print(os, false);
     return os;
+}
+
+namespace AST {
+    ::std::ostream& operator<<(::std::ostream& os, const LifetimeRef& x) {
+        if( x.m_binding == LifetimeRef::BINDING_STATIC ) {
+            os << "'static";
+        }
+        else if( x.m_binding == LifetimeRef::BINDING_INFER ) {
+            os << "'_";
+        }
+        else {
+            os << "'" << x.m_name;
+            if( x.m_binding != LifetimeRef::BINDING_UNBOUND ) {
+                os << "/*" << x.m_binding << "*/";
+            }
+        }
+        return os;
+    }
 }
 

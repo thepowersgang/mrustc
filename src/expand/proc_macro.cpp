@@ -345,44 +345,40 @@ namespace {
                 ),
             (TraitObject,
                 m_pmi.send_symbol("(");
-                if( te.hrls.size() > 0 )
-                {
-                    m_pmi.send_ident("for");
-                    m_pmi.send_symbol("<");
-                    for(const auto& v : te.hrls)
-                    {
-                        m_pmi.send_lifetime(v.c_str());
-                        m_pmi.send_symbol(",");
-                    }
-                    m_pmi.send_symbol(">");
-                }
                 for(const auto& t : te.traits)
                 {
-                    this->visit_path(t);
+                    this->visit_hrbs(t.hrbs);
+                    this->visit_path(t.path);
                     m_pmi.send_symbol("+");
                 }
+                // TODO: Lifetimes
                 m_pmi.send_symbol(")");
                 ),
             (ErasedType,
                 m_pmi.send_ident("impl");
-                if( te.hrls.size() > 0 )
-                {
-                    m_pmi.send_ident("for");
-                    m_pmi.send_symbol("<");
-                    for(const auto& v : te.hrls)
-                    {
-                        m_pmi.send_lifetime(v.c_str());
-                        m_pmi.send_symbol(",");
-                    }
-                    m_pmi.send_symbol(">");
-                }
                 for(const auto& t : te.traits)
                 {
-                    this->visit_path(t);
+                    this->visit_hrbs(t.hrbs);
+                    this->visit_path(t.path);
                     m_pmi.send_symbol("+");
                 }
+                // TODO: Lifetimes
                 )
             )
+        }
+        void visit_hrbs(const AST::HigherRankedBounds& hrbs)
+        {
+            if( !hrbs.empty() )
+            {
+                m_pmi.send_ident("for");
+                m_pmi.send_symbol("<");
+                for(const auto& v : hrbs.m_lifetimes)
+                {
+                    m_pmi.send_lifetime(v.name().name.c_str());
+                    m_pmi.send_symbol(",");
+                }
+                m_pmi.send_symbol(">");
+            }
         }
 
         void visit_path(const AST::Path& path, bool is_expr=false)
@@ -445,7 +441,7 @@ namespace {
                     m_pmi.send_symbol("<");
                     for(const auto& l : e.args().m_lifetimes)
                     {
-                        m_pmi.send_lifetime(l.c_str());
+                        m_pmi.send_lifetime(l.name().name.c_str());
                         m_pmi.send_symbol(",");
                     }
                     for(const auto& t : e.args().m_types)
@@ -475,7 +471,7 @@ namespace {
                 {
                     if( !is_first )
                         m_pmi.send_symbol(",");
-                    m_pmi.send_lifetime(p.c_str());
+                    m_pmi.send_lifetime(p.name().name.c_str());
                     is_first = false;
                 }
                 // Types

@@ -379,10 +379,31 @@ Item Item::clone() const
     //os << ")";
     return os;
 }
+::std::ostream& operator<<(::std::ostream& os, const LifetimeParam& p)
+{
+    os << "'" << p.m_name;
+    return os;
+}
+
+::std::ostream& operator<<(::std::ostream& os, const HigherRankedBounds& x)
+{
+    if( x.m_lifetimes.empty() ) {
+        return os;
+    }
+    os << "for<";
+    for(const auto& l : x.m_lifetimes)
+        os << "'" << l << ",";
+    os << "> ";
+    return os;
+}
+
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
     TU_MATCH(GenericBound, (x), (ent),
+    (None,
+        os << "/*-*/";
+        ),
     (Lifetime,
         os << "'" << ent.test << ": '" << ent.bound;
         ),
@@ -390,14 +411,7 @@ Item Item::clone() const
         os << ent.type << ": '" << ent.bound;
         ),
     (IsTrait,
-        if( ! ent.hrls.empty() )
-        {
-            os << "for<";
-            for(const auto& l : ent.hrls)
-                os << "'" << l;
-            os << ">";
-        }
-        os << ent.type << ":  " << ent.trait;
+        os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;
         ),
     (MaybeTrait,
         os << ent.type << ": ?" << ent.trait;

@@ -40,7 +40,7 @@ extern ::std::vector<AST::PathNode> Parse_PathNodes(TokenStream& lex, eParsePath
 extern AST::PathParams Parse_Path_GenericList(TokenStream& lex);
 
 
-extern ::std::vector< ::std::string> Parse_HRB(TokenStream& lex);
+extern AST::HigherRankedBounds Parse_HRB(TokenStream& lex);
 extern AST::AttributeList  Parse_ItemAttrs(TokenStream& lex);
 extern void Parse_ParentAttrs(TokenStream& lex, AST::AttributeList& out);
 extern AST::Attribute   Parse_MetaItem(TokenStream& lex);

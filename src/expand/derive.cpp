@@ -86,7 +86,7 @@ struct Deriver
         for(const auto& arg : params.ty_params())
         {
             params.add_bound( ::AST::GenericBound::make_IsTrait({
-                TypeRef(sp, arg.name(), i), {}, trait_path
+                {}, TypeRef(sp, arg.name(), i), {}, trait_path
                 }) );
             i ++;
         }
@@ -96,7 +96,7 @@ struct Deriver
         for(auto& ty : additional_bounded_types)
         {
             params.add_bound( ::AST::GenericBound::make_IsTrait({
-                mv$(ty), {}, trait_path
+                {}, mv$(ty), {}, trait_path
                 }) );
         }
 
@@ -1563,11 +1563,10 @@ class Deriver_Hash:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "state"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef(sp, "H", 0x100|0)) )
                 )
             );
-        fcn.params().add_ty_param( AST::TypeParam("H") );
+        fcn.params().add_ty_param( AST::TypeParam(sp, {}, "H") );
         fcn.params().add_bound( AST::GenericBound::make_IsTrait({
-            TypeRef(sp, "H", 0x100|0),
-            {},
-            this->get_trait_path_Hasher(core_name)
+            {}, TypeRef(sp, "H", 0x100|0),
+            {}, this->get_trait_path_Hasher(core_name)
             }) );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
 
@@ -1717,11 +1716,10 @@ class Deriver_RustcEncodable:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "s"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef(sp, "S", 0x100|0)) )
                 )
             );
-        fcn.params().add_ty_param( AST::TypeParam("S") );
+        fcn.params().add_ty_param( AST::TypeParam(sp, {}, "S") );
         fcn.params().add_bound( AST::GenericBound::make_IsTrait({
-            TypeRef(sp, "S", 0x100|0),
-            {},
-            this->get_trait_path_Encoder()
+            {}, TypeRef(sp, "S", 0x100|0),
+            {}, this->get_trait_path_Encoder()
             }) );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
 
@@ -1951,11 +1949,10 @@ class Deriver_RustcDecodable:
                 ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "d"), TypeRef(TypeRef::TagReference(), sp, true, TypeRef(sp, "D", 0x100|0)) )
                 )
             );
-        fcn.params().add_ty_param( AST::TypeParam("D") );
+        fcn.params().add_ty_param( AST::TypeParam(sp, {}, "D") );
         fcn.params().add_bound( AST::GenericBound::make_IsTrait({
-            TypeRef(sp, "D", 0x100|0),
-            {},
-            this->get_trait_path_Decoder()
+            {}, TypeRef(sp, "D", 0x100|0),
+            {}, this->get_trait_path_Decoder()
             }) );
         fcn.set_code( NEWNODE(Block, vec$(mv$(node))) );
 

@@ -272,13 +272,15 @@ void Expand_Type(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
     (TraitObject,
         for(auto& p : e.traits)
         {
-            Expand_Path(crate, modstack, mod,  p);
+            // TODO: p.hrbs? Not needed until types are in those
+            Expand_Path(crate, modstack, mod,  p.path);
         }
         ),
     (ErasedType,
         for(auto& p : e.traits)
         {
-            Expand_Path(crate, modstack, mod,  p);
+            // TODO: p.hrbs?
+            Expand_Path(crate, modstack, mod,  p.path);
         }
         )
     )
@@ -859,6 +861,8 @@ void Expand_GenericParams(::AST::Crate& crate, LList<const AST::Module*> modstac
     for(auto& bound : params.bounds())
     {
         TU_MATCHA( (bound), (be),
+        (None,
+            ),
         (Lifetime,
             ),
         (TypeLifetime,

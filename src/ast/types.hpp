@@ -13,6 +13,63 @@
 namespace AST {
 class ExprNode;
 class Expr;
+class LifetimeParam;
+}
+
+namespace AST {
+
+    // Defined here for dependency reasons
+    class HigherRankedBounds
+    {
+    public:
+        ::std::vector<LifetimeParam>    m_lifetimes;
+        //::std::vector<TypeParam>    m_types;
+        //::std::vector<GenericBound>    m_bounds;
+
+        bool empty() const {
+            return m_lifetimes.empty();
+        }
+
+        friend ::std::ostream& operator<<(::std::ostream& os, const HigherRankedBounds& x);
+    };
+
+    class LifetimeRef
+    {
+        static const uint16_t BINDING_STATIC = 0xFFFF;
+        static const uint16_t BINDING_UNBOUND = 0xFFFE;
+        static const uint16_t BINDING_INFER = 0xFFFD;
+
+        Ident   m_name;
+        uint16_t  m_binding;
+
+        LifetimeRef(Ident name, uint32_t binding):
+            m_name( ::std::move(name) ),
+            m_binding( binding )
+        {
+        }
+    public:
+        LifetimeRef():
+            LifetimeRef("", BINDING_INFER)
+        {
+        }
+        LifetimeRef(Ident name):
+            LifetimeRef(::std::move(name), BINDING_UNBOUND)
+        {
+        }
+        static LifetimeRef new_static() {
+            return LifetimeRef("static", BINDING_STATIC);
+        }
+
+        void set_binding(uint16_t b) { assert(m_binding == BINDING_UNBOUND); m_binding = b; }
+
+        const Ident& name() const { return m_name; }
+        Ordering ord(const LifetimeRef& x) const { return ::ord(m_name.name, x.m_name.name); }
+        bool operator==(const LifetimeRef& x) const { return ord(x) == OrdEqual; }
+        bool operator!=(const LifetimeRef& x) const { return ord(x) != OrdEqual; }
+        bool operator<(const LifetimeRef& x) const { return ord(x) == OrdLess; };
+
+        friend ::std::ostream& operator<<(::std::ostream& os, const LifetimeRef& x);
+    };
 }
 
 class PrettyPrintType
@@ -57,6 +114,14 @@ struct Type_Function
     Ordering ord(const Type_Function& x) const;
 };
 
+struct Type_TraitPath
+{
+    AST::HigherRankedBounds hrbs;
+    AST::Path   path;
+
+    Ordering ord(const Type_TraitPath& x) const;
+};
+
 TAGGED_UNION(TypeData, None,
     (None, struct { }),
     (Any,  struct { }),
@@ -94,12 +159,12 @@ TAGGED_UNION(TypeData, None,
         AST::Path path;
         }),
     (TraitObject, struct {
-        ::std::vector<::std::string>    hrls;
-        ::std::vector<AST::Path> traits;
+        ::std::vector<Type_TraitPath>   traits;
+        ::std::vector<AST::LifetimeRef> lifetimes;
         }),
     (ErasedType, struct {
-        ::std::vector<::std::string>    hrls;
-        ::std::vector<AST::Path> traits;
+        ::std::vector<Type_TraitPath>   traits;
+        ::std::vector<AST::LifetimeRef> lifetimes;
         })
     );
 
@@ -215,9 +280,9 @@ public:
         TypeRef(TagPath(), mv$(sp), mv$(path))
     {}
 
-    TypeRef( Span sp, ::std::vector<::std::string> hrls, ::std::vector<AST::Path> traits ):
+    TypeRef( Span sp, ::std::vector<Type_TraitPath> traits, ::std::vector<AST::LifetimeRef> lifetimes ):
         m_span(mv$(sp)),
-        m_data(TypeData::make_TraitObject({ mv$(hrls), ::std::move(traits) }))
+        m_data(TypeData::make_TraitObject({ ::std::move(traits), mv$(lifetimes) }))
     {}
 
 

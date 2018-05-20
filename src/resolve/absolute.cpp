@@ -1500,24 +1500,24 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         )
 
         TU_IFLET(::AST::PathBinding, e.path.binding(), Trait, be,
-            auto ty = ::TypeRef( type.span(), {}, ::make_vec1(mv$(e.path)) );
+            auto ty = ::TypeRef( type.span(), ::make_vec1(Type_TraitPath { {}, mv$(e.path)}), {} );
             type = mv$(ty);
             return ;
         )
         ),
     (TraitObject,
-        //context.push_lifetimes( e.hrls );
         for(auto& trait : e.traits) {
-            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait);
+            //context.push_lifetimes( trait.hrbs.m_lifetimes );
+            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait.path);
+            //context.pop_lifetimes();
         }
-        //context.pop_lifetimes();
         ),
     (ErasedType,
-        //context.push_lifetimes( e.hrls );
         for(auto& trait : e.traits) {
-            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait);
+            //context.push_lifetimes( trait.hrbs.m_lifetimes );
+            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait.path);
+            //context.pop_lifetimes();
         }
-        //context.pop_lifetimes();
         )
     )
 }
@@ -1683,6 +1683,8 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
     for( auto& bound : params.bounds() )
     {
         TU_MATCH(::AST::GenericBound, (bound), (e),
+        (None,
+            ),
         (Lifetime,
             // TODO: Link lifetime names to params
             ),
