@@ -374,7 +374,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
                 GET_TOK(tok, lex);
             }
             CHECK_TOK(tok, TOK_RWORD_SELF);
-            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), ty_sp, is_mut, TypeRef(ty_sp, "Self", 0xFFFF))) );
+            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), ty_sp, ::std::move(lifetime), is_mut, TypeRef(ty_sp, "Self", 0xFFFF))) );
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
 

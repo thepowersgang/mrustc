@@ -128,7 +128,7 @@ TypeRef TypeRef::clone() const
     _COPY(Primitive)
     _COPY(Function)
     _CLONE(Tuple, { H::clone_ty_vec(old.inner_types) })
-    _CLONE(Borrow,  { old.is_mut, box$(old.inner->clone()) })
+    _CLONE(Borrow,  { AST::LifetimeRef(old.lifetime), old.is_mut, box$(old.inner->clone()) })
     _CLONE(Pointer, { old.is_mut, box$(old.inner->clone()) })
     _CLONE(Array, { box$(old.inner->clone()), old.size })
     _COPY(Generic)

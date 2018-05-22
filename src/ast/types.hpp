@@ -140,6 +140,7 @@ TAGGED_UNION(TypeData, None,
         ::std::vector<TypeRef> inner_types;
         }),
     (Borrow, struct {
+        AST::LifetimeRef lifetime;
         bool is_mut;
         ::std::unique_ptr<TypeRef> inner;
         }),
@@ -242,9 +243,9 @@ public:
     {}
 
     struct TagReference {};
-    TypeRef(TagReference , Span sp, bool is_mut, TypeRef inner_type):
+    TypeRef(TagReference , Span sp, AST::LifetimeRef lft, bool is_mut, TypeRef inner_type):
         m_span(mv$(sp)),
-        m_data(TypeData::make_Borrow({ is_mut, ::make_unique_ptr(mv$(inner_type)) }))
+        m_data(TypeData::make_Borrow({ ::std::move(lft), is_mut, ::make_unique_ptr(mv$(inner_type)) }))
     {}
     struct TagPointer {};
     TypeRef(TagPointer , Span sp, bool is_mut, TypeRef inner_type):

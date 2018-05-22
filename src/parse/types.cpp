@@ -109,23 +109,21 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         lex.putback(Token(TOK_AMP));
     // '&' - Reference type
     case TOK_AMP: {
-        ::std::string   lifetime;
+        AST::LifetimeRef lifetime;
         // Reference
         tok = lex.getToken();
         if( tok.type() == TOK_LIFETIME ) {
-            lifetime = tok.str();
+            lifetime = AST::LifetimeRef(/*lex.point_span(), */lex.get_ident(::std::move(tok)));
             tok = lex.getToken();
         }
+        bool is_mut = false;
         if( tok.type() == TOK_RWORD_MUT ) {
-            // Mutable reference
-            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, Parse_Type(lex, false));
+            is_mut = true;
         }
         else {
             PUTBACK(tok, lex);
-            // Immutable reference
-            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, Parse_Type(lex, false));
         }
-        throw ParseError::BugCheck("Reached end of Parse_Type:AMP");
+        return TypeRef(TypeRef::TagReference(), lex.end_span(ps), ::std::move(lifetime), is_mut, Parse_Type(lex, false));
         }
     // '*' - Raw pointer
     case TOK_STAR:
