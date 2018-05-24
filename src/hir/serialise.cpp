@@ -87,6 +87,10 @@ namespace {
         void serialise(uint64_t v) { m_out.write_u64c(v); };
         void serialise(int64_t v) { m_out.write_i64c(v); };
 
+        void serialise(const ::HIR::LifetimeRef& lr)
+        {
+            m_out.write_string(lr.name);
+        }
         void serialise_type(const ::HIR::TypeRef& ty)
         {
             m_out.write_tag( ty.m_data.tag() );
@@ -111,7 +115,7 @@ namespace {
                 m_out.write_count(e.m_markers.size());
                 for(const auto& m : e.m_markers)
                     serialise_genericpath(m);
-                //write_string(e.lifetime); // TODO: Need a better type
+                serialise(e.m_lifetime);
                 ),
             (ErasedType,
                 serialise_path(e.m_origin);
@@ -120,6 +124,7 @@ namespace {
                 m_out.write_count(e.m_traits.size());
                 for(const auto& t : e.m_traits)
                     serialise_traitpath(t);
+                serialise(e.m_lifetime);
                 ),
             (Array,
                 assert(e.size_val != ~0u);
@@ -135,6 +140,7 @@ namespace {
                     serialise_type(st);
                 ),
             (Borrow,
+                serialise(e.lifetime);
                 m_out.write_tag(static_cast<int>(e.type));
                 serialise_type(*e.inner);
                 ),

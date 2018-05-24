@@ -114,6 +114,7 @@ namespace {
         }
 
 
+        ::HIR::LifetimeRef deserialise_lifetimeref();
         ::HIR::TypeRef deserialise_type();
         ::HIR::SimplePath deserialise_simplepath();
         ::HIR::PathParams deserialise_pathparams();
@@ -718,6 +719,11 @@ namespace {
 
     template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
 
+    ::HIR::LifetimeRef HirDeserialiser::deserialise_lifetimeref()
+    {
+        return { m_in.read_string() };
+    }
+
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
         ::HIR::TypeRef  rv;
@@ -741,13 +747,13 @@ namespace {
         _(TraitObject, {
             deserialise_traitpath(),
             deserialise_vec< ::HIR::GenericPath>(),
-            ""  // TODO: m_lifetime
+            deserialise_lifetimeref()
             })
         _(ErasedType, {
             deserialise_path(),
             static_cast<unsigned int>(m_in.read_count()),
             deserialise_vec< ::HIR::TraitPath>(),
-            ""  // TODO: m_lifetime
+            deserialise_lifetimeref()
             })
         _(Array, {
             deserialise_ptr< ::HIR::TypeRef>(),
@@ -761,6 +767,7 @@ namespace {
             deserialise_vec< ::HIR::TypeRef>()
             )
         _(Borrow, {
+            deserialise_lifetimeref(),
             static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
             deserialise_ptr< ::HIR::TypeRef>()
             })

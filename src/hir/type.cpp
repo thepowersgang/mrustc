@@ -860,7 +860,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return ::HIR::TypeRef( Data::make_Tuple(mv$(types)) );
         ),
     (Borrow,
-        return ::HIR::TypeRef( Data::make_Borrow({e.type, box$(e.inner->clone())}) );
+        return ::HIR::TypeRef( Data::make_Borrow({e.lifetime, e.type, box$(e.inner->clone())}) );
         ),
     (Pointer,
         return ::HIR::TypeRef( Data::make_Pointer({e.type, box$(e.inner->clone())}) );

@@ -84,6 +84,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const BorrowType& bt);
 
 struct LifetimeRef
 {
+    // Can either reference a named parameter, or an inferred region
     ::std::string   name;
 
     bool operator==(const LifetimeRef& x) const {
@@ -178,6 +179,7 @@ public:
         }),
     (Tuple, ::std::vector<TypeRef>),
     (Borrow, struct {
+        ::HIR::LifetimeRef  lifetime;
         ::HIR::BorrowType   type;
         ::std::unique_ptr<TypeRef>  inner;
         }),
@@ -234,7 +236,7 @@ public:
         return TypeRef(Data::make_Infer({idx, ty_class}));
     }
     static TypeRef new_borrow(BorrowType bt, TypeRef inner) {
-        return TypeRef(Data::make_Borrow({bt, box$(mv$(inner))}));
+        return TypeRef(Data::make_Borrow({ ::HIR::LifetimeRef(), bt, box$(mv$(inner)) }));
     }
     static TypeRef new_pointer(BorrowType bt, TypeRef inner) {
         return TypeRef(Data::make_Pointer({bt, box$(mv$(inner))}));
