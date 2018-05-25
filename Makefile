@@ -33,10 +33,6 @@ RUST_TESTS_FINAL_STAGE ?= ALL
 LINKFLAGS := -g
 LIBS := -lz
 CXXFLAGS := -g -Wall
-# - Only turn on -Werror when running as `tpg` (i.e. me)
-ifeq ($(shell whoami),tpg)
-  CXXFLAGS += -Werror
-endif
 CXXFLAGS += -std=c++14
 #CXXFLAGS += -Wextra
 CXXFLAGS += -O2
