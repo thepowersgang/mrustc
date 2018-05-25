@@ -20,6 +20,7 @@ namespace
         {
             Top,
             Method,
+            Hrb,
         } level;
         unsigned short  index;
 
@@ -36,6 +37,12 @@ namespace
     struct Named
     {
         ::std::string   name;
+        Val value;
+    };
+    template<typename Val>
+    struct NamedI
+    {
+        const Ident& name;
         Val value;
     };
 
@@ -55,7 +62,7 @@ namespace
             // Map of names to slots
             ::std::vector< Named< GenericSlot > > types;
             ::std::vector< Named< GenericSlot > > constants;
-            ::std::vector< Named< GenericSlot > > lifetimes;
+            ::std::vector< NamedI< GenericSlot > > lifetimes;
             })
         );
 
@@ -74,6 +81,17 @@ namespace
             m_frozen_bind_set( false )
         {}
 
+        void push(const ::AST::HigherRankedBounds& params) {
+            auto e = Ent::make_Generic({});
+            auto& data = e.as_Generic();
+
+            for(size_t i = 0; i < params.m_lifetimes.size(); i ++)
+            {
+                data.lifetimes.push_back( NamedI<GenericSlot> { params.m_lifetimes[i].name(), GenericSlot { GenericSlot::Level::Hrb, static_cast<unsigned short>(i) } } );
+            }
+
+            m_name_context.push_back(mv$(e));
+        }
         void push(const ::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
             auto   e = Ent::make_Generic({});
             auto& data = e.as_Generic();
@@ -85,15 +103,23 @@ namespace
             }
             if( params.ty_params().size() > 0 ) {
                 const auto& typs = params.ty_params();
-                for(unsigned int i = 0; i < typs.size(); i ++ ) {
+                for(size_t i = 0; i < typs.size(); i ++ ) {
                     data.types.push_back( Named<GenericSlot> { typs[i].name(), GenericSlot { level, static_cast<unsigned short>(i) } } );
                 }
             }
             if( params.lft_params().size() > 0 ) {
-                //TODO(Span(), "resolve/absolute.cpp - Context::push(GenericParams) - Lifetime params - " << params);
+                const auto& lfts = params.lft_params();
+                for(size_t i = 0; i < lfts.size(); i ++ ) {
+                    data.lifetimes.push_back( NamedI<GenericSlot> { lfts[i].name(), GenericSlot { level, static_cast<unsigned short>(i) } } );
+                }
             }
 
             m_name_context.push_back(mv$(e));
+        }
+        void pop(const ::AST::HigherRankedBounds& ) {
+            if( !m_name_context.back().is_Generic() )
+                BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
+            m_name_context.pop_back();
         }
         void pop(const ::AST::GenericParams& , bool has_self=false) {
             if( !m_name_context.back().is_Generic() )
@@ -501,6 +527,7 @@ namespace
 
 void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path);
 void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::LookupMode mode,  ::AST::Path& path);
+void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRef& type);
 void Resolve_Absolute_Type(Context& context,  TypeRef& type);
 void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr);
 void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node);
@@ -1432,6 +1459,37 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
     // - Helps with cases like PartialOrd<Self>, but hinders when the default is a hint (in expressions)
 }
 
+void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRef& lft)
+{
+    TRACE_FUNCTION_FR("lft = " << lft, "lft = " << lft);
+    if( lft.is_unbound() )
+    {
+        if( lft.name() == "static" )
+        {
+            lft = AST::LifetimeRef::new_static();
+            return ;
+        }
+
+        for(auto it = context.m_name_context.rbegin(); it != context.m_name_context.rend(); ++ it)
+        {
+            if( const auto* e = it->opt_Generic() )
+            {
+                for(const auto& l : e->lifetimes)
+                {
+                    // NOTE: Hygiene doesn't apply to lifetime params!
+                    if( l.name.name == lft.name().name /*&& l.name.hygiene.is_visible(lft.name().hygiene)*/ )
+                    {
+                        lft.set_binding( l.value.index | (static_cast<int>(l.value.level) << 8) );
+                        return ;
+                    }
+                }
+            }
+        }
+
+        ERROR(sp, E0000, "Couldn't find lifetime " << lft);
+    }
+}
+
 void Resolve_Absolute_Type(Context& context,  TypeRef& type)
 {
     TRACE_FUNCTION_FR("type = " << type, "type = " << type);
@@ -1464,6 +1522,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             Resolve_Absolute_Type(context,  t);
         ),
     (Borrow,
+        Resolve_Absolute_Lifetime(context, type.span(), e.lifetime);
         Resolve_Absolute_Type(context,  *e.inner);
         ),
     (Pointer,
@@ -1507,17 +1566,21 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         ),
     (TraitObject,
         for(auto& trait : e.traits) {
-            //context.push_lifetimes( trait.hrbs.m_lifetimes );
+            context.push( trait.hrbs );
             Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait.path);
-            //context.pop_lifetimes();
+            context.pop(trait.hrbs);
         }
+        for(auto& lft : e.lifetimes)
+            Resolve_Absolute_Lifetime(context, type.span(),lft);
         ),
     (ErasedType,
         for(auto& trait : e.traits) {
-            //context.push_lifetimes( trait.hrbs.m_lifetimes );
+            context.push( trait.hrbs );
             Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait.path);
-            //context.pop_lifetimes();
+            context.pop(trait.hrbs);
         }
+        for(auto& lft : e.lifetimes)
+            Resolve_Absolute_Lifetime(context, type.span(), lft);
         )
     )
 }
@@ -1686,14 +1749,20 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
         (None,
             ),
         (Lifetime,
-            // TODO: Link lifetime names to params
+            Resolve_Absolute_Lifetime(context, bound.span, e.test);
+            Resolve_Absolute_Lifetime(context, bound.span,e.bound);
             ),
         (TypeLifetime,
             Resolve_Absolute_Type(context, e.type);
+            Resolve_Absolute_Lifetime(context, bound.span, e.bound);
             ),
         (IsTrait,
+            context.push( e.outer_hrbs );
             Resolve_Absolute_Type(context, e.type);
+            context.push( e.inner_hrbs );
             Resolve_Absolute_Path(context, bound.span, Context::LookupMode::Type, e.trait);
+            context.pop( e.inner_hrbs );
+            context.pop( e.outer_hrbs );
             ),
         (MaybeTrait,
             Resolve_Absolute_Type(context, e.type);

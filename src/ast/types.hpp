@@ -61,6 +61,8 @@ namespace AST {
         }
 
         void set_binding(uint16_t b) { assert(m_binding == BINDING_UNBOUND); m_binding = b; }
+        bool is_unbound() const { return m_binding == BINDING_UNBOUND; }
+        bool is_infer() const { return m_binding == BINDING_INFER; }
 
         const Ident& name() const { return m_name; }
         Ordering ord(const LifetimeRef& x) const { return ::ord(m_name.name, x.m_name.name); }
