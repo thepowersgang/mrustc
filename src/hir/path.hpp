@@ -97,6 +97,7 @@ struct SimplePath
 
 struct PathParams
 {
+    //::std::vector<LifetimeRef>  m_lifetimes;
     ::std::vector<TypeRef>  m_types;
 
     PathParams();

@@ -721,7 +721,7 @@ namespace {
 
     ::HIR::LifetimeRef HirDeserialiser::deserialise_lifetimeref()
     {
-        return { m_in.read_string() };
+        return { m_in.read_count() };
     }
 
     ::HIR::TypeRef HirDeserialiser::deserialise_type()

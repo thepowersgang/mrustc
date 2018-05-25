@@ -246,11 +246,14 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
         )
         ),
     (Borrow,
+        os << "&";
+        if(e.lifetime != ::HIR::LifetimeRef())
+            os << e.lifetime << " ";
         switch(e.type)
         {
-        case ::HIR::BorrowType::Shared: os << "&";  break;
-        case ::HIR::BorrowType::Unique: os << "&mut ";  break;
-        case ::HIR::BorrowType::Owned:  os << "&move "; break;
+        case ::HIR::BorrowType::Shared: os << "";  break;
+        case ::HIR::BorrowType::Unique: os << "mut ";  break;
+        case ::HIR::BorrowType::Owned:  os << "move "; break;
         }
         this->print_type(os, *e.inner);
         ),
@@ -302,6 +305,8 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
             os << "+" << marker.m_path;
             this->print_pathparams(os, marker.m_params);
         }
+        if( e.m_lifetime != ::HIR::LifetimeRef::new_static() )
+            os << "+ '" << e.m_lifetime;
         os << ")";
         ),
     (ErasedType,
@@ -312,8 +317,8 @@ void HMTypeInferrence::print_type(::std::ostream& os, const ::HIR::TypeRef& tr) 
                 os << "+";
             os << tr;
         }
-        if( e.m_lifetime.name != "" )
-            os << "+ '" << e.m_lifetime.name;
+        if( e.m_lifetime != ::HIR::LifetimeRef::new_static() )
+            os << "+ '" << e.m_lifetime;
         os << "/*" << e.m_origin << "*/";
         ),
     (Tuple,

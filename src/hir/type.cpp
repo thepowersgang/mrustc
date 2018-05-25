@@ -112,8 +112,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         }
         for(const auto& tr : e.m_markers)
             os << "+" << tr;
-        if( e.m_lifetime.name != "" )
-            os << "+ '" << e.m_lifetime.name;
+        if( e.m_lifetime != LifetimeRef::new_static() )
+            os << "+" << e.m_lifetime;
         os << ")";
         ),
     (ErasedType,
@@ -123,8 +123,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
                 os << "+";
             os << tr;
         }
-        if( e.m_lifetime.name != "" )
-            os << "+ '" << e.m_lifetime.name;
+        if( e.m_lifetime != LifetimeRef::new_static() )
+            os << "+ '" << e.m_lifetime;
         os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         ),
     (Array,

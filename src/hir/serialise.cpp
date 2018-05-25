@@ -89,7 +89,7 @@ namespace {
 
         void serialise(const ::HIR::LifetimeRef& lr)
         {
-            m_out.write_string(lr.name);
+            m_out.write_count(lr.binding);
         }
         void serialise_type(const ::HIR::TypeRef& ty)
         {
