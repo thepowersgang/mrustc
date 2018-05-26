@@ -4670,6 +4670,11 @@ namespace {
 
         void emit_destructor_call(const ::MIR::LValue& slot, const ::HIR::TypeRef& ty, bool unsized_valid, unsigned indent_level)
         {
+            // If the type doesn't need dropping, don't try.
+            if( !m_resolve.type_needs_drop_glue(sp, ty) )
+            {
+                return ;
+            }
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
             TU_MATCHA( (ty.m_data), (te),
             // Impossible
