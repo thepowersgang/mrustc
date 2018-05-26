@@ -83,42 +83,21 @@ trait-item-inside-macro # TODO: Allow macro invocations in traits
 try-operator-custom # TODO: use the ops::Try trait instead of try! desugar
 type-macros-simple  # macro_rules ordering with nested items
 
-# Requires unwinding panics
-unwind-resource
-backtrace
-backtrace-debuginfo
-backtrace-debuginfo-aux
-issue-24313     # Not sure if this is unwinding or TLS problems...
-box-of-array-of-drop-1
-box-of-array-of-drop-2
-catch-unwind-bang
-cleanup-rvalue-temp-during-incomplete-alloc
-drop-trait-enum
-dynamic-drop
-intrinsic-move-val-cleanups
-issue-14875
-issue-25089
-issue-26655
-issue-29485
-issue-29948
-issue-30018-panic
-issue-8460  # .. except it fails because there's no overflow checks
-multi-panic
-nested-vec-3
-panic-handler-chain
-panic-handler-flail-wildly
-panic-handler-set-twice
-panic-in-dtor-drops-fields
-panic-recover-propagate
-reachable-unnameable-items
-slice-panic-1
-slice-panic-2
-task-stderr
-terminate-in-initializer
-test-should-fail-good-message
-unit-like-struct-drop-run
-unwind-unique
-vector-sort-panic-safe
+# RESOLVE
+issue-33687		# Calling a unit-like struct with Fn* traits - "Pointed struct in TupleVariant (::Test) isn't a Tuple"
+static-function-pointer-xc	# Calling a static function pointer
+const-block         # ^
+const-block-cross-crate-fn  # ^
+const-block-item    # ^
+rfc1623             # ^
+static-function-pointer # ^
+issue-17718         # ^ (const here, but same idea)
+issue-27890         # ^
+empty-struct-braces # MISSING: Full support for braced initialisers for unit-like structs/variants
+issue-29540     # Errors out on very deep method call list.
+issue-34751     # Treats PhantomData as a refutable pattern
+mir_ascription_coercion # TODO: Either visit expected types, or make a type annotation its own node type
+type-ascription     # ^
 
 # CONST EVAL
 associated-const-type-parameters    # TODO: Associated const referred from associated const
@@ -335,22 +314,6 @@ type-id-higher-rank-2   # ^ (test failed)
 unsized3    # BUG: Incorrect dst type annotation for struct containing `str`
 utf8_idents # BUG: No escaping of utf8 in symbols, GCC doesn't like this
 
-# RESOLVE
-issue-33687		# Calling a unit-like struct with Fn* traits - "Pointed struct in TupleVariant (::Test) isn't a Tuple"
-static-function-pointer-xc	# Calling a static function pointer
-const-block         # ^
-const-block-cross-crate-fn  # ^
-const-block-item    # ^
-rfc1623             # ^
-static-function-pointer # ^
-issue-17718         # ^ (const here, but same idea)
-issue-27890         # ^
-empty-struct-braces # MISSING: Full support for braced initialisers for unit-like structs/variants
-issue-29540     # Errors out on very deep method call list.
-issue-34751     # Treats PhantomData as a refutable pattern
-mir_ascription_coercion # TODO: Either visit expected types, or make a type annotation its own node type
-type-ascription     # ^
-
 # HIR MISC
 xcrate-associated-type-defaults	# type_is_specialisable - Handle missing type in impl(0x17e3018) ::"xcrate_associated_type_defaults"::Foo<u32,> for () {}, name = Out
 default-associated-types        # ^
@@ -370,5 +333,42 @@ tls-dtors-are-run-in-a-static-binary    # Thread-local destructors aren't being 
 # TEST RUNNER
 exec-env    # Runtime environment variable
 extern-crosscrate   # test runner params with no leading space
+
+# Requires unwinding panics
+unwind-resource
+backtrace
+backtrace-debuginfo
+backtrace-debuginfo-aux
+issue-24313     # Not sure if this is unwinding or TLS problems...
+box-of-array-of-drop-1
+box-of-array-of-drop-2
+catch-unwind-bang
+cleanup-rvalue-temp-during-incomplete-alloc
+drop-trait-enum
+dynamic-drop
+intrinsic-move-val-cleanups
+issue-14875
+issue-25089
+issue-26655
+issue-29485
+issue-29948
+issue-30018-panic
+issue-8460  # .. except it fails because there's no overflow checks
+multi-panic
+nested-vec-3
+panic-handler-chain
+panic-handler-flail-wildly
+panic-handler-set-twice
+panic-in-dtor-drops-fields
+panic-recover-propagate
+reachable-unnameable-items
+slice-panic-1
+slice-panic-2
+task-stderr
+terminate-in-initializer
+test-should-fail-good-message
+unit-like-struct-drop-run
+unwind-unique
+vector-sort-panic-safe
 
 # vim: ft=make expandtab ts=4
