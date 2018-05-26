@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <string>
 #include <set>
+#include <string_view.hpp>
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
 #include "ast/ast.hpp"
@@ -201,6 +202,10 @@ struct ProgramParams
         bool disable_mir_optimisations = false;
         bool full_validate = false;
         bool full_validate_early = false;
+
+        bool dump_ast = false;
+        bool dump_hir = false;
+        bool dump_mir = false;
     } debug;
     struct {
         ::std::string   codegen_type;
@@ -356,10 +361,12 @@ int main(int argc, char *argv[])
             DEBUG("params.outfile = " << params.outfile);
         }
 
-        // XXX: Dump crate before resolve
-        CompilePhaseV("Dump Expanded", [&]() {
-            Dump_Rust( FMT(params.outfile << "_0a_exp.rs").c_str(), crate );
-            });
+        if( params.debug.dump_ast )
+        {
+            CompilePhaseV("Dump Expanded", [&]() {
+                Dump_Rust( FMT(params.outfile << "_1_ast.rs").c_str(), crate );
+                });
+        }
 
         if( params.last_stage == ProgramParams::STAGE_EXPAND ) {
             return 0;
@@ -467,10 +474,12 @@ int main(int argc, char *argv[])
             Resolve_Absolutise(crate);  // - Convert all paths to Absolute or UFCS, and resolve variables
             });
 
-        // XXX: Dump crate before HIR
-        CompilePhaseV("Temp output - Resolved", [&]() {
-            Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
-            });
+        if( params.debug.dump_ast )
+        {
+            CompilePhaseV("Temp output - Resolved", [&]() {
+                Dump_Rust( FMT(params.outfile << "_1_ast.rs").c_str(), crate );
+                });
+        }
 
         if( params.last_stage == ProgramParams::STAGE_RESOLVE ) {
             return 0;
@@ -508,10 +517,14 @@ int main(int argc, char *argv[])
             ConvertHIR_ConstantEvaluate(*hir_crate);
             });
 
-        CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
-            HIR_Dump( os, *hir_crate );
-            });
+        if( params.debug.dump_hir )
+        {
+            // DUMP after initial consteval
+            CompilePhaseV("Dump HIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+                HIR_Dump( os, *hir_crate );
+                });
+        }
 
         // === Type checking ===
         // - This can recurse and call the MIR lower to evaluate constants
@@ -546,10 +559,14 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand HIR ErasedType", [&]() {
             HIR_Expand_ErasedType(*hir_crate);
             });
-        CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
-            HIR_Dump( os, *hir_crate );
-            });
+        if( params.debug.dump_hir )
+        {
+            // DUMP after typecheck (before validation)
+            CompilePhaseV("Dump HIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+                HIR_Dump( os, *hir_crate );
+                });
+        }
         // - Ensure that typeck worked (including Fn trait call insertion etc)
         CompilePhaseV("Typecheck Expressions (validate)", [&]() {
             Typecheck_Expressions_Validate(*hir_crate);
@@ -564,10 +581,14 @@ int main(int argc, char *argv[])
             HIR_GenerateMIR(*hir_crate);
             });
 
-        CompilePhaseV("Dump MIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
-            MIR_Dump( os, *hir_crate );
-            });
+        if( params.debug.dump_mir )
+        {
+            // DUMP after generation
+            CompilePhaseV("Dump MIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
+                MIR_Dump( os, *hir_crate );
+                });
+        }
 
         // Validate the MIR
         CompilePhaseV("MIR Validate", [&]() {
@@ -578,10 +599,15 @@ int main(int argc, char *argv[])
         CompilePhaseV("Constant Evaluate Full", [&]() {
             ConvertHIR_ConstantEvaluateFull(*hir_crate);
             });
-        CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
-            HIR_Dump( os, *hir_crate );
-            });
+
+        if( params.debug.dump_hir )
+        {
+            // DUMP after consteval (full HIR again)
+            CompilePhaseV("Dump HIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+                HIR_Dump( os, *hir_crate );
+                });
+        }
 
         // - Expand constants in HIR and virtualise calls
         CompilePhaseV("MIR Cleanup", [&]() {
@@ -599,10 +625,14 @@ int main(int argc, char *argv[])
             MIR_OptimiseCrate(*hir_crate, params.debug.disable_mir_optimisations);
             });
 
-        CompilePhaseV("Dump MIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
-            MIR_Dump( os, *hir_crate );
-            });
+        if( params.debug.dump_mir )
+        {
+            // DUMP: After optimisation
+            CompilePhaseV("Dump MIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
+                MIR_Dump( os, *hir_crate );
+                });
+        }
         CompilePhaseV("MIR Validate PO", [&]() {
             MIR_CheckCrate(*hir_crate);
             });
@@ -869,6 +899,18 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     no_optval();
                     this->debug.full_validate_early = true;
                 }
+                else if( optname == "dump-ast" ) {
+                    no_optval();
+                    this->debug.dump_ast = true;
+                }
+                else if( optname == "dump-hir" ) {
+                    no_optval();
+                    this->debug.dump_mir = true;
+                }
+                else if( optname == "dump-mir" ) {
+                    no_optval();
+                    this->debug.dump_mir = true;
+                }
                 else if( optname == "stop-after" ) {
                     get_optval();
                     if( optval == "parse" )
@@ -1052,6 +1094,42 @@ ProgramParams::ProgramParams(int argc, char *argv[])
     {
         ::std::cerr << "No input file passed" << ::std::endl;
         exit(1);
+    }
+
+    if( const auto* a = getenv("MRUSTC_DUMP") )
+    {
+        while( a[0] )
+        {
+            const char* end = strchr(a, ':');
+
+            ::std::string_view  s;
+            if( end ) {
+                s = ::std::string_view { a, end };
+                a = end + 1;
+            }
+            else {
+                end = a + strlen(a);
+                s = ::std::string_view { a, end };
+                a = end;
+            }
+
+            if( s == "" ) {
+                // Ignore
+            }
+            else if( s == "ast" ) {
+                this->debug.dump_ast = true;
+            }
+            else if( s == "hir" ) {
+                this->debug.dump_hir = true;
+            }
+            else if( s == "mir" ) {
+                this->debug.dump_mir = true;
+            }
+            else {
+                ::std::cerr << "Unknown option in $MRUSTC_DUMP '" << s << "'" << ::std::endl;
+                // - No terminate, just warn
+            }
+        }
     }
 }
 void ProgramParams::show_help() const
