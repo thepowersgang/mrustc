@@ -670,72 +670,83 @@ int main(int argc, char *argv[])
             // If the test harness is enabled, override crate type to "Executable"
             crate_type = ::AST::Crate::Type::Executable;
         }
-        switch( crate_type )
+
+        // Enumerate items to be passed to codegen
+        TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() {
+            switch( crate_type )
+            {
+            case ::AST::Crate::Type::Unknown:
+                ::std::cerr << "BUG? Unknown crate type" << ::std::endl;
+                exit(1);
+                break;
+            case ::AST::Crate::Type::RustLib:
+            case ::AST::Crate::Type::RustDylib:
+            case ::AST::Crate::Type::CDylib:
+                return Trans_Enumerate_Public(*hir_crate);
+            case ::AST::Crate::Type::ProcMacro:
+                // TODO: proc macros enumerate twice, once as a library (why?) and again as an executable
+                return Trans_Enumerate_Public(*hir_crate);
+            case ::AST::Crate::Type::Executable:
+                return Trans_Enumerate_Main(*hir_crate);
+            }
+            throw ::std::runtime_error("Invalid crate_type value");
+            });
+        // - Generate monomorphised versions of all functions
+        CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
+        // - Do post-monomorph inlining
+        CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
+        // - Clean up no-unused functions
+        //CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
+
+        switch(crate_type)
         {
         case ::AST::Crate::Type::Unknown:
-            // ERROR?
-            break;
-        case ::AST::Crate::Type::RustLib: {
-            #if 1
-            // Generate a .o
-            TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            //CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
-            #endif
-
-            // Save a loadable HIR dump
-            CompilePhaseV("HIR Serialise", [&]() {
-                //HIR_Serialise(params.outfile + ".meta", *hir_crate);
-                HIR_Serialise(params.outfile, *hir_crate);
-                });
-
-            // Link metatdata and object into a .rlib
-            break; }
-        case ::AST::Crate::Type::RustDylib: {
-            #if 1
-            // Generate a .o
-            TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
-            #endif
+            throw "";
+        case ::AST::Crate::Type::RustLib:
+            // Generate a loadable .o
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, /*is_executable=*/false); });
             // Save a loadable HIR dump
             CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
-
-            // Generate a .so/.dll
-            // TODO: Codegen and include the metadata in a non-loadable segment
-            break; }
+            // TODO: Link metatdata and object into a .rlib
+            //Trans_Link(params.outfile, params.outfile + ".hir", params.outfile + ".o", CodegenOutput::StaticLibrary);
+            break;
+        case ::AST::Crate::Type::RustDylib:
+            // Generate a .so
+            //CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".so", trans_opt, *hir_crate, items, CodegenOutput::DynamicLibrary); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, /*is_executable=*/false); });
+            // Save a loadable HIR dump
+            CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
+            // TODO: Add the metadata to the .so as a non-loadable segment
+            //Trans_Link(params.outfile, params.outfile + ".hir", params.outfile + ".o", CodegenOutput::DynamicLibrary);
+            break;
         case ::AST::Crate::Type::CDylib:
             // Generate a .so/.dll
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, trans_opt, *hir_crate, items, /*is_executable=*/false); });
+            // - No metadata file
+            //Trans_Link(params.outfile, "", params.outfile + ".o", CodegenOutput::DynamicLibrary);
             break;
         case ::AST::Crate::Type::ProcMacro: {
             // Needs: An executable (the actual macro handler), metadata (for `extern crate foo;`)
-            // Can just emit the metadata and do miri?
-            // - Requires MIR for EVERYTHING, not feasable.
-            TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
 
+            // 1. Generate code for the .o file
+            // TODO: Is the .o actually needed for proc macros?
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, /*is_executable=*/false); });
+
+            // 2. Generate code for the plugin itself
             TransList items2 = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
             CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items2); });
             CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items2); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + "-plugin", trans_opt, *hir_crate, items2, true); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + "-plugin", trans_opt, *hir_crate, items2, /*is_executable=*/true); });
 
-            hir_crate->m_lang_items.clear();    // Make sure that we're not exporting any lang items
+            // - Save a very basic HIR dump, making sure that there's no lang items in it (e.g. `mrustc-main`)
+            hir_crate->m_lang_items.clear();
             CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
+            //Trans_Link(params.outfile, params.outfile + ".hir", params.outfile + ".o", CodegenOutput::StaticLibrary);
+            //Trans_Link(params.outfile+"-plugin", "", params.outfile + "-plugin.o", CodegenOutput::StaticLibrary);
             break; }
         case ::AST::Crate::Type::Executable:
-            // Generate a binary
-            // - Enumerate items for translation
-            TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
-            // - Monomorphise
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            // - Perform codegen
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, trans_opt, *hir_crate, items, true); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, trans_opt, *hir_crate, items, /*is_executable=*/true); });
+            //Trans_Link(params.outfile, "", params.outfile + ".o", CodegenOutput::Executable);
             break;
         }
     }

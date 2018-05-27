@@ -510,6 +510,7 @@ namespace {
                 emit_box_drop_glue( mv$(e.first), *e.second );
             }
 
+            // TODO: Define this function in MIR.
             if( is_executable )
             {
                 m_of << "int main(int argc, const char* argv[]) {\n";
