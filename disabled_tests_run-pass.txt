@@ -140,18 +140,9 @@ issue-2718      # isize enum repr
 small-enum-range-edge   # i8 enum repr
 issue-22258     # BUG: Incorrect handling of trait param defaults
 multiple-reprs  # BUG: Incorrect handling of multiple reprs
-packed-struct-generic-layout    # TODO: repr(packed) - at least error on it!
-packed-struct-generic-size      # ^
-packed-struct-layout            # ^
-packed-struct-size              # ^
-packed-struct-size-xc           # ^
-packed-struct-vec               # ^
-packed-tuple-struct-layout      # ^
-packed-tuple-struct-size        # ^
 placement-in-syntax # BUG: Can't find impl in optimise
 struct-path-associated-type # HUH? `T::A { ... }` struct literal with (bounded) associated const
 struct-path-self    # TODO: Handle `Self` in patterns
-thread-local-extern-static  # TODO: #[no_mangle]
 issue-17170     # TODO: #[repr(simd)]
 simd-size-align # ^
 simd-type       # ^
@@ -263,17 +254,16 @@ issue-6919  # Handle function pointer from Literal
 
 
 # TRANS
-enum-discrim-width-stuff    # mrustc doesn't calculate enum descriminant sizes based on values.
-enum-discrim-autosizing     # ^
-nonzero-enum                # ^
-small-enums-with-fields     # ^
-type-sizes                  # ^
-float_math	# Missing intrinsic (fadd_fast)
+enum-discrim-autosizing     # Incorrect enum descrim auto-selection (0x80 picks i16)
+enum-discrim-width-stuff    # ^
+nonzero-enum                # No packing of None into invalid inner variants
+type-sizes                  # Inefficient field packing in enum variants
+float_math  # Missing intrinsic (fadd_fast)
 issue-38074 # Missing intrinsic (simd_shuffle)
 simd-generics       # Missing intrinsic (simd_*)
 simd-intrinsic-generic-arithmetic   # ^
 simd-intrinsic-generic-elements     # ^
-raw-fat-ptr	# Ordering comparisons of raw pointers
+raw-fat-ptr # Ordering comparisons of raw pointers
 abi-sysv64-register-usage   # asm! register translation
 allocator-override          # asm! translation - "TODO: Handle asm! output leader 'r'"
 i128                        # ^
@@ -296,7 +286,6 @@ enum-discrim-manual-sizing  # TODO: Enum reprs not being correctly used (signed 
 enum-univariant-repr        # ^
 enum-layout-optimization    # BUG: Option size optimisation not applied
 enum-null-pointer-opt       # ^
-nullable-pointer-opt-closures   # ^
 nullable-pointer-size       # ^
 explicit-self-generic       # BUG: Incorrect method lookup (doesn't try autoderef, picks ExactSizeIterator)
 i128-ffi    # UNK: i128 is hard (TODO: TRIAGE)
@@ -306,17 +295,18 @@ issue-21058     # BUG: Enumerate doesn't handle data-less trait objects (e.g. `d
 issue-25515     # ^
 issue-26709     # ^
 issue-35815     # ^
-issue-34796	    # BUG: Missing vtable type.
+issue-34796     # BUG: Missing vtable type.
 mir_calls_to_shims   # BUG: Missing functions (bad enumerate?)
 newtype     # Incorrect error when a struct is used in a function pointer to itself
 trans-object-shim   # BUG: Doesn't generate `<(Foo) as Foo>::bar` function.
 transmute-specialization    # BUG: Enumerate hit an opaque type
-type-id-higher-rank # BUG: type_id returns the same value for `for<'a> fn(&'a T)` as `fn(&'static T)`
+type-id-higher-rank     # BUG: type_id returns the same value for `for<'a> fn(&'a T)` as `fn(&'static T)`
 type-id-higher-rank-2   # ^ (test failed)
 unsized3    # BUG: Incorrect dst type annotation for struct containing `str`
 utf8_idents # BUG: No escaping of utf8 in symbols, GCC doesn't like this
 abi-sysv64-arg-passing  # ERROR: Empty struct arguments to FFI aren't actually empty
 extern-pass-empty   # ^
+thread-local-extern-static  # TODO: #[no_mangle] on statatic definition
 
 # HIR MISC
 xcrate-associated-type-defaults	# type_is_specialisable - Handle missing type in impl(0x17e3018) ::"xcrate_associated_type_defaults"::Foo<u32,> for () {}, name = Out
