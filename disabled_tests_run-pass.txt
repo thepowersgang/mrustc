@@ -35,8 +35,6 @@ lex-bare-cr-nondoc-comment  # Don't treat \r as a new line
 # PARSE
 align-struct	# repr(align(2)) - Need to support integers in attributes
 catch-expr  # MISSING: `do catch {}` syntax
-issue-37733 # for<'a> in types
-issue-39089 # for<'a> in optional traits
 loop-break-value    # TODO: Handle loop labels in expression position.
 match-range # TODO: Exlusive ranges in patterns
 paths-in-macro-invocations  # TODO: Handle path macros at root.
@@ -154,6 +152,10 @@ placement-in-syntax # BUG: Can't find impl in optimise
 struct-path-associated-type # HUH? `T::A { ... }` struct literal with (bounded) associated const
 struct-path-self    # TODO: Handle `Self` in patterns
 thread-local-extern-static  # TODO: #[no_mangle]
+issue-17170     # TODO: #[repr(simd)]
+simd-size-align # ^
+simd-type       # ^
+simd-upgraded   # ^
 
 # TYPECHECK
 associated-types-doubleendediterator-object # BUG BUG: Validation failed
@@ -313,6 +315,8 @@ type-id-higher-rank # BUG: type_id returns the same value for `for<'a> fn(&'a T)
 type-id-higher-rank-2   # ^ (test failed)
 unsized3    # BUG: Incorrect dst type annotation for struct containing `str`
 utf8_idents # BUG: No escaping of utf8 in symbols, GCC doesn't like this
+abi-sysv64-arg-passing  # ERROR: Empty struct arguments to FFI aren't actually empty
+extern-pass-empty   # ^
 
 # HIR MISC
 xcrate-associated-type-defaults	# type_is_specialisable - Handle missing type in impl(0x17e3018) ::"xcrate_associated_type_defaults"::Foo<u32,> for () {}, name = Out

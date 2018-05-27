@@ -1108,8 +1108,8 @@ namespace {
     ::std::string   lifetime;
     ::std::vector< ::HIR::TraitPath>    supertraits;
     for(const auto& st : f.supertraits()) {
-        if( st.ent.is_valid() ) {
-            supertraits.push_back( LowerHIR_TraitPath(st.sp, st.ent) );
+        if( st.ent.path.is_valid() ) {
+            supertraits.push_back( LowerHIR_TraitPath(st.sp, st.ent.path) );
         }
         else {
             lifetime = "static";

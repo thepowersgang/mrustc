@@ -2055,12 +2055,14 @@ void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
     Resolve_Absolute_Generic(item_context,  e.params());
 
     for(auto& st : e.supertraits()) {
-        if( !st.ent.is_valid() ) {
+        if( !st.ent.path.is_valid() ) {
             DEBUG("- ST 'static");
         }
         else {
-            DEBUG("- ST " << st.ent);
-            Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent);
+            DEBUG("- ST " << st.ent.hrbs << st.ent.path);
+            item_context.push(st.ent.hrbs);
+            Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent.path);
+            item_context.pop(st.ent.hrbs);
         }
     }
 

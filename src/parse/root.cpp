@@ -127,8 +127,12 @@ bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
     ::AST::HigherRankedBounds   rv;
     GET_CHECK_TOK(tok, lex, TOK_LT);
     do {
+        // Support empty lists and comma-terminated lists
+        if( lex.lookahead(0) == TOK_GT ) {
+            GET_TOK(tok, lex);
+            break;
+        }
         auto attrs = Parse_ItemAttrs(lex);
-        (void)attrs;    // TODO: Attributes on generic params
 
         switch(GET_TOK(tok, lex))
         {
@@ -141,6 +145,18 @@ bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
     } while( GET_TOK(tok, lex) == TOK_COMMA );
     CHECK_TOK(tok, TOK_GT);
     return rv;
+}
+::AST::HigherRankedBounds Parse_HRB_Opt(TokenStream& lex)
+{
+    if( lex.lookahead(0) == TOK_RWORD_FOR )
+    {
+        lex.getToken(); // Consume
+        return Parse_HRB(lex);
+    }
+    else
+    {
+        return ::AST::HigherRankedBounds();
+    }
 }
 
 namespace {
@@ -170,6 +186,8 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
                 } ));
         }
         else if( tok.type() == TOK_QMARK ) {
+            auto hrbs = Parse_HRB_Opt(lex);
+            (void)hrbs; // The only valid ?Trait is Sized, which doesn't have any generics
             ret.add_bound(AST::GenericBound::make_MaybeTrait( {
                 checked_type.clone(), Parse_Path(lex, PATH_GENERIC_TYPE)
                 } ));
@@ -623,26 +641,23 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
     }
 
     // Trait bounds "trait Trait : 'lifetime + OtherTrait + OtherTrait2"
-    ::std::vector<Spanned<AST::Path> >    supertraits;
+    ::std::vector<Spanned<Type_TraitPath> >    supertraits;
     if(tok.type() == TOK_COLON)
     {
+        // TODO: Just add these as `where Self: <foo>` (would that break typecheck?)
         do {
             if( GET_TOK(tok, lex) == TOK_LIFETIME ) {
                 // TODO: Need a better way of indiciating 'static than just an invalid path
-                // TODO: Ensure that it's 'static
-                supertraits.push_back( make_spanned( Span(tok.get_pos()), AST::Path() ) );
+                ASSERT_BUG(lex.point_span(), tok.str() == "static", "TODO: Support lifetimes other than 'static in trait bounds");
+                supertraits.push_back( make_spanned( Span(tok.get_pos()), Type_TraitPath{ {}, AST::Path() } ) );
             }
             else if( tok.type() == TOK_BRACE_OPEN ) {
                 break;
             }
             else {
                 PUTBACK(tok, lex);
-                if( LOOK_AHEAD(lex) == TOK_RWORD_FOR )
-                {
-                    GET_TOK(tok, lex);
-                    /*::std::vector< ::std::string>   lifetimes =*/ Parse_HRB(lex);
-                }
-                supertraits.push_back( GET_SPANNED(::AST::Path, lex, Parse_Path(lex, PATH_GENERIC_TYPE)) );
+                auto hrbs = Parse_HRB_Opt(lex);
+                supertraits.push_back( GET_SPANNED(Type_TraitPath, lex, (Type_TraitPath{ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) })) );
             }
         } while( GET_TOK(tok, lex) == TOK_PLUS );
     }

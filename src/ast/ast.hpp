@@ -191,7 +191,7 @@ public:
 class Trait
 {
     GenericParams  m_params;
-    ::std::vector< Spanned<AST::Path> > m_supertraits;
+    ::std::vector< Spanned<Type_TraitPath> > m_supertraits;
 
     bool m_is_marker;
     bool m_is_unsafe;
@@ -201,7 +201,7 @@ public:
         m_is_marker(false),
         m_is_unsafe(false)
     {}
-    Trait(GenericParams params, ::std::vector< Spanned<Path> > supertraits):
+    Trait(GenericParams params, ::std::vector< Spanned<Type_TraitPath> > supertraits):
         m_params( mv$(params) ),
         m_supertraits( mv$(supertraits) ),
         m_is_marker(false),
@@ -211,8 +211,8 @@ public:
 
     const GenericParams& params() const { return m_params; }
           GenericParams& params()       { return m_params; }
-    const ::std::vector<Spanned<Path> >& supertraits() const { return m_supertraits; }
-          ::std::vector<Spanned<Path> >& supertraits()       { return m_supertraits; }
+    const ::std::vector<Spanned<Type_TraitPath> >& supertraits() const { return m_supertraits; }
+          ::std::vector<Spanned<Type_TraitPath> >& supertraits()       { return m_supertraits; }
 
     const NamedList<Item>& items() const { return m_items; }
           NamedList<Item>& items()       { return m_items; }
