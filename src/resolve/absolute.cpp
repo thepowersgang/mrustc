@@ -1512,10 +1512,12 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
     (Primitive,
         ),
     (Function,
+        context.push( e.info.hrbs );
         Resolve_Absolute_Type(context,  *e.info.m_rettype);
         for(auto& t : e.info.m_arg_types) {
             Resolve_Absolute_Type(context,  t);
         }
+        context.pop( e.info.hrbs );
         ),
     (Tuple,
         for(auto& t : e.inner_types)

@@ -71,7 +71,6 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         case TOK_RWORD_UNSAFE:
         case TOK_RWORD_EXTERN:
         case TOK_RWORD_FN:
-            // TODO: Handle HRLS in fn types
             return Parse_Type_Fn(lex, hrls);
         default:
             return Parse_Type_Path(lex, hrls, true);
@@ -197,7 +196,6 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
 TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
 {
     auto ps = lex.start_span();
-    // TODO: HRLs
     TRACE_FUNCTION;
     Token   tok;
 
@@ -206,11 +204,13 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
 
     GET_TOK(tok, lex);
 
+    // `unsafe`
     if( tok.type() == TOK_RWORD_UNSAFE )
     {
         is_unsafe = true;
         GET_TOK(tok, lex);
     }
+    // `exern`
     if( tok.type() == TOK_RWORD_EXTERN )
     {
         if( GET_TOK(tok, lex) == TOK_STRING ) {
@@ -223,6 +223,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
             abi = "C";
         }
     }
+    // `fn`
     CHECK_TOK(tok, TOK_RWORD_FN);
 
     ::std::vector<TypeRef>  args;
@@ -248,6 +249,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
     }
     GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
 
+    // `-> RetType`
     TypeRef ret_type = TypeRef(TypeRef::TagUnit(), Span(tok.get_pos()));
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
@@ -257,7 +259,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
         PUTBACK(tok, lex);
     }
 
-    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
+    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), mv$(hrbs), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
 }
 
 TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool allow_trait_list)

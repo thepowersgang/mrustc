@@ -183,9 +183,11 @@ void Parse_TypeBound(TokenStream& lex, AST::GenericParams& ret, TypeRef checked_
             else {
                 PUTBACK(tok, lex);
             }
+            auto trait_path = Parse_Path(lex, PATH_GENERIC_TYPE);
 
+            auto this_outer_hrbs = (lex.lookahead(0) == TOK_PLUS ? AST::HigherRankedBounds(outer_hrbs) : mv$(outer_hrbs));
             ret.add_bound( AST::GenericBound::make_IsTrait({
-                mv$(outer_hrbs), checked_type.clone(), mv$(inner_hrls), Parse_Path(lex, PATH_GENERIC_TYPE)
+                mv$(this_outer_hrbs), checked_type.clone(), mv$(inner_hrls), mv$(trait_path)
                 }) );
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
