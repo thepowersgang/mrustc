@@ -1008,8 +1008,8 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
 
     if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.get_vec().data()) != 0 )
     {
-        perror("posix_spawn");
-        DEBUG("Unable to spawn compiler");
+        ::std::cerr << "Unable to run process '" << exe_name << "' - " << strerror(errno) << ::std::endl;
+        DEBUG("Unable to spawn executable");
         posix_spawn_file_actions_destroy(&fa);
         return false;
     }
