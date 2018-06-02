@@ -10,7 +10,7 @@
 #include <debug.hpp>
 
 namespace HIR {
-    class SimplePath;
+    struct SimplePath;
     class GenericPath;
     class Path;
     class TypeRef;

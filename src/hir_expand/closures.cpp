@@ -647,7 +647,7 @@ namespace {
             //node.m_res_type = ::HIR::TypeRef( node.m_obj_path.clone() );
             DEBUG("-- Object name: " << node.m_obj_path);
             ::HIR::TypeRef  closure_type = ::HIR::TypeRef( ::HIR::GenericPath(node.m_obj_path.m_path.clone(), mv$(impl_path_params)) );
-            closure_type.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Struct({ &closure_struct_ref });
+            closure_type.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&closure_struct_ref);
 
             // - Args
             ::std::vector< ::HIR::Pattern>  args_pat_inner;

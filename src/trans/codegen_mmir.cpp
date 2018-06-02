@@ -281,6 +281,7 @@ namespace
                     case ::HIR::StructMarkings::DstType::TraitObject:
                         return MetadataType::TraitObject;
                     }
+                    throw "";
                     } break;
                 TU_ARM(te.binding, Union, tpb)
                     return MetadataType::None;

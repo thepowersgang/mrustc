@@ -319,7 +319,7 @@ namespace {
                 }
             }
         }
-        void visit_params(::HIR::GenericParams& params)
+        void visit_params(::HIR::GenericParams& params) override
         {
             static Span sp;
             for(auto& bound : params.m_bounds)
@@ -422,7 +422,7 @@ namespace {
                     upper_visitor(uv)
                 {}
 
-                void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p)
+                void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p) override
                 {
                     upper_visitor.visit_generic_path(p, pc);
                 }

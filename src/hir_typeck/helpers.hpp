@@ -187,7 +187,7 @@ public:
     /// Expand any located associated types in the input, operating in-place and returning the result
     ::HIR::TypeRef expand_associated_types(const Span& sp, ::HIR::TypeRef input) const {
         expand_associated_types_inplace(sp, input, LList<const ::HIR::TypeRef*>());
-        return mv$(input);
+        return input;
     }
 
     const ::HIR::TypeRef& expand_associated_types(const Span& sp, const ::HIR::TypeRef& input, ::HIR::TypeRef& tmp) const {
