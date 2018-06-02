@@ -59,6 +59,9 @@ class InterpolatedFragment;
 class Token:
     public Serialisable
 {
+    friend class HirSerialiser;
+    friend class HirDeserialiser;
+
     TAGGED_UNION(Data, None,
     (None, struct {}),
     (String, ::std::string),
@@ -77,6 +80,12 @@ class Token:
     Data    m_data;
     Position    m_pos;
 
+    Token(enum eTokenType t, Data d, Position p):
+        m_type(t),
+        m_data( ::std::move(d) ),
+        m_pos( ::std::move(p) )
+    {
+    }
 public:
     virtual ~Token();
     Token();

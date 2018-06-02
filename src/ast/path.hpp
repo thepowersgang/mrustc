@@ -9,7 +9,6 @@
 #include <vector>
 #include <initializer_list>
 #include <cassert>
-#include <serialise.hpp>
 #include <tagged_union.hpp>
 #include <string>
 #include "../include/span.hpp"
