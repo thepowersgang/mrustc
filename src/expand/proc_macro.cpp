@@ -24,7 +24,7 @@
 # include <sys/wait.h>
 #endif
 
-#if defined(__OpenBSD__) || defined(__NetBSD__)
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__APPLE__)
 extern char **environ;
 #endif
 
