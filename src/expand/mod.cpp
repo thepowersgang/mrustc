@@ -588,13 +588,13 @@ struct CExpandExpr:
             ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
             // - `Some(pattern ) => code`
             arms.push_back( ::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), path_Some, ::make_vec1( mv$(node.m_pattern) ) ) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Some, ::make_vec1( mv$(node.m_pattern) ) ) ),
                 nullptr,
                 mv$(node.m_code)
                 ) );
             // - `None => break label`
             arms.push_back( ::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(path_None)) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagValue(), node.span(), ::AST::Pattern::Value::make_Named(path_None)) ),
                 nullptr,
                 ::AST::ExprNodeP(new ::AST::ExprNode_Flow(::AST::ExprNode_Flow::BREAK, node.m_label, nullptr))
                 ) );
@@ -605,7 +605,7 @@ struct CExpandExpr:
                     ::make_vec1( mv$(node.m_cond) )
                     )),
                 ::make_vec1(::AST::ExprNode_Match_Arm(
-                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "it") ),
+                    ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "it") ),
                     nullptr,
                     ::AST::ExprNodeP(new ::AST::ExprNode_Loop(
                         node.m_label,
@@ -799,13 +799,13 @@ struct CExpandExpr:
             ::std::vector< ::AST::ExprNode_Match_Arm>   arms;
             // `Ok(v) => v,`
             arms.push_back(::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "v") )) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Ok, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "v") )) ),
                 nullptr,
                 ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(::AST::Path::TagLocal(), "v") ) )
                 ));
             // `Err(e) => return Err(From::from(e)),`
             arms.push_back(::AST::ExprNode_Match_Arm(
-                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), "e") )) ),
+                ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "e") )) ),
                 nullptr,
                 ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
                     ::AST::ExprNode_Flow::RETURN,

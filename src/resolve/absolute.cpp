@@ -1809,11 +1809,11 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             auto p = context.lookup_opt( name.name, name.hygiene, Context::LookupMode::PatternValue );
             if( p.is_valid() ) {
                 Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::PatternValue, p);
-                pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
+                pat = ::AST::Pattern(::AST::Pattern::TagValue(), pat.span(), ::AST::Pattern::Value::make_Named(mv$(p)));
                 DEBUG("MaybeBind resolved to " << pat);
             }
             else {
-                pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
+                pat = ::AST::Pattern(::AST::Pattern::TagBind(), pat.span(), mv$(name));
                 pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
                 DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "' (was MaybeBind)");
             }
@@ -1821,7 +1821,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         else {
             auto name = mv$( e.name );
 
-            pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
+            pat = ::AST::Pattern(::AST::Pattern::TagBind(), pat.span(), mv$(name));
             pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
         }
         ),

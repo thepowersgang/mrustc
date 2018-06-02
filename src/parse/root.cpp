@@ -385,7 +385,6 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
                 lifetime = get_LifetimeRef(lex, mv$(tok));
                 GET_TOK(tok, lex);
             }
-            auto ty_sp = lex.end_span(ps);
 
             bool is_mut = false;
             if( tok.type() == TOK_RWORD_MUT )
@@ -394,7 +393,8 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
                 GET_TOK(tok, lex);
             }
             CHECK_TOK(tok, TOK_RWORD_SELF);
-            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), TypeRef(TypeRef::TagReference(), ty_sp, ::std::move(lifetime), is_mut, TypeRef(ty_sp, "Self", 0xFFFF))) );
+            auto sp = lex.end_span(ps);
+            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), sp, "self"), TypeRef(TypeRef::TagReference(), sp, ::std::move(lifetime), is_mut, TypeRef(sp, "Self", 0xFFFF))) );
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
 
@@ -413,6 +413,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             GET_TOK(tok, lex);
             if( allow_self == false )
                 throw ParseError::Generic(lex, "Self binding not expected");
+            auto binding_sp = lex.end_span(ps);
             TypeRef ty = TypeRef( lex.point_span(), "Self", 0xFFFF );
             if( GET_TOK(tok, lex) == TOK_COLON ) {
                 // Typed mut self
@@ -421,7 +422,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
             else {
                 PUTBACK(tok, lex);
             }
-            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), mv$(ty)) );
+            args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), binding_sp, "self"), mv$(ty)) );
             GET_TOK(tok, lex);
         }
     }
@@ -430,6 +431,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         // By-value method
         if( allow_self == false )
             throw ParseError::Generic(lex, "Self binding not expected");
+        auto binding_sp = lex.end_span(ps);
         TypeRef ty = TypeRef( lex.point_span(), "Self", 0xFFFF );
         if( GET_TOK(tok, lex) == TOK_COLON ) {
             // Typed mut self
@@ -438,7 +440,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         else {
             PUTBACK(tok, lex);
         }
-        args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), "self"), mv$(ty)) );
+        args.push_back( ::std::make_pair( AST::Pattern(AST::Pattern::TagBind(), binding_sp, "self"), mv$(ty)) );
         GET_TOK(tok, lex);
     }
     else
