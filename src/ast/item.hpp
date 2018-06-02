@@ -2,7 +2,7 @@
 #pragma once
 
 #include <string>
-#include <serialise.hpp>
+#include <vector>
 
 namespace AST {
 
@@ -25,10 +25,6 @@ struct NamedNS
         is_pub( is_pub )
     {
     }
-
-    //friend ::std::ostream& operator<<(::std::ostream& os, const Named& i) {
-    //    return os << (i.is_pub ? "pub " : " ") << i.name << ": " << i.data;
-    //}
 };
 
 template <typename T>

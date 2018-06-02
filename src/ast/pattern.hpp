@@ -55,8 +55,7 @@ public:
     bool is_valid() const { return m_name.name != ""; }
 };
 
-class Pattern:
-    public Serialisable
+class Pattern
 {
 public:
     TAGGED_UNION(Value, Invalid,
@@ -196,13 +195,6 @@ public:
     const Path& path() const { return m_data.as_StructTuple().path; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat);
-
-    SERIALISABLE_PROTOTYPES();
-    static ::std::unique_ptr<Pattern> from_deserialiser(Deserialiser& s) {
-        ::std::unique_ptr<Pattern> ret(new Pattern);
-        s.item(*ret);
-        return ret;
-    }
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& val);

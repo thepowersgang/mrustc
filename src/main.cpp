@@ -14,7 +14,6 @@
 #include "parse/parseerror.hpp"
 #include "ast/ast.hpp"
 #include "ast/crate.hpp"
-#include <serialiser_texttree.hpp>
 #include <cstring>
 #include <main_bindings.hpp>
 #include "resolve/main_bindings.hpp"

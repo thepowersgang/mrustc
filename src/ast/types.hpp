@@ -7,7 +7,6 @@
 #include "coretypes.hpp"
 #include "ast/path.hpp"
 #include "ast/macro.hpp"
-#include <serialise.hpp>
 #include <tagged_union.hpp>
 
 namespace AST {

@@ -19,7 +19,6 @@
 
 #include "../parse/tokentree.hpp"
 #include "types.hpp"
-#include <serialise.hpp>
 
 #include <ast/pattern.hpp>
 #include <ast/attrs.hpp>

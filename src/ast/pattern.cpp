@@ -155,19 +155,6 @@ namespace AST {
     )
     return os;
 }
-void operator%(Serialiser& s, Pattern::Value::Tag c) {
-}
-void operator%(::Deserialiser& s, Pattern::Value::Tag& c) {
-}
-void operator%(::Serialiser& s, const Pattern::Value& v) {
-}
-void operator%(::Deserialiser& s, Pattern::Value& v) {
-}
-
-void operator%(Serialiser& s, Pattern::Data::Tag c) {
-}
-void operator%(::Deserialiser& s, Pattern::Data::Tag& c) {
-}
 
 Pattern::~Pattern()
 {
@@ -252,10 +239,5 @@ AST::Pattern AST::Pattern::clone() const
     return rv;
 }
 
-#define _D(VAR, ...)  case Pattern::Data::TAG_##VAR: { m_data = Pattern::Data::make_##VAR({}); auto& ent = m_data.as_##VAR(); (void)&ent; __VA_ARGS__ } break;
-SERIALISE_TYPE(Pattern::, "Pattern", {
-},{
-});
-
-}
+}   // namespace AST
 

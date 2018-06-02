@@ -8,7 +8,6 @@
 #include <iostream>
 #include "../parse/parseerror.hpp"
 #include <algorithm>
-#include <serialiser_texttree.hpp>
 
 namespace AST {
 

@@ -41,8 +41,6 @@ public:
         m_attrs = mv$(mi);
     }
     AttributeList& attrs() { return m_attrs; }
-
-    static ::std::unique_ptr<ExprNode> from_deserialiser(Deserialiser& d);
 };
 typedef ::std::unique_ptr<ExprNode> ExprNodeP;
 

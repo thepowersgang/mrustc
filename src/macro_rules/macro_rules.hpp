@@ -19,7 +19,7 @@
 
 class MacroExpander;
 
-TAGGED_UNION_EX(MacroExpansionEnt, (: public Serialisable), Token, (
+TAGGED_UNION(MacroExpansionEnt, Token,
     // TODO: have a "raw" stream instead of just tokens
     (Token, Token),
     // TODO: Have a flag on `NamedValue` that indicates that it is the only/last usage of this particular value (at this level)
@@ -34,19 +34,11 @@ TAGGED_UNION_EX(MacroExpansionEnt, (: public Serialisable), Token, (
         /// Boolean is true if the variable will be unconditionally expanded
         ::std::map< unsigned int, bool>    variables;
         })
-    ),
-    (),
-    (),
-    (
-    public:
-        SERIALISABLE_PROTOTYPES();
-    )
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x);
 
 /// Matching pattern entry
-struct MacroPatEnt:
-    public Serialisable
+struct MacroPatEnt
 {
     ::std::string   name;
     unsigned int    name_index = 0;
@@ -99,13 +91,10 @@ struct MacroPatEnt:
 
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt& x);
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt::Type& x);
-
-    SERIALISABLE_PROTOTYPES();
 };
 
 /// An expansion arm within a macro_rules! blcok
-struct MacroRulesArm:
-    public Serialisable
+struct MacroRulesArm
 {
     /// Names for the parameters
     ::std::vector< ::std::string>   m_param_names;
@@ -126,13 +115,10 @@ struct MacroRulesArm:
     MacroRulesArm& operator=(const MacroRulesArm&) = delete;
     MacroRulesArm(MacroRulesArm&&) = default;
     MacroRulesArm& operator=(MacroRulesArm&&) = default;
-
-    SERIALISABLE_PROTOTYPES();
 };
 
 /// A sigle 'macro_rules!' block
-class MacroRules:
-    public Serialisable
+class MacroRules
 {
 public:
     /// Marks if this macro should be exported from the defining crate
@@ -152,8 +138,6 @@ public:
     }
     virtual ~MacroRules();
     MacroRules(MacroRules&&) = default;
-
-    SERIALISABLE_PROTOTYPES();
 };
 
 extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, AST::Module& mod);

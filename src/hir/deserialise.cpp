@@ -8,7 +8,6 @@
 //#define DISABLE_DEBUG   //  Disable debug for this function - too hot
 #include "hir.hpp"
 #include "main_bindings.hpp"
-#include <serialiser_texttree.hpp>
 #include <mir/mir.hpp>
 #include <macro_rules/macro_rules.hpp>
 #include "serialise_lowlevel.hpp"

@@ -9,9 +9,9 @@
 
 #include <rc_string.hpp>
 #include <tagged_union.hpp>
-#include <serialise.hpp>
 #include "../coretypes.hpp"
 #include <ident.hpp>
+#include <memory>
 
 enum eTokenType
 {
@@ -56,8 +56,7 @@ namespace AST {
 
 class InterpolatedFragment;
 
-class Token:
-    public Serialisable
+class Token
 {
     friend class HirSerialiser;
     friend class HirDeserialiser;
@@ -149,8 +148,6 @@ public:
 
     static const char* typestr(enum eTokenType type);
     static eTokenType typefromstr(const ::std::string& s);
-
-    SERIALISABLE_PROTOTYPES();
 
     friend ::std::ostream&  operator<<(::std::ostream& os, const Token& tok);
 };
