@@ -42,9 +42,16 @@ extern int _putenv_s(const char*, const char*);
 # include <sys/wait.h>
 # include <fcntl.h>
 #endif
+#ifdef __APPLE__
+# include <mach-o/dyld.h>
+#endif
 
 #ifdef _WIN32
 # define EXESUF ".exe"
+#else
+# define EXESUF ""
+#endif
+#ifdef _WIN32
 # ifdef _MSC_VER
 #  define HOST_TARGET "x86_64-windows-msvc"
 # elif defined(__MINGW32__)
@@ -52,10 +59,8 @@ extern int _putenv_s(const char*, const char*);
 # else
 # endif
 #elif defined(__NetBSD__)
-# define EXESUF ""
 # define HOST_TARGET "x86_64-unknown-netbsd"
 #else
-# define EXESUF ""
 # define HOST_TARGET "x86_64-unknown-linux-gnu"
 #endif
 
@@ -549,12 +554,32 @@ Builder::Builder(BuildOptions opts):
 #ifdef __MINGW32__
     m_compiler_path = (minicargo_path / "..\\..\\bin\\mrustc.exe").normalise();
 #else
+    // MSVC, minicargo and mrustc are in the same dir
     m_compiler_path = minicargo_path / "mrustc.exe";
 #endif
 #else
     char buf[1024];
-    size_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
-    buf[s] = 0;
+# ifdef __linux__
+    ssize_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
+    if(s >= 0)
+    {
+        buf[s] = 0;
+    }
+    else
+#elif defined(__APPLE__)
+    uint32_t  s = sizeof(buf);
+    if( _NSGetExecutablePath(buf, &s) == 0 )
+    {
+        // Buffer populated
+    }
+    else
+        // TODO: Buffer too small
+#else
+# warning "Can't runtime determine path to minicargo"
+#endif
+    {
+        strcpy(buf, "tools/bin/minicargo");
+    }
 
     ::helpers::path minicargo_path { buf };
     minicargo_path.pop_component();
