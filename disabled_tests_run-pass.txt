@@ -92,8 +92,9 @@ static-function-pointer # ^
 issue-17718         # ^ (const here, but same idea)
 issue-27890         # ^
 empty-struct-braces # MISSING: Full support for braced initialisers for unit-like structs/variants
+issue-22546         # ^
 issue-29540     # Errors out on very deep method call list.
-issue-34751     # Treats PhantomData as a refutable pattern
+issue-34751     # Treats unit-like structs as refutable patterns
 mir_ascription_coercion # TODO: Either visit expected types, or make a type annotation its own node type
 type-ascription     # ^
 
@@ -203,9 +204,6 @@ wrapping-int-api    # Implicit integer truncation with `<large_literal> as u64`
 fat-ptr-cast    # Array unsize missed
 issue-20797     # Trait unsize runthrough
 issue-26905     # Manual CoerceUnsized not working?
-
-# None::<T> syntax somewhere (TODO)
-issue-22546
 
 # MIR GEN:
 issue-18352     # append_from_lit - Match literal Borrow
