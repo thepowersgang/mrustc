@@ -331,6 +331,13 @@ namespace
                 ARCH_ARM64
                 };
         }
+        else if(target_name == "x86_64-apple-macosx")
+        {
+            return TargetSpec {
+                "unix", "macosx", "gnu", CodegenMode::Gnu11, "x86_64-apple-darwin",
+                ARCH_X86_64
+                };
+        }
         else
         {
             ::std::cerr << "Unknown target name '" << target_name << "'" << ::std::endl;

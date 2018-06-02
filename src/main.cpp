@@ -28,13 +28,15 @@
 
 #include "expand/cfg.hpp"
 
-// Hacky default target
+// Hacky default target detection
+// - Windows (MSVC)
 #ifdef _MSC_VER
 # if defined(_WIN64)
 #  define DEFAULT_TARGET_NAME "x86_64-windows-msvc"
 # else
 #  define DEFAULT_TARGET_NAME "x86-windows-msvc"
 # endif
+// - Linux
 #elif defined(__linux__)
 # if defined(__amd64__)
 #  define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
@@ -45,18 +47,23 @@
 # elif defined(__i386__)
 #  define DEFAULT_TARGET_NAME "i586-linux-gnu"
 # else
-#  error "Unable to detect a suitable default target (linux-gnu)"
+#  warning "Unable to detect a suitable default target (linux-gnu)"
 # endif
+// - MinGW
 #elif defined(__MINGW32__)
 # if defined(_WIN64)
 #  define DEFAULT_TARGET_NAME "x86_64-windows-gnu"
 # else
 #  define DEFAULT_TARGET_NAME "i586-windows-gnu"
 # endif
+// - NetBSD
 #elif defined(__NetBSD__)
 # if defined(__amd64__)
 #  define DEFAULT_TARGET_NAME "x86_64-unknown-netbsd"
+# else
+#  warning "Unable to detect a suitable default target (NetBSD)"
 # endif
+// - OpenBSD
 #elif defined(__OpenBSD__)
 # if defined(__amd64__)
 #  define DEFAULT_TARGET_NAME "x86_64-unknown-openbsd"
@@ -67,10 +74,17 @@
 # elif defined(__i386__)
 #  define DEFAULT_TARGET_NAME "i686-unknown-openbsd"
 # else
-#  error "Unable to detect a suitable default target (OpenBSD)"
+#  warning "Unable to detect a suitable default target (OpenBSD)"
 # endif
+// - Apple devices
+#elif defined(__APPLE__)
+# define DEFAULT_TARGET_NAME "x86_64-apple-macosx"
+// - Unknown
 #else
-# error "Unable to detect a suitable default target"
+# warning "Unable to detect a suitable default target"
+#endif
+#ifndef DEFAULT_TARGET_NAME
+# define DEFAULT_TARGET_NAME	""
 #endif
 
 int g_debug_indent_level = 0;
