@@ -303,6 +303,7 @@ $(BIN): $(OBJ) tools/bin/common_lib.a
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJ) tools/bin/common_lib.a $(LIBS)
 ifeq ($(OS),Windows_NT)
+else ifeq ($(shell uname -s || echo not),Darwin)
 else
 	objcopy --only-keep-debug $(BIN) $(BIN).debug
 	objcopy --add-gnu-debuglink=$(BIN).debug $(BIN)
