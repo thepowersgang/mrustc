@@ -6,9 +6,9 @@ matrix:
   include:
    # Linux
    - os: linux
-     env:
-      - CC=gcc-6
-      - CC=g++-6
+     before_install:
+      - export CC=gcc-6
+      - export CXX=g++-6
      addons:
       apt:
        sources:
