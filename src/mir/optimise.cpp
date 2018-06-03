@@ -2510,6 +2510,12 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                 changed = true;
             }
             } break;
+        TU_ARM(bb.terminator, Call, te) {
+            for(auto& a : te.args)
+            {
+                check_param(a);
+            }
+            } break;
         default:
             break;
         }

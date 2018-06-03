@@ -42,22 +42,17 @@ extern int _putenv_s(const char*, const char*);
 # include <sys/wait.h>
 # include <fcntl.h>
 #endif
+#ifdef __APPLE__
+# include <mach-o/dyld.h>
+#endif
 
 #ifdef _WIN32
 # define EXESUF ".exe"
-# ifdef _MSC_VER
-#  define HOST_TARGET "x86_64-windows-msvc"
-# elif defined(__MINGW32__)
-#  define HOST_TARGET "x86_64-windows-gnu"
-# else
-# endif
-#elif defined(__NetBSD__)
-# define EXESUF ""
-# define HOST_TARGET "x86_64-unknown-netbsd"
 #else
 # define EXESUF ""
-# define HOST_TARGET "x86_64-unknown-linux-gnu"
 #endif
+#include <target_detect.h>	// tools/common/target_detect.h
+#define HOST_TARGET	DEFAULT_TARGET_NAME
 
 /// Class abstracting access to the compiler
 class Builder
@@ -549,12 +544,32 @@ Builder::Builder(BuildOptions opts):
 #ifdef __MINGW32__
     m_compiler_path = (minicargo_path / "..\\..\\bin\\mrustc.exe").normalise();
 #else
+    // MSVC, minicargo and mrustc are in the same dir
     m_compiler_path = minicargo_path / "mrustc.exe";
 #endif
 #else
     char buf[1024];
-    size_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
-    buf[s] = 0;
+# ifdef __linux__
+    ssize_t s = readlink("/proc/self/exe", buf, sizeof(buf)-1);
+    if(s >= 0)
+    {
+        buf[s] = 0;
+    }
+    else
+#elif defined(__APPLE__)
+    uint32_t  s = sizeof(buf);
+    if( _NSGetExecutablePath(buf, &s) == 0 )
+    {
+        // Buffer populated
+    }
+    else
+        // TODO: Buffer too small
+#else
+# warning "Can't runtime determine path to minicargo"
+#endif
+    {
+        strcpy(buf, "tools/bin/minicargo");
+    }
 
     ::helpers::path minicargo_path { buf };
     minicargo_path.pop_component();
@@ -803,7 +818,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     auto out_file = output_dir_abs / "build_" + manifest.name().c_str() + ".txt";
     auto out_dir = output_dir_abs / "build_" + manifest.name().c_str();
-    
+
     bool run_build_script = false;
     // TODO: Handle a pre-existing script containing `cargo:rerun-if-changed`
     auto script_exe = this->build_build_script(manifest, is_for_host, &run_build_script);
@@ -813,7 +828,8 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         return ::helpers::path();
     }
 
-    if( run_build_script )
+    // If the script changed, OR the output file doesn't exist
+    if( run_build_script || Timestamp::for_file(out_file) == Timestamp::infinite_past() )
     {
         auto script_exe_abs = script_exe.to_absolute();
 
@@ -1007,8 +1023,8 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
 
     if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.get_vec().data()) != 0 )
     {
-        perror("posix_spawn");
-        DEBUG("Unable to spawn compiler");
+        ::std::cerr << "Unable to run process '" << exe_name << "' - " << strerror(errno) << ::std::endl;
+        DEBUG("Unable to spawn executable");
         posix_spawn_file_actions_destroy(&fa);
         return false;
     }

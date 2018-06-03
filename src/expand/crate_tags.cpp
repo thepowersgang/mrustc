@@ -14,7 +14,7 @@ class Decorator_CrateType:
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
             //ERROR(sp, E0000, "Multiple #![crate_type] attributes");
             return ;
@@ -41,7 +41,7 @@ class Decorator_CrateName:
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         if( crate.m_crate_name != "" ) {
             ERROR(sp, E0000, "Multiple #![crate_name] attributes");
         }
@@ -58,7 +58,7 @@ class Decorator_Allocator:
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         // TODO: Check for an existing allocator crate
         crate.m_lang_items.insert(::std::make_pair( "mrustc-allocator", AST::Path("",{}) ));
     }
@@ -69,7 +69,7 @@ class Decorator_PanicRuntime:
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         // TODO: Check for an existing panic_runtime crate
         crate.m_lang_items.insert(::std::make_pair( "mrustc-panic_runtime", AST::Path("",{}) ));
     }
@@ -80,7 +80,7 @@ class Decorator_NeedsPanicRuntime:
 public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
-    void handle(const Span& sp, const AST::MetaItem& mi, AST::Crate& crate) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
         crate.m_lang_items.insert(::std::make_pair( "mrustc-needs_panic_runtime", AST::Path("",{}) ));
     }
 };

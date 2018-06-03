@@ -196,6 +196,7 @@ namespace {
         } m_options;
 
         ::std::vector< ::std::pair< ::HIR::GenericPath, const ::HIR::Struct*> >   m_box_glue_todo;
+        ::std::set< ::HIR::TypeRef> m_emitted_fn_types;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
             m_crate(crate),
@@ -204,7 +205,7 @@ namespace {
             m_outfile_path_c(outfile + ".c"),
             m_of(m_outfile_path_c)
         {
-            switch(Target_GetCurSpec().m_codegen_mode)
+            switch(Target_GetCurSpec().m_backend_c.m_codegen_mode)
             {
             case CodegenMode::Gnu11:
                 m_compiler = Compiler::Gcc;
@@ -302,7 +303,7 @@ namespace {
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
                     << "}\n"
                     ;
-		        break;
+                break;
             case Compiler::Msvc:
                 m_of
                     << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
@@ -510,6 +511,7 @@ namespace {
                 emit_box_drop_glue( mv$(e.first), *e.second );
             }
 
+            // TODO: Define this function in MIR.
             if( is_executable )
             {
                 m_of << "int main(int argc, const char* argv[]) {\n";
@@ -565,7 +567,7 @@ namespace {
                 // - `gcc-${TRIPLE}` (if available)
                 // - `gcc` as fallback
                 {
-                    ::std::string varname = "CC-" +  Target_GetCurSpec().m_c_compiler;
+                    ::std::string varname = "CC-" +  Target_GetCurSpec().m_backend_c.m_c_compiler;
                     if( getenv(varname.c_str()) ) {
                         args.push_back( getenv(varname.c_str()) );
                     }
@@ -574,12 +576,14 @@ namespace {
                     }
                     else {
                         // TODO: Determine if the compiler can't be found, and fall back to `gcc` if that's the case
-                        args.push_back( Target_GetCurSpec().m_c_compiler + "-gcc" );
+                        args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
                         //args.push_back( "gcc" );
                     }
                 }
-                args.push_back("-ffunction-sections");
-                args.push_back("-pthread");
+                for( const auto& a : Target_GetCurSpec().m_backend_c.m_compiler_opts )
+                {
+                    args.push_back( a.c_str() );
+                }
                 switch(opt.opt_level)
                 {
                 case 0: break;
@@ -622,7 +626,10 @@ namespace {
                     {
                         args.push_back("-l"); args.push_back(path.c_str());
                     }
-                    args.push_back("-Wl,--gc-sections");
+                    for( const auto& a : Target_GetCurSpec().m_backend_c.m_linker_opts )
+                    {
+                        args.push_back( a.c_str() );
+                    }
                 }
                 else
                 {
@@ -631,8 +638,9 @@ namespace {
                 break;
             case Compiler::Msvc:
                 // TODO: Look up these paths in the registry and use CreateProcess instead of system
+                // - OR, run `vcvarsall` and get the required environment variables and PATH from it?
                 args.push_back(detect_msvc().path_vcvarsall);
-                args.push_back( Target_GetCurSpec().m_c_compiler );
+                args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler );
                 args.push_back("&");
                 args.push_back("cl.exe");
                 args.push_back("/nologo");
@@ -678,9 +686,9 @@ namespace {
                     }
                     args.push_back("kernel32.lib"); // Needed for Interlocked*
 
-                    // Command-line specified linker search directories
                     args.push_back("/link");
-                    //args.push_back("/verbose");
+
+                    // Command-line specified linker search directories
                     for(const auto& path : link_dirs )
                     {
                         args.push_back(FMT("/LIBPATH:" << path));
@@ -818,6 +826,11 @@ namespace {
         }
         void emit_type_fn(const ::HIR::TypeRef& ty)
         {
+            if( m_emitted_fn_types.count(ty) ) {
+                return ;
+            }
+            m_emitted_fn_types.insert(ty.clone());
+            
             const auto& te = ty.m_data.as_Function();
             m_of << "typedef ";
             // TODO: ABI marker, need an ABI enum?
@@ -1122,6 +1135,12 @@ namespace {
                 m_of << "._" << fld;
             }
             if( const auto* te = ty->m_data.opt_Borrow() )
+            {
+                if( metadata_type(*te->inner) != MetadataType::None ) {
+                    m_of << ".PTR";
+                }
+            }
+            else if( const auto* te = ty->m_data.opt_Pointer() )
             {
                 if( metadata_type(*te->inner) != MetadataType::None ) {
                     m_of << ".PTR";
@@ -3556,7 +3575,7 @@ namespace {
 #endif
             }
 
-            if( Target_GetCurSpec().m_c_compiler == "amd64" ) {
+            if( Target_GetCurSpec().m_backend_c.m_c_compiler == "amd64" ) {
                 MIR_TODO(mir_res, "MSVC amd64 doesn't support inline assembly, need to have a transform for '" << e.tpl << "'");
             }
             m_of << indent << "__asm {\n";
@@ -4664,6 +4683,11 @@ namespace {
 
         void emit_destructor_call(const ::MIR::LValue& slot, const ::HIR::TypeRef& ty, bool unsized_valid, unsigned indent_level)
         {
+            // If the type doesn't need dropping, don't try.
+            if( !m_resolve.type_needs_drop_glue(sp, ty) )
+            {
+                return ;
+            }
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
             TU_MATCHA( (ty.m_data), (te),
             // Impossible

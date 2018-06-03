@@ -13,8 +13,8 @@
 // === PROTOTYPES ===
 //TypeRef Parse_Type(TokenStream& lex, bool allow_trait_list);
 TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list);
-TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls = {});
-TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls, bool allow_trait_list);
+TypeRef Parse_Type_Fn(TokenStream& lex, AST::HigherRankedBounds hrbs = {});
+TypeRef Parse_Type_Path(TokenStream& lex, AST::HigherRankedBounds hrbs, bool allow_trait_list);
 TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list);
 
 // === CODE ===
@@ -71,7 +71,6 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         case TOK_RWORD_UNSAFE:
         case TOK_RWORD_EXTERN:
         case TOK_RWORD_FN:
-            // TODO: Handle HRLS in fn types
             return Parse_Type_Fn(lex, hrls);
         default:
             return Parse_Type_Path(lex, hrls, true);
@@ -109,23 +108,21 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         lex.putback(Token(TOK_AMP));
     // '&' - Reference type
     case TOK_AMP: {
-        ::std::string   lifetime;
+        AST::LifetimeRef lifetime;
         // Reference
         tok = lex.getToken();
         if( tok.type() == TOK_LIFETIME ) {
-            lifetime = tok.str();
+            lifetime = AST::LifetimeRef(/*lex.point_span(), */lex.get_ident(::std::move(tok)));
             tok = lex.getToken();
         }
+        bool is_mut = false;
         if( tok.type() == TOK_RWORD_MUT ) {
-            // Mutable reference
-            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), true, Parse_Type(lex, false));
+            is_mut = true;
         }
         else {
             PUTBACK(tok, lex);
-            // Immutable reference
-            return TypeRef(TypeRef::TagReference(), lex.end_span(ps), false, Parse_Type(lex, false));
         }
-        throw ParseError::BugCheck("Reached end of Parse_Type:AMP");
+        return TypeRef(TypeRef::TagReference(), lex.end_span(ps), ::std::move(lifetime), is_mut, Parse_Type(lex, false));
         }
     // '*' - Raw pointer
     case TOK_STAR:
@@ -196,10 +193,9 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     throw ParseError::BugCheck("Reached end of Parse_Type");
 }
 
-TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
+TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
 {
     auto ps = lex.start_span();
-    // TODO: HRLs
     TRACE_FUNCTION;
     Token   tok;
 
@@ -208,11 +204,13 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
 
     GET_TOK(tok, lex);
 
+    // `unsafe`
     if( tok.type() == TOK_RWORD_UNSAFE )
     {
         is_unsafe = true;
         GET_TOK(tok, lex);
     }
+    // `exern`
     if( tok.type() == TOK_RWORD_EXTERN )
     {
         if( GET_TOK(tok, lex) == TOK_STRING ) {
@@ -225,6 +223,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
             abi = "C";
         }
     }
+    // `fn`
     CHECK_TOK(tok, TOK_RWORD_FN);
 
     ::std::vector<TypeRef>  args;
@@ -250,6 +249,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
     }
     GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
 
+    // `-> RetType`
     TypeRef ret_type = TypeRef(TypeRef::TagUnit(), Span(tok.get_pos()));
     if( GET_TOK(tok, lex) == TOK_THINARROW )
     {
@@ -259,39 +259,55 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::std::vector<::std::string> hrls)
         PUTBACK(tok, lex);
     }
 
-    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
+    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), mv$(hrbs), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
 }
 
-TypeRef Parse_Type_Path(TokenStream& lex, ::std::vector<::std::string> hrls, bool allow_trait_list)
+TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool allow_trait_list)
 {
     Token   tok;
 
     auto ps = lex.start_span();
 
-    if( ! allow_trait_list )
+    if( hrbs.empty() && !allow_trait_list )
     {
         return TypeRef(TypeRef::TagPath(), lex.end_span(ps), Parse_Path(lex, PATH_GENERIC_TYPE));
     }
     else
     {
-        ::std::vector<AST::Path>    traits;
-        ::std::vector< ::std::string>   lifetimes;
-        do {
-            if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
-                GET_TOK(tok, lex);
-                lifetimes.push_back( tok.str() );
+        ::std::vector<Type_TraitPath>   traits;
+        ::std::vector<AST::LifetimeRef> lifetimes;
+
+        traits.push_back(Type_TraitPath { mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+
+        if( allow_trait_list )
+        {
+            while( GET_TOK(tok, lex) == TOK_PLUS )
+            {
+                if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
+                    GET_TOK(tok, lex);
+                    lifetimes.push_back(AST::LifetimeRef( /*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
+                }
+                else
+                {
+                    if( lex.lookahead(0) == TOK_RWORD_FOR )
+                    {
+                        hrbs = Parse_HRB(lex);
+                    }
+                    traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+                }
             }
-            else
-                traits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
-        } while( GET_TOK(tok, lex) == TOK_PLUS );
-        PUTBACK(tok, lex);
-        if( hrls.size() > 0 || traits.size() > 1 || lifetimes.size() > 0 ) {
-            if( lifetimes.size() )
-                DEBUG("TODO: Lifetime bounds on trait objects");
-            return TypeRef(lex.end_span(ps), mv$(hrls), ::std::move(traits));
+            PUTBACK(tok, lex);
         }
-        else {
-            return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(traits.at(0)));
+
+        if( !traits[0].hrbs.empty() || traits.size() > 1 || lifetimes.size() > 0 )
+        {
+            if( lifetimes.empty())
+                lifetimes.push_back(AST::LifetimeRef());
+            return TypeRef(lex.end_span(ps), mv$(traits), mv$(lifetimes));
+        }
+        else
+        {
+            return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(traits.at(0).path));
         }
     }
 }
@@ -300,20 +316,25 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
     Token   tok;
 
     auto ps = lex.start_span();
-    ::std::vector<AST::Path> traits;
-    ::std::vector< ::std::string>   lifetimes;
+    ::std::vector<Type_TraitPath>   traits;
+    ::std::vector<AST::LifetimeRef>   lifetimes;
     do {
         if( LOOK_AHEAD(lex) == TOK_LIFETIME ) {
             GET_TOK(tok, lex);
-            lifetimes.push_back( tok.str() );
+            lifetimes.push_back(AST::LifetimeRef( /*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
         }
         else
-            traits.push_back( Parse_Path(lex, PATH_GENERIC_TYPE) );
+        {
+            AST::HigherRankedBounds hrbs;
+            if( lex.lookahead(0) == TOK_RWORD_FOR )
+            {
+                hrbs = Parse_HRB(lex);
+            }
+            traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+        }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
     PUTBACK(tok, lex);
 
-    if( lifetimes.size() )
-        DEBUG("TODO: Lifetime bounds on erased types");
-    return TypeRef(lex.end_span(ps), TypeData::make_ErasedType({ {}, mv$(traits) }));
+    return TypeRef(lex.end_span(ps), TypeData::make_ErasedType({ mv$(traits), mv$(lifetimes) }));
 }
 

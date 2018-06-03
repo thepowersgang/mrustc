@@ -15,9 +15,10 @@
 #include "visitor.hpp"
 #include <macro_rules/macro_rules.hpp>
 #include <hir/item_path.hpp>
+#include <limits.h>
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& module, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits = {});
-::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::MetaItems& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
+::HIR::Function LowerHIR_Function(::HIR::ItemPath path, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type);
 ::HIR::PathParams LowerHIR_PathParams(const Span& sp, const ::AST::PathParams& src_params, bool allow_assoc);
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
@@ -27,6 +28,11 @@
 ::HIR::Crate*   g_crate_ptr = nullptr;
 
 // --------------------------------------------------------------------
+::std::string LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
+{
+    return r.name().name;
+}
+
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp, bool* self_is_sized)
 {
     ::HIR::GenericParams    rv;
@@ -40,33 +46,35 @@
     }
     if( gp.lft_params().size() > 0 )
     {
-        for(const auto& lft_name : gp.lft_params())
-            rv.m_lifetimes.push_back( lft_name );
+        for(const auto& lft_def : gp.lft_params())
+            rv.m_lifetimes.push_back( lft_def.name().name );
     }
     if( gp.bounds().size() > 0 )
     {
         for(const auto& bound : gp.bounds())
         {
             TU_MATCH(::AST::GenericBound, (bound), (e),
+            (None,
+                ),
             (Lifetime,
                 rv.m_bounds.push_back(::HIR::GenericBound::make_Lifetime({
-                    e.test,
-                    e.bound
+                    LowerHIR_LifetimeRef(e.test),
+                    LowerHIR_LifetimeRef(e.bound)
                     }));
                 ),
             (TypeLifetime,
                 rv.m_bounds.push_back(::HIR::GenericBound::make_TypeLifetime({
                     LowerHIR_Type(e.type),
-                    e.bound
+                    LowerHIR_LifetimeRef(e.bound)
                     }));
                 ),
             (IsTrait,
                 auto type = LowerHIR_Type(e.type);
 
-                // TODO: Check for `Sized`
+                // TODO: Check if this trait is `Sized` and ignore if it is
 
-                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({ mv$(type), LowerHIR_TraitPath(bound.span, e.trait) }));
-                rv.m_bounds.back().as_TraitBound().trait.m_hrls = e.hrls;
+                rv.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({ /*LowerHIR_HigherRankedBounds(e.outer_hrbs),*/ mv$(type), LowerHIR_TraitPath(bound.span, e.trait) }));
+                //rv.m_bounds.back().as_TraitBound().trait.m_hrls = LowerHIR_HigherRankedBounds(e.inner_hrbs);
                 ),
             (MaybeTrait,
                 auto type = LowerHIR_Type(e.type);
@@ -478,7 +486,7 @@
             };
         )
     )
-    throw ::std::runtime_error("TODO: LowerHIR_Pattern");
+    throw "unreachable";
 }
 
 ::HIR::ExprPtr LowerHIR_Expr(const ::std::shared_ptr< ::AST::ExprNode>& e)
@@ -722,7 +730,9 @@
             {
                 if( ptr->m_datatype == CORETYPE_UINT || ptr->m_datatype == CORETYPE_ANY )
                 {
-                    // TODO: Limit check.
+                    if( ptr->m_value > UINT_MAX ) {
+                        ERROR(ty.span(), E0000, "Array size out of bounds - " << ptr->m_value << " > " << UINT_MAX);
+                    }
                     auto size_val = static_cast<unsigned int>( ptr->m_value );
                     return ::HIR::TypeRef::new_array( mv$(inner), size_val );
                 }
@@ -752,47 +762,59 @@
         }
         ),
     (TraitObject,
-        //if( e.hrls.size() > 0 )
-        //    TODO(ty.span(), "TraitObjects with HRLS - " << ty);
         ::HIR::TypeRef::Data::Data_TraitObject  v;
         // TODO: Lifetime
         for(const auto& t : e.traits)
         {
-            DEBUG("t = " << t);
-            const auto& tb = t.binding().as_Trait();
+            DEBUG("t = " << t.path);
+            const auto& tb = t.path.binding().as_Trait();
             assert( tb.trait_ || tb.hir );
-            if( (tb.trait_ ? tb.trait_->is_marker() : tb.hir->m_is_marker) ) {
+            if( (tb.trait_ ? tb.trait_->is_marker() : tb.hir->m_is_marker) )
+            {
                 if( tb.hir ) {
                     DEBUG(tb.hir->m_values.size());
                 }
-                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t) );
+                // TODO: If this has HRBs, what?
+                v.m_markers.push_back( LowerHIR_GenericPath(ty.span(), t.path) );
             }
             else {
                 // TraitPath -> GenericPath -> SimplePath
                 if( v.m_trait.m_path.m_path.m_components.size() > 0 ) {
                     ERROR(ty.span(), E0000, "Multiple data traits in trait object - " << ty);
                 }
-                v.m_trait = LowerHIR_TraitPath(ty.span(), t);
+                // TODO: Handle HRBs
+                v.m_trait = LowerHIR_TraitPath(ty.span(), t.path);
             }
         }
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_TraitObject( mv$(v) ) );
         ),
     (ErasedType,
-        //if( e.hrls.size() > 0 )
-        //    TODO(ty.span(), "ErasedType with HRLS - " << ty);
         ASSERT_BUG(ty.span(), e.traits.size() > 0, "ErasedType with no traits");
 
         ::std::vector< ::HIR::TraitPath>    traits;
         for(const auto& t : e.traits)
         {
-            DEBUG("t = " << t);
-            traits.push_back( LowerHIR_TraitPath(ty.span(), t) );
+            DEBUG("t = " << t.path);
+            // TODO: Pass the HRBs down
+            traits.push_back( LowerHIR_TraitPath(ty.span(), t.path) );
+        }
+        ::HIR::LifetimeRef  lft;
+        if( e.lifetimes.size() == 0 )
+        {
+        }
+        else if( e.lifetimes.size() == 1 )
+        {
+            // TODO: Convert the lifetime reference
+        }
+        else
+        {
+            TODO(ty.span(), "Handle multiple lifetime parameters - " << ty);
         }
         // Leave `m_origin` until the bind pass
         return ::HIR::TypeRef( ::HIR::TypeRef::Data::make_ErasedType(::HIR::TypeRef::Data::Data_ErasedType {
             ::HIR::Path(::HIR::SimplePath()), 0,
             mv$(traits),
-            ::HIR::LifetimeRef()    // TODO: Lifetime ref
+            lft
             } ) );
         ),
     (Function,
@@ -833,7 +855,7 @@ namespace {
     }
 }
 
-::HIR::Struct LowerHIR_Struct(::HIR::ItemPath path, const ::AST::Struct& ent)
+::HIR::Struct LowerHIR_Struct(::HIR::ItemPath path, const ::AST::Struct& ent, const ::AST::AttributeList& attrs)
 {
     TRACE_FUNCTION_F(path);
     ::HIR::Struct::Data data;
@@ -858,15 +880,46 @@ namespace {
         )
     )
 
+    auto struct_repr = ::HIR::Struct::Repr::Rust;
+    if( const auto* attr_repr = attrs.get("repr") )
+    {
+        ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
+        bool is_c = false;
+        bool is_packed = false;
+        ASSERT_BUG(Span(), attr_repr->items().size() > 0, "#[repr] attribute malformed, " << *attr_repr);
+        for( const auto& a : attr_repr->items() )
+        {
+            ASSERT_BUG(Span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+            const auto& repr_str = a.name();
+            if( repr_str == "C" ) {
+                is_c = true;
+            }
+            else if( repr_str == "packed" ) {
+                is_packed = true;
+            }
+            else {
+                TODO(a.span(), "Handle struct repr '" << repr_str << "'");
+            }
+        }
+
+        if( is_packed ) {
+            struct_repr = ::HIR::Struct::Repr::Packed;
+        }
+        else if( is_c ) {
+            struct_repr = ::HIR::Struct::Repr::C;
+        }
+        else {
+        }
+    }
+
     return ::HIR::Struct {
         LowerHIR_GenericParams(ent.params(), nullptr),
-        // TODO: Get repr from attributes
-        ::HIR::Struct::Repr::Rust,
+        struct_repr,
         mv$(data)
         };
 }
 
-::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::MetaItems& attrs, ::std::function<void(::std::string, ::HIR::Struct)> push_struct)
+::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(::std::string, ::HIR::Struct)> push_struct)
 {
 
     // 1. Figure out what sort of enum this is (value or data)
@@ -933,7 +986,6 @@ namespace {
                 repr = ::HIR::Enum::Repr::Usize;
             }
             else {
-                // TODO: Other repr types
                 ERROR(Span(), E0000, "Unknown enum repr '" << repr_str << "'");
             }
         }
@@ -1017,7 +1069,7 @@ namespace {
         mv$(data)
         };
 }
-::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f, const ::AST::MetaItems& attrs)
+::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f, const ::AST::AttributeList& attrs)
 {
     auto repr = ::HIR::Union::Repr::Rust;
 
@@ -1031,7 +1083,7 @@ namespace {
             repr = ::HIR::Union::Repr::C;
         }
         else {
-            // TODO: Error?
+            ERROR(attr_repr->span(), E0000, "Unknown union repr '" << repr_str << "'");
         }
     }
 
@@ -1056,8 +1108,8 @@ namespace {
     ::std::string   lifetime;
     ::std::vector< ::HIR::TraitPath>    supertraits;
     for(const auto& st : f.supertraits()) {
-        if( st.ent.is_valid() ) {
-            supertraits.push_back( LowerHIR_TraitPath(st.sp, st.ent) );
+        if( st.ent.path.is_valid() ) {
+            supertraits.push_back( LowerHIR_TraitPath(st.sp, st.ent.path) );
         }
         else {
             lifetime = "static";
@@ -1153,7 +1205,7 @@ namespace {
 
     return rv;
 }
-::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::MetaItems& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type)
+::HIR::Function LowerHIR_Function(::HIR::ItemPath p, const ::AST::AttributeList& attrs, const ::AST::Function& f, const ::HIR::TypeRef& self_type)
 {
     static Span sp;
 
@@ -1240,7 +1292,7 @@ namespace {
         // Leave linkage.name as empty
     }
 
-    // If there's no code, demangle the name (TODO: By ABI) and set linkage.
+    // If there's no code, mangle the name (According to the ABI) and set linkage.
     if( linkage.name == "" && ! f.code().is_valid() )
     {
         linkage.name = p.get_name();
@@ -1336,10 +1388,10 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             }
             ),
         (Impl,
-            //TODO(sp, "Expand Item::Impl");
+            // NOTE: impl blocks are handled in a second pass
             ),
         (NegImpl,
-            //TODO(sp, "Expand Item::NegImpl");
+            // NOTE: impl blocks are handled in a second pass
             ),
         (Use,
             // Ignore - The index is used to add `Import`s
@@ -1365,7 +1417,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             }
             else {
             }
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(item_path, e) );
+            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(item_path, e, item.data.attrs) );
             ),
         (Enum,
             auto enm = LowerHIR_Enum(item_path, e, item.data.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, item.is_pub, mv$(str)); });
@@ -1771,7 +1823,8 @@ public:
     // Set all pointers in the HIR to the correct (now fixed) locations
     IndexVisitor(rv).visit_crate( rv );
 
-    // TODO: If the current crate is libcore, store the paths to various non-lang ops items
+    // HACK: If the current crate is libcore, store the paths to various non-lang ops items
+    // - Some operators aren't tagged with #[lang], so this works around that
     if( crate.m_crate_name == "core" )
     {
         struct H {
@@ -1831,7 +1884,7 @@ public:
                 }
             }
         };
-        // TODO: Check for existing defintions of lang items
+        // Check for existing defintions of lang items before adding magic ones
         if( rv.m_lang_items.count("boxed_trait") == 0 )
         {
             rv.m_lang_items.insert(::std::make_pair( ::std::string("boxed_trait"),  H::resolve_path(rv, false, {"ops", "Boxed"}) ));

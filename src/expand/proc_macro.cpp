@@ -24,7 +24,7 @@
 # include <sys/wait.h>
 #endif
 
-#if defined(__OpenBSD__) || defined(__NetBSD__)
+#if defined(__OpenBSD__) || defined(__NetBSD__) || defined(__APPLE__)
 extern char **environ;
 #endif
 
@@ -35,7 +35,7 @@ class Decorator_ProcMacroDerive:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::MetaItem& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
     {
         if( i.is_None() )
             return;
@@ -345,44 +345,40 @@ namespace {
                 ),
             (TraitObject,
                 m_pmi.send_symbol("(");
-                if( te.hrls.size() > 0 )
-                {
-                    m_pmi.send_ident("for");
-                    m_pmi.send_symbol("<");
-                    for(const auto& v : te.hrls)
-                    {
-                        m_pmi.send_lifetime(v.c_str());
-                        m_pmi.send_symbol(",");
-                    }
-                    m_pmi.send_symbol(">");
-                }
                 for(const auto& t : te.traits)
                 {
-                    this->visit_path(t);
+                    this->visit_hrbs(t.hrbs);
+                    this->visit_path(t.path);
                     m_pmi.send_symbol("+");
                 }
+                // TODO: Lifetimes
                 m_pmi.send_symbol(")");
                 ),
             (ErasedType,
                 m_pmi.send_ident("impl");
-                if( te.hrls.size() > 0 )
-                {
-                    m_pmi.send_ident("for");
-                    m_pmi.send_symbol("<");
-                    for(const auto& v : te.hrls)
-                    {
-                        m_pmi.send_lifetime(v.c_str());
-                        m_pmi.send_symbol(",");
-                    }
-                    m_pmi.send_symbol(">");
-                }
                 for(const auto& t : te.traits)
                 {
-                    this->visit_path(t);
+                    this->visit_hrbs(t.hrbs);
+                    this->visit_path(t.path);
                     m_pmi.send_symbol("+");
                 }
+                // TODO: Lifetimes
                 )
             )
+        }
+        void visit_hrbs(const AST::HigherRankedBounds& hrbs)
+        {
+            if( !hrbs.empty() )
+            {
+                m_pmi.send_ident("for");
+                m_pmi.send_symbol("<");
+                for(const auto& v : hrbs.m_lifetimes)
+                {
+                    m_pmi.send_lifetime(v.name().name.c_str());
+                    m_pmi.send_symbol(",");
+                }
+                m_pmi.send_symbol(">");
+            }
         }
 
         void visit_path(const AST::Path& path, bool is_expr=false)
@@ -445,7 +441,7 @@ namespace {
                     m_pmi.send_symbol("<");
                     for(const auto& l : e.args().m_lifetimes)
                     {
-                        m_pmi.send_lifetime(l.c_str());
+                        m_pmi.send_lifetime(l.name().name.c_str());
                         m_pmi.send_symbol(",");
                     }
                     for(const auto& t : e.args().m_types)
@@ -475,7 +471,7 @@ namespace {
                 {
                     if( !is_first )
                         m_pmi.send_symbol(",");
-                    m_pmi.send_lifetime(p.c_str());
+                    m_pmi.send_lifetime(p.name().name.c_str());
                     is_first = false;
                 }
                 // Types
@@ -609,7 +605,7 @@ namespace {
             TODO(sp, "ExprNode_UniOp");
         }
 
-        void visit_attrs(const ::AST::MetaItems& attrs)
+        void visit_attrs(const ::AST::AttributeList& attrs)
         {
             for(const auto& a : attrs.m_items)
             {
@@ -622,7 +618,7 @@ namespace {
                 }
             }
         }
-        void visit_meta_item(const ::AST::MetaItem& i)
+        void visit_meta_item(const ::AST::Attribute& i)
         {
             m_pmi.send_ident(i.name().c_str());
             if( i.has_noarg() ) {

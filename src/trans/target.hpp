@@ -31,14 +31,20 @@ struct TargetArch
         bool ptr;
     } m_atomics;
 };
+struct BackendOptsC
+{
+    CodegenMode m_codegen_mode;
+    ::std::string   m_c_compiler;   // MSVC arch / GNU triplet
+    ::std::vector< ::std::string>   m_compiler_opts;
+    ::std::vector< ::std::string>   m_linker_opts;
+};
 struct TargetSpec
 {
     ::std::string   m_family;
     ::std::string   m_os_name;
     ::std::string   m_env_name;
 
-    CodegenMode m_codegen_mode;
-    ::std::string   m_c_compiler;   // MSVC arch / GNU triplet
+    BackendOptsC    m_backend_c;
     TargetArch  m_arch;
 };
 
@@ -96,6 +102,8 @@ struct TypeRepr
 
 extern const TargetSpec& Target_GetCurSpec();
 extern void Target_SetCfg(const ::std::string& target_name);
+extern void Target_ExportCurSpec(const ::std::string& filename);
+
 extern bool Target_GetSizeOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size);
 extern bool Target_GetAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_align);
 extern bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align);

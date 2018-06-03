@@ -170,9 +170,11 @@ TomlKeyValue TomlFile::get_next_value()
         throw ::std::runtime_error(::format("Unexpected token after key - ", t));
     t = Token::lex_from(m_if);
 
+    // --- Value ---
     TomlKeyValue    rv;
     switch(t.m_type)
     {
+    // String: Return the string value
     case Token::Type::String:
         rv.path = m_current_block;
         rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
@@ -180,6 +182,7 @@ TomlKeyValue TomlFile::get_next_value()
 
         rv.value = TomlValue { t.m_data };
         break;
+    // Array: Parse the entire list and return as Type::List
     case Token::Type::SquareOpen:
         rv.path = m_current_block;
         rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
@@ -193,7 +196,8 @@ TomlKeyValue TomlFile::get_next_value()
             if( t.m_type == Token::Type::SquareClose )
                 break;
 
-            // TODO: Recurse parse a value
+            // TODO: Recursively parse a value
+            // TODO: OR, support other value types
             switch(t.m_type)
             {
             case Token::Type::String:

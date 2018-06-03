@@ -9,7 +9,7 @@
 #include <cctype>   // toupper
 #include "repository.h"
 
-
+// TODO: Extract this from the target at runtime
 #ifdef _WIN32
 # define TARGET_NAME    "i586-windows-msvc"
 # define CFG_UNIX   false

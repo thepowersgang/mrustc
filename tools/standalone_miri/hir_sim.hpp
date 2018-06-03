@@ -23,7 +23,7 @@ struct DataType;
 enum class RawType
 {
     Unreachable,
-    Function,
+    Function,   // TODO: Needs a way of indicating the signature?
     Unit,
 
     Bool,
@@ -39,7 +39,7 @@ enum class RawType
     Char, Str,
 
     Composite,  // Struct, Enum, Union, tuple, ...
-    TraitObject,    // Data pointer is `*const ()`, metadata type stored in `composite_type`
+    TraitObject,    // Data pointer is `*const ()`, vtable type stored in `composite_type`
 };
 struct TypeWrapper
 {
@@ -118,12 +118,41 @@ namespace HIR {
         }
 
         size_t get_size(size_t ofs=0) const;
-        bool has_slice_meta() const;    // The attached metadata is a count
-        const TypeRef* get_usized_type(size_t& running_inner_size) const;
-        const TypeRef* get_meta_type() const;
+
+        // Returns true if this (unsized) type is a wrapper around a slice
+        // - Fills `out_inner_size` with the size of the slice element
+        bool has_slice_meta(size_t& out_inner_size) const;    // The attached metadata is a count of elements
+        // Returns the base unsized type for this type (returning nullptr if there's no unsized field)
+        // - Fills `running_inner_size` with the offset to the unsized field
+        const TypeRef* get_unsized_type(size_t& running_inner_size) const;
+        // Returns the type of associated metadata for this (unsized) type (or `!` if not unsized)
+        TypeRef get_meta_type() const;
+        // Get the inner type (one level of wrapping removed)
         TypeRef get_inner() const;
-        TypeRef wrap(TypeWrapper::Ty ty, size_t size) const;
+
+        // Add a wrapper over this type (moving)
+        TypeRef wrap(TypeWrapper::Ty ty, size_t size)&&;
+        // Add a wrapper over this type (copying)
+        TypeRef wrapped(TypeWrapper::Ty ty, size_t size) const {
+            return TypeRef(*this).wrap(ty, size);
+        }
+        // Get the wrapper at the provided offset (0 = outermost)
+        const TypeWrapper* get_wrapper(size_t ofs=0) const {
+            //assert(ofs <= this->wrappers.size());
+            if( ofs < this->wrappers.size() ) {
+                return &this->wrappers[ofs];
+            }
+            else {
+                return nullptr;
+            }
+        }
+
+        // Returns true if the type contains any pointers
+        bool has_pointer() const;
+        // Get the type and offset of the specified field index
         TypeRef get_field(size_t idx, size_t& ofs) const;
+        // Get the offset and type of a field (recursing using `other_idx`)
+        size_t get_field_ofs(size_t idx, const ::std::vector<size_t>& other_idx,  TypeRef& ty) const;
 
         bool operator==(const RawType& x) const {
             if( this->wrappers.size() != 0 )
@@ -148,8 +177,6 @@ namespace HIR {
             __LT(composite_type);
             return false;
         }
-
-        size_t get_field_ofs(size_t idx, const ::std::vector<size_t>& other_idx,  TypeRef& ty) const;
 
         friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& x);
     };

@@ -764,7 +764,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 {
                     auto ty_d = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_d, false);
 
-                    auto new_rval = ::MIR::RValue::make_Cast({ ::MIR::LValue::make_Field({ box$(value.clone()), i }), ty_d.clone() });
+                    auto new_rval = ::MIR::RValue::make_Struct({ ty_d.m_data.as_Path().path.m_data.as_Generic().clone(), {} });
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
 
                     ents.push_back( mv$(new_lval) );
@@ -794,7 +794,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 {
                     auto ty_d = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_d, false);
 
-                    auto new_rval = ::MIR::RValue::make_Cast({ ::MIR::LValue::make_Field({ box$(value.clone()), i }), ty_d.clone() });
+                    auto new_rval = ::MIR::RValue::make_Struct({ ty_d.m_data.as_Path().path.m_data.as_Generic().clone(), {} });
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
 
                     ents.push_back( mv$(new_lval) );
@@ -1079,12 +1079,6 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         // TODO Share with the CoerceUnsized handling?
                         se.src = MIR_Cleanup_CoerceUnsized(state, mutator, e.type, src_ty, mv$(e.val));
                     )
-                    // Casts to PhantomData are only valid from PhandomData, and are added by _CoerceUnsized
-                    else if( state.m_resolve.is_type_phantom_data(e.type) )
-                    {
-                        // Leave
-                        MIR_ASSERT(state, state.m_resolve.is_type_phantom_data(src_ty) != nullptr, "PhandomData can only cast from PhantomData");
-                    }
                     // - CoerceUnsized should re-create the inner type if known.
                     else TU_IFLET( ::HIR::TypeRef::Data, e.type.m_data, Path, te,
                         TU_IFLET( ::HIR::TypeRef::Data, src_ty.m_data, Path, ste,

@@ -8,13 +8,12 @@
 //#define DISABLE_DEBUG   //  Disable debug for this function - too hot
 #include "hir.hpp"
 #include "main_bindings.hpp"
-#include <serialiser_texttree.hpp>
 #include <mir/mir.hpp>
 #include <macro_rules/macro_rules.hpp>
 #include "serialise_lowlevel.hpp"
 #include <typeinfo>
 
-namespace {
+//namespace {
 
     template<typename T>
     struct D
@@ -114,6 +113,7 @@ namespace {
         }
 
 
+        ::HIR::LifetimeRef deserialise_lifetimeref();
         ::HIR::TypeRef deserialise_type();
         ::HIR::SimplePath deserialise_simplepath();
         ::HIR::PathParams deserialise_pathparams();
@@ -310,15 +310,29 @@ namespace {
         }
 
         ::Token deserialise_token() {
-            ::Token tok;
-            // HACK: Hand off to old serialiser code
-            auto s = m_in.read_string();
-            ::std::stringstream tmp(s);
+            auto ty = static_cast<enum eTokenType>( m_in.read_tag() );
+            auto d = deserialise_tokendata();
+            return ::Token(ty, ::std::move(d), {});
+        }
+        ::Token::Data deserialise_tokendata() {
+            auto tag = static_cast< ::Token::Data::Tag>( m_in.read_tag() );
+            switch(tag)
             {
-                Deserialiser_TextTree ser(tmp);
-                tok.deserialise( ser );
+            case ::Token::Data::TAG_None:
+                return ::Token::Data::make_None({});
+            case ::Token::Data::TAG_String:
+                return ::Token::Data::make_String( m_in.read_string() );
+            case ::Token::Data::TAG_Integer: {
+                auto dty = static_cast<eCoreType>(m_in.read_tag());
+                return ::Token::Data::make_Integer({ dty, m_in.read_u64c() });
+                }
+            case ::Token::Data::TAG_Float: {
+                auto dty = static_cast<eCoreType>(m_in.read_tag());
+                return ::Token::Data::make_Float({ dty, m_in.read_double() });
+                }
+            default:
+                throw ::std::runtime_error(FMT("Invalid Token data tag - " << tag));
             }
-            return tok;
         }
 
         ::HIR::Literal deserialise_literal();
@@ -718,6 +732,11 @@ namespace {
 
     template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
 
+    ::HIR::LifetimeRef HirDeserialiser::deserialise_lifetimeref()
+    {
+        return { static_cast<uint32_t>(m_in.read_count()) };
+    }
+
     ::HIR::TypeRef HirDeserialiser::deserialise_type()
     {
         ::HIR::TypeRef  rv;
@@ -741,13 +760,13 @@ namespace {
         _(TraitObject, {
             deserialise_traitpath(),
             deserialise_vec< ::HIR::GenericPath>(),
-            ""  // TODO: m_lifetime
+            deserialise_lifetimeref()
             })
         _(ErasedType, {
             deserialise_path(),
             static_cast<unsigned int>(m_in.read_count()),
             deserialise_vec< ::HIR::TraitPath>(),
-            ""  // TODO: m_lifetime
+            deserialise_lifetimeref()
             })
         _(Array, {
             deserialise_ptr< ::HIR::TypeRef>(),
@@ -761,6 +780,7 @@ namespace {
             deserialise_vec< ::HIR::TypeRef>()
             )
         _(Borrow, {
+            deserialise_lifetimeref(),
             static_cast< ::HIR::BorrowType>( m_in.read_tag() ),
             deserialise_ptr< ::HIR::TypeRef>()
             })
@@ -1227,7 +1247,7 @@ namespace {
 
         return rv;
     }
-}
+//}
 
 ::HIR::CratePtr HIR_Deserialise(const ::std::string& filename, const ::std::string& loaded_name)
 {

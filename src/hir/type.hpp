@@ -84,10 +84,47 @@ extern ::std::ostream& operator<<(::std::ostream& os, const BorrowType& bt);
 
 struct LifetimeRef
 {
-    ::std::string   name;
+    static const uint32_t UNKNOWN = 0;
+    static const uint32_t STATIC = 0xFFFF;
+
+    // Values below 2^16 are parameters/static, values above are per-function region IDs allocated during region inferrence.
+    uint32_t  binding = UNKNOWN;
+
+    static LifetimeRef new_static() {
+        LifetimeRef rv;
+        rv.binding = STATIC;
+        return rv;
+    }
 
     bool operator==(const LifetimeRef& x) const {
-        return name == x.name;
+        return binding == x.binding;
+    }
+    bool operator!=(const LifetimeRef& x) const {
+        return !(*this == x);
+    }
+    friend ::std::ostream& operator<<(::std::ostream& os, const LifetimeRef& x) {
+        if( x.binding == UNKNOWN )
+        {
+            os << "'_";
+        }
+        else if( x.binding == STATIC )
+        {
+            os << "'static";
+        }
+        else if( x.binding < 0xFFFF )
+        {
+            switch( x.binding & 0xFF00 )
+            {
+            case 0: os << "'I" << (x.binding & 0xFF);   break;
+            case 1: os << "'M" << (x.binding & 0xFF);   break;
+            default: os << "'unk" << x.binding;   break;
+            }
+        }
+        else
+        {
+            os << "'_" << (x.binding - 0x1000);
+        }
+        return os;
     }
 };
 
@@ -178,6 +215,7 @@ public:
         }),
     (Tuple, ::std::vector<TypeRef>),
     (Borrow, struct {
+        ::HIR::LifetimeRef  lifetime;
         ::HIR::BorrowType   type;
         ::std::unique_ptr<TypeRef>  inner;
         }),
@@ -234,7 +272,7 @@ public:
         return TypeRef(Data::make_Infer({idx, ty_class}));
     }
     static TypeRef new_borrow(BorrowType bt, TypeRef inner) {
-        return TypeRef(Data::make_Borrow({bt, box$(mv$(inner))}));
+        return TypeRef(Data::make_Borrow({ ::HIR::LifetimeRef(), bt, box$(mv$(inner)) }));
     }
     static TypeRef new_pointer(BorrowType bt, TypeRef inner) {
         return TypeRef(Data::make_Pointer({bt, box$(mv$(inner))}));

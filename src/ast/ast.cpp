@@ -8,14 +8,13 @@
 #include <iostream>
 #include "../parse/parseerror.hpp"
 #include <algorithm>
-#include <serialiser_texttree.hpp>
 
 namespace AST {
 
 
 namespace {
-    ::std::vector<MetaItem> clone_mivec(const ::std::vector<MetaItem>& v) {
-        ::std::vector<MetaItem>    ri;
+    ::std::vector<Attribute> clone_mivec(const ::std::vector<Attribute>& v) {
+        ::std::vector<Attribute>    ri;
         ri.reserve(v.size());
         for(const auto& i : v)
             ri.push_back( i.clone() );
@@ -23,19 +22,16 @@ namespace {
     }
 }
 
-MetaItems::~MetaItems()
+AttributeList AttributeList::clone() const
 {
-}
-MetaItems MetaItems::clone() const
-{
-    return MetaItems( m_span, clone_mivec(m_items) );
+    return AttributeList( clone_mivec(m_items) );
 }
 
-void MetaItems::push_back(MetaItem i)
+void AttributeList::push_back(Attribute i)
 {
     m_items.push_back( ::std::move(i) );
 }
-const MetaItem* MetaItems::get(const char *name) const
+const Attribute* AttributeList::get(const char *name) const
 {
     for( auto& i : m_items ) {
         if(i.name() == name) {
@@ -46,23 +42,20 @@ const MetaItem* MetaItems::get(const char *name) const
     return 0;
 }
 
-MetaItem::~MetaItem()
+Attribute Attribute::clone() const
 {
-}
-MetaItem MetaItem::clone() const
-{
-    TU_MATCH(MetaItemData, (m_data), (e),
+    TU_MATCHA( (m_data), (e),
     (None,
-        return MetaItem(m_name);
+        return Attribute(m_span, m_name);
         ),
     (String,
-        return MetaItem(m_name, e.val);
+        return Attribute(m_span, m_name, e.val);
         ),
     (List,
-        return MetaItem(m_name, clone_mivec(e.sub_items));
+        return Attribute(m_span, m_name, clone_mivec(e.sub_items));
         )
     )
-    throw ::std::runtime_error("MetaItem::clone - Fell off end");
+    throw ::std::runtime_error("Attribute::clone - Fell off end");
 }
 
 StructItem StructItem::clone() const
@@ -109,16 +102,16 @@ Function Function::clone() const
     return rv;
 }
 
-void Trait::add_type(::std::string name, MetaItems attrs, TypeRef type) {
+void Trait::add_type(::std::string name, AttributeList attrs, TypeRef type) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
     m_items.back().data.attrs = mv$(attrs);
 }
-void Trait::add_function(::std::string name, MetaItems attrs, Function fcn) {
+void Trait::add_function(::std::string name, AttributeList attrs, Function fcn) {
     DEBUG("trait fn " << name);
     m_items.push_back( Named<Item>(mv$(name), Item::make_Function({mv$(fcn)}), true) );
     m_items.back().data.attrs = mv$(attrs);
 }
-void Trait::add_static(::std::string name, MetaItems attrs, Static v) {
+void Trait::add_static(::std::string name, AttributeList attrs, Static v) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Static({mv$(v)}), true) );
     m_items.back().data.attrs = mv$(attrs);
 }
@@ -301,18 +294,18 @@ void Module::add_item( Named<Item> named_item ) {
         DEBUG(m_my_path << "::" << i.name << " = " << i.data.tag_str() << ", attrs = " << i.data.attrs);
     }
 }
-void Module::add_item(bool is_pub, ::std::string name, Item it, MetaItems attrs) {
+void Module::add_item(bool is_pub, ::std::string name, Item it, AttributeList attrs) {
     it.attrs = mv$(attrs);
     add_item( Named<Item>( mv$(name), mv$(it), is_pub ) );
 }
-void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, MetaItems attrs) {
+void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, AttributeList attrs) {
     this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
 }
-void Module::add_alias(bool is_public, UseStmt us, ::std::string name, MetaItems attrs) {
+void Module::add_alias(bool is_public, UseStmt us, ::std::string name, AttributeList attrs) {
     this->add_item( is_public, mv$(name), Item(mv$(us)), mv$(attrs) );
 }
 void Module::add_macro_invocation(MacroInvocation item) {
-    this->add_item( false, "", Item( mv$(item) ), ::AST::MetaItems {} );
+    this->add_item( false, "", Item( mv$(item) ), ::AST::AttributeList {} );
 }
 void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
@@ -385,10 +378,31 @@ Item Item::clone() const
     //os << ")";
     return os;
 }
+::std::ostream& operator<<(::std::ostream& os, const LifetimeParam& p)
+{
+    os << "'" << p.m_name;
+    return os;
+}
+
+::std::ostream& operator<<(::std::ostream& os, const HigherRankedBounds& x)
+{
+    if( x.m_lifetimes.empty() ) {
+        return os;
+    }
+    os << "for<";
+    for(const auto& l : x.m_lifetimes)
+        os << "'" << l << ",";
+    os << "> ";
+    return os;
+}
+
 
 ::std::ostream& operator<<(::std::ostream& os, const GenericBound& x)
 {
     TU_MATCH(GenericBound, (x), (ent),
+    (None,
+        os << "/*-*/";
+        ),
     (Lifetime,
         os << "'" << ent.test << ": '" << ent.bound;
         ),
@@ -396,14 +410,7 @@ Item Item::clone() const
         os << ent.type << ": '" << ent.bound;
         ),
     (IsTrait,
-        if( ! ent.hrls.empty() )
-        {
-            os << "for<";
-            for(const auto& l : ent.hrls)
-                os << "'" << l;
-            os << ">";
-        }
-        os << ent.type << ":  " << ent.trait;
+        os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;
         ),
     (MaybeTrait,
         os << ent.type << ": ?" << ent.trait;

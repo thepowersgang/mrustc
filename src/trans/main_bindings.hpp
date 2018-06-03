@@ -24,6 +24,13 @@ struct TransOptions
     ::std::vector< ::std::string>   libraries;
 };
 
+enum class CodegenOutput {
+    Object, // .o
+    StaticLibrary,  // .a
+    DynamicLibrary, // .so
+    Executable, // no suffix, includes main stub (TODO: Can't that just be added earlier?)
+};
+
 extern TransList Trans_Enumerate_Main(const ::HIR::Crate& crate);
 // NOTE: This also sets the saveout flags
 extern TransList Trans_Enumerate_Public(::HIR::Crate& crate);

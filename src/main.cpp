@@ -9,11 +9,11 @@
 #include <iomanip>
 #include <string>
 #include <set>
+#include <string_view.hpp>
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
 #include "ast/ast.hpp"
 #include "ast/crate.hpp"
-#include <serialiser_texttree.hpp>
 #include <cstring>
 #include <main_bindings.hpp>
 #include "resolve/main_bindings.hpp"
@@ -26,51 +26,7 @@
 #include "trans/target.hpp"
 
 #include "expand/cfg.hpp"
-
-// Hacky default target
-#ifdef _MSC_VER
-# if defined(_WIN64)
-#  define DEFAULT_TARGET_NAME "x86_64-windows-msvc"
-# else
-#  define DEFAULT_TARGET_NAME "x86-windows-msvc"
-# endif
-#elif defined(__linux__)
-# if defined(__amd64__)
-#  define DEFAULT_TARGET_NAME "x86_64-linux-gnu"
-# elif defined(__aarch64__)
-#  define DEFAULT_TARGET_NAME "aarch64-linux-gnu"
-# elif defined(__arm__)
-#  define DEFAULT_TARGET_NAME "arm-linux-gnu"
-# elif defined(__i386__)
-#  define DEFAULT_TARGET_NAME "i586-linux-gnu"
-# else
-#  error "Unable to detect a suitable default target (linux-gnu)"
-# endif
-#elif defined(__MINGW32__)
-# if defined(_WIN64)
-#  define DEFAULT_TARGET_NAME "x86_64-windows-gnu"
-# else
-#  define DEFAULT_TARGET_NAME "i586-windows-gnu"
-# endif
-#elif defined(__NetBSD__)
-# if defined(__amd64__)
-#  define DEFAULT_TARGET_NAME "x86_64-unknown-netbsd"
-# endif
-#elif defined(__OpenBSD__)
-# if defined(__amd64__)
-#  define DEFAULT_TARGET_NAME "x86_64-unknown-openbsd"
-# elif defined(__aarch64__)
-#  define DEFAULT_TARGET_NAME "aarch64-unknown-openbsd"
-# elif defined(__arm__)
-#  define DEFAULT_TARGET_NAME "arm-unknown-openbsd"
-# elif defined(__i386__)
-#  define DEFAULT_TARGET_NAME "i686-unknown-openbsd"
-# else
-#  error "Unable to detect a suitable default target (OpenBSD)"
-# endif
-#else
-# error "Unable to detect a suitable default target"
-#endif
+#include <target_detect.h>	// tools/common/target_detect.h
 
 int g_debug_indent_level = 0;
 bool g_debug_enabled = true;
@@ -201,6 +157,10 @@ struct ProgramParams
         bool disable_mir_optimisations = false;
         bool full_validate = false;
         bool full_validate_early = false;
+
+        bool dump_ast = false;
+        bool dump_hir = false;
+        bool dump_mir = false;
     } debug;
     struct {
         ::std::string   codegen_type;
@@ -356,10 +316,12 @@ int main(int argc, char *argv[])
             DEBUG("params.outfile = " << params.outfile);
         }
 
-        // XXX: Dump crate before resolve
-        CompilePhaseV("Dump Expanded", [&]() {
-            Dump_Rust( FMT(params.outfile << "_0a_exp.rs").c_str(), crate );
-            });
+        if( params.debug.dump_ast )
+        {
+            CompilePhaseV("Dump Expanded", [&]() {
+                Dump_Rust( FMT(params.outfile << "_1_ast.rs").c_str(), crate );
+                });
+        }
 
         if( params.last_stage == ProgramParams::STAGE_EXPAND ) {
             return 0;
@@ -467,10 +429,12 @@ int main(int argc, char *argv[])
             Resolve_Absolutise(crate);  // - Convert all paths to Absolute or UFCS, and resolve variables
             });
 
-        // XXX: Dump crate before HIR
-        CompilePhaseV("Temp output - Resolved", [&]() {
-            Dump_Rust( FMT(params.outfile << "_1_res.rs").c_str(), crate );
-            });
+        if( params.debug.dump_ast )
+        {
+            CompilePhaseV("Temp output - Resolved", [&]() {
+                Dump_Rust( FMT(params.outfile << "_1_ast.rs").c_str(), crate );
+                });
+        }
 
         if( params.last_stage == ProgramParams::STAGE_RESOLVE ) {
             return 0;
@@ -508,10 +472,14 @@ int main(int argc, char *argv[])
             ConvertHIR_ConstantEvaluate(*hir_crate);
             });
 
-        CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
-            HIR_Dump( os, *hir_crate );
-            });
+        if( params.debug.dump_hir )
+        {
+            // DUMP after initial consteval
+            CompilePhaseV("Dump HIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+                HIR_Dump( os, *hir_crate );
+                });
+        }
 
         // === Type checking ===
         // - This can recurse and call the MIR lower to evaluate constants
@@ -546,10 +514,14 @@ int main(int argc, char *argv[])
         CompilePhaseV("Expand HIR ErasedType", [&]() {
             HIR_Expand_ErasedType(*hir_crate);
             });
-        CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
-            HIR_Dump( os, *hir_crate );
-            });
+        if( params.debug.dump_hir )
+        {
+            // DUMP after typecheck (before validation)
+            CompilePhaseV("Dump HIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+                HIR_Dump( os, *hir_crate );
+                });
+        }
         // - Ensure that typeck worked (including Fn trait call insertion etc)
         CompilePhaseV("Typecheck Expressions (validate)", [&]() {
             Typecheck_Expressions_Validate(*hir_crate);
@@ -564,10 +536,14 @@ int main(int argc, char *argv[])
             HIR_GenerateMIR(*hir_crate);
             });
 
-        CompilePhaseV("Dump MIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
-            MIR_Dump( os, *hir_crate );
-            });
+        if( params.debug.dump_mir )
+        {
+            // DUMP after generation
+            CompilePhaseV("Dump MIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
+                MIR_Dump( os, *hir_crate );
+                });
+        }
 
         // Validate the MIR
         CompilePhaseV("MIR Validate", [&]() {
@@ -578,10 +554,15 @@ int main(int argc, char *argv[])
         CompilePhaseV("Constant Evaluate Full", [&]() {
             ConvertHIR_ConstantEvaluateFull(*hir_crate);
             });
-        CompilePhaseV("Dump HIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
-            HIR_Dump( os, *hir_crate );
-            });
+
+        if( params.debug.dump_hir )
+        {
+            // DUMP after consteval (full HIR again)
+            CompilePhaseV("Dump HIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+                HIR_Dump( os, *hir_crate );
+                });
+        }
 
         // - Expand constants in HIR and virtualise calls
         CompilePhaseV("MIR Cleanup", [&]() {
@@ -599,10 +580,14 @@ int main(int argc, char *argv[])
             MIR_OptimiseCrate(*hir_crate, params.debug.disable_mir_optimisations);
             });
 
-        CompilePhaseV("Dump MIR", [&]() {
-            ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
-            MIR_Dump( os, *hir_crate );
-            });
+        if( params.debug.dump_mir )
+        {
+            // DUMP: After optimisation
+            CompilePhaseV("Dump MIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_3_mir.rs"));
+                MIR_Dump( os, *hir_crate );
+                });
+        }
         CompilePhaseV("MIR Validate PO", [&]() {
             MIR_CheckCrate(*hir_crate);
             });
@@ -640,72 +625,83 @@ int main(int argc, char *argv[])
             // If the test harness is enabled, override crate type to "Executable"
             crate_type = ::AST::Crate::Type::Executable;
         }
-        switch( crate_type )
+
+        // Enumerate items to be passed to codegen
+        TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() {
+            switch( crate_type )
+            {
+            case ::AST::Crate::Type::Unknown:
+                ::std::cerr << "BUG? Unknown crate type" << ::std::endl;
+                exit(1);
+                break;
+            case ::AST::Crate::Type::RustLib:
+            case ::AST::Crate::Type::RustDylib:
+            case ::AST::Crate::Type::CDylib:
+                return Trans_Enumerate_Public(*hir_crate);
+            case ::AST::Crate::Type::ProcMacro:
+                // TODO: proc macros enumerate twice, once as a library (why?) and again as an executable
+                return Trans_Enumerate_Public(*hir_crate);
+            case ::AST::Crate::Type::Executable:
+                return Trans_Enumerate_Main(*hir_crate);
+            }
+            throw ::std::runtime_error("Invalid crate_type value");
+            });
+        // - Generate monomorphised versions of all functions
+        CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
+        // - Do post-monomorph inlining
+        CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
+        // - Clean up no-unused functions
+        //CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
+
+        switch(crate_type)
         {
         case ::AST::Crate::Type::Unknown:
-            // ERROR?
-            break;
-        case ::AST::Crate::Type::RustLib: {
-            #if 1
-            // Generate a .o
-            TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            //CompilePhaseV("Trans Enumerate Cleanup", [&]() { Trans_Enumerate_Cleanup(*hir_crate, items); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
-            #endif
-
-            // Save a loadable HIR dump
-            CompilePhaseV("HIR Serialise", [&]() {
-                //HIR_Serialise(params.outfile + ".meta", *hir_crate);
-                HIR_Serialise(params.outfile, *hir_crate);
-                });
-
-            // Link metatdata and object into a .rlib
-            break; }
-        case ::AST::Crate::Type::RustDylib: {
-            #if 1
-            // Generate a .o
-            TransList   items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
-            #endif
+            throw "";
+        case ::AST::Crate::Type::RustLib:
+            // Generate a loadable .o
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, /*is_executable=*/false); });
             // Save a loadable HIR dump
             CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
-
-            // Generate a .so/.dll
-            // TODO: Codegen and include the metadata in a non-loadable segment
-            break; }
+            // TODO: Link metatdata and object into a .rlib
+            //Trans_Link(params.outfile, params.outfile + ".hir", params.outfile + ".o", CodegenOutput::StaticLibrary);
+            break;
+        case ::AST::Crate::Type::RustDylib:
+            // Generate a .so
+            //CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".so", trans_opt, *hir_crate, items, CodegenOutput::DynamicLibrary); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, /*is_executable=*/false); });
+            // Save a loadable HIR dump
+            CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
+            // TODO: Add the metadata to the .so as a non-loadable segment
+            //Trans_Link(params.outfile, params.outfile + ".hir", params.outfile + ".o", CodegenOutput::DynamicLibrary);
+            break;
         case ::AST::Crate::Type::CDylib:
             // Generate a .so/.dll
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, trans_opt, *hir_crate, items, /*is_executable=*/false); });
+            // - No metadata file
+            //Trans_Link(params.outfile, "", params.outfile + ".o", CodegenOutput::DynamicLibrary);
             break;
         case ::AST::Crate::Type::ProcMacro: {
             // Needs: An executable (the actual macro handler), metadata (for `extern crate foo;`)
-            // Can just emit the metadata and do miri?
-            // - Requires MIR for EVERYTHING, not feasable.
-            TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Public(*hir_crate); });
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, false); });
 
+            // 1. Generate code for the .o file
+            // TODO: Is the .o actually needed for proc macros?
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + ".o", trans_opt, *hir_crate, items, /*is_executable=*/false); });
+
+            // 2. Generate code for the plugin itself
             TransList items2 = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
             CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items2); });
             CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items2); });
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + "-plugin", trans_opt, *hir_crate, items2, true); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile + "-plugin", trans_opt, *hir_crate, items2, /*is_executable=*/true); });
 
-            hir_crate->m_lang_items.clear();    // Make sure that we're not exporting any lang items
+            // - Save a very basic HIR dump, making sure that there's no lang items in it (e.g. `mrustc-main`)
+            hir_crate->m_lang_items.clear();
             CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile, *hir_crate); });
+            //Trans_Link(params.outfile, params.outfile + ".hir", params.outfile + ".o", CodegenOutput::StaticLibrary);
+            //Trans_Link(params.outfile+"-plugin", "", params.outfile + "-plugin.o", CodegenOutput::StaticLibrary);
             break; }
         case ::AST::Crate::Type::Executable:
-            // Generate a binary
-            // - Enumerate items for translation
-            TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
-            // - Monomorphise
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
-            // - Perform codegen
-            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, trans_opt, *hir_crate, items, true); });
+            CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, trans_opt, *hir_crate, items, /*is_executable=*/true); });
+            //Trans_Link(params.outfile, "", params.outfile + ".o", CodegenOutput::Executable);
             break;
         }
     }
@@ -869,6 +865,18 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                     no_optval();
                     this->debug.full_validate_early = true;
                 }
+                else if( optname == "dump-ast" ) {
+                    no_optval();
+                    this->debug.dump_ast = true;
+                }
+                else if( optname == "dump-hir" ) {
+                    no_optval();
+                    this->debug.dump_hir = true;
+                }
+                else if( optname == "dump-mir" ) {
+                    no_optval();
+                    this->debug.dump_mir = true;
+                }
                 else if( optname == "stop-after" ) {
                     get_optval();
                     if( optval == "parse" )
@@ -877,10 +885,10 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                         this->last_stage = STAGE_EXPAND;
                     else if( optval == "resolve" )
                         this->last_stage = STAGE_RESOLVE;
+                    else if( optval == "typeck" )
+                        this->last_stage = STAGE_TYPECK;
                     else if( optval == "mir" )
                         this->last_stage = STAGE_MIR;
-                    else if( optval == "ALL" )
-                        this->last_stage = STAGE_ALL;
                     else {
                         ::std::cerr << "Unknown argument to -Z stop-after - '" << optval << "'" << ::std::endl;
                         exit(1);
@@ -1052,6 +1060,42 @@ ProgramParams::ProgramParams(int argc, char *argv[])
     {
         ::std::cerr << "No input file passed" << ::std::endl;
         exit(1);
+    }
+
+    if( const auto* a = getenv("MRUSTC_DUMP") )
+    {
+        while( a[0] )
+        {
+            const char* end = strchr(a, ':');
+
+            ::std::string_view  s;
+            if( end ) {
+                s = ::std::string_view { a, end };
+                a = end + 1;
+            }
+            else {
+                end = a + strlen(a);
+                s = ::std::string_view { a, end };
+                a = end;
+            }
+
+            if( s == "" ) {
+                // Ignore
+            }
+            else if( s == "ast" ) {
+                this->debug.dump_ast = true;
+            }
+            else if( s == "hir" ) {
+                this->debug.dump_hir = true;
+            }
+            else if( s == "mir" ) {
+                this->debug.dump_mir = true;
+            }
+            else {
+                ::std::cerr << "Unknown option in $MRUSTC_DUMP '" << s << "'" << ::std::endl;
+                // - No terminate, just warn
+            }
+        }
     }
 }
 void ProgramParams::show_help() const

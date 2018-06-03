@@ -21,7 +21,7 @@ InterpolatedFragment::~InterpolatedFragment()
             delete reinterpret_cast<AST::ExprNode*>(m_ptr);
             break;
         case InterpolatedFragment::META:
-            delete reinterpret_cast<AST::MetaItem*>(m_ptr);
+            delete reinterpret_cast<AST::Attribute*>(m_ptr);
             break;
         case InterpolatedFragment::ITEM:
             delete reinterpret_cast<AST::Named<AST::Item>*>(m_ptr);
@@ -47,9 +47,9 @@ InterpolatedFragment::InterpolatedFragment(InterpolatedFragment::Type type, AST:
     m_ptr( ptr )
 {
 }
-InterpolatedFragment::InterpolatedFragment(AST::MetaItem v):
+InterpolatedFragment::InterpolatedFragment(AST::Attribute v):
     m_type( InterpolatedFragment::META ),
-    m_ptr( new AST::MetaItem(mv$(v)) )
+    m_ptr( new AST::Attribute(mv$(v)) )
 {
 }
 InterpolatedFragment::InterpolatedFragment(::AST::Named<::AST::Item> v):
@@ -106,7 +106,7 @@ InterpolatedFragment::InterpolatedFragment(TypeRef v):
         break;
 
     case InterpolatedFragment::META:
-        os << "meta[" << *reinterpret_cast<const AST::MetaItem*>(x.m_ptr) << "]";
+        os << "meta[" << *reinterpret_cast<const AST::Attribute*>(x.m_ptr) << "]";
         break;
     case InterpolatedFragment::ITEM: {
         const auto& named_item = *reinterpret_cast<const AST::Named<AST::Item>*>(x.m_ptr);

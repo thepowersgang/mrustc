@@ -33,7 +33,7 @@ Token::~Token()
         delete reinterpret_cast<AST::ExprNode*>(m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_META:
-        delete reinterpret_cast<AST::MetaItem*>(m_data.as_Fragment());
+        delete reinterpret_cast<AST::Attribute*>(m_data.as_Fragment());
         break;
     default:
         break;
@@ -92,7 +92,7 @@ Token::Token(const InterpolatedFragment& frag)
         break;
     case InterpolatedFragment::META:
         m_type = TOK_INTERPOLATED_META;
-        m_data = new AST::MetaItem( reinterpret_cast<const AST::MetaItem*>(frag.m_ptr)->clone() );
+        m_data = new AST::Attribute( reinterpret_cast<const AST::Attribute*>(frag.m_ptr)->clone() );
         break;
     case InterpolatedFragment::ITEM: {
         m_type = TOK_INTERPOLATED_ITEM;
@@ -197,11 +197,11 @@ Token Token::clone() const
             rv.m_data = reinterpret_cast<AST::ExprNode*>(e)->clone().release();
             break;
         case TOK_INTERPOLATED_META:
-            rv.m_data = new AST::MetaItem( reinterpret_cast<AST::MetaItem*>(e)->clone() );
+            rv.m_data = new AST::Attribute( reinterpret_cast<AST::Attribute*>(e)->clone() );
             break;
         case TOK_INTERPOLATED_ITEM:
             TODO(m_pos, "clone interpolated item");
-            //rv.m_data = new AST::Named( AST::Item( reinterpret_cast<AST::MetaItem*>(e)->clone() ) );
+            //rv.m_data = new AST::Named( AST::Item( reinterpret_cast<AST::Attribute*>(e)->clone() ) );
             break;
         default:
             BUG(m_pos, "Fragment with invalid token type (" << *this << ")");
@@ -297,7 +297,7 @@ struct EscapedString {
         reinterpret_cast<const ::AST::Path*>(m_data.as_Fragment())->print_pretty(ss, true);
         return ss.str();
     case TOK_INTERPOLATED_PATTERN:
-        // TODO: Use a configurable print
+        // TODO: Use a pretty printer too?
         return FMT( *reinterpret_cast<const ::AST::Pattern*>(m_data.as_Fragment()) );
     case TOK_INTERPOLATED_STMT:
     case TOK_INTERPOLATED_BLOCK:
@@ -312,9 +312,21 @@ struct EscapedString {
     // Value tokens
     case TOK_IDENT:     return m_data.as_String();
     case TOK_LIFETIME:  return "'" + m_data.as_String();
-    case TOK_INTEGER:   return FMT(m_data.as_Integer().m_intval);    // TODO: suffix for type
+    case TOK_INTEGER:
+        if( m_data.as_Integer().m_datatype == CORETYPE_ANY ) {
+            return FMT(m_data.as_Integer().m_intval);
+        }
+        else {
+            return FMT(m_data.as_Integer().m_intval << "_" << m_data.as_Integer().m_datatype);
+        }
     case TOK_CHAR:      return FMT("'\\u{"<< ::std::hex << m_data.as_Integer().m_intval << "}");
-    case TOK_FLOAT:     return FMT(m_data.as_Float().m_floatval);
+    case TOK_FLOAT:
+        if( m_data.as_Float().m_datatype == CORETYPE_ANY ) {
+            return FMT(m_data.as_Float().m_floatval);
+        }
+        else {
+            return FMT(m_data.as_Float().m_floatval << "_" << m_data.as_Float().m_datatype);
+        }
     case TOK_STRING:    return FMT("\"" << EscapedString(m_data.as_String()) << "\"");
     case TOK_BYTESTRING:return FMT("b\"" << m_data.as_String() << "\"");
     case TOK_HASH:  return "#";
@@ -445,78 +457,6 @@ struct EscapedString {
     throw ParseError::BugCheck("Reached end of Token::to_str");
 }
 
-void operator%(::Serialiser& s, enum eTokenType c) {
-    s << Token::typestr(c);
-}
-void operator%(::Deserialiser& s, enum eTokenType& c) {
-    ::std::string   n;
-    s.item(n);
-    c = Token::typefromstr(n);
-}
-void operator%(::Serialiser& s, enum eCoreType t) {
-    s << coretype_name(t);
-}
-void operator%(::Deserialiser& s, enum eCoreType& t) {
-    ::std::string   n;
-    s.item(n);
-    t = coretype_fromstring(n);
-    ASSERT_BUG(Span(), t != CORETYPE_INVAL, "Invalid coretype '" << n << "'");
-}
-SERIALISE_TYPE(Token::, "Token", {
-    s % m_type;
-    s << Token::Data::tag_to_str(m_data.tag());
-    TU_MATCH(Token::Data, (m_data), (e),
-    (None, ),
-    (String,
-        s << e;
-        ),
-    (Integer,
-        s % e.m_datatype;
-        s.item( e.m_intval );
-        ),
-    (Float,
-        s % e.m_datatype;
-        s.item( e.m_floatval );
-        ),
-    (Fragment,
-        assert(!"Serialising interpolated macro fragment");
-        )
-    )
-},{
-    s % m_type;
-    Token::Data::Tag    tag;
-    {
-        ::std::string   tag_str;
-        s.item( tag_str );
-        tag = Token::Data::tag_from_str(tag_str);
-    }
-    switch(tag)
-    {
-    case Token::Data::TAGDEAD:  break;
-    case Token::Data::TAG_None: break;
-    case Token::Data::TAG_String: {
-        ::std::string str;
-        s.item( str );
-        m_data = Token::Data::make_String(str);
-        break; }
-    case Token::Data::TAG_Integer: {
-        enum eCoreType  dt;
-        uint64_t    v;
-        s % dt;
-        s.item( v );
-        m_data = Token::Data::make_Integer({dt, v});
-        break; }
-    case Token::Data::TAG_Float: {
-        enum eCoreType  dt;
-        double   v;
-        s % dt;
-        s.item( v );
-        m_data = Token::Data::make_Float({dt, v});
-        break; }
-    case Token::Data::TAG_Fragment:
-        assert(!"Serialising interpolated macro fragment");
-    }
-});
 
 ::std::ostream&  operator<<(::std::ostream& os, const Token& tok)
 {
@@ -553,7 +493,7 @@ SERIALISE_TYPE(Token::, "Token", {
         os << ":" << *reinterpret_cast<AST::ExprNode*>(tok.m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_META:
-        os << ":" << *reinterpret_cast<AST::MetaItem*>(tok.m_data.as_Fragment());
+        os << ":" << *reinterpret_cast<AST::Attribute*>(tok.m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_ITEM: {
         const auto& named_item = *reinterpret_cast<const AST::Named<AST::Item>*>(tok.m_data.as_Fragment());

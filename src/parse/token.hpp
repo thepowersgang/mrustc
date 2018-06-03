@@ -9,9 +9,9 @@
 
 #include <rc_string.hpp>
 #include <tagged_union.hpp>
-#include <serialise.hpp>
 #include "../coretypes.hpp"
 #include <ident.hpp>
+#include <memory>
 
 enum eTokenType
 {
@@ -47,7 +47,7 @@ namespace AST {
     class Pattern;
     class Path;
     class ExprNode;
-    class MetaItem;
+    class Attribute;
     class Item;
 
     template<typename T>
@@ -56,9 +56,11 @@ namespace AST {
 
 class InterpolatedFragment;
 
-class Token:
-    public Serialisable
+class Token
 {
+    friend class HirSerialiser;
+    friend class HirDeserialiser;
+
     TAGGED_UNION(Data, None,
     (None, struct {}),
     (String, ::std::string),
@@ -77,6 +79,12 @@ class Token:
     Data    m_data;
     Position    m_pos;
 
+    Token(enum eTokenType t, Data d, Position p):
+        m_type(t),
+        m_data( ::std::move(d) ),
+        m_pos( ::std::move(p) )
+    {
+    }
 public:
     virtual ~Token();
     Token();
@@ -115,7 +123,7 @@ public:
     TypeRef& frag_type() { assert(m_type == TOK_INTERPOLATED_TYPE); return *reinterpret_cast<TypeRef*>( m_data.as_Fragment() ); }
     AST::Path& frag_path() { assert(m_type == TOK_INTERPOLATED_PATH); return *reinterpret_cast<AST::Path*>( m_data.as_Fragment() ); }
     AST::Pattern& frag_pattern() { assert(m_type == TOK_INTERPOLATED_PATTERN); return *reinterpret_cast<AST::Pattern*>( m_data.as_Fragment() ); }
-    AST::MetaItem& frag_meta() { assert(m_type == TOK_INTERPOLATED_META); return *reinterpret_cast<AST::MetaItem*>( m_data.as_Fragment() ); }
+    AST::Attribute& frag_meta() { assert(m_type == TOK_INTERPOLATED_META); return *reinterpret_cast<AST::Attribute*>( m_data.as_Fragment() ); }
     ::std::unique_ptr<AST::ExprNode> take_frag_node();
     ::AST::Named<AST::Item> take_frag_item();
 
@@ -140,8 +148,6 @@ public:
 
     static const char* typestr(enum eTokenType type);
     static eTokenType typefromstr(const ::std::string& s);
-
-    SERIALISABLE_PROTOTYPES();
 
     friend ::std::ostream&  operator<<(::std::ostream& os, const Token& tok);
 };

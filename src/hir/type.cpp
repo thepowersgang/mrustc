@@ -112,8 +112,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         }
         for(const auto& tr : e.m_markers)
             os << "+" << tr;
-        if( e.m_lifetime.name != "" )
-            os << "+ '" << e.m_lifetime.name;
+        if( e.m_lifetime != LifetimeRef::new_static() )
+            os << "+" << e.m_lifetime;
         os << ")";
         ),
     (ErasedType,
@@ -123,8 +123,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
                 os << "+";
             os << tr;
         }
-        if( e.m_lifetime.name != "" )
-            os << "+ '" << e.m_lifetime.name;
+        if( e.m_lifetime != LifetimeRef::new_static() )
+            os << "+ '" << e.m_lifetime;
         os << "/*" << e.m_origin << "#" << e.m_index << "*/";
         ),
     (Array,
@@ -860,7 +860,7 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
         return ::HIR::TypeRef( Data::make_Tuple(mv$(types)) );
         ),
     (Borrow,
-        return ::HIR::TypeRef( Data::make_Borrow({e.type, box$(e.inner->clone())}) );
+        return ::HIR::TypeRef( Data::make_Borrow({e.lifetime, e.type, box$(e.inner->clone())}) );
         ),
     (Pointer,
         return ::HIR::TypeRef( Data::make_Pointer({e.type, box$(e.inner->clone())}) );

@@ -55,8 +55,7 @@ public:
     bool is_valid() const { return m_name.name != ""; }
 };
 
-class Pattern:
-    public Serialisable
+class Pattern
 {
 public:
     TAGGED_UNION(Value, Invalid,
@@ -106,40 +105,45 @@ public:
     Pattern(Pattern&&) = default;
     Pattern& operator=(Pattern&&) = default;
 
-    Pattern(Data dat):
-        m_binding(),
+    Pattern(Span sp, Data dat):
+        m_span( mv$(sp) ),
         m_data( mv$(dat) )
     {};
 
     struct TagMaybeBind {};
-    Pattern(TagMaybeBind, Ident name):
-        m_binding(),
+    Pattern(TagMaybeBind, Span sp, Ident name):
+        m_span( mv$(sp) ),
         m_data( Data::make_MaybeBind({ mv$(name) }) )
     {}
 
     struct TagMacro {};
-    Pattern(TagMacro, unique_ptr<::AST::MacroInvocation> inv):
+    Pattern(TagMacro, Span sp, unique_ptr<::AST::MacroInvocation> inv):
+        m_span( mv$(sp) ),
         m_data( Data::make_Macro({ mv$(inv) }) )
     {}
 
     struct TagBind {};
-    Pattern(TagBind, Ident name, PatternBinding::Type ty = PatternBinding::Type::MOVE, bool is_mut=false):
+    Pattern(TagBind, Span sp, Ident name, PatternBinding::Type ty = PatternBinding::Type::MOVE, bool is_mut=false):
+        m_span( mv$(sp) ),
         m_binding( PatternBinding(mv$(name), ty, is_mut) )
     {}
 
     struct TagBox {};
-    Pattern(TagBox, Pattern sub):
+    Pattern(TagBox, Span sp, Pattern sub):
+        m_span( mv$(sp) ),
         m_data( Data::make_Box({ unique_ptr<Pattern>(new Pattern(mv$(sub))) }) )
     {}
 
     struct TagValue {};
-    Pattern(TagValue, Value val, Value end = Value()):
+    Pattern(TagValue, Span sp, Value val, Value end = Value()):
+        m_span( mv$(sp) ),
         m_data( Data::make_Value({ ::std::move(val), ::std::move(end) }) )
     {}
 
 
     struct TagReference {};
-    Pattern(TagReference, bool is_mutable, Pattern sub_pattern):
+    Pattern(TagReference, Span sp, bool is_mutable, Pattern sub_pattern):
+        m_span( mv$(sp) ),
         m_data( Data::make_Ref( /*Data::Data_Ref */ {
             is_mutable, unique_ptr<Pattern>(new Pattern(::std::move(sub_pattern)))
             }) )
@@ -147,23 +151,28 @@ public:
     }
 
     struct TagTuple {};
-    Pattern(TagTuple, ::std::vector<Pattern> pats):
+    Pattern(TagTuple, Span sp, ::std::vector<Pattern> pats):
+        m_span( mv$(sp) ),
         m_data( Data::make_Tuple( TuplePat { mv$(pats), false, {} } ) )
     {}
-    Pattern(TagTuple, TuplePat pat):
+    Pattern(TagTuple, Span sp, TuplePat pat):
+        m_span( mv$(sp) ),
         m_data( Data::make_Tuple( mv$(pat) ) )
     {}
 
     struct TagNamedTuple {};
-    Pattern(TagNamedTuple, Path path, ::std::vector<Pattern> pats):
+    Pattern(TagNamedTuple, Span sp, Path path, ::std::vector<Pattern> pats):
+        m_span( mv$(sp) ),
         m_data( Data::make_StructTuple( { mv$(path), TuplePat { mv$(pats), false, {} } } ) )
     {}
-    Pattern(TagNamedTuple, Path path, TuplePat pat = TuplePat { {}, false, {} }):
+    Pattern(TagNamedTuple, Span sp, Path path, TuplePat pat = TuplePat { {}, false, {} }):
+        m_span( mv$(sp) ),
         m_data( Data::make_StructTuple( { ::std::move(path), ::std::move(pat) } ) )
     {}
 
     struct TagStruct {};
-    Pattern(TagStruct, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns, bool is_exhaustive):
+    Pattern(TagStruct, Span sp, Path path, ::std::vector< ::std::pair< ::std::string,Pattern> > sub_patterns, bool is_exhaustive):
+        m_span( mv$(sp) ),
         m_data( Data::make_Struct( { ::std::move(path), ::std::move(sub_patterns), is_exhaustive } ) )
     {}
 
@@ -174,7 +183,6 @@ public:
 
 
     const Span& span() const { return m_span; }
-    void set_span(Span sp) { m_span = mv$(sp); }
 
     Pattern clone() const;
 
@@ -187,13 +195,6 @@ public:
     const Path& path() const { return m_data.as_StructTuple().path; }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const Pattern& pat);
-
-    SERIALISABLE_PROTOTYPES();
-    static ::std::unique_ptr<Pattern> from_deserialiser(Deserialiser& s) {
-        ::std::unique_ptr<Pattern> ret(new Pattern);
-        s.item(*ret);
-        return ret;
-    }
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const Pattern::Value& val);

@@ -11,7 +11,7 @@
 namespace HIR {
 class Crate;
 }
-struct TransList;
+class TransList;
 
 extern void HIR_GenerateMIR(::HIR::Crate& crate);
 extern void MIR_Dump(::std::ostream& sink, const ::HIR::Crate& crate);

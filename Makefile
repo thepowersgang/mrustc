@@ -33,10 +33,6 @@ RUST_TESTS_FINAL_STAGE ?= ALL
 LINKFLAGS := -g
 LIBS := -lz
 CXXFLAGS := -g -Wall
-# - Only turn on -Werror when running as `tpg` (i.e. me)
-ifeq ($(shell whoami),tpg)
-  CXXFLAGS += -Werror
-endif
 CXXFLAGS += -std=c++14
 #CXXFLAGS += -Wextra
 CXXFLAGS += -O2
@@ -74,7 +70,7 @@ OBJDIR = .obj/
 
 BIN := bin/mrustc$(EXESUF)
 
-OBJ := main.o serialise.o
+OBJ := main.o
 OBJ += span.o rc_string.o debug.o ident.o
 OBJ += ast/ast.o
 OBJ +=  ast/types.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
@@ -307,6 +303,7 @@ $(BIN): $(OBJ) tools/bin/common_lib.a
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ $(LINKFLAGS) $(OBJ) tools/bin/common_lib.a $(LIBS)
 ifeq ($(OS),Windows_NT)
+else ifeq ($(shell uname -s || echo not),Darwin)
 else
 	objcopy --only-keep-debug $(BIN) $(BIN).debug
 	objcopy --add-gnu-debuglink=$(BIN).debug $(BIN)

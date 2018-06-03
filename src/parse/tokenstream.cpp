@@ -140,8 +140,12 @@ Ident TokenStream::get_ident(Token tok) const
     if(tok.type() == TOK_IDENT) {
         return Ident(getHygiene(), tok.str());
     }
+    else if(tok.type() == TOK_LIFETIME) {
+        // TODO: Maybe only when it's explicitly asked for?
+        return Ident(getHygiene(), tok.str());
+    }
     else if( tok.type() == TOK_INTERPOLATED_IDENT ) {
-        TODO(getPosition(), "");
+        TODO(getPosition(), "get_ident from TOK_INTERPOLATED_IDENT");
     }
     else {
         throw ParseError::Unexpected(*this, tok);

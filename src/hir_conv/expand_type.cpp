@@ -208,11 +208,11 @@ public:
             {}
 
             // TODO: Use the other visitors.
-            void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& p)
+            void visit_path(::HIR::Visitor::PathContext pc, ::HIR::Path& p) override
             {
                 upper_visitor.visit_path(p, pc);
             }
-            void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p)
+            void visit_generic_path(::HIR::Visitor::PathContext pc, ::HIR::GenericPath& p) override
             {
                 upper_visitor.visit_generic_path(p, pc);
             }

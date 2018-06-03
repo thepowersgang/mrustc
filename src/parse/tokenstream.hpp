@@ -16,7 +16,7 @@
 
 namespace AST {
     class Module;
-    class MetaItems;
+    class AttributeList;
 }
 
 /// State the parser needs to pass down via a second channel.
@@ -28,7 +28,7 @@ struct ParseState
     bool no_expand_macros = false;
 
     ::AST::Module*  module = nullptr;
-    ::AST::MetaItems*   parent_attrs = nullptr;
+    ::AST::AttributeList*   parent_attrs = nullptr;
 
     ::AST::Module& get_current_mod() {
         assert(this->module);

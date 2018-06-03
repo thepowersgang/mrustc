@@ -6,7 +6,7 @@ Mrustc supports a few targets out of the box (of varying levels of usablity), th
 `src/trans/target.cpp`. If the built-in targets aren't suitable, a custom target can be specified with the help of a
 custom target toml file.
 
-To specify a target when running `mrustc` (or `minicaro`), pass `--target <triple>` or `--target
+To specify a target when running `mrustc` (or `minicargo`), pass `--target <triple>` or `--target
 ./path/to/target.toml` (the presence of a slash, backwards or forwards, is what determines if the target is treated as
 a custom target file.
 
@@ -27,7 +27,7 @@ variant = "gnu"
 target = "arm-linux-gnu"
 ```
 
-Recreation of the `i586-windows-gnu` target (with architecture)
+Recreation of the `i586-windows-gnu` target (with architecture definition)
 ```toml
 [target]
 family = "windows"

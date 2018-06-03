@@ -9,7 +9,6 @@
 #include <vector>
 #include <initializer_list>
 #include <cassert>
-#include <serialise.hpp>
 #include <tagged_union.hpp>
 #include <string>
 #include "../include/span.hpp"
@@ -28,6 +27,7 @@ class Static;
 
 namespace AST {
 
+class LifetimeRef;
 class GenericParams;
 class Crate;
 class Module;
@@ -109,14 +109,14 @@ extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x);
 
 struct PathParams
 {
-    ::std::vector< ::std::string >  m_lifetimes;
+    ::std::vector< LifetimeRef >  m_lifetimes;
     ::std::vector< TypeRef >    m_types;
     ::std::vector< ::std::pair< ::std::string, TypeRef> >   m_assoc;
 
     PathParams(PathParams&& x) = default;
     PathParams(const PathParams& x);
     PathParams() {}
-    PathParams(::std::vector<::std::string> lfts, ::std::vector<TypeRef> tys, ::std::vector<::std::pair<::std::string,TypeRef>> a):
+    PathParams(::std::vector<LifetimeRef> lfts, ::std::vector<TypeRef> tys, ::std::vector<::std::pair<::std::string,TypeRef>> a):
         m_lifetimes(mv$(lfts)),
         m_types(mv$(tys)),
         m_assoc(mv$(a))

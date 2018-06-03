@@ -133,11 +133,11 @@ namespace
                             check_path_length(key_val, 3);
                             if( key_val.value.as_string() == "msvc" )
                             {
-                                rv.m_codegen_mode = CodegenMode::Msvc;
+                                rv.m_backend_c.m_codegen_mode = CodegenMode::Msvc;
                             }
                             else if( key_val.value.as_string() == "gnu" )
                             {
-                                rv.m_codegen_mode = CodegenMode::Gnu11;
+                                rv.m_backend_c.m_codegen_mode = CodegenMode::Gnu11;
                             }
                             else
                             {
@@ -148,7 +148,23 @@ namespace
                         else if( key_val.path[2] == "target" )
                         {
                             check_path_length(key_val, 3);
-                            rv.m_c_compiler = key_val.value.as_string();
+                            rv.m_backend_c.m_c_compiler = key_val.value.as_string();
+                        }
+                        else if( key_val.path[2] == "compiler-opts" )
+                        {
+                            check_path_length(key_val, 3);
+                            for(const auto& v : key_val.value.as_list())
+                            {
+                                rv.m_backend_c.m_compiler_opts.push_back( v.as_string() );
+                            }
+                        }
+                        else if( key_val.path[2] == "linker-opts" )
+                        {
+                            check_path_length(key_val, 3);
+                            for(const auto& v : key_val.value.as_list())
+                            {
+                                rv.m_backend_c.m_linker_opts.push_back( v.as_string() );
+                            }
                         }
                         else
                         {
@@ -233,8 +249,56 @@ namespace
 
         return rv;
     }
+    void save_spec_to_file(const ::std::string& filename, const TargetSpec& spec)
+    {
+        // TODO: Have a round-trip unit test
+        ::std::ofstream of(filename);
+
+        struct H
+        {
+            static const char* tfstr(bool v)
+            {
+                return v ? "true" : "false";
+            }
+            static const char* c_variant_name(const CodegenMode m)
+            {
+                switch(m)
+                {
+                case CodegenMode::Gnu11: return "gnu";
+                case CodegenMode::Msvc: return "msvc";
+                }
+                return "";
+            }
+        };
+
+        of
+            << "[target]\n"
+            << "family = \"" << spec.m_family << "\"\n"
+            << "os-name = \"" << spec.m_os_name << "\"\n"
+            << "env-name = \"" << spec.m_env_name << "\"\n"
+            //<< "arch = \"" << spec.m_arch.m_name << "\"\n"
+            << "\n"
+            << "[backend.c]\n"
+            << "variant = \"" << H::c_variant_name(spec.m_backend_c.m_codegen_mode) << "\"\n"
+            << "target = \"" << spec.m_backend_c.m_c_compiler << "\"\n"
+            << "compiler-opts = [" << spec.m_backend_c.m_compiler_opts << "]\n"
+            << "linker-opts = [" << spec.m_backend_c.m_linker_opts << "]\n"
+            << "\n"
+            << "[arch]"
+            << "name = \"" << spec.m_arch.m_name << "\"\n"
+            << "pointer-bits = " << spec.m_arch.m_pointer_bits << "\n"
+            << "is-big-endian = " << H::tfstr(spec.m_arch.m_big_endian) << "\n"
+            << "has-atomic-u8 = " << H::tfstr(spec.m_arch.m_atomics.u8) << "\n"
+            << "has-atomic-u16 = " << H::tfstr(spec.m_arch.m_atomics.u16) << "\n"
+            << "has-atomic-u32 = " << H::tfstr(spec.m_arch.m_atomics.u32) << "\n"
+            << "has-atomic-u64 = " << H::tfstr(spec.m_arch.m_atomics.u64) << "\n"
+            << "has-atomic-ptr = " << H::tfstr(spec.m_arch.m_atomics.ptr) << "\n"
+            ;
+    }
     TargetSpec init_from_spec_name(const ::std::string& target_name)
     {
+        // Options for all the fully-GNU environments
+        #define BACKEND_C_OPTS_GNU  {"-ffunction-sections", "-pthread"}, {"-Wl,--gc-sections"}
         // If there's a '/' or a '\' in the filename, open it as a path, otherwise assume it's a triple.
         if( target_name.find('/') != ::std::string::npos || target_name.find('\\') != ::std::string::npos )
         {
@@ -243,92 +307,101 @@ namespace
         else if(target_name == "i586-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, "i586-linux-gnu",
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, "i586-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_X86
                 };
         }
         else if(target_name == "x86_64-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, "x86_64-linux-gnu",
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "arm-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, "arm-elf-eabi",
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, "arm-elf-eabi", BACKEND_C_OPTS_GNU},
                 ARCH_ARM32
                 };
         }
         else if(target_name == "aarch64-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", CodegenMode::Gnu11, "aarch64-linux-gnu",
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, "aarch64-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_ARM64
                 };
         }
         else if(target_name == "i586-windows-gnu")
         {
             return TargetSpec {
-                "windows", "windows", "gnu", CodegenMode::Gnu11, "mingw32",
+                "windows", "windows", "gnu", {CodegenMode::Gnu11, "mingw32", BACKEND_C_OPTS_GNU},
                 ARCH_X86
             };
         }
         else if(target_name == "x86_64-windows-gnu")
         {
             return TargetSpec {
-                "windows", "windows", "gnu", CodegenMode::Gnu11, "x86_64-w64-mingw32",
+                "windows", "windows", "gnu", {CodegenMode::Gnu11, "x86_64-w64-mingw32", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
         else if (target_name == "x86-windows-msvc")
         {
+            // TODO: Should this include the "kernel32.lib" inclusion?
             return TargetSpec {
-                "windows", "windows", "msvc", CodegenMode::Msvc, "x86",
+                "windows", "windows", "msvc", {CodegenMode::Msvc, "x86", {}, {}},
                 ARCH_X86
             };
         }
         else if (target_name == "x86_64-windows-msvc")
         {
             return TargetSpec {
-                "windows", "windows", "msvc", CodegenMode::Msvc, "amd64",
+                "windows", "windows", "msvc", {CodegenMode::Msvc, "amd64", {}, {}},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "x86_64-unknown-netbsd")
         {
             return TargetSpec {
-                "unix", "netbsd", "gnu", CodegenMode::Gnu11, "x86_64-unknown-netbsd",
+                "unix", "netbsd", "gnu", {CodegenMode::Gnu11, "x86_64-unknown-netbsd", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "i686-unknown-openbsd")
         {
             return TargetSpec {
-                "unix", "openbsd", "gnu", CodegenMode::Gnu11, "i686-unknown-openbsd",
+                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, "i686-unknown-openbsd", BACKEND_C_OPTS_GNU},
                 ARCH_X86
                 };
         }
         else if(target_name == "x86_64-unknown-openbsd")
         {
             return TargetSpec {
-                "unix", "openbsd", "gnu", CodegenMode::Gnu11, "x86_64-unknown-openbsd",
+                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, "x86_64-unknown-openbsd", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "arm-unknown-openbsd")
         {
             return TargetSpec {
-                "unix", "openbsd", "gnu", CodegenMode::Gnu11, "arm-unknown-openbsd",
+                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, "arm-unknown-openbsd", BACKEND_C_OPTS_GNU},
                 ARCH_ARM32
                 };
         }
         else if(target_name == "aarch64-unknown-openbsd")
         {
             return TargetSpec {
-                "unix", "openbsd", "gnu", CodegenMode::Gnu11, "aarch64-unknown-openbsd",
+                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, "aarch64-unknown-openbsd", BACKEND_C_OPTS_GNU},
                 ARCH_ARM64
+                };
+        }
+        else if(target_name == "x86_64-apple-macosx")
+        {
+            // NOTE: OSX uses clang and lld, which don't fully support the defaults used for GNU targets
+            return TargetSpec {
+                "unix", "macos", "gnu", {CodegenMode::Gnu11, "x86_64-apple-darwin", {}, {}},
+                ARCH_X86_64
                 };
         }
         else
@@ -343,6 +416,10 @@ namespace
 const TargetSpec& Target_GetCurSpec()
 {
     return g_target;
+}
+void Target_ExportCurSpec(const ::std::string& filename)
+{
+    save_spec_to_file(filename, g_target);
 }
 void Target_SetCfg(const ::std::string& target_name)
 {
@@ -445,7 +522,7 @@ namespace {
             {
             case ::HIR::Struct::Repr::Packed:
                 packed = true;
-                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen help
+                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen to know to pack the structure
                 break;
             case ::HIR::Struct::Repr::C:
                 // No sorting, no packing
@@ -525,8 +602,6 @@ const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitResolve&
     auto ires = s_cache.insert(::std::make_pair( ty.clone(), make_struct_repr(sp, resolve, ty) ));
     return ires.first->second.get();
 }
-
-// TODO: Include NonZero and other repr optimisations here
 
 bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
@@ -684,8 +759,7 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         return true;
         ),
     (Closure,
-        // TODO.
-        DEBUG("TODO Closure - " << ty);
+        BUG(sp, "Encountered closure type at trans stage - " << ty);
         )
     )
     return false;
@@ -769,8 +843,9 @@ namespace {
             switch(str.m_repr)
             {
             case ::HIR::Struct::Repr::Packed:
+                // packed, not sorted
                 packed = true;
-                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen help
+                // NOTE: codegen_c checks m_repr for packing too
                 break;
             case ::HIR::Struct::Repr::C:
                 // No sorting, no packing
@@ -792,10 +867,6 @@ namespace {
                     DEBUG("Can't get size/align of " << t);
                     return nullptr;
                 }
-                if( size == SIZE_MAX )
-                {
-                    TODO(sp, "Unsized type in struct - " << t);
-                }
                 ents.push_back(Ent { idx++, size, align });
                 fields.push_back(TypeRepr::Field { 0, t.clone() });
             }
@@ -808,9 +879,12 @@ namespace {
 
         if( allow_sort )
         {
-            // TODO: Sort by alignment then size (largest first)
-            // - Requires codegen to use this information
+            // Sort by alignment then size (largest first)
             // - NOTE: ?Sized fields (which includes unsized fields) MUST be at the end, even after monomorph
+            // - This means that this code needs to know if a field was ?Sized
+            // TODO: Determine if a field was from a ?Sized generic (so should be fixed as last)
+            //auto cmpfn_lt = [](const Ent& a, const Ent& b){ return a.align == b.align ? a.size < b.size : a.align < b.size; };
+            //::std::sort(ents.begin(), ents.end(), cmpfn_lt);
         }
 
         TypeRepr  rv;
@@ -831,7 +905,7 @@ namespace {
             fields[e.field].offset = cur_ofs;
             if( e.size == SIZE_MAX )
             {
-                // TODO: Ensure that this is the last item
+                // Ensure that this is the last item
                 ASSERT_BUG(sp, &e == &ents.back(), "Unsized item isn't the last item in " << ty);
                 cur_ofs = SIZE_MAX;
             }
@@ -876,6 +950,13 @@ namespace {
                         return true;
                     }
                 }
+                // Handle the NonZero lang item (Note: Checks just the simplepath part)
+                if( te.path.m_data.as_Generic().m_path == resolve.m_crate.get_lang_item_path(sp, "non_zero") )
+                {
+                    out_path.sub_fields.push_back(0);
+                    out_path.size = r->size;
+                    return true;
+                }
             }
             } break;
         TU_ARM(ty.m_data, Borrow, _te) { (void)_te;
@@ -919,6 +1000,7 @@ namespace {
             {
                 nz_path.index = 1;
                 ::std::reverse(nz_path.sub_fields.begin(), nz_path.sub_fields.end());
+                DEBUG("nz_path = " << nz_path.sub_fields);
                 size_t  max_size = 0;
                 size_t  max_align = 0;
                 for(auto& t : mono_types)
@@ -969,7 +1051,7 @@ namespace {
                         max_size ++;
                 }
                 size_t tag_size = 0;
-                // TODO: repr(C) enums
+                // TODO: repr(C) enums - they have different rules
                 if( mono_types.size() == 0 ) {
                     // Unreachable
                 }
@@ -1014,8 +1096,6 @@ namespace {
                 {
                     ASSERT_BUG(sp, max_size == 0, "Zero alignment, but non-zero size");
                 }
-
-                // TODO: Variants.
             }
             } break;
         TU_ARM(enm.m_data, Value, e) {

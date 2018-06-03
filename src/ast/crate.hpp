@@ -38,7 +38,7 @@ public:
 class Crate
 {
 public:
-    ::AST::MetaItems    m_attrs;
+    ::AST::AttributeList    m_attrs;
 
     ::std::map< ::std::string, ::AST::Path> m_lang_items;
 public:

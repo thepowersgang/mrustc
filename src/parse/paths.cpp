@@ -203,7 +203,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     Token   tok;
 
     ::std::vector<TypeRef>  types;
-    ::std::vector< ::std::string>   lifetimes;
+    ::std::vector<AST::LifetimeRef>   lifetimes;
     ::std::vector< ::std::pair< ::std::string, TypeRef > > assoc_bounds;
 
     do {
@@ -214,7 +214,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         switch(GET_TOK(tok, lex))
         {
         case TOK_LIFETIME:
-            lifetimes.push_back( tok.str() );
+            lifetimes.push_back(AST::LifetimeRef(/*lex.point_span(),*/ lex.get_ident(mv$(tok)) ));
             break;
         case TOK_IDENT:
             if( LOOK_AHEAD(lex) == TOK_EQUAL )

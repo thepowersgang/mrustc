@@ -1,31 +1,41 @@
 language: cpp
 
 sudo: false
-os: linux
-addons:
- apt:
-  sources:
-    - ubuntu-toolchain-r-test
-  packages:
-    - g++-6
-    - zlib1g-dev
-    - valgrind
+
+matrix:
+  include:
+   # Linux
+   - os: linux
+     before_install:
+      - export CC=gcc-6
+      - export CXX=g++-6
+     addons:
+      apt:
+       sources:
+         - ubuntu-toolchain-r-test
+       packages:
+         - g++-6
+         - zlib1g-dev
+         - valgrind
+   # OSX
+   - os: osx
 
 install:
  # Build mrustc
  - make RUSTCSRC
- - CC=gcc-6 CXX=g++-6 make -j 2
- - CC=gcc-6 CXX=g++-6 make -C tools/minicargo
+ - make -j 2
+ - make -C tools/minicargo
 
 script:
- - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/libtest.hir
-# libstd and hello_world
- - CC=gcc-6 make test TAIL_COUNT=2
-# rustc (DISABLED: llvm build)
-# - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/rustc
+ - set -e
+ - make -f minicargo.mk output/libtest.hir      # libstd
+ - make test    # hello_world
 # Tests
- - CC=gcc-6 CXX=g++-6 make local_tests -k
+ - set +e
+ - make local_tests -k
 # - CC=gcc-6 make rust_tests -k
-# cargo
-# - CC=gcc-6 CXX=g++-6 make -f minicargo.mk output/cargo
+# rustc (DISABLED: llvm build)
+# - make -f minicargo.mk output/rustc
+# cargo (DISABLED: why?)
+# - make -f minicargo.mk output/cargo
 # - cat output/cargo-build/cargo_dbg.txt

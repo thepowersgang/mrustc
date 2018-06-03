@@ -7,12 +7,11 @@
  */
 #include "hir.hpp"
 #include "main_bindings.hpp"
-#include <serialiser_texttree.hpp>
 #include <macro_rules/macro_rules.hpp>
 #include <mir/mir.hpp>
 #include "serialise_lowlevel.hpp"
 
-namespace {
+//namespace {
     class HirSerialiser
     {
         ::HIR::serialise::Writer&   m_out;
@@ -87,6 +86,10 @@ namespace {
         void serialise(uint64_t v) { m_out.write_u64c(v); };
         void serialise(int64_t v) { m_out.write_i64c(v); };
 
+        void serialise(const ::HIR::LifetimeRef& lr)
+        {
+            m_out.write_count(lr.binding);
+        }
         void serialise_type(const ::HIR::TypeRef& ty)
         {
             m_out.write_tag( ty.m_data.tag() );
@@ -111,7 +114,7 @@ namespace {
                 m_out.write_count(e.m_markers.size());
                 for(const auto& m : e.m_markers)
                     serialise_genericpath(m);
-                //write_string(e.lifetime); // TODO: Need a better type
+                serialise(e.m_lifetime);
                 ),
             (ErasedType,
                 serialise_path(e.m_origin);
@@ -120,6 +123,7 @@ namespace {
                 m_out.write_count(e.m_traits.size());
                 for(const auto& t : e.m_traits)
                     serialise_traitpath(t);
+                serialise(e.m_lifetime);
                 ),
             (Array,
                 assert(e.size_val != ~0u);
@@ -135,6 +139,7 @@ namespace {
                     serialise_type(st);
                 ),
             (Borrow,
+                serialise(e.lifetime);
                 m_out.write_tag(static_cast<int>(e.type));
                 serialise_type(*e.inner);
                 ),
@@ -440,14 +445,31 @@ namespace {
             )
         }
         void serialise(const ::Token& tok) {
-            // HACK: Hand off to old serialiser code
-            ::std::stringstream tmp;
+            m_out.write_tag(tok.m_type);
+            serialise(tok.m_data);
+            // TODO: Position information.
+        }
+        void serialise(const ::Token::Data& td) {
+            m_out.write_tag(td.tag());
+            switch(td.tag())
             {
-                Serialiser_TextTree ser(tmp);
-                tok.serialise( ser );
+            case ::Token::Data::TAGDEAD:    throw "";
+            TU_ARM(td, None, _e) {
+                } break;
+            TU_ARM(td, String, e) {
+                m_out.write_string(e);
+                } break;
+            TU_ARM(td, Integer, e) {
+                m_out.write_tag(e.m_datatype);
+                m_out.write_u64c(e.m_intval);
+                } break;
+            TU_ARM(td, Float, e) {
+                m_out.write_tag(e.m_datatype);
+                m_out.write_double(e.m_floatval);
+                } break;
+            TU_ARM(td, Fragment, e)
+                assert(!"Serialising interpolated macro fragment");
             }
-
-            m_out.write_string(tmp.str());
         }
 
         void serialise(const ::HIR::Literal& lit)
@@ -1005,7 +1027,7 @@ namespace {
             serialise_type(at.m_default);
         }
     };
-}
+//}
 
 void HIR_Serialise(const ::std::string& filename, const ::HIR::Crate& crate)
 {

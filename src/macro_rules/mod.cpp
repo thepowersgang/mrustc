@@ -161,55 +161,6 @@ MacroRulesPtr::~MacroRulesPtr()
     }
 }
 
-SERIALISE_TYPE_S(MacroRulesArm, {
-})
-
-void operator%(Serialiser& s, MacroPatEnt::Type c) {
-    switch(c) {
-    #define _(v) case MacroPatEnt::v: s << #v; return
-    _(PAT_TOKEN);
-    _(PAT_TT);
-    _(PAT_PAT);
-    _(PAT_TYPE);
-    _(PAT_EXPR);
-    _(PAT_LOOP);
-    _(PAT_STMT);
-    _(PAT_PATH);
-    _(PAT_BLOCK);
-    _(PAT_META);
-    _(PAT_ITEM);
-    _(PAT_IDENT);
-    #undef _
-    }
-}
-void operator%(::Deserialiser& s, MacroPatEnt::Type& c) {
-    ::std::string   n;
-    s.item(n);
-    #define _(v) else if(n == #v) c = MacroPatEnt::v
-    if(0) ;
-    _(PAT_TOKEN);
-    _(PAT_TT);
-    _(PAT_PAT);
-    _(PAT_TYPE);
-    _(PAT_EXPR);
-    _(PAT_LOOP);
-    //_(PAT_OPTLOOP);
-    _(PAT_STMT);
-    _(PAT_PATH);
-    _(PAT_BLOCK);
-    _(PAT_META);
-    _(PAT_IDENT);
-    _(PAT_ITEM);
-    else
-        throw ::std::runtime_error( FMT("No conversion for '" << n << "'") );
-    #undef _
-}
-SERIALISE_TYPE_S(MacroPatEnt, {
-    s % type;
-    s.item(name);
-    s.item(tok);
-    s.item(subpats);
-});
 ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt& x)
 {
     switch(x.type)
@@ -257,20 +208,6 @@ SERIALISE_TYPE_S(MacroPatEnt, {
     return os;
 }
 
-SERIALISE_TU(MacroExpansionEnt, "MacroExpansionEnt", e,
-(Token,
-    s.item(e);
-    ),
-(NamedValue,
-    s.item(e);
-    ),
-(Loop,
-    s.item(e.entries);
-    s.item(e.joiner);
-    //s.item(e.variables);
-    )
-);
-
 ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x)
 {
     TU_MATCH( MacroExpansionEnt, (x), (e),
@@ -295,8 +232,4 @@ SERIALISE_TU(MacroExpansionEnt, "MacroExpansionEnt", e,
 MacroRules::~MacroRules()
 {
 }
-SERIALISE_TYPE_S(MacroRules, {
-    s.item( m_exported );
-    s.item( m_rules );
-});
 

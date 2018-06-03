@@ -34,6 +34,14 @@ void Debug_DisablePhase(const char* phase_name)
 {
     gmDisabledDebug.insert( ::std::string(phase_name) );
 }
+void Debug_EnablePhase(const char* phase_name)
+{
+    auto it = gmDisabledDebug.find(phase_name);
+    if( it != gmDisabledDebug.end() )
+    {
+        gmDisabledDebug.erase(it);
+    }
+}
 void Debug_Print(::std::function<void(::std::ostream& os)> cb)
 {
     if( !Debug_IsEnabled() )

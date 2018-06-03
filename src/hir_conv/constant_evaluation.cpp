@@ -246,6 +246,8 @@ namespace {
 
     ::HIR::Literal evaluate_constant_hir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprNode& expr, ::HIR::TypeRef exp_type, ::std::vector< ::HIR::Literal> args)
     {
+        // TODO: Force this function/tree through the entire pipeline so we can MIR it?
+        // - Requires a HUGE change to the way the compiler operates.
         struct Visitor:
             public ::HIR::ExprVisitor
         {
@@ -1020,6 +1022,7 @@ namespace {
 
     ::HIR::Literal evaluate_constant_mir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::MIR::Function& fcn, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
     {
+        // TODO: Full-blown miri
         TRACE_FUNCTION_F("exp=" << exp << ", args=" << args);
 
         StaticTraitResolve  resolve { crate };
@@ -1588,10 +1591,12 @@ namespace {
                 DEBUG("Array " << ty << " - size = " << e.size_val);
             )
         }
+        // TODO: Needs to be visited for MIR match generation to work
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
             ::HIR::Visitor::visit_constant(p, item);
 
+            // NOTE: Consteval needed here for MIR match generation to work
             if( item.m_value )
             {
                 //if( item.m_type.m_data.is_Primitive() )
@@ -1639,24 +1644,13 @@ namespace {
                     m_exp(exp)
                 {}
 
-                void visit(::HIR::ExprNode_Let& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-                    m_exp.visit_type(node.m_type);
+                void visit_type(::HIR::TypeRef& ty) override {
+                    // Need to evaluate array sizes
+                    m_exp.visit_type(ty);
                 }
-                void visit(::HIR::ExprNode_Cast& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-                    m_exp.visit_type(node.m_res_type);
-                }
-                // TODO: This shouldn't exist yet?
-                void visit(::HIR::ExprNode_Unsize& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-                    m_exp.visit_type(node.m_res_type);
-                }
-                void visit(::HIR::ExprNode_Closure& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-                    m_exp.visit_type(node.m_return);
-                    for(auto& a : node.m_args)
-                        m_exp.visit_type(a.second);
+                void visit_path_params(::HIR::PathParams& pp) override {
+                    // Explicit call to handle const params (eventually)
+                    m_exp.visit_path_params(pp);
                 }
 
                 void visit(::HIR::ExprNode_ArraySized& node) override {
@@ -1667,15 +1661,6 @@ namespace {
                         ERROR(node.span(), E0000, "Array size isn't an integer");
                     node.m_size_val = static_cast<size_t>(val.as_Integer());
                     DEBUG("Array literal [?; " << node.m_size_val << "]");
-                }
-
-                void visit(::HIR::ExprNode_CallPath& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-                    m_exp.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);
-                }
-                void visit(::HIR::ExprNode_CallMethod& node) override {
-                    ::HIR::ExprVisitorDef::visit(node);
-                    m_exp.visit_path_params(node.m_params);
                 }
             };
 

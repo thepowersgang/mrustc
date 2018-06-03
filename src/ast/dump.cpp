@@ -560,7 +560,7 @@ private:
         m_os << ")";
     }
 
-    void print_attrs(const AST::MetaItems& attrs);
+    void print_attrs(const AST::AttributeList& attrs);
     void print_params(const AST::GenericParams& params);
     void print_bounds(const AST::GenericParams& params);
     void print_pattern_tuple(const AST::Pattern::TuplePat& v, bool is_refutable);
@@ -579,7 +579,7 @@ void Dump_Rust(const char *filename, const AST::Crate& crate)
     printer.handle_module(crate.root_module());
 }
 
-void RustPrinter::print_attrs(const AST::MetaItems& attrs)
+void RustPrinter::print_attrs(const AST::AttributeList& attrs)
 {
     for(const auto& a : attrs.m_items)
     {
@@ -829,6 +829,9 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
 
             m_os << indent();
             TU_MATCH(AST::GenericBound, (b), (ent),
+            (None,
+                m_os << "/*-*/";
+                ),
             (Lifetime,
                 m_os << "'" << ent.test << ": '" << ent.bound;
                 ),
@@ -836,10 +839,7 @@ void RustPrinter::print_bounds(const AST::GenericParams& params)
                 m_os << ent.type << ": '" << ent.bound;
                 ),
             (IsTrait,
-                if( ent.hrls.size() > 0 ) {
-                    m_os << "for<'" << ::join(", '", ent.hrls) << "> ";
-                }
-                m_os << ent.type << ": " << ent.trait;
+                m_os << ent.outer_hrbs << ent.type << ": " << ent.inner_hrbs << ent.trait;
                 ),
             (MaybeTrait,
                 m_os << ent.type << ": ?" << ent.trait;

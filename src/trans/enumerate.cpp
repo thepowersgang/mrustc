@@ -518,6 +518,11 @@ namespace {
                 TU_MATCH_DEF(::HIR::TypeRef::Data, (ty.m_data), (te),
                 (
                     ),
+                (Function,
+                    visit_type(*te.m_rettype, Mode::Shallow);
+                    for(const auto& sty : te.m_arg_types)
+                        visit_type(sty, Mode::Shallow);
+                    ),
                 (Pointer,
                     visit_type(*te.inner, Mode::Shallow);
                     ),

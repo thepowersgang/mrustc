@@ -620,16 +620,12 @@ struct ExprNode_Literal:
             m_res_type = ::HIR::TypeRef::Data::make_Primitive( ::HIR::CoreType::Bool );
             ),
         (String,
-            m_res_type = ::HIR::TypeRef::Data::make_Borrow({
-                ::HIR::BorrowType::Shared,
-                box$( ::HIR::TypeRef( ::HIR::TypeRef::Data::make_Primitive(::HIR::CoreType::Str) ) )
-                });
+            // TODO: &'static
+            m_res_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef(::HIR::CoreType::Str) );
             ),
         (ByteString,
-            m_res_type = ::HIR::TypeRef::Data::make_Borrow({
-                ::HIR::BorrowType::Shared,
-                box$( ::HIR::TypeRef::new_array( ::HIR::CoreType::U8, e.size() ) )
-                });
+            // TODO: &'static
+            m_res_type = ::HIR::TypeRef::new_borrow( ::HIR::BorrowType::Shared, ::HIR::TypeRef::new_array(::HIR::CoreType::U8, e.size()) );
             )
         )
     }

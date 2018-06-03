@@ -786,10 +786,10 @@ namespace {
             {
                 DEBUG("- constant condition");
                 if( cond_lit->m_data.as_Boolean() ) {
-                    m_builder.end_block( ::MIR::Terminator::make_Goto({ true_branch }) );
+                    m_builder.end_block( ::MIR::Terminator::make_Goto( true_branch ) );
                 }
                 else {
-                    m_builder.end_block( ::MIR::Terminator::make_Goto({ false_branch }) );
+                    m_builder.end_block( ::MIR::Terminator::make_Goto( false_branch ) );
                 }
                 return ;
             }

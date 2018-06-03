@@ -72,8 +72,6 @@ lex-bare-cr-nondoc-comment  # Don't treat \r as a new line
 # PARSE
 align-struct	# repr(align(2)) - Need to support integers in attributes
 catch-expr  # MISSING: `do catch {}` syntax
-issue-37733 # for<'a> in types
-issue-39089 # for<'a> in optional traits
 loop-break-value    # TODO: Handle loop labels in expression position.
 match-range # TODO: Exlusive ranges in patterns
 paths-in-macro-invocations  # TODO: Handle path macros at root.
@@ -120,6 +118,23 @@ trait-item-inside-macro # TODO: Allow macro invocations in traits
 try-operator-custom # TODO: use the ops::Try trait instead of try! desugar
 type-macros-simple  # macro_rules ordering with nested items
 
+# RESOLVE
+issue-33687		# Calling a unit-like struct with Fn* traits - "Pointed struct in TupleVariant (::Test) isn't a Tuple"
+static-function-pointer-xc	# Calling a static function pointer
+const-block         # ^
+const-block-cross-crate-fn  # ^
+const-block-item    # ^
+rfc1623             # ^
+static-function-pointer # ^
+issue-17718         # ^ (const here, but same idea)
+issue-27890         # ^
+empty-struct-braces # MISSING: Full support for braced initialisers for unit-like structs/variants
+issue-22546         # ^
+issue-29540     # Errors out on very deep method call list.
+issue-34751     # Treats unit-like structs as refutable patterns
+mir_ascription_coercion # TODO: Either visit expected types, or make a type annotation its own node type
+type-ascription     # ^
+
 # CONST EVAL
 associated-const-type-parameters    # TODO: Associated const referred from associated const
 check-static-mut-slices # MISSING: "Only shared borrows are allowed in constants"
@@ -163,18 +178,13 @@ issue-2718      # isize enum repr
 small-enum-range-edge   # i8 enum repr
 issue-22258     # BUG: Incorrect handling of trait param defaults
 multiple-reprs  # BUG: Incorrect handling of multiple reprs
-packed-struct-generic-layout    # TODO: repr(packed) - at least error on it!
-packed-struct-generic-size      # ^
-packed-struct-layout            # ^
-packed-struct-size              # ^
-packed-struct-size-xc           # ^
-packed-struct-vec               # ^
-packed-tuple-struct-layout      # ^
-packed-tuple-struct-size        # ^
 placement-in-syntax # BUG: Can't find impl in optimise
 struct-path-associated-type # HUH? `T::A { ... }` struct literal with (bounded) associated const
 struct-path-self    # TODO: Handle `Self` in patterns
-thread-local-extern-static  # TODO: #[no_mangle]
+issue-17170     # TODO: #[repr(simd)]
+simd-size-align # ^
+simd-type       # ^
+simd-upgraded   # ^
 
 # TYPECHECK
 associated-types-doubleendediterator-object # BUG BUG: Validation failed
@@ -232,9 +242,6 @@ fat-ptr-cast    # Array unsize missed
 issue-20797     # Trait unsize runthrough
 issue-26905     # Manual CoerceUnsized not working?
 
-# None::<T> syntax somewhere (TODO)
-issue-22546
-
 # MIR GEN:
 issue-18352     # append_from_lit - Match literal Borrow
 issue-11940     # ^
@@ -282,17 +289,16 @@ issue-6919  # Handle function pointer from Literal
 
 
 # TRANS
-enum-discrim-width-stuff    # mrustc doesn't calculate enum descriminant sizes based on values.
-enum-discrim-autosizing     # ^
-nonzero-enum                # ^
-small-enums-with-fields     # ^
-type-sizes                  # ^
-float_math	# Missing intrinsic (fadd_fast)
+enum-discrim-autosizing     # Incorrect enum descrim auto-selection (0x80 picks i16)
+enum-discrim-width-stuff    # ^
+nonzero-enum                # No packing of None into invalid inner variants
+type-sizes                  # Inefficient field packing in enum variants
+float_math  # Missing intrinsic (fadd_fast)
 issue-38074 # Missing intrinsic (simd_shuffle)
 simd-generics       # Missing intrinsic (simd_*)
 simd-intrinsic-generic-arithmetic   # ^
 simd-intrinsic-generic-elements     # ^
-raw-fat-ptr	# Ordering comparisons of raw pointers
+raw-fat-ptr # Ordering comparisons of raw pointers
 abi-sysv64-register-usage   # asm! register translation
 allocator-override          # asm! translation - "TODO: Handle asm! output leader 'r'"
 i128                        # ^
@@ -315,7 +321,6 @@ enum-discrim-manual-sizing  # TODO: Enum reprs not being correctly used (signed 
 enum-univariant-repr        # ^
 enum-layout-optimization    # BUG: Option size optimisation not applied
 enum-null-pointer-opt       # ^
-nullable-pointer-opt-closures   # ^
 nullable-pointer-size       # ^
 explicit-self-generic       # BUG: Incorrect method lookup (doesn't try autoderef, picks ExactSizeIterator)
 i128-ffi    # UNK: i128 is hard (TODO: TRIAGE)
@@ -325,31 +330,18 @@ issue-21058     # BUG: Enumerate doesn't handle data-less trait objects (e.g. `d
 issue-25515     # ^
 issue-26709     # ^
 issue-35815     # ^
-issue-34796	    # BUG: Missing vtable type.
+issue-34796     # BUG: Missing vtable type.
 mir_calls_to_shims   # BUG: Missing functions (bad enumerate?)
 newtype     # Incorrect error when a struct is used in a function pointer to itself
 trans-object-shim   # BUG: Doesn't generate `<(Foo) as Foo>::bar` function.
 transmute-specialization    # BUG: Enumerate hit an opaque type
-type-id-higher-rank # BUG: type_id returns the same value for `for<'a> fn(&'a T)` as `fn(&'static T)`
+type-id-higher-rank     # BUG: type_id returns the same value for `for<'a> fn(&'a T)` as `fn(&'static T)`
 type-id-higher-rank-2   # ^ (test failed)
 unsized3    # BUG: Incorrect dst type annotation for struct containing `str`
 utf8_idents # BUG: No escaping of utf8 in symbols, GCC doesn't like this
-
-# RESOLVE
-issue-33687		# Calling a unit-like struct with Fn* traits - "Pointed struct in TupleVariant (::Test) isn't a Tuple"
-static-function-pointer-xc	# Calling a static function pointer
-const-block         # ^
-const-block-cross-crate-fn  # ^
-const-block-item    # ^
-rfc1623             # ^
-static-function-pointer # ^
-issue-17718         # ^ (const here, but same idea)
-issue-27890         # ^
-empty-struct-braces # MISSING: Full support for braced initialisers for unit-like structs/variants
-issue-29540     # Errors out on very deep method call list.
-issue-34751     # Treats PhantomData as a refutable pattern
-mir_ascription_coercion # TODO: Either visit expected types, or make a type annotation its own node type
-type-ascription     # ^
+abi-sysv64-arg-passing  # ERROR: Empty struct arguments to FFI aren't actually empty
+extern-pass-empty   # ^
+thread-local-extern-static  # TODO: #[no_mangle] on statatic definition
 
 # HIR MISC
 xcrate-associated-type-defaults	# type_is_specialisable - Handle missing type in impl(0x17e3018) ::"xcrate_associated_type_defaults"::Foo<u32,> for () {}, name = Out
@@ -370,5 +362,42 @@ tls-dtors-are-run-in-a-static-binary    # Thread-local destructors aren't being 
 # TEST RUNNER
 exec-env    # Runtime environment variable
 extern-crosscrate   # test runner params with no leading space
+
+# Requires unwinding panics
+unwind-resource
+backtrace
+backtrace-debuginfo
+backtrace-debuginfo-aux
+issue-24313     # Not sure if this is unwinding or TLS problems...
+box-of-array-of-drop-1
+box-of-array-of-drop-2
+catch-unwind-bang
+cleanup-rvalue-temp-during-incomplete-alloc
+drop-trait-enum
+dynamic-drop
+intrinsic-move-val-cleanups
+issue-14875
+issue-25089
+issue-26655
+issue-29485
+issue-29948
+issue-30018-panic
+issue-8460  # .. except it fails because there's no overflow checks
+multi-panic
+nested-vec-3
+panic-handler-chain
+panic-handler-flail-wildly
+panic-handler-set-twice
+panic-in-dtor-drops-fields
+panic-recover-propagate
+reachable-unnameable-items
+slice-panic-1
+slice-panic-2
+task-stderr
+terminate-in-initializer
+test-should-fail-good-message
+unit-like-struct-drop-run
+unwind-unique
+vector-sort-panic-safe
 
 # vim: ft=make expandtab ts=4

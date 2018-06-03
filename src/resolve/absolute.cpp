@@ -20,6 +20,7 @@ namespace
         {
             Top,
             Method,
+            Hrb,
         } level;
         unsigned short  index;
 
@@ -36,6 +37,12 @@ namespace
     struct Named
     {
         ::std::string   name;
+        Val value;
+    };
+    template<typename Val>
+    struct NamedI
+    {
+        const Ident& name;
         Val value;
     };
 
@@ -55,7 +62,7 @@ namespace
             // Map of names to slots
             ::std::vector< Named< GenericSlot > > types;
             ::std::vector< Named< GenericSlot > > constants;
-            ::std::vector< Named< GenericSlot > > lifetimes;
+            ::std::vector< NamedI< GenericSlot > > lifetimes;
             })
         );
 
@@ -74,6 +81,17 @@ namespace
             m_frozen_bind_set( false )
         {}
 
+        void push(const ::AST::HigherRankedBounds& params) {
+            auto e = Ent::make_Generic({});
+            auto& data = e.as_Generic();
+
+            for(size_t i = 0; i < params.m_lifetimes.size(); i ++)
+            {
+                data.lifetimes.push_back( NamedI<GenericSlot> { params.m_lifetimes[i].name(), GenericSlot { GenericSlot::Level::Hrb, static_cast<unsigned short>(i) } } );
+            }
+
+            m_name_context.push_back(mv$(e));
+        }
         void push(const ::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
             auto   e = Ent::make_Generic({});
             auto& data = e.as_Generic();
@@ -85,15 +103,23 @@ namespace
             }
             if( params.ty_params().size() > 0 ) {
                 const auto& typs = params.ty_params();
-                for(unsigned int i = 0; i < typs.size(); i ++ ) {
+                for(size_t i = 0; i < typs.size(); i ++ ) {
                     data.types.push_back( Named<GenericSlot> { typs[i].name(), GenericSlot { level, static_cast<unsigned short>(i) } } );
                 }
             }
             if( params.lft_params().size() > 0 ) {
-                //TODO(Span(), "resolve/absolute.cpp - Context::push(GenericParams) - Lifetime params - " << params);
+                const auto& lfts = params.lft_params();
+                for(size_t i = 0; i < lfts.size(); i ++ ) {
+                    data.lifetimes.push_back( NamedI<GenericSlot> { lfts[i].name(), GenericSlot { level, static_cast<unsigned short>(i) } } );
+                }
             }
 
             m_name_context.push_back(mv$(e));
+        }
+        void pop(const ::AST::HigherRankedBounds& ) {
+            if( !m_name_context.back().is_Generic() )
+                BUG(Span(), "resolve/absolute.cpp - Context::pop(GenericParams) - Mismatched pop");
+            m_name_context.pop_back();
         }
         void pop(const ::AST::GenericParams& , bool has_self=false) {
             if( !m_name_context.back().is_Generic() )
@@ -501,6 +527,7 @@ namespace
 
 void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Context::LookupMode& mode, ::AST::Path& path);
 void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::LookupMode mode,  ::AST::Path& path);
+void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRef& type);
 void Resolve_Absolute_Type(Context& context,  TypeRef& type);
 void Resolve_Absolute_Expr(Context& context,  ::AST::Expr& expr);
 void Resolve_Absolute_ExprNode(Context& context,  ::AST::ExprNode& node);
@@ -714,7 +741,7 @@ namespace {
             TU_MATCH(::HIR::ValueItem, (it->second->ent), (e),
             (Import,
                 // Wait? is this even valid?
-                TODO(sp, "HIR Import item pointed to an import");
+                BUG(sp, "HIR Import item pointed to an import");
                 ),
             (Constant,
                 pb = ::AST::PathBinding::make_Static({nullptr, nullptr});
@@ -741,7 +768,7 @@ namespace {
             TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
             (Import,
                 // Wait? is this even valid?
-                TODO(sp, "HIR Import item pointed to an import");
+                BUG(sp, "HIR Import item pointed to an import");
                 ),
             (Module,
                 pb = ::AST::PathBinding::make_Module({nullptr, &e});
@@ -787,7 +814,7 @@ namespace {
                 path.bind( ::AST::PathBinding::make_Module({nullptr, &crate.m_hir->m_root_module}) );
                 return ;
             default:
-                TODO(sp, "");
+                TODO(sp, "Looking up a non-namespace, but pointed to crate root");
             }
         }
 
@@ -1180,7 +1207,6 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
                 ),
             (Module,
                 if( name_ref.is_import ) {
-                    //TODO(sp, "Replace path component with new path - " << path << "[.."<<i+1<<"] with " << name_ref.path);
                     auto newpath = name_ref.path;
                     for(unsigned int j = i+1; j < path_abs.nodes.size(); j ++)
                     {
@@ -1304,8 +1330,6 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     }
                     if( !found )
                     {
-                        //TODO(sp, "Switch back to primitive from " << p << " for " << path);
-                        //p = ::AST::Path( ::AST::Path::TagLocal(), e.nodes[0].name() );
                         auto ct = coretype_fromstring(e.nodes[0].name());
                         p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                     }
@@ -1435,6 +1459,37 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
     // - Helps with cases like PartialOrd<Self>, but hinders when the default is a hint (in expressions)
 }
 
+void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRef& lft)
+{
+    TRACE_FUNCTION_FR("lft = " << lft, "lft = " << lft);
+    if( lft.is_unbound() )
+    {
+        if( lft.name() == "static" )
+        {
+            lft = AST::LifetimeRef::new_static();
+            return ;
+        }
+
+        for(auto it = context.m_name_context.rbegin(); it != context.m_name_context.rend(); ++ it)
+        {
+            if( const auto* e = it->opt_Generic() )
+            {
+                for(const auto& l : e->lifetimes)
+                {
+                    // NOTE: Hygiene doesn't apply to lifetime params!
+                    if( l.name.name == lft.name().name /*&& l.name.hygiene.is_visible(lft.name().hygiene)*/ )
+                    {
+                        lft.set_binding( l.value.index | (static_cast<int>(l.value.level) << 8) );
+                        return ;
+                    }
+                }
+            }
+        }
+
+        ERROR(sp, E0000, "Couldn't find lifetime " << lft);
+    }
+}
+
 void Resolve_Absolute_Type(Context& context,  TypeRef& type)
 {
     TRACE_FUNCTION_FR("type = " << type, "type = " << type);
@@ -1457,16 +1512,19 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
     (Primitive,
         ),
     (Function,
+        context.push( e.info.hrbs );
         Resolve_Absolute_Type(context,  *e.info.m_rettype);
         for(auto& t : e.info.m_arg_types) {
             Resolve_Absolute_Type(context,  t);
         }
+        context.pop( e.info.hrbs );
         ),
     (Tuple,
         for(auto& t : e.inner_types)
             Resolve_Absolute_Type(context,  t);
         ),
     (Borrow,
+        Resolve_Absolute_Lifetime(context, type.span(), e.lifetime);
         Resolve_Absolute_Type(context,  *e.inner);
         ),
     (Pointer,
@@ -1503,24 +1561,28 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
         )
 
         TU_IFLET(::AST::PathBinding, e.path.binding(), Trait, be,
-            auto ty = ::TypeRef( type.span(), {}, ::make_vec1(mv$(e.path)) );
+            auto ty = ::TypeRef( type.span(), ::make_vec1(Type_TraitPath { {}, mv$(e.path)}), {} );
             type = mv$(ty);
             return ;
         )
         ),
     (TraitObject,
-        //context.push_lifetimes( e.hrls );
         for(auto& trait : e.traits) {
-            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait);
+            context.push( trait.hrbs );
+            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait.path);
+            context.pop(trait.hrbs);
         }
-        //context.pop_lifetimes();
+        for(auto& lft : e.lifetimes)
+            Resolve_Absolute_Lifetime(context, type.span(),lft);
         ),
     (ErasedType,
-        //context.push_lifetimes( e.hrls );
         for(auto& trait : e.traits) {
-            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait);
+            context.push( trait.hrbs );
+            Resolve_Absolute_Path(context, type.span(), Context::LookupMode::Type, trait.path);
+            context.pop(trait.hrbs);
         }
-        //context.pop_lifetimes();
+        for(auto& lft : e.lifetimes)
+            Resolve_Absolute_Lifetime(context, type.span(), lft);
         )
     )
 }
@@ -1686,15 +1748,23 @@ void Resolve_Absolute_Generic(Context& context, ::AST::GenericParams& params)
     for( auto& bound : params.bounds() )
     {
         TU_MATCH(::AST::GenericBound, (bound), (e),
+        (None,
+            ),
         (Lifetime,
-            // TODO: Link lifetime names to params
+            Resolve_Absolute_Lifetime(context, bound.span, e.test);
+            Resolve_Absolute_Lifetime(context, bound.span,e.bound);
             ),
         (TypeLifetime,
             Resolve_Absolute_Type(context, e.type);
+            Resolve_Absolute_Lifetime(context, bound.span, e.bound);
             ),
         (IsTrait,
+            context.push( e.outer_hrbs );
             Resolve_Absolute_Type(context, e.type);
+            context.push( e.inner_hrbs );
             Resolve_Absolute_Path(context, bound.span, Context::LookupMode::Type, e.trait);
+            context.pop( e.inner_hrbs );
+            context.pop( e.outer_hrbs );
             ),
         (MaybeTrait,
             Resolve_Absolute_Type(context, e.type);
@@ -1739,11 +1809,11 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             auto p = context.lookup_opt( name.name, name.hygiene, Context::LookupMode::PatternValue );
             if( p.is_valid() ) {
                 Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::PatternValue, p);
-                pat = ::AST::Pattern(::AST::Pattern::TagValue(), ::AST::Pattern::Value::make_Named(mv$(p)));
+                pat = ::AST::Pattern(::AST::Pattern::TagValue(), pat.span(), ::AST::Pattern::Value::make_Named(mv$(p)));
                 DEBUG("MaybeBind resolved to " << pat);
             }
             else {
-                pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
+                pat = ::AST::Pattern(::AST::Pattern::TagBind(), pat.span(), mv$(name));
                 pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
                 DEBUG("- Binding #" << pat.binding().m_slot << " '" << pat.binding().m_name << "' (was MaybeBind)");
             }
@@ -1751,7 +1821,7 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         else {
             auto name = mv$( e.name );
 
-            pat = ::AST::Pattern(::AST::Pattern::TagBind(), mv$(name));
+            pat = ::AST::Pattern(::AST::Pattern::TagBind(), pat.span(), mv$(name));
             pat.binding().m_slot = context.push_var( pat.span(), pat.binding().m_name );
         }
         ),
@@ -1769,7 +1839,10 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
         ),
     (Value,
         if( ! allow_refutable )
+        {
+            // TODO: If this is a single value of a unit-like struct, accept
             BUG(pat.span(), "Resolve_Absolute_Pattern - Encountered refutable pattern where only irrefutable allowed - " << pat);
+        }
         Resolve_Absolute_PatternValue(context, pat.span(), e.start);
         Resolve_Absolute_PatternValue(context, pat.span(), e.end);
         ),
@@ -1985,12 +2058,14 @@ void Resolve_Absolute_Trait(Context& item_context, ::AST::Trait& e)
     Resolve_Absolute_Generic(item_context,  e.params());
 
     for(auto& st : e.supertraits()) {
-        if( !st.ent.is_valid() ) {
+        if( !st.ent.path.is_valid() ) {
             DEBUG("- ST 'static");
         }
         else {
-            DEBUG("- ST " << st.ent);
-            Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent);
+            DEBUG("- ST " << st.ent.hrbs << st.ent.path);
+            item_context.push(st.ent.hrbs);
+            Resolve_Absolute_Path(item_context, st.sp, Context::LookupMode::Type,  st.ent.path);
+            item_context.pop(st.ent.hrbs);
         }
     }
 
@@ -2072,7 +2147,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                 Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
 
                 if( e.items().size() != 0 ) {
-                    ERROR(def.span(), E0000, "impl Trait for .. with methods");
+                    ERROR(i.data.span, E0000, "impl Trait for .. with methods");
                 }
 
                 item_context.pop(def.params());
@@ -2105,7 +2180,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 
             Resolve_Absolute_Type(item_context, impl_def.type());
             if( !impl_def.trait().ent.is_valid() )
-                BUG(impl_def.span(), "Encountered negative impl with no trait");
+                BUG(i.data.span, "Encountered negative impl with no trait");
             Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
 
             // No items

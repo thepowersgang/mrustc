@@ -12,10 +12,10 @@
 ::std::map<::std::string, ::std::string>    AST::g_crate_overrides;
 
 namespace {
-    bool check_item_cfg(const ::AST::MetaItems& attrs)
+    bool check_item_cfg(const ::AST::AttributeList& attrs)
     {
         for(const auto& at : attrs.m_items) {
-            if( at.name() == "cfg" && !check_cfg(attrs.m_span, at) ) {
+            if( at.name() == "cfg" && !check_cfg(at.span(), at) ) {
                 return false;
             }
         }
@@ -78,7 +78,7 @@ void Crate::load_externs()
         if( a.name() == "no_core" )
             no_core = true;
         if( a.name() == "cfg_attr" && a.items().size() == 2 ) {
-            if( check_cfg(this->m_attrs.m_span, a.items().at(0)) )
+            if( check_cfg(a.span(), a.items().at(0)) )
             {
                 const auto& a2 = a.items().at(1);
                 if( a2.name() == "no_std" )
