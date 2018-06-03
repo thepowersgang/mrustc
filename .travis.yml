@@ -29,7 +29,7 @@ install:
 script:
  - set -e
  - make -f minicargo.mk output/libtest.hir      # libstd
- - make test TAIL_COUNT=2       # hello_world
+ - make test    # hello_world
 # Tests
  - set +e
  - make local_tests -k
