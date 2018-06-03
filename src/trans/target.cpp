@@ -334,7 +334,7 @@ namespace
         else if(target_name == "x86_64-apple-macosx")
         {
             return TargetSpec {
-                "unix", "macosx", "gnu", CodegenMode::Gnu11, "x86_64-apple-darwin",
+                "unix", "macos", "gnu", CodegenMode::Gnu11, "x86_64-apple-darwin",
                 ARCH_X86_64
                 };
         }
