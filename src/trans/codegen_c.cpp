@@ -196,6 +196,7 @@ namespace {
         } m_options;
 
         ::std::vector< ::std::pair< ::HIR::GenericPath, const ::HIR::Struct*> >   m_box_glue_todo;
+        ::std::set< ::HIR::TypeRef> m_emitted_fn_types;
     public:
         CodeGenerator_C(const ::HIR::Crate& crate, const ::std::string& outfile):
             m_crate(crate),
@@ -819,6 +820,11 @@ namespace {
         }
         void emit_type_fn(const ::HIR::TypeRef& ty)
         {
+            if( m_emitted_fn_types.count(ty) ) {
+                return ;
+            }
+            m_emitted_fn_types.insert(ty.clone());
+            
             const auto& te = ty.m_data.as_Function();
             m_of << "typedef ";
             // TODO: ABI marker, need an ABI enum?
