@@ -27,14 +27,15 @@ install:
  - make -C tools/minicargo
 
 script:
- - make -f minicargo.mk output/libtest.hir
-# libstd and hello_world
- - make test TAIL_COUNT=2
-# rustc (DISABLED: llvm build)
-# - make -f minicargo.mk output/rustc
+ - set -e
+ - make -f minicargo.mk output/libtest.hir      # libstd
+ - make test TAIL_COUNT=2       # hello_world
 # Tests
+ - set +e
  - make local_tests -k
 # - CC=gcc-6 make rust_tests -k
-# cargo
+# rustc (DISABLED: llvm build)
+# - make -f minicargo.mk output/rustc
+# cargo (DISABLED: why?)
 # - make -f minicargo.mk output/cargo
 # - cat output/cargo-build/cargo_dbg.txt
