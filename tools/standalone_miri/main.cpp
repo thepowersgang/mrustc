@@ -48,7 +48,28 @@ int main(int argc, const char* argv[])
 
     // Load HIR tree
     auto tree = ModuleTree {};
-    tree.load_file(opts.infile);
+    try
+    {
+        tree.load_file(opts.infile);
+    }
+    catch(const DebugExceptionTodo& /*e*/)
+    {
+        ::std::cerr << "TODO Hit" << ::std::endl;
+        if(opts.logfile != "")
+        {
+            ::std::cerr << "- See '" << opts.logfile << "' for details" << ::std::endl;
+        }
+        return 1;
+    }
+    catch(const DebugExceptionError& /*e*/)
+    {
+        ::std::cerr << "Error encountered" << ::std::endl;
+        if(opts.logfile != "")
+        {
+            ::std::cerr << "- See '" << opts.logfile << "' for details" << ::std::endl;
+        }
+        return 1;
+    }
 
     // Create argc/argv based on input arguments
     auto argv_alloc = Allocation::new_alloc((1 + opts.args.size()) * POINTER_SIZE);

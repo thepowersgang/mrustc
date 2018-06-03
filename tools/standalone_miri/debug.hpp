@@ -33,7 +33,7 @@ public:
     template<typename T>
     ::std::ostream& operator<<(const T& v) { return m_inner << v; }
 
-    static bool set_output_file(const ::std::string& s);
+    static void set_output_file(const ::std::string& s);
     static bool enabled(const char* fcn_name);
     static DebugSink get(const char* fcn_name, const char* file, unsigned line, DebugLevel lvl);
     // TODO: Add a way to insert an annotation before/after an abort/warning/... that indicates what input location caused it.

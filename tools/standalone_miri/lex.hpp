@@ -14,6 +14,7 @@ enum class TokenClass
     Real,
     String,
     ByteString,
+    Lifetime,
 };
 
 struct Token

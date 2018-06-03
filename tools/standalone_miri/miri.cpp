@@ -540,11 +540,19 @@ InterpreterThread::~InterpreterThread()
     for(size_t i = 0; i < m_stack.size(); i++)
     {
         const auto& frame = m_stack[m_stack.size() - 1 - i];
-        ::std::cout << "#" << i << ": " << frame.fcn.my_path << " BB" << frame.bb_idx << "/";
-        if( frame.stmt_idx == frame.fcn.m_mir.blocks.at(frame.bb_idx).statements.size() )
-            ::std::cout << "TERM";
+        ::std::cout << "#" << i << ": ";
+        if( frame.cb )
+        {
+            ::std::cout << "WRAPPER";
+        }
         else
-            ::std::cout << frame.stmt_idx;
+        {
+            ::std::cout << frame.fcn.my_path << " BB" << frame.bb_idx << "/";
+            if( frame.stmt_idx == frame.fcn.m_mir.blocks.at(frame.bb_idx).statements.size() )
+                ::std::cout << "TERM";
+            else
+                ::std::cout << frame.stmt_idx;
+        }
         ::std::cout << ::std::endl;
     }
 }
@@ -564,6 +572,12 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     auto& cur_frame = this->m_stack.back();
     TRACE_FUNCTION_R(cur_frame.fcn.my_path, "");
     const auto& bb = cur_frame.fcn.m_mir.blocks.at( cur_frame.bb_idx );
+
+    const size_t    MAX_STACK_DEPTH = 40;
+    if( this->m_stack.size() > MAX_STACK_DEPTH )
+    {
+        LOG_ERROR("Maximum stack depth of " << MAX_STACK_DEPTH << " exceeded");
+    }
 
     MirHelpers  state { *this, cur_frame };
 

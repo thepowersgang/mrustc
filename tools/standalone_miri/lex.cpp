@@ -11,11 +11,11 @@ bool Token::operator==(TokenClass tc) const
 }
 bool Token::operator==(char c) const
 {
-    return this->strval.size() == 1 && this->strval[0] == c;
+    return (this->type == TokenClass::Ident || this->type == TokenClass::Symbol) && this->strval.size() == 1 && this->strval[0] == c;
 }
 bool Token::operator==(const char* s) const
 {
-    return this->strval == s;
+    return (this->type == TokenClass::Ident || this->type == TokenClass::Symbol) && this->strval == s;
 }
 
 uint64_t Token::integer() const
@@ -56,6 +56,9 @@ double Token::real() const
     case TokenClass::ByteString:
         os << "b\"" << x.strval << "\"";
         break;
+    case TokenClass::Lifetime:
+        os << "'" << x.strval << "\"";
+        break;
     }
     return os;
 }
@@ -95,6 +98,7 @@ Token Lexer::consume()
     auto rv = ::std::move(m_cur);
 
     advance();
+    //::std::cout << *this << "Lexer::consume " << rv << " -> " << m_cur << ::std::endl;
 
     return rv;
 }
@@ -348,6 +352,23 @@ void Lexer::advance()
     {
         auto val = this->parse_string();
         m_cur = Token { TokenClass::String, ::std::move(val) };
+    }
+    else if( ch == '\'')
+    {
+        ::std::string   val;
+        ch = m_if.get();
+        while( ch == '_' || ::std::isalnum(ch) )
+        {
+            val += ch;
+            ch = m_if.get();
+        }
+        m_if.unget();
+        if( val == "" )
+        {
+            ::std::cerr << *this << "Empty lifetime name";
+            throw "ERROR";
+        }
+        m_cur = Token { TokenClass::Lifetime, ::std::move(val) };
     }
     else
     {

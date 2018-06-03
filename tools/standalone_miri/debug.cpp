@@ -18,8 +18,9 @@ DebugSink::DebugSink(::std::ostream& inner):
 DebugSink::~DebugSink()
 {
     m_inner << "\n";
+    m_inner.flush();
 }
-bool DebugSink::set_output_file(const ::std::string& s)
+void DebugSink::set_output_file(const ::std::string& s)
 {
     s_out_file.reset(new ::std::ofstream(s));
 }

@@ -56,7 +56,7 @@ void ModuleTree::load_file(const ::std::string& path)
 bool Parser::parse_one()
 {
     //TRACE_FUNCTION_F("");
-    if( lex.next() == "" )  // EOF?
+    if( lex.next() == TokenClass::Eof )
     {
         return false;
     }
@@ -1145,6 +1145,11 @@ RawType Parser::parse_core_type()
     }
     else if( lex.consume_if('&') )
     {
+        if( lex.next() == TokenClass::Lifetime )
+        {
+            // TODO: Handle lifetime names (require them?)
+            lex.consume();
+        }
         auto bt = ::HIR::BorrowType::Shared;
         if( lex.consume_if("move") )
             bt = ::HIR::BorrowType::Move;
@@ -1240,8 +1245,15 @@ RawType Parser::parse_core_type()
         ::std::vector<::HIR::GenericPath>   markers;
         while(lex.consume_if('+'))
         {
-            // TODO: Detect/parse lifetimes?
-            markers.push_back(parse_genericpath());
+            if( lex.next() == TokenClass::Lifetime )
+            {
+                // TODO: Include lifetimes in output?
+                lex.consume();
+            }
+            else
+            {
+                markers.push_back(parse_genericpath());
+            }
         }
         lex.consume_if(')');
 
