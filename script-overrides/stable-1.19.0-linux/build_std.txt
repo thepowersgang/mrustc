@@ -1,4 +1,4 @@
-# TODO: THis is the windows set
+# TODO: Build libbacktrace
 cargo:rustc-link-lib=dl
 cargo:rustc-link-lib=rt
 cargo:rustc-link-lib=pthread

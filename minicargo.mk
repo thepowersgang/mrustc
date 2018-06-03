@@ -6,7 +6,12 @@ OUTDIR_SUF ?=
 MMIR ?=
 RUSTC_CHANNEL ?= stable
 RUSTC_VERSION ?= 1.19.0
+ifeq ($(OS),Windows_NT)
+else ifeq ($(shell uname -s || echo not),Darwin)
+OVERRIDE_SUFFIX ?= -macos
+else
 OVERRIDE_SUFFIX ?= -linux
+endif
 PARLEVEL ?= 1
 MINICARGO_FLAGS ?=
 
