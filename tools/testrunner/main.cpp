@@ -93,6 +93,11 @@ bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& out
 {
     ::std::vector<const char*>  args;
     args.push_back("mrustc");
+
+    // Force optimised and debuggable
+    args.push_back("-O");
+    args.push_back("-g");
+
     args.push_back("-L");
     args.push_back("output");
     if(libdir.is_valid())
@@ -374,6 +379,14 @@ int main(int argc, const char* argv[])
                     else
                         continue;
                 }
+
+#ifdef __linux__
+                // Run `strip` on the test (if on linux)
+                // XXX: Make this cleaner, or remove the need for it (by dynamic linking libstd)
+                if( !run_executable("/usr/bin/strip", { "strip",  outfile.str().c_str() }, "/dev/null") )
+                {
+                }
+#endif
             }
             else
             {
@@ -541,10 +554,11 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
     auto argv = args;
     argv.push_back(nullptr);
     pid_t   pid;
+    extern char** environ;
     int rv = posix_spawn(&pid, exe_name.str().c_str(), &file_actions, nullptr, const_cast<char**>(argv.data()), environ);
     if( rv != 0 )
     {
-        DEBUG("Error in posix_spawn - " << rv);
+        DEBUG("Error in posix_spawn of " << exe_name << " - " << rv);
         return false;
     }
 
