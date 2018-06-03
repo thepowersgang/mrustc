@@ -51,18 +51,8 @@ extern int _putenv_s(const char*, const char*);
 #else
 # define EXESUF ""
 #endif
-#ifdef _WIN32
-# ifdef _MSC_VER
-#  define HOST_TARGET "x86_64-windows-msvc"
-# elif defined(__MINGW32__)
-#  define HOST_TARGET "x86_64-windows-gnu"
-# else
-# endif
-#elif defined(__NetBSD__)
-# define HOST_TARGET "x86_64-unknown-netbsd"
-#else
-# define HOST_TARGET "x86_64-unknown-linux-gnu"
-#endif
+#include <target_detect.h>	// tools/common/target_detect.h
+#define HOST_TARGET	DEFAULT_TARGET_NAME
 
 /// Class abstracting access to the compiler
 class Builder
