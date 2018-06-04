@@ -19,6 +19,8 @@ matrix:
          - valgrind
    # OSX
    - os: osx
+  allow_failures:
+   - os: osx
 
 install:
  # Build mrustc
