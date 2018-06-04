@@ -192,7 +192,11 @@ public:
     (NotFound, struct{}),
     (Constant, const ::HIR::Constant*),
     (Static, const ::HIR::Static*),
-    (Function, const ::HIR::Function*)
+    (Function, const ::HIR::Function*),
+    (EnumConstructor, struct { const ::HIR::Enum* e; size_t v; }),
+    (EnumValue, struct { const ::HIR::Enum* e; size_t v; }),
+    (StructConstructor, struct { const ::HIR::SimplePath* p; const ::HIR::Struct* s; }),
+    (StructConstant, struct { const ::HIR::SimplePath* p; const ::HIR::Struct* s; })
     );
 
     /// `signature_only` - Returns a pointer to an item with the correct signature, not the actual implementation (faster)

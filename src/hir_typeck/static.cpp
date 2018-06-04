@@ -1894,25 +1894,46 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
     out_params = MonomorphState {};
     TU_MATCHA( (p.m_data), (pe),
     (Generic,
-        out_params.pp_method = &pe.m_params;
-        const ::HIR::Module& mod = m_crate.get_mod_by_path(sp, pe.m_path, true);
+        if( pe.m_path.m_components.size() > 1 )
+        {
+            const auto& ti = m_crate.get_typeitem_by_path(sp, pe.m_path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
+            if( const auto* e = ti.opt_Enum() )
+            {
+                out_params.pp_impl = &pe.m_params;
+                auto idx = e->find_variant(pe.m_path.m_components.back());
+                if( e->m_data.is_Data() )
+                {
+                    if( e->m_data.as_Data()[idx].type != ::HIR::TypeRef::new_unit() )
+                    {
+                        return ValuePtr::Data_EnumConstructor { e, idx };
+                    }
+                }
+                return ValuePtr::Data_EnumValue { e, idx };
+            }
+        }
+        const ::HIR::Module& mod = m_crate.get_mod_by_path(sp, pe.m_path, /*ignore_last_node=*/true);
         const auto& v = mod.m_value_items.at(pe.m_path.m_components.back());
         TU_MATCHA( (v->ent), (ve),
         (Import, BUG(sp, "Module Import");),
         (Constant,
+            out_params.pp_method = &pe.m_params;
             return &ve;
             ),
         (Static,
+            out_params.pp_method = &pe.m_params;
             return &ve;
             ),
         (Function,
+            out_params.pp_method = &pe.m_params;
             return &ve;
             ),
         (StructConstant,
+            out_params.pp_impl = &pe.m_params;
             TODO(sp, "StructConstant - " << p);
             ),
         (StructConstructor,
-            TODO(sp, "StructConstructor - " << p);
+            out_params.pp_impl = &pe.m_params;
+            return ValuePtr::Data_StructConstructor { &ve.ty, &m_crate.get_struct_by_path(sp, ve.ty) };
             )
         )
         throw "";

@@ -309,6 +309,53 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             auto rv = ::HIR::TypeRef( mv$(ft) );
             m_resolve.expand_associated_types(this->sp, rv);
             return rv;
+            ),
+        (EnumValue,
+            MIR_BUG(*this, "get_const_type - ItemAddr points to an enum value - " << c);
+            ),
+        (EnumConstructor,
+            const auto& data_variant = ve.e->m_data.as_Data()[ve.v];
+            MIR_ASSERT(*this, data_variant.type.m_data.is_Path(), c << " enum variant type must be Path - " << data_variant.type);
+            const auto& dvt_path = data_variant.type.m_data.as_Path();
+            MIR_ASSERT(*this, dvt_path.binding.is_Struct(), c << " enum variant type path binding must be Struct - " << data_variant.type);
+            const auto& str = *dvt_path.binding.as_Struct();
+            MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like variant");
+            const auto& str_data = str.m_data.as_Tuple();
+
+            ::HIR::FunctionType ft;
+            ft.is_unsafe = false;
+            ft.m_abi = ABI_RUST;
+            auto enum_path = e.clone();
+            enum_path.m_data.as_Generic().m_path.m_components.pop_back();
+            ft.m_rettype = box$( ::HIR::TypeRef::new_path(mv$(enum_path), ve.e) );
+            ft.m_arg_types.reserve(str_data.size());
+            for(const auto& fld : str_data)
+                ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );
+
+            auto rv = ::HIR::TypeRef( mv$(ft) );
+            m_resolve.expand_associated_types(this->sp, rv);
+            return rv;
+            ),
+        (StructConstant,
+            MIR_BUG(*this, c << " pointing to a struct constant");
+            ),
+        (StructConstructor,
+            // TODO: Move this to a method on the struct?
+            const auto& str = *ve.s;
+            MIR_ASSERT(*this, str.m_data.is_Tuple(), c << " must point to a tuple-like struct");
+            const auto& str_data = str.m_data.as_Tuple();
+
+            ::HIR::FunctionType ft;
+            ft.is_unsafe = false;
+            ft.m_abi = ABI_RUST;
+            ft.m_rettype = box$( ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e.m_data.as_Generic().m_params.clone()), &str) );
+            ft.m_arg_types.reserve(str_data.size());
+            for(const auto& fld : str_data)
+                ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );
+
+            auto rv = ::HIR::TypeRef( mv$(ft) );
+            m_resolve.expand_associated_types(this->sp, rv);
+            return rv;
             )
         )
         )

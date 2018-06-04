@@ -1129,7 +1129,10 @@ const ::HIR::Module& ::HIR::Crate::get_mod_by_path(const Span& sp, const ::HIR::
             return e;
         )
         else {
-            BUG(sp, "Module path " << path << " didn't point to a module");
+            if( ignore_last_node )
+                BUG(sp, "Parent path of " << path << " didn't point to a module");
+            else
+                BUG(sp, "Module path " << path << " didn't point to a module");
         }
     }
 }

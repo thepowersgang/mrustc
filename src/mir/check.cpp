@@ -345,6 +345,7 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                     val_state.move_val(state, se);
                     ),
                 (Constant,
+                    //(void)state.get_const_type(se);
                     ),
                 (SizedArray,
                     val_state.move_val(state, se.val);
