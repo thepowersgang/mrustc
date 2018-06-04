@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/path.hpp
+ * - AST::Path and helper types
  */
 #ifndef AST_PATH_HPP_INCLUDED
 #define AST_PATH_HPP_INCLUDED

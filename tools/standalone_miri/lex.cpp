@@ -1,6 +1,10 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * lex.cpp
+ * - MIR file lexer (very simple)
+ */
 #include "lex.hpp"
 #include <cctype>
 #include <iostream>

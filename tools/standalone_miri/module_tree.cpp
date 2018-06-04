@@ -1,11 +1,16 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * module_tree.cpp
+ * - In-memory representation of a Monomorphised MIR executable
+ * - Also handles parsing the .mir files
+ */
 #include "module_tree.hpp"
 #include "lex.hpp"
 #include "value.hpp"
 #include <iostream>
-#include <algorithm>	// std::find
+#include <algorithm>    // std::find
 #include "debug.hpp"
 
 ModuleTree::ModuleTree()

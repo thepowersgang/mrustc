@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * trans/codegen_c.hpp
+ * - C codegen backend (internal header)
  */
 #pragma once
 #include <vector>

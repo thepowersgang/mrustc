@@ -1,4 +1,10 @@
-
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * debug.cpp
+ * - Debug printing (with indenting)
+ */
 #include <debug.hpp>
 
 TraceLog::TraceLog(const char* tag, ::std::function<void(::std::ostream&)> info_cb, ::std::function<void(::std::ostream&)> ret):

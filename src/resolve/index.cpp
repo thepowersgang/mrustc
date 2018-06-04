@@ -1,5 +1,9 @@
 /*
- * Build up a name index in all modules (optimising lookups in later stages)
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * resolve/index.cpp
+ * - Build up a name index in all modules (optimising lookups in later stages)
  */
 #include <ast/ast.hpp>
 #include <ast/crate.hpp>

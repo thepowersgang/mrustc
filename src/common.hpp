@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * common.hpp
+ * - Compiler-global common header
  */
 #ifndef COMMON_HPP_INCLUDED
 #define COMMON_HPP_INCLUDED
@@ -22,7 +27,6 @@
 #define rc_new$(...) ::make_shared_ptr(::std::move(__VA_ARGS__))
 
 #include "include/debug.hpp"
-#include "include/rustic.hpp"   // slice and option
 #include "include/compile_error.hpp"
 
 template<typename T>

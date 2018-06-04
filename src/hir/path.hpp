@@ -11,11 +11,11 @@
 
 #include <common.hpp>
 #include <tagged_union.hpp>
-#include <hir/type_ptr.hpp>
 #include <span.hpp>
 
 namespace HIR {
 
+class TypeRef;
 class Trait;
 
 enum Compare {

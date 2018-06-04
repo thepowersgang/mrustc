@@ -1,6 +1,10 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * lex.hpp
+ * - Simple lexer for MIR files (HEADER)
+ */
 #pragma once
 #include <string>
 #include <fstream>

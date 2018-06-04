@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/std_prelude.cpp
+ * - Handling of no_std/no_core/no_prelude
  */
 #include <synext.hpp>
 #include <ast/crate.hpp>

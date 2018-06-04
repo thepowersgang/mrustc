@@ -1,3 +1,10 @@
+/*
+ * mrustc "minicargo" (minimal cargo clone)
+ * - By John Hodge (Mutabah)
+ *
+ * manifest.h
+ * - Cargo.toml package manifests
+ */
 #pragma once
 
 #include <string>

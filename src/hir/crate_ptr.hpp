@@ -1,5 +1,9 @@
 /*
- * High-level intermediate representation
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/crate_ptr.hpp
+ * - Pointer type to the HIR version of a crate
  */
 #pragma once
 

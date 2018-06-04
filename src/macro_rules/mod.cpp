@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * macro_rules/mod.cpp
+ * - Top-level handling for macro_rules macros
  */
 #include <common.hpp>
 #include "macro_rules.hpp"

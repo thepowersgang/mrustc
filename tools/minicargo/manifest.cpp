@@ -1,4 +1,9 @@
 /*
+ * mrustc "minicargo" (minimal cargo clone)
+ * - By John Hodge (Mutabah)
+ *
+ * manifest.cpp
+ * - Cargo.toml manifest loading and manipulation code
  */
 #include "manifest.h"
 #include "toml.h"
@@ -9,7 +14,7 @@
 #include <cctype>   // toupper
 #include "repository.h"
 
-// TODO: Extract this from the target at runtime
+// TODO: Extract this from the target at runtime (by invoking the compiler on the passed target)
 #ifdef _WIN32
 # define TARGET_NAME    "i586-windows-msvc"
 # define CFG_UNIX   false

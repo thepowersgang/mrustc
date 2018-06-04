@@ -15,7 +15,6 @@
 #include "../parse/common.hpp"
 #include "../parse/ttstream.hpp"
 #include <ast/crate.hpp>
-#include "macro_rules.hpp"
 #include <macro_rules/macro_rules.hpp>
 #include <hir/hir.hpp>  // for HIR::Crate
 

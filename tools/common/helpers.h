@@ -1,3 +1,11 @@
+/*
+ * mrustc common tools
+ * - by John Hodge (Mutabah)
+ *
+ * tools/common/helpers.h
+ * - General helper classes
+ */
+// TODO: Replace this header with src/includ/string_view.hpp
 #pragma once
 
 #include <string>

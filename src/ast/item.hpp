@@ -1,4 +1,10 @@
-
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/item.hpp
+ * - AST named item wrapper
+ */
 #pragma once
 
 #include <string>
@@ -7,39 +13,24 @@
 namespace AST {
 
 template <typename T>
-struct NamedNS
+struct Named
 {
     ::std::string   name;
     T   data;
     bool    is_pub;
 
-    NamedNS():
-        is_pub(false)
-    {}
-    NamedNS(NamedNS&&) = default;
-    NamedNS(const NamedNS&) = default;
-    NamedNS& operator=(NamedNS&&) = default;
-    NamedNS(::std::string name, T data, bool is_pub):
-        name( ::std::move(name) ),
-        data( ::std::move(data) ),
-        is_pub( is_pub )
-    {
-    }
-};
-
-template <typename T>
-struct Named:
-    public NamedNS<T>
-{
     Named():
-        NamedNS<T>()
+        is_pub(false)
     {}
     Named(Named&&) = default;
     Named(const Named&) = default;
     Named& operator=(Named&&) = default;
     Named(::std::string name, T data, bool is_pub):
-        NamedNS<T>( ::std::move(name), ::std::move(data), is_pub )
-    {}
+        name( ::std::move(name) ),
+        data( ::std::move(data) ),
+        is_pub( is_pub )
+    {
+    }
 };
 
 template <typename T>

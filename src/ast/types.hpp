@@ -1,3 +1,10 @@
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/types.hpp
+ * - AST Type reference (and helpers)
+ */
 #ifndef TYPES_HPP_INCLUDED
 #define TYPES_HPP_INCLUDED
 

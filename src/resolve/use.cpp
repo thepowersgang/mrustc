@@ -10,6 +10,7 @@
 #include <ast/ast.hpp>
 #include <ast/expr.hpp>
 #include <hir/hir.hpp>
+#include <stdspan.hpp>  // std::span
 
 enum class Lookup
 {
@@ -20,8 +21,8 @@ enum class Lookup
 };
 
 ::AST::Path Resolve_Use_AbsolutisePath(const ::AST::Path& base_path, ::AST::Path path);
-void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules={});
-::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules, Lookup allow=Lookup::Any);
+void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, ::std::span< const ::AST::Module* > parent_modules={});
+::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules, Lookup allow=Lookup::Any);
 ::AST::PathBinding Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start,  Lookup allow);
 
 
@@ -101,7 +102,7 @@ void Resolve_Use(::AST::Crate& crate)
     throw "BUG: Reached end of Resolve_Use_AbsolutisePath";
 }
 
-void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, slice< const ::AST::Module* > parent_modules)
+void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, ::std::span< const ::AST::Module* > parent_modules)
 {
     TRACE_FUNCTION_F("path = " << path);
 
@@ -267,7 +268,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         const Span& span,
         const ::AST::Crate& crate, const ::AST::Module& mod,
         const ::std::string& des_item_name,
-        slice< const ::AST::Module* > parent_modules,
+        ::std::span< const ::AST::Module* > parent_modules,
         Lookup allow
     )
 {
@@ -476,7 +477,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 
     if( mod.path().nodes().size() > 0 && mod.path().nodes().back().name()[0] == '#' ) {
         assert( parent_modules.size() > 0 );
-        return Resolve_Use_GetBinding_Mod(span, crate, *parent_modules.back(), des_item_name, parent_modules.subslice(0, parent_modules.size()-1), allow);
+        return Resolve_Use_GetBinding_Mod(span, crate, *parent_modules.back(), des_item_name, parent_modules.subspan(0, parent_modules.size()-1), allow);
     }
     else {
         if( allow == Lookup::Any )
@@ -691,7 +692,7 @@ namespace {
     return Resolve_Use_GetBinding__ext(span, crate, path, ec.m_hir->m_root_module, start, allow);
 }
 
-::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, slice< const ::AST::Module* > parent_modules, Lookup allow)
+::AST::PathBinding Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules, Lookup allow)
 {
     TRACE_FUNCTION_F(path);
     //::AST::Path rv;

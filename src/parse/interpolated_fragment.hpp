@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * parse/interpolated_fragment.hpp
+ * - An "interpolated fragment", result of parsing e.g. :expr in a macro invocation
  */
 #pragma once
 

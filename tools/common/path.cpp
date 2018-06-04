@@ -1,4 +1,9 @@
 /*
+ * mrustc common code
+ * - by John Hodge (Mutabah)
+ *
+ * tools/common/path.cpp
+ * - Generic representation of a filesystem path
  */
 #include "path.h"
 #if _WIN32

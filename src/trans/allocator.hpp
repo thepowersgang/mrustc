@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * trans/allocator.hpp
+ * - Handling for switchable allocator backends
  */
 #include <cstddef>
 

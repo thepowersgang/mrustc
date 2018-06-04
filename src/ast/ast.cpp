@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/ast.cpp
+ * - Implementation of the various AST classes
  */
 #include "ast.hpp"
 #include "crate.hpp"
@@ -236,16 +241,6 @@ bool Impl::has_named_item(const ::std::string& name) const
     return os << impl.m_def;
 }
 
-::rust::option<char> ImplRef::find_named_item(const ::std::string& name) const
-{
-    if( this->impl.has_named_item(name) ) {
-        return ::rust::Some(' ');
-    }
-    else {
-        return ::rust::None<char>();
-    }
-}
-
 ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x)
 {
     os << "Use(" << x.path << ")";
@@ -311,7 +306,7 @@ void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro
     m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
 }
 void Module::add_macro_import(::std::string name, const MacroRules& mr) {
-    m_macro_import_res.push_back( NamedNS<const MacroRules*>( mv$(name), &mr, false ) );
+    m_macro_import_res.push_back( Named<const MacroRules*>( mv$(name), &mr, false ) );
 }
 
 Item Item::clone() const

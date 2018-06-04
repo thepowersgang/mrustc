@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/expr.hpp
+ * - HIR Expression nodes
  */
 #pragma once
 

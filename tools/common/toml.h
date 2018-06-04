@@ -1,3 +1,10 @@
+/*
+ * mrustc common tools
+ * - by John Hodge (Mutabah)
+ *
+ * tools/common/toml.h
+ * - A very basic (and probably incomplete) streaming TOML parser
+ */
 #pragma once
 
 #include <fstream>
@@ -31,6 +38,7 @@ public:
     TomlFileIter begin();
     TomlFileIter end();
 
+    // Obtain the next value in the file
     TomlKeyValue get_next_value();
 };
 
@@ -38,11 +46,14 @@ struct TomlValue
 {
     enum class Type
     {
+        // A true/false, 1/0, yes/no value
         Boolean,
+        // A double-quoted string
         String,
+        // Integer
         Integer,
+        // A list of other values
         List,
-
     };
     friend ::std::ostream& operator<<(::std::ostream& os, const Type& e) {
         switch(e)
@@ -146,7 +157,10 @@ struct TomlValue
 
 struct TomlKeyValue
 {
+    // Path to the value (last node is the value name)
+    // TODO: How are things like `[[bin]]` handled?
     ::std::vector<::std::string>    path;
+    // Relevant value
     TomlValue   value;
 };
 

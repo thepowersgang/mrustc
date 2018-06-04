@@ -1,6 +1,11 @@
 /*
- * Convert all paths in AST into absolute form (or to the relevant local item)
- * - NOTE: This is the core of the 'resolve' pass.
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * resolve/absolute.cpp
+ * - Convert all paths in AST into absolute form (or to the relevant local item)
+ *
+ * NOTE: This is the core of the 'resolve' pass.
  *
  * After complete there should be no:
  * - Relative/super/self paths

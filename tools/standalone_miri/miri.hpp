@@ -1,4 +1,10 @@
-
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * miri.hpp
+ * - MIR Interpreter State (HEADER)
+ */
 #pragma once
 #include "module_tree.hpp"
 #include "value.hpp"
@@ -35,10 +41,10 @@ class InterpreterThread
         ::std::vector<Value>    args;
         ::std::vector<Value>    locals;
         ::std::vector<bool>     drop_flags;
-        
+
         unsigned    bb_idx;
         unsigned    stmt_idx;
-        
+
         StackFrame(const Function& fcn, ::std::vector<Value> args);
         static StackFrame make_wrapper(::std::function<bool(Value&,Value)> cb) {
             static Function f;
@@ -51,14 +57,14 @@ class InterpreterThread
     ModuleTree& m_modtree;
     ThreadState m_thread;
     ::std::vector<StackFrame>   m_stack;
-    
+
 public:
     InterpreterThread(ModuleTree& modtree):
         m_modtree(modtree)
     {
     }
     ~InterpreterThread();
-    
+
     void start(const ::HIR::Path& p, ::std::vector<Value> args);
     // Returns `true` if the call stack empties
     bool step_one(Value& out_thread_result);

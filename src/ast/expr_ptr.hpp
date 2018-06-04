@@ -1,4 +1,9 @@
 /*
+  * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/expr_ptr.hpp
+ * - Pointer type wrapping AST::ExprNode (prevents need to know the full definition)
  */
 #include <memory>
 

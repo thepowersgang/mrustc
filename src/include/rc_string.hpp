@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * include/rc_string.hpp
+ * - Reference-counted string (used for spans)
  */
 #pragma once
 

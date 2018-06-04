@@ -1,3 +1,10 @@
+/*
+ * minicargo - MRustC-specific clone of `cargo`
+ * - By John Hodge (Mutabah)
+ *
+ * build.h
+ * - Definitions relating to building the crate (and dependencies)
+ */
 #pragma once
 
 #include "manifest.h"
@@ -21,7 +28,7 @@ class BuildList
     struct Entry
     {
         const PackageManifest*  package;
-	bool	is_host;
+        bool    is_host;
         ::std::vector<unsigned> dependents;   // Indexes into the list
     };
     const PackageManifest&  m_root_manifest;

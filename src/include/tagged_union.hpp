@@ -1,4 +1,11 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * include/tagged_union.hpp
+ * - Macro that allows construction of a tagged union (with various helper methods)
+ *
+ *
  * The most evil CPP abuse I have ever written
  *
  * Constructs a tagged union that correctly handles objects.
@@ -169,11 +176,11 @@
  *
  * ```
  * TAGGED_UNION(Inner, Any,
- *     (Any, (bool flag)),
- *     (Tuple, (::std::vector<Pattern> subpats)),
- *     (TupleStruct, (Path path; ::std::vector<Pattern> sub_patterns;)),
- *     (Value, (::std::unique_ptr<ExprNode> val )),
- *     (Range, (::std::unique_ptr<ExprNode> left; ::std::unique_ptr<ExprNode> right;))
+ *     (Any, (struct { bool match_multiple; })),
+ *     (Tuple, (::std::vector<Pattern> )),
+ *     (TupleStruct, (struct { Path path; ::std::vector<Pattern> sub_patterns; })),
+ *     (Value, (::std::unique_ptr<ExprNode> )),
+ *     (Range, (struct { ::std::unique_ptr<ExprNode> left; ::std::unique_ptr<ExprNode> right; }))
  *     );
  * ```
  */

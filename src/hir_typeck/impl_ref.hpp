@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir_typeck/impl_ref.hpp
+ * - Reference to a specific impl block (or the concept of one)
  */
 #pragma once
 

@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir_typeck/main_bindings.hpp
+ * - Functions in HIR typecheck called by main
  */
 #pragma once
 

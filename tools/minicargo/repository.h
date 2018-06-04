@@ -1,3 +1,10 @@
+/*
+ * minicargo - MRustC-specific clone of `cargo`
+ * - By John Hodge (Mutabah)
+ *
+ * repository.h
+ * - Handling (vendored) crates.io dependencies
+ */
 #pragma once
 
 #include <string>

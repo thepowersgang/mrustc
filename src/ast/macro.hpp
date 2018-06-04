@@ -1,4 +1,10 @@
-
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * ast/macro.hpp
+ * - AST representation of a macro invocation
+ */
 #ifndef _AST_MACRO_HPP_
 #define _AST_MACRO_HPP_
 

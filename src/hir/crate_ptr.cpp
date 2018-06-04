@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/crate_ptr.cpp
+ * - Implementation of HIR::CratePtr
  */
 #include "crate_ptr.hpp"
 #include "hir.hpp"

@@ -1,3 +1,10 @@
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * coretypes.hpp
+ * - AST-level builtin types
+ */
 #ifndef CORETYPES_HPP_INCLUDED
 #define CORETYPES_HPP_INCLUDED
 

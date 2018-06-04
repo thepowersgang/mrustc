@@ -1,3 +1,10 @@
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir_typeck/expr_visit.hpp
+ * - Helpers for the HIR typecheck expression visiting
+ */
 
 namespace typeck {
     struct ModuleState

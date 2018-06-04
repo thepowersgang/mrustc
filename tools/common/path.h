@@ -1,3 +1,10 @@
+/*
+ * mrustc common code
+ * - by John Hodge (Mutabah)
+ *
+ * tools/common/path.h
+ * - Generic representation of a filesystem path (HEADER)
+ */
 #pragma once
 
 #include <string>

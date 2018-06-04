@@ -1,5 +1,6 @@
 /*
- * Mini version of cargo 
+ * mrustc "minicargo" (minimal cargo clone)
+ * - By John Hodge (Mutabah)
  *
  * main.cpp
  * - Entrypoint

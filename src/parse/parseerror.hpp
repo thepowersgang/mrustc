@@ -1,3 +1,10 @@
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * parse/parseerror.hpp
+ * - Exception classes for parsing/lexing errors
+ */
 #ifndef PARSEERROR_HPP_INCLUDED
 #define PARSEERROR_HPP_INCLUDED
 

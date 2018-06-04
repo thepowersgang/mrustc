@@ -1,6 +1,10 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * hir_sim.hpp
+ * - Clones of the mrustc HIR types (HEADER)
+ */
 #pragma once
 #include <string>
 #include <vector>

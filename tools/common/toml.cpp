@@ -1,13 +1,17 @@
 /*
- * A very bad streaming TOML parser
+ * mrustc common tools
+ * - by John Hodge (Mutabah)
+ *
+ * tools/common/toml.cpp
+ * - A very basic (and probably incomplete) streaming TOML parser
  */
-#define NOLOG
+#define NOLOG   // Disable logging
 #include "toml.h"
 #include "debug.h"
 #include <cassert>
 #include <string>
 
-
+// Representation of a syntatic token in a TOML file
 struct Token
 {
     enum class Type

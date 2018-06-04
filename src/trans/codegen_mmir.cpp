@@ -1,6 +1,12 @@
-//
-//
-//
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * trans/codegen_mmir.cpp
+ * - Monomorphised MIR Backend
+ *
+ * Saves the MIR in a loadable form, used by the `standalone_miri` tool
+ */
 #include "codegen.hpp"
 #include <hir_typeck/static.hpp>
 #include <mir/helpers.hpp>

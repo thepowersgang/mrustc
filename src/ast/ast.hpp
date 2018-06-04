@@ -505,7 +505,7 @@ class Module
     // --- Runtime caches and state ---
     ::std::vector< ::std::shared_ptr<Module> >  m_anon_modules;
 
-    ::std::vector< NamedNS<const MacroRules*> > m_macro_import_res; // Vec of imported macros (not serialised)
+    ::std::vector< Named<const MacroRules*> >   m_macro_import_res;
     ::std::vector< Named<MacroRulesPtr> >  m_macros;
 
 public:
@@ -570,7 +570,7 @@ public:
 
           NamedList<MacroRulesPtr>&    macros()        { return m_macros; }
     const NamedList<MacroRulesPtr>&    macros()  const { return m_macros; }
-    const ::std::vector<NamedNS<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
+    const ::std::vector<Named<const MacroRules*> >  macro_imports_res() const { return m_macro_import_res; }
 
 private:
     void resolve_macro_import(const Crate& crate, const ::std::string& modname, const ::std::string& macro_name);
@@ -611,20 +611,6 @@ TAGGED_UNION_EX(Item, (), None,
         Item clone() const;
     )
     );
-
-
-struct ImplRef
-{
-    const Impl& impl;
-    ::std::vector<TypeRef>  params;
-
-    ImplRef(const Impl& impl, ::std::vector<TypeRef> params):
-        impl(impl),
-        params( mv$(params) )
-    {}
-
-    ::rust::option<char> find_named_item(const ::std::string& name) const;
-};
 
 } // namespace AST
 

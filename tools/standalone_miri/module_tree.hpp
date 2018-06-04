@@ -1,6 +1,10 @@
-//
-//
-//
+/*
+ * mrustc Standalone MIRI
+ * - by John Hodge (Mutabah)
+ *
+ * module_tree.hpp
+ * - In-memory representation of a Monomorphised MIR executable (HEADER)
+ */
 #pragma once
 #include <string>
 #include <vector>
@@ -27,6 +31,7 @@ struct Function
 struct Static
 {
     ::HIR::TypeRef  ty;
+    // TODO: Should this value be stored in the program state (making the entire `ModuleTree` const)
     Value   val;
 };
 

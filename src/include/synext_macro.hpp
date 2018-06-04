@@ -1,4 +1,9 @@
 /*
+ * MRustC - Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * include/synext_macro.hpp
+ * - Macro-style syntax extensions ( `foo!()` )
  */
 #pragma once
 #ifndef _SYNEXT_MACRO_HPP_

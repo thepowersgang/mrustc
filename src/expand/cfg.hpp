@@ -1,3 +1,10 @@
+/*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * expand/cfg.hpp
+ * - Handling of `#[cfg]` and `cfg!` conditions
+ */
 
 #pragma once
 

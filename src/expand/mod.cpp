@@ -10,7 +10,6 @@
 #include <main_bindings.hpp>
 #include <synext.hpp>
 #include <map>
-#include "macro_rules.hpp"
 #include "../macro_rules/macro_rules.hpp"
 #include "../parse/common.hpp"  // For reparse from macros
 #include <ast/expr.hpp>

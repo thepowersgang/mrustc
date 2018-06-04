@@ -1,6 +1,13 @@
-///
-///
-///
+/*
+ * mrustc test runner
+ * - by John Hodge (Mutabah)
+ *
+ * tools/testrunner/main.cpp
+ * - Clone of rustc's integration test runner
+ *
+ *
+ * Runs all .rs files in a directory, parsing test options out of comments in the file
+ */
 #define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include <string>

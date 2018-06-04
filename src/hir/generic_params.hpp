@@ -1,4 +1,9 @@
 /*
+ * MRustC - Mutabah's Rust Compiler
+ * - By John Hodge (Mutabah/thePowersGang)
+ *
+ * hir/generic_params.hpp
+ * - HIR version of generic definition blocks
  */
 #pragma once
 #include <string>
