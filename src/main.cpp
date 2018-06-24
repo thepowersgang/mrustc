@@ -89,14 +89,22 @@ void init_debug_list()
         {
             const char* end = strchr(debug_string, ':');
 
-            if( end ) {
-                ::std::string   s { debug_string, end };
-                // TODO: Emit a warning when this name wasn't in the map?
-                g_debug_disable_map.erase( s );
+            ::std::string   s;
+            if( end )
+            {
+                s = ::std::string { debug_string, end };
                 debug_string = end + 1;
+                g_debug_disable_map.erase( s );
             }
-            else {
-                g_debug_disable_map.erase( debug_string );
+            else
+            {
+                s = debug_string;
+            }
+            if( g_debug_disable_map.erase(s) == 0 )
+            {
+                ::std::cerr << "WARN: Unknown compiler phase '" << s << "' in $MRUSTC_DEBUG" << ::std::endl;
+            }
+            if( !end ) {
                 break;
             }
         }
@@ -183,6 +191,7 @@ Rv CompilePhase(const char *name, Fcn f) {
     g_cur_phase = "";
     g_debug_enabled = debug_enabled_update();
 
+    // TODO: Show wall time too?
     ::std::cout <<"(" << ::std::fixed << ::std::setprecision(2) << static_cast<double>(end - start) / static_cast<double>(CLOCKS_PER_SEC) << " s) ";
     ::std::cout << name << ": DONE";
     ::std::cout << ::std::endl;
