@@ -37,6 +37,15 @@ Linux
 - `make -f minicargo.mk` - Builds `mrustc` and `minicargo`, then builds `libstd`, `libtest`, finally `rustc` and `cargo`
 - `make -C run_rustc` - Build libstd and a "hello, world" using the above-built rustc
 
+BSD
+---
+Similar to Linux, but you might need to
+- specify the rustc default target explicitly
+- specify the compiler
+- use `gmake` to run GNU make
+
+e.g. `gmake CC=cc RUSTC_TARGET=x86_64-unknown-freebsd -f minicargo.mk`
+
 Windows
 --------
 (NOTE: Incomplete, doesn't yet compile executables and missing helper scripts)
