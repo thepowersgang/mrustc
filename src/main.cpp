@@ -1077,14 +1077,14 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         {
             const char* end = strchr(a, ':');
 
-            ::std::string_view  s;
+            ::stdx::string_view  s;
             if( end ) {
-                s = ::std::string_view { a, end };
+                s = ::stdx::string_view { a, end };
                 a = end + 1;
             }
             else {
                 end = a + strlen(a);
-                s = ::std::string_view { a, end };
+                s = ::stdx::string_view { a, end };
                 a = end;
             }
 
