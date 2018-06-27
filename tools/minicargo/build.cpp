@@ -544,12 +544,12 @@ Builder::Builder(BuildOptions opts):
 
     ::helpers::path minicargo_path { buf };
     minicargo_path.pop_component();
-#ifdef __MINGW32__
+# ifdef __MINGW32__
     m_compiler_path = (minicargo_path / "..\\..\\bin\\mrustc.exe").normalise();
-#else
+# else
     // MSVC, minicargo and mrustc are in the same dir
     m_compiler_path = minicargo_path / "mrustc.exe";
-#endif
+# endif
 #else
     char buf[1024];
 # ifdef __linux__
@@ -559,7 +559,7 @@ Builder::Builder(BuildOptions opts):
         buf[s] = 0;
     }
     else
-#elif defined(__APPLE__)
+# elif defined(__APPLE__)
     uint32_t  s = sizeof(buf);
     if( _NSGetExecutablePath(buf, &s) == 0 )
     {
@@ -567,7 +567,7 @@ Builder::Builder(BuildOptions opts):
     }
     else
         // TODO: Buffer too small
-#elif defined(__FreeBSD__) || defined(__DragonFly__) || (defined(__NetBSD__) && defined(KERN_PROC_PATHNAME)) // NetBSD 8.0+
+# elif defined(__FreeBSD__) || defined(__DragonFly__) || (defined(__NetBSD__) && defined(KERN_PROC_PATHNAME)) // NetBSD 8.0+
     int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
     size_t s = sizeof(buf);
     if ( sysctl(mib, 4, buf, &s, NULL, 0) == 0 )
@@ -575,9 +575,9 @@ Builder::Builder(BuildOptions opts):
         // Buffer populated
     }
     else
-#else
-# warning "Can't runtime determine path to minicargo"
-#endif
+# else
+#   warning "Can't runtime determine path to minicargo"
+# endif
     {
         strcpy(buf, "tools/bin/minicargo");
     }
