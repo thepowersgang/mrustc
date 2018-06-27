@@ -34,6 +34,19 @@
 # else
 #  define DEFAULT_TARGET_NAME "i586-windows-gnu"
 # endif
+// - FreeBSD
+#elif defined(__FreeBSD__)
+# if defined(__amd64__)
+#  define DEFAULT_TARGET_NAME "x86_64-unknown-freebsd"
+# elif defined(__aarch64__)
+#  define DEFAULT_TARGET_NAME "aarch64-unknown-freebsd"
+# elif defined(__arm__)
+#  define DEFAULT_TARGET_NAME "arm-unknown-freebsd"
+# elif defined(__i386__)
+#  define DEFAULT_TARGET_NAME "i686-unknown-freebsd"
+# else
+#  warning "Unable to detect a suitable default target (FreeBSD)"
+# endif
 // - NetBSD
 #elif defined(__NetBSD__)
 # if defined(__amd64__)
@@ -54,6 +67,9 @@
 # else
 #  warning "Unable to detect a suitable default target (OpenBSD)"
 # endif
+// - DragonFly
+#elif defined(__DragonFly__)
+# define DEFAULT_TARGET_NAME "x86_64-unknown-dragonfly"
 // - Apple devices
 #elif defined(__APPLE__)
 # define DEFAULT_TARGET_NAME "x86_64-apple-macosx"

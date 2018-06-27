@@ -45,6 +45,9 @@ extern int _putenv_s(const char*, const char*);
 #ifdef __APPLE__
 # include <mach-o/dyld.h>
 #endif
+#if defined(__FreeBSD__) || defined(__DragonFly__) || (defined(__NetBSD__) && defined(KERN_PROC_PATHNAME)) // NetBSD 8.0+
+# include <sys/sysctl.h>
+#endif
 
 #ifdef _WIN32
 # define EXESUF ".exe"
@@ -564,6 +567,14 @@ Builder::Builder(BuildOptions opts):
     }
     else
         // TODO: Buffer too small
+#elif defined(__FreeBSD__) || defined(__DragonFly__) || (defined(__NetBSD__) && defined(KERN_PROC_PATHNAME)) // NetBSD 8.0+
+    int mib[4] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1 };
+    size_t s = sizeof(buf);
+    if ( sysctl(mib, 4, buf, &s, NULL, 0) == 0 )
+    {
+        // Buffer populated
+    }
+    else
 #else
 # warning "Can't runtime determine path to minicargo"
 #endif

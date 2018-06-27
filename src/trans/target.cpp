@@ -361,6 +361,34 @@ namespace
                 ARCH_X86_64
                 };
         }
+        else if(target_name == "i686-unknown-freebsd")
+        {
+            return TargetSpec {
+                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, "i686-unknown-freebsd", BACKEND_C_OPTS_GNU},
+                ARCH_X86
+                };
+        }
+        else if(target_name == "x86_64-unknown-freebsd")
+        {
+            return TargetSpec {
+                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, "x86_64-unknown-freebsd", BACKEND_C_OPTS_GNU},
+                ARCH_X86_64
+                };
+        }
+        else if(target_name == "arm-unknown-freebsd")
+        {
+            return TargetSpec {
+                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, "arm-unknown-freebsd", BACKEND_C_OPTS_GNU},
+                ARCH_ARM32
+                };
+        }
+        else if(target_name == "aarch64-unknown-freebsd")
+        {
+            return TargetSpec {
+                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, "aarch64-unknown-freebsd", BACKEND_C_OPTS_GNU},
+                ARCH_ARM64
+                };
+        }
         else if(target_name == "x86_64-unknown-netbsd")
         {
             return TargetSpec {
@@ -396,9 +424,16 @@ namespace
                 ARCH_ARM64
                 };
         }
+        else if(target_name == "x86_64-unknown-dragonfly")
+        {
+            return TargetSpec {
+                "unix", "dragonfly", "gnu", {CodegenMode::Gnu11, "x86_64-unknown-dragonfly", BACKEND_C_OPTS_GNU},
+                ARCH_X86_64
+                };
+        }
         else if(target_name == "x86_64-apple-macosx")
         {
-            // NOTE: OSX uses clang and lld, which don't fully support the defaults used for GNU targets
+            // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
                 "unix", "macos", "gnu", {CodegenMode::Gnu11, "x86_64-apple-darwin", {}, {}},
                 ARCH_X86_64
@@ -438,22 +473,32 @@ void Target_SetCfg(const ::std::string& target_name)
         Cfg_SetFlag("linux");
         Cfg_SetValue("target_vendor", "gnu");
     }
-    Cfg_SetValue("target_env", g_target.m_env_name);
+
+    if( g_target.m_os_name == "freebsd" )
+    {
+        Cfg_SetFlag("freebsd");
+        Cfg_SetValue("target_vendor", "unknown");
+    }
 
     if( g_target.m_os_name == "netbsd" )
     {
         Cfg_SetFlag("netbsd");
         Cfg_SetValue("target_vendor", "unknown");
     }
-    Cfg_SetValue("target_env", g_target.m_env_name);
 
     if( g_target.m_os_name == "openbsd" )
     {
         Cfg_SetFlag("openbsd");
         Cfg_SetValue("target_vendor", "unknown");
     }
-    Cfg_SetValue("target_env", g_target.m_env_name);
 
+    if( g_target.m_os_name == "dragonfly" )
+    {
+        Cfg_SetFlag("dragonfly");
+        Cfg_SetValue("target_vendor", "unknown");
+    }
+
+    Cfg_SetValue("target_env", g_target.m_env_name);
     Cfg_SetValue("target_os", g_target.m_os_name);
     Cfg_SetValue("target_pointer_width", FMT(g_target.m_arch.m_pointer_bits));
     Cfg_SetValue("target_endian", g_target.m_arch.m_big_endian ? "big" : "little");
