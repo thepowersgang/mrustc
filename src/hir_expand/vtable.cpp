@@ -66,6 +66,7 @@ namespace {
                 unsigned int    i;
                 void add_types_from_trait(const ::HIR::Trait& tr) {
                     for(const auto& ty : tr.m_types) {
+                        DEBUG(ty.first << " #" << i);
                         auto rv = trait_ptr->m_type_indexes.insert( ::std::make_pair(ty.first, i) );
                         if(rv.second == false) {
                             //TODO(Span(), "Handle conflicting associated types - '" << ty.first << "'");
@@ -97,11 +98,18 @@ namespace {
                     auto clone_cb = [&](const auto& t, auto& o) {
                         if(t.m_data.is_Path() && t.m_data.as_Path().path.m_data.is_UfcsKnown()) {
                             const auto& pe = t.m_data.as_Path().path.m_data.as_UfcsKnown();
-                            DEBUG("t=" << t);
-                            if( *pe.type == ::HIR::TypeRef("Self", 0xFFFF) /*&& pe.trait == trait_path*/ && tr.m_type_indexes.count(pe.item) ) {
+                            bool is_self = (*pe.type == ::HIR::TypeRef("Self", 0xFFFF));
+                            auto it = trait_ptr->m_type_indexes.find(pe.item);
+                            bool has_item = (it != trait_ptr->m_type_indexes.end());
+                            // TODO: Check the trait against m_type_indexes
+                            if( is_self /*&& pe.trait == trait_path*/ && has_item ) {
+                                DEBUG("[clone_cb] t=" << t << " -> " << it->second);
                                 // Replace with a new type param, need to know the index of it
-                                o = ::HIR::TypeRef("a#"+pe.item, tr.m_type_indexes.at(pe.item));
+                                o = ::HIR::TypeRef("a#"+pe.item, it->second);
                                 return true;
+                            }
+                            else {
+                                DEBUG("[clone_cb] t=" << t << "(" << is_self << has_item << ")");
                             }
                         }
                         return false;
@@ -132,6 +140,10 @@ namespace {
                             }
                             if( ve.m_params.m_types.size() > 0 ) {
                                 DEBUG("- '" << vi.first << "' NOT object safe (generic), not creating vtable");
+                                return false;
+                            }
+                            if( ve.m_receiver == ::HIR::Function::Receiver::Value ) {
+                                DEBUG("- '" << vi.first << "' NOT object safe (by-value), not creating vtable");
                                 return false;
                             }
 

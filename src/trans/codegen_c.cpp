@@ -1923,6 +1923,7 @@ namespace {
                 // Find the corresponding vtable entry
                 for(const auto& m : trait.m_value_indexes)
                 {
+                    // NOTE: The "3" is the number of non-method vtable entries
                     if( m.second.first != 3+i )
                         continue ;
 
