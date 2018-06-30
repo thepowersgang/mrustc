@@ -10,7 +10,8 @@
 #include <cstddef>  // size_t
 #include <iostream> // ostream
 
-namespace std {
+namespace stdx {
+using namespace std;
 
 class string_view
 {

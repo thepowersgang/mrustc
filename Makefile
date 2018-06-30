@@ -322,7 +322,7 @@ src/main.cpp: $(PCHS:%=src/%.gch)
 	$V$(CXX) -std=c++14 -o $@ $< $(CPPFLAGS) -MMD -MP -MF $@.dep
 
 tools/bin/common_lib.a:
-	make -C tools/common
+	$(MAKE) -C tools/common
 	
 -include $(OBJ:%=%.dep)
 
