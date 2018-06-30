@@ -569,6 +569,7 @@ namespace {
                 packed = true;
                 TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen to know to pack the structure
                 break;
+            case ::HIR::Struct::Repr::Simd:
             case ::HIR::Struct::Repr::C:
                 // No sorting, no packing
                 break;
@@ -893,6 +894,7 @@ namespace {
                 // NOTE: codegen_c checks m_repr for packing too
                 break;
             case ::HIR::Struct::Repr::C:
+            case ::HIR::Struct::Repr::Simd:
                 // No sorting, no packing
                 break;
             case ::HIR::Struct::Repr::Rust:

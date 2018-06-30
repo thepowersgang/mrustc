@@ -885,6 +885,7 @@ namespace {
     {
         ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
         bool is_c = false;
+        bool is_simd = false;
         bool is_packed = false;
         ASSERT_BUG(Span(), attr_repr->items().size() > 0, "#[repr] attribute malformed, " << *attr_repr);
         for( const auto& a : attr_repr->items() )
@@ -897,16 +898,25 @@ namespace {
             else if( repr_str == "packed" ) {
                 is_packed = true;
             }
+            else if( repr_str == "simd" ) {
+                is_simd = true;
+            }
             else {
                 TODO(a.span(), "Handle struct repr '" << repr_str << "'");
             }
         }
 
         if( is_packed ) {
+            // TODO: What if `simd` is present?
+            // NOTE: repr(packed,C) is treated as the same as repr(packed) in mrustc
             struct_repr = ::HIR::Struct::Repr::Packed;
         }
         else if( is_c ) {
+            // TODO: What if `simd` is present?
             struct_repr = ::HIR::Struct::Repr::C;
+        }
+        else if( is_simd ) {
+            struct_repr = ::HIR::Struct::Repr::Simd;
         }
         else {
         }

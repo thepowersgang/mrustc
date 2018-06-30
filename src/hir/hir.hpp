@@ -261,6 +261,7 @@ public:
         Rust,
         C,
         Packed,
+        Simd,
     };
     TAGGED_UNION(Data, Unit,
         (Unit, struct {}),
