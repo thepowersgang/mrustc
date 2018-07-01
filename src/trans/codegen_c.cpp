@@ -487,7 +487,7 @@ namespace {
                 << "static inline TRAITOBJ_PTR make_traitobjptr(void* ptr, void* vt) { TRAITOBJ_PTR rv = { ptr, vt }; return rv; }\n"
                 << "\n"
                 << "static inline size_t mrustc_max(size_t a, size_t b) { return a < b ? b : a; }\n"
-                << "static inline tUNIT noop_drop(tUNIT *p) { tUNIT v = {" << (m_options.disallow_empty_structs ? "0" : "") << "}; return v; }\n"
+                << "static inline void noop_drop(tUNIT *p) { }\n"
                 << "\n"
                 // A linear (fast-fail) search of a list of strings
                 << "static inline size_t mrustc_string_search_linear(SLICE_PTR val, size_t count, SLICE_PTR* options) {\n"
@@ -830,12 +830,16 @@ namespace {
                 return ;
             }
             m_emitted_fn_types.insert(ty.clone());
-            
+
             const auto& te = ty.m_data.as_Function();
             m_of << "typedef ";
             // TODO: ABI marker, need an ABI enum?
-            // TODO: Better emit_ctype call for return type.
-            emit_ctype(*te.m_rettype); m_of << " (";
+            if( *te.m_rettype == ::HIR::TypeRef::new_unit() )
+                m_of << "void";
+            else
+                // TODO: Better emit_ctype call for return type?
+                emit_ctype(*te.m_rettype);
+            m_of << " (";
             if( m_compiler == Compiler::Msvc )
             {
                 if( te.m_abi == ABI_RUST )
@@ -1047,7 +1051,7 @@ namespace {
                         m_of << "extern ";
                     }
                 }
-                m_of << "tUNIT " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
+                m_of << "void " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
             }
             else if( m_resolve.is_type_owned_box(struct_ty) )
             {
@@ -1864,9 +1868,17 @@ namespace {
                         arg_ty.m_data.as_Tuple().push_back( ty.clone() );
 
                     m_of << "static ";
-                    emit_ctype(*te->m_rettype);
+                    if( *te->m_rettype == ::HIR::TypeRef::new_unit() )
+                        m_of << "void ";
+                    else
+                        emit_ctype(*te->m_rettype);
                     m_of << " " << Trans_Mangle(fcn_p) << "("; emit_ctype(type, FMT_CB(ss, ss << "*ptr";)); m_of << ", "; emit_ctype(arg_ty, FMT_CB(ss, ss << "args";)); m_of << ") {\n";
-                    m_of << "\treturn (*ptr)(";
+                    m_of << "\t";
+                    if( *te->m_rettype == ::HIR::TypeRef::new_unit() )
+                        ;
+                    else
+                        m_of << "return ";
+                    m_of << "(*ptr)(";
                         for(unsigned int i = 0; i < te->m_arg_types.size(); i++)
                         {
                             if(i != 0)  m_of << ", ";
@@ -2269,7 +2281,11 @@ namespace {
                     m_of << "\tfor(;;);\n";
                     ),
                 (Return,
-                    m_of << "\treturn rv;\n";
+                    // If the return type is (), don't return a value.
+                    if( ret_type == ::HIR::TypeRef::new_unit() )
+                        m_of << "\treturn ;\n";
+                    else
+                        m_of << "\treturn rv;\n";
                     ),
                 (Diverge,
                     m_of << "\t_Unwind_Resume();\n";
@@ -2353,6 +2369,7 @@ namespace {
                         TU_MATCHA( (bb.terminator), (te),
                         (Incomplete, ),
                         (Return,
+                            // TODO: If the return type is (), just emit "return"
                             assert(i == e.nodes.size()-1 && "Return");
                             m_of << indent << "return rv;\n";
                             ),
@@ -3332,13 +3349,28 @@ namespace {
                 }
             }
 
+            bool omit_assign = false;
+
+            // If the return type is `()`, omit the assignment (all () returning functions are marked as returning
+            // void)
+            {
+                ::HIR::TypeRef  tmp;
+                if( m_mir_res->get_lvalue_type(tmp, e.ret_val) == ::HIR::TypeRef::new_unit() )
+                {
+                    omit_assign = true;
+                }
+            }
+
             TU_MATCHA( (e.fcn), (e2),
             (Value,
                 {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, e2);
                     MIR_ASSERT(mir_res, ty.m_data.is_Function(), "Call::Value on non-function - " << ty);
-                    if( !ty.m_data.as_Function().m_rettype->m_data.is_Diverge() )
+
+                    const auto& ret_ty = *ty.m_data.as_Function().m_rettype;
+                    omit_assign |= ret_ty.m_data.is_Diverge();
+                    if( !omit_assign )
                     {
                         emit_lvalue(e.ret_val); m_of << " = ";
                     }
@@ -3347,18 +3379,17 @@ namespace {
                 ),
             (Path,
                 {
-                    bool is_diverge = false;
                     TU_MATCHA( (e2.m_data), (pe),
                     (Generic,
                         const auto& fcn = m_crate.get_function_by_path(sp, pe.m_path);
-                        is_diverge |= fcn.m_return.m_data.is_Diverge();
+                        omit_assign |= fcn.m_return.m_data.is_Diverge();
                         // TODO: Monomorph.
                         ),
                     (UfcsUnknown,
                         ),
                     (UfcsInherent,
-                        // TODO: Check if the return type is !
-                        is_diverge |= m_resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
+                        // Check if the return type is !
+                        omit_assign |= m_resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
                             [&](const auto& impl) {
                                 // Associated functions
                                 {
@@ -3372,13 +3403,13 @@ namespace {
                             });
                         ),
                     (UfcsKnown,
-                        // TODO: Check if the return type is !
+                        // Check if the return type is !
                         const auto& tr = m_resolve.m_crate.get_trait_by_path(sp, pe.trait.m_path);
                         const auto& fcn = tr.m_values.find(pe.item)->second.as_Function();
                         const auto& rv_tpl = fcn.m_return;
-                        if( rv_tpl.m_data.is_Diverge() )
+                        if( rv_tpl.m_data.is_Diverge() || rv_tpl == ::HIR::TypeRef::new_unit() )
                         {
-                            is_diverge |= true;
+                            omit_assign |= true;
                         }
                         else if( const auto* te = rv_tpl.m_data.opt_Generic() )
                         {
@@ -3397,7 +3428,7 @@ namespace {
                         }
                         )
                     )
-                    if(!is_diverge)
+                    if(!omit_assign)
                     {
                         emit_lvalue(e.ret_val); m_of << " = ";
                     }
@@ -3629,7 +3660,7 @@ namespace {
         {
             ::HIR::TypeRef  tmp;
             const auto& ret_ty = monomorphise_fcn_return(tmp, item, params);
-            emit_ctype( ret_ty, FMT_CB(ss,
+            auto cb = FMT_CB(ss,
                 // TODO: Cleaner ABI handling
                 if( item.m_abi == "system" && m_compiler == Compiler::Msvc )
                 {
@@ -3654,7 +3685,15 @@ namespace {
 
                     ss << "\n\t\t)";
                 }
-                ));
+                );
+            if( ret_ty != ::HIR::TypeRef::new_unit() )
+            {
+                emit_ctype( ret_ty, cb );
+            }
+            else
+            {
+                m_of << "void " << cb;
+            }
         }
 
         void emit_intrinsic_call(const ::std::string& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
