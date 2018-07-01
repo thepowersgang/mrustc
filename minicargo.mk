@@ -35,7 +35,7 @@ endif
 
 LLVM_CONFIG := $(RUSTCSRC)build/bin/llvm-config
 RUSTC_TARGET ?= x86_64-unknown-linux-gnu
-LLVM_TARGETS ?= "X86;ARM;AArch64" #;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
+LLVM_TARGETS ?= X86;ARM;AArch64#;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
 OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 
 .PHONY: bin/mrustc tools/bin/minicargo
