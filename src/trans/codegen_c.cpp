@@ -2589,14 +2589,12 @@ namespace {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
                     bool special = false;
-                    // If the inner value has type [T] or str, create DST based on inner pointer and existing metadata
+                    // If the inner value was a deref, just copy the pointer verbatim
                     TU_IFLET(::MIR::LValue, ve.val, Deref, le,
-                        if( metadata_type(ty) != MetadataType::None ) {
-                            emit_lvalue(e.dst);
-                            m_of << " = ";
-                            emit_lvalue(*le.val);
-                            special = true;
-                        }
+                        emit_lvalue(e.dst);
+                        m_of << " = ";
+                        emit_lvalue(*le.val);
+                        special = true;
                     )
                     // Magic for taking a &-ptr to unsized field of a struct.
                     // - Needs to get metadata from bottom-level pointer.
