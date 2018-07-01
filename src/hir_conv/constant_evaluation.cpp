@@ -13,6 +13,7 @@
 #include <mir/mir.hpp>
 #include <hir_typeck/common.hpp>    // Monomorph
 #include <mir/helpers.hpp>
+#include <trans/target.hpp>
 
 namespace {
     typedef ::std::vector< ::std::pair< ::std::string, ::HIR::Static> > t_new_values;
@@ -1532,6 +1533,13 @@ namespace {
                 case ::HIR::CoreType::I8:   lit.as_Integer() &= (1ull<<8)-1;  break;
                 case ::HIR::CoreType::I16:  lit.as_Integer() &= (1ull<<16)-1; break;
                 case ::HIR::CoreType::I32:  lit.as_Integer() &= (1ull<<32)-1; break;
+
+                case ::HIR::CoreType::Usize:
+                case ::HIR::CoreType::Isize:
+                    if( Target_GetCurSpec().m_arch.m_pointer_bits == 32 )
+                        lit.as_Integer() &= (1ull<<32)-1;
+                    break;
+
                 default:
                     break;
                 }

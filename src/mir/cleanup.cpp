@@ -16,6 +16,7 @@
 #include <mir/helpers.hpp>
 #include <mir/operations.hpp>
 #include <mir/visit_crate_mir.hpp>
+#include <trans/target.hpp>
 
 struct MirMutator
 {
@@ -911,6 +912,22 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
         }
     }
 }
+void MIR_Cleanup_Constant(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::Constant& p)
+{
+    if( auto* e = p.opt_Uint() )
+    {
+        switch(e->t)
+        {
+        // HACK: Restrict Usize to 32-bits when needed
+        case ::HIR::CoreType::Usize:
+            if( Target_GetCurSpec().m_arch.m_pointer_bits == 32 )
+                e->v &= 0xFFFFFFFF;
+            break;
+        default:
+            break;
+        }
+    }
+}
 void MIR_Cleanup_Param(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::Param& p)
 {
     TU_MATCHA( (p), (e),
@@ -918,7 +935,7 @@ void MIR_Cleanup_Param(const ::MIR::TypeResolve& state, MirMutator& mutator, ::M
         MIR_Cleanup_LValue(state, mutator, e);
         ),
     (Constant,
-        // NOTE: No cleanup
+        MIR_Cleanup_Constant(state, mutator, e);
         )
     )
 }
@@ -973,6 +990,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     MIR_Cleanup_LValue(state, mutator,  re);
                     ),
                 (Constant,
+                    MIR_Cleanup_Constant(state, mutator, re);
                     ),
                 (SizedArray,
                     MIR_Cleanup_Param(state, mutator,  re.val);
@@ -1057,6 +1075,9 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         {
                             DEBUG("Replace constant " << ce.p << " with " << *lit_ptr);
                             se.src = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_ptr, mv$(ty), mv$(ce.p));
+                            if( auto* p = se.src.opt_Constant() ) {
+                                MIR_Cleanup_Constant(state, mutator, *p);
+                            }
                         }
                         else
                         {
