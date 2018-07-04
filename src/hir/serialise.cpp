@@ -543,8 +543,8 @@
             (Asm,
                 m_out.write_tag(2);
                 m_out.write_string(e.tpl);
-                serialise_vec(e.inputs);
                 serialise_vec(e.outputs);
+                serialise_vec(e.inputs);
                 serialise_vec(e.clobbers);
                 serialise_vec(e.flags);
                 ),
