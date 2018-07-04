@@ -105,7 +105,20 @@ NODE(ExprNode_Macro, {
 })
 
 NODE(ExprNode_Asm, {
-    os << "asm!()";
+    os << "asm!( \"" << m_text << "\"";
+    os << " :";
+    for(const auto& v : m_output)
+        os << " \"" << v.name << "\" (" << *v.value << "),";
+    os << " :";
+    for(const auto& v : m_input)
+        os << " \"" << v.name << "\" (" << *v.value << "),";
+    os << " :";
+    for(const auto& v : m_clobbers)
+        os << " \"" << v << "\",";
+    os << " :";
+    for(const auto& v : m_flags)
+        os << " \"" << v << "\",";
+    os << " )";
 },{
     ::std::vector<ExprNode_Asm::ValRef> outputs;
     for(const auto& v : m_output)

@@ -469,7 +469,7 @@ namespace MIR {
             os << "(";
             for(const auto& spec : e.outputs)
                 os << "\"" << spec.first << "\" : " << spec.second << ", ";
-            os << ") = asm!(\"\", input=( ";
+            os << ") = asm!(\"" << e.tpl << "\", input=( ";
             for(const auto& spec : e.inputs)
                 os << "\"" << spec.first << "\" : " << spec.second << ", ";
             os << "), clobbers=[" << e.clobbers << "], flags=[" << e.flags << "])";

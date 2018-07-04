@@ -2487,6 +2487,7 @@ namespace {
 
         void emit_statement(const ::MIR::TypeResolve& mir_res, const ::MIR::Statement& stmt, unsigned indent_level=1)
         {
+            DEBUG(stmt);
             auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
             switch( stmt.tag() )
             {

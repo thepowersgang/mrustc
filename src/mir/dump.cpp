@@ -55,12 +55,12 @@ namespace {
                         //DEBUG("- Asm");
                         m_os << "(";
                         for(const auto& v : e.outputs)
-                            m_os << FMT_M(v.second) << ",";
+                            m_os << "\"" << ::FmtEscaped(v.first) << "\"=" << FMT_M(v.second) << ",";
                         m_os << ") = asm! \"";
                         m_os << ::FmtEscaped(e.tpl);
                         m_os << "\"(";
                         for(const auto& v : e.inputs)
-                            m_os << FMT_M(v.second) << ",";
+                            m_os << "\"" << ::FmtEscaped(v.first) << "\"=" << FMT_M(v.second) << ",";
                         m_os << " : ";
                         for(const auto& v : e.clobbers)
                             m_os << "\"" << v << "\",";

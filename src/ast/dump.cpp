@@ -76,8 +76,28 @@ public:
         m_os << n.m_name << "!( /* TODO: Macro TT */ )";
     }
     virtual void visit(AST::ExprNode_Asm& n) override {
-        m_os << "asm!(";
-        m_os << ")";
+        m_os << "asm!( \"" << n.m_text << "\"";
+        m_os << " :";
+        for(const auto& v : n.m_output)
+        {
+            m_os << " \"" << v.name << "\" (";
+            AST::NodeVisitor::visit(v.value);
+            m_os << "),";
+        }
+        m_os << " :";
+        for(const auto& v : n.m_input)
+        {
+            m_os << " \"" << v.name << "\" (";
+            AST::NodeVisitor::visit(v.value);
+            m_os << "),";
+        }
+        m_os << " :";
+        for(const auto& v : n.m_clobbers)
+            m_os << " \"" << v << "\",";
+        m_os << " :";
+        for(const auto& v : n.m_flags)
+            m_os << " \"" << v << "\",";
+        m_os << " )";
     }
     virtual void visit(AST::ExprNode_Flow& n) override {
         m_expr_root = false;

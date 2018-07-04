@@ -40,7 +40,7 @@ class CAsmExpander:
         Token   tok;
         auto lex = TTStream(sp, tt);
         if( ident != "" )
-            ERROR(sp, E0000, "format_args! doesn't take an ident");
+            ERROR(sp, E0000, "asm! doesn't take an ident");
 
         auto template_text = get_string(sp, lex,  crate, mod);
         ::std::vector<::AST::ExprNode_Asm::ValRef>  outputs;
@@ -49,12 +49,14 @@ class CAsmExpander:
         ::std::vector<::std::string>    flags;
 
         // Outputs
-        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
+        if( lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
-            if( tok.type() == TOK_DOUBLE_COLON ) {
-                lex.putback(Token(TOK_COLON));
-            }
+            lex.putback(Token(TOK_COLON));
+        }
+        else if( lex.lookahead(0) == TOK_COLON )
+        {
+            GET_TOK(tok, lex);
 
             while( lex.lookahead(0) == TOK_STRING )
             {
@@ -74,14 +76,19 @@ class CAsmExpander:
                 GET_TOK(tok, lex);
             }
         }
+        else
+        {
+        }
 
         // Inputs
-        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
+        if( lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
-            if( tok.type() == TOK_DOUBLE_COLON ) {
-                lex.putback(Token(TOK_COLON));
-            }
+            lex.putback(Token(TOK_COLON));
+        }
+        else if( lex.lookahead(0) == TOK_COLON )
+        {
+            GET_TOK(tok, lex);
 
             while( lex.lookahead(0) == TOK_STRING )
             {
@@ -99,14 +106,19 @@ class CAsmExpander:
                 GET_TOK(tok, lex);
             }
         }
+        else
+        {
+        }
 
         // Clobbers
-        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
+        if( lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
-            if( tok.type() == TOK_DOUBLE_COLON ) {
-                lex.putback(Token(TOK_COLON));
-            }
+            lex.putback(Token(TOK_COLON));
+        }
+        else if( lex.lookahead(0) == TOK_COLON )
+        {
+            GET_TOK(tok, lex);
 
             while( lex.lookahead(0) == TOK_STRING )
             {
@@ -118,14 +130,19 @@ class CAsmExpander:
                 GET_TOK(tok, lex);
             }
         }
+        else
+        {
+        }
 
         // Flags
-        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
+        if( lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
-            if( tok.type() == TOK_DOUBLE_COLON ) {
-                lex.putback(Token(TOK_COLON));
-            }
+            lex.putback(Token(TOK_COLON));
+        }
+        else if( lex.lookahead(0) == TOK_COLON )
+        {
+            GET_TOK(tok, lex);
 
             while( lex.lookahead(0) == TOK_STRING )
             {
@@ -137,13 +154,19 @@ class CAsmExpander:
                 GET_TOK(tok, lex);
             }
         }
+        else
+        {
+        }
 
-        if( lex.lookahead(0) == TOK_COLON || lex.lookahead(0) == TOK_DOUBLE_COLON )
+        // trailing `: voltaile` - TODO: Is this valid?
+        if( lex.lookahead(0) == TOK_DOUBLE_COLON )
         {
             GET_TOK(tok, lex);
-            if( tok.type() == TOK_DOUBLE_COLON ) {
-                lex.putback(Token(TOK_COLON));
-            }
+            lex.putback(Token(TOK_COLON));
+        }
+        else if( lex.lookahead(0) == TOK_COLON )
+        {
+            GET_TOK(tok, lex);
 
             if( GET_TOK(tok, lex) == TOK_IDENT && tok.str() == "volatile" )
             {
@@ -154,7 +177,11 @@ class CAsmExpander:
                 PUTBACK(tok, lex);
             }
         }
+        else
+        {
+        }
 
+        // has to be the end
         if( lex.lookahead(0) != TOK_EOF )
         {
             ERROR(sp, E0000, "Unexpected token in asm! - " << lex.getToken());
