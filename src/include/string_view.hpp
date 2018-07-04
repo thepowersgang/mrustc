@@ -78,7 +78,7 @@ private:
                 return *a < *b ? -1 : 1;
             }
         }
-        if( a == m_end && b == m_end )
+        if( a == m_end && b == x.m_end )
             return 0;
         if( a == m_end )
             return -1;
