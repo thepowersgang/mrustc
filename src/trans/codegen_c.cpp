@@ -409,7 +409,11 @@ namespace {
                 m_of
                     << "typedef struct { uint64_t lo, hi; } uint128_t;\n"
                     << "typedef struct { uint64_t lo, hi; } int128_t;\n"
+                    << "static inline float make_float(int is_neg, int exp, uint32_t mantissa_bits) { float rv; uint32_t vi=(mantissa_bits&((1<<23)-1))|((exp+127)<<23);if(is_neg)vi|=1<<31; memcpy(&rv, &vi, 4); return rv; }\n"
+                    << "static inline double make_double(int is_neg, int exp, uint32_t mantissa_bits) { double rv; uint64_t vi=(mantissa_bits&((1ull<<52)-1))|((uint64_t)(exp+1023)<<52);if(is_neg)vi|=1ull<<63; memcpy(&rv, &vi, 4); return rv; }\n"
                     << "static inline uint128_t make128(uint64_t v) { uint128_t rv = { v, 0 }; return rv; }\n"
+                    << "static inline float cast128_float(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
+                    << "static inline double cast128_double(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
                     << "static inline int cmp128(uint128_t a, uint128_t b) { if(a.hi != b.hi) return a.hi < b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
                     << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
                     << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
@@ -436,6 +440,8 @@ namespace {
                     << "\treturn rv;\n"
                     << "}\n"
                     << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
+                    << "static inline float cast128s_float(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
+                    << "static inline double cast128s_double(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
                     << "static inline int cmp128s(int128_t a, int128_t b) { if(a.hi != b.hi) return (int64_t)a.hi < (int64_t)b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
                     << "static inline bool add128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
                     << "static inline bool sub128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
@@ -3151,8 +3157,38 @@ namespace {
                         MIR_BUG(mir_res, "Unreachable");
                     }
                     break;
+                case ::HIR::CoreType::F32:
+                    emit_lvalue(dst);
+                    m_of << " = ";
+                    switch (ty.m_data.as_Primitive())
+                    {
+                    case ::HIR::CoreType::U128:
+                        m_of << "cast128_float("; emit_lvalue(ve.val); m_of << ")";
+                        break;
+                    case ::HIR::CoreType::I128:
+                        m_of << "cast128s_float("; emit_lvalue(ve.val); m_of << ")";
+                        break;
+                    default:
+                        MIR_BUG(mir_res, "Unreachable");
+                    }
+                    break;
+                case ::HIR::CoreType::F64:
+                    emit_lvalue(dst);
+                    m_of << " = ";
+                    switch (ty.m_data.as_Primitive())
+                    {
+                    case ::HIR::CoreType::U128:
+                        m_of << "cast128_double("; emit_lvalue(ve.val); m_of << ")";
+                        break;
+                    case ::HIR::CoreType::I128:
+                        m_of << "cast128s_double("; emit_lvalue(ve.val); m_of << ")";
+                        break;
+                    default:
+                        MIR_BUG(mir_res, "Unreachable");
+                    }
+                    break;
                 default:
-                    MIR_BUG(mir_res, "Bad i128/u128 cast");
+                    MIR_BUG(mir_res, "Bad i128/u128 cast - " << ty << " to " << ve.type);
                 }
                 return;
             }
@@ -5178,7 +5214,16 @@ namespace {
             TU_MATCHA( (ve), (c),
             (Int,
                 if( c.v == INT64_MIN )
-                    m_of << "INT64_MIN";
+                {
+                    if( m_options.emulated_i128 && c.t == ::HIR::CoreType::I128 )
+                    {
+                        m_of << "make128s(INT64_MIN)";
+                    }
+                    else
+                    {
+                        m_of << "INT64_MIN";
+                    }
+                }
                 else
                 {
                     switch(c.t)
