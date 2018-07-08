@@ -530,7 +530,7 @@ pub fn recv_token_stream() -> TokenStream
                 if b < 128 {
                     break;
                 }
-                assert!(ofs < 18);  // at most 18 bytes needed for a i128
+                assert!(ofs < 18*7);  // at most 18 bytes needed for a i128
                 ofs += 7;
             }
             raw_rv
