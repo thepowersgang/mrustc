@@ -901,6 +901,9 @@ namespace {
             else if( repr_str == "simd" ) {
                 is_simd = true;
             }
+            else if( repr_str == "transparent" ) {
+                // TODO: Mark so the C backend knows that it's supposed to be transparent
+            }
             else {
                 TODO(a.span(), "Handle struct repr '" << repr_str << "'");
             }
@@ -1247,7 +1250,8 @@ namespace {
         else TU_IFLET(::HIR::TypeRef::Data, arg_self_ty.m_data, Path, e,
             // Box - Compare with `owned_box` lang item
             TU_IFLET(::HIR::Path::Data, e.path.m_data, Generic, pe,
-                if( pe.m_path == g_crate_ptr->get_lang_item_path(sp, "owned_box") )
+                auto p = g_crate_ptr->get_lang_item_path_opt("owned_box");
+                if( pe.m_path == p )
                 {
                     if( pe.m_params.m_types.size() == 1 && pe.m_params.m_types[0] == self_type )
                     {

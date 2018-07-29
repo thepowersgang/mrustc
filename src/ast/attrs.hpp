@@ -77,6 +77,7 @@ class Attribute
     ::std::string   m_name;
     AttributeData   m_data;
     mutable bool    m_is_used;
+    // TODO: Parse as a TT then expand?
 public:
     Attribute(Span sp, ::std::string name):
         m_span(::std::move(sp)),

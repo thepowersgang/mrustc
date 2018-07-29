@@ -30,6 +30,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "copy" ) {
         DEBUG("Bind 'copy' to " << path);
     }
+    else if( TARGETVER_1_29 && name == "clone" ) {}   // - Trait
     // ops traits
     else if( name == "drop" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "add" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -67,7 +68,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "fn_once" ) { DEBUG("Bind '"<<name<<"' to " << path); }
 
     else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( TARGETVER_1_19 && name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( TARGETVER_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
     else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "freeze" ) { DEBUG("Bind '"<<name<<"' to " << path); }
@@ -84,6 +86,12 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "range_from" ) { }
     else if( name == "range_to" ) { }
     else if( name == "unsafe_cell" ) { }
+    else if( TARGETVER_1_29 && name == "alloc_layout") { }
+    else if( TARGETVER_1_29 && name == "panic_info" ) {}    // Struct
+
+    // Generators
+    else if( TARGETVER_1_29 && name == "generator" ) {}   // - Trait
+    else if( TARGETVER_1_29 && name == "generator_state" ) {}   // - State enum
 
     // Statics
     else if( name == "msvc_try_filter" ) { }
@@ -96,6 +104,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     }
     else if( name == "str_eq" ) { }
     else if( name == "drop_in_place" ) { }
+    else if( name == "align_offset" ) { }
     // - builtin `box` support
     else if( name == "exchange_malloc" ) { }
     else if( name == "exchange_free" ) { }
@@ -148,6 +157,9 @@ public:
         (Struct,
             handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_STRUCT);
             ),
+        (Enum,
+            handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_ENUM);
+            ),
         (Trait,
             handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_TRAIT);
             )
@@ -176,6 +188,7 @@ public:
         // collections
         else if( name == "str" ) {}
         else if( name == "slice" ) {}
+        else if( TARGETVER_1_29 && name == "slice_u8" ) {}
         // std - interestingly
         else if( name == "f32" ) {}
         else if( name == "f64" ) {}

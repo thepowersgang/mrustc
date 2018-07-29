@@ -706,7 +706,7 @@ ExprNodeP Parse_Expr1_1(TokenStream& lex)
     ExprNodeP   left, right;
 
     // Inclusive range to a value
-    if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT ) {
+    if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT || (TARGETVER_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL) ) {
         right = next(lex);
         return NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, nullptr, mv$(right) );
     }
@@ -746,6 +746,13 @@ LEFTASSOC(Parse_Expr1_2, Parse_Expr1_5,
     case TOK_TRIPLE_DOT:
         rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, mv$(rv), next(lex) );
         break;
+    case TOK_DOUBLE_DOT_EQUAL:
+        if( TARGETVER_1_29 )
+        {
+            rv = NEWNODE( AST::ExprNode_BinOp, AST::ExprNode_BinOp::RANGE_INC, mv$(rv), next(lex) );
+            break;
+        }
+        // Fall through
 )
 // 1: Bool OR
 LEFTASSOC(Parse_Expr1_5, Parse_Expr2,

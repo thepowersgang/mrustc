@@ -18,6 +18,7 @@ namespace AST {
 /// Parse a crate from the given file
 extern AST::Crate Parse_Crate(::std::string mainfile);
 
+extern void Expand_Init();
 extern void Expand(::AST::Crate& crate);
 extern void Expand_TestHarness(::AST::Crate& crate);
 extern void Expand_ProcMacro(::AST::Crate& crate);

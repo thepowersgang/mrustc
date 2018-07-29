@@ -16,6 +16,7 @@
 
 namespace AST {
     class Module;
+    class Crate;
     class AttributeList;
 }
 
@@ -27,6 +28,7 @@ struct ParseState
     // A debugging hook that disables expansion of macros
     bool no_expand_macros = false;
 
+    const ::AST::Crate* crate = nullptr;
     ::AST::Module*  module = nullptr;
     ::AST::AttributeList*   parent_attrs = nullptr;
 

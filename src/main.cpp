@@ -221,6 +221,8 @@ int main(int argc, char *argv[])
         Cfg_SetFlag("test");
     }
 
+    Expand_Init();
+
     try
     {
         // Parse the crate into AST

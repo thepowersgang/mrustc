@@ -89,6 +89,7 @@ OBJ +=  expand/env.o
 OBJ +=  expand/test.o
 OBJ +=  expand/rustc_diagnostics.o
 OBJ +=  expand/proc_macro.o
+OBJ +=  expand/assert.o
 OBJ += expand/test_harness.o
 OBJ += macro_rules/mod.o macro_rules/eval.o macro_rules/parse.o
 OBJ += resolve/use.o resolve/index.o resolve/absolute.o

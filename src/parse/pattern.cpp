@@ -113,6 +113,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             break;
         // Known value `IDENT ...`
         case TOK_TRIPLE_DOT:
+        case TOK_DOUBLE_DOT_EQUAL:
             break;
         // Known binding `ident @`
         case TOK_AT:
@@ -156,7 +157,9 @@ AST::Pattern Parse_PatternReal(TokenStream& lex, bool is_refutable)
     }
     auto ps = lex.start_span();
     AST::Pattern    ret = Parse_PatternReal1(lex, is_refutable);
-    if( GET_TOK(tok, lex) == TOK_TRIPLE_DOT )
+    if( (GET_TOK(tok, lex) == TOK_TRIPLE_DOT)
+     || (TARGETVER_1_29 && tok.type() == TOK_DOUBLE_DOT_EQUAL)
+      )
     {
         if( !ret.data().is_Value() )
             throw ParseError::Generic(lex, "Using '...' with a non-value on left");

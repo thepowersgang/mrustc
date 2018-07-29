@@ -359,8 +359,9 @@ struct EscapedString {
     case TOK_SLASH:     return "/";
 
     case TOK_DOT:   return ".";
-    case TOK_DOUBLE_DOT:    return "...";
-    case TOK_TRIPLE_DOT:    return "..";
+    case TOK_DOUBLE_DOT:    return "..";
+    case TOK_DOUBLE_DOT_EQUAL:  return "..=";
+    case TOK_TRIPLE_DOT:    return "...";
 
     case TOK_EQUAL: return "=";
     case TOK_PLUS_EQUAL:    return "+=";
@@ -484,13 +485,13 @@ struct EscapedString {
         os << ":" << *reinterpret_cast<AST::Path*>(tok.m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_EXPR:
-        os << ":" << *reinterpret_cast<AST::ExprNode*>(tok.m_data.as_Fragment());
+        os << ":" << *reinterpret_cast<const AST::ExprNode*>(tok.m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_STMT:
-        os << ":" << *reinterpret_cast<AST::ExprNode*>(tok.m_data.as_Fragment());
+        os << ":" << *reinterpret_cast<const AST::ExprNode*>(tok.m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_BLOCK:
-        os << ":" << *reinterpret_cast<AST::ExprNode*>(tok.m_data.as_Fragment());
+        os << ":" << *reinterpret_cast<const AST::ExprNode*>(tok.m_data.as_Fragment());
         break;
     case TOK_INTERPOLATED_META:
         os << ":" << *reinterpret_cast<AST::Attribute*>(tok.m_data.as_Fragment());

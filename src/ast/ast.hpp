@@ -8,6 +8,9 @@
 #ifndef AST_HPP_INCLUDED
 #define AST_HPP_INCLUDED
 
+#define TARGETVER_1_19  true
+#define TARGETVER_1_29  true
+
 #include <string>
 #include <vector>
 #include <stdexcept>
@@ -44,6 +47,8 @@ enum eItemType
 {
     ITEM_TRAIT,
     ITEM_STRUCT,
+    ITEM_ENUM,
+    ITEM_UNION,
     ITEM_FN,
     ITEM_STATIC,
 };

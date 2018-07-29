@@ -41,6 +41,12 @@ void Register_Synext_Macro_Static(MacroDef* def) {
     g_macros_list = def;
 }
 
+void Expand_Init()
+{
+    // TODO: Initialise all macros here.
+    void Expand_init_assert(); Expand_init_assert();
+}
+
 
 void ExpandDecorator::unexpected(const Span& sp, const AST::Attribute& mi, const char* loc_str) const
 {
@@ -86,7 +92,7 @@ void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& c
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mod, impl); });
 }
 
-::std::unique_ptr<TokenStream> Expand_Macro(
+::std::unique_ptr<TokenStream> Expand_Macro_Inner(
     const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
     Span mi_span, const ::std::string& name, const ::std::string& input_ident, TokenTree& input_tt
     )
@@ -143,6 +149,17 @@ void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& c
 
     // Error - Unknown macro name
     ERROR(mi_span, E0000, "Unknown macro '" << name << "'");
+}
+::std::unique_ptr<TokenStream> Expand_Macro(
+    const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
+    Span mi_span, const ::std::string& name, const ::std::string& input_ident, TokenTree& input_tt
+    )
+{
+    auto rv = Expand_Macro_Inner(crate, modstack, mod, mi_span, name, input_ident, input_tt);
+    assert(rv);
+    rv->parse_state().module = &mod;
+    rv->parse_state().crate = &crate;
+    return rv;
 }
 ::std::unique_ptr<TokenStream> Expand_Macro(const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod, ::AST::MacroInvocation& mi)
 {

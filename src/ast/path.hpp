@@ -271,6 +271,10 @@ public:
         return Path(*this) += x;
     }
     Path& operator+=(const Path& x);
+    Path& operator+=(PathNode pn) {
+        this->nodes().push_back( mv$(pn) );
+        return *this;
+    }
 
     void append(PathNode node) {
         assert( !m_class.is_Invalid() );

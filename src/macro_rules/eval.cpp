@@ -1189,7 +1189,8 @@ namespace
             }
             if(lex.consume_if(TOK_AT))
                 continue;
-            if( lex.consume_if(TOK_TRIPLE_DOT) )
+            // ... or ..=
+            if( lex.consume_if(TOK_TRIPLE_DOT) || lex.consume_if(TOK_DOUBLE_DOT_EQUAL) )
             {
                 switch(lex.next())
                 {
@@ -1491,6 +1492,7 @@ namespace
             case TOK_DOUBLE_AMP:
             case TOK_DOUBLE_PIPE:
             case TOK_DOUBLE_DOT:
+            case TOK_DOUBLE_DOT_EQUAL:
             case TOK_TRIPLE_DOT:
                 lex.consume();
                 break;

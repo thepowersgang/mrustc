@@ -83,8 +83,10 @@ static const struct {
   TOKENT("-=", TOK_DASH_EQUAL),
   TOKENT("->", TOK_THINARROW),
   TOKENT(".",  TOK_DOT),
+  // NOTE: These have special handling when following numbers
   TOKENT("..", TOK_DOUBLE_DOT),
   TOKENT("...",TOK_TRIPLE_DOT),
+  TOKENT("..=",TOK_DOUBLE_DOT_EQUAL),
   TOKENT("/" , TOK_SLASH),
   TOKENT("/*", BLOCKCOMMENT),
   TOKENT("//", LINECOMMENT),
@@ -402,8 +404,12 @@ Token Lexer::getTokenInt()
                         // Double/Triple Dot
                         if( ch == '.' )
                         {
-                            if( this->getc() == '.') {
+                            ch = this->getc();
+                            if( ch == '.') {
                                 this->m_next_tokens.push_back(TOK_TRIPLE_DOT);
+                            }
+                            else if( ch == '=') {
+                                this->m_next_tokens.push_back(TOK_DOUBLE_DOT_EQUAL);
                             }
                             else {
                                 this->ungetc();
