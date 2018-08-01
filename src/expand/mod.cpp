@@ -803,12 +803,19 @@ struct CExpandExpr:
             auto path_Err = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Err")});
             auto path_From = ::AST::Path(core_crate, {::AST::PathNode("convert"), ::AST::PathNode("From")});
             path_From.nodes().back().args().m_types.push_back( ::TypeRef(node.span()) );
+            // TODO: Lang item (needs lang items enumerated earlier)
+            //auto it = crate.m_lang_items.find("try");
+            //ASSERT_BUG(node.span(), it != crate.m_lang_items.end(), "Can't find the `try` lang item");
+            //auto path_Try = it->second;
+            auto path_Try = ::AST::Path(core_crate, {::AST::PathNode("ops"), ::AST::PathNode("Try")});
+            auto path_Try_into_result = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_Try, { ::AST::PathNode("into_result") });
+            auto path_Try_from_error  = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), path_Try, { ::AST::PathNode("from_error") });
 
             // Desugars into
             // ```
-            // match `m_value` {
+            // match `Try::into_result(m_value)` {
             // Ok(v) => v,
-            // Err(e) => return Err(From::from(e)),
+            // Err(e) => return Try::from_error(From::from(e)),
             // }
             // ```
 
@@ -819,7 +826,7 @@ struct CExpandExpr:
                 nullptr,
                 ::AST::ExprNodeP( new ::AST::ExprNode_NamedValue( ::AST::Path(::AST::Path::TagLocal(), "v") ) )
                 ));
-            // `Err(e) => return Err(From::from(e)),`
+            // `Err(e) => return Try::from_error(From::from(e)),`
             arms.push_back(::AST::ExprNode_Match_Arm(
                 ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "e") )) ),
                 nullptr,
@@ -827,7 +834,7 @@ struct CExpandExpr:
                     ::AST::ExprNode_Flow::RETURN,
                     "",
                     ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
-                        ::AST::Path(path_Err),
+                        ::AST::Path(path_Try_from_error),
                         ::make_vec1(
                             ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
                                 ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(node.span()), mv$(path_From), { ::AST::PathNode("from") }),
@@ -838,7 +845,13 @@ struct CExpandExpr:
                     ))
                 ));
 
-            replacement.reset(new ::AST::ExprNode_Match( mv$(node.m_value), mv$(arms) ));
+            replacement.reset(new ::AST::ExprNode_Match(
+                ::AST::ExprNodeP(new AST::ExprNode_CallPath(
+                    mv$(path_Try_into_result),
+                    ::make_vec1( mv$(node.m_value) )
+                    )),
+                mv$(arms)
+                ));
         }
     }
 };
