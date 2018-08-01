@@ -1050,8 +1050,10 @@ bool TraitResolution::iterate_bounds( ::std::function<bool(const ::HIR::GenericB
 bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const
 {
     ::HIR::GenericPath  trait_path;
+    DEBUG("Checking ATY bounds on " << pe.trait << " :: " << pe.item);
     if( !this->trait_contains_type(sp, pe.trait, this->m_crate.get_trait_by_path(sp, pe.trait.m_path), pe.item, trait_path) )
         BUG(sp, "Cannot find associated type " << pe.item << " anywhere in trait " << pe.trait);
+    DEBUG("trait_path=" << trait_path);
     const auto& trait_ref = m_crate.get_trait_by_path(sp, trait_path.m_path);
     const auto& aty_def = trait_ref.m_types.find(pe.item)->second;
 
@@ -1361,12 +1363,19 @@ bool TraitResolution::find_trait_impls(const Span& sp,
             ASSERT_BUG(sp, e.path.m_data.is_UfcsKnown(), "Opaque bound type wasn't UfcsKnown - " << type);
             const auto& pe = e.path.m_data.as_UfcsKnown();
 
+            // TODO: Should Self here be `type` or `*pe.type`
+            // - Depends... if implicit it should be `type` (as it relates to the associated type), but if explicit it's referring to the trait
             auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr, nullptr);
 
             auto rv = this->iterate_aty_bounds(sp, pe, [&](const auto& bound) {
+                DEBUG("Bound on ATY: " << bound);
                 const auto& b_params = bound.m_path.m_params;
                 ::HIR::PathParams   params_mono_o;
                 const auto& b_params_mono = (monomorphise_pathparams_needed(b_params) ? params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false) : b_params);
+                // TODO: Monormophise and EAT associated types
+                ::std::map< ::std::string, ::HIR::TypeRef>    b_atys;
+                for(const auto& aty : bound.m_type_bounds)
+                    b_atys.insert(::std::make_pair( aty.first, monomorphise_type_with(sp, aty.second, monomorph_cb) ));
 
                 if( bound.m_path.m_path == trait )
                 {
@@ -1375,13 +1384,15 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                     {
                         if( &b_params_mono == &params_mono_o )
                         {
-                            if( callback( ImplRef(type.clone(), mv$(params_mono_o), {}), cmp ) )
+                            // TODO: assoc bounds
+                            if( callback( ImplRef(type.clone(), mv$(params_mono_o), mv$(b_atys)), cmp ) )
                                 return true;
                             params_mono_o = monomorphise_path_params_with(sp, b_params, monomorph_cb, false);
                         }
                         else
                         {
-                            if( callback( ImplRef(&type, &bound.m_path.m_params, &null_assoc), cmp ) )
+                            //if( callback( ImplRef(&type, &bound.m_path.m_params, &null_assoc), cmp ) )
+                            if( callback( ImplRef(&type, &bound.m_path.m_params, &b_atys), cmp ) )
                                 return true;
                         }
                     }
@@ -2219,12 +2230,14 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
     // TODO: A bound can imply something via its associated types. How deep can this go?
     // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
     return this->iterate_bounds([&](const auto& b)->bool {
+        DEBUG(b);
         if( b.is_TraitBound() )
         {
             const auto& e = b.as_TraitBound();
             const auto& b_params = e.trait.m_path.m_params;
 
             auto cmp = e.type .compare_with_placeholders(sp, type, m_ivars.callback_resolve_infer());
+            DEBUG("cmp = " << cmp);
             if( cmp == ::HIR::Compare::Unequal )
                 return false;
 
@@ -3643,6 +3656,9 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, ::H
             return &this->m_ivars.get_type(*ty.m_data.as_Borrow().inner);
         }
         break;
+    case ::HIR::Function::Receiver::Custom:
+        // TODO: Handle custom-receiver functions
+        return nullptr;
     case ::HIR::Function::Receiver::Box:
         if(const auto* ity = this->type_is_owned_box(sp, ty))
         {

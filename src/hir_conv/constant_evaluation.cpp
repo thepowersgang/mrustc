@@ -48,7 +48,7 @@ namespace {
         }
     };
 
-    ::HIR::Literal evaluate_constant(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args={});
+    ::HIR::Literal evaluate_constant(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprPtr& expr, t_cb_generic monomorph_cb, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args={});
 
     ::HIR::Literal clone_literal(const ::HIR::Literal& v)
     {
@@ -245,7 +245,26 @@ namespace {
         }
     }
 
-    ::HIR::Literal evaluate_constant_hir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprNode& expr, ::HIR::TypeRef exp_type, ::std::vector< ::HIR::Literal> args)
+    ::HIR::Literal evaluate_constant_intrinsic(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::std::string& name, const ::HIR::PathParams& params, ::std::vector< ::HIR::Literal> args)
+    {
+        TRACE_FUNCTION_F("\"" << name << "\"" << params << " " << args);
+        if( name == "size_of" ) {
+            ASSERT_BUG(sp, params.m_types.size() == 1, "size_of intrinsic takes one type param (consteval)");
+            const auto& ty = params.m_types[0];
+
+            size_t  size;
+            if( !Target_GetSizeOf(sp, StaticTraitResolve { crate }, ty, size) )
+            {
+                TODO(sp, "Handle error from Target_GetSizeOf(" << ty << ") in evaluate_constant_intrinsic");
+            }
+            return ::HIR::Literal::make_Integer(size);
+        }
+        else {
+            TODO(sp, "name=" << name << params << " args=" << args);
+        }
+    }
+
+    ::HIR::Literal evaluate_constant_hir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprNode& expr, t_cb_generic monomorph_cb, ::HIR::TypeRef exp_type, ::std::vector< ::HIR::Literal> args)
     {
         // TODO: Force this function/tree through the entire pipeline so we can MIR it?
         // - Requires a HUGE change to the way the compiler operates.
@@ -260,6 +279,7 @@ namespace {
             ::HIR::TypeRef  m_exp_type;
             ::HIR::TypeRef  m_rv_type;
             ::HIR::Literal  m_rv;
+            t_cb_generic    m_monomorph_cb;
 
             Visitor(const ::HIR::Crate& crate, NewvalState newval_state, ::HIR::TypeRef exp_ty):
                 m_crate(crate),
@@ -613,7 +633,7 @@ namespace {
             }
             void visit(::HIR::ExprNode_CallPath& node) override
             {
-
+                const auto& sp = node.span();
                 TRACE_FUNCTION_FR("_CallPath - " << node.m_path, m_rv);
                 auto& fcn = get_function(node.span(), m_crate, node.m_path);
 
@@ -651,10 +671,27 @@ namespace {
 
                 exp_ret_type = fcn.m_return.clone();
 
-                // Call by invoking evaluate_constant on the function
+                if( fcn.m_abi == "rust-intrinsic" )
                 {
-                    TRACE_FUNCTION_F("Call const fn " << node.m_path << " args={ " << args << " }");
-                    m_rv = evaluate_constant(node.span(), m_crate, m_newval_state,  fcn.m_code, mv$(exp_ret_type), mv$(args));
+                    auto pp = monomorphise_path_params_with(node.span(), node.m_path.m_data.as_Generic().m_params, m_monomorph_cb, true);
+                    m_rv = evaluate_constant_intrinsic(node.span(), m_crate, m_newval_state,  fcn.m_linkage.name, pp, mv$(args));
+                }
+                else
+                {
+                    // Call by invoking evaluate_constant on the function
+                    t_cb_generic cb;
+                    ::HIR::PathParams   pp;
+                    if( const auto* g = node.m_path.m_data.opt_Generic() )
+                    {
+                        pp = monomorphise_path_params_with(node.span(), g->m_params, m_monomorph_cb, true);
+                        cb = monomorphise_type_get_cb(sp, nullptr, nullptr, &pp);
+                    }
+                    else
+                    {
+                        cb = monomorphise_type_get_cb(sp, nullptr, nullptr, nullptr);
+                    }
+                    TRACE_FUNCTION_F("Call const fn " << node.m_path << " args={ " << args << " } - pp=" << pp);
+                    m_rv = evaluate_constant(node.span(), m_crate, m_newval_state,  fcn.m_code, cb, mv$(exp_ret_type), mv$(args));
                 }
             }
             void visit(::HIR::ExprNode_CallValue& node) override {
@@ -1009,6 +1046,7 @@ namespace {
         };
 
         Visitor v { crate, newval_state, mv$(exp_type) };
+        v.m_monomorph_cb = monomorph_cb;
         for(auto& arg : args)
             v.m_values.push_back( mv$(arg) );
         const_cast<::HIR::ExprNode&>(expr).visit(v);
@@ -1021,7 +1059,7 @@ namespace {
         return mv$(v.m_rv);
     }
 
-    ::HIR::Literal evaluate_constant_mir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::MIR::Function& fcn, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
+    ::HIR::Literal evaluate_constant_mir(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::MIR::Function& fcn, t_cb_generic monomorph_cb, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
     {
         // TODO: Full-blown miri
         TRACE_FUNCTION_F("exp=" << exp << ", args=" << args);
@@ -1452,7 +1490,8 @@ namespace {
                 // Call by invoking evaluate_constant on the function
                 {
                     TRACE_FUNCTION_F("Call const fn " << fcnp << " args={ " << call_args << " }");
-                    dst = evaluate_constant(sp, crate, newval_state,  fcn.m_code, fcn.m_return.clone(), mv$(call_args));
+                    // TODO: Correct monomorph_cb
+                    dst = evaluate_constant(sp, crate, newval_state,  fcn.m_code, monomorph_cb, fcn.m_return.clone(), mv$(call_args));
                 }
 
                 cur_block = e.ret_block;
@@ -1461,13 +1500,13 @@ namespace {
         }
     }
 
-    ::HIR::Literal evaluate_constant(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
+    ::HIR::Literal evaluate_constant(const Span& sp, const ::HIR::Crate& crate, NewvalState newval_state, const ::HIR::ExprPtr& expr, t_cb_generic monomorph_cb, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
     {
         if( expr.m_mir ) {
-            return evaluate_constant_mir(sp, crate, mv$(newval_state), *expr.m_mir, mv$(exp), mv$(args));
+            return evaluate_constant_mir(sp, crate, mv$(newval_state), *expr.m_mir, monomorph_cb, mv$(exp), mv$(args));
         }
         else if( expr ) {
-            return evaluate_constant_hir(sp, crate, mv$(newval_state), *expr, mv$(exp), mv$(args));
+            return evaluate_constant_hir(sp, crate, mv$(newval_state), *expr, monomorph_cb, mv$(exp), mv$(args));
         }
         else {
             BUG(sp, "Attempting to evaluate constant expression with no associated code");
@@ -1585,13 +1624,14 @@ namespace {
             ::HIR::Visitor::visit_type(ty);
 
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
+                TRACE_FUNCTION_FR(ty, ty);
                 if( e.size_val == ~0u )
                 {
                     assert(e.size);
                     assert(*e.size);
                     const auto& expr_ptr = *e.size;
                     auto nvs = NewvalState { m_new_values, *m_mod_path, FMT("ty_" << &ty << "$") };
-                    auto val = evaluate_constant(expr_ptr->span(), m_crate, nvs, expr_ptr, ::HIR::CoreType::Usize);
+                    auto val = evaluate_constant(expr_ptr->span(), m_crate, nvs, expr_ptr, monomorphise_type_get_cb(expr_ptr->span(), nullptr, nullptr, nullptr), ::HIR::CoreType::Usize);
                     if( !val.is_Integer() )
                         ERROR(expr_ptr->span(), E0000, "Array size isn't an integer");
                     e.size_val = static_cast<size_t>(val.as_Integer());
@@ -1615,14 +1655,16 @@ namespace {
                 //    return ;
 
                 auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$") };
-                item.m_value_res = evaluate_constant(item.m_value->span(), m_crate, nvs, item.m_value, item.m_type.clone(), {});
+                const auto& sp = item.m_value->span();
+                item.m_value_res = evaluate_constant(sp, m_crate, nvs, item.m_value, monomorphise_type_get_cb(sp, nullptr, nullptr, nullptr), item.m_type.clone(), {});
 
-                check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
+                check_lit_type(sp, item.m_type, item.m_value_res);
 
                 DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
             }
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
+            static Span sp;
             if( auto* e = item.m_data.opt_Value() )
             {
                 uint64_t i = 0;
@@ -1630,7 +1672,9 @@ namespace {
                 {
                     if( var.expr )
                     {
-                        auto val = evaluate_constant(var.expr->span(), m_crate, NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.name << "$") }, var.expr, {});
+                        auto nvs = NewvalState { m_new_values, *m_mod_path, FMT(p.get_name() << "$" << var.name << "$") };
+                        const auto& sp = var.expr->span();
+                        auto val = evaluate_constant(sp, m_crate, nvs, var.expr, monomorphise_type_get_cb(sp, nullptr, nullptr, nullptr), {}, {});
                         DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
                         i = val.as_Integer();
                     }
@@ -1664,7 +1708,7 @@ namespace {
                 void visit(::HIR::ExprNode_ArraySized& node) override {
                     assert( node.m_size );
                     NewvalState nvs { m_exp.m_new_values, *m_exp.m_mod_path, FMT("array_" << &node << "$") };
-                    auto val = evaluate_constant_hir(node.span(), m_exp.m_crate, mv$(nvs), *node.m_size, ::HIR::CoreType::Usize, {});
+                    auto val = evaluate_constant_hir(node.span(), m_exp.m_crate, mv$(nvs), *node.m_size, monomorphise_type_get_cb(node.span(), nullptr, nullptr, nullptr), ::HIR::CoreType::Usize, {});
                     if( !val.is_Integer() )
                         ERROR(node.span(), E0000, "Array size isn't an integer");
                     node.m_size_val = static_cast<size_t>(val.as_Integer());

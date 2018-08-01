@@ -89,13 +89,46 @@ namespace {
         void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
         {
             m_os << indent() << "trait " << p.get_name() << item.m_params.fmt_args() << "\n";
+            if( ! item.m_parent_traits.empty() )
+            {
+                m_os << indent() << "  " << ": ";
+                bool is_first = true;
+                for(auto& bound : item.m_parent_traits)
+                {
+                    if( !is_first )
+                        m_os << indent() << "  " << "+ ";
+                    m_os << bound << "\n";
+                    is_first = false;
+                }
+            }
             if( ! item.m_params.m_bounds.empty() )
             {
                 m_os << indent() << " " << item.m_params.fmt_bounds() << "\n";
             }
             m_os << indent() << "{\n";
             inc_indent();
+
+            for(auto& i : item.m_types)
+            {
+                m_os << indent() << "type " << i.first;
+                if( ! i.second.m_trait_bounds.empty() )
+                {
+                    m_os << ": ";
+                    bool is_first = true;
+                    for(auto& bound : i.second.m_trait_bounds)
+                    {
+                        if( !is_first )
+                            m_os << " + ";
+                        m_os << bound;
+                        is_first = false;
+                    }
+                }
+                //this->visit_type(i.second.m_default);
+                m_os << ";\n";
+            }
+
             ::HIR::Visitor::visit_trait(p, item);
+
             dec_indent();
             m_os << indent() << "}\n";
         }

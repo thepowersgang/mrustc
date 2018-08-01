@@ -201,13 +201,16 @@ namespace {
         {
             while( param_vals.m_types.size() < param_def.m_types.size() ) {
                 unsigned int i = param_vals.m_types.size();
-                if( param_def.m_types[i].m_default.m_data.is_Infer() ) {
+                const auto& ty_def = param_def.m_types[i];
+                if( ty_def.m_default.m_data.is_Infer() ) {
                     ERROR(sp, E0000, "Unspecified parameter with no default");
                 }
 
                 // Replace and expand
-                param_vals.m_types.push_back( param_def.m_types[i].m_default.clone() );
+                param_vals.m_types.push_back( ty_def.m_default.clone() );
                 auto& ty = param_vals.m_types.back();
+                // TODO: Monomorphise?
+                // Replace `Self` here with the real Self
                 update_self_type(sp, ty);
             }
 
@@ -220,7 +223,7 @@ namespace {
                 if( param_vals.m_types[i] == ::HIR::TypeRef() ) {
                     //if( param_def.m_types[i].m_default == ::HIR::TypeRef() )
                     //    ERROR(sp, E0000, "Unspecified parameter with no default");
-                    // TODO: Monomorph?
+                    // TODO: Monomorphise?
                     param_vals.m_types[i] = param_def.m_types[i].m_default.clone();
                     update_self_type(sp, param_vals.m_types[i]);
                 }
@@ -429,6 +432,16 @@ namespace {
             }
             return trait_path_g;
         }
+        ::HIR::GenericPath get_current_trait_gp() const
+        {
+            assert(m_current_trait_path);
+            assert(m_current_trait);
+            auto trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
+            for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
+                trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
+            }
+            return trait_path;
+        }
         void visit_path_UfcsUnknown(const Span& sp, ::HIR::Path& p, ::HIR::Visitor::PathContext pc)
         {
             TRACE_FUNCTION_FR("UfcsUnknown - p=" << p, p);
@@ -449,10 +462,7 @@ namespace {
                 // If processing a trait, and the type is 'Self', search for the type/method on the trait
                 // - TODO: This could be encoded by a `Self: Trait` bound in the generics, but that may have knock-on issues?
                 if( te.name == "Self" && m_current_trait ) {
-                    auto trait_path = ::HIR::GenericPath( m_current_trait_path->get_simple_path() );
-                    for(unsigned int i = 0; i < m_current_trait->m_params.m_types.size(); i ++ ) {
-                        trait_path.m_params.m_types.push_back( ::HIR::TypeRef(m_current_trait->m_params.m_types[i].m_name, i) );
-                    }
+                    auto trait_path = this->get_current_trait_gp();
                     if( this->locate_in_trait_and_set(sp, pc, trait_path, *m_current_trait,  p.m_data) ) {
                         // Success!
                         return ;
@@ -615,6 +625,17 @@ namespace {
         {
             auto _ = m_resolve.set_item_generics(item.m_params);
             ::HIR::Visitor::visit_enum(p, item);
+        }
+        void visit_associatedtype(::HIR::ItemPath p, ::HIR::AssociatedType& item)
+        {
+            // Push `Self = <Self as CurTrait>::Type` for processing defaults in the bounds.
+            auto path_aty = ::HIR::Path( ::HIR::TypeRef("Self", 0xFFFF), this->get_current_trait_gp(), p.get_name() );
+            auto ty_aty = ::HIR::TypeRef::new_path( mv$(path_aty), ::HIR::TypeRef::TypePathBinding::make_Opaque({}) );
+            m_self_types.push_back(&ty_aty);
+
+            ::HIR::Visitor::visit_associatedtype(p, item);
+
+            m_self_types.pop_back();
         }
 
         void visit_type_impl(::HIR::TypeImpl& impl) override

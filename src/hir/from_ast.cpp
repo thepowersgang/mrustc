@@ -1258,6 +1258,21 @@ namespace {
                         receiver = ::HIR::Function::Receiver::Box;
                     }
                 }
+                // TODO: for other types, support arbitary structs/paths.
+                // - The path must include Self as a (the only?) type param.
+                if( receiver == ::HIR::Function::Receiver::Free )
+                {
+                    if( pe.m_params.m_types.size() == 0 ) {
+                        ERROR(sp, E0000, "Unsupported receiver type - " << arg_self_ty);
+                    }
+                    if( pe.m_params.m_types.size() != 1 ) {
+                        TODO(sp, "Receiver types with more than one param - " << arg_self_ty);
+                    }
+                    if( pe.m_params.m_types[0] != self_type ) {
+                        ERROR(sp, E0000, "Unsupported receiver type - " << arg_self_ty);
+                    }
+                    receiver = ::HIR::Function::Receiver::Custom;
+                }
             )
         )
         else {

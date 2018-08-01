@@ -118,6 +118,16 @@ bool StaticTraitResolve::find_impl(
         }
     }
 
+    if(const auto* e = type.m_data.opt_Generic() )
+    {
+        if( (e->binding >> 8) == 2 )
+        {
+            // TODO: If the type is a magic placeholder, assume it impls the specified trait.
+            // TODO: Restructure so this knows that the placehlder impls the impl-provided bounds.
+            return found_cb( ImplRef(&type, trait_params, &null_assoc), false );
+        }
+    }
+
     // --- MAGIC IMPLS ---
     // TODO: There should be quite a few more here, but laziness
     TU_IFLET(::HIR::TypeRef::Data, type.m_data, Function, e,
@@ -556,6 +566,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             if( placeholders.size() == 0 )
                 placeholders.resize(impl_params.size());
             placeholders[i] = ::HIR::TypeRef("impl_?", 2*256 + i);
+            DEBUG("Placeholder " << placeholders[i] << " for " << impl_params_def.m_types[i].m_name);
         }
     }
     // Callback that matches placeholders to concrete types
@@ -569,6 +580,9 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
             if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
                 DEBUG("[find_impl__check_crate_raw:cb_match] Bind placeholder " << i << " to " << ty);
                 ph = ty.clone();
+                return ::HIR::Compare::Equal;
+            }
+            else if( ph == ty ) {
                 return ::HIR::Compare::Equal;
             }
             else {

@@ -8,8 +8,7 @@
 #ifndef AST_HPP_INCLUDED
 #define AST_HPP_INCLUDED
 
-#define TARGETVER_1_19  true
-#define TARGETVER_1_29  true
+#include <target_version.hpp>
 
 #include <string>
 #include <vector>

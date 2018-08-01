@@ -168,10 +168,9 @@ void ::HIR::Visitor::visit_trait(::HIR::ItemPath p, ::HIR::Trait& item)
         this->visit_trait_path(par);
     }
     for(auto& i : item.m_types) {
+        auto item_path = ::HIR::ItemPath(trait_ip, i.first.c_str());
         DEBUG("type " << i.first);
-        for(auto& bound : i.second.m_trait_bounds)
-            this->visit_trait_path(bound);
-        this->visit_type(i.second.m_default);
+        this->visit_associatedtype(item_path, i.second);
     }
     for(auto& i : item.m_values) {
         auto item_path = ::HIR::ItemPath(trait_ip, i.first.c_str());
@@ -233,6 +232,12 @@ void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
     this->visit_params(item.m_params);
     for(auto& var : item.m_variants)
         this->visit_type(var.second.ent);
+}
+void ::HIR::Visitor::visit_associatedtype(ItemPath p, ::HIR::AssociatedType& item)
+{
+    for(auto& bound : item.m_trait_bounds)
+        this->visit_trait_path(bound);
+    this->visit_type(item.m_default);
 }
 void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 {

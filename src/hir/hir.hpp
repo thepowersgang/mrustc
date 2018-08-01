@@ -8,6 +8,7 @@
  * Contains the expanded and desugared AST
  */
 #pragma once
+#include <target_version.hpp>
 
 #include <cassert>
 #include <unordered_map>
@@ -122,6 +123,7 @@ public:
         //PointerMut,
         //PointerConst,
         Box,
+        Custom,
     };
 
     typedef ::std::vector< ::std::pair< ::HIR::Pattern, ::HIR::TypeRef> >   args_t;
