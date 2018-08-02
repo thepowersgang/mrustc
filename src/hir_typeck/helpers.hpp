@@ -207,7 +207,7 @@ public:
     typedef ::std::function<bool(ImplRef, ::HIR::Compare)> t_cb_trait_impl_r;
 
     /// Searches for a trait impl that matches the provided trait name and type
-    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback) const;
+    bool find_trait_impls(const Span& sp, const ::HIR::SimplePath& trait, const ::HIR::PathParams& params, const ::HIR::TypeRef& type,  t_cb_trait_impl_r callback, bool magic_trait_impls=true) const;
 
     /// Locate a named trait in the provied trait (either itself or as a parent trait)
     bool find_named_trait_in_trait(const Span& sp,
@@ -283,6 +283,7 @@ public:
 
     ::HIR::Compare type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
     ::HIR::Compare type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+    ::HIR::Compare type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const;
 
     // If `new_type_callback` is populated, it will be called with the actual/possible dst_type
     // If `infer_callback` is populated, it will be called when either side is an ivar

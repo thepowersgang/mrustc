@@ -23,6 +23,7 @@ public:
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 
     ::HIR::SimplePath   m_lang_Copy;
+    ::HIR::SimplePath   m_lang_Clone;   // 1.29
     ::HIR::SimplePath   m_lang_Drop;
     ::HIR::SimplePath   m_lang_Sized;
     ::HIR::SimplePath   m_lang_Unsize;
@@ -34,6 +35,7 @@ public:
 
 private:
     mutable ::std::map< ::HIR::TypeRef, bool >  m_copy_cache;
+    mutable ::std::map< ::HIR::TypeRef, bool >  m_clone_cache;
 
 public:
     StaticTraitResolve(const ::HIR::Crate& crate):
@@ -42,6 +44,8 @@ public:
         m_item_generics(nullptr)
     {
         m_lang_Copy = m_crate.get_lang_item_path_opt("copy");
+        if( TARGETVER_1_29 )
+            m_lang_Clone = m_crate.get_lang_item_path_opt("clone");
         m_lang_Drop = m_crate.get_lang_item_path_opt("drop");
         m_lang_Sized = m_crate.get_lang_item_path_opt("sized");
         m_lang_Unsize = m_crate.get_lang_item_path_opt("unsize");
@@ -178,6 +182,7 @@ public:
     // Common bounds
     // -------------
     bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
+    bool type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const; // 1.29
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool can_unsize(const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) const;
 

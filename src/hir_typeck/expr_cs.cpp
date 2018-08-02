@@ -2155,8 +2155,8 @@ namespace {
                     }
                     ),
                 (Borrow,
-                    // Check class (must be equal) and type
-                    if( s_e.type != e.type ) {
+                    // Check class (destination must be weaker) and type
+                    if( !(s_e.type >= e.type) ) {
                         ERROR(sp, E0000, "Invalid cast from " << src_ty << " to " << tgt_ty);
                     }
                     const auto& src_inner = this->context.get_type(*s_e.inner);

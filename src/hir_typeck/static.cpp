@@ -104,6 +104,11 @@ bool StaticTraitResolve::find_impl(
                 return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
             }
         }
+        else if( TARGETVER_1_29 && trait_path == m_lang_Clone ) {
+            if( this->type_is_clone(sp, type) ) {
+                return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
+            }
+        }
         else if( trait_path == m_lang_Sized ) {
             if( this->type_is_sized(sp, type) ) {
                 return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
@@ -1393,6 +1398,10 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         return true;
         ),
     (Closure,
+        if( TARGETVER_1_29 )
+        {
+            // TODO: Auto-gerated impls
+        }
         return false;
         ),
     (Infer,
@@ -1438,6 +1447,94 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
     (Tuple,
         for(const auto& ty : e)
             if( !type_is_copy(sp, ty) )
+                return false;
+        return true;
+        )
+    )
+    throw "";
+}
+bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    if( !TARGETVER_1_29 )   BUG(sp, "Calling type_is_clone when not in 1.29 mode");
+
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Generic,
+        {
+            auto it = m_clone_cache.find(ty);
+            if( it != m_clone_cache.end() )
+            {
+                return it->second;
+            }
+        }
+        bool rv = this->iterate_bounds([&](const auto& b)->bool {
+            auto pp = ::HIR::PathParams();
+            return this->find_impl__check_bound(sp, m_lang_Clone, &pp, ty, [&](auto , bool ){ return true; },  b);
+            });
+        m_clone_cache.insert(::std::make_pair( ty.clone(), rv ));
+        return rv;
+        ),
+    (Path,
+        {
+            auto it = m_clone_cache.find(ty);
+            if( it != m_clone_cache.end() )
+                return it->second;
+        }
+        auto pp = ::HIR::PathParams();
+        bool rv = this->find_impl(sp, m_lang_Clone, &pp, ty, [&](auto , bool){ return true; }, true);
+        m_clone_cache.insert(::std::make_pair( ty.clone(), rv ));
+        return rv;
+        ),
+    (Diverge,
+        // The ! type is kinda Copy/Clone ...
+        return true;
+        ),
+    (Closure,
+        // TODO: Auto-gerated impls
+        return false;
+        ),
+    (Infer,
+        // Shouldn't be hit
+        return false;
+        ),
+    (Borrow,
+        // Only shared &-ptrs are copy/clone
+        return (e.type == ::HIR::BorrowType::Shared);
+        ),
+    (Pointer,
+        // All raw pointers are Copy/Clone
+        return true;
+        ),
+    (Function,
+        // All function pointers are Copy/Clone
+        return true;
+        ),
+    (Primitive,
+        // All primitives (except the unsized `str`) are Copy/Clone
+        return e != ::HIR::CoreType::Str;
+        ),
+    (Array,
+        return e.size_val == 0 || type_is_clone(sp, *e.inner);
+        ),
+    (Slice,
+        // [T] isn't Sized, so isn't Copy ether
+        return false;
+        ),
+    (TraitObject,
+        // (Trait) isn't Sized, so isn't Copy ether
+        return false;
+        ),
+    (ErasedType,
+        for(const auto& trait : e.m_traits)
+        {
+            if( find_named_trait_in_trait(sp, m_lang_Clone, {},  *trait.m_trait_ptr, trait.m_path.m_path, trait.m_path.m_params,  ty, [](const auto&, auto ){ }) ) {
+                return true;
+            }
+        }
+        return false;
+        ),
+    (Tuple,
+        for(const auto& ty : e)
+            if( !type_is_clone(sp, ty) )
                 return false;
         return true;
         )

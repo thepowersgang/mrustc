@@ -1089,7 +1089,8 @@ bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data
 bool TraitResolution::find_trait_impls(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
         const ::HIR::TypeRef& ty,
-        t_cb_trait_impl_r callback
+        t_cb_trait_impl_r callback,
+        bool magic_trait_impls /*=true*/
         ) const
 {
     static ::HIR::PathParams    null_params;
@@ -1110,6 +1111,7 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 
     const auto& lang_Sized = this->m_crate.get_lang_item_path(sp, "sized");
     const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
+    //const auto& lang_Clone = this->m_crate.get_lang_item_path(sp, "clone");
     const auto& lang_Unsize = this->m_crate.get_lang_item_path(sp, "unsize");
     const auto& lang_CoerceUnsized = this->m_crate.get_lang_item_path(sp, "coerce_unsized");
     const auto& trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
@@ -1118,23 +1120,37 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     const auto& trait_index = this->m_crate.get_lang_item_path(sp, "index");
     const auto& trait_indexmut = this->m_crate.get_lang_item_path(sp, "index_mut");
 
-    if( trait == lang_Sized ) {
-        auto cmp = type_is_sized(sp, type);
-        if( cmp != ::HIR::Compare::Unequal ) {
-            return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+    if( magic_trait_impls )
+    {
+        if( trait == lang_Sized ) {
+            auto cmp = type_is_sized(sp, type);
+            if( cmp != ::HIR::Compare::Unequal ) {
+                return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+            }
+            else {
+                return false;
+            }
         }
-        else {
-            return false;
-        }
-    }
 
-    if( trait == lang_Copy ) {
-        auto cmp = this->type_is_copy(sp, type);
-        if( cmp != ::HIR::Compare::Unequal ) {
-            return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+        if( trait == lang_Copy ) {
+            auto cmp = this->type_is_copy(sp, type);
+            if( cmp != ::HIR::Compare::Unequal ) {
+                return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+            }
+            else {
+                return false;
+            }
         }
-        else {
-            return false;
+        
+        if( TARGETVER_1_29 && trait == this->m_crate.get_lang_item_path(sp, "clone") )
+        {
+            auto cmp = this->type_is_clone(sp, type);
+            if( cmp != ::HIR::Compare::Unequal ) {
+                return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+            }
+            else {
+                return false;
+            }
         }
     }
 
@@ -1416,53 +1432,56 @@ bool TraitResolution::find_trait_impls(const Span& sp,
         }
     )
 
-    // Magic Unsize impls to trait objects
-    if( trait == lang_Unsize )
+    if( magic_trait_impls )
     {
-        ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
-        const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
-
-        if( find_trait_impls_bound(sp, trait, params, type, callback) )
-            return true;
-
-        bool rv = false;
-        auto cb = [&](auto new_dst) {
-            ::HIR::PathParams   real_params { mv$(new_dst) };
-            rv = callback( ImplRef(type.clone(), mv$(real_params), {}), ::HIR::Compare::Fuzzy );
-            };
-        //if( dst_ty.m_data.is_Infer() || type.m_data.is_Infer() )
-        //{
-        //    rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Fuzzy );
-        //    return rv;
-        //}
-        auto cmp = this->can_unsize(sp, dst_ty, type, cb);
-        if( cmp == ::HIR::Compare::Equal )
+        // Magic Unsize impls to trait objects
+        if( trait == lang_Unsize )
         {
-            assert(!rv);
-            rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Equal );
-        }
-        return rv;
-    }
+            ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
+            const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
 
-    // Magical CoerceUnsized impls for various types
-    if( trait == lang_CoerceUnsized ) {
-        const auto& dst_ty = params.m_types.at(0);
-        // - `*mut T => *const T`
-        TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Pointer, e,
-            TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, Pointer, de,
-                if( de.type < e.type ) {
-                    auto cmp = e.inner->compare_with_placeholders(sp, *de.inner, this->m_ivars.callback_resolve_infer());
-                    if( cmp != ::HIR::Compare::Unequal )
-                    {
-                        ::HIR::PathParams   pp;
-                        pp.m_types.push_back( dst_ty.clone() );
-                        if( callback( ImplRef(type.clone(), mv$(pp), {}), cmp ) ) {
-                            return true;
+            if( find_trait_impls_bound(sp, trait, params, type, callback) )
+                return true;
+
+            bool rv = false;
+            auto cb = [&](auto new_dst) {
+                ::HIR::PathParams   real_params { mv$(new_dst) };
+                rv = callback( ImplRef(type.clone(), mv$(real_params), {}), ::HIR::Compare::Fuzzy );
+                };
+            //if( dst_ty.m_data.is_Infer() || type.m_data.is_Infer() )
+            //{
+            //    rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Fuzzy );
+            //    return rv;
+            //}
+            auto cmp = this->can_unsize(sp, dst_ty, type, cb);
+            if( cmp == ::HIR::Compare::Equal )
+            {
+                assert(!rv);
+                rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Equal );
+            }
+            return rv;
+        }
+
+        // Magical CoerceUnsized impls for various types
+        if( trait == lang_CoerceUnsized ) {
+            const auto& dst_ty = params.m_types.at(0);
+            // - `*mut T => *const T`
+            TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Pointer, e,
+                TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, Pointer, de,
+                    if( de.type < e.type ) {
+                        auto cmp = e.inner->compare_with_placeholders(sp, *de.inner, this->m_ivars.callback_resolve_infer());
+                        if( cmp != ::HIR::Compare::Unequal )
+                        {
+                            ::HIR::PathParams   pp;
+                            pp.m_types.push_back( dst_ty.clone() );
+                            if( callback( ImplRef(type.clone(), mv$(pp), {}), cmp ) ) {
+                                return true;
+                            }
                         }
                     }
-                }
+                )
             )
-        )
+        }
     }
 
     // 1. Search generic params
@@ -3165,6 +3184,97 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         return ::HIR::Compare::Equal;
         ),
     (Array,
+        return type_is_copy(sp, *e.inner);
+        )
+    )
+}
+::HIR::Compare TraitResolution::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    TRACE_FUNCTION_F(ty);
+    const auto& type = this->m_ivars.get_type(ty);
+    const auto& lang_Clone = this->m_crate.get_lang_item_path(sp, "clone");
+    TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (e),
+    (
+        // NOTE: Don't use find_trait_impls, because that calls this
+        bool is_fuzzy = false;
+        bool has_eq = find_trait_impls(sp, lang_Clone, ::HIR::PathParams{}, ty,  [&](auto , auto c)->bool{
+            switch(c)
+            {
+            case ::HIR::Compare::Equal: return true;
+            case ::HIR::Compare::Fuzzy:
+                is_fuzzy = true;
+                return false;
+            case ::HIR::Compare::Unequal:
+                return false;
+            }
+            throw "";
+            }, false);
+        if( has_eq ) {
+            return ::HIR::Compare::Equal;
+        }
+        else if( is_fuzzy ) {
+            return ::HIR::Compare::Fuzzy;
+        }
+        else {
+            return ::HIR::Compare::Unequal;
+        }
+        ),
+    (Infer,
+        switch(e.ty_class)
+        {
+        case ::HIR::InferClass::Integer:
+        case ::HIR::InferClass::Float:
+            return ::HIR::Compare::Equal;
+        default:
+            DEBUG("Fuzzy Clone impl for ivar?");
+            return ::HIR::Compare::Fuzzy;
+        }
+        ),
+    (Generic,
+        // TODO: Store this result - or even pre-calculate it.
+        return this->iterate_bounds([&](const auto& b)->bool {
+            TU_IFLET(::HIR::GenericBound, b, TraitBound, be,
+                if(be.type == ty)
+                {
+                    if(be.trait.m_path == lang_Clone)
+                        return true;
+                    ::HIR::PathParams   pp;
+                    bool rv = this->find_named_trait_in_trait(sp,
+                            lang_Clone,pp,  *be.trait.m_trait_ptr, be.trait.m_path.m_path, be.trait.m_path.m_params, type,
+                            [&](const auto& , const auto&, const auto&)->bool { return true; }
+                            );
+                    if(rv)
+                        return true;
+                }
+            )
+            return false;
+            }) ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal ;
+        ),
+    (Primitive,
+        if( e == ::HIR::CoreType::Str )
+            return ::HIR::Compare::Unequal;
+        return ::HIR::Compare::Equal;
+        ),
+    (Borrow,
+        return e.type == ::HIR::BorrowType::Shared ? ::HIR::Compare::Equal : ::HIR::Compare::Unequal ;
+        ),
+    (Pointer,
+        return ::HIR::Compare::Equal;
+        ),
+    (Tuple,
+        auto rv = ::HIR::Compare::Equal;
+        for(const auto& sty : e)
+            rv &= type_is_clone(sp, sty);
+        return rv;
+        ),
+    (Slice,
+        return ::HIR::Compare::Unequal;
+        ),
+    (Function,
+        return ::HIR::Compare::Equal;
+        ),
+    (Array,
+        // TODO: Clone here?
         return type_is_copy(sp, *e.inner);
         )
     )
