@@ -2812,6 +2812,10 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             if( ty.m_data.is_Infer() && !ty.m_data.as_Infer().is_lit() ) {
                 return ::HIR::Compare::Fuzzy;
             }
+            // If the RHS is an unbound UfcsKnown, also fuzzy
+            if( ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound() ) {
+                return ::HIR::Compare::Fuzzy;
+            }
             return ::HIR::Compare::Unequal;
         }
         };

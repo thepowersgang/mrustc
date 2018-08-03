@@ -353,10 +353,10 @@ namespace {
             {
             case ::HIR::ExprNode_BinOp::Op::CmpEqu: { langitem = "eq"; method = "eq"; } if(0)
             case ::HIR::ExprNode_BinOp::Op::CmpNEqu:{ langitem = "eq"; method = "ne"; } if(0)
-            case ::HIR::ExprNode_BinOp::Op::CmpLt:  { langitem = "ord"; method = "lt"; } if(0)
-            case ::HIR::ExprNode_BinOp::Op::CmpLtE: { langitem = "ord"; method = "le"; } if(0)
-            case ::HIR::ExprNode_BinOp::Op::CmpGt:  { langitem = "ord"; method = "gt"; } if(0)
-            case ::HIR::ExprNode_BinOp::Op::CmpGtE: { langitem = "ord"; method = "ge"; }
+            case ::HIR::ExprNode_BinOp::Op::CmpLt:  { langitem = TARGETVER_1_29 ? "partial_ord" : "ord"; method = "lt"; } if(0)
+            case ::HIR::ExprNode_BinOp::Op::CmpLtE: { langitem = TARGETVER_1_29 ? "partial_ord" : "ord"; method = "le"; } if(0)
+            case ::HIR::ExprNode_BinOp::Op::CmpGt:  { langitem = TARGETVER_1_29 ? "partial_ord" : "ord"; method = "gt"; } if(0)
+            case ::HIR::ExprNode_BinOp::Op::CmpGtE: { langitem = TARGETVER_1_29 ? "partial_ord" : "ord"; method = "ge"; }
                 {
                 // 1. Check if the types are valid for primitive comparison
                 if( ty_l == ty_r ) {
