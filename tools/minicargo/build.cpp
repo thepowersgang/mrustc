@@ -940,10 +940,18 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     ::std::stringstream cmdline;
     cmdline << exe_name;
     for (const auto& arg : args.get_vec())
+        // TODO: Escaping
         cmdline << " " << arg;
     auto cmdline_str = cmdline.str();
-    DEBUG("Calling " << cmdline_str);
-    
+    if(true)
+    {
+        ::std::cout << "> " << cmdline_str << ::std::end;;
+    }
+    else
+    {
+        DEBUG("Calling " << cmdline_str);
+    }
+
 #if 0
     // TODO: Determine required minimal environment, to avoid importing the entire caller environment
     ::std::stringstream environ_str;
@@ -1005,12 +1013,22 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     // Generate `argv`
     auto argv = args.get_vec();
     argv.insert(argv.begin(), exe_name);
-    //DEBUG("Calling " << argv);
-    Debug_Print([&](auto& os){
-        os << "Calling";
+
+    if(true)
+    {
+        ::std::cout << ">";
         for(const auto& p : argv)
-            os << " " << p;
-        });
+            ::std::cout  << " " << p;
+        ::std::cout << ::std::endl;
+    }
+    else
+    {
+        Debug_Print([&](auto& os){
+            os << "Calling";
+            for(const auto& p : argv)
+                os << " " << p;
+            });
+    }
     DEBUG("Environment " << env);
     argv.push_back(nullptr);
 
