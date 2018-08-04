@@ -657,6 +657,11 @@ int main(int argc, char *argv[])
             }
             throw ::std::runtime_error("Invalid crate_type value");
             });
+        // - Generate automatic impls (mainly Clone for 1.29)
+        CompilePhaseV("Trans Auto Impls", [&]() {
+            // TODO: Drop glue generation?
+            Trans_AutoImpls(*hir_crate, items);
+            });
         // - Generate monomorphised versions of all functions
         CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
         // - Do post-monomorph inlining

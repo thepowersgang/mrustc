@@ -1805,6 +1805,14 @@ namespace {
                         mv$(values)
                         }));
                 }
+                if( fcn.m_abi == "platform-intrinsic" )
+                {
+                    m_builder.end_block(::MIR::Terminator::make_Call({
+                        next_block, panic_block,
+                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ "platform:"+gpath.m_path.m_components.back(), gpath.m_params.clone() }),
+                        mv$(values)
+                        }));
+                }
 
                 // rustc has drop_in_place as a lang item, mrustc uses an intrinsic
                 if( gpath.m_path == m_builder.crate().get_lang_item_path_opt("drop_in_place") )

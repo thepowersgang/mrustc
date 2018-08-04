@@ -1209,7 +1209,7 @@ namespace {
                 DEBUG("[get_ent_fullpath] Found " << impl_ref);
                 //ASSERT_BUG(sp, !is_fuzz, "Fuzzy match not allowed here");
                 if( ! impl_ref.m_data.is_TraitImpl() ) {
-                    DEBUG("Trans impl search found an invalid impl type");
+                    DEBUG("Trans impl search found an invalid impl type - " << impl_ref.m_data.tag_str());
                     is_dynamic = true;
                     // TODO: This can only really happen if it's a trait object magic impl, which should become a vtable lookup.
                     return true;
@@ -1379,6 +1379,14 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type->m_data.is_Function() )
         {
             // Must have been a dynamic dispatch request, just leave as-is
+        }
+        // <* as Clone>::clone
+        else if( TARGETVER_1_29 && path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().trait == state.crate.get_lang_item_path_opt("clone") )
+        {
+            const auto& pe = path_mono.m_data.as_UfcsKnown();
+            ASSERT_BUG(sp, pe.item == "clone", "");
+            // Add this type to a list of types that will have the impl auto-generated
+            state.rv.auto_clone_impls.insert( pe.type->clone() );
         }
         else
         {
@@ -1692,4 +1700,3 @@ void Trans_Enumerate_FillFrom(EnumState& state, const ::HIR::Static& item, Trans
     out_stat.ptr = &item;
     out_stat.pp = mv$(pp);
 }
-

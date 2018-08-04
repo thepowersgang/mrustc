@@ -105,8 +105,11 @@ bool StaticTraitResolve::find_impl(
             }
         }
         else if( TARGETVER_1_29 && trait_path == m_lang_Clone ) {
-            if( this->type_is_clone(sp, type) ) {
-                return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
+            if( type.m_data.is_Tuple() || type.m_data.is_Array() || type.m_data.is_Function() )
+            {
+                if( this->type_is_clone(sp, type) ) {
+                    return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
+                }
             }
         }
         else if( trait_path == m_lang_Sized ) {

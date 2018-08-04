@@ -52,6 +52,10 @@ struct TransList_Function
     Trans_Params    pp;
     // If `pp.has_types` is true, the below is valid
     CachedFunction  monomorphised;
+
+    TransList_Function():
+        ptr(nullptr)
+    {}
 };
 struct TransList_Static
 {
@@ -75,6 +79,8 @@ public:
     ::std::set< ::HIR::TypeRef> m_typeids;
     /// Required struct/enum constructor impls
     ::std::set< ::HIR::GenericPath> m_constructors;
+    // Automatic Clone impls
+    ::std::set< ::HIR::TypeRef>  auto_clone_impls;
 
     // .second is `true` if this is a from a reference to the type
     ::std::vector< ::std::pair<::HIR::TypeRef, bool> >  m_types;
