@@ -70,7 +70,7 @@ OBJDIR = .obj/
 
 BIN := bin/mrustc$(EXESUF)
 
-OBJ := main.o
+OBJ := main.o version.o
 OBJ += span.o rc_string.o debug.o ident.o
 OBJ += ast/ast.o
 OBJ +=  ast/types.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
@@ -314,6 +314,10 @@ $(OBJDIR)%.o: src/%.cpp
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep
+$(OBJDIR)version.o: $(OBJDIR)%.o: src/%.cpp $(filter-out $(OBJDIR)version.o,$(OBJ)) Makefile
+	@mkdir -p $(dir $@)
+	@echo [CXX] -o $@
+	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep -D VERSION_GIT_FULLHASH=\"$(shell git show --pretty=%H -s)\" -D VERSION_GIT_BRANCH="\"$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match)\"" -D VERSION_GIT_SHORTHASH=\"$(shell git show -s --pretty=%h)\" -D VERSION_BUILDTIME="\"$(shell date -uR)\"" -D VERSION_GIT_ISDIRTY=$(shell git diff-index --quiet HEAD; echo $$?)
 
 src/main.cpp: $(PCHS:%=src/%.gch)
 

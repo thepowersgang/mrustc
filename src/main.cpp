@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <string>
 #include <set>
+#include <version.hpp>
 #include <string_view.hpp>
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
@@ -942,6 +943,12 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         {
             if( strcmp(arg, "--help") == 0 ) {
                 this->show_help();
+                exit(0);
+            }
+            else if( strcmp(arg, "--version" ) == 0 ) {
+                ::std::cout << "MRustC " << Version_GetString() << ::std::endl;
+                ::std::cout << "- Build time: " << gsVersion_BuildTime << ::std::endl;
+                ::std::cout << "- Commit: " << gsVersion_GitHash << (gbVersion_GitDirty ? " (dirty tree)" : "") << ::std::endl;
                 exit(0);
             }
             // --out-dir <dir>  >> Set the output directory for automatically-named files
