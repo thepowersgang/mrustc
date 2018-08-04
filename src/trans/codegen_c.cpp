@@ -303,6 +303,18 @@ namespace {
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
                     << "}\n"
                     ;
+                // Atomic hackery
+                for(int sz = 8; sz <= 64; sz *= 2)
+                {
+                    m_of
+                        << "static inline uint"<<sz<<"_t __mrustc_atomicloop"<<sz<<"(volatile uint"<<sz<<"_t* slot, uint"<<sz<<"_t param, int ordering, uint"<<sz<<"_t (*cb)(uint"<<sz<<"_t, uint"<<sz<<"_t)) {"
+                        << " for(;;) {"
+                        << " uint"<<sz<<"_t v = atomic_load_explicit((_Atomic uint"<<sz<<"_t*)slot, ordering);"
+                        << " if( atomic_compare_exchange_strong_explicit((_Atomic uint"<<sz<<"_t*)slot, &v, cb(v, param), ordering, ordering) ) return v;"
+                        << " }"
+                        << "}\n"
+                        ;
+                }
                 break;
             case Compiler::Msvc:
                 m_of
@@ -533,7 +545,32 @@ namespace {
                 << "\t}\n"
                 << "\treturn SIZE_MAX;\n"
                 << "}\n"
+                // Map of reversed nibbles                       0  1  2  3  4  5  6  7   8  9 10 11 12 14 15
+                << "static const uint8_t __mrustc_revmap[16] = { 0, 8, 4,12, 2,10, 6,14,  1, 9, 5,13, 3, 7,15};\n"
+                << "static inline uint8_t __mrustc_bitrev8(uint8_t v) { if(v==0||v==0xFF) return v; uint8_t rv = __mrustc_revmap[v>>4]|(__mrustc_revmap[v&15]<<4); }\n"
+                << "static inline uint16_t __mrustc_bitrev16(uint16_t v) { if(v==0) return 0; uint16_t rv = ((uint16_t)__mrustc_bitrev8(v>>8))|((uint16_t)__mrustc_bitrev8(v)<<8); }\n"
+                << "static inline uint32_t __mrustc_bitrev32(uint32_t v) { if(v==0) return 0; uint32_t rv = ((uint32_t)__mrustc_bitrev16(v>>16))|((uint32_t)__mrustc_bitrev16(v)<<16); }\n"
+                << "static inline uint64_t __mrustc_bitrev64(uint64_t v) { if(v==0) return 0; uint64_t rv = ((uint64_t)__mrustc_bitrev32(v>>32))|((uint64_t)__mrustc_bitrev32(v)<<32); }\n"
+                // TODO: 128
                 ;
+            if( m_options.emulated_i128 )
+            {
+                m_of << "static inline uint128_t __mrustc_bitrev128(uint128_t v) { uint128_t rv = { __mrustc_bitrev64(v>>64)), __mrustc_bitrev64(v) }; return rv; }\n";
+            }
+            else
+            {
+                m_of << "static inline uint128_t __mrustc_bitrev128(uint128_t v) { if(v==0) return 0; uint128_t rv = ((uint128_t)__mrustc_bitrev64(v>>64))|((uint128_t)__mrustc_bitrev64(v)<<64); }\n";
+            }
+            for(int sz = 8; sz <= 64; sz *= 2)
+            {
+                m_of
+                    << "static inline uint"<<sz<<"_t __mrustc_op_umax"<<sz<<"(uint"<<sz<<"_t a, uint"<<sz<<"_t b) { return (a > b ? a : b); }\n"
+                    << "static inline uint"<<sz<<"_t __mrustc_op_umin"<<sz<<"(uint"<<sz<<"_t a, uint"<<sz<<"_t b) { return (a < b ? a : b); }\n"
+                    << "static inline uint"<<sz<<"_t __mrustc_op_imax"<<sz<<"(uint"<<sz<<"_t a, uint"<<sz<<"_t b) { return ((int"<<sz<<"_t)a > (int"<<sz<<"_t)b ? a : b); }\n"
+                    << "static inline uint"<<sz<<"_t __mrustc_op_imin"<<sz<<"(uint"<<sz<<"_t a, uint"<<sz<<"_t b) { return ((int"<<sz<<"_t)a < (int"<<sz<<"_t)b ? a : b); }\n"
+                    << "static inline uint"<<sz<<"_t __mrustc_op_and_not"<<sz<<"(uint"<<sz<<"_t a, uint"<<sz<<"_t b) { return ~(a & b); }\n"
+                    ;
+            }
         }
 
         ~CodeGenerator_C() {}
@@ -4062,8 +4099,8 @@ namespace {
                 emit_lvalue(e.ret_val); m_of << ".META = " << s.size() << "";
             }
             else if( name == "transmute" ) {
-                const auto& ty_dst = params.m_types.at(0);
-                const auto& ty_src = params.m_types.at(1);
+                const auto& ty_src = params.m_types.at(0);
+                const auto& ty_dst = params.m_types.at(1);
                 auto is_ptr = [](const ::HIR::TypeRef& ty){ return ty.m_data.is_Borrow() || ty.m_data.is_Pointer(); };
                 if( this->type_is_bad_zst(ty_dst) )
                 {
@@ -4071,7 +4108,7 @@ namespace {
                 }
                 else if( e.args.at(0).is_Constant() )
                 {
-                    m_of << "{ "; emit_ctype(ty_src, FMT_CB(s, s << "v";)); m_of << " = "; emit_param(e.args.at(0)); m_of << ";";
+                    m_of << "{ "; emit_ctype(ty_src, FMT_CB(s, s << "v";)); m_of << " = "; emit_param(e.args.at(0)); m_of << "; ";
                     m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &v, sizeof("; emit_ctype(ty_dst); m_of << ")); ";
                     m_of << "}";
                 }
@@ -4103,7 +4140,7 @@ namespace {
                 }
                 else
                 {
-                    m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_param(e.args.at(0)); m_of << ", sizeof("; emit_ctype(params.m_types.at(0)); m_of << "))";
+                    m_of << "memcpy( &"; emit_lvalue(e.ret_val); m_of << ", &"; emit_param(e.args.at(0)); m_of << ", sizeof("; emit_ctype(ty_src); m_of << "))";
                 }
             }
             else if( name == "copy_nonoverlapping" || name == "copy" ) {
@@ -4235,6 +4272,22 @@ namespace {
                     }
                     m_of << "("; emit_param(e.args.at(0)); m_of << ")";
                 }
+            }
+            else if( name == "bitreverse" ) {
+                const auto& ty = params.m_types.at(0);
+                MIR_ASSERT(mir_res, ty.m_data.is_Primitive(), "Invalid type passed to bitreverse. Must be a primitive, got " << ty);
+                emit_lvalue(e.ret_val); m_of << " = ";
+                switch(get_prim_size(ty))
+                {
+                case  8: m_of << "__mrustc_bitrev8";    break;
+                case 16: m_of << "__mrustc_bitrev16";    break;
+                case 32: m_of << "__mrustc_bitrev32";    break;
+                case 64: m_of << "__mrustc_bitrev64";    break;
+                case 128: m_of << "__mrustc_bitrev128";    break;
+                default:
+                    MIR_TODO(mir_res, "bswap<" << ty << ">");
+                }
+                m_of << "("; emit_param(e.args.at(0)); m_of << ")";
             }
             // > Obtain the discriminane of a &T as u64
             else if( name == "discriminant_value" ) {
@@ -4442,7 +4495,8 @@ namespace {
                 }
             }
             // Unchecked Arithmatic
-            else if( name == "unchecked_div" ) {
+            // - exact_div is UB to call on a non-multiple
+            else if( name == "unchecked_div" || name == "exact_div") {
                 emit_lvalue(e.ret_val); m_of << " = ";
                 if( type_is_emulated_i128(params.m_types.at(0)) )
                 {
@@ -4515,7 +4569,7 @@ namespace {
             // Bit Twiddling
             // - CounT Leading Zeroes
             // - CounT Trailing Zeroes
-            else if( name == "ctlz" || name == "ctlz_nonzero" || name == "cttz" ) {
+            else if( name == "ctlz" || name == "ctlz_nonzero" || name == "cttz" || name == "cttz_nonzero" ) {
                 auto emit_arg0 = [&](){ emit_param(e.args.at(0)); };
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = (";
@@ -4647,6 +4701,11 @@ namespace {
             else if( name == "volatile_store" ) {
                 m_of << "*(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
             }
+            else if( name == "nontemporal_store" ) {
+                // TODO: Actually do a non-temporal store
+                // GCC: _mm_stream_* (depending on input type, which must be `repr(simd)`)
+                m_of << "*(volatile "; emit_ctype(params.m_types.at(0)); m_of << "*)"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
+            }
             // --- Atomics!
             // > Single-ordering atomics
             else if( name == "atomic_xadd" || name.compare(0, 7+4+1, "atomic_xadd_") == 0 ) {
@@ -4661,6 +4720,13 @@ namespace {
                 auto ordering = get_atomic_ordering(name, 7+3+1);
                 emit_atomic_arith(AtomicOp::And, ordering);
             }
+            else if( name == "atomic_nand" || name.compare(0, 7+4+1, "atomic_nand_") == 0 ) {
+                auto ordering = get_atomic_ordering(name, 7+4+1);
+                const auto& ty = params.m_types.at(0);
+                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ", __mrustc_op_and_not" << get_prim_size(ty);
+                    m_of << ")";
+            }
             else if( name == "atomic_or" || name.compare(0, 7+2+1, "atomic_or_") == 0 ) {
                 auto ordering = get_atomic_ordering(name, 7+2+1);
                 emit_atomic_arith(AtomicOp::Or, ordering);
@@ -4668,6 +4734,24 @@ namespace {
             else if( name == "atomic_xor" || name.compare(0, 7+3+1, "atomic_xor_") == 0 ) {
                 auto ordering = get_atomic_ordering(name, 7+3+1);
                 emit_atomic_arith(AtomicOp::Xor, ordering);
+            }
+            else if( name == "atomic_max" || name.compare(0, 7+3+1, "atomic_max_") == 0
+                  || name == "atomic_min" || name.compare(0, 7+3+1, "atomic_min_") == 0 ) {
+                auto ordering = get_atomic_ordering(name, 7+3+1);
+                const auto& ty = params.m_types.at(0);
+                const char* op = (name[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
+                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ", __mrustc_op_" << op << get_prim_size(ty);
+                    m_of << ")";
+            }
+            else if( name == "atomic_umax" || name.compare(0, 7+4+1, "atomic_umax_") == 0
+                  || name == "atomic_umin" || name.compare(0, 7+4+1, "atomic_umin_") == 0 ) {
+                auto ordering = get_atomic_ordering(name, 7+4+1);
+                const auto& ty = params.m_types.at(0);
+                const char* op = (name[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
+                emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
+                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ", __mrustc_op_" << op << get_prim_size(ty);
+                    m_of << ")";
             }
             else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
                 auto ordering = get_atomic_ordering(name, 7+4+1);
@@ -4778,6 +4862,11 @@ namespace {
             }
             else if( name == "atomic_singlethreadfence" || name.compare(0, 7+18, "atomic_singlethreadfence_") == 0 ) {
                 // TODO: Does this matter?
+            }
+            // -- Platform Intrinsics --
+            else if( name.compare(0, 9, "platform:") == 0 ) {
+                // TODO: Platform intrinsics
+                m_of << "abort() /* TODO: Platform intrinsic \"" << name << "\" */";
             }
             else {
                 MIR_BUG(mir_res, "Unknown intrinsic '" << name << "'");
@@ -5339,9 +5428,15 @@ namespace {
                 // TODO: This should have been eliminated? ("MIR Cleanup" should have removed all inline Const references)
                 ::HIR::TypeRef  ty;
                 const auto& lit = get_literal_for_const(c.p, ty);
-                if(lit.is_Integer() || lit.is_Float() || lit.is_String())
+                if(lit.is_Integer() || lit.is_Float())
                 {
                     emit_literal(ty, lit, {});
+                }
+                else if( lit.is_String())
+                {
+                    m_of << "make_sliceptr(";
+                    this->print_escaped_string( lit.as_String() );
+                    m_of << ", " << ::std::dec << lit.as_String().size() << ")";
                 }
                 else
                 {
