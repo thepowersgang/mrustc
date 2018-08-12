@@ -26,6 +26,7 @@
 ::std::string   g_core_crate;
 ::std::string   g_crate_name;
 ::HIR::Crate*   g_crate_ptr = nullptr;
+const ::AST::Crate* g_ast_crate_ptr;
 
 // --------------------------------------------------------------------
 ::std::string LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
@@ -1279,7 +1280,11 @@ namespace {
     ::HIR::Linkage  linkage;
 
     // Convert #[link_name/no_mangle] attributes into the name
-    if( const auto* a = attrs.get("link_name") )
+    if( g_ast_crate_ptr->m_test_harness && f.code().is_valid() )
+    {
+        // If we're making a test harness, and this item defines code, don't apply the linkage rules
+    }
+    else if( const auto* a = attrs.get("link_name") )
     {
         if( !a->has_string() )
             ERROR(sp, E0000, "#[link_name] requires a string");
@@ -1739,6 +1744,7 @@ public:
     }
 
     g_crate_ptr = &rv;
+    g_ast_crate_ptr = &crate;
     g_crate_name = rv.m_crate_name;
     g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? rv.m_crate_name : "core");
     auto& macros = rv.m_exported_macros;
@@ -1813,7 +1819,19 @@ public:
             const auto& name = lang.first;
             const auto& path = lang.second;
             auto irv = rv.m_lang_items.insert( ::std::make_pair(name, path) );
-            if( irv.second == false && irv.first->second != path )
+            if( irv.second == true )
+            {
+                // Doesn't yet exist, all good
+            }
+            else if( irv.first->second == path )
+            {
+                // Equal definitions, also good (TODO: How can this happen?)
+            }
+            else if( irv.first->second.m_components.empty() && path.m_components.empty() )
+            {
+                // Both are just markers, also good (e.g. #![needs_panic_runtime])
+            }
+            else
             {
                 ERROR(sp, E0000, "Conflicting definitions of lang item '" << name << "'. " << path << " and " << irv.first->second);
             }
