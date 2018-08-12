@@ -239,6 +239,7 @@ namespace {
                     << "#include <stdlib.h>\n"  // abort
                     << "#include <string.h>\n"  // mem*
                     << "#include <math.h>\n"  // round, ...
+                    << "#include <setjmp.h>\n"  // setjmp/jmp_buf
                     ;
                 break;
             case Compiler::Msvc:
@@ -294,6 +295,10 @@ namespace {
             switch (m_compiler)
             {
             case Compiler::Gcc:
+                m_of
+                    << "extern __thread jmp_buf*    mrustc_panic_target;\n"
+                    << "extern __thread void* mrustc_panic_value;\n"
+                    ;
                 // 64-bit bit ops (gcc intrinsics)
                 m_of
                     << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
@@ -562,6 +567,14 @@ namespace {
                     m_of << "\treturn " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
                 }
                 m_of << "}\n";
+
+                if( m_compiler == Compiler::Gcc )
+                {
+                    m_of
+                        << "__thread jmp_buf* mrustc_panic_target;\n"
+                        << "__thread void* mrustc_panic_value;\n"
+                        ;
+                }
             }
 
             m_of.flush();
@@ -1999,6 +2012,19 @@ namespace {
             if( item.m_linkage.name != "" && m_compiler == Compiler::Msvc )
             {
                 m_of << "static ";
+            }
+            else if( item.m_linkage.name == "_Unwind_RaiseException" )
+            {
+                MIR_ASSERT(*m_mir_res, m_compiler == Compiler::Gcc, item.m_linkage.name << " in non-GCC mode");
+                m_of << "// - Magic compiler impl\n";
+                m_of << "static ";
+                emit_function_header(p, item, params);
+                m_of << " {\n";
+                m_of << "\tif( !mrustc_panic_target ) abort();\n";
+                m_of << "\tmrustc_panic_value = arg0;\n";
+                m_of << "\tlongjmp(*mrustc_panic_target, 1);\n";
+                m_of << "}\n";
+                return;
             }
             else
             {
@@ -4170,8 +4196,35 @@ namespace {
                 m_of << "abort()";
             }
             else if( name == "try" ) {
+                // Register thread-local setjmp
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "{ ";
+                    m_of << " jmp_buf jmpbuf; mrustc_panic_target = &jmpbuf;";
+                    m_of << " if(setjmp(jmpbuf)) {";
+                    // NOTE: gcc unwind has a pointer as its `local_ptr` parameter
+                    m_of << " *(void**)("; emit_param(e.args.at(2)); m_of << ") = mrustc_panic_value;";
+                    m_of << " "; emit_lvalue(e.ret_val); m_of << " = 1;";   // Return value non-zero when panic happens
+                    m_of << " } else {";
+                    m_of << " ";
+                    break;
+                default:
+                    break;
+                }
                 emit_param(e.args.at(0)); m_of << "("; emit_param(e.args.at(1)); m_of << "); ";
                 emit_lvalue(e.ret_val); m_of << " = 0";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << ";";
+                    m_of << " }";
+                    m_of << " mrustc_panic_target = NULL;";
+                    m_of << " }";
+                    break;
+                default:
+                    break;
+                }
             }
             else if( name == "offset" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
