@@ -1605,7 +1605,7 @@ namespace {
                 // Extract the "Place" type
                 m_builder.end_block(::MIR::Terminator::make_Call({
                     place__ok, place__panic,
-                    place.clone(), ::HIR::Path(place_type.clone(), ::HIR::GenericPath(path_Placer, trait_params_data.clone()), "make_place", {}),
+                    place.clone(), ::HIR::Path(node.m_place->m_res_type.clone(), ::HIR::GenericPath(path_Placer, trait_params_data.clone()), "make_place", {}),
                     ::make_vec1( mv$(val) )
                     }));
                 break; }
