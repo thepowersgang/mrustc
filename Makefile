@@ -236,11 +236,13 @@ LIB_TESTS := collections #std
 #LIB_TESTS += rustc_data_structures
 rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
 
-RUNTIME_ARGS_output/libcollectionstest-test := --test-threads 1
-RUNTIME_ARGS_output/libcollectionstest-test := --skip linked_list::test_ord_nan --skip ::slice::test_box_slice_clone_panics
+RUNTIME_ARGS_output/libcollections-test := --test-threads 1
 RUNTIME_ARGS_output/libstd-test := --test-threads 1
-RUNTIME_ARGS_output/libstd-test := --skip ::collections::hash::map::test_map::test_index_nonexistent
+RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_index_nonexistent
 RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
+RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_drop
+RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_panic
+RUNTIME_ARGS_output/libstd-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Unbounded execution
 
 output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"
@@ -258,7 +260,7 @@ output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(TEST_DEPS)
 	@test -e $@
 output/%_out.txt: output/%
 	@echo "--- [$<]"
-	@./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
+	$V./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
 
 # "hello, world" test - Invoked by the `make test` target
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
