@@ -421,22 +421,43 @@ namespace {
                     << "static inline double cast128_double(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
                     << "static inline int cmp128(uint128_t a, uint128_t b) { if(a.hi != b.hi) return a.hi < b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
                     << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
-                    << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
+                    << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (a.lo < b.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
                     // Serial shift+add
                     << "static inline bool mul128_o(uint128_t a, uint128_t b, uint128_t* o) {"
-                    <<  "bool of = false;"
-                    <<  "o->hi = 0; o->lo = 0;"
-                    <<  "for(int i=0;i<128;i++){"
-                    <<   "if((1ull<<(i&63))&(i>64?a.hi:a.lo)) of |= add128_o(*o, b, o);"
-                    <<   "b.hi = (b.hi << 1) | (b.lo >> 63);"
-                    <<   "b.lo = (b.lo << 1);"
-                    <<  "}"
-                    <<  "return of;"
-                    <<  "}\n"
-                    // TODO: Long division
+                    << " bool of = false;"
+                    << " o->hi = 0; o->lo = 0;"
+                    << " for(int i=0;i<128;i++){"
+                    <<  " uint64_t m = (1ull << (i % 64));"
+                    <<  " if(a.hi==0&&a.lo<m)   break;"
+                    <<  " if(i>=64&&a.hi<m) break;"
+                    <<  " if( m & (i >= 64 ? a.hi : a.lo) ) of |= add128_o(*o, b, o);"
+                    <<  " b.hi = (b.hi << 1) | (b.lo >> 63);"
+                    <<  " b.lo = (b.lo << 1);"
+                    << " }"
+                    << " return of;"
+                    << "}\n"
+                    // Long division
                     << "static inline bool div128_o(uint128_t a, uint128_t b, uint128_t* q, uint128_t* r) {"
-                    <<  "abort();"
-                    <<  "}\n"
+                    << " if(a.hi == 0 && b.hi == 0) { if(q) { q->hi=0; q->lo = a.lo / b.lo; } if(r) { r->hi=0; r->lo = a.lo % b.lo; } return false; }"
+                    << " if(cmp128(a, b) < 0) { if(q) { q->hi=0; q->lo=0; } if(r) *r = a; return false; }"
+                    << " uint128_t a_div_2 = {(a.lo>>1)|(a.hi << 63), a.hi>>1};"
+                    << " int shift = 0;"
+                    << " while( cmp128(a_div_2, b) >= 0 && shift < 128 ) {"
+                    <<  " shift += 1;"
+                    <<  " b.hi = (b.hi<<1)|(b.lo>>63); b.lo <<= 1;"
+                    <<  " }"
+                    << " if(shift == 128) return true;" // true = overflowed
+                    << " uint128_t mask = { /*lo=*/(shift >= 64 ? 0 : (1ull << shift)), /*hi=*/(shift < 64 ? 0 : 1ull << (shift-64)) };"
+                    << " shift ++;"
+                    << " if(q) { q->hi = 0; q->lo = 0; }"
+                    << " while(shift--) {"
+                    <<  " if( cmp128(a, b) >= 0 ) { if(q) add128_o(*q, mask, q); sub128_o(a, b, &a); }"
+                    <<  " mask.lo = (mask.lo >> 1) | (mask.hi << 63); mask.hi >>= 1;"
+                    <<  " b.lo = (b.lo >> 1) | (b.hi << 63); b.hi >>= 1;"
+                    << " }"
+                    << " if(r) *r = a;"
+                    << " return false;"
+                    << "}\n"
                     << "static inline uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; add128_o(a, b, &v); return v; }\n"
                     << "static inline uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; sub128_o(a, b, &v); return v; }\n"
                     << "static inline uint128_t mul128(uint128_t a, uint128_t b) { uint128_t v; mul128_o(a, b, &v); return v; }\n"
@@ -458,18 +479,19 @@ namespace {
                     << "\treturn rv;\n"
                     << "}\n"
                     << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
+                    << "static inline int128_t neg128s(int128_t v) { int128_t rv = { ~v.lo+1, ~v.hi + (v.lo == 0) }; return rv; }\n"
                     << "static inline float cast128s_float(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
                     << "static inline double cast128s_double(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
                     << "static inline int cmp128s(int128_t a, int128_t b) { if(a.hi != b.hi) return (int64_t)a.hi < (int64_t)b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
                     << "static inline bool add128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
                     << "static inline bool sub128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
                     << "static inline bool mul128s_o(int128_t a, int128_t b, int128_t* o) {"
-                    << " bool sgna = a.hi & (1ull<<63);"
-                    << " bool sgnb = b.hi & (1ull<<63);"
-                    << " if(sgna) { a.hi = ~a.hi; a.lo = ~a.lo; a.lo += 1; if(a.lo == 0) a.hi += 1; }"
-                    << " if(sgnb) { b.hi = ~b.hi; b.lo = ~b.lo; b.lo += 1; if(b.lo == 0) b.hi += 1; }"
+                    << " bool sgna = (a.hi >> 63);"
+                    << " bool sgnb = (b.hi >> 63);"
+                    << " if(sgna) a = neg128s(a);"
+                    << " if(sgnb) b = neg128s(b);"
                     << " bool rv = mul128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)o);"
-                    << " if(sgnb != sgnb) { o->hi = ~o->hi; o->lo = ~o->lo; o->lo += 1; if(o->lo == 0) o->hi += 1; }"
+                    << " if(sgnb != sgnb) *o = neg128s(*o);"
                     << " return rv;"
                     << " }\n"
                     << "static inline bool div128s_o(int128_t a, int128_t b, int128_t* q, int128_t* r) {"
@@ -2920,10 +2942,7 @@ namespace {
                         switch (ve.op)
                         {
                         case ::MIR::eUniOp::NEG:
-                            emit_lvalue(e.dst);
-                            m_of << ".lo = -"; emit_lvalue(ve.val); m_of << ".lo; ";
-                            emit_lvalue(e.dst);
-                            m_of << ".hi = -"; emit_lvalue(ve.val); m_of << ".hi";
+                            emit_lvalue(e.dst); m_of << " = neg128s("; emit_lvalue(ve.val); m_of << ")";
                             break;
                         case ::MIR::eUniOp::INV:
                             emit_lvalue(e.dst);
