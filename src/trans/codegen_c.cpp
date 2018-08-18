@@ -420,8 +420,10 @@ namespace {
                     << "static inline float cast128_float(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
                     << "static inline double cast128_double(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
                     << "static inline int cmp128(uint128_t a, uint128_t b) { if(a.hi != b.hi) return a.hi < b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
-                    << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
-                    << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (a.lo < b.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
+                    // Returns true if overflow happens (res < a)
+                    << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi < a.hi); }\n"
+                    // Returns true if overflow happens (res > a)
+                    << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (a.lo < b.lo ? 1 : 0); return (o->hi > a.hi); }\n"
                     // Serial shift+add
                     << "static inline bool mul128_o(uint128_t a, uint128_t b, uint128_t* o) {"
                     << " bool of = false;"
@@ -483,8 +485,10 @@ namespace {
                     << "static inline float cast128s_float(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
                     << "static inline double cast128s_double(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
                     << "static inline int cmp128s(int128_t a, int128_t b) { if(a.hi != b.hi) return (int64_t)a.hi < (int64_t)b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
-                    << "static inline bool add128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
-                    << "static inline bool sub128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
+                    // Returns true if overflow happens (if negative with pos,pos or positive with neg,neg)
+                    << "static inline bool add128s_o(int128_t a, int128_t b, int128_t* o) { bool sgna=a.hi>>63; bool sgnb=b.hi>>63; add128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)o); bool sgno = o->hi>>63; return (sgna==sgnb && sgno != sgna); }\n"
+                    // Returns true if overflow happens (if neg with pos,neg or pos with neg,pos)
+                    << "static inline bool sub128s_o(int128_t a, int128_t b, int128_t* o) { bool sgna=a.hi>>63; bool sgnb=b.hi>>63; sub128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)o); bool sgno = o->hi>>63; return (sgna!=sgnb && sgno != sgna); }\n"
                     << "static inline bool mul128s_o(int128_t a, int128_t b, int128_t* o) {"
                     << " bool sgna = (a.hi >> 63);"
                     << " bool sgnb = (b.hi >> 63);"
