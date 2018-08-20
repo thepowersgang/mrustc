@@ -1029,8 +1029,27 @@ namespace {
             TRACE_FUNCTION_F(p);
             auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
-            bool has_unsized = false;
+
+            ::std::vector<unsigned> fields;
+            for(const auto& ent : repr->fields)
+            {
+                (void)ent;
+                fields.push_back(fields.size());
+            }
+            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+
             m_of << "// struct " << p << "\n";
+
+            // Determine if the type has an alignment hack
+            bool has_manual_align = false;
+            for(unsigned fld : fields )
+            {
+                const auto& ty = repr->fields[fld].ty;
+                if( ty.m_data.is_Array() && ty.m_data.as_Array().size_val == 0 ) {
+                    has_manual_align = true;
+                }
+            }
+
             // For repr(packed), mark as packed
             if(is_packed)
             {
@@ -1043,15 +1062,20 @@ namespace {
                     break;
                 }
             }
+            if(has_manual_align)
+            {
+                switch(m_compiler)
+                {
+                case Compiler::Msvc:
+                    m_of << "#pragma align(push, " << repr->align << ")\n";
+                    break;
+                case Compiler::Gcc:
+                    break;
+                }
+            }
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
 
-            ::std::vector<unsigned> fields;
-            for(const auto& ent : repr->fields)
-            {
-                (void)ent;
-                fields.push_back(fields.size());
-            }
-            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+            bool has_unsized = false;
             size_t sized_fields = 0;
             for(unsigned fld : fields)
             {
@@ -1078,9 +1102,12 @@ namespace {
                         continue ;
                     }
                     else {
+
                         // TODO: Nested unsized?
                         emit_ctype( ty, FMT_CB(ss, ss << "_" << fld) );
                         sized_fields ++;
+
+                        has_unsized |= (s == SIZE_MAX);
                     }
                 }
                 m_of << ";\n";
@@ -1090,15 +1117,23 @@ namespace {
                 m_of << "\tchar _d;\n";
             }
             m_of << "}";
-            if(is_packed)
+            if(is_packed || has_manual_align)
             {
                 switch(m_compiler)
                 {
                 case Compiler::Msvc:
-                    m_of << ";\n#pragma pack(pop)\n";
+                    if( is_packed )
+                        m_of << ";\n#pragma pack(pop)\n";
+                    if( has_manual_align )
+                        m_of << ";\n#pragma align(pop)\n";
                     break;
                 case Compiler::Gcc:
-                    m_of << " __attribute__((packed));\n";
+                    m_of << " __attribute__((";
+                    if( is_packed )
+                        m_of << "packed,";
+                    if( has_manual_align )
+                        m_of << "__aligned__(" << repr->align << "),";
+                    m_of << "));\n";
                     break;
                 }
             }
@@ -1107,6 +1142,12 @@ namespace {
                 m_of << ";\n";
             }
             (void)has_unsized;
+            if( true && repr->size > 0 && !has_unsized )
+            {
+                // TODO: Handle unsized (should check the size of the fixed-size region)
+                m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct s_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
+                //m_of << "typedef char alignof_assert_" << Trans_Mangle(p) << "[ (ALIGNOF(struct s_" << Trans_Mangle(p) << ") == " << repr->align << ") ? 1 : -1 ];\n";
+            }
 
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
@@ -1174,6 +1215,10 @@ namespace {
                 m_of << "\t"; emit_ctype( repr->fields[i].ty, FMT_CB(ss, ss << "var_" << i;) ); m_of << ";\n";
             }
             m_of << "};\n";
+            if( true && repr->size > 0 )
+            {
+                m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(union u_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
+            }
 
             // Drop glue (calls destructor if there is one)
             auto drop_glue_path = ::HIR::Path(item_ty.clone(), "#drop_glue");
@@ -1272,16 +1317,32 @@ namespace {
                 // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
                 m_of << "\tunion {\n";
                 // > First field
-                m_of << "\t\t";
-                emit_ctype(repr->fields[0].ty, FMT_CB(os, os << "var_0"));
-                m_of << ";\n";
+                {
+                    m_of << "\t\t";
+                    const auto& ty = repr->fields[0].ty;
+                    if( this->type_is_bad_zst(ty) ) {
+                        m_of << "// ZST: " << ty << "\n";
+                    }
+                    else {
+                        emit_ctype( ty, FMT_CB(ss, ss << "var_0") );
+                        m_of << ";\n";
+                        //sized_fields ++;
+                    }
+                }
                 // > All others
                 for(auto idx : union_fields)
                 {
-                    // TODO: if the compiler doesn't allow zero-sized types, don't emit zero-sized fields.
                     m_of << "\t\t";
-                    emit_ctype(repr->fields[idx].ty, FMT_CB(os, os << "var_" << idx));
-                    m_of << ";\n";
+
+                    const auto& ty = repr->fields[idx].ty;
+                    if( this->type_is_bad_zst(ty) ) {
+                        m_of << "// ZST: " << ty << "\n";
+                    }
+                    else {
+                        emit_ctype( ty, FMT_CB(ss, ss << "var_" << idx) );
+                        m_of << ";\n";
+                        //sized_fields ++;
+                    }
                 }
                 m_of << "\t} DATA;\n";
 
@@ -1336,6 +1397,10 @@ namespace {
             }
 
             m_of << "};\n";
+            if( true && repr->size > 0 )
+            {
+                m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct e_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
+            }
 
             // ---
             // - Drop Glue
@@ -1724,9 +1789,15 @@ namespace {
                 else
                 {
                     m_of << "{";
-                    m_of << " { .var_" << e.idx << " = ";
-                    emit_literal(get_inner_type(e.idx, 0), *e.val, params);
-                    m_of << " }";
+                    const auto& ity = get_inner_type(e.idx, 0);
+                    if( this->type_is_bad_zst(ity) ) {
+                        m_of << " {}";
+                    }
+                    else {
+                        m_of << " { .var_" << e.idx << " = ";
+                        emit_literal(ity, *e.val, params);
+                        m_of << " }";
+                    }
                     m_of << ", .TAG = "; emit_enum_variant_val(repr, e.idx);
                     m_of << "}";
                 }
@@ -2739,7 +2810,11 @@ namespace {
                         m_of << " = ";
 
                         // If the index is zero, then the best option is to borrow the source
-                        if( val_fp->field_index == 0 )
+                        if( val_fp->val->is_Downcast() )
+                        {
+                            m_of << "(void*)& "; emit_lvalue(*val_fp->val->as_Downcast().val);
+                        }
+                        else if( val_fp->field_index == 0 )
                         {
                             m_of << "(void*)& "; emit_lvalue(*val_fp->val);
                         }
@@ -3058,9 +3133,20 @@ namespace {
                         }
                         else
                         {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index); m_of << ";\n" << indent;
-                            emit_lvalue(e.dst); m_of << ".DATA";
-                            m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
+
+                            ::HIR::TypeRef  tmp;
+                            const auto& vty = mir_res.get_param_type(tmp, ve.val);
+                            if( this->type_is_bad_zst(vty) )
+                            {
+                                m_of << "/* ZST field */";
+                            }
+                            else
+                            {
+                                m_of << ";\n" << indent;
+                                emit_lvalue(e.dst); m_of << ".DATA";
+                                m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                            }
                         }
                     }
                     else
