@@ -1526,23 +1526,23 @@ namespace {
             }
             else
             {
-                m_of << " .DATA = { .var_" << var_idx << " = {";
                 if( this->type_is_bad_zst(repr->fields[var_idx].ty) )
                 {
-                    m_of << "\n\t\t0";
+                    m_of << " .DATA = { /* ZST Variant */ }";
                 }
                 else
                 {
+                    m_of << " .DATA = { .var_" << var_idx << " = {";
                     for(unsigned int i = 0; i < e.size(); i ++)
                     {
                         if(i != 0)
                         m_of << ",";
                         m_of << "\n\t\t_" << i;
                     }
+                    m_of << "\n\t\t} }";
                 }
-                m_of << "\n\t\t}";
             }
-            m_of << " }};\n";
+            m_of << " };\n";
             m_of << "\treturn rv;\n";
             m_of << "}\n";
             m_mir_res = nullptr;
@@ -5224,7 +5224,7 @@ namespace {
                     } break;
                 TU_ARM(repr->variants, Values, ve) {
                     emit_dst(); emit_enum_path(repr, ve.field); m_of << " = ";
-                    
+
                     emit_enum_variant_val(repr, e.idx);
                     if( TU_TEST1((*e.val), List, .empty() == false) )
                     {
