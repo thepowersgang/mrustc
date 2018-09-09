@@ -520,9 +520,8 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
 
     STARTUPINFO si = { 0 };
     si.cb = sizeof(si);
-    si.dwFlags = STARTF_USESTDHANDLES;
+    si.dwFlags = STARTF_USESTDHANDLES|STARTF_FORCEOFFFEEDBACK;
     si.hStdInput = NULL;
-    si.hStdError = GetStdHandle(STD_ERROR_HANDLE);
     {
         SECURITY_ATTRIBUTES sa = { 0 };
         sa.nLength = sizeof(sa);
@@ -532,8 +531,11 @@ bool run_executable(const ::helpers::path& exe_name, const ::std::vector<const c
         //WriteFile(si.hStdOutput, cmdline_str.data(), static_cast<DWORD>(cmdline_str.size()), &tmp, NULL);
         //WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
+    DuplicateHandle(NULL, si.hStdOutput, NULL, &si.hStdError, GENERIC_WRITE, FALSE, FILE_SHARE_READ);
     PROCESS_INFORMATION pi = { 0 };
+    auto em = SetErrorMode(SEM_NOGPFAULTERRORBOX);
     CreateProcessA(exe_name.str().c_str(), (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    SetErrorMode(em);
     CloseHandle(si.hStdOutput);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD status = 1;

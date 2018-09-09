@@ -252,7 +252,6 @@
     <ClCompile Include="..\src\resolve\absolute.cpp" />
     <ClCompile Include="..\src\resolve\index.cpp" />
     <ClCompile Include="..\src\resolve\use.cpp" />
-    <ClCompile Include="..\src\serialise.cpp" />
     <ClCompile Include="..\src\span.cpp" />
     <ClCompile Include="..\src\trans\allocator.cpp" />
     <ClCompile Include="..\src\trans\codegen.cpp" />
@@ -264,6 +263,7 @@
     <ClCompile Include="..\src\trans\monomorphise.cpp" />
     <ClCompile Include="..\src\trans\target.cpp" />
     <ClCompile Include="..\src\trans\trans_list.cpp" />
+    <ClCompile Include="..\src\version.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\src\ast\ast.hpp" />
