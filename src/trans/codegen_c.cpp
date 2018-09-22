@@ -1449,8 +1449,12 @@ namespace {
                     {
                         var_lv.as_Downcast().variant_index = var_idx;
                         m_of << "\tcase " << e->values[var_idx] << ":\n";
-                        emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
-                        m_of << "\tbreak;\n";
+                        if( this->type_is_bad_zst(repr->fields[var_idx].ty) ) {
+                        }
+                        else {
+                            emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
+                        }
+                        m_of << "\t\tbreak;\n";
                     }
                     m_of << "\t}\n";
                 }
