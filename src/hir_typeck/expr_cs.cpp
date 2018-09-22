@@ -1534,7 +1534,6 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " [...; "<<node.m_size_val<<"]");
             this->context.add_ivars( node.m_val->m_res_type );
-            this->context.add_ivars( node.m_size->m_res_type );
 
             // Create result type (can't be known until after const expansion)
             // - Should it be created in const expansion?
@@ -1547,7 +1546,6 @@ namespace {
             this->context.equate_types(node.span(), ::HIR::TypeRef(::HIR::CoreType::Usize), node.m_size->m_res_type);
 
             node.m_val->visit( *this );
-            node.m_size->visit( *this );
         }
 
         void visit(::HIR::ExprNode_Literal& node) override

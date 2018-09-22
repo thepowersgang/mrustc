@@ -3479,7 +3479,11 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
         visited[bb] = true;
 
         auto assigned_lval = [&](const ::MIR::LValue& lv) {
-            if(const auto* le = lv.opt_Local() )
+            const auto* lvp = &lv;
+            // TODO: Consume through indexing/field accesses
+            while(lvp->is_Field())
+                lvp = &*lvp->as_Field().val;
+            if(const auto* le = lvp->opt_Local() )
                 used_locals[*le] = true;
             };
 
