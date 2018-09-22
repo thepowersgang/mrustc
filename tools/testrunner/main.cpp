@@ -103,7 +103,8 @@ bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& out
 
     // Force optimised and debuggable
     args.push_back("-O");
-    args.push_back("-g");
+    // TODO: Only turn debug on when requested by the caller
+    //args.push_back("-g");
 
     args.push_back("-L");
     args.push_back("output");
@@ -386,14 +387,6 @@ int main(int argc, const char* argv[])
                     else
                         continue;
                 }
-
-#ifdef __linux__
-                // Run `strip` on the test (if on linux)
-                // XXX: Make this cleaner, or remove the need for it (by dynamic linking libstd)
-                if( !run_executable("/usr/bin/strip", { "strip",  outfile.str().c_str() }, "/dev/null") )
-                {
-                }
-#endif
             }
             else
             {
