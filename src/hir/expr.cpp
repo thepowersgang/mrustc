@@ -172,7 +172,7 @@ DEF_VISIT(ExprNode_ArrayList, node,
 )
 DEF_VISIT(ExprNode_ArraySized, node,
     visit_node_ptr(node.m_val);
-    visit_node_ptr(node.m_size);
+    //visit_node_ptr(node.m_size);
 )
 
 DEF_VISIT(ExprNode_Closure, node,

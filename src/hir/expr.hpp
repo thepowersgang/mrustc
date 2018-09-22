@@ -758,14 +758,15 @@ struct ExprNode_ArrayList:
 
     NODE_METHODS();
 };
+// TODO: Might want a second variant for dynamically-sized arrays
 struct ExprNode_ArraySized:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_val;
-    ::HIR::ExprNodeP    m_size; // TODO: Has to be constant
+    ::HIR::ExprPtr  m_size;
     size_t  m_size_val;
 
-    ExprNode_ArraySized(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprNodeP size):
+    ExprNode_ArraySized(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprPtr size):
         ExprNode(mv$(sp)),
         m_val( mv$(val) ),
         m_size( mv$(size) ),

@@ -285,6 +285,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
     };
     ::std::vector<ToVisit> to_visit_blocks;
 
+    // TODO: Check that all used locals are also set (anywhere at all)
+
     auto add_to_visit = [&](unsigned int idx, ::std::vector<unsigned int> src_path, auto vs) {
         for(const auto& b : to_visit_blocks)
             if( b.bb == idx && b.state == vs)

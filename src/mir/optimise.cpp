@@ -27,7 +27,7 @@
 #define CHECK_AFTER_ALL     1
 #define DUMP_AFTER_PASS     1
 
-#define DUMP_AFTER_DONE     0
+#define DUMP_AFTER_DONE     1
 #define CHECK_AFTER_DONE    2   // 1 = Check before GC, 2 = check before and after GC
 
 // ----
@@ -106,12 +106,14 @@ bool MIR_OptimiseInline(const StaticTraitResolve& resolve, const ::HIR::ItemPath
         // - Constant propagation (inlining may have lead to some more constant information
         MIR_Optimise_ConstPropagte(state, fcn);
         // - Unify non-overlapping locals
+#if 0
         if(MIR_Optimise_UnifyTemporaries(state, fcn))
         {
 #if CHECK_AFTER_ALL
             MIR_Validate(resolve, path, fcn, args, ret_type);
 #endif
         }
+#endif
         // - Remove no-op statements
         MIR_Optimise_NoopRemoval(state, fcn);
 
@@ -238,6 +240,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
     // Run UnifyTemporaries last, then unify blocks, then run some
     // optimisations that might be affected
+#if 0
     if(MIR_Optimise_UnifyTemporaries(state, fcn))
     {
 #if CHECK_AFTER_ALL
@@ -247,6 +250,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
         //MIR_Optimise_ConstPropagte(state, fcn);
         MIR_Optimise_NoopRemoval(state, fcn);
     }
+#endif
 
 
     #if DUMP_AFTER_DONE
@@ -536,10 +540,10 @@ namespace {
             if( it->second->monomorphised.code ) {
                 return &*it->second->monomorphised.code;
             }
-            else if( hir_fcn.m_code.m_mir ) {
+            else if( const auto* mir = hir_fcn.m_code.get_mir_opt() ) {
                 MIR_ASSERT(state, hir_fcn.m_params.m_types.empty(), "Enumeration failure - Function had params, but wasn't monomorphised - " << path);
                 // TODO: Check for trait methods too?
-                return &*hir_fcn.m_code.m_mir;
+                return mir;
             }
             else {
                 MIR_ASSERT(state, !hir_fcn.m_code, "LowerMIR failure - No MIR but HIR is present?! - " << path);
@@ -551,10 +555,10 @@ namespace {
         TU_MATCHA( (path.m_data), (pe),
         (Generic,
             const auto& fcn = state.m_crate.get_function_by_path(state.sp, pe.m_path);
-            if( fcn.m_code.m_mir )
+            if( const auto* mir = fcn.m_code.get_mir_opt() )
             {
                 params.fcn_params = &pe.m_params;
-                return &*fcn.m_code.m_mir;
+                return mir;
             }
             ),
         (UfcsKnown,
@@ -626,14 +630,14 @@ namespace {
             {
                 params.impl_params.m_types = mv$(best_impl_params);
                 DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
-                if( fit->second.data.m_code.m_mir )
-                    return &*fit->second.data.m_code.m_mir;
+                if( const auto* mir = fit->second.data.m_code.get_mir_opt() )
+                    return mir;
             }
             else
             {
                 params.impl_params = pe.trait.m_params.clone();
-                if( ve.m_code.m_mir )
-                    return &*ve.m_code.m_mir;
+                if( const auto* mir = ve.m_code.get_mir_opt() )
+                    return mir;
             }
             return nullptr;
             ),
@@ -653,12 +657,12 @@ namespace {
             MIR_ASSERT(state, best_impl, "Couldn't find an impl for " << path);
             auto fit = best_impl->m_methods.find(pe.item);
             MIR_ASSERT(state, fit != best_impl->m_methods.end(), "Couldn't find method in best inherent impl");
-            if( fit->second.data.m_code.m_mir )
+            if( const auto* mir = fit->second.data.m_code.get_mir_opt() )
             {
                 params.self_ty = &*pe.type;
                 params.fcn_params = &pe.params;
                 params.impl_params = pe.impl_params.clone();
-                return &*fit->second.data.m_code.m_mir;
+                return mir;
             }
             return nullptr;
             ),
@@ -3243,36 +3247,97 @@ bool MIR_Optimise_DeadDropFlags(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
     bool removed_statement = false;
     TRACE_FUNCTION_FR("", removed_statement);
-    ::std::vector<bool> read_drop_flags( fcn.drop_flags.size() );
-    visit_blocks(state, fcn, [&read_drop_flags](auto , const ::MIR::BasicBlock& block) {
-            for(const auto& stmt : block.statements)
-            {
-                if( const auto* e = stmt.opt_SetDropFlag() )
+    ::std::vector<bool> used_drop_flags( fcn.drop_flags.size() );
+    {
+        ::std::vector<bool> read_drop_flags( fcn.drop_flags.size() );
+        visit_blocks(state, fcn, [&read_drop_flags,&used_drop_flags](auto , const ::MIR::BasicBlock& block) {
+                for(const auto& stmt : block.statements)
                 {
-                    if(e->other != ~0u) {
-                        read_drop_flags[e->other] = true;
+                    if( const auto* e = stmt.opt_SetDropFlag() )
+                    {
+                        if(e->other != ~0u) {
+                            read_drop_flags[e->other] = true;
+                            used_drop_flags[e->other] = true;
+                        }
+                        used_drop_flags[e->idx] = true;
+                    }
+                    else if( const auto* e = stmt.opt_Drop() )
+                    {
+                        if(e->flag_idx != ~0u) {
+                            read_drop_flags[e->flag_idx] = true;
+                            used_drop_flags[e->flag_idx] = true;
+                        }
                     }
                 }
-                else if( const auto* e = stmt.opt_Drop() )
+                });
+        DEBUG("Un-read drop flags:" << FMT_CB(ss,
+            for(size_t i = 0; i < read_drop_flags.size(); i ++)
+                if( ! read_drop_flags[i] && used_drop_flags[i] )
+                    ss << " " << i;
+            ));
+        visit_blocks_mut(state, fcn, [&read_drop_flags,&removed_statement](auto _id, auto& block) {
+                for(auto it = block.statements.begin(); it != block.statements.end(); )
                 {
-                    if(e->flag_idx != ~0u) {
-                        read_drop_flags[e->flag_idx] = true;
+                    if(it->is_SetDropFlag() && ! read_drop_flags[it->as_SetDropFlag().idx] ) {
+                        removed_statement = true;
+                        it = block.statements.erase(it);
+                    }
+                    else {
+                        ++ it;
                     }
                 }
-            }
-            });
-    visit_blocks_mut(state, fcn, [&read_drop_flags,&removed_statement](auto _id, auto& block) {
-            for(auto it = block.statements.begin(); it != block.statements.end(); )
-            {
-                if(it->is_SetDropFlag() && ! read_drop_flags[it->as_SetDropFlag().idx] ) {
-                    removed_statement = true;
-                    it = block.statements.erase(it);
+                });
+    }
+
+    // Find any drop flags that are never assigned with a value other than their default, then remove those dead assignments.
+    {
+        ::std::vector<bool> edited_drop_flags( fcn.drop_flags.size() );
+        visit_blocks(state, fcn, [&edited_drop_flags,&fcn](auto , const ::MIR::BasicBlock& block) {
+                for(const auto& stmt : block.statements)
+                {
+                    if( const auto* e = stmt.opt_SetDropFlag() )
+                    {
+                        if(e->other != ~0u) {
+                            // If the drop flag is set based on another, assume it's changed
+                            edited_drop_flags[e->idx] = true;
+                        }
+                        else if( e->new_val != fcn.drop_flags[e->idx] ) {
+                            // If the new value is not the default, it's changed
+                            edited_drop_flags[e->idx] = true;
+                        }
+                        else {
+                            // Set to the default, doesn't change the 'edited' state
+                        }
+                    }
                 }
-                else {
-                    ++ it;
+                });
+        DEBUG("Un-edited drop flags:" << FMT_CB(ss,
+            for(size_t i = 0; i < edited_drop_flags.size(); i ++)
+                if( ! edited_drop_flags[i] && used_drop_flags[i] )
+                    ss << " " << i;
+            ));
+        visit_blocks_mut(state, fcn, [&edited_drop_flags,&removed_statement,&fcn](auto _id, auto& block) {
+                for(auto it = block.statements.begin(); it != block.statements.end(); )
+                {
+                    // If this is a SetDropFlag and the target flag isn't edited, remove
+                    if(const auto* e = it->opt_SetDropFlag())
+                    {
+                        if( ! edited_drop_flags[e->idx] ) {
+                            assert( e->new_val == fcn.drop_flags[e->idx] );
+                            removed_statement = true;
+                            it = block.statements.erase(it);
+                        }
+                        else {
+                            ++ it;
+                        }
+                    }
+                    else {
+                        ++ it;
+                    }
                 }
-            }
-            });
+                });
+    }
+
     return removed_statement;
 }
 
@@ -3732,11 +3797,12 @@ void MIR_OptimiseCrate(::HIR::Crate& crate, bool do_minimal_optimisation)
             if( ! dynamic_cast<::HIR::ExprNode_Block*>(expr.get()) ) {
                 return ;
             }
+            auto& mir = expr.get_mir_or_error_mut(Span());
             if( do_minimal_optimisation ) {
-                MIR_OptimiseMin(res, p, *expr.m_mir, args, ty);
+                MIR_OptimiseMin(res, p, mir, args, ty);
             }
             else {
-                MIR_Optimise(res, p, *expr.m_mir, args, ty);
+                MIR_Optimise(res, p, mir, args, ty);
             }
         }
         };
@@ -3769,9 +3835,10 @@ void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
             {
                 did_inline_on_pass |= MIR_OptimiseInline(resolve, ip, *mono_fcn.code, mono_fcn.arg_tys, mono_fcn.ret_ty, list);
             }
-            else if( hir_fcn.m_code.m_mir)
+            else if( hir_fcn.m_code )
             {
-                did_inline_on_pass |= MIR_OptimiseInline(resolve, ip, *hir_fcn.m_code.m_mir, hir_fcn.m_args, hir_fcn.m_return, list);
+                auto& mir = hir_fcn.m_code.get_mir_or_error_mut(Span());
+                did_inline_on_pass |= MIR_OptimiseInline(resolve, ip, mir, hir_fcn.m_args, hir_fcn.m_return, list);
             }
             else
             {

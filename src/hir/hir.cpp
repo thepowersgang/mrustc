@@ -10,6 +10,11 @@
 #include "hir.hpp"
 #include <algorithm>
 #include <hir_typeck/common.hpp>
+#include <hir_typeck/expr_visit.hpp>    // for invoking typecheck
+#include "item_path.hpp"
+#include "expr_state.hpp"
+#include <hir_expand/main_bindings.hpp>
+#include <mir/main_bindings.hpp>
 
 namespace HIR {
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::Literal& v)
@@ -1281,4 +1286,63 @@ bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type
         }
     }
     return false;
+}
+
+const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& ep, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_ty) const
+{
+    if( !ep )
+    {
+        return &*ep.m_mir;
+    }
+    else
+    {
+        if( !ep.m_mir )
+        {
+            ASSERT_BUG(Span(), ep.m_state, "No ExprState for " << ip);
+
+            auto& ep_mut = const_cast<::HIR::ExprPtr&>(ep);
+
+            // Ensure typechecked
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::Typecheck )
+            {
+                if( ep.m_state->stage == ::HIR::ExprState::Stage::TypecheckRequest )
+                    ERROR(Span(), E0000, "Loop in constant evaluation");
+                ep.m_state->stage = ::HIR::ExprState::Stage::TypecheckRequest;
+
+                // TODO: Set debug/timing stage
+                //Debug_SetStagePre("HIR Typecheck");
+                // - Can store that on the Expr, OR get it from the item path
+                typeck::ModuleState ms { const_cast<::HIR::Crate&>(*this) };
+                ms.m_impl_generics = ep.m_state->m_impl_generics;
+                ms.m_item_generics = ep.m_state->m_item_generics;
+                ms.m_traits = ep.m_state->m_traits;
+                Typecheck_Code(ms, const_cast<::HIR::Function::args_t&>(args), ret_ty, ep_mut);
+                //Debug_SetStagePre("Expand HIR Annotate");
+                HIR_Expand_AnnotateUsage_Expr(*this, ep_mut);
+                //Debug_SetStagePre("Expand HIR Closures");
+                HIR_Expand_Closures_Expr(*this, ep_mut);
+                //Debug_SetStagePre("Expand HIR Calls");
+                HIR_Expand_UfcsEverything_Expr(*this, ep_mut);
+                //Debug_SetStagePre("Expand HIR Reborrows");
+                HIR_Expand_Reborrows_Expr(*this, ep_mut);
+                //Debug_SetStagePre("Expand HIR ErasedType");
+                //HIR_Expand_ErasedType(*this, ep_mut);    // - Maybe?
+                //Typecheck_Expressions_Validate(*hir_crate);
+
+                ep.m_state->stage = ::HIR::ExprState::Stage::Typecheck;
+            }
+            // Generate MIR
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::Mir )
+            {
+                if( ep.m_state->stage == ::HIR::ExprState::Stage::MirRequest )
+                    ERROR(Span(), E0000, "Loop in constant evaluation");
+                ep.m_state->stage = ::HIR::ExprState::Stage::MirRequest;
+                //Debug_SetStage("Lower MIR");
+                HIR_GenerateMIR_Expr(*this, ip, ep_mut, args, ret_ty);
+                ep.m_state->stage = ::HIR::ExprState::Stage::Mir;
+            }
+            assert(ep.m_mir);
+        }
+        return &*ep.m_mir;
+    }
 }

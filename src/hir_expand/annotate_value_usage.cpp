@@ -10,6 +10,7 @@
 #include <hir_typeck/static.hpp>
 #include <algorithm>
 #include "main_bindings.hpp"
+#include <hir/expr_state.hpp>
 
 namespace {
 
@@ -652,6 +653,16 @@ namespace {
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
     };
+}
+
+void HIR_Expand_AnnotateUsage_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
+{
+    assert(exp);
+    StaticTraitResolve   resolve { crate };
+    if(exp.m_state->m_impl_generics)   resolve.set_impl_generics(*exp.m_state->m_impl_generics);
+    if(exp.m_state->m_item_generics)   resolve.set_item_generics(*exp.m_state->m_item_generics);
+    ExprVisitor_Mark    ev { resolve };
+    ev.visit_root(exp);
 }
 
 void HIR_Expand_AnnotateUsage(::HIR::Crate& crate)
