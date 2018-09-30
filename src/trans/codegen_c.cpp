@@ -1460,7 +1460,7 @@ namespace {
                         var_lv.as_Downcast().variant_index = var_idx;
                         m_of << "\tcase " << e->values[var_idx] << ":\n";
                         emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
-                        m_of << "\tbreak;\n";
+                        m_of << "\t\tbreak;\n";
                     }
                     m_of << "\t}\n";
                 }
@@ -4999,9 +4999,14 @@ namespace {
                 {
                 case MetadataType::None:
 
-                    if( this->type_is_bad_zst(ty) && slot.is_Field() )
+                    if( this->type_is_bad_zst(ty) && (slot.is_Field() || slot.is_Downcast()) )
                     {
-                        m_of << indent << Trans_Mangle(p) << "((void*)&"; emit_lvalue(*slot.as_Field().val); m_of << ");\n";
+                        m_of << indent << Trans_Mangle(p) << "((void*)&";
+                        if( slot.is_Field() )
+                            emit_lvalue(*slot.as_Field().val);
+                        else
+                            emit_lvalue(*slot.as_Downcast().val);
+                        m_of << ");\n";
                     }
                     else
                     {

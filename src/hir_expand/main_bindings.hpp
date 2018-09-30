@@ -9,6 +9,7 @@
 
 namespace HIR {
     class Crate;
+    class ExprPtr;
 };
 
 extern void HIR_Expand_AnnotateUsage(::HIR::Crate& crate);
@@ -18,3 +19,8 @@ extern void HIR_Expand_UfcsEverything(::HIR::Crate& crate);
 extern void HIR_Expand_Reborrows(::HIR::Crate& crate);
 extern void HIR_Expand_ErasedType(::HIR::Crate& crate);
 extern void ConvertHIR_ConstantEvaluateFull(::HIR::Crate& crate);
+
+extern void HIR_Expand_AnnotateUsage_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);
+extern void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);
+extern void HIR_Expand_UfcsEverything_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);
+extern void HIR_Expand_Reborrows_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp);

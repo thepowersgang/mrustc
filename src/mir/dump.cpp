@@ -515,7 +515,7 @@ namespace {
             {
                 m_os << indent() << "{\n";
                 inc_indent();
-                dump_mir(m_os, m_indent_level, *item.m_code.m_mir);
+                dump_mir(m_os, m_indent_level, item.m_code.get_mir_or_error(Span()));
                 dec_indent();
                 m_os << indent() << "}\n";
             }
@@ -538,7 +538,7 @@ namespace {
                 inc_indent();
                 m_os << " = {\n";
                 inc_indent();
-                dump_mir(m_os, m_indent_level, *item.m_value.m_mir);
+                dump_mir(m_os, m_indent_level, item.m_value.get_mir_or_error(Span()));
                 dec_indent();
                 m_os << indent() << "} /* = " << item.m_value_res << "*/;\n";
                 dec_indent();
@@ -562,7 +562,7 @@ namespace {
                 inc_indent();
                 m_os << " = {\n";
                 inc_indent();
-                dump_mir(m_os, m_indent_level, *item.m_value.m_mir);
+                dump_mir(m_os, m_indent_level, item.m_value.get_mir_or_error(Span()));
                 dec_indent();
                 m_os << indent() << "} /* = " << item.m_value_res << "*/;\n";
                 dec_indent();

@@ -18,12 +18,17 @@ public:
     const ::HIR::PathParams* trait_params = nullptr;
     const char* name = nullptr;
     const char* crate_name = nullptr;
+    const ::HIR::Path*  wrapped = nullptr;
 
     ItemPath(const ::std::string& crate): crate_name(crate.c_str()) {}
     ItemPath(const ItemPath& p, const char* n):
         parent(&p),
         name(n)
     {}
+    ItemPath(const ::HIR::Path& p):
+        wrapped(&p)
+    {
+    }
     ItemPath(const ::HIR::TypeRef& type):
         ty(&type)
     {}
@@ -40,7 +45,14 @@ public:
     const ::HIR::PathParams* trait_args() const { return trait_params; }
 
     ::HIR::SimplePath get_simple_path() const {
-        if( parent ) {
+        if( wrapped ) {
+            assert(wrapped->m_data.is_Generic());
+            return wrapped->m_data.as_Generic().m_path;
+        }
+        else if( trait && !name ) {
+            return trait->clone();
+        }
+        else if( parent ) {
             assert(name);
             return parent->get_simple_path() + name;
         }
@@ -51,6 +63,9 @@ public:
         }
     }
     ::HIR::Path get_full_path() const {
+        if( wrapped ) {
+            return wrapped->clone();
+        }
         assert(parent);
         assert(name);
 
@@ -95,6 +110,9 @@ public:
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const ItemPath& x) {
+        if( x.wrapped ) {
+            return os << *x.wrapped;
+        }
         if( x.parent ) {
             os << *x.parent;
         }
