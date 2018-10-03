@@ -15,6 +15,8 @@
 #include <mir/helpers.hpp>
 #include <trans/target.hpp>
 
+#define CHECK_DEFER(var) do { if( var.is_Defer() ) { m_rv = ::HIR::Literal::make_Defer({}); return ; } } while(0)
+
 namespace {
     typedef ::std::vector< ::std::pair< ::std::string, ::HIR::Static> > t_new_values;
 
@@ -332,10 +334,12 @@ namespace {
                 TRACE_FUNCTION_F("_BinOp");
 
                 node.m_left->visit(*this);
+                CHECK_DEFER(m_rv);
                 auto left = mv$(m_rv);
                 auto ret_type = mv$(m_rv_type);
 
                 node.m_right->visit(*this);
+                CHECK_DEFER(m_rv);
                 auto right = mv$(m_rv);
 
                 if( left.tag() != right.tag() ) {
@@ -601,6 +605,7 @@ namespace {
                 ::std::vector< ::HIR::Literal>  vals;
                 for(const auto& vn : node.m_args ) {
                     vn->visit(*this);
+                    CHECK_DEFER(m_rv);
                     assert( !m_rv.is_Invalid() );
                     vals.push_back( mv$(m_rv) );
                 }
@@ -824,7 +829,13 @@ namespace {
                 auto ep = get_ent_fullpath(node.span(), m_crate, node.m_path, EntNS::Value);
                 TU_MATCH_DEF( EntPtr, (ep), (e),
                 (
-                    BUG(node.span(), "Path value with unsupported value type - " << ep.tag_str());
+                    BUG(node.span(), "_PathValue(" << node.m_path << ") with unsupported value type - " << ep.tag_str());
+                    ),
+                (NotFound,
+                    // If the value can't be found, and it's an associated constant, return a literal indicating
+                    // that the value can't yet be evaluated.
+                    DEBUG(node.span() << " - _PathValue(" << node.m_path << ") not found");
+                    m_rv = ::HIR::Literal::make_Defer({});
                     ),
                 (Static,
                     // TODO: Should be a more complex path to support associated paths
@@ -915,6 +926,7 @@ namespace {
                         }
 
                         val_set.second->visit(*this);
+                        CHECK_DEFER(m_rv);
                         vals[idx] = mv$(m_rv);
                     }
                     for( unsigned int i = 0; i < vals.size(); i ++ ) {
@@ -962,6 +974,7 @@ namespace {
                         m_exp_type = mv$(exp_tys[i]);
 
                     node.m_vals[i]->visit(*this);
+                    CHECK_DEFER(m_rv);
                     assert( !m_rv.is_Invalid() );
 
                     vals.push_back( mv$(m_rv) );
@@ -994,6 +1007,7 @@ namespace {
                 {
                     m_exp_type = exp_inner_ty.clone();
                     vn->visit(*this);
+                    CHECK_DEFER(m_rv);
                     assert( !m_rv.is_Invalid() );
                     vals.push_back( mv$(m_rv) );
                 }
@@ -1029,6 +1043,7 @@ namespace {
                 {
                     m_exp_type = mv$(exp_inner_ty);
                     node.m_val->visit(*this);
+                    CHECK_DEFER(m_rv);
                     assert( !m_rv.is_Invalid() );
                     for(unsigned int i = 0; i < count-1; i ++)
                     {
@@ -1285,6 +1300,11 @@ namespace {
                 (BinOp,
                     auto inval_l = read_param(e.val_l);
                     auto inval_r = read_param(e.val_r);
+                    if( inval_l.is_Invalid() || inval_r.is_Invalid() )
+                    {
+                        val = ::HIR::Literal::make_Invalid({});
+                        break ;
+                    }
                     ASSERT_BUG(sp, inval_l.tag() == inval_r.tag(), "Mismatched literal types in binop - " << inval_l << " and " << inval_r);
                     TU_MATCH_DEF( ::HIR::Literal, (inval_l, inval_r), (l, r),
                     (

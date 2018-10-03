@@ -17,8 +17,6 @@ EXESUF ?=
 CXX ?= g++
 V ?= @
 
-TARGET_CC ?= clang
-
 TAIL_COUNT ?= 10
 
 # - Disable implicit rules
@@ -177,13 +175,13 @@ rustc-nightly-src.tar.gz: $(RUSTC_SRC_DES)
 	curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz
 
 # TODO: Handle non-nightly download
-$(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rust_src.patch
+$(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rustc-nightly-src.patch
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
 	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
 	if [ "$$DL_RUST_DATE" != "$$DISK_RUST_DATE" ]; then \
 		rm -rf rustc-nightly-src; \
 		tar -xf rustc-nightly-src.tar.gz; \
-		cd $(RUSTSRC) && patch -p0 < ../rust_src.patch; \
+		cd $(RUSTSRC) && patch -p0 < ../rustc-nightly-src.patch; \
 	fi
 	cat rust-nightly-date > $(RUSTC_SRC_DL)
 else
@@ -192,9 +190,9 @@ $(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
 	@echo [CURL] $@
 	@rm -f $@
 	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
-$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rust_src.patch
+$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(shell cat $(RUSTC_SRC_DES))-src.patch
 	tar -xf $(RUSTC_SRC_TARBALL)
-	cd $(RUSTCSRC) && patch -p0 < ../rust_src.patch;
+	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(shell cat $(RUSTC_SRC_DES))-src.patch;
 	cat $(RUSTC_SRC_DES) > $(RUSTC_SRC_DL)
 endif
 

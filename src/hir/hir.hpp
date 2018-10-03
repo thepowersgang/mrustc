@@ -50,6 +50,7 @@ struct VisEnt
 /// NOTE: Intentionally minimal, just covers the values (not the types)
 TAGGED_UNION(Literal, Invalid,
     (Invalid, struct {}),
+    (Defer, struct {}),
     // List = Array, Tuple, struct literal
     (List, ::std::vector<Literal>), // TODO: Have a variant for repetition lists
     // Variant = Enum variant

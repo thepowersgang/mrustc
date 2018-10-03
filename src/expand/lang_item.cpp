@@ -88,6 +88,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "unsafe_cell" ) { }
     else if( TARGETVER_1_29 && name == "alloc_layout") { }
     else if( TARGETVER_1_29 && name == "panic_info" ) {}    // Struct
+    else if( TARGETVER_1_29 && name == "manually_drop" ) {}    // Struct
 
     // Generators
     else if( TARGETVER_1_29 && name == "generator" ) {}   // - Trait
@@ -114,6 +115,32 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "start" ) { }
 
     else if( name == "eh_personality" ) { }
+    // libcompiler_builtins
+    // - i128/u128 helpers (not used by mrustc)
+    else if( name == "i128_add" ) { }
+    else if( name == "i128_addo" ) { }
+    else if( name == "u128_add" ) { }
+    else if( name == "u128_addo" ) { }
+    else if( name == "i128_sub" ) { }
+    else if( name == "i128_subo" ) { }
+    else if( name == "u128_sub" ) { }
+    else if( name == "u128_subo" ) { }
+    else if( name == "i128_mul" ) { }
+    else if( name == "i128_mulo" ) { }
+    else if( name == "u128_mul" ) { }
+    else if( name == "u128_mulo" ) { }
+    else if( name == "i128_div" ) { }
+    else if( name == "i128_rem" ) { }
+    else if( name == "u128_div" ) { }
+    else if( name == "u128_rem" ) { }
+    else if( name == "i128_shl" ) { }
+    else if( name == "i128_shlo" ) { }
+    else if( name == "u128_shl" ) { }
+    else if( name == "u128_shlo" ) { }
+    else if( name == "i128_shr" ) { }
+    else if( name == "i128_shro" ) { }
+    else if( name == "u128_shr" ) { }
+    else if( name == "u128_shro" ) { }
 
     else {
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
