@@ -146,6 +146,12 @@ namespace {
                     ::HIR::ExprVisitorDef::visit(node);
                 }
 
+                void visit(::HIR::ExprNode_ArraySized& node) override
+                {
+                    upper_visitor.visit_expr(node.m_size);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
+
                 void visit(::HIR::ExprNode_PathValue& node) override
                 {
                     upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::VALUE);

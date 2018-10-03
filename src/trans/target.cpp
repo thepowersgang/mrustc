@@ -684,13 +684,19 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         case ::HIR::CoreType::U64:
         case ::HIR::CoreType::I64:
             out_size = 8;
-            out_align = 8;
+            // TODO: on x86, u64/i64 has an alignment of 4, while x86_64 has 8. What do other platforms have?
+            out_align = g_target.m_arch.m_name == "x86" ? 4 : 8;
             return true;
         case ::HIR::CoreType::U128:
         case ::HIR::CoreType::I128:
             out_size = 16;
-            // TODO: If i128 is emulated, this can be 8
-            out_align = 16;
+            // TODO: If i128 is emulated, this can be 8 (as it is on x86, where it's actually 4 due to the above comment)
+            if( g_target.m_arch.m_name == "x86" )
+                out_align = 4;
+            else if( /*g_target.m_arch.m_name == "x86_64" && */g_target.m_backend_c.m_codegen_mode == CodegenMode::Msvc )
+                out_align = 8;
+            else 
+                out_align = 16;
             return true;
         case ::HIR::CoreType::Usize:
         case ::HIR::CoreType::Isize:
@@ -703,7 +709,7 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
             return true;
         case ::HIR::CoreType::F64:
             out_size = 8;
-            out_align = 8;
+            out_align = g_target.m_arch.m_name == "x86" ? 4 : 8;
             return true;
         case ::HIR::CoreType::Str:
             DEBUG("sizeof on a `str` - unsized");

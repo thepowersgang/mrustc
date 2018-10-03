@@ -39,6 +39,8 @@ class Static;
 class ValueItem;
 class TypeItem;
 
+class ItemPath;
+
 template<typename Ent>
 struct VisEnt
 {
@@ -346,6 +348,8 @@ public:
     // Contains types, traits, and modules
     ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
 
+    ::std::vector< ::std::pair<::std::string, Static> >  m_inline_statics;
+
     Module() {}
     Module(const Module&) = delete;
     Module(Module&& x) = default;
@@ -536,6 +540,15 @@ public:
     bool find_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const;
     bool find_auto_trait_impls(const ::HIR::SimplePath& path, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::MarkerImpl&)> callback) const;
     bool find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const;
+
+    const ::MIR::Function* get_or_gen_mir(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& ep, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_ty) const;
+    const ::MIR::Function* get_or_gen_mir(const ::HIR::ItemPath& ip, const ::HIR::Function& fcn) const {
+        return get_or_gen_mir(ip, fcn.m_code, fcn.m_args, fcn.m_return);
+    }
+    const ::MIR::Function* get_or_gen_mir(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& ep, const ::HIR::TypeRef& exp_ty) const {
+        static ::HIR::Function::args_t  s_args;
+        return get_or_gen_mir(ip, ep, s_args, exp_ty);
+    }
 };
 
 }   // namespace HIR

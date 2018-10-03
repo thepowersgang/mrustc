@@ -812,6 +812,11 @@ namespace {
     };
 }   // namespace
 
+void HIR_Expand_UfcsEverything_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
+{
+    ExprVisitor_Mutate  ev { crate };
+    ev.visit_node_ptr(exp);
+}
 void HIR_Expand_UfcsEverything(::HIR::Crate& crate)
 {
     OuterVisitor    ov(crate);

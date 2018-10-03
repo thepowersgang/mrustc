@@ -734,7 +734,9 @@
 
     ::HIR::LifetimeRef HirDeserialiser::deserialise_lifetimeref()
     {
-        return { static_cast<uint32_t>(m_in.read_count()) };
+        ::HIR::LifetimeRef  rv;
+        rv.binding = static_cast<uint32_t>(m_in.read_count());
+        return rv;
     }
 
     ::HIR::TypeRef HirDeserialiser::deserialise_type()

@@ -161,6 +161,7 @@ struct ProcMacroInv:
 {
     Span    m_parent_span;
     const ::HIR::ProcMacro& m_proc_macro_desc;
+    ::std::ofstream m_dump_file;
 
 #ifdef WIN32
     HANDLE  child_handle;
@@ -782,6 +783,11 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
     m_parent_span(sp),
     m_proc_macro_desc(proc_macro_desc)
 {
+    // TODO: Optionally dump the data sent to the client.
+    if( getenv("MRUSTC_DUMP_PROCMACRO") )
+    {
+        m_dump_file.open( getenv("MRUSTC_DUMP_PROCMACRO"), ::std::ios::out | ::std::ios::binary );
+    }
 #ifdef _WIN32
 #else
      int    stdin_pipes[2];
@@ -895,6 +901,8 @@ bool ProcMacroInv::check_good()
 }
 void ProcMacroInv::send_u8(uint8_t v)
 {
+    if( m_dump_file.is_open() )
+        m_dump_file.put(v);
 #ifdef _WIN32
 #else
     if( write(this->child_stdin, &v, 1) != 1 )
@@ -904,6 +912,9 @@ void ProcMacroInv::send_u8(uint8_t v)
 void ProcMacroInv::send_bytes(const void* val, size_t size)
 {
     this->send_v128u( static_cast<uint64_t>(size) );
+
+    if( m_dump_file.is_open() )
+        m_dump_file.write( reinterpret_cast<const char*>(val), size);
 #ifdef _WIN32
 #else
     if( write(this->child_stdin, val, size) != static_cast<ssize_t>(size) )

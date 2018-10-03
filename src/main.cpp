@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <string>
 #include <set>
+#include <version.hpp>
 #include <string_view.hpp>
 #include "parse/lex.hpp"
 #include "parse/parseerror.hpp"
@@ -514,7 +515,10 @@ int main(int argc, char *argv[])
             HIR_Expand_Closures(*hir_crate);
             });
         // - Construct VTables for all traits and impls.
-        CompilePhaseV("Expand HIR VTables", [&]() { HIR_Expand_VTables(*hir_crate); });
+        //  TODO: How early can this be done?
+        CompilePhaseV("Expand HIR VTables", [&]() {
+            HIR_Expand_VTables(*hir_crate);
+            });
         // - And calls can be turned into UFCS
         CompilePhaseV("Expand HIR Calls", [&]() {
             HIR_Expand_UfcsEverything(*hir_crate);
@@ -559,11 +563,6 @@ int main(int argc, char *argv[])
         // Validate the MIR
         CompilePhaseV("MIR Validate", [&]() {
             MIR_CheckCrate(*hir_crate);
-            });
-
-        // Second shot of constant evaluation (with full type information)
-        CompilePhaseV("Constant Evaluate Full", [&]() {
-            ConvertHIR_ConstantEvaluateFull(*hir_crate);
             });
 
         if( params.debug.dump_hir )
@@ -949,6 +948,12 @@ ProgramParams::ProgramParams(int argc, char *argv[])
         {
             if( strcmp(arg, "--help") == 0 ) {
                 this->show_help();
+                exit(0);
+            }
+            else if( strcmp(arg, "--version" ) == 0 ) {
+                ::std::cout << "MRustC " << Version_GetString() << ::std::endl;
+                ::std::cout << "- Build time: " << gsVersion_BuildTime << ::std::endl;
+                ::std::cout << "- Commit: " << gsVersion_GitHash << (gbVersion_GitDirty ? " (dirty tree)" : "") << ::std::endl;
                 exit(0);
             }
             // --out-dir <dir>  >> Set the output directory for automatically-named files

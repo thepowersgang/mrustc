@@ -239,6 +239,7 @@ namespace {
                     << "#include <stdlib.h>\n"  // abort
                     << "#include <string.h>\n"  // mem*
                     << "#include <math.h>\n"  // round, ...
+                    << "#include <setjmp.h>\n"  // setjmp/jmp_buf
                     ;
                 break;
             case Compiler::Msvc:
@@ -294,6 +295,10 @@ namespace {
             switch (m_compiler)
             {
             case Compiler::Gcc:
+                m_of
+                    << "extern __thread jmp_buf*    mrustc_panic_target;\n"
+                    << "extern __thread void* mrustc_panic_value;\n"
+                    ;
                 // 64-bit bit ops (gcc intrinsics)
                 m_of
                     << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
@@ -427,23 +432,46 @@ namespace {
                     << "static inline float cast128_float(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
                     << "static inline double cast128_double(uint128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
                     << "static inline int cmp128(uint128_t a, uint128_t b) { if(a.hi != b.hi) return a.hi < b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
-                    << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
-                    << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
+                    // Returns true if overflow happens (res < a)
+                    << "static inline bool add128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi < a.hi); }\n"
+                    // Returns true if overflow happens (res > a)
+                    << "static inline bool sub128_o(uint128_t a, uint128_t b, uint128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (a.lo < b.lo ? 1 : 0); return (o->hi > a.hi); }\n"
                     // Serial shift+add
                     << "static inline bool mul128_o(uint128_t a, uint128_t b, uint128_t* o) {"
-                    <<  "bool of = false;"
-                    <<  "o->hi = 0; o->lo = 0;"
-                    <<  "for(int i=0;i<128;i++){"
-                    <<   "if((1ull<<(i&63))&(i>64?a.hi:a.lo)) of |= add128_o(*o, b, o);"
-                    <<   "b.hi = (b.hi << 1) | (b.lo >> 63);"
-                    <<   "b.lo = (b.lo << 1);"
-                    <<  "}"
-                    <<  "return of;"
-                    <<  "}\n"
-                    // TODO: Long division
+                    << " bool of = false;"
+                    << " o->hi = 0; o->lo = 0;"
+                    << " for(int i=0;i<128;i++){"
+                    <<  " uint64_t m = (1ull << (i % 64));"
+                    <<  " if(a.hi==0&&a.lo<m)   break;"
+                    <<  " if(i>=64&&a.hi<m) break;"
+                    <<  " if( m & (i >= 64 ? a.hi : a.lo) ) of |= add128_o(*o, b, o);"
+                    <<  " b.hi = (b.hi << 1) | (b.lo >> 63);"
+                    <<  " b.lo = (b.lo << 1);"
+                    << " }"
+                    << " return of;"
+                    << "}\n"
+                    // Long division
                     << "static inline bool div128_o(uint128_t a, uint128_t b, uint128_t* q, uint128_t* r) {"
-                    <<  "abort();"
-                    <<  "}\n"
+                    << " if(a.hi == 0 && b.hi == 0) { if(q) { q->hi=0; q->lo = a.lo / b.lo; } if(r) { r->hi=0; r->lo = a.lo % b.lo; } return false; }"
+                    << " if(cmp128(a, b) < 0) { if(q) { q->hi=0; q->lo=0; } if(r) *r = a; return false; }"
+                    << " uint128_t a_div_2 = {(a.lo>>1)|(a.hi << 63), a.hi>>1};"
+                    << " int shift = 0;"
+                    << " while( cmp128(a_div_2, b) >= 0 && shift < 128 ) {"
+                    <<  " shift += 1;"
+                    <<  " b.hi = (b.hi<<1)|(b.lo>>63); b.lo <<= 1;"
+                    <<  " }"
+                    << " if(shift == 128) return true;" // true = overflowed
+                    << " uint128_t mask = { /*lo=*/(shift >= 64 ? 0 : (1ull << shift)), /*hi=*/(shift < 64 ? 0 : 1ull << (shift-64)) };"
+                    << " shift ++;"
+                    << " if(q) { q->hi = 0; q->lo = 0; }"
+                    << " while(shift--) {"
+                    <<  " if( cmp128(a, b) >= 0 ) { if(q) add128_o(*q, mask, q); sub128_o(a, b, &a); }"
+                    <<  " mask.lo = (mask.lo >> 1) | (mask.hi << 63); mask.hi >>= 1;"
+                    <<  " b.lo = (b.lo >> 1) | (b.hi << 63); b.hi >>= 1;"
+                    << " }"
+                    << " if(r) *r = a;"
+                    << " return false;"
+                    << "}\n"
                     << "static inline uint128_t add128(uint128_t a, uint128_t b) { uint128_t v; add128_o(a, b, &v); return v; }\n"
                     << "static inline uint128_t sub128(uint128_t a, uint128_t b) { uint128_t v; sub128_o(a, b, &v); return v; }\n"
                     << "static inline uint128_t mul128(uint128_t a, uint128_t b) { uint128_t v; mul128_o(a, b, &v); return v; }\n"
@@ -465,18 +493,21 @@ namespace {
                     << "\treturn rv;\n"
                     << "}\n"
                     << "static inline int128_t make128s(int64_t v) { int128_t rv = { v, (v < 0 ? -1 : 0) }; return rv; }\n"
+                    << "static inline int128_t neg128s(int128_t v) { int128_t rv = { ~v.lo+1, ~v.hi + (v.lo == 0) }; return rv; }\n"
                     << "static inline float cast128s_float(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint32_t mant = 0; return make_float(0, exp, mant); }\n"
                     << "static inline double cast128s_double(int128_t v) { if(v.hi == 0) return v.lo; int exp = 0; uint64_t mant = 0; return make_double(0, exp, mant); }\n"
                     << "static inline int cmp128s(int128_t a, int128_t b) { if(a.hi != b.hi) return (int64_t)a.hi < (int64_t)b.hi ? -1 : 1; if(a.lo != b.lo) return a.lo < b.lo ? -1 : 1; return 0; }\n"
-                    << "static inline bool add128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo + b.lo; o->hi = a.hi + b.hi + (o->lo < a.lo ? 1 : 0); return (o->hi >= a.hi); }\n"
-                    << "static inline bool sub128s_o(int128_t a, int128_t b, int128_t* o) { o->lo = a.lo - b.lo; o->hi = a.hi - b.hi - (o->lo < a.lo ? 1 : 0); return (o->hi <= a.hi); }\n"
+                    // Returns true if overflow happens (if negative with pos,pos or positive with neg,neg)
+                    << "static inline bool add128s_o(int128_t a, int128_t b, int128_t* o) { bool sgna=a.hi>>63; bool sgnb=b.hi>>63; add128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)o); bool sgno = o->hi>>63; return (sgna==sgnb && sgno != sgna); }\n"
+                    // Returns true if overflow happens (if neg with pos,neg or pos with neg,pos)
+                    << "static inline bool sub128s_o(int128_t a, int128_t b, int128_t* o) { bool sgna=a.hi>>63; bool sgnb=b.hi>>63; sub128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)o); bool sgno = o->hi>>63; return (sgna!=sgnb && sgno != sgna); }\n"
                     << "static inline bool mul128s_o(int128_t a, int128_t b, int128_t* o) {"
-                    << " bool sgna = a.hi & (1ull<<63);"
-                    << " bool sgnb = b.hi & (1ull<<63);"
-                    << " if(sgna) { a.hi = ~a.hi; a.lo = ~a.lo; a.lo += 1; if(a.lo == 0) a.hi += 1; }"
-                    << " if(sgnb) { b.hi = ~b.hi; b.lo = ~b.lo; b.lo += 1; if(b.lo == 0) b.hi += 1; }"
+                    << " bool sgna = (a.hi >> 63);"
+                    << " bool sgnb = (b.hi >> 63);"
+                    << " if(sgna) a = neg128s(a);"
+                    << " if(sgnb) b = neg128s(b);"
                     << " bool rv = mul128_o(*(uint128_t*)&a, *(uint128_t*)&b, (uint128_t*)o);"
-                    << " if(sgnb != sgnb) { o->hi = ~o->hi; o->lo = ~o->lo; o->lo += 1; if(o->lo == 0) o->hi += 1; }"
+                    << " if(sgnb != sgnb) *o = neg128s(*o);"
                     << " return rv;"
                     << " }\n"
                     << "static inline bool div128s_o(int128_t a, int128_t b, int128_t* q, int128_t* r) {"
@@ -599,6 +630,14 @@ namespace {
                     m_of << "\treturn " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
                 }
                 m_of << "}\n";
+
+                if( m_compiler == Compiler::Gcc )
+                {
+                    m_of
+                        << "__thread jmp_buf* mrustc_panic_target;\n"
+                        << "__thread void* mrustc_panic_value;\n"
+                        ;
+                }
             }
 
             m_of.flush();
@@ -953,6 +992,7 @@ namespace {
                 if( te.size() > 0 )
                 {
                     m_of << "typedef struct "; emit_ctype(ty); m_of << " {\n";
+                    unsigned n_fields = 0;
                     for(unsigned int i = 0; i < te.size(); i++)
                     {
                         m_of << "\t";
@@ -965,7 +1005,12 @@ namespace {
                         else {
                             emit_ctype(te[i], FMT_CB(ss, ss << "_" << i;));
                             m_of << ";\n";
+                            n_fields += 1;
                         }
+                    }
+                    if( n_fields == 0 && m_options.disallow_empty_structs )
+                    {
+                        m_of << "\tchar _d;\n";
                     }
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
                 }
@@ -1027,8 +1072,27 @@ namespace {
             TRACE_FUNCTION_F(p);
             auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
-            bool has_unsized = false;
+
+            ::std::vector<unsigned> fields;
+            for(const auto& ent : repr->fields)
+            {
+                (void)ent;
+                fields.push_back(fields.size());
+            }
+            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+
             m_of << "// struct " << p << "\n";
+
+            // Determine if the type has an alignment hack
+            bool has_manual_align = false;
+            for(unsigned fld : fields )
+            {
+                const auto& ty = repr->fields[fld].ty;
+                if( ty.m_data.is_Array() && ty.m_data.as_Array().size_val == 0 ) {
+                    has_manual_align = true;
+                }
+            }
+
             // For repr(packed), mark as packed
             if(is_packed)
             {
@@ -1041,15 +1105,20 @@ namespace {
                     break;
                 }
             }
+            if(has_manual_align)
+            {
+                switch(m_compiler)
+                {
+                case Compiler::Msvc:
+                    m_of << "#pragma align(push, " << repr->align << ")\n";
+                    break;
+                case Compiler::Gcc:
+                    break;
+                }
+            }
             m_of << "struct s_" << Trans_Mangle(p) << " {\n";
 
-            ::std::vector<unsigned> fields;
-            for(const auto& ent : repr->fields)
-            {
-                (void)ent;
-                fields.push_back(fields.size());
-            }
-            ::std::sort(fields.begin(), fields.end(), [&](auto a, auto b){ return repr->fields[a].offset < repr->fields[b].offset; });
+            bool has_unsized = false;
             size_t sized_fields = 0;
             for(unsigned fld : fields)
             {
@@ -1076,9 +1145,12 @@ namespace {
                         continue ;
                     }
                     else {
+
                         // TODO: Nested unsized?
                         emit_ctype( ty, FMT_CB(ss, ss << "_" << fld) );
                         sized_fields ++;
+
+                        has_unsized |= (s == SIZE_MAX);
                     }
                 }
                 m_of << ";\n";
@@ -1088,15 +1160,23 @@ namespace {
                 m_of << "\tchar _d;\n";
             }
             m_of << "}";
-            if(is_packed)
+            if(is_packed || has_manual_align)
             {
                 switch(m_compiler)
                 {
                 case Compiler::Msvc:
-                    m_of << ";\n#pragma pack(pop)\n";
+                    if( is_packed )
+                        m_of << ";\n#pragma pack(pop)\n";
+                    if( has_manual_align )
+                        m_of << ";\n#pragma align(pop)\n";
                     break;
                 case Compiler::Gcc:
-                    m_of << " __attribute__((packed));\n";
+                    m_of << " __attribute__((";
+                    if( is_packed )
+                        m_of << "packed,";
+                    if( has_manual_align )
+                        m_of << "__aligned__(" << repr->align << "),";
+                    m_of << "));\n";
                     break;
                 }
             }
@@ -1105,6 +1185,12 @@ namespace {
                 m_of << ";\n";
             }
             (void)has_unsized;
+            if( true && repr->size > 0 && !has_unsized )
+            {
+                // TODO: Handle unsized (should check the size of the fixed-size region)
+                m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct s_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
+                //m_of << "typedef char alignof_assert_" << Trans_Mangle(p) << "[ (ALIGNOF(struct s_" << Trans_Mangle(p) << ") == " << repr->align << ") ? 1 : -1 ];\n";
+            }
 
             auto struct_ty = ::HIR::TypeRef(p.clone(), &item);
             auto drop_glue_path = ::HIR::Path(struct_ty.clone(), "#drop_glue");
@@ -1172,6 +1258,10 @@ namespace {
                 m_of << "\t"; emit_ctype( repr->fields[i].ty, FMT_CB(ss, ss << "var_" << i;) ); m_of << ";\n";
             }
             m_of << "};\n";
+            if( true && repr->size > 0 )
+            {
+                m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(union u_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
+            }
 
             // Drop glue (calls destructor if there is one)
             auto drop_glue_path = ::HIR::Path(item_ty.clone(), "#drop_glue");
@@ -1182,7 +1272,7 @@ namespace {
 
             if( item.m_markings.has_drop_impl )
             {
-                m_of << "tUNIT " << Trans_Mangle(drop_impl_path) << "(union u_" << Trans_Mangle(p) << "*rv);\n";
+                m_of << "void " << Trans_Mangle(drop_impl_path) << "(union u_" << Trans_Mangle(p) << "*rv);\n";
             }
 
             m_of << "static void " << Trans_Mangle(drop_glue_path) << "(union u_" << Trans_Mangle(p) << "* rv) {\n";
@@ -1268,20 +1358,40 @@ namespace {
                 assert(1 + union_fields.size() + 1 >= repr->fields.size());
                 // Make the union!
                 // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
-                m_of << "\tunion {\n";
-                // > First field
-                m_of << "\t\t";
-                emit_ctype(repr->fields[0].ty, FMT_CB(os, os << "var_0"));
-                m_of << ";\n";
-                // > All others
-                for(auto idx : union_fields)
+                // TODO: 
+                if( !this->type_is_bad_zst(repr->fields[0].ty) || ::std::any_of(union_fields.begin(), union_fields.end(), [this,repr](auto x){ return !this->type_is_bad_zst(repr->fields[x].ty); }) )
                 {
-                    // TODO: if the compiler doesn't allow zero-sized types, don't emit zero-sized fields.
-                    m_of << "\t\t";
-                    emit_ctype(repr->fields[idx].ty, FMT_CB(os, os << "var_" << idx));
-                    m_of << ";\n";
+                    m_of << "\tunion {\n";
+                    // > First field
+                    {
+                        m_of << "\t\t";
+                        const auto& ty = repr->fields[0].ty;
+                        if( this->type_is_bad_zst(ty) ) {
+                            m_of << "// ZST: " << ty << "\n";
+                        }
+                        else {
+                            emit_ctype( ty, FMT_CB(ss, ss << "var_0") );
+                            m_of << ";\n";
+                            //sized_fields ++;
+                        }
+                    }
+                    // > All others
+                    for(auto idx : union_fields)
+                    {
+                        m_of << "\t\t";
+
+                        const auto& ty = repr->fields[idx].ty;
+                        if( this->type_is_bad_zst(ty) ) {
+                            m_of << "// ZST: " << ty << "\n";
+                        }
+                        else {
+                            emit_ctype( ty, FMT_CB(ss, ss << "var_" << idx) );
+                            m_of << ";\n";
+                            //sized_fields ++;
+                        }
+                    }
+                    m_of << "\t} DATA;\n";
                 }
-                m_of << "\t} DATA;\n";
 
                 if( repr->fields.size() == 1 + union_fields.size() )
                 {
@@ -1334,6 +1444,10 @@ namespace {
             }
 
             m_of << "};\n";
+            if( true && repr->size > 0 )
+            {
+                m_of << "typedef char sizeof_assert_" << Trans_Mangle(p) << "[ (sizeof(struct e_" << Trans_Mangle(p) << ") == " << repr->size << ") ? 1 : -1 ];\n";
+            }
 
             // ---
             // - Drop Glue
@@ -1347,7 +1461,7 @@ namespace {
 
             if( item.m_markings.has_drop_impl )
             {
-                m_of << "tUNIT " << Trans_Mangle(drop_impl_path) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
+                m_of << "void " << Trans_Mangle(drop_impl_path) << "(struct e_" << Trans_Mangle(p) << "*rv);\n";
             }
 
             m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct e_" << Trans_Mangle(p) << "* rv) {\n";
@@ -1383,7 +1497,7 @@ namespace {
                         var_lv.as_Downcast().variant_index = var_idx;
                         m_of << "\tcase " << e->values[var_idx] << ":\n";
                         emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
-                        m_of << "\tbreak;\n";
+                        m_of << "\t\tbreak;\n";
                     }
                     m_of << "\t}\n";
                 }
@@ -1459,23 +1573,23 @@ namespace {
             }
             else
             {
-                m_of << " .DATA = { .var_" << var_idx << " = {";
                 if( this->type_is_bad_zst(repr->fields[var_idx].ty) )
                 {
-                    m_of << "\n\t\t0";
+                    m_of << " .DATA = { /* ZST Variant */ }";
                 }
                 else
                 {
+                    m_of << " .DATA = { .var_" << var_idx << " = {";
                     for(unsigned int i = 0; i < e.size(); i ++)
                     {
                         if(i != 0)
                         m_of << ",";
                         m_of << "\n\t\t_" << i;
                     }
+                    m_of << "\n\t\t} }";
                 }
-                m_of << "\n\t\t}";
             }
-            m_of << " }};\n";
+            m_of << " };\n";
             m_of << "\treturn rv;\n";
             m_of << "}\n";
             m_mir_res = nullptr;
@@ -1722,10 +1836,16 @@ namespace {
                 else
                 {
                     m_of << "{";
-                    m_of << " { .var_" << e.idx << " = ";
-                    emit_literal(get_inner_type(e.idx, 0), *e.val, params);
-                    m_of << " }";
-                    m_of << ", .TAG = "; emit_enum_variant_val(repr, e.idx);
+                    const auto& ity = get_inner_type(e.idx, 0);
+                    if( this->type_is_bad_zst(ity) ) {
+                        //m_of << " {}";
+                    }
+                    else {
+                        m_of << " { .var_" << e.idx << " = ";
+                        emit_literal(ity, *e.val, params);
+                        m_of << " }, ";
+                    }
+                    m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
                     m_of << "}";
                 }
                 ),
@@ -2036,6 +2156,19 @@ namespace {
             if( item.m_linkage.name != "" && m_compiler == Compiler::Msvc )
             {
                 m_of << "static ";
+            }
+            else if( item.m_linkage.name == "_Unwind_RaiseException" )
+            {
+                MIR_ASSERT(*m_mir_res, m_compiler == Compiler::Gcc, item.m_linkage.name << " in non-GCC mode");
+                m_of << "// - Magic compiler impl\n";
+                m_of << "static ";
+                emit_function_header(p, item, params);
+                m_of << " {\n";
+                m_of << "\tif( !mrustc_panic_target ) abort();\n";
+                m_of << "\tmrustc_panic_value = arg0;\n";
+                m_of << "\tlongjmp(*mrustc_panic_target, 1);\n";
+                m_of << "}\n";
+                return;
             }
             else
             {
@@ -2724,7 +2857,11 @@ namespace {
                         m_of << " = ";
 
                         // If the index is zero, then the best option is to borrow the source
-                        if( val_fp->field_index == 0 )
+                        if( val_fp->val->is_Downcast() )
+                        {
+                            m_of << "(void*)& "; emit_lvalue(*val_fp->val->as_Downcast().val);
+                        }
+                        else if( val_fp->field_index == 0 )
                         {
                             m_of << "(void*)& "; emit_lvalue(*val_fp->val);
                         }
@@ -2931,10 +3068,7 @@ namespace {
                         switch (ve.op)
                         {
                         case ::MIR::eUniOp::NEG:
-                            emit_lvalue(e.dst);
-                            m_of << ".lo = -"; emit_lvalue(ve.val); m_of << ".lo; ";
-                            emit_lvalue(e.dst);
-                            m_of << ".hi = -"; emit_lvalue(ve.val); m_of << ".hi";
+                            emit_lvalue(e.dst); m_of << " = neg128s("; emit_lvalue(ve.val); m_of << ")";
                             break;
                         case ::MIR::eUniOp::INV:
                             emit_lvalue(e.dst);
@@ -3046,9 +3180,20 @@ namespace {
                         }
                         else
                         {
-                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index); m_of << ";\n" << indent;
-                            emit_lvalue(e.dst); m_of << ".DATA";
-                            m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                            emit_lvalue(e.dst); m_of << ".TAG = "; emit_enum_variant_val(repr, ve.index);
+
+                            ::HIR::TypeRef  tmp;
+                            const auto& vty = mir_res.get_param_type(tmp, ve.val);
+                            if( this->type_is_bad_zst(vty) )
+                            {
+                                m_of << "/* ZST field */";
+                            }
+                            else
+                            {
+                                m_of << ";\n" << indent;
+                                emit_lvalue(e.dst); m_of << ".DATA";
+                                m_of << ".var_" << ve.index << " = "; emit_param(ve.val);
+                            }
                         }
                     }
                     else
@@ -3893,13 +4038,15 @@ namespace {
                     m_of << name << o_before << "8" << o_after << "(";
                     break;
                 case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I16:
                     m_of << name << o_before << "16" << o_after << "(";
                     break;
                 case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I32:
                     m_of << name << o_before << o_after << "(";
                     break;
                 case ::HIR::CoreType::U64:
-                //case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::I64:
                     m_of << name << o_before << "64" << o_after << "(";
                     break;
                 case ::HIR::CoreType::Usize:
@@ -4207,8 +4354,35 @@ namespace {
                 m_of << "abort()";
             }
             else if( name == "try" ) {
+                // Register thread-local setjmp
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << "{ ";
+                    m_of << " jmp_buf jmpbuf; mrustc_panic_target = &jmpbuf;";
+                    m_of << " if(setjmp(jmpbuf)) {";
+                    // NOTE: gcc unwind has a pointer as its `local_ptr` parameter
+                    m_of << " *(void**)("; emit_param(e.args.at(2)); m_of << ") = mrustc_panic_value;";
+                    m_of << " "; emit_lvalue(e.ret_val); m_of << " = 1;";   // Return value non-zero when panic happens
+                    m_of << " } else {";
+                    m_of << " ";
+                    break;
+                default:
+                    break;
+                }
                 emit_param(e.args.at(0)); m_of << "("; emit_param(e.args.at(1)); m_of << "); ";
                 emit_lvalue(e.ret_val); m_of << " = 0";
+                switch(m_compiler)
+                {
+                case Compiler::Gcc:
+                    m_of << ";";
+                    m_of << " }";
+                    m_of << " mrustc_panic_target = NULL;";
+                    m_of << " }";
+                    break;
+                default:
+                    break;
+                }
             }
             else if( name == "offset" ) {
                 emit_lvalue(e.ret_val); m_of << " = "; emit_param(e.args.at(0)); m_of << " + "; emit_param(e.args.at(1));
@@ -4914,9 +5088,14 @@ namespace {
                 {
                 case MetadataType::None:
 
-                    if( this->type_is_bad_zst(ty) && slot.is_Field() )
+                    if( this->type_is_bad_zst(ty) && (slot.is_Field() || slot.is_Downcast()) )
                     {
-                        m_of << indent << Trans_Mangle(p) << "((void*)&"; emit_lvalue(*slot.as_Field().val); m_of << ");\n";
+                        m_of << indent << Trans_Mangle(p) << "((void*)&";
+                        if( slot.is_Field() )
+                            emit_lvalue(*slot.as_Field().val);
+                        else
+                            emit_lvalue(*slot.as_Downcast().val);
+                        m_of << ");\n";
                     }
                     else
                     {
@@ -5151,7 +5330,7 @@ namespace {
                     } break;
                 TU_ARM(repr->variants, Values, ve) {
                     emit_dst(); emit_enum_path(repr, ve.field); m_of << " = ";
-                    
+
                     emit_enum_variant_val(repr, e.idx);
                     if( TU_TEST1((*e.val), List, .empty() == false) )
                     {

@@ -239,7 +239,7 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
             // TODO: Have an idea of mutability and available size from FFI
             out_size = f.size - ofs;
             out_is_mut = false;
-            return reloc.ffi().ptr_value + ofs;
+            return reinterpret_cast<char*>(reloc.ffi().ptr_value) + ofs;
             }
         }
         throw "";
@@ -607,22 +607,22 @@ Value Value::new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r) {
     return rv;
 }
 Value Value::new_usize(uint64_t v) {
-    Value   rv( ::HIR::TypeRef(RawType::USize) );
+    auto rv = Value( ::HIR::TypeRef(RawType::USize) );
     rv.write_usize(0, v);
     return rv;
 }
 Value Value::new_isize(int64_t v) {
-    Value   rv( ::HIR::TypeRef(RawType::ISize) );
+    auto rv = Value( ::HIR::TypeRef(RawType::ISize) );
     rv.write_isize(0, v);
     return rv;
 }
 Value Value::new_u32(uint32_t v) {
-    Value   rv( ::HIR::TypeRef(RawType::U32) );
+    auto rv = Value( ::HIR::TypeRef(RawType::U32) );
     rv.write_u32(0, v);
     return rv;
 }
 Value Value::new_i32(int32_t v) {
-    Value   rv( ::HIR::TypeRef(RawType::I32) );
+    auto rv = Value( ::HIR::TypeRef(RawType::I32) );
     rv.write_i32(0, v);
     return rv;
 }

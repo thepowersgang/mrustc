@@ -68,7 +68,7 @@ OBJDIR = .obj/
 
 BIN := bin/mrustc$(EXESUF)
 
-OBJ := main.o
+OBJ := main.o version.o
 OBJ += span.o rc_string.o debug.o ident.o
 OBJ += ast/ast.o
 OBJ +=  ast/types.o ast/crate.o ast/path.o ast/expr.o ast/pattern.o
@@ -105,7 +105,6 @@ OBJ += hir_typeck/expr_check.o
 OBJ += hir_expand/annotate_value_usage.o hir_expand/closures.o
 OBJ += hir_expand/ufcs_everything.o
 OBJ += hir_expand/reborrow.o hir_expand/erased_types.o hir_expand/vtable.o
-OBJ += hir_expand/const_eval_full.o
 OBJ += mir/mir.o mir/mir_ptr.o
 OBJ +=  mir/dump.o mir/helpers.o mir/visit_crate_mir.o
 OBJ +=  mir/from_hir.o mir/from_hir_match.o mir/mir_builder.o
@@ -235,11 +234,13 @@ LIB_TESTS := collections #std
 #LIB_TESTS += rustc_data_structures
 rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
 
-RUNTIME_ARGS_output/libcollectionstest-test := --test-threads 1
-RUNTIME_ARGS_output/libcollectionstest-test := --skip linked_list::test_ord_nan --skip ::slice::test_box_slice_clone_panics
+RUNTIME_ARGS_output/libcollections-test := --test-threads 1
 RUNTIME_ARGS_output/libstd-test := --test-threads 1
-RUNTIME_ARGS_output/libstd-test := --skip ::collections::hash::map::test_map::test_index_nonexistent
+RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_index_nonexistent
 RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
+RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_drop
+RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_panic
+RUNTIME_ARGS_output/libstd-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Unbounded execution
 
 output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"
@@ -257,7 +258,7 @@ output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(TEST_DEPS)
 	@test -e $@
 output/%_out.txt: output/%
 	@echo "--- [$<]"
-	@./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
+	$V./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
 
 # "hello, world" test - Invoked by the `make test` target
 output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
@@ -313,6 +314,10 @@ $(OBJDIR)%.o: src/%.cpp
 	@mkdir -p $(dir $@)
 	@echo [CXX] -o $@
 	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep
+$(OBJDIR)version.o: $(OBJDIR)%.o: src/%.cpp $(filter-out $(OBJDIR)version.o,$(OBJ)) Makefile
+	@mkdir -p $(dir $@)
+	@echo [CXX] -o $@
+	$V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep -D VERSION_GIT_FULLHASH=\"$(shell git show --pretty=%H -s)\" -D VERSION_GIT_BRANCH="\"$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match)\"" -D VERSION_GIT_SHORTHASH=\"$(shell git show -s --pretty=%h)\" -D VERSION_BUILDTIME="\"$(shell date -uR)\"" -D VERSION_GIT_ISDIRTY=$(shell git diff-index --quiet HEAD; echo $$?)
 
 src/main.cpp: $(PCHS:%=src/%.gch)
 

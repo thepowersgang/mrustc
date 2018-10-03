@@ -1169,6 +1169,11 @@ namespace {
     };
 }
 
+void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
+{
+    // TODO:
+}
+
 void HIR_Expand_Closures(::HIR::Crate& crate)
 {
     OuterVisitor    ov(crate);

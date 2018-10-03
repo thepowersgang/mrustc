@@ -12,6 +12,7 @@
 #include <iomanip>
 #include "debug.hpp"
 #include "miri.hpp"
+#include <cstring>  // memrchr
 #ifdef _WIN32
 # define NOMINMAX
 # include <Windows.h>
@@ -953,10 +954,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     int res = 0;
                     // TODO: Handle comparison of the relocations too
 
-                    const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
-                    const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
-                    auto reloc_l = alloc_l ? v_l.get_relocation(v_l.m_offset) : RelocationPtr();
-                    auto reloc_r = alloc_r ? v_r.get_relocation(v_r.m_offset) : RelocationPtr();
+                    //const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
+                    //const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
+                    auto reloc_l = /*alloc_l ? */v_l.get_relocation(v_l.m_offset)/* : RelocationPtr()*/;
+                    auto reloc_r = /*alloc_r ? */v_r.get_relocation(v_r.m_offset)/* : RelocationPtr()*/;
 
                     if( reloc_l != reloc_r )
                     {
@@ -1578,10 +1579,23 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
     return false;
 }
 
+#ifdef _WIN32
+const char* memrchr(const void* p, int c, size_t s) {
+    const char* p2 = reinterpret_cast<const char*>(p);
+    while( s > 0 )
+    {
+        s -= 1;
+        if( p2[s] == c )
+            return &p2[s];
+    }
+    return nullptr;
+}
+#else
 extern "C" {
     long sysconf(int);
     ssize_t write(int, const void*, size_t);
 }
+#endif
 bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
     if( link_name == "__rust_allocate" )
@@ -1673,8 +1687,8 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "GetModuleHandleW" )
     {
-        LOG_ASSERT(args.at(0).allocation.is_alloc(), "");
-        const auto& tgt_alloc = args.at(0).allocation.alloc().get_relocation(0);
+        LOG_ASSERT(args.at(0).allocation, "");
+        const auto& tgt_alloc = args.at(0).get_relocation(0);
         const void* arg0 = (tgt_alloc ? tgt_alloc.alloc().data_ptr() : nullptr);
         //extern void* GetModuleHandleW(const void* s);
         if(arg0) {
@@ -1698,10 +1712,8 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "GetProcAddress" )
     {
-        LOG_ASSERT(args.at(0).allocation.is_alloc(), "");
-        const auto& handle_alloc = args.at(0).allocation.alloc().get_relocation(0);
-        LOG_ASSERT(args.at(1).allocation.is_alloc(), "");
-        const auto& sym_alloc = args.at(1).allocation.alloc().get_relocation(0);
+        const auto& handle_alloc = args.at(0).get_relocation(0);
+        const auto& sym_alloc = args.at(1).get_relocation(0);
 
         // TODO: Ensure that first arg is a FFI pointer with offset+size of zero
         void* handle = handle_alloc.ffi().ptr_value;
@@ -2204,7 +2216,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
             LOG_ASSERT(src_ofs <= src_alloc.ffi().size, "");
             LOG_ASSERT(byte_count <= src_alloc.ffi().size, "");
             LOG_ASSERT(src_ofs + byte_count <= src_alloc.ffi().size, "");
-            dst_alloc.alloc().write_bytes(dst_ofs, src_alloc.ffi().ptr_value + src_ofs, byte_count);
+            dst_alloc.alloc().write_bytes(dst_ofs, reinterpret_cast<const char*>(src_alloc.ffi().ptr_value) + src_ofs, byte_count);
             break;
         }
     }

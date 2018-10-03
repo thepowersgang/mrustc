@@ -2193,6 +2193,7 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
 {
     if( !lvalue_is_copy(sp, lv) ) {
         auto& vs = get_val_state_mut(sp, lv);
+        // TODO: If the current state is Optional, set the drop flag to 0
         vs = VarState::make_Invalid(InvalidType::Moved);
     }
 }
