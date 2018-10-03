@@ -64,7 +64,7 @@ namespace {
 
         ::HIR::Literal evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp);
 
-        ::HIR::Literal evaluate_constant_mir(const ::MIR::Function& fcn, MonomorphState ms, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args);
+        ::HIR::Literal evaluate_constant_mir(const ::HIR::ItemPath& ip, const ::MIR::Function& fcn, MonomorphState ms, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args);
     };
 
     ::HIR::Literal clone_literal(const ::HIR::Literal& v)
@@ -270,12 +270,12 @@ namespace {
         }
     }
 
-    ::HIR::Literal Evaluator::evaluate_constant_mir(const ::MIR::Function& fcn, MonomorphState ms, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
+    ::HIR::Literal Evaluator::evaluate_constant_mir(const ::HIR::ItemPath& ip, const ::MIR::Function& fcn, MonomorphState ms, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args)
     {
         // TODO: Full-blown miri
         TRACE_FUNCTION_F("exp=" << exp << ", args=" << args);
 
-        ::MIR::TypeResolve  state { this->root_span, this->resolve, FMT_CB(,), exp, {}, fcn };
+        ::MIR::TypeResolve  state { this->root_span, this->resolve, FMT_CB(ss, ss<<ip), exp, {}, fcn };
 
         ::HIR::Literal  retval;
         ::std::vector< ::HIR::Literal>  locals( fcn.locals.size() );
@@ -401,6 +401,7 @@ namespace {
             (Const,
                 auto p = ms.monomorph(state.sp, e2.p);
                 MonomorphState  const_ms;
+                // TODO: If there's any mention of Self in this path, then return Literal::Defer
                 auto ent = get_ent_fullpath(state.sp, this->resolve.m_crate, p, EntNS::Value,  const_ms);
                 MIR_ASSERT(state, ent.is_Constant(), "MIR Constant::Const(" << p << ") didn't point to a Constant - " << ent.tag_str());
                 const auto& c = *ent.as_Constant();
@@ -777,29 +778,46 @@ namespace {
                 return retval;
                 ),
             (Call,
-                if( !e.fcn.is_Path() )
-                    MIR_BUG(state, "Unexpected terminator - " << block.terminator);
-                const auto& fcnp_raw = e.fcn.as_Path();
-                auto fcnp = ms.monomorph(state.sp, fcnp_raw);
-
                 auto& dst = local_state.get_lval(e.ret_val);
-                MonomorphState  fcn_ms;
-                auto& fcn = get_function(this->root_span, this->resolve.m_crate, fcnp, fcn_ms);
-
-                ::std::vector< ::HIR::Literal>  call_args;
-                call_args.reserve( e.args.size() );
-                for(const auto& a : e.args)
-                    call_args.push_back( read_param(a) );
-                // TODO: Set m_const during parse and check here
-
-                // Call by invoking evaluate_constant on the function
+                if( const auto* te = e.fcn.opt_Intrinsic() )
                 {
-                    TRACE_FUNCTION_F("Call const fn " << fcnp << " args={ " << call_args << " }");
-                    const auto* mir = this->resolve.m_crate.get_or_gen_mir( ::HIR::ItemPath(fcnp.clone()), fcn );
-                    MIR_ASSERT(state, mir, "No MIR for function " << fcnp);
-                    dst = evaluate_constant_mir(*mir, mv$(fcn_ms), fcn.m_return.clone(), mv$(call_args));
+                    if( te->name == "size_of" ) {
+                        auto ty = ms.monomorph(state.sp, te->params.m_types.at(0));
+                        size_t  size_val;
+                        Target_GetSizeOf(state.sp, this->resolve, ty, size_val);
+                        dst = ::HIR::Literal::make_Integer( size_val );
+                    }
+                    else {
+                        MIR_TODO(state, "Call intrinsic \"" << te->name << "\" - " << block.terminator);
+                    }
                 }
+                else if( const auto* te = e.fcn.opt_Path() )
+                {
+                    const auto& fcnp_raw = *te;
+                    auto fcnp = ms.monomorph(state.sp, fcnp_raw);
 
+                    MonomorphState  fcn_ms;
+                    auto& fcn = get_function(this->root_span, this->resolve.m_crate, fcnp, fcn_ms);
+
+                    ::std::vector< ::HIR::Literal>  call_args;
+                    call_args.reserve( e.args.size() );
+                    for(const auto& a : e.args)
+                        call_args.push_back( read_param(a) );
+                    // TODO: Set m_const during parse and check here
+
+                    // Call by invoking evaluate_constant on the function
+                    {
+                        TRACE_FUNCTION_F("Call const fn " << fcnp << " args={ " << call_args << " }");
+                        auto fcn_ip = ::HIR::ItemPath(fcnp);
+                        const auto* mir = this->resolve.m_crate.get_or_gen_mir( fcn_ip, fcn );
+                        MIR_ASSERT(state, mir, "No MIR for function " << fcnp);
+                        dst = evaluate_constant_mir(fcn_ip, *mir, mv$(fcn_ms), fcn.m_return.clone(), mv$(call_args));
+                    }
+                }
+                else
+                {
+                    MIR_BUG(state, "Unexpected terminator - " << block.terminator);
+                }
                 cur_block = e.ret_block;
                 )
             )
@@ -812,7 +830,7 @@ namespace {
         const auto* mir = this->resolve.m_crate.get_or_gen_mir(ip, expr, exp);
 
         if( mir ) {
-            return evaluate_constant_mir(*mir, {}, mv$(exp), {});
+            return evaluate_constant_mir(ip, *mir, {}, mv$(exp), {});
         }
         else {
             BUG(this->root_span, "Attempting to evaluate constant expression with no associated code");
