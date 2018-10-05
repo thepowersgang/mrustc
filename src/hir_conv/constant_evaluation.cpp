@@ -73,6 +73,9 @@ namespace {
         (Invalid,
             return ::HIR::Literal();
             ),
+        (Defer,
+            return ::HIR::Literal::make_Defer({});
+            ),
         (List,
             ::std::vector< ::HIR::Literal>  vals;
             for(const auto& val : e) {
@@ -400,8 +403,13 @@ namespace {
                 ),
             (Const,
                 auto p = ms.monomorph(state.sp, e2.p);
+                // If there's any mention of generics in this path, then return Literal::Defer
+                if( visit_path_tys_with(e2.p, [&](const auto& ty)->bool { return ty.m_data.is_Generic(); }) )
+                {
+                    DEBUG("Return Literal::Defer for constant " << e2.p << " which references a generic parameter");
+                    return ::HIR::Literal::make_Defer({});
+                }
                 MonomorphState  const_ms;
-                // TODO: If there's any mention of Self in this path, then return Literal::Defer
                 auto ent = get_ent_fullpath(state.sp, this->resolve.m_crate, p, EntNS::Value,  const_ms);
                 MIR_ASSERT(state, ent.is_Constant(), "MIR Constant::Const(" << p << ") didn't point to a Constant - " << ent.tag_str());
                 const auto& c = *ent.as_Constant();
@@ -588,6 +596,8 @@ namespace {
                 (BinOp,
                     auto inval_l = read_param(e.val_l);
                     auto inval_r = read_param(e.val_r);
+                    if( inval_l.is_Defer() || inval_r.is_Defer() )
+                        return ::HIR::Literal::make_Defer({});
                     MIR_ASSERT(state, inval_l.tag() == inval_r.tag(), "Mismatched literal types in binop - " << inval_l << " and " << inval_r);
                     TU_MATCH_DEF( ::HIR::Literal, (inval_l, inval_r), (l, r),
                     (
@@ -654,6 +664,8 @@ namespace {
                     ),
                 (UniOp,
                     auto inval = local_state.read_lval(e.val);
+                    if( inval.is_Defer() )
+                        return ::HIR::Literal::make_Defer({});
                     TU_IFLET( ::HIR::Literal, inval, Integer, i,
                         switch( e.op )
                         {
@@ -830,7 +842,15 @@ namespace {
         const auto* mir = this->resolve.m_crate.get_or_gen_mir(ip, expr, exp);
 
         if( mir ) {
-            return evaluate_constant_mir(ip, *mir, {}, mv$(exp), {});
+            ::HIR::TypeRef  ty_self { "Self", GENERIC_Self };
+            // Might want to have a fully-populated MonomorphState for expanding inside impl blocks
+            // HACK: Generate a roughly-correct one
+            MonomorphState  ms;
+            const auto& top_ip = ip.get_top_ip();
+            if( top_ip.trait && !top_ip.ty ) {
+                ms.self_ty = &ty_self;
+            }
+            return evaluate_constant_mir(ip, *mir, mv$(ms), mv$(exp), {});
         }
         else {
             BUG(this->root_span, "Attempting to evaluate constant expression with no associated code");
@@ -839,6 +859,8 @@ namespace {
 
     void check_lit_type(const Span& sp, const ::HIR::TypeRef& type,  ::HIR::Literal& lit)
     {
+        if( lit.is_Defer() )
+            return ;
         // TODO: Mask down limited size integers
         TU_MATCHA( (type.m_data), (te),
         (Infer,

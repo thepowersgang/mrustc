@@ -33,6 +33,7 @@ typedef ::std::function<bool(const ::HIR::TypeRef&)> t_cb_visit_ty;
 /// Calls the provided callback on every type seen when recursing the type.
 /// If the callback returns `true`, no further types are visited and the function returns `true`.
 extern bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback);
+extern bool visit_path_tys_with(const ::HIR::Path& ty, t_cb_visit_ty callback);
 
 typedef ::std::function<bool(const ::HIR::TypeRef&, ::HIR::TypeRef&)>   t_cb_clone_ty;
 /// Clones a type, calling the provided callback on every type (optionally providing a replacement)

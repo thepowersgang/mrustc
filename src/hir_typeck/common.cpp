@@ -113,6 +113,10 @@ bool visit_ty_with(const ::HIR::TypeRef& ty, t_cb_visit_ty callback)
     )
     return false;
 }
+bool visit_path_tys_with(const ::HIR::Path& path, t_cb_visit_ty callback)
+{
+    return visit_ty_with__path(path, callback);
+}
 
 bool monomorphise_pathparams_needed(const ::HIR::PathParams& tpl)
 {

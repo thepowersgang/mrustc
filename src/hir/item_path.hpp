@@ -87,6 +87,11 @@ public:
         return name ? name : "";
     }
 
+    const ItemPath& get_top_ip() const {
+        if( this->parent )
+            return this->parent->get_top_ip();
+        return *this;
+    }
     ItemPath operator+(const ::std::string& name) const {
         return ItemPath(*this, name.c_str());
     }
