@@ -17,7 +17,7 @@
 #include "from_hir.hpp"
 #include "operations.hpp"
 #include <mir/visit_crate_mir.hpp>
-
+#include <hir/expr_state.hpp>
 
 namespace {
 
@@ -1037,9 +1037,8 @@ namespace {
             // Short-circuiting boolean operations
             if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolAnd || node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
             {
-                // TODO: Generate a SplitScope to handle the early breaks.
-                auto split_scope = m_builder.new_scope_split(node.span());
 
+                DEBUG("- ShortCircuit Left");
                 this->visit_node_ptr(node.m_left);
                 auto left = m_builder.get_result_in_lvalue(node.m_left->span(), ty_l);
 
@@ -1048,12 +1047,16 @@ namespace {
                 auto bb_false = m_builder.new_bb_unlinked();
                 m_builder.end_block( ::MIR::Terminator::make_If({ mv$(left), bb_true, bb_false }) );
 
+                // Generate a SplitScope to handle the conditional nature of the next code
+                auto split_scope = m_builder.new_scope_split(node.span());
+
                 if( node.m_op == ::HIR::ExprNode_BinOp::Op::BoolOr )
                 {
+                    DEBUG("- ShortCircuit ||");
                     // If left is true, assign result true and return
                     m_builder.set_cur_block( bb_true );
                     m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool({true}) ));
-                    m_builder.end_split_arm(node.m_left->span(), split_scope, true);
+                    m_builder.end_split_arm(node.m_left->span(), split_scope, /*reachable=*/true);
                     m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
 
                     // If left is false, assign result to right
@@ -1061,22 +1064,24 @@ namespace {
                 }
                 else
                 {
+                    DEBUG("- ShortCircuit &&");
                     // If left is false, assign result false and return
                     m_builder.set_cur_block( bb_false );
                     m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue( ::MIR::Constant::make_Bool({false}) ));
-                    m_builder.end_split_arm(node.m_left->span(), split_scope, true);
+                    m_builder.end_split_arm(node.m_left->span(), split_scope, /*reachable=*/true);
                     m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
 
                     // If left is true, assign result to right
                     m_builder.set_cur_block( bb_true );
                 }
 
+                DEBUG("- ShortCircuit Right");
                 auto tmp_scope = m_builder.new_scope_temp(node.m_right->span());
                 this->visit_node_ptr(node.m_right);
                 m_builder.push_stmt_assign(node.span(), res.clone(), m_builder.get_result(node.m_right->span()));
                 m_builder.terminate_scope(node.m_right->span(), mv$(tmp_scope));
 
-                m_builder.end_split_arm(node.m_left->span(), split_scope, true);
+                m_builder.end_split_arm(node.m_right->span(), split_scope, /*reachable=*/true);
                 m_builder.end_block( ::MIR::Terminator::make_Goto(bb_next) );
 
                 m_builder.set_cur_block( bb_next );
@@ -2409,10 +2414,24 @@ namespace {
 
 // --------------------------------------------------------------------
 
+void HIR_GenerateMIR_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& path, ::HIR::ExprPtr& expr_ptr, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& res_ty)
+{
+    if( !expr_ptr.m_mir )
+    {
+        StaticTraitResolve  resolve { crate };
+        if(expr_ptr.m_state->m_impl_generics)   resolve.set_impl_generics(*expr_ptr.m_state->m_impl_generics);
+        if(expr_ptr.m_state->m_item_generics)   resolve.set_item_generics(*expr_ptr.m_state->m_item_generics);
+        expr_ptr.set_mir( LowerMIR(resolve, path, expr_ptr, res_ty, args) );
+    }
+}
+
 void HIR_GenerateMIR(::HIR::Crate& crate)
 {
     ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, auto& expr_ptr, const auto& args, const auto& ty){
-            expr_ptr.m_mir = LowerMIR(res, p, expr_ptr, ty, args);
+            if( !expr_ptr.get_mir_opt() )
+            {
+                expr_ptr.set_mir( LowerMIR(res, p, expr_ptr, ty, args) );
+            }
         } };
     ov.visit_crate(crate);
 }

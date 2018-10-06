@@ -513,7 +513,10 @@ int main(int argc, char *argv[])
             HIR_Expand_Closures(*hir_crate);
             });
         // - Construct VTables for all traits and impls.
-        CompilePhaseV("Expand HIR VTables", [&]() { HIR_Expand_VTables(*hir_crate); });
+        //  TODO: How early can this be done?
+        CompilePhaseV("Expand HIR VTables", [&]() {
+            HIR_Expand_VTables(*hir_crate);
+            });
         // - And calls can be turned into UFCS
         CompilePhaseV("Expand HIR Calls", [&]() {
             HIR_Expand_UfcsEverything(*hir_crate);
@@ -558,11 +561,6 @@ int main(int argc, char *argv[])
         // Validate the MIR
         CompilePhaseV("MIR Validate", [&]() {
             MIR_CheckCrate(*hir_crate);
-            });
-
-        // Second shot of constant evaluation (with full type information)
-        CompilePhaseV("Constant Evaluate Full", [&]() {
-            ConvertHIR_ConstantEvaluateFull(*hir_crate);
             });
 
         if( params.debug.dump_hir )

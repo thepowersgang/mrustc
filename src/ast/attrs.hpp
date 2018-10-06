@@ -113,7 +113,7 @@ public:
             )
         )
     }
-    Attribute& operator=(const Attribute&& ) = delete;
+    Attribute& operator=(const Attribute& ) = delete;
     Attribute(Attribute&& ) = default;
     Attribute& operator=(Attribute&& ) = default;
     Attribute clone() const;

@@ -9,14 +9,14 @@
 namespace typeck {
     struct ModuleState
     {
-        ::HIR::Crate& m_crate;
+        const ::HIR::Crate& m_crate;
 
         ::HIR::GenericParams*   m_impl_generics;
         ::HIR::GenericParams*   m_item_generics;
 
         ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   m_traits;
 
-        ModuleState(::HIR::Crate& crate):
+        ModuleState(const ::HIR::Crate& crate):
             m_crate(crate),
             m_impl_generics(nullptr),
             m_item_generics(nullptr)
@@ -65,5 +65,7 @@ namespace typeck {
 
 
 typedef ::std::vector< ::std::pair<::HIR::Pattern, ::HIR::TypeRef> >    t_args;
+// Needs to mutate the pattern
+extern void Typecheck_Code(const typeck::ModuleState& ms, t_args& args, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr);
 extern void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr);
 extern void Typecheck_Code_Simple(const typeck::ModuleState& ms, t_args& args, const ::HIR::TypeRef& result_type, ::HIR::ExprPtr& expr);

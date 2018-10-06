@@ -13,6 +13,8 @@
 #include <algorithm>    // std::find_if
 
 #include <hir_typeck/static.hpp>
+#include <hir_typeck/expr_visit.hpp>    // For ModuleState
+#include <hir/expr_state.hpp>
 
 void ConvertHIR_Bind(::HIR::Crate& crate);
 
@@ -95,10 +97,35 @@ namespace {
     {
         const ::HIR::Crate& m_crate;
 
+        typeck::ModuleState m_ms;
+
+        struct CurMod {
+            const ::HIR::Module* ptr;
+            const ::HIR::ItemPath*  path;
+        } m_cur_module;
+
     public:
         Visitor(const ::HIR::Crate& crate):
-            m_crate(crate)
-        {}
+            m_crate(crate),
+            m_ms(crate)
+        {
+            static ::HIR::ItemPath  root_path("");
+            m_cur_module.ptr = &crate.m_root_module;
+            m_cur_module.path = &root_path;
+        }
+
+        void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
+        {
+            auto parent_mod = m_cur_module;
+            m_cur_module.ptr = &mod;
+            m_cur_module.path = &p;
+
+            m_ms.push_traits(mod);
+            ::HIR::Visitor::visit_module(p, mod);
+            m_ms.pop_traits(mod);
+
+            m_cur_module = parent_mod;
+        }
 
         void visit_trait_path(::HIR::TraitPath& p) override
         {
@@ -400,17 +427,86 @@ namespace {
             ::HIR::Visitor::visit_type(ty);
         }
 
-        void visit_static(::HIR::ItemPath p, ::HIR::Static& i) override
+        void visit_type_impl(::HIR::TypeImpl& impl) override
         {
-            ::HIR::Visitor::visit_static(p, i);
-            visit_literal(Span(), i.m_value_res);
+            TRACE_FUNCTION_F("impl " << impl.m_type);
+            auto _ = this->m_ms.set_impl_generics(impl.m_params);
+
+            const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
+            if(mod)
+                m_ms.push_traits(*mod);
+            ::HIR::Visitor::visit_type_impl(impl);
+            if(mod)
+                m_ms.pop_traits(*mod);
         }
-        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& i) override
+        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
-            ::HIR::Visitor::visit_constant(p, i);
-            visit_literal(Span(), i.m_value_res);
+            TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
+            auto _ = this->m_ms.set_impl_generics(impl.m_params);
+
+            const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
+            if(mod)
+                m_ms.push_traits(*mod);
+            m_ms.m_traits.push_back( ::std::make_pair( &trait_path, &this->m_ms.m_crate.get_trait_by_path(Span(), trait_path) ) );
+            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+            m_ms.m_traits.pop_back( );
+            if(mod)
+                m_ms.pop_traits(*mod);
+        }
+        void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override
+        {
+            TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type << " { }");
+            auto _ = this->m_ms.set_impl_generics(impl.m_params);
+
+            const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
+            if(mod)
+                m_ms.push_traits(*mod);
+            ::HIR::Visitor::visit_marker_impl(trait_path, impl);
+            if(mod)
+                m_ms.pop_traits(*mod);
         }
 
+        void visit_trait(::HIR::ItemPath p, ::HIR::Trait& item) override
+        {
+            auto _ = this->m_ms.set_impl_generics(item.m_params);
+            ::HIR::Visitor::visit_trait(p, item);
+        }
+        // TODO: Are generics for types "item" or "impl"?
+        void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override
+        {
+            auto _ = this->m_ms.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_enum(p, item);
+        }
+        void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override
+        {
+            auto _ = this->m_ms.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_struct(p, item);
+        }
+        void visit_union(::HIR::ItemPath p, ::HIR::Union& item) override
+        {
+            auto _ = this->m_ms.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_union(p, item);
+        }
+
+        void visit_function(::HIR::ItemPath p, ::HIR::Function& item) override
+        {
+            auto _ = this->m_ms.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_function(p, item);
+        }
+        void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
+        {
+            //auto _ = this->m_ms.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_static(p, item);
+            visit_literal(Span(), item.m_value_res);
+        }
+        void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
+        {
+            auto _ = this->m_ms.set_item_generics(item.m_params);
+            ::HIR::Visitor::visit_constant(p, item);
+            visit_literal(Span(), item.m_value_res);
+        }
+
+        // Actual expressions
         void visit_expr(::HIR::ExprPtr& expr) override
         {
             struct ExprVisitor:
@@ -473,6 +569,11 @@ namespace {
                     upper_visitor.visit_generic_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
+                void visit(::HIR::ExprNode_ArraySized& node) override
+                {
+                    upper_visitor.visit_expr(node.m_size);
+                    ::HIR::ExprVisitorDef::visit(node);
+                }
 
                 void visit(::HIR::ExprNode_Closure& node) override
                 {
@@ -488,12 +589,22 @@ namespace {
             for(auto& ty : expr.m_erased_types)
                 visit_type(ty);
 
+            // Set up the module state
+            {
+                expr.m_state = ::HIR::ExprStatePtr(::HIR::ExprState(*m_cur_module.ptr, m_cur_module.path->get_simple_path()));
+                expr.m_state->m_traits = m_ms.m_traits; // TODO: Only obtain the current module's set
+                expr.m_state->m_impl_generics = m_ms.m_impl_generics;
+                expr.m_state->m_item_generics = m_ms.m_item_generics;
+            }
+
+            // Local expression
             if( expr.get() != nullptr )
             {
                 ExprVisitor v { *this };
                 (*expr).visit(v);
             }
-            else if( expr.m_mir )
+            // External expression (has MIR)
+            else if( auto* mir = expr.get_ext_mir_mut() )
             {
                 struct H {
                     static void visit_lvalue(Visitor& upper_visitor, ::MIR::LValue& lv)
@@ -546,9 +657,9 @@ namespace {
                         )
                     }
                 };
-                for(auto& ty : expr.m_mir->locals)
+                for(auto& ty : mir->locals)
                     this->visit_type(ty);
-                for(auto& block : expr.m_mir->blocks)
+                for(auto& block : mir->blocks)
                 {
                     for(auto& stmt : block.statements)
                     {

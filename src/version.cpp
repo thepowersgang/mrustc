@@ -12,6 +12,14 @@
 #define VERSION_MINOR   8
 #define VERSION_PATCH   0
 
+#ifdef _WIN32
+# define VERSION_GIT_ISDIRTY    1
+# define VERSION_GIT_FULLHASH   ""
+# define VERSION_GIT_SHORTHASH   ""
+# define VERSION_BUILDTIME  ""
+# define VERSION_GIT_BRANCH ""
+#endif
+
 unsigned int giVersion_Major = VERSION_MAJOR;
 unsigned int giVersion_Minor = VERSION_MINOR;
 unsigned int giVersion_Patch = VERSION_PATCH;

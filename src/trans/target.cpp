@@ -691,7 +691,12 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         case ::HIR::CoreType::I128:
             out_size = 16;
             // TODO: If i128 is emulated, this can be 8 (as it is on x86, where it's actually 4 due to the above comment)
-            out_align = g_target.m_arch.m_name == "x86" ? 4 : 16;
+            if( g_target.m_arch.m_name == "x86" )
+                out_align = 4;
+            else if( /*g_target.m_arch.m_name == "x86_64" && */g_target.m_backend_c.m_codegen_mode == CodegenMode::Msvc )
+                out_align = 8;
+            else 
+                out_align = 16;
             return true;
         case ::HIR::CoreType::Usize:
         case ::HIR::CoreType::Isize:

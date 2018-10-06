@@ -945,7 +945,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     auto cmdline_str = cmdline.str();
     if(true)
     {
-        ::std::cout << "> " << cmdline_str << ::std::end;;
+        ::std::cout << "> " << cmdline_str << ::std::endl;
     }
     else
     {

@@ -955,6 +955,7 @@ namespace {
                 if( te.size() > 0 )
                 {
                     m_of << "typedef struct "; emit_ctype(ty); m_of << " {\n";
+                    unsigned n_fields = 0;
                     for(unsigned int i = 0; i < te.size(); i++)
                     {
                         m_of << "\t";
@@ -967,7 +968,12 @@ namespace {
                         else {
                             emit_ctype(te[i], FMT_CB(ss, ss << "_" << i;));
                             m_of << ";\n";
+                            n_fields += 1;
                         }
+                    }
+                    if( n_fields == 0 && m_options.disallow_empty_structs )
+                    {
+                        m_of << "\tchar _d;\n";
                     }
                     m_of << "} "; emit_ctype(ty); m_of << ";\n";
                 }
@@ -1315,36 +1321,40 @@ namespace {
                 assert(1 + union_fields.size() + 1 >= repr->fields.size());
                 // Make the union!
                 // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
-                m_of << "\tunion {\n";
-                // > First field
+                // TODO: 
+                if( !this->type_is_bad_zst(repr->fields[0].ty) || ::std::any_of(union_fields.begin(), union_fields.end(), [this,repr](auto x){ return !this->type_is_bad_zst(repr->fields[x].ty); }) )
                 {
-                    m_of << "\t\t";
-                    const auto& ty = repr->fields[0].ty;
-                    if( this->type_is_bad_zst(ty) ) {
-                        m_of << "// ZST: " << ty << "\n";
+                    m_of << "\tunion {\n";
+                    // > First field
+                    {
+                        m_of << "\t\t";
+                        const auto& ty = repr->fields[0].ty;
+                        if( this->type_is_bad_zst(ty) ) {
+                            m_of << "// ZST: " << ty << "\n";
+                        }
+                        else {
+                            emit_ctype( ty, FMT_CB(ss, ss << "var_0") );
+                            m_of << ";\n";
+                            //sized_fields ++;
+                        }
                     }
-                    else {
-                        emit_ctype( ty, FMT_CB(ss, ss << "var_0") );
-                        m_of << ";\n";
-                        //sized_fields ++;
-                    }
-                }
-                // > All others
-                for(auto idx : union_fields)
-                {
-                    m_of << "\t\t";
+                    // > All others
+                    for(auto idx : union_fields)
+                    {
+                        m_of << "\t\t";
 
-                    const auto& ty = repr->fields[idx].ty;
-                    if( this->type_is_bad_zst(ty) ) {
-                        m_of << "// ZST: " << ty << "\n";
+                        const auto& ty = repr->fields[idx].ty;
+                        if( this->type_is_bad_zst(ty) ) {
+                            m_of << "// ZST: " << ty << "\n";
+                        }
+                        else {
+                            emit_ctype( ty, FMT_CB(ss, ss << "var_" << idx) );
+                            m_of << ";\n";
+                            //sized_fields ++;
+                        }
                     }
-                    else {
-                        emit_ctype( ty, FMT_CB(ss, ss << "var_" << idx) );
-                        m_of << ";\n";
-                        //sized_fields ++;
-                    }
+                    m_of << "\t} DATA;\n";
                 }
-                m_of << "\t} DATA;\n";
 
                 if( repr->fields.size() == 1 + union_fields.size() )
                 {
@@ -1450,7 +1460,7 @@ namespace {
                         var_lv.as_Downcast().variant_index = var_idx;
                         m_of << "\tcase " << e->values[var_idx] << ":\n";
                         emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
-                        m_of << "\tbreak;\n";
+                        m_of << "\t\tbreak;\n";
                     }
                     m_of << "\t}\n";
                 }
@@ -1791,14 +1801,14 @@ namespace {
                     m_of << "{";
                     const auto& ity = get_inner_type(e.idx, 0);
                     if( this->type_is_bad_zst(ity) ) {
-                        m_of << " {}";
+                        //m_of << " {}";
                     }
                     else {
                         m_of << " { .var_" << e.idx << " = ";
                         emit_literal(ity, *e.val, params);
-                        m_of << " }";
+                        m_of << " }, ";
                     }
-                    m_of << ", .TAG = "; emit_enum_variant_val(repr, e.idx);
+                    m_of << ".TAG = "; emit_enum_variant_val(repr, e.idx);
                     m_of << "}";
                 }
                 ),
@@ -3991,13 +4001,15 @@ namespace {
                     m_of << name << o_before << "8" << o_after << "(";
                     break;
                 case ::HIR::CoreType::U16:
+                case ::HIR::CoreType::I16:
                     m_of << name << o_before << "16" << o_after << "(";
                     break;
                 case ::HIR::CoreType::U32:
+                case ::HIR::CoreType::I32:
                     m_of << name << o_before << o_after << "(";
                     break;
                 case ::HIR::CoreType::U64:
-                //case ::HIR::CoreType::I64:
+                case ::HIR::CoreType::I64:
                     m_of << name << o_before << "64" << o_after << "(";
                     break;
                 case ::HIR::CoreType::Usize:
@@ -4987,9 +4999,14 @@ namespace {
                 {
                 case MetadataType::None:
 
-                    if( this->type_is_bad_zst(ty) && slot.is_Field() )
+                    if( this->type_is_bad_zst(ty) && (slot.is_Field() || slot.is_Downcast()) )
                     {
-                        m_of << indent << Trans_Mangle(p) << "((void*)&"; emit_lvalue(*slot.as_Field().val); m_of << ");\n";
+                        m_of << indent << Trans_Mangle(p) << "((void*)&";
+                        if( slot.is_Field() )
+                            emit_lvalue(*slot.as_Field().val);
+                        else
+                            emit_lvalue(*slot.as_Downcast().val);
+                        m_of << ");\n";
                     }
                     else
                     {

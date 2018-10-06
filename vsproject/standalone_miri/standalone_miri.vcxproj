@@ -170,6 +170,7 @@
     <ClCompile Include="..\..\tools\standalone_miri\lex.cpp" />
     <ClCompile Include="..\..\tools\standalone_miri\main.cpp" />
     <ClCompile Include="..\..\tools\standalone_miri\mir.cpp" />
+    <ClCompile Include="..\..\tools\standalone_miri\miri.cpp" />
     <ClCompile Include="..\..\tools\standalone_miri\module_tree.cpp" />
     <ClCompile Include="..\..\tools\standalone_miri\value.cpp" />
   </ItemGroup>
