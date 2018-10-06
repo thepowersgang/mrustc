@@ -165,6 +165,10 @@ fn_getdeps = \
 .PHONY: RUSTCSRC
 RUSTCSRC: $(RUSTC_SRC_DL)
 
+#
+# rustc (with std/cargo) source download
+#
+# NIGHTLY:
 ifeq ($(RUSTC_SRC_TY),nightly)
 rustc-nightly-src.tar.gz: $(RUSTC_SRC_DES)
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
@@ -173,7 +177,6 @@ rustc-nightly-src.tar.gz: $(RUSTC_SRC_DES)
 	rm -f rustc-nightly-src.tar.gz; \
 	curl -sS https://static.rust-lang.org/dist/$${DL_RUST_DATE}/rustc-nightly-src.tar.gz -o rustc-nightly-src.tar.gz
 
-# TODO: Handle non-nightly download
 $(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rustc-nightly-src.patch
 	@export DL_RUST_DATE=$$(cat rust-nightly-date); \
 	export DISK_RUST_DATE=$$([ -f $(RUSTC_SRC_DL) ] && cat $(RUSTC_SRC_DL)); \
@@ -184,6 +187,7 @@ $(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rustc-nightly-src.pa
 	fi
 	cat rust-nightly-date > $(RUSTC_SRC_DL)
 else
+# NAMED (Stable or beta)
 RUSTC_SRC_TARBALL := rustc-$(shell cat $(RUSTC_SRC_DES))-src.tar.gz
 $(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
 	@echo [CURL] $@
