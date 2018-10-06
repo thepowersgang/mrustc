@@ -236,6 +236,7 @@ LIB_TESTS := collections #std
 rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
 
 RUNTIME_ARGS_output/libcollections-test := --test-threads 1
+#RUNTIME_ARGS_output/libcore-test := --test-threads 1
 RUNTIME_ARGS_output/libstd-test := --test-threads 1
 RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_index_nonexistent
 RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
@@ -243,6 +244,13 @@ RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::te
 RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_panic
 RUNTIME_ARGS_output/libstd-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Unbounded execution
 
+output/libcore-test: $(RUSTCSRC)src/libcore/tests/lib.rs $(TEST_DEPS)
+	@echo "--- [MRUSTC] --test -o $@"
+	@mkdir -p output/
+	@rm -f $@
+	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
+#	# HACK: Work around gdb returning success even if the program crashed
+	@test -e $@
 output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"
 	@mkdir -p output/
