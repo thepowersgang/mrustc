@@ -450,7 +450,9 @@ namespace {
             ),
         (Function,
             TU_IFLET(::HIR::TypeRef::Data, right.m_data, Function, re,
-                TODO(sp, "Function");
+                if( left == right )
+                    return ::OrdEqual;
+                TODO(sp, "Function - " << left << " and " << right);
                 //return typelist_ord_specific(sp, le.arg_types, re.arg_types);
             )
             else {
