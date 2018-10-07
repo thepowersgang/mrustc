@@ -2667,6 +2667,69 @@ namespace {
                 {
                     ERROR(sp, E0000, "No applicable methods for {" << ty << "}." << node.m_method);
                 }
+                if( possible_methods.size() > 1 )
+                {
+                    // TODO: What do do when there's multiple possibilities?
+                    // - Should use available information to strike them down
+                    // > Try and equate the return type and the arguments, if any fail then move on to the next possibility?
+                    // > ONLY if those arguments/return are generic
+                    //
+                    // Possible causes of multiple entries
+                    // - Multiple distinct traits with the same method
+                    //   > If `self` is concretely known, this is an error (and shouldn't happen in well-formed code).
+                    // - Multiple inherent methods on a type
+                    //   > These would have to have different type parmeters
+                    // - Multiple trait bounds (same trait, different type params)
+                    //   > Guess at the type params, then discard if there's a conflict?
+                    //   > De-duplicate same traits?
+                    //
+                    //
+                    // So: To be able to prune the list, we need to check the type parameters for the trait/type/impl 
+
+                    // De-duplcate traits in this list.
+                    // - If the self type and the trait name are the same, replace with an entry using placeholder
+                    //   ivars (node.m_trait_param_ivars)
+                    for(auto it_1 = possible_methods.begin(); it_1 != possible_methods.end(); ++ it_1)
+                    {
+                        if( !it_1->second.m_data.is_UfcsKnown() )
+                            continue;
+                        bool was_found = false;
+                        auto& e1 = it_1->second.m_data.as_UfcsKnown();
+                        for(auto it_2 = it_1 + 1; it_2 != possible_methods.end(); ++ it_2)
+                        {
+                            if( !it_2->second.m_data.is_UfcsKnown() )
+                                continue;
+                            if( it_2->second == it_1->second ) {
+                                it_2 = possible_methods.erase(it_2) - 1;
+                                continue ;
+                            }
+                            const auto& e2 = it_2->second.m_data.as_UfcsKnown();
+
+                            if( *e1.type != *e2.type )
+                                continue;
+                            if( e1.trait.m_path != e2.trait.m_path )
+                                continue;
+
+                            DEBUG("Duplicate trait in possible_methods - " << it_1->second << " and " << it_2->second);
+                            if( !was_found )
+                            {
+                                was_found = true;
+                                const auto& ivars = node.m_trait_param_ivars;
+                                unsigned int n_params = e1.trait.m_params.m_types.size();
+                                assert(n_params <= ivars.size());
+                                ::HIR::PathParams   trait_params;
+                                trait_params.m_types.reserve( n_params );
+                                for(unsigned int i = 0; i < n_params; i++) {
+                                    trait_params.m_types.push_back( ::HIR::TypeRef::new_infer(ivars[i], ::HIR::InferClass::None) );
+                                    //ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
+                                }
+                                e1.trait.m_params = mv$(trait_params);
+
+                                it_2 = possible_methods.erase(it_2) - 1;
+                            }
+                        }
+                    }
+                }
                 auto& ad_borrow = possible_methods.front().first;
                 auto& fcn_path = possible_methods.front().second;
                 DEBUG("- deref_count = " << deref_count << ", fcn_path = " << fcn_path);
@@ -2704,6 +2767,7 @@ namespace {
                     )
                     if( this->m_is_fallback && fcn_path.m_data.is_UfcsInherent() )
                     {
+                        //possible_methods.erase(possible_methods.begin());
                         while( !possible_methods.empty() && possible_methods.front().second.m_data.is_UfcsInherent() )
                         {
                             possible_methods.erase(possible_methods.begin());
@@ -5248,6 +5312,7 @@ namespace {
                     }
                     // if solid or fuzzy, leave as-is
                     output_type = mv$( out_ty_o );
+                    DEBUG("[check_associated] cmp = " << cmp << " (2)");
                 }
                 if( cmp == ::HIR::Compare::Equal ) {
                     // NOTE: Sometimes equal can be returned when it's not 100% equal (TODO)
@@ -5327,6 +5392,7 @@ namespace {
                 }
                 context.equate_types(sp, v.left_ty, output_type);
             }
+            // TODO: Any equating of type params?
             return true;
         }
         else if( count == 0 ) {

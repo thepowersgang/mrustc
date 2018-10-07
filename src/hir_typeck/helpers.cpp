@@ -1414,16 +1414,18 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                     }
                 }
 
+                bool rv = false;
                 bool ret = this->find_named_trait_in_trait(sp,  trait, params,  *bound.m_trait_ptr,  bound.m_path.m_path, b_params_mono, type,
                     [&](const auto& i_ty, const auto& i_params, const auto& i_assoc) {
                         auto cmp = this->compare_pp(sp, i_params, params);
                         DEBUG("cmp=" << cmp << ", impl " << trait << i_params << " for " << i_ty << " -- desired " << trait << params);
-                        return cmp != ::HIR::Compare::Unequal && callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp );
+                        rv |= (cmp != ::HIR::Compare::Unequal && callback( ImplRef(i_ty.clone(), i_params.clone(), {}), cmp ));
+                        return true;    // NOTE: actually ignored?
                     });
                 if( ret )
                 {
                     // NOTE: Callback called in closure's return statement
-                    return true;
+                    return rv;
                 }
                 return false;
                 });
@@ -3666,6 +3668,7 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp,
         }
         if( !possibilities.empty() )
         {
+            DEBUG("FOUND " << possibilities.size() << " options: " << possibilities);
             return deref_count;
         }
 
@@ -3813,7 +3816,7 @@ bool TraitResolution::find_method(const Span& sp,
     ) const
 {
     bool rv = false;
-    TRACE_FUNCTION_F("ty=" << ty << ", name=" << method_name << ", access=" << access);
+    TRACE_FUNCTION_FR("ty=" << ty << ", name=" << method_name << ", access=" << access, possibilities);
     auto cb_infer = m_ivars.callback_resolve_infer();
 
     // 1. Search generic bounds for a match
@@ -3858,7 +3861,6 @@ bool TraitResolution::find_method(const Span& sp,
                                 {}
                                 }) ) ));
                         rv = true;
-                        break;
                     }
                     else if( cmp == ::HIR::Compare::Fuzzy )
                     {
