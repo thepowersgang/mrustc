@@ -1575,7 +1575,7 @@ namespace {
             {
                 if( this->type_is_bad_zst(repr->fields[var_idx].ty) )
                 {
-                    m_of << " .DATA = { /* ZST Variant */ }";
+                    //m_of << " .DATA = { /* ZST Variant */ }";
                 }
                 else
                 {
