@@ -54,6 +54,20 @@ Windows
 - Open `vsproject/mrustc.sln` and build minicargo
 - Run `vsproject/build_rustc_minicargo.cmd` to attempt to build libstd
 
+CMake
+-----
+
+> This is Work-In-Progress and has only been tested on Linux so far!
+
+From the directoy where you cloned or extracted *mrustc*:
+
+```sh
+mkdir build
+cd build
+cmake ..
+make mrustc
+make minicargo
+```
 
 Building non-rustc code
 =======================
