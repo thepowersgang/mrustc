@@ -82,6 +82,14 @@ struct SplitArm {
     //BasicBlockId  source_block;
     ::std::map<unsigned int, VarState>  states;
     ::std::map<unsigned int, VarState>  arg_states;
+
+    SplitArm(const SplitArm&) = delete;
+    SplitArm(SplitArm&&) = default;
+
+    SplitArm& operator=(const SplitArm&) = delete;
+    SplitArm& operator=(SplitArm&&) = default;
+
+    ~SplitArm() = default;
 };
 struct SplitEnd {
     ::std::map<unsigned int, VarState>  states;

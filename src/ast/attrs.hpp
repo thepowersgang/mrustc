@@ -11,50 +11,7 @@
 
 namespace AST {
 
-//
 class Attribute;
-::std::ostream& operator<<(::std::ostream& os, const Attribute& x);
-
-/// A list of attributes on an item (searchable by the attribute name)
-class AttributeList
-{
-public:
-    ::std::vector<Attribute> m_items;
-
-    AttributeList() {}
-    AttributeList(::std::vector<Attribute> items):
-        m_items( mv$(items) )
-    {
-    }
-
-    // Move present
-    AttributeList(AttributeList&&) = default;
-    AttributeList& operator=(AttributeList&&) = default;
-    // No copy assign, but explicit copy
-    explicit AttributeList(const AttributeList&) = default;
-    AttributeList& operator=(const AttributeList&) = delete;
-    // Explicit clone
-    AttributeList clone() const;
-
-    void push_back(Attribute i);
-
-    const Attribute* get(const char *name) const;
-    Attribute* get(const char *name) {
-        return const_cast<Attribute*>( const_cast<const AttributeList*>(this)->get(name));
-    }
-    bool has(const char *name) const {
-        return get(name) != 0;
-    }
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const AttributeList& x) {
-        for(const auto& i : x.m_items) {
-            os << "#[" << i << "]";
-        }
-        return os;
-    }
-};
-
-
 TAGGED_UNION(AttributeData, None,
     (None, struct {}),
     (String, struct {
@@ -70,7 +27,6 @@ TAGGED_UNION(AttributeData, None,
 // - A parenthesised token tree
 //   > In 1.19 this was actually just sub-attributes
 // - an associated (string) literal
-
 class Attribute
 {
     Span    m_span;
@@ -147,6 +103,46 @@ public:
             os << "(" << e.sub_items << ")";
             )
         )
+        return os;
+    }
+};
+
+
+/// A list of attributes on an item (searchable by the attribute name)
+class AttributeList
+{
+public:
+    ::std::vector<Attribute> m_items;
+
+    AttributeList() {}
+    AttributeList(::std::vector<Attribute> items):
+        m_items( mv$(items) )
+    {
+    }
+
+    // Move present
+    AttributeList(AttributeList&&) = default;
+    AttributeList& operator=(AttributeList&&) = default;
+    // No copy assign, but explicit copy
+    explicit AttributeList(const AttributeList&) = default;
+    AttributeList& operator=(const AttributeList&) = delete;
+    // Explicit clone
+    AttributeList clone() const;
+
+    void push_back(Attribute i);
+
+    const Attribute* get(const char *name) const;
+    Attribute* get(const char *name) {
+        return const_cast<Attribute*>( const_cast<const AttributeList*>(this)->get(name));
+    }
+    bool has(const char *name) const {
+        return get(name) != 0;
+    }
+
+    friend ::std::ostream& operator<<(::std::ostream& os, const AttributeList& x) {
+        for(const auto& i : x.m_items) {
+            os << "#[" << i << "]";
+        }
         return os;
     }
 };

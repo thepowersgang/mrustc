@@ -1,0 +1,15 @@
+option(
+    'rustc_source_hash',
+    type: 'string',
+    value: 'https://github.com/rust-lang/rust/archive/1.19.0.tar.gz',
+    description: 'URL or local path of where rustc's source should be downloaded from.',
+)
+
+option(
+    'rustc_source_hash',
+    type: 'string',
+    value: 'SHA256=7e1ecb476118b79b5abed02bc7a724bb65413057e26f1d2b8538c572f7463be0',
+    description:
+        'SHA256 of the file downloaded from MRUSTC_RUSTC_SOURCE_URL. '
+        'You can leave this empty to skip verifying whether the downloaded archive is correct.',
+)
