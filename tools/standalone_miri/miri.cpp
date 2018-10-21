@@ -290,7 +290,12 @@ struct MirHelpers
             else if( wrapper->type == TypeWrapper::Ty::Array )
             {
                 ty = array_ty.get_inner();
-                base_val.m_offset += ty.get_size() * idx;
+                // Check index against array size
+                if( idx >= wrapper->size ) {
+                    LOG_ERROR("Index out of bounds on array " << array_ty << ", idx=" << idx);
+                    throw "ERROR";
+                }
+                base_val.m_offset += static_cast<size_t>(ty.get_size() * idx);
                 return base_val;
             }
             else if( wrapper->type == TypeWrapper::Ty::Slice )
@@ -335,7 +340,7 @@ struct MirHelpers
             LOG_DEBUG("val = " << val << ", (inner) ty=" << ty);
 
             LOG_ASSERT(val.m_size >= POINTER_SIZE, "Deref of a value that doesn't fit a pointer - " << ty);
-            size_t ofs = val.read_usize(0);
+            size_t ofs = static_cast<size_t>( val.read_usize(0) );  // TODO: Limits?
 
             // There MUST be a relocation at this point with a valid allocation.
             auto alloc = val.get_relocation(val.m_offset);
