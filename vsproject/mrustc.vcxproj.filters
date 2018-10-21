@@ -98,9 +98,6 @@
     <ClCompile Include="..\src\hir_expand\closures.cpp">
       <Filter>Source Files\hir_expand</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\hir_expand\const_eval_full.cpp">
-      <Filter>Source Files\hir_expand</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\hir_conv\bind.cpp">
       <Filter>Source Files\hir_conv</Filter>
     </ClCompile>

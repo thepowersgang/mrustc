@@ -1218,7 +1218,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
 
 void MIR_CleanupCrate(::HIR::Crate& crate)
 {
-    ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, auto& expr_ptr, const auto& args, const auto& ty){
+    ::MIR::OuterVisitor    ov { crate, [&](const auto& res, const auto& p, ::HIR::ExprPtr& expr_ptr, const auto& args, const auto& ty){
             MIR_Cleanup(res, p, expr_ptr.get_mir_or_error_mut(Span()), args, ty);
         } };
     ov.visit_crate(crate);

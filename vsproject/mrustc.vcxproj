@@ -206,7 +206,6 @@
     <ClCompile Include="..\src\hir_conv\resolve_ufcs.cpp" />
     <ClCompile Include="..\src\hir_expand\annotate_value_usage.cpp" />
     <ClCompile Include="..\src\hir_expand\closures.cpp" />
-    <ClCompile Include="..\src\hir_expand\const_eval_full.cpp" />
     <ClCompile Include="..\src\hir_expand\erased_types.cpp" />
     <ClCompile Include="..\src\hir_expand\reborrow.cpp" />
     <ClCompile Include="..\src\hir_expand\ufcs_everything.cpp" />
