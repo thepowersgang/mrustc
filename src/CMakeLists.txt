@@ -1,47 +1,208 @@
 
 # Build outline for mrustc:
 #
-# Sourcefiles:  
-# Dependencies: 
+# Sourcefiles:  <todo>
+# Dependencies: <todo>
 # Notes:        Needs compiler capable of C++14
 
-add_subdirectory(include)
-add_subdirectory(ast)
-add_subdirectory(expand)
-add_subdirectory(hir)
-add_subdirectory(hir_conv)
-add_subdirectory(hir_expand)
-add_subdirectory(hir_typeck)
-add_subdirectory(macro_rules)
-add_subdirectory(mir)
-add_subdirectory(parse)
-add_subdirectory(resolve)
-add_subdirectory(trans)
+find_package(ZLIB REQUIRED)
 
 add_executable(mrustc
-  main.cpp
-  debug.cpp
-  ident.cpp
-  rc_string.cpp
+  include/synext_macro.hpp
+  include/main_bindings.hpp
+  include/compile_error.hpp
+  include/rc_string.hpp
+  include/string_view.hpp
+  include/version.hpp
+  include/stdspan.hpp
+  include/ident.hpp
+  include/debug.hpp
+  include/synext_decorator.hpp
+  include/cpp_unpack.h
+  include/synext.hpp
+  include/tagged_union.hpp
+  include/span.hpp
+  hir/visitor.hpp
+  hir/expr_ptr.hpp
+  hir/generic_params.hpp
+  hir/generic_params.cpp
+  hir/type.cpp
+  hir/path.hpp
+  hir/main_bindings.hpp
+  hir/crate_post_load.cpp
+  hir/from_ast.hpp
+  hir/dump.cpp
+  hir/hir.cpp
+  hir/type.hpp
+  hir/hir.hpp
+  hir/pattern.cpp
+  hir/expr_ptr.cpp
+  hir/crate_ptr.cpp
+  hir/from_ast.cpp
+  hir/serialise.cpp
+  hir/expr.cpp
+  hir/pattern.hpp
+  hir/visitor.cpp
+  hir/serialise_lowlevel.hpp
+  hir/crate_ptr.hpp
+  hir/expr_state.hpp
+  hir/serialise_lowlevel.cpp
+  hir/path.cpp
+  hir/deserialise.cpp
+  hir/item_path.hpp
+  hir/from_ast_expr.cpp
+  hir/expr.hpp
+  parse/root.cpp
+  parse/lex.hpp
+  parse/common.hpp
+  parse/types.cpp
+  parse/tokentree.cpp
+  parse/token.hpp
+  parse/pattern.cpp
+  parse/paths.cpp
+  parse/interpolated_fragment.hpp
+  parse/ttstream.cpp
+  parse/token.cpp
+  parse/ttstream.hpp
+  parse/expr.cpp
+  parse/lex.cpp
+  parse/interpolated_fragment.cpp
+  parse/parseerror.hpp
+  parse/parseerror.cpp
+  parse/eTokenType.enum.h
+  parse/tokentree.hpp
+  parse/tokenstream.hpp
+  parse/tokenstream.cpp
+  hir_conv/main_bindings.hpp
+  hir_conv/bind.cpp
+  hir_conv/expand_type.cpp
+  hir_conv/resolve_ufcs.cpp
+  hir_conv/markings.cpp
+  hir_conv/constant_evaluation.cpp
+  resolve/main_bindings.hpp
+  resolve/absolute.cpp
+  resolve/use.cpp
+  resolve/index.cpp
+  expand/crate_tags.cpp
+  expand/cfg.hpp
+  expand/concat.cpp
+  expand/format_args.cpp
+  expand/derive.cpp
+  expand/std_prelude.cpp
+  expand/env.cpp
+  expand/cfg.cpp
+  expand/macro_rules.cpp
+  expand/test_harness.cpp
+  expand/include.cpp
+  expand/mod.cpp
+  expand/asm.cpp
+  expand/file_line.cpp
+  expand/lang_item.cpp
+  expand/test.cpp
+  expand/proc_macro.cpp
+  expand/stringify.cpp
+  expand/proc_macro.hpp
+  expand/rustc_diagnostics.cpp
+  hir_typeck/helpers.hpp
+  hir_typeck/helpers.cpp
+  hir_typeck/expr_visit.cpp
+  hir_typeck/expr_visit.hpp
+  hir_typeck/expr_check.cpp
+  hir_typeck/impl_ref.hpp
+  hir_typeck/main_bindings.hpp
+  hir_typeck/expr_cs.cpp
+  hir_typeck/common.hpp
+  hir_typeck/impl_ref.cpp
+  hir_typeck/static.cpp
+  hir_typeck/static.hpp
+  hir_typeck/outer.cpp
+  hir_typeck/common.cpp
   span.cpp
-  version.cpp)
+  coretypes.hpp
+  macro_rules/parse.cpp
+  macro_rules/macro_rules_ptr.hpp
+  macro_rules/pattern_checks.hpp
+  macro_rules/mod.cpp
+  macro_rules/eval.cpp
+  macro_rules/macro_rules.hpp
+  hir_expand/erased_types.cpp
+  hir_expand/main_bindings.hpp
+  hir_expand/closures.cpp
+  hir_expand/annotate_value_usage.cpp
+  hir_expand/vtable.cpp
+  hir_expand/ufcs_everything.cpp
+  hir_expand/reborrow.cpp
+  trans/enumerate.cpp
+  trans/codegen.cpp
+  trans/monomorphise.hpp
+  trans/mangling.cpp
+  trans/target.hpp
+  trans/target.cpp
+  trans/trans_list.cpp
+  trans/main_bindings.hpp
+  trans/codegen_mmir.cpp
+  trans/monomorphise.cpp
+  trans/allocator.cpp
+  trans/codegen_c.cpp
+  trans/codegen_c_structured.cpp
+  trans/trans_list.hpp
+  trans/mangling.hpp
+  trans/codegen_c.hpp
+  trans/allocator.hpp
+  trans/codegen.hpp
+  rc_string.cpp
+  mir/check_full.cpp
+  mir/from_hir.hpp
+  mir/operations.hpp
+  mir/helpers.hpp
+  mir/helpers.cpp
+  mir/optimise.cpp
+  mir/mir.hpp
+  mir/main_bindings.hpp
+  mir/mir.cpp
+  mir/dump.cpp
+  mir/visit_crate_mir.cpp
+  mir/mir_ptr.hpp
+  mir/mir_builder.cpp
+  mir/from_hir_match.cpp
+  mir/cleanup.cpp
+  mir/check.cpp
+  mir/from_hir.cpp
+  mir/visit_crate_mir.hpp
+  mir/mir_ptr.cpp
+  ast/expr_ptr.hpp
+  ast/types.hpp
+  ast/path.hpp
+  ast/attrs.hpp
+  ast/types.cpp
+  ast/item.hpp
+  ast/crate.hpp
+  ast/dump.cpp
+  ast/macro.hpp
+  ast/crate.cpp
+  ast/ast.hpp
+  ast/pattern.cpp
+  ast/expr.cpp
+  ast/pattern.hpp
+  ast/path.cpp
+  ast/ast.cpp
+  ast/generics.hpp
+  ast/expr.hpp
+  version.cpp
+  debug.cpp
+  main.cpp
+  ident.cpp
+  common.hpp)
 
 target_link_libraries(mrustc
    PRIVATE
     common # tools-directory
-    ast
-    expand
-    hir
-    hir_conv
-    hir_expand
-    hir_typeck
-    macro_rules
-    mir
-    parse
-    resolve
-    trans
-  INTERFACE
-    include)
+    ZLIB::ZLIB)
+
+target_include_directories(mrustc
+  PRIVATE
+    include
+    .)
 
 target_compile_definitions(mrustc PRIVATE
   -DVERSION_GIT_FULLHASH="${GIT_HEAD_HASH}"
