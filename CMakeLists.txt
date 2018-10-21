@@ -85,14 +85,6 @@ add_subdirectory(tools/testrunner)
 #                                Compile mrustc                               #
 ###############################################################################
 
-# Set up some meta-information
-# $V$(CXX) -o $@ -c $< $(CXXFLAGS) $(CPPFLAGS) -MMD -MP -MF $@.dep
-# -D VERSION_GIT_FULLHASH=\"$(shell git show --pretty=%H -s)\"
-# -D VERSION_GIT_BRANCH="\"$(shell git symbolic-ref -q --short HEAD || git describe --tags --exact-match)\""
-# -D VERSION_GIT_SHORTHASH=\"$(shell git show -s --pretty=%h)\"
-# -D VERSION_BUILDTIME="\"$(shell date -uR)\""
-# -D VERSION_GIT_ISDIRTY=$(shell git diff-index --quiet HEAD; echo $$?)
-
 #! gather_git_info : Populates variables with the current commit hash, branch, ...
 #
 # Defines the following variables:
@@ -119,7 +111,7 @@ function(gather_git_info)
 endfunction()
 
 gather_git_info()
-string(TIMESTAMP BUILD_TIMESTAMP )
+string(TIMESTAMP BUILD_TIMESTAMP UTC)
 message(STATUS "Git status: ${GIT_IS_DIRTY}")
 message(STATUS "Git ref...: ${GIT_HEAD_REF}")
 message(STATUS "Git hash..: ${GIT_HEAD_HASH}")
