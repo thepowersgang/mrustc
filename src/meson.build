@@ -37,7 +37,7 @@ mrustc_exe = executable(
     'ident.cpp',
     'span.cpp',
     'rc_string.cpp',
-    'version.cpp',
+    version_file,
 
     'parse/root.cpp',
     'parse/types.cpp',
