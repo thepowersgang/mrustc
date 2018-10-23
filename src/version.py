@@ -54,28 +54,20 @@ def git_info():
 
     try:
         is_dirty_output = run(
-            ['git', 'status', '--porcelain'],
-            capture_output=True)
-
+            ['git', 'status', '--porcelain'], capture_output=True)
         if not is_dirty_output.stdout:
             is_dirty = 0
 
         fullhash_output = run(
-            ['git', 'rev-parse', 'HEAD'],
-            capture_output=True
-        )
+            ['git', 'rev-parse', 'HEAD'], capture_output=True)
         fullhash = fullhash_output.stdout.decode().strip()
 
         shorthash_output = run(
-            ['git', 'rev-parse', '--short', 'HEAD'],
-            capture_output=True,
-        )
+            ['git', 'rev-parse', '--short', 'HEAD'], capture_output=True)
         shorthash = shorthash_output.stdout.decode().strip()
 
         branch_output = run(
-            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-            capture_output=True,
-        )
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'], capture_output=True)
         branch = branch_output.stdout.decode().strip()
     except:
         pass
