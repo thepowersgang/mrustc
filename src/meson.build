@@ -22,13 +22,21 @@ mrustc_includes = include_directories(
     'trans',
 )
 
-mrustc_args = [
-    '-DVERSION_GIT_FULLHASH=' + '0', # git_head_hash
-    '-DVERSION_GIT_SHORTHASH=' + '0', # git_head_hash_short
-    '-DVERSION_GIT_BRANCH=' + 'master', # git_branch
-    '-DVERSION_GIT_ISDIRTY=' + 'false', # git_is_dirty
-    '-DVERSION_BUILDTIME=' + '0', # build_timestamp
-]
+version = custom_target(
+    'version',
+    input: 'version.py',
+    output: 'version.cpp',
+    build_always_stale: true,
+    install: false,
+    command: [
+        python, '@INPUT@',
+        '--output-file', '@OUTPUT@',
+        '--major-version', major_version.to_string(),
+        '--minor-version', minor_version.to_string(),
+        '--patch-version', patch_version.to_string(),
+    ],
+)
+version_cpp = version[0]
 
 mrustc_exe = executable(
     'mrustc',
@@ -37,7 +45,7 @@ mrustc_exe = executable(
     'ident.cpp',
     'span.cpp',
     'rc_string.cpp',
-    version_file,
+    version_cpp,
 
     'parse/root.cpp',
     'parse/types.cpp',
@@ -150,5 +158,4 @@ mrustc_exe = executable(
 
     include_directories: mrustc_includes,
     dependencies: [zdep, common],
-    cpp_args: mrustc_args,
 )

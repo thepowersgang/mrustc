@@ -1,4 +1,5 @@
 import argparse
+from datetime import datetime
 import string
 
 def get_arguments():
@@ -44,18 +45,59 @@ def get_arguments():
 
     return parser.parse_args()
 
+def git_info():
+    from subprocess import run
+    is_dirty = 1
+    fullhash = ''
+    shorthash = ''
+    branch = ''
+
+    try:
+        is_dirty_output = run(
+            ['git', 'status', '--porcelain'],
+            capture_output=True)
+
+        if not is_dirty_output.stdout:
+            is_dirty = 0
+
+        fullhash_output = run(
+            ['git', 'rev-parse', 'HEAD'],
+            capture_output=True
+        )
+        fullhash = fullhash_output.stdout.decode().strip()
+
+        shorthash_output = run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            capture_output=True,
+        )
+        shorthash = shorthash_output.stdout.decode().strip()
+
+        branch_output = run(
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            capture_output=True,
+        )
+        branch = branch_output.stdout.decode().strip()
+    except:
+        pass
+
+    return {
+        'GIT_ISDIRTY': is_dirty,
+        'GIT_FULLHASH': fullhash,
+        'GIT_SHORTHASH': shorthash,
+        'GIT_BRANCH': branch,
+    }
+
 def main():
     arguments = get_arguments()
 
+    buildtime = datetime.utcnow().isoformat()
+
     templated = TEMPLATE_FILE.safe_substitute(
+        git_info(),
         MAJOR=arguments.major_version,
         MINOR=arguments.minor_version,
         PATCH=arguments.patch_version,
-        GIT_ISDIRTY=1,
-        GIT_FULLHASH='',
-        GIT_SHORTHASH='',
-        GIT_BRANCH='master',
-        BUILDTIME='',
+        BUILDTIME=buildtime,
     )
 
     with open(arguments.output_file, 'w') as f:

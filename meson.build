@@ -26,23 +26,7 @@ if compiler == 'msvc'
     )
 endif
 
-pymod = import('python')
-python = pymod.find_installation('python3')
-version_target = custom_target(
-    'version',
-    input: 'version.py',
-    output: 'version.cpp',
-    build_always_stale: true,
-    install: false,
-    command: [
-        python, '@INPUT@',
-        '--output-file', '@OUTPUT@',
-        '--major-version', major_version.to_string(),
-        '--minor-version', minor_version.to_string(),
-        '--patch-version', patch_version.to_string(),
-    ],
-)
-version_file = version_target[0]
+python = import('python').find_installation('python3')
 
 # TODO: add downloading rustc-source
 
