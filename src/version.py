@@ -80,7 +80,9 @@ def git_info():
     }
 
 def main():
+    from os import getcwd
     arguments = get_arguments()
+    print('---', getcwd())
 
     buildtime = datetime.utcnow().isoformat()
 
