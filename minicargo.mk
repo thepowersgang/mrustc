@@ -5,7 +5,8 @@
 OUTDIR_SUF ?=
 MMIR ?=
 RUSTC_CHANNEL ?= stable
-RUSTC_VERSION ?= 1.19.0
+RUSTC_SRC_DES ?= rust-version
+RUSTC_VERSION ?= $(shell cat $(RUSTC_SRC_DES))
 ifeq ($(OS),Windows_NT)
 else ifeq ($(shell uname -s || echo not),Darwin)
 OVERRIDE_SUFFIX ?= -macos

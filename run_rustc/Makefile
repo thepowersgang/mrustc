@@ -1,7 +1,10 @@
 # Makefile that builds libstd using the mrustc-built rustc
 
 RUSTC := ../output/rustc
-RUST_SRC := ../rustc-1.19.0-src/src/
+RUSTC_SRC_DES ?= rust-version
+RUSTC_VERSION ?= $(shell cat $(RUSTC_SRC_DES) )
+RUSTC_SRC_NAME ?= rustc-$(RUSTC_VERSION)-src
+RUST_SRC := ../$(RUSTC_SRC_NAME)/src/
 
 PREFIX := prefix/
 BINDIR := $(PREFIX)bin/
