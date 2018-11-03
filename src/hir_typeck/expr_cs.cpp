@@ -846,8 +846,8 @@ namespace {
                 case ::HIR::ExprNode_Assign::Op::And: lang_item = "bitand_assign"; break;
                 case ::HIR::ExprNode_Assign::Op::Or : lang_item = "bitor_assign" ; break;
                 case ::HIR::ExprNode_Assign::Op::Xor: lang_item = "bitxor_assign"; break;
-                case ::HIR::ExprNode_Assign::Op::Shr: lang_item = "shl_assign"; break;
-                case ::HIR::ExprNode_Assign::Op::Shl: lang_item = "shr_assign"; break;
+                case ::HIR::ExprNode_Assign::Op::Shr: lang_item = "shr_assign"; break;
+                case ::HIR::ExprNode_Assign::Op::Shl: lang_item = "shl_assign"; break;
                 }
                 assert(lang_item);
                 const auto& trait_path = this->context.m_crate.get_lang_item_path(node.span(), lang_item);
