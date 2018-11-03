@@ -914,8 +914,8 @@ bool HMTypeInferrence::types_equal(const ::HIR::TypeRef& rl, const ::HIR::TypeRe
         return pathparams_equal(le.m_trait.m_path.m_params, re.m_trait.m_path.m_params);
         ),
     (ErasedType,
+        ASSERT_BUG(Span(), le.m_origin != ::HIR::SimplePath(), "Erased type with unset origin");
         return H::compare_path(*this, le.m_origin, re.m_origin);
-        //TODO(Span(), "ErasedType");
         ),
     (Tuple,
         return type_list_equal(*this, le, re);
@@ -932,12 +932,17 @@ void TraitResolution::prep_indexes()
     static Span sp_AAA;
     const Span& sp = sp_AAA;
 
+    // TODO: Create a list of all known type rules in this scope (recursively)
+    // - What if there's recursive bounds (e.g. on ATYs)
+
     auto add_equality = [&](::HIR::TypeRef long_ty, ::HIR::TypeRef short_ty){
         DEBUG("[prep_indexes] ADD " << long_ty << " => " << short_ty);
         // TODO: Sort the two types by "complexity" (most of the time long >= short)
         this->m_type_equalities.insert(::std::make_pair( mv$(long_ty), mv$(short_ty) ));
         };
 
+    // Obtain type equality bounds.
+    // TODO: Also flatten the bounds list into known trait bounds?
     this->iterate_bounds([&](const auto& b)->bool {
         if(const auto* bep = b.opt_TraitBound())
         {
@@ -1046,6 +1051,31 @@ bool TraitResolution::iterate_bounds( ::std::function<bool(const ::HIR::GenericB
             if(cb(b))   return true;
     }
     return false;
+}
+bool TraitResolution::iterate_bounds_traits(const Span& sp, ::std::function<bool(const ::HIR::TypeRef&, const ::HIR::TraitPath& trait)> cb) const
+{
+    // Iterate all bounds, finding trait
+    return this->iterate_bounds([&](const auto& gb) {
+        if( const auto* be = gb.opt_TraitBound() )
+        {
+            // TODO: Type filter (to avoid the cost of checking parent bounds)
+            if( cb(be->type, be->trait) )
+                return true;
+
+            assert(be->trait.m_trait_ptr);
+            const auto& trait_ref = *be->trait.m_trait_ptr;
+            auto monomorph_cb = monomorphise_type_get_cb(sp, &be->type, &be->trait.m_path.m_params, nullptr, nullptr);
+            for(const auto& parent_tp : trait_ref.m_all_parent_traits)
+            {
+                ::HIR::TraitPath    tp_mono_o;
+                const auto& tp_mono = (monomorphise_traitpath_needed(parent_tp) ? tp_mono_o = monomorphise_traitpath_with(sp, parent_tp, monomorph_cb, false) : parent_tp);
+                // TODO: Monomorphise the bound
+                if( cb(be->type, tp_mono) )
+                    return true;
+            }
+        }
+        return false;
+        });
 }
 bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data::Data_UfcsKnown& pe, ::std::function<bool(const ::HIR::TraitPath&)> cb) const
 {
@@ -2241,136 +2271,127 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
         )
     )
 
-#if 0
-    if( m_ivars.get_type(type).m_data.is_Infer() )
-        return false;
-    if( TU_TEST1(m_ivars.get_type(type).m_data, Path, .binding.is_Unbound()) )
-        return false;
-#endif
+    // NOTE: Even if the type is completely unknown (infer or unbound UFCS), search the bound list.
 
     // TODO: A bound can imply something via its associated types. How deep can this go?
     // E.g. `T: IntoIterator<Item=&u8>` implies `<T as IntoIterator>::IntoIter : Iterator<Item=&u8>`
-    return this->iterate_bounds([&](const auto& b)->bool {
-        DEBUG(b);
-        if( b.is_TraitBound() )
-        {
-            const auto& e = b.as_TraitBound();
-            const auto& b_params = e.trait.m_path.m_params;
+    // > Would maybe want a list of all explicit and implied bounds instead.
+    return this->iterate_bounds_traits(sp, [&](const auto& bound_ty, const ::HIR::TraitPath& bound_trait)->bool {
+        const auto& b_params = bound_trait.m_path.m_params;
 
-            auto cmp = e.type .compare_with_placeholders(sp, type, m_ivars.callback_resolve_infer());
-            DEBUG("cmp = " << cmp);
-            if( cmp == ::HIR::Compare::Unequal )
+        auto cmp = bound_ty .compare_with_placeholders(sp, type, m_ivars.callback_resolve_infer());
+        DEBUG("cmp = " << cmp);
+        if( cmp == ::HIR::Compare::Unequal )
+            return false;
+
+        if( bound_trait.m_path.m_path == trait ) {
+            // Check against `params`
+            DEBUG("[find_trait_impls_bound] Checking params " << params << " vs " << b_params);
+            auto ord = cmp;
+            ord &= this->compare_pp(sp, b_params, params);
+            if( ord == ::HIR::Compare::Unequal )
                 return false;
-
-            if( e.trait.m_path.m_path == trait ) {
-                // Check against `params`
-                DEBUG("[find_trait_impls_bound] Checking params " << params << " vs " << b_params);
-                auto ord = cmp;
-                ord &= this->compare_pp(sp, b_params, params);
-                if( ord == ::HIR::Compare::Unequal )
-                    return false;
-                if( ord == ::HIR::Compare::Fuzzy ) {
-                    DEBUG("Fuzzy match");
-                }
-                DEBUG("[find_trait_impls_bound] Match " << b);
-                // Hand off to the closure, and return true if it does
-                // TODO: The type bounds are only the types that are specified.
-                if( callback( ImplRef(&e.type, &e.trait.m_path.m_params, &e.trait.m_type_bounds), ord) ) {
-                    return true;
-                }
+            if( ord == ::HIR::Compare::Fuzzy ) {
+                DEBUG("Fuzzy match");
             }
+            DEBUG("[find_trait_impls_bound] Match " << bound_ty << " : " << bound_trait);
+            // Hand off to the closure, and return true if it does
+            // TODO: The type bounds are only the types that are specified.
+            auto b = bound_trait.clone();
+            if( callback( ImplRef(bound_ty.clone(), mv$(b.m_path.m_params), mv$(b.m_type_bounds)), ord) ) {
+                return true;
+            }
+        }
 
-            // TODO: Allow fuzzy equality?
-            if( cmp == ::HIR::Compare::Equal )
-            {
-                // HACK: The wrapping closure takes associated types from this bound and applies them to the returned set
-                // - XXX: This is actually wrong (false-positive) in many cases. FIXME
-                bool rv = this->find_named_trait_in_trait(sp,
-                    trait,params,
-                    *e.trait.m_trait_ptr, e.trait.m_path.m_path,e.trait.m_path.m_params,
-                    type,
-                    [&](const auto& ty, const auto& params, const auto& assoc) {
-                        // TODO: Avoid duplicating this map every time
-                        ::std::map< ::std::string,::HIR::TypeRef>   assoc2;
-                        for(const auto& i : assoc) {
+        // TODO: Allow fuzzy equality?
+        if( cmp == ::HIR::Compare::Equal )
+        {
+            // HACK: The wrapping closure takes associated types from this bound and applies them to the returned set
+            // - XXX: This is actually wrong (false-positive) in many cases. FIXME
+            bool rv = this->find_named_trait_in_trait(sp,
+                trait,params,
+                *bound_trait.m_trait_ptr, bound_trait.m_path.m_path,bound_trait.m_path.m_params,
+                type,
+                [&](const auto& ty, const auto& params, const auto& assoc) {
+                    // TODO: Avoid duplicating this map every time
+                    ::std::map< ::std::string,::HIR::TypeRef>   assoc2;
+                    for(const auto& i : assoc) {
+                        assoc2.insert( ::std::make_pair(i.first, i.second.clone())  );
+                    }
+                    for(const auto& i : bound_trait.m_type_bounds) {
+                        // TODO: Only include from above when needed
+                        //if( des_trait_ref.m_types.count(i.first) ) {
                             assoc2.insert( ::std::make_pair(i.first, i.second.clone())  );
-                        }
-                        for(const auto& i : e.trait.m_type_bounds) {
-                            // TODO: Only include from above when needed
-                            //if( des_trait_ref.m_types.count(i.first) ) {
-                                assoc2.insert( ::std::make_pair(i.first, i.second.clone())  );
-                            //}
-                        }
-                        return callback( ImplRef(ty.clone(), params.clone(), mv$(assoc2)), ::HIR::Compare::Equal );
-                    });
-                if( rv ) {
-                    return true;
-                }
+                        //}
+                    }
+                    return callback( ImplRef(ty.clone(), params.clone(), mv$(assoc2)), ::HIR::Compare::Equal );
+                });
+            if( rv ) {
+                return true;
             }
+        }
 
-            // If the input type is an associated type controlled by this trait bound, check for added bounds.
-            // TODO: This just checks a single layer, but it's feasable that there could be multiple layers
-            if( assoc_info && e.trait.m_path.m_path == assoc_info->trait.m_path && e.type == *assoc_info->type )
-            {
-                // Check the trait params
-                auto ord = this->compare_pp(sp, b_params, assoc_info->trait.m_params);
-                if( ord == ::HIR::Compare::Fuzzy ) {
-                    //TODO(sp, "Handle fuzzy matches searching for associated type bounds");
-                }
-                else if( ord == ::HIR::Compare::Unequal ) {
-                    return false;
-                }
-                auto outer_ord = ord;
+        // If the input type is an associated type controlled by this trait bound, check for added bounds.
+        // TODO: This just checks a single layer, but it's feasable that there could be multiple layers
+        if( assoc_info && bound_trait.m_path.m_path == assoc_info->trait.m_path && bound_ty == *assoc_info->type )
+        {
+            // Check the trait params
+            auto ord = this->compare_pp(sp, b_params, assoc_info->trait.m_params);
+            if( ord == ::HIR::Compare::Fuzzy ) {
+                //TODO(sp, "Handle fuzzy matches searching for associated type bounds");
+            }
+            else if( ord == ::HIR::Compare::Unequal ) {
+                return false;
+            }
+            auto outer_ord = ord;
 
-                const auto& trait_ref = *e.trait.m_trait_ptr;
-                const auto& at = trait_ref.m_types.at(assoc_info->item);
-                for(const auto& bound : at.m_trait_bounds) {
-                    if( bound.m_path.m_path == trait )
-                    {
-                        auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
-                            const auto& ge = gt.m_data.as_Generic();
-                            if( ge.binding == 0xFFFF ) {
-                                return *assoc_info->type;
-                            }
-                            else {
-                                if( ge.binding >= assoc_info->trait.m_params.m_types.size() )
-                                    BUG(sp, "find_trait_impls_bound - Generic #" << ge.binding << " " << ge.name << " out of range");
-                                return assoc_info->trait.m_params.m_types[ge.binding];
-                            }
-                            };
-
-                        DEBUG("- Found an associated type bound for this trait via another bound");
-                        ::HIR::Compare  ord = outer_ord;
-                        if( monomorphise_pathparams_needed(bound.m_path.m_params) ) {
-                            // TODO: Use a compare+callback method instead
-                            auto b_params_mono = monomorphise_path_params_with(sp, bound.m_path.m_params, monomorph_cb, false);
-                            ord &= this->compare_pp(sp, b_params_mono, params);
+            const auto& trait_ref = *bound_trait.m_trait_ptr;
+            const auto& at = trait_ref.m_types.at(assoc_info->item);
+            for(const auto& bound : at.m_trait_bounds) {
+                if( bound.m_path.m_path == trait )
+                {
+                    auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
+                        const auto& ge = gt.m_data.as_Generic();
+                        if( ge.binding == 0xFFFF ) {
+                            return *assoc_info->type;
                         }
                         else {
-                            ord &= this->compare_pp(sp, bound.m_path.m_params, params);
+                            if( ge.binding >= assoc_info->trait.m_params.m_types.size() )
+                                BUG(sp, "find_trait_impls_bound - Generic #" << ge.binding << " " << ge.name << " out of range");
+                            return assoc_info->trait.m_params.m_types[ge.binding];
                         }
-                        if( ord == ::HIR::Compare::Unequal )
-                            return false;
-                        if( ord == ::HIR::Compare::Fuzzy ) {
-                            DEBUG("Fuzzy match");
-                        }
+                        };
 
-                        auto tp_mono = monomorphise_traitpath_with(sp, bound, monomorph_cb, false);
-                        // - Expand associated types
-                        for(auto& ty : tp_mono.m_type_bounds) {
-                            ty.second = this->expand_associated_types(sp, mv$(ty.second));
-                        }
-                        DEBUG("- tp_mono = " << tp_mono);
-                        // TODO: Instead of using `type` here, build the real type
-                        if( callback( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)), ord ) ) {
-                            return true;
-                        }
+                    DEBUG("- Found an associated type bound for this trait via another bound");
+                    ::HIR::Compare  ord = outer_ord;
+                    if( monomorphise_pathparams_needed(bound.m_path.m_params) ) {
+                        // TODO: Use a compare+callback method instead
+                        auto b_params_mono = monomorphise_path_params_with(sp, bound.m_path.m_params, monomorph_cb, false);
+                        ord &= this->compare_pp(sp, b_params_mono, params);
+                    }
+                    else {
+                        ord &= this->compare_pp(sp, bound.m_path.m_params, params);
+                    }
+                    if( ord == ::HIR::Compare::Unequal )
+                        return false;
+                    if( ord == ::HIR::Compare::Fuzzy ) {
+                        DEBUG("Fuzzy match");
+                    }
+
+                    auto tp_mono = monomorphise_traitpath_with(sp, bound, monomorph_cb, false);
+                    // - Expand associated types
+                    for(auto& ty : tp_mono.m_type_bounds) {
+                        ty.second = this->expand_associated_types(sp, mv$(ty.second));
+                    }
+                    DEBUG("- tp_mono = " << tp_mono);
+                    // TODO: Instead of using `type` here, build the real type
+                    if( callback( ImplRef(type.clone(), mv$(tp_mono.m_path.m_params), mv$(tp_mono.m_type_bounds)), ord ) ) {
+                        return true;
                     }
                 }
             }
-
-            return false;
         }
+
         return false;
     });
 }
@@ -3843,7 +3864,8 @@ bool TraitResolution::find_method(const Span& sp,
                 // 2. Compare the receiver of the above to this type and the bound.
                 if(const auto* self_ty = check_method_receiver(sp, *fcn_ptr, ty, access))
                 {
-                    if( self_ty->m_data.is_Infer() )
+                    // If the type is an unbounded ivar, don't check.
+                    if( TU_TEST1(self_ty->m_data, Infer, .is_lit() == false) )
                         return false;
                     // TODO: Do a fuzzy match here?
                     auto cmp = self_ty->compare_with_placeholders(sp, e.type, cb_infer);
@@ -3864,7 +3886,17 @@ bool TraitResolution::find_method(const Span& sp,
                     }
                     else if( cmp == ::HIR::Compare::Fuzzy )
                     {
-                        TODO(sp, "Fuzzy match checking bounded method - " << *self_ty << " != " << e.type);
+                        DEBUG("Fuzzy match checking bounded method - " << *self_ty << " != " << e.type);
+
+                        // Found the method, return the UFCS path for it
+                        possibilities.push_back(::std::make_pair( borrow_type,
+                            ::HIR::Path( ::HIR::Path::Data::make_UfcsKnown({
+                                box$( self_ty->clone() ),
+                                mv$(final_trait_path),
+                                method_name,
+                                {}
+                                }) ) ));
+                        rv = true;
                     }
                     else
                     {

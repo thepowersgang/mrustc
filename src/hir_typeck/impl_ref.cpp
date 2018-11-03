@@ -219,8 +219,8 @@ bool ImplRef::type_is_specialisable(const char* name) const
 
 ::std::ostream& operator<<(::std::ostream& os, const ImplRef& x)
 {
-    TU_MATCH(ImplRef::Data, (x.m_data), (e),
-    (TraitImpl,
+    TU_MATCH_HDR( (x.m_data), { )
+    TU_ARM(x.m_data, TraitImpl, e) {
         if( e.impl == nullptr ) {
             os << "none";
         }
@@ -258,13 +258,16 @@ bool ImplRef::type_is_specialisable(const char* name) const
             }
             os << "}";
         }
-        ),
-    (BoundedPtr,
+        }
+    TU_ARM(x.m_data, BoundedPtr, e) {
+        assert(e.type);
+        assert(e.trait_args);
+        assert(e.assoc);
         os << "bound (ptr) " << *e.type << " : ?" << *e.trait_args << " + {" << *e.assoc << "}";
-        ),
-    (Bounded,
+        }
+    TU_ARM(x.m_data, Bounded, e) {
         os << "bound " << e.type << " : ?" << e.trait_args << " + {"<<e.assoc<<"}";
-        )
-    )
+        }
+    }
     return os;
 }

@@ -344,7 +344,7 @@ bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_reso
 {
     // NOTE: Don't return any impls when the type is an unbouned ivar. Wouldn't be able to pick anything anyway
     // TODO: For `Unbound`, it could be valid, if the target is a generic.
-    if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
+    if( /*is_unbounded_infer(type) ||*/ TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
         return false;
     }
     return matches_type_int(m_params, m_type, type, ty_res, true);

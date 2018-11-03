@@ -1776,6 +1776,9 @@ namespace {
                 };
             TU_MATCHA( (lit), (e),
             (Invalid, m_of << "/* INVALID */"; ),
+            (Defer,
+                MIR_BUG(*m_mir_res, "Defer literal encountered");
+                ),
             (List,
                 m_of << "{";
                 if( ty.m_data.is_Array() )
@@ -5284,6 +5287,9 @@ namespace {
             TU_MATCHA( (lit), (e),
             (Invalid,
                 m_of << "/* INVALID */";
+                ),
+            (Defer,
+                MIR_BUG(*m_mir_res, "Defer literal encountered");
                 ),
             (List,
                 if( ty.m_data.is_Array() )

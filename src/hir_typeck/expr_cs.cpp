@@ -846,8 +846,8 @@ namespace {
                 case ::HIR::ExprNode_Assign::Op::And: lang_item = "bitand_assign"; break;
                 case ::HIR::ExprNode_Assign::Op::Or : lang_item = "bitor_assign" ; break;
                 case ::HIR::ExprNode_Assign::Op::Xor: lang_item = "bitxor_assign"; break;
-                case ::HIR::ExprNode_Assign::Op::Shr: lang_item = "shl_assign"; break;
-                case ::HIR::ExprNode_Assign::Op::Shl: lang_item = "shr_assign"; break;
+                case ::HIR::ExprNode_Assign::Op::Shr: lang_item = "shr_assign"; break;
+                case ::HIR::ExprNode_Assign::Op::Shl: lang_item = "shl_assign"; break;
                 }
                 assert(lang_item);
                 const auto& trait_path = this->context.m_crate.get_lang_item_path(node.span(), lang_item);
@@ -5294,7 +5294,6 @@ namespace {
                     auto out_ty_o = impl.get_type(v.name.c_str());
                     if( out_ty_o == ::HIR::TypeRef() )
                     {
-                        //BUG(sp, "Getting associated type '" << v.name << "' which isn't in " << v.trait << " (" << ty << ")");
                         out_ty_o = ::HIR::TypeRef(::HIR::Path( v.impl_ty.clone(), ::HIR::GenericPath(v.trait, v.params.clone()), v.name, ::HIR::PathParams() ));
                     }
                     out_ty_o = context.m_resolve.expand_associated_types(sp, mv$(out_ty_o));
@@ -5450,6 +5449,8 @@ namespace {
             if( TU_TEST1(impl_ty.m_data, Infer, .is_lit() == false) )
             {
                 DEBUG("Unbounded ivar, waiting - TODO: Add possibility " << impl_ty << " == " << possible_impl_ty);
+                context.possible_equate_type_coerce_to(impl_ty.m_data.as_Infer().index, possible_impl_ty);
+                context.possible_equate_type_coerce_from(impl_ty.m_data.as_Infer().index, possible_impl_ty);
                 return false;
             }
             // Only one possible impl

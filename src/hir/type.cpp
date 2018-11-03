@@ -58,8 +58,8 @@ namespace HIR {
 
 void ::HIR::TypeRef::fmt(::std::ostream& os) const
 {
-    TU_MATCH(::HIR::TypeRef::Data, (m_data), (e),
-    (Infer,
+    TU_MATCH_HDR( (m_data), { )
+    TU_ARM(m_data, Infer, e) {
         os << "_";
         if( e.index != ~0u || e.ty_class != ::HIR::InferClass::None ) {
             os << "/*";
@@ -73,14 +73,14 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             }
             os << "*/";
         }
-        ),
-    (Diverge,
+        }
+    TU_ARM(m_data, Diverge, e) {
         os << "!";
-        ),
-    (Primitive,
+        }
+    TU_ARM(m_data, Primitive, e) {
         os << e;
-        ),
-    (Path,
+        }
+    TU_ARM(m_data, Path, e) {
         os << e.path;
         TU_MATCH(::HIR::TypeRef::TypePathBinding, (e.binding), (be),
         (Unbound, os << "/*?*/";),
@@ -89,8 +89,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         (Union, os << "/*U*/";),
         (Enum, os << "/*E*/";)
         )
-        ),
-    (Generic,
+        }
+    TU_ARM(m_data, Generic, e) {
         os << e.name << "/*";
         if( e.binding == 0xFFFF )
             os << "";
@@ -103,8 +103,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         else
             os << e.binding;
         os << "*/";
-        ),
-    (TraitObject,
+        }
+    TU_ARM(m_data, TraitObject, e) {
         os << "dyn (";
         if( e.m_trait.m_path != ::HIR::GenericPath() )
         {
@@ -115,8 +115,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         if( e.m_lifetime != LifetimeRef::new_static() )
             os << "+" << e.m_lifetime;
         os << ")";
-        ),
-    (ErasedType,
+        }
+    TU_ARM(m_data, ErasedType, e) {
         os << "impl ";
         for(const auto& tr : e.m_traits) {
             if( &tr != &e.m_traits[0] )
@@ -126,25 +126,25 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         if( e.m_lifetime != LifetimeRef::new_static() )
             os << "+ '" << e.m_lifetime;
         os << "/*" << e.m_origin << "#" << e.m_index << "*/";
-        ),
-    (Array,
+        }
+    TU_ARM(m_data, Array, e) {
         os << "[" << *e.inner << "; ";
         if( e.size_val != ~0u )
             os << e.size_val;
         else
             os << "/*sz*/";
         os << "]";
-        ),
-    (Slice,
+        }
+    TU_ARM(m_data, Slice, e) {
         os << "[" << *e.inner << "]";
-        ),
-    (Tuple,
+        }
+    TU_ARM(m_data, Tuple, e) {
         os << "(";
         for(const auto& t : e)
             os << t << ", ";
         os << ")";
-        ),
-    (Borrow,
+        }
+    TU_ARM(m_data, Borrow, e) {
         switch(e.type)
         {
         case ::HIR::BorrowType::Shared: os << "&";  break;
@@ -152,8 +152,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         case ::HIR::BorrowType::Owned:  os << "&move "; break;
         }
         os << *e.inner;
-        ),
-    (Pointer,
+        }
+    TU_ARM(m_data, Pointer, e) {
         switch(e.type)
         {
         case ::HIR::BorrowType::Shared: os << "*const ";  break;
@@ -161,8 +161,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         case ::HIR::BorrowType::Owned:  os << "*move "; break;
         }
         os << *e.inner;
-        ),
-    (Function,
+        }
+    TU_ARM(m_data, Function, e) {
         if( e.is_unsafe ) {
             os << "unsafe ";
         }
@@ -173,8 +173,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
         for(const auto& t : e.m_arg_types)
             os << t << ", ";
         os << ") -> " << *e.m_rettype;
-        ),
-    (Closure,
+        }
+    TU_ARM(m_data, Closure, e) {
         os << "closure["<<e.node<<"]";
         /*
         os << "(";
@@ -182,8 +182,8 @@ void ::HIR::TypeRef::fmt(::std::ostream& os) const
             os << t << ", ";
         os << ") -> " << *e.m_rettype;
         */
-        )
-    )
+        }
+    }
 }
 
 bool ::HIR::TypeRef::operator==(const ::HIR::TypeRef& x) const

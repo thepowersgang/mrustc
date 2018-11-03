@@ -116,8 +116,11 @@
 
 #define TU_IFLET(CLASS, VAR, TAG, NAME, ...) if(VAR.tag() == CLASS::TAG_##TAG) { auto& NAME = VAR.as_##TAG(); (void)&NAME; __VA_ARGS__ }
 
+#define TU_MATCH_HDR(VARS, brace)  TU_MATCH_HDR_(::std::remove_reference<decltype(TU_FIRST VARS)>::type, VARS, brace)
+#define TU_MATCH_HDR_(CLASS, VARS, brace)  switch( (TU_FIRST VARS).tag() ) brace case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");
+
 // Evil hack: two for loops, the inner stops the outer after it's done.
-#define TU_ARM(VAR, TAG, NAME)  case ::std::remove_reference<decltype(VAR)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(auto& NAME = VAR.as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
+#define TU_ARM(VAR, TAG, NAME)  break; case ::std::remove_reference<decltype(VAR)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(auto& NAME = VAR.as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
 
 //#define TU_TEST(VAL, ...)    (VAL.is_##TAG() && VAL.as_##TAG() TEST)
 #define TU_TEST1(VAL, TAG1, TEST)    (VAL.is_##TAG1() && VAL.as_##TAG1() TEST)
