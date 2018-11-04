@@ -586,7 +586,7 @@ Value Value::new_fnptr(const ::HIR::Path& fn_path)
     assert(rv.allocation);
     rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_fcn(fn_path) });
     rv.allocation->data.at(0) = 0;
-    rv.allocation->mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
+    rv.allocation->mask.at(0) = (1 << POINTER_SIZE)-1;
     return rv;
 }
 Value Value::new_ffiptr(FFIPointer ffi)
@@ -595,7 +595,7 @@ Value Value::new_ffiptr(FFIPointer ffi)
     rv.create_allocation();
     rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_ffi(ffi) });
     rv.allocation->data.at(0) = 0;
-    rv.allocation->mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
+    rv.allocation->mask.at(0) = (1 << POINTER_SIZE)-1;
     return rv;
 }
 Value Value::new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r) {

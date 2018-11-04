@@ -1036,7 +1036,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_ASSERT(ty_r.get_wrapper() == nullptr, "Bitwise operator with non-primitive - " << ty_r);
                     size_t max_bits = ty_r.get_size() * 8;
                     uint8_t shift;
-                    auto check_cast = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
+                    auto check_cast = [&](auto v){ LOG_ASSERT(0 <= v && v <= static_cast<decltype(v)>(max_bits), "Shift out of range - " << v); return static_cast<uint8_t>(v); };
                     switch(ty_r.inner_type)
                     {
                     case RawType::U64:  shift = check_cast(v_r.read_u64(0));    break;
