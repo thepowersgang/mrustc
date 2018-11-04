@@ -5204,7 +5204,7 @@ namespace {
                     DEBUG("- Magic inferrence link for binops on numerics");
                     context.equate_types(sp, res, left);
                 }
-                context.equate_types_to_shadow(sp, right);
+                context.equate_types_to_shadow(sp, /*right*/v.params.m_types.at(0)); // RHS, can't use `right` because it might be freed by the above equate.
             }
             else
             {
