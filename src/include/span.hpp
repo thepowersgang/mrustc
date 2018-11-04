@@ -46,9 +46,13 @@ struct Span
         end_line(end_line),
         end_ofs(end_ofs)
     {}
-    Span(const Span& x);
+    Span(const Span& x) = default;
+    Span(Span&& x) = default;
     Span(const Position& position);
     Span();
+
+    Span& operator=(const Span& x) = default;
+    Span& operator=(Span&& x) = default;
 
     void bug(::std::function<void(::std::ostream&)> msg) const;
     void error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const;

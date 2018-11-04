@@ -29,12 +29,7 @@ public:
     {
     }
 
-    RcString(const RcString& x):
-        m_ptr(x.m_ptr),
-        m_len(x.m_len)
-    {
-        if( m_ptr ) *m_ptr += 1;
-    }
+    RcString(const RcString& x);
     RcString(RcString&& x):
         m_ptr(x.m_ptr),
         m_len(x.m_len)
@@ -47,36 +42,28 @@ public:
 
     RcString& operator=(const RcString& x)
     {
-        if( &x != this )
-        {
-            this->~RcString();
-            m_ptr = x.m_ptr;
-            m_len = x.m_len;
-            if( m_ptr ) *m_ptr += 1;
-        }
+        if( !(&x != this) ) throw "";
+
+        this->~RcString();
+        new (this) RcString(x);
+
         return *this;
     }
     RcString& operator=(RcString&& x)
     {
-        if( &x != this )
-        {
-            this->~RcString();
-            m_ptr = x.m_ptr;
-            m_len = x.m_len;
-            x.m_ptr = nullptr;
-            x.m_len = 0;
-        }
+        if( !(&x != this) ) throw "";
+
+        this->~RcString();
+        new (this) RcString( ::std::move(x) );
         return *this;
     }
 
 
     const char* c_str() const {
-        if( m_len > 0 )
-        {
+        if( m_len > 0 ) {
             return reinterpret_cast<const char*>(m_ptr + 1);
         }
-        else
-        {
+        else {
             return "";
         }
     }

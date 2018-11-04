@@ -61,7 +61,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_DOUBLE_LT: {
         PUTBACK(tok, lex);
         auto path = Parse_Path(lex, PATH_GENERIC_TYPE);
-        return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(path));
+        return TypeRef(TypeRef::TagPath(), lex.end_span(mv$(ps)), mv$(path));
         }
     //
     case TOK_RWORD_FOR: {
@@ -122,7 +122,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         else {
             PUTBACK(tok, lex);
         }
-        return TypeRef(TypeRef::TagReference(), lex.end_span(ps), ::std::move(lifetime), is_mut, Parse_Type(lex, false));
+        return TypeRef(TypeRef::TagReference(), lex.end_span(mv$(ps)), ::std::move(lifetime), is_mut, Parse_Type(lex, false));
         }
     // '*' - Raw pointer
     case TOK_STAR:
@@ -131,10 +131,10 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         {
         case TOK_RWORD_MUT:
             // Mutable pointer
-            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), true, Parse_Type(lex, false));
+            return TypeRef(TypeRef::TagPointer(), lex.end_span(mv$(ps)), true, Parse_Type(lex, false));
         case TOK_RWORD_CONST:
             // Immutable pointer
-            return TypeRef(TypeRef::TagPointer(), lex.end_span(ps), false, Parse_Type(lex, false));
+            return TypeRef(TypeRef::TagPointer(), lex.end_span(mv$(ps)), false, Parse_Type(lex, false));
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_CONST, TOK_RWORD_MUT});
         }
@@ -147,11 +147,11 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
             // Sized array
             AST::Expr array_size = Parse_Expr(lex);
             GET_CHECK_TOK(tok, lex, TOK_SQUARE_CLOSE);
-            return TypeRef(TypeRef::TagSizedArray(), lex.end_span(ps), mv$(inner), array_size.take_node());
+            return TypeRef(TypeRef::TagSizedArray(), lex.end_span(mv$(ps)), mv$(inner), array_size.take_node());
         }
         else if( tok.type() == TOK_SQUARE_CLOSE )
         {
-            return TypeRef(TypeRef::TagUnsizedArray(), lex.end_span(ps), mv$(inner));
+            return TypeRef(TypeRef::TagUnsizedArray(), lex.end_span(mv$(ps)), mv$(inner));
         }
         else {
             throw ParseError::Unexpected(lex, tok/*, "; or ]"*/);
@@ -162,7 +162,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
     case TOK_PAREN_OPEN: {
         DEBUG("Tuple");
         if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
-            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), {});
+            return TypeRef(TypeRef::TagTuple(), lex.end_span(mv$(ps)), {});
         PUTBACK(tok, lex);
 
         TypeRef inner = Parse_Type(lex, true);
@@ -185,7 +185,7 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
                 types.push_back( Parse_Type(lex) );
             }
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(types)); }
+            return TypeRef(TypeRef::TagTuple(), lex.end_span(mv$(ps)), mv$(types)); }
         }
     default:
         throw ParseError::Unexpected(lex, tok);
@@ -259,7 +259,7 @@ TypeRef Parse_Type_Fn(TokenStream& lex, ::AST::HigherRankedBounds hrbs)
         PUTBACK(tok, lex);
     }
 
-    return TypeRef(TypeRef::TagFunction(), lex.end_span(ps), mv$(hrbs), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
+    return TypeRef(TypeRef::TagFunction(), lex.end_span(mv$(ps)), mv$(hrbs), is_unsafe, mv$(abi), mv$(args), is_variadic, mv$(ret_type));
 }
 
 TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool allow_trait_list)
@@ -270,7 +270,7 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool a
 
     if( hrbs.empty() && !allow_trait_list )
     {
-        return TypeRef(TypeRef::TagPath(), lex.end_span(ps), Parse_Path(lex, PATH_GENERIC_TYPE));
+        return TypeRef(TypeRef::TagPath(), lex.end_span(mv$(ps)), Parse_Path(lex, PATH_GENERIC_TYPE));
     }
     else
     {
@@ -303,11 +303,11 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool a
         {
             if( lifetimes.empty())
                 lifetimes.push_back(AST::LifetimeRef());
-            return TypeRef(lex.end_span(ps), mv$(traits), mv$(lifetimes));
+            return TypeRef(lex.end_span(mv$(ps)), mv$(traits), mv$(lifetimes));
         }
         else
         {
-            return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(traits.at(0).path));
+            return TypeRef(TypeRef::TagPath(), lex.end_span(mv$(ps)), mv$(traits.at(0).path));
         }
     }
 }
@@ -335,6 +335,6 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
     } while( GET_TOK(tok, lex) == TOK_PLUS );
     PUTBACK(tok, lex);
 
-    return TypeRef(lex.end_span(ps), TypeData::make_ErasedType({ mv$(traits), mv$(lifetimes) }));
+    return TypeRef(lex.end_span(mv$(ps)), TypeData::make_ErasedType({ mv$(traits), mv$(lifetimes) }));
 }
 

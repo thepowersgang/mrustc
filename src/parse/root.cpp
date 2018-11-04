@@ -25,7 +25,7 @@ Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
     auto ps = lex.start_span();
     auto v = f();
     return Spanned<T> {
-        lex.end_span(ps),
+        lex.end_span( mv$(ps) ),
         mv$(v)
         };
 }
@@ -499,7 +499,7 @@ AST::Function Parse_FunctionDef(TokenStream& lex, ::std::string abi, bool allow_
         PUTBACK(tok, lex);
     }
 
-    return AST::Function(lex.end_span(ps), mv$(params), mv$(abi), is_unsafe, is_const, is_variadic, mv$(ret_type), mv$(args));
+    return AST::Function(lex.end_span( mv$(ps) ), mv$(params), mv$(abi), is_unsafe, is_const, is_variadic, mv$(ret_type), mv$(args));
 }
 
 AST::Function Parse_FunctionDefWithCode(TokenStream& lex, ::std::string abi, bool allow_self, bool is_unsafe, bool is_const)
@@ -1003,12 +1003,12 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
         switch(GET_TOK(tok, lex))
         {
         case TOK_STRING:
-            return AST::Attribute(lex.end_span(ps), name, tok.str());
+            return AST::Attribute(lex.end_span(mv$(ps)), name, tok.str());
         case TOK_INTERPOLATED_EXPR: {
             auto n = tok.take_frag_node();
             if( auto* v = dynamic_cast<::AST::ExprNode_String*>(&*n) )
             {
-                return AST::Attribute(lex.end_span(ps), name, mv$(v->m_value));
+                return AST::Attribute(lex.end_span(mv$(ps)), name, mv$(v->m_value));
             }
             else
             {
@@ -1031,10 +1031,10 @@ AST::Attribute Parse_MetaItem(TokenStream& lex)
             items.push_back(Parse_MetaItem(lex));
         } while(GET_TOK(tok, lex) == TOK_COMMA);
         CHECK_TOK(tok, TOK_PAREN_CLOSE);
-        return AST::Attribute(lex.end_span(ps), name, mv$(items)); }
+        return AST::Attribute(lex.end_span(mv$(ps)), name, mv$(items)); }
     default:
         PUTBACK(tok, lex);
-        return AST::Attribute(lex.end_span(ps), name);
+        return AST::Attribute(lex.end_span(mv$(ps)), name);
     }
 }
 
@@ -1229,7 +1229,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         throw ParseError::Unexpected(lex, tok);
     }
 
-    impl.items().back().data->span = lex.end_span(ps);
+    impl.items().back().data->span = lex.end_span(mv$(ps));
     impl.items().back().data->attrs = mv$(item_attrs);    // Empty for functions
 }
 
@@ -1262,7 +1262,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
             i.attrs = mv$(meta_items);
-            i.span = lex.end_span(ps);
+            i.span = lex.end_span(mv$(ps));
 
             rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
             break; }
@@ -1280,7 +1280,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
 
             auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  mv$(type), ::AST::Expr() ));
             i.attrs = mv$(meta_items);
-            i.span = lex.end_span(ps);
+            i.span = lex.end_span(mv$(ps));
             rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
             break; }
         default:
@@ -1504,7 +1504,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
         {
             item_data = ::AST::Item( mv$(inv) );
             item_data.attrs = mv$(meta_items);
-            item_data.span = lex.end_span(ps);
+            item_data.span = lex.end_span(mv$(ps));
 
             return ::AST::Named< ::AST::Item> { "", mv$(item_data), false };
         }
@@ -1875,7 +1875,7 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
     }
 
     item_data.attrs = mv$(meta_items);
-    item_data.span = lex.end_span(ps);
+    item_data.span = lex.end_span(mv$(ps));
 
     return ::AST::Named< ::AST::Item> { mv$(item_name), mv$(item_data), is_public };
 }

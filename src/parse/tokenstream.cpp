@@ -125,7 +125,7 @@ ProtoSpan TokenStream::start_span() const
 Span TokenStream::end_span(ProtoSpan ps) const
 {
     auto p = this->getPosition();
-    auto rv = Span( ps.filename,  ps.start_line, ps.start_ofs,  p.line, p.ofs );
+    auto rv = Span( ::std::move(ps.filename),  ps.start_line, ps.start_ofs,  p.line, p.ofs );
     rv.outer_span = this->outerSpan();
     return rv;
 }
