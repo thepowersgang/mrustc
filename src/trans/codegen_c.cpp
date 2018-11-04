@@ -1975,9 +1975,8 @@ namespace {
                             m_of << "\\x0" << (unsigned int)static_cast<uint8_t>(v);
                         else
                             m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v);
-                        // If the next character is a hex digit,
-                        // close/reopen the string.
-                        if( isxdigit(*(&v+1)) )
+                        // If the next character is a hex digit, close/reopen the string.
+                        if( &v < &s.back() && isxdigit(*(&v+1)) )
                             m_of << "\"\"";
                     }
                 }
