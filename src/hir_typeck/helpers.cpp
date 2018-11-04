@@ -622,7 +622,7 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
         )
         else
         #endif
-        root_ivar.type = box$( mv$(type) );
+        root_ivar.type = box$( type );
     }
 
     this->mark_change();
@@ -1544,7 +1544,7 @@ bool TraitResolution::has_associated_type(const ::HIR::TypeRef& input) const
     //TRACE_FUNCTION_F(input);
     TU_MATCH(::HIR::TypeRef::Data, (input.m_data), (e),
     (Infer,
-        auto& ty = this->m_ivars.get_type(input);
+        const auto& ty = this->m_ivars.get_type(input);
         if( ty != input ) {
             return this->has_associated_type(ty);
         }
