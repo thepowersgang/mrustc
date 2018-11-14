@@ -34,6 +34,11 @@ const TargetArch ARCH_ARM32 = {
     32, false,
     { /*atomic(u8)=*/true, false, true, false,  true }
 };
+const TargetArch ARCH_M68K = {
+    "m68k",
+    32, true,
+    { /*atomic(u8)=*/true, false, true, false,  true }
+};
 TargetSpec  g_target;
 
 
@@ -107,6 +112,10 @@ namespace
                         else if( key_val.value.as_string() == ARCH_X86_64.m_name )
                         {
                             rv.m_arch = ARCH_X86_64;
+                        }
+                        else if( key_val.value.as_string() == ARCH_M68K.m_name )
+                        {
+                            rv.m_arch = ARCH_M68K;
                         }
                         else
                         {
@@ -330,6 +339,13 @@ namespace
             return TargetSpec {
                 "unix", "linux", "gnu", {CodegenMode::Gnu11, "aarch64-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_ARM64
+                };
+        }
+        else if(target_name == "m68k-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, "m68k-linux-gnu", BACKEND_C_OPTS_GNU},
+                ARCH_M68K
                 };
         }
         else if(target_name == "i586-windows-gnu")
