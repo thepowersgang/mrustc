@@ -24,6 +24,8 @@
 #  define DEFAULT_TARGET_NAME "arm-linux-gnu"
 # elif defined(__i386__)
 #  define DEFAULT_TARGET_NAME "i586-linux-gnu"
+# elif defined(__m68k__)
+#  define DEFAULT_TARGET_NAME "m68k-linux-gnu"
 # else
 #  warning "Unable to detect a suitable default target (linux-gnu)"
 # endif
