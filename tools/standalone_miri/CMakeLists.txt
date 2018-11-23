@@ -10,22 +10,22 @@
 #                              Compile Standalone MIRI                        #
 ###############################################################################
 add_executable(standalone_miri
-              "hir/type.hpp"
-              "CMakeLists.txt"
-              "debug.cpp"
-              "debug.hpp"
-              "hir_sim.cpp"
-              "hir_sim.hpp"
-              "lex.cpp"
-              "lex.hpp"
-              "main.cpp"
-              "mir.cpp"
-              "miri.cpp"
-              "miri.hpp"
-              "module_tree.cpp"
-              "module_tree.hpp"
-              "value.cpp"
-              "value.hpp")
+              hir/type.hpp
+              CMakeLists.txt
+              debug.cpp
+              debug.hpp
+              hir_sim.cpp
+              hir_sim.hpp
+              lex.cpp
+              lex.hpp
+              main.cpp
+              mir.cpp
+              miri.cpp
+              miri.hpp
+              module_tree.cpp
+              module_tree.hpp
+              value.cpp
+              value.hpp)
 
 target_compile_features(standalone_miri PUBLIC cxx_std_14)
 

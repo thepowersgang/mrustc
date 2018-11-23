@@ -8,7 +8,7 @@
 ###############################################################################
 #                              Compile TestRunner                             #
 ###############################################################################
-add_executable(test_runner "main.cpp")
+add_executable(test_runner main.cpp)
 
 target_compile_features(test_runner PUBLIC cxx_std_14)
 

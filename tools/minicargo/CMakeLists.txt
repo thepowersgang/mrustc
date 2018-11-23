@@ -10,14 +10,14 @@
 #                              Compile Minicargo                              #
 ###############################################################################
 add_executable(minicargo
-               "build.h"
-               "build.cpp"
-               "main.cpp"
-               "manifest.h"
-               "manifest.cpp"
-               "repository.h"
-               "repository.cpp"
-               "stringlist.h")
+               build.h
+               build.cpp
+               main.cpp
+               manifest.h
+               manifest.cpp
+               repository.h
+               repository.cpp
+               stringlist.h)
 
 target_compile_features(minicargo PUBLIC cxx_std_14)
 
