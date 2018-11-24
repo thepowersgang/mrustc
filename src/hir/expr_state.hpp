@@ -10,8 +10,9 @@
 
 namespace HIR {
 
-struct ExprState
+class ExprState
 {
+public:
     ::HIR::SimplePath   m_mod_path;
     const ::HIR::Module&    m_module;
 
