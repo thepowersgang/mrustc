@@ -80,5 +80,42 @@ message(STATUS "Git shash.: ${GIT_HEAD_HASH_SHORT}")
 message(STATUS "Git branch: ${GIT_BRANCH}")
 message(STATUS "Buildtime.: ${BUILD_TIMESTAMP}")
 
-
 add_subdirectory(src)
+
+###############################################################################
+#                             Build Rust Libraries                            #
+###############################################################################
+
+build_rust_std_lib(
+  TARGET rust_libstd
+  CRATE_TO_BUILD ${RUSTC_SOURCE_DIR}/src/libstd
+  DEPENDS get_rustc_source)
+
+build_rust_std_lib(
+  TARGET rust_libpanic_unwind
+  CRATE_TO_BUILD ${RUSTC_SOURCE_DIR}/src/libpanic_unwind
+  DEPENDS get_rustc_source)
+
+build_rust_std_lib(
+  TARGET rust_libtest
+  CRATE_TO_BUILD ${RUSTC_SOURCE_DIR}/src/libtest
+  DEPENDS get_rustc_source)
+
+build_rust_std_lib(
+  TARGET rust_libgetopts
+  CRATE_TO_BUILD ${RUSTC_SOURCE_DIR}/src/libgetopts
+  DEPENDS get_rustc_source rust_libpanic_unwind)
+
+# FIXME: Fails with: EXCEPTION: Unable to find a manifest for log:^0.3.0
+# build_rust_std_lib(
+#   TARGET rust_libproc_macro
+#   CRATE_TO_BUILD ${RUSTC_SOURCE_DIR}/src/libproc_macro
+#   DEPENDS get_rustc_source)
+
+add_custom_target(rust_standard_libs ALL
+  DEPENDS
+    rust_libstd
+    # rust_libpanic_unwind
+    rust_libtest
+    rust_libgetopts
+    rust_libproc_macro)
