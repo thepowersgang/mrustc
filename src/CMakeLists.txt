@@ -7,6 +7,18 @@
 
 find_package(ZLIB REQUIRED)
 
+# Add library for version.cpp so we don't have to recompile
+# everything when the timestamp changes.
+add_library(mrustc_version STATIC version.cpp)
+
+target_include_directories(mrustc_version PRIVATE include .)
+target_compile_definitions(mrustc_version PRIVATE
+  -DVERSION_GIT_FULLHASH="${GIT_HEAD_HASH}"
+  -DVERSION_GIT_SHORTHASH="${GIT_HEAD_HASH_SHORT}"
+  -DVERSION_GIT_BRANCH="${GIT_BRANCH}"
+  -DVERSION_GIT_ISDIRTY=$<BOOL:${GIT_IS_DIRTY}>
+  -DVERSION_BUILDTIME="${BUILD_TIMESTAMP}")
+
 add_executable(mrustc
   include/synext_macro.hpp
   include/main_bindings.hpp
@@ -188,7 +200,6 @@ add_executable(mrustc
   ast/ast.cpp
   ast/generics.hpp
   ast/expr.hpp
-  version.cpp
   debug.cpp
   main.cpp
   ident.cpp
@@ -196,6 +207,7 @@ add_executable(mrustc
 
 target_link_libraries(mrustc
    PRIVATE
+    mrustc_version
     common # tools-directory
     ZLIB::ZLIB)
 
@@ -203,10 +215,3 @@ target_include_directories(mrustc
   PRIVATE
     include
     .)
-
-target_compile_definitions(mrustc PRIVATE
-  -DVERSION_GIT_FULLHASH="${GIT_HEAD_HASH}"
-  -DVERSION_GIT_SHORTHASH="${GIT_HEAD_HASH_SHORT}"
-  -DVERSION_GIT_BRANCH="${GIT_BRANCH}"
-  -DVERSION_GIT_ISDIRTY=$<BOOL:${GIT_IS_DIRTY}>
-  -DVERSION_BUILDTIME="${BUILD_TIMESTAMP}")
