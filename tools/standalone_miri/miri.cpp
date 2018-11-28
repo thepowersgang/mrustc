@@ -363,7 +363,7 @@ struct MirHelpers
 
                 size_t    slice_inner_size;
                 if( ty.has_slice_meta(slice_inner_size) ) {
-                    size = (ty.get_wrapper() == nullptr ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
+                    size = (ty.get_wrapper() == nullptr ? ty.get_size() : 0) + static_cast<size_t>(meta_val->read_usize(0)) * slice_inner_size;
                 }
                 //else if( ty == RawType::TraitObject) {
                 //    // NOTE: Getting the size from the allocation is semi-valid, as you can't sub-slice trait objects
@@ -1036,7 +1036,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_ASSERT(ty_r.get_wrapper() == nullptr, "Bitwise operator with non-primitive - " << ty_r);
                     size_t max_bits = ty_r.get_size() * 8;
                     uint8_t shift;
-                    auto check_cast = [&](auto v){ LOG_ASSERT(0 <= v && v <= static_cast<decltype(v)>(max_bits), "Shift out of range - " << v); return static_cast<uint8_t>(v); };
+                    auto check_cast = [&](uint64_t v){ LOG_ASSERT(0 <= v && v <= static_cast<decltype(v)>(max_bits), "Shift out of range - " << v); return static_cast<uint8_t>(v); };
                     switch(ty_r.inner_type)
                     {
                     case RawType::U64:  shift = check_cast(v_r.read_u64(0));    break;

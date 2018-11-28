@@ -214,8 +214,8 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
                 LOG_FATAL("Out-of-bounds pointer");
             if( ofs + req_valid > a.size() )
                 LOG_FATAL("Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << a.size());
-            a.check_bytes_valid( ofs, req_valid );
-            out_size = a.size() - ofs;
+            a.check_bytes_valid( static_cast<size_t>(ofs), req_valid );
+            out_size = a.size() - static_cast<size_t>(ofs);
             out_is_mut = true;
             return a.data_ptr() + ofs;
             }
@@ -225,7 +225,7 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
                 LOG_FATAL("Out-of-bounds pointer");
             if( ofs + req_valid > s.size() )
                 LOG_FATAL("Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << s.size());
-            out_size = s.size() - ofs;
+            out_size = s.size() - static_cast<size_t>(ofs);
             out_is_mut = false;
             return const_cast<void*>( static_cast<const void*>(s.data() + ofs) );
             }
@@ -237,7 +237,7 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
             //if( req_valid )
             //    LOG_FATAL("Can't request valid data from a FFI pointer");
             // TODO: Have an idea of mutability and available size from FFI
-            out_size = f.size - ofs;
+            out_size = f.size - static_cast<size_t>(ofs);
             out_is_mut = false;
             return reinterpret_cast<char*>(reloc.ffi().ptr_value) + ofs;
             }
@@ -256,7 +256,7 @@ ValueRef ValueCommonRead::read_pointer_valref_mut(size_t rd_ofs, size_t size)
     else
     {
         // TODO: Validate size
-        return ValueRef(reloc, ofs, size);
+        return ValueRef(reloc, static_cast<size_t>(ofs), size);
     }
 }
 
