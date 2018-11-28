@@ -45,6 +45,7 @@ class ExpandDecorator
 {
     void unexpected(const Span& sp, const AST::Attribute& mi, const char* loc_str) const;
 public:
+    virtual ~ExpandDecorator() = default;
     virtual AttrStage   stage() const = 0;
 
     virtual void    handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const { unexpected(sp, mi, "crate"); }
