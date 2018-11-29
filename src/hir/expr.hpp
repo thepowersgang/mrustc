@@ -815,6 +815,7 @@ struct ExprNode_Closure:
 class ExprVisitor
 {
 public:
+    virtual ~ExprVisitor() = default;
     virtual void visit_node_ptr(::std::unique_ptr<ExprNode>& node_ptr);
     virtual void visit_node(ExprNode& node);
     #define NV(nt)  virtual void visit(nt& n) = 0;

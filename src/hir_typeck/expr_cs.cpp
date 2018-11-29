@@ -25,6 +25,7 @@ struct Context
     class Revisitor
     {
     public:
+        virtual ~Revisitor() = default;
         virtual void fmt(::std::ostream& os) const = 0;
         virtual bool revisit(Context& context) = 0;
     };
