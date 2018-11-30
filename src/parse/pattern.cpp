@@ -263,7 +263,7 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         else {
             TODO(lex.point_span(), "Convert :expr into a pattern value - " << *e);
         }
-        } break;
+        }
 
     case TOK_PAREN_OPEN:
         return AST::Pattern( AST::Pattern::TagTuple(), lex.end_span(mv$(ps)), Parse_PatternTuple(lex, is_refutable) );

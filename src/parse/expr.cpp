@@ -168,7 +168,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         else {
         }
         return rv;
-        } break;
+        }
     }
 }
 

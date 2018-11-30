@@ -577,8 +577,8 @@ namespace
         {
             size_t  limit = block_offsets[bb+1] - block_offsets[bb] - 1;
             DEBUG("bb" << bb << " : " << first_stmt << "--" << last_stmt);
-            assert(first_stmt <= limit);
-            assert(last_stmt <= limit);
+            assert_or_ignore(first_stmt <= limit);
+            assert_or_ignore(last_stmt <= limit);
             for(size_t stmt = first_stmt; stmt <= last_stmt; stmt++)
             {
                 stmt_bitmap[block_offsets[bb] + stmt] = true;
@@ -941,7 +941,7 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(
                     }
                     ),
                 (Asm,
-                    // 
+                    //
                     for(const auto& e : se.outputs)
                     {
                         if(e.second == m_lv) {

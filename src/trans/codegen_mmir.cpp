@@ -12,12 +12,20 @@
 #include <mir/helpers.hpp>
 #include "mangling.hpp"
 #include "target.hpp"
+#include "debug.hpp"
 
 #include <iomanip>
 #include <fstream>
 
 namespace
 {
+    size_t Target_GetSizeOf_Required(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty) {
+        size_t size;
+        bool ok = Target_GetSizeOf(sp, resolve, ty, size);
+        assert_or_ignore(ok);
+        return size;
+    }
+
     template<typename T>
     struct Fmt
     {
@@ -287,8 +295,8 @@ namespace
                     case ::HIR::StructMarkings::DstType::TraitObject:
                         return MetadataType::TraitObject;
                     }
+                    }
                     throw "";
-                    } break;
                 TU_ARM(te.binding, Union, tpb)
                     return MetadataType::None;
                 TU_ARM(te.binding, Enum, tpb)
@@ -324,7 +332,7 @@ namespace
                     else if( t.m_data.is_Slice() ) {
                         return ::HIR::CoreType::Usize;
                     }
-                    else if( t.m_data.is_TraitObject() ) { 
+                    else if( t.m_data.is_TraitObject() ) {
                         const auto& te = t.m_data.as_TraitObject();
                         //auto vtp = t.m_data.as_TraitObject().m_trait.m_path;
 
@@ -381,7 +389,7 @@ namespace
             {
                 m_of << "fn " << drop_glue_path << "(&move " << ty << ") {\n";
                 m_of << "\tlet unit: ();\n";
-                
+
                 if( const auto* ity = m_resolve.is_type_owned_box(ty) )
                 {
                     m_of << "\t0: {\n";
@@ -779,9 +787,7 @@ namespace
                             cur_ofs ++;
                         }
                         emit_literal_as_bytes(le[i], repr->fields[i].ty, out_relocations, base_ofs + cur_ofs);
-                        size_t size;
-                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[i].ty, size));
-                        cur_ofs += size;
+                        cur_ofs += Target_GetSizeOf_Required(sp, m_resolve, repr->fields[i].ty);
                     }
                     while(cur_ofs < repr->size)
                     {
@@ -802,10 +808,7 @@ namespace
                         }
 
                         emit_literal_as_bytes(*le.val, repr->fields[le.idx].ty, out_relocations, base_ofs + cur_ofs);
-
-                        size_t size;
-                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[le.idx].ty, size));
-                        cur_ofs += size;
+                        cur_ofs += Target_GetSizeOf_Required(sp, m_resolve, repr->fields[le.idx].ty);
                     }
 
                     if(const auto* ve = repr->variants.opt_Values())
@@ -818,10 +821,7 @@ namespace
                         }
                         auto v = ::HIR::Literal::make_Integer(le.idx);
                         emit_literal_as_bytes(v, repr->fields[ve->field.index].ty, out_relocations, base_ofs + cur_ofs);
-
-                        size_t size;
-                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[ve->field.index].ty, size));
-                        cur_ofs += size;
+                        cur_ofs += Target_GetSizeOf_Required(sp, m_resolve, repr->fields[ve->field.index].ty);
                     }
                     // TODO: Nonzero?
                     while(cur_ofs < repr->size)
@@ -888,9 +888,7 @@ namespace
                 for(const auto& v : lit.as_List())
                 {
                     emit_literal_as_bytes(v, *te.inner, out_relocations, base_ofs);
-                    size_t size;
-                    assert(Target_GetSizeOf(sp, m_resolve, *te.inner, size));
-                    base_ofs += size;
+                    base_ofs += Target_GetSizeOf_Required(sp, m_resolve, *te.inner);
                 }
                 } break;
             }

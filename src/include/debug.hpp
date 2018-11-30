@@ -80,4 +80,34 @@ struct FmtLambda
 #define FMT_CB(os, ...)  ::FmtLambda( [&](auto& os) { __VA_ARGS__; } )
 #define FMT_CB_S(...)  ::FmtLambda( [&](auto& _os) { _os << __VA_ARGS__; } )
 
+// This function should be used in situations where you want to unconditionally
+// run some code (probably because it has side effects), and in debug builds,
+// you want to check the result of the code. In non-debug builds, this function
+// will still evaluate its arguments (which is what we want), but will ignore
+// the results.
+//
+// Don't convert this to a preprocessor macro. That would defeat the whole
+// purpose of this function.
+static inline void assert_or_ignore(bool value) {
+    assert(value);
+}
 
+// Similar to assert_or_ignore(), this function allows you to compute a value
+// and then ignore its results. For expressions that have side-effects, the
+// side-effects will still occur. For expressions that don't have side-effects
+// (such as "a * 2"), the optimizer will remove all of the parts of the
+// expression that are obviously side-effect free (dead-code elimination).
+//
+// This function is intended to be used in situations where we compute a value,
+// store it in a local variable, and then use assert() to check things related
+// to that value, so that we can avoid "unused value" warnings on non-debug
+// builds. Example:
+//
+//     size_t foo = compute_some_size();
+//     assert(foo > 0);         // it's big
+//     assert(foo % 4 == 0);    // it's aligned
+//     ignore(foo);             // no warning on debug builds
+//
+// Don't convert this to a preprocessor macro. That would defeat the whole
+// purpose of this function.
+static inline void ignore(bool value) {}

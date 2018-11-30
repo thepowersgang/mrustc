@@ -26,9 +26,6 @@ class TomlFile
     /// Path suffix of the current composite (none if empty)
     ::std::vector<::std::string>    m_current_composite;
 
-    /// Index of the next array field (if zero, not parsing an array)
-    unsigned int m_next_array_index;
-
     /// Next indexes if top-level defined arrays (e.g. `[[foo]]`)
     ::std::unordered_map<::std::string,unsigned>    m_array_counts;
 
@@ -87,7 +84,7 @@ struct TomlValue
     };
 
     Type m_type;
-    uint64_t    m_int_value;
+    uint64_t    m_int_value = 0;
     ::std::string   m_str_value;
     ::std::vector<TomlValue>    m_sub_values;
 

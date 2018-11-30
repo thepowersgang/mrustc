@@ -122,7 +122,7 @@ void MirBuilder::define_variable(unsigned int idx)
             if( !e.is_temporary )
             {
                 auto it = ::std::find(e.slots.begin(), e.slots.end(), idx);
-                assert(it == e.slots.end());
+                assert_or_ignore(it == e.slots.end());
                 e.slots.push_back( idx );
                 return ;
             }

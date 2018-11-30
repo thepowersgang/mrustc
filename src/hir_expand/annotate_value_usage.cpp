@@ -61,7 +61,7 @@ namespace {
             root_ptr->m_usage = this->get_usage();
             auto expected_size = m_usage.size();
             root_ptr->visit( *this );
-            assert( m_usage.size() == expected_size );
+            assert_or_ignore( m_usage.size() == expected_size );
         }
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override
         {
@@ -75,7 +75,7 @@ namespace {
 
             auto expected_size = m_usage.size();
             node_ptr->visit( *this );
-            assert( m_usage.size() == expected_size );
+            assert_or_ignore( m_usage.size() == expected_size );
         }
 
         void visit(::HIR::ExprNode_Block& node) override

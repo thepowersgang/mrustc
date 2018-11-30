@@ -73,4 +73,3 @@ template<typename T>
     }
     return os;
 }
-

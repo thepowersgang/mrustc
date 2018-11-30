@@ -1782,7 +1782,7 @@ namespace {
                         this->context.equate_types(node.span(), t, *e.type);
                     }
                     for(const auto& ty : impl_params.m_types)
-                        assert( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
+                        assert_or_ignore( !( ty.m_data.is_Infer() && ty.m_data.as_Infer().index == ~0u) );
                 }
 
 
@@ -2361,7 +2361,7 @@ namespace {
                 const auto& lang_InPlace = this->context.m_crate.get_lang_item_path(sp, "in_place_trait");
                 // - Bound P: Placer<D>
                 this->context.equate_types_assoc(sp, {}, lang_Placer, ::make_vec1(data_ty.clone()), placer_ty, "");
-                // - 
+                // -
                 auto place_ty = ::HIR::TypeRef( ::HIR::Path(placer_ty.clone(), ::HIR::GenericPath(lang_Placer, ::HIR::PathParams(data_ty.clone())), "Place") );
                 this->context.equate_types_assoc(sp, node.m_res_type, lang_InPlace, ::make_vec1(data_ty.clone()), place_ty, "Owner");
                 break; }
@@ -3836,7 +3836,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
     (StructValue,
         this->add_ivars_params( e.path.m_params );
         const auto& str = *e.binding;
-        assert( str.m_data.is_Unit() );
+        assert_or_ignore( str.m_data.is_Unit() );
         this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
         ),
     (StructTuple,
@@ -4943,7 +4943,7 @@ namespace {
                 return CoerceResult::Equality;
             }
             const auto* dep = &dst.m_data.as_Pointer();
-        
+
             // If using `*mut T` where `*const T` is expected - add cast
             if( dep->type == ::HIR::BorrowType::Shared && se.type == ::HIR::BorrowType::Unique )
             {
@@ -4983,7 +4983,7 @@ namespace {
             {
                 // Add cast to the pointer (if valid strength reduction)
                 // Call unsizing code on casted value
-                
+
                 // Borrows can coerce to pointers while reducing in strength
                 // - Shared < Unique. If the destination is not weaker or equal to the source, it's an error
                 if( !(dep->type <= se.type) ) {
@@ -6005,7 +6005,7 @@ namespace {
             H::dedup_type_list_with(types_to, [&](const auto& l, const auto& r) {
                     return context.m_ivars.types_equal(l, r) ? DedupKeep::Left : DedupKeep::Both;
                     });
-            
+
             // If there is a common type in both lists, use it
             for(const auto& t1 : types_from)
             {

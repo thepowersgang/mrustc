@@ -86,7 +86,7 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std
             DEBUG("### Add " << location << " item '" << name << "': " << ir);
         }
         auto rec = list.insert(::std::make_pair(name, ::AST::Module::IndexEnt { is_pub, was_import, mv$(ir) } ));
-        assert(rec.second);
+        assert_or_ignore(rec.second);
     }
 }
 void _add_item_type(const Span& sp, AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
