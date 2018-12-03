@@ -13,10 +13,18 @@ include(GetGitRevisionDescription)
 function(gather_git_info)
   git_local_changes(GIT_IS_DIRTY)
   get_git_head_revision(GIT_HEAD_REF GIT_HEAD_HASH "--pretty=%h") # Get short hash
+
   string(SUBSTRING ${GIT_HEAD_HASH} 0 7 GIT_HEAD_HASH_SHORT)
-  string(REPLACE "/" ";" GIT_HEAD_REF_AS_LIST ${GIT_HEAD_REF}) # Split eg. refs/head/master
-  list(REVERSE GIT_HEAD_REF_AS_LIST)
-  list(GET GIT_HEAD_REF_AS_LIST 0 GIT_BRANCH)
+
+  if (${GIT_HEAD_REF})
+    string(REPLACE "/" ";" GIT_HEAD_REF_AS_LIST ${GIT_HEAD_REF}) # Split eg. refs/head/master
+    list(REVERSE GIT_HEAD_REF_AS_LIST)
+    list(GET GIT_HEAD_REF_AS_LIST 0 GIT_BRANCH)
+  else()
+    # Might be detached from HEAD
+    set(GIT_BRANCH "unknown")
+    set(GIT_HEAD_REF "unknown")
+  endif()
 
   set(GIT_IS_DIRTY ${GIT_IS_DIRTY} PARENT_SCOPE)
   set(GIT_HEAD_REF ${GIT_HEAD_REF} PARENT_SCOPE)
