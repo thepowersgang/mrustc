@@ -34,6 +34,8 @@ bool g_debug_enabled = true;
 ::std::string g_cur_phase;
 ::std::set< ::std::string>    g_debug_disable_map;
 
+TargetVersion	gTargetVersion = TargetVersion::Rustc1_19;
+
 void init_debug_list()
 {
     g_debug_disable_map.insert( "Parse" );

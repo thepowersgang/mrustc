@@ -68,7 +68,7 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     else if( name == "fn_once" ) { DEBUG("Bind '"<<name<<"' to " << path); }
 
     else if( name == "eq"  ) { DEBUG("Bind '"<<name<<"' to " << path); }
-    else if( TARGETVER_1_19 && name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }
+    else if( name == "ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }	// In 1.29 this is Ord, before it was PartialOrd
     else if( TARGETVER_1_29 && name == "partial_ord" ) { DEBUG("Bind '"<<name<<"' to " << path); }    // New name for v1.29
     else if( name == "unsize" ) { DEBUG("Bind '"<<name<<"' to " << path); }
     else if( name == "coerce_unsized" ) { DEBUG("Bind '"<<name<<"' to " << path); }
