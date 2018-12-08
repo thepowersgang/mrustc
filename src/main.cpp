@@ -34,7 +34,7 @@ bool g_debug_enabled = true;
 ::std::string g_cur_phase;
 ::std::set< ::std::string>    g_debug_disable_map;
 
-TargetVersion	gTargetVersion = TargetVersion::Rustc1_19;
+TargetVersion	gTargetVersion = TargetVersion::Rustc1_29;
 
 void init_debug_list()
 {
@@ -1083,6 +1083,19 @@ ProgramParams::ProgramParams(int argc, char *argv[])
     {
         ::std::cerr << "No input file passed" << ::std::endl;
         exit(1);
+    }
+
+
+    if( const auto* a = getenv("MRUSTC_TARGET_VER") )
+    {
+        if( strcmp(a, "1.19") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_19;
+        }
+        else if( strcmp(a, "1.29") == 0 ) {
+            gTargetVersion = TargetVersion::Rustc1_29;
+        }
+        else {
+        }
     }
 
     if( const auto* a = getenv("MRUSTC_DUMP") )
