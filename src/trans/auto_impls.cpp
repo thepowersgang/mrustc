@@ -96,6 +96,9 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
 
 void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
 {
+    if( TARGETVER_1_19 )
+        return ;
+
     State   state { crate, trans_list };
 
     // Generate for all 
