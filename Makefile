@@ -136,13 +136,14 @@ RUSTC_SRC_DES := rust-nightly-date
 RUSTCSRC := rustc-nightly-src/
 else ifeq ($(RUSTC_SRC_TY),stable)
 RUSTC_SRC_DES := rust-version
-RUSTCSRC := rustc-$(shell cat $(RUSTC_SRC_DES))-src/
+RUSTC_VERSION ?= $(shell cat $(RUSTC_SRC_DES))
+RUSTCSRC := rustc-$(RUSTC_VERSION)-src/
 else
 $(error Unknown rustc channel)
 endif
 RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
-MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(shell cat $(RUSTC_SRC_DES)) RUSTC_CHANNEL=$(RUSTC_SRC_TY)
+MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(RUSTC_VERSION) RUSTC_CHANNEL=$(RUSTC_SRC_TY)
 
 
 output/libstd.hir: $(BIN)
