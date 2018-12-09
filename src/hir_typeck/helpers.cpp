@@ -188,17 +188,17 @@ bool HMTypeInferrence::apply_defaults()
                     break;
                 case ::HIR::InferClass::Diverge:
                     rv = true;
-                    DEBUG("- " << *v.type << " -> !");
+                    DEBUG("- IVar " << e.index << " = !");
                     *v.type = ::HIR::TypeRef(::HIR::TypeRef::Data::make_Diverge({}));
                     break;
                 case ::HIR::InferClass::Integer:
                     rv = true;
-                    DEBUG("- " << *v.type << " -> i32");
+                    DEBUG("- IVar " << e.index << " = i32");
                     *v.type = ::HIR::TypeRef( ::HIR::CoreType::I32 );
                     break;
                 case ::HIR::InferClass::Float:
                     rv = true;
-                    DEBUG("- " << *v.type << " -> f64");
+                    DEBUG("- IVar " << e.index << " = f64");
                     *v.type = ::HIR::TypeRef( ::HIR::CoreType::F64 );
                     break;
                 }
@@ -2253,9 +2253,9 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
             //auto cmp = this->compare_pp(sp, pt_mono.m_path.m_params, des_params);
             //if( cmp != ::HIR::Compare::Unequal )
             //{
-                callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds );
+            if( callback( target_type, pt_mono.m_path.m_params, pt_mono.m_type_bounds ) )
+                return true;
             //}
-            return true;
         }
     }
 
@@ -2312,7 +2312,7 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                 trait,params,
                 *bound_trait.m_trait_ptr, bound_trait.m_path.m_path,bound_trait.m_path.m_params,
                 type,
-                [&](const auto& ty, const auto& params, const auto& assoc) {
+                [&](const auto& ty, const auto& b_params, const auto& assoc) {
                     // TODO: Avoid duplicating this map every time
                     ::std::map< ::std::string,::HIR::TypeRef>   assoc2;
                     for(const auto& i : assoc) {
@@ -2324,7 +2324,15 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
                             assoc2.insert( ::std::make_pair(i.first, i.second.clone())  );
                         //}
                     }
-                    return callback( ImplRef(ty.clone(), params.clone(), mv$(assoc2)), ::HIR::Compare::Equal );
+                    // TODO: Check param equality
+                    auto ord = ::HIR::Compare::Equal;
+                    ord &= this->compare_pp(sp, b_params, params);
+                    if( ord == ::HIR::Compare::Unequal )
+                        return false;
+                    if( ord == ::HIR::Compare::Fuzzy ) {
+                        DEBUG("Fuzzy match");
+                    }
+                    return callback( ImplRef(ty.clone(), b_params.clone(), mv$(assoc2)), ord );
                 });
             if( rv ) {
                 return true;
