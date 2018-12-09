@@ -2745,7 +2745,14 @@ namespace {
                                     trait_params.m_types.push_back( ::HIR::TypeRef::new_infer(ivars[i], ::HIR::InferClass::None) );
                                     //ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
                                 }
-                                e1.trait.m_params = mv$(trait_params);
+                                // If one of these was already using the placeholder ivars, then maintain the other one?
+                                if( e2.trait.m_params == trait_params )
+                                {
+                                }
+                                else
+                                {
+                                    e1.trait.m_params = mv$(trait_params);
+                                }
 
                                 it_2 = possible_methods.erase(it_2) - 1;
                             }
