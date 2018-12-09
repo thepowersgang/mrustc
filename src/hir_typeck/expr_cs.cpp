@@ -4277,6 +4277,9 @@ void Context::possible_equate_type_bound(unsigned int ivar_index, const ::HIR::T
         possible_ivar_vals.resize( ivar_index + 1 );
     }
     auto& ent = possible_ivar_vals[ivar_index];
+    for(const auto& e : ent.bounded)
+        if( e == t )
+            return ;
     ent.bounded.push_back( t.clone() );
 }
 void Context::possible_equate_type_disable(unsigned int ivar_index, bool is_to) {
@@ -5392,6 +5395,7 @@ namespace {
                         for(auto& possible_impl : possible_impls)
                         {
                             const auto& best_impl = possible_impl.impl_ref;
+                            // TODO: Handle duplicates (from overlapping bounds)
                             if( impl.overlaps_with(context.m_crate, best_impl) )
                             {
                                 DEBUG("[check_associated] - Overlaps with existing - " << best_impl);
