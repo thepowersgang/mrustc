@@ -2280,9 +2280,9 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
         const auto& b_params = bound_trait.m_path.m_params;
 
         auto cmp = bound_ty .compare_with_placeholders(sp, type, m_ivars.callback_resolve_infer());
-        DEBUG("cmp = " << cmp);
         if( cmp == ::HIR::Compare::Unequal )
             return false;
+        DEBUG("[find_trait_impls_bound] " << bound_trait << " for " << bound_ty << " cmp = " << cmp);
 
         if( bound_trait.m_path.m_path == trait ) {
             // Check against `params`
@@ -3707,9 +3707,9 @@ unsigned int TraitResolution::autoderef_find_method(const Span& sp,
         }
     } while(current_ty);
 
-    // Dereference failed! This is a hard error (hitting _ is checked above and returns ~0)
-    //this->m_ivars.dump();
-    ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
+    // No method found, return an empty list and return 0
+    assert( possibilities.empty() );
+    return 0;
 }
 
 ::std::ostream& operator<<(::std::ostream& os, const TraitResolution::AutoderefBorrow& x)

@@ -75,11 +75,16 @@ struct Context
     {
         bool force_no_to = false;
         bool force_no_from = false;
+        // Target types for coercion/unsizing (these types are known to exist in the function)
         ::std::vector<::HIR::TypeRef>   types_coerce_to;
         ::std::vector<::HIR::TypeRef>   types_unsize_to;
+        // Source types for coercion/unsizing (these types are known to exist in the function)
         ::std::vector<::HIR::TypeRef>   types_coerce_from;
         ::std::vector<::HIR::TypeRef>   types_unsize_from;
+        // Possible default types (from generic defaults)
         //::std::vector<::HIR::TypeRef>   types_default;
+        // Possible types from trait impls (may introduce new types)
+        ::std::vector<::HIR::TypeRef>   bounded;
 
         void reset() {
             //auto tmp = mv$(this->types_default);
@@ -87,7 +92,19 @@ struct Context
             //this->types_default = mv$(tmp);
         }
         bool has_rules() const {
-            return !types_unsize_to.empty() || !types_coerce_to.empty() || !types_unsize_from.empty() || !types_coerce_from.empty() /* || !types_default.empty()*/;
+            if( !types_coerce_to.empty() )
+                return true;
+            if( !types_unsize_to.empty() )
+                return true;
+            if( !types_coerce_from.empty() )
+                return true;
+            if( !types_unsize_from.empty() )
+                return true;
+            //if( !types_default.empty() )
+            //    return true;
+            if( !bounded.empty() )
+                return true;
+            return false;
         }
     };
 
@@ -104,6 +121,8 @@ struct Context
     /// Callback-based revisits (e.g. for slice patterns handling slices/arrays)
     ::std::vector< ::std::unique_ptr<Revisitor> >   adv_revisits;
 
+    // Keep track of if an ivar is used in a context where it has to be Sized
+    // - If it is, then we can discount any unsized possibilities
     ::std::vector<bool> m_ivars_sized;
     ::std::vector< IVarPossible>    possible_ivar_vals;
 
@@ -190,6 +209,8 @@ struct Context
     }
     /// Default type
     //void possible_equate_type_def(unsigned int ivar_index, const ::HIR::TypeRef& t);
+    /// Add a possible type for an ivar (which is used if only one possibility meets available bounds)
+    void possible_equate_type_bound(unsigned int ivar_index, const ::HIR::TypeRef& t);
 
     void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to, bool is_borrow);
     void possible_equate_type_disable(unsigned int ivar_index, bool is_to);
@@ -2665,6 +2686,7 @@ namespace {
                 DEBUG("possible_methods = " << possible_methods);
                 if( possible_methods.empty() )
                 {
+                    //ERROR(sp, E0000, "Could not find method `" << method_name << "` on type `" << top_ty << "`");
                     ERROR(sp, E0000, "No applicable methods for {" << ty << "}." << node.m_method);
                 }
                 if( possible_methods.size() > 1 )
@@ -4231,6 +4253,25 @@ void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef
         );
     list.push_back( t.clone() );
 }
+void Context::possible_equate_type_bound(unsigned int ivar_index, const ::HIR::TypeRef& t) {
+    DEBUG(ivar_index << " bounded as " << t << " " << this->m_ivars.get_type(t));
+    {
+        ::HIR::TypeRef  ty_l;
+        ty_l.m_data.as_Infer().index = ivar_index;
+        const auto& real_ty = m_ivars.get_type(ty_l);
+        if( real_ty != ty_l )
+        {
+            DEBUG("IVar " << ivar_index << " is actually " << real_ty);
+            return ;
+        }
+    }
+
+    if( ivar_index >= possible_ivar_vals.size() ) {
+        possible_ivar_vals.resize( ivar_index + 1 );
+    }
+    auto& ent = possible_ivar_vals[ivar_index];
+    ent.bounded.push_back( t.clone() );
+}
 void Context::possible_equate_type_disable(unsigned int ivar_index, bool is_to) {
     DEBUG(ivar_index << " ?= ?? (" << (is_to ? "to" : "from") << ")");
     {
@@ -5221,8 +5262,6 @@ namespace {
         const auto& sp = v.span;
         TRACE_FUNCTION_F(v);
 
-        ::HIR::TypeRef  possible_impl_ty;
-        ::HIR::PathParams   possible_params;
         ::HIR::TypeRef  output_type;
 
         struct H {
@@ -5286,7 +5325,12 @@ namespace {
         // Locate applicable trait impl
         unsigned int count = 0;
         DEBUG("Searching for impl " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
-        ImplRef  best_impl;
+        struct Possibility {
+            ::HIR::TypeRef  impl_ty;
+            ::HIR::PathParams   params;
+            ImplRef  impl_ref;
+        };
+        ::std::vector<Possibility>  possible_impls;
         bool found = context.m_resolve.find_trait_impls(sp, v.trait, v.params,  v.impl_ty,
             [&](auto impl, auto cmp) {
                 DEBUG("[check_associated] Found cmp=" << cmp << " " << impl);
@@ -5328,47 +5372,58 @@ namespace {
                     count += 1;
                     DEBUG("[check_associated] - (possible) " << impl);
 
-                    if( possible_impl_ty == ::HIR::TypeRef() ) {
+                    if( possible_impls.empty() ) {
                         DEBUG("[check_associated] First - " << impl);
-                        possible_impl_ty = impl.get_impl_type();
-                        possible_params = impl.get_trait_params();
-                        best_impl = mv$(impl);
+                        possible_impls.push_back({ impl.get_impl_type(), impl.get_trait_params(), mv$(impl) });
                     }
-                    // TODO: If there is an existing impl, determine if this is part of the same specialisation tree
+                    // If there is an existing impl, determine if this is part of the same specialisation tree
                     // - If more specific, replace. If less, ignore.
-                    #if 1
                     // NOTE: `overlaps_with` (should be) reflective
-                    else if( impl.overlaps_with(context.m_crate, best_impl) )
-                    {
-                        DEBUG("[check_associated] - Overlaps with existing - " << best_impl);
-                        // if not more specific than the existing best, ignore.
-                        if( ! impl.more_specific_than(best_impl) )
-                        {
-                            DEBUG("[check_associated] - Less specific than existing");
-                            // NOTE: This picks the _least_ specific impl
-                            possible_impl_ty = impl.get_impl_type();
-                            possible_params = impl.get_trait_params();
-                            best_impl = mv$(impl);
-                            count -= 1;
-                        }
-                        // If the existing best is not more specific than the new one, use the new one
-                        else if( ! best_impl.more_specific_than(impl) )
-                        {
-                            DEBUG("[check_associated] - More specific than existing - " << impl);
-                            count -= 1;
-                        }
-                        else
-                        {
-                            // Supposedly, `more_specific_than` should be reflexive...
-                            DEBUG("[check_associated] > Neither is more specific. Error?");
-                        }
-                    }
                     else
                     {
-                        // Disjoint impls.
-                        DEBUG("[check_associated] Disjoint impl -" << impl);
+                        bool was_used = false;
+                        for(auto& possible_impl : possible_impls)
+                        {
+                            const auto& best_impl = possible_impl.impl_ref;
+                            if( impl.overlaps_with(context.m_crate, best_impl) )
+                            {
+                                DEBUG("[check_associated] - Overlaps with existing - " << best_impl);
+                                // if not more specific than the existing best, ignore.
+                                if( ! impl.more_specific_than(best_impl) )
+                                {
+                                    DEBUG("[check_associated] - Less specific than existing");
+                                    // NOTE: This picks the _least_ specific impl
+                                    possible_impl.impl_ty = impl.get_impl_type();
+                                    possible_impl.params = impl.get_trait_params();
+                                    possible_impl.impl_ref = mv$(impl);
+                                    count -= 1;
+                                }
+                                // If the existing best is not more specific than the new one, use the new one
+                                else if( ! best_impl.more_specific_than(impl) )
+                                {
+                                    DEBUG("[check_associated] - More specific than existing - " << best_impl);
+                                    count -= 1;
+                                }
+                                else
+                                {
+                                    // Supposedly, `more_specific_than` should be reflexive...
+                                    DEBUG("[check_associated] > Neither is more specific. Error?");
+                                }
+                                was_used = true;
+                                break;
+                            }
+                            else
+                            {
+                                // Disjoint impls.
+                                DEBUG("[check_associated] Disjoint with " << best_impl);
+                            }
+                        }
+                        if( !was_used )
+                        {
+                            DEBUG("[check_associated] Add new possible impl " << impl);
+                            possible_impls.push_back({ impl.get_impl_type(), impl.get_trait_params(), mv$(impl) });
+                        }
                     }
-                    #endif
 
                     return false;
                 }
@@ -5430,6 +5485,9 @@ namespace {
             }
         }
         else if( count == 1 ) {
+            auto& possible_impl_ty = possible_impls.at(0).impl_ty;
+            auto& possible_params = possible_impls.at(0).params;
+            auto& best_impl = possible_impls.at(0).impl_ref;
             DEBUG("Only one impl " << v.trait << context.m_ivars.fmt(possible_params) << " for " << context.m_ivars.fmt_type(possible_impl_ty)
                 << " - out=" << output_type);
             // - If there are any magic params in the impl, don't use it yet.
@@ -5449,8 +5507,7 @@ namespace {
             if( TU_TEST1(impl_ty.m_data, Infer, .is_lit() == false) )
             {
                 DEBUG("Unbounded ivar, waiting - TODO: Add possibility " << impl_ty << " == " << possible_impl_ty);
-                context.possible_equate_type_coerce_to(impl_ty.m_data.as_Infer().index, possible_impl_ty);
-                context.possible_equate_type_coerce_from(impl_ty.m_data.as_Infer().index, possible_impl_ty);
+                //context.possible_equate_type_bound(impl_ty.m_data.as_Infer().index, possible_impl_ty);
                 return false;
             }
             // Only one possible impl
@@ -5506,32 +5563,75 @@ namespace {
         else {
             // Multiple possible impls, don't know yet
             DEBUG("Multiple impls");
+            for(const auto& pi : possible_impls)
+            {
+                DEBUG(pi.params << " for " << pi.impl_ty);
+                for(size_t i = 0; i < pi.params.m_types.size(); i++)
+                {
+                    const auto& t = context.get_type(v.params.m_types[i]);
+                    if( const auto* e = t.m_data.opt_Infer() ) {
+                        context.possible_equate_type_bound(e->index, pi.params.m_types[i]);
+                    }
+                }
+            }
             return false;
         }
     }
 
-    bool check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent, bool honour_disable=true)
+    bool check_ivar_poss__fails_bounds(const Span& sp, Context& context, const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& new_ty)
+    {
+        for(const auto& bound : context.link_assoc)
+        {
+            // TODO: Monomorphise this type replacing mentions of the current ivar with the replacement?
+            if( bound.impl_ty != ty_l )
+                continue ;
+
+            // Search for any trait impl that could match this,
+            bool has = context.m_resolve.find_trait_impls(sp, bound.trait, bound.params, new_ty, [&](const auto , auto){return true;});
+            if( !has ) {
+                // If none was found, remove from the possibility list
+                DEBUG("Remove possibility " << new_ty << " because it failed a bound");
+                return true;
+            }
+        }
+
+        // Handle methods
+        for(const auto* node_ptr_dyn : context.to_visit)
+        {
+            if( const auto* node_ptr = dynamic_cast<const ::HIR::ExprNode_CallMethod*>(node_ptr_dyn) )
+            {
+                const auto& node = *node_ptr;
+                const auto& ty_tpl = context.get_type(node.m_value->m_res_type);
+
+                bool used_ty = false;
+                auto t = clone_ty_with(sp, ty_tpl, [&](const auto& ty, auto& out_ty){ if( ty == ty_l ) { out_ty = new_ty.clone(); used_ty = true; return true; } else { return false; }});
+                if(!used_ty)
+                    continue;
+
+                DEBUG("Check <" << t << ">::" << node.m_method);
+                ::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
+                unsigned int deref_count = context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, t, node.m_method,  possible_methods);
+                DEBUG("> deref_count = " << deref_count << ", " << possible_methods);
+                if( possible_methods.empty() )
+                {
+                    // No method found, which would be an error
+                    return true;
+                }
+            }
+            else
+            {
+            }
+        }
+
+        return false;
+    }
+
+    bool check_ivar_poss__coercions(Context& context, unsigned int i, Context::IVarPossible& ivar_ent, const ::HIR::TypeRef& ty_l, bool honour_disable=true)
     {
         static Span _span;
         const auto& sp = _span;
 
-        if( ! ivar_ent.has_rules() ) {
-            // No rules, don't do anything (and don't print)
-            DEBUG(i << ": No rules");
-            return false;
-        }
-
-        ::HIR::TypeRef  ty_l_ivar;
-        ty_l_ivar.m_data.as_Infer().index = i;
-        const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
         bool allow_unsized = !(i < context.m_ivars_sized.size() ? context.m_ivars_sized.at(i) : false);
-
-        if( ty_l != ty_l_ivar ) {
-            DEBUG("- IVar " << i << " had possibilities, but was known to be " << ty_l);
-            // Completely clear by reinitialising
-            ivar_ent = Context::IVarPossible();
-            return false;
-        }
 
         enum class DedupKeep {
             Both,
@@ -5831,9 +5931,6 @@ namespace {
         }
         else
         {
-            TRACE_FUNCTION_F(i);
-
-
             // TODO: Dedup based on context?
             // - The dedup should probably be aware of the way the types are used (for coercions).
             H::dedup_type_list(context, ivar_ent.types_coerce_to);
@@ -5992,22 +6089,7 @@ namespace {
                     const auto& new_ty = context.get_type(*it);
                     if( !new_ty.m_data.is_Infer() )
                     {
-                        for(const auto& bound : context.link_assoc)
-                        {
-                            if( bound.impl_ty != ty_l )
-                                continue ;
-
-                            // TODO: Monomorphise this type replacing mentions of the current ivar with the replacement?
-
-                            // Search for any trait impl that could match this,
-                            bool has = context.m_resolve.find_trait_impls(sp, bound.trait, bound.params, new_ty, [&](const auto , auto){return true;});
-                            if( !has ) {
-                                // If none was found, remove from the possibility list
-                                remove = true;
-                                DEBUG("Remove possibility " << new_ty << " because it failed a bound");
-                                break ;
-                            }
-                        }
+                        remove = check_ivar_poss__fails_bounds(sp, context, ty_l, new_ty);
 
                         if( !remove && !allow_unsized )
                         {
@@ -6138,6 +6220,77 @@ namespace {
                 {
                 }
             }
+        }
+
+        return false;
+    }
+
+    /// Check IVar possibilities, from both coercion/unsizing (which have well-encoded rules) and from trait impls
+    bool check_ivar_poss(Context& context, unsigned int i, Context::IVarPossible& ivar_ent, bool honour_disable=true)
+    {
+        static Span _span;
+        const auto& sp = _span;
+
+        if( ! ivar_ent.has_rules() ) {
+            // No rules, don't do anything (and don't print)
+            DEBUG(i << ": No rules");
+            return false;
+        }
+
+        if( honour_disable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
+        {
+            DEBUG(i << ": forced unknown");
+            return false;
+        }
+
+        ::HIR::TypeRef  ty_l_ivar;
+        ty_l_ivar.m_data.as_Infer().index = i;
+        const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
+
+        if( ty_l != ty_l_ivar ) {
+            DEBUG("- IVar " << i << " had possibilities, but was known to be " << ty_l);
+            // Completely clear by reinitialising
+            ivar_ent = Context::IVarPossible();
+            return false;
+        }
+
+        TRACE_FUNCTION_F(i);
+
+
+        if( check_ivar_poss__coercions(context, i, ivar_ent, ty_l, honour_disable) )
+        {
+            return true;
+        }
+
+        if( !ivar_ent.bounded.empty() )
+        {
+            // TODO: Search know possibilties and check if they satisfy the bounds for this ivar
+            unsigned int n_good = 0;
+            const ::HIR::TypeRef*   only_good;
+            for(const auto& new_ty : ivar_ent.bounded)
+            {
+                DEBUG("- Test " << new_ty << " against current rules");
+                if( check_ivar_poss__fails_bounds(sp, context, ty_l, new_ty) )
+                {
+                }
+                else
+                {
+                    n_good ++;
+                    only_good = &new_ty;
+                    DEBUG("> " << new_ty << " feasible");
+                }
+            }
+            if(n_good == 1
+             && ivar_ent.types_coerce_from.size() == 0 && ivar_ent.types_coerce_to.size() == 0
+             && ivar_ent.types_unsize_from.size() == 0 && ivar_ent.types_unsize_to.size() == 0
+                )
+            {
+                DEBUG("Only " << *only_good << " fits current bound sets");
+                // Since it's the only possibility, choose it?
+                context.equate_types(sp, ty_l, *only_good);
+                return true;
+            }
+            DEBUG(n_good << " valid options");
         }
 
         return false;
@@ -6300,6 +6453,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             // Check the possible equations
             DEBUG("--- IVar possibilities");
+            // TODO: De-duplicate this with the block ~80 lines below
             // NOTE: Ordering is a hack for libgit2
             for(unsigned int i = context.possible_ivar_vals.size(); i --; )
             {
