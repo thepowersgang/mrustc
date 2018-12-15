@@ -276,7 +276,14 @@ output/rust/test_run-pass_hello_out.txt: output/rust/test_run-pass_hello
 #
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
-test: output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
+test: output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN) TEST_targetsaveback
+
+.PHONY: TEST_targetsaveback
+TEST_targetsaveback:
+	$(BIN) --target ./samples/target_stress_test.toml --dump-target-spec TMP-dump-target_stress_test.toml
+	$(BIN) --target ./TMP-dump-target_stress_test.toml --dump-target-spec TMP-dump-target_stress_test-2.toml
+	diff ./samples/target_stress_test.toml TMP-dump-target_stress_test.toml
+	diff TMP-dump-target_stress_test.toml TMP-dump-target_stress_test-2.toml
 
 #
 # TEST: Attempt to compile rust_os (Tifflin) from ../rust_os

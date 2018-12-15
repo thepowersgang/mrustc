@@ -17,23 +17,35 @@ enum class CodegenMode
     Msvc,
 };
 
+// NOTE: The default architecture is an unnamed 32-bit little-endian arch with all types natively aligned
 struct TargetArch
 {
-    ::std::string   m_name;
-    unsigned    m_pointer_bits;
-    bool    m_big_endian;
+    ::std::string   m_name = "";
+    unsigned    m_pointer_bits = 32;
+    bool    m_big_endian = false;
 
     struct {
-        bool u8;
-        bool u16;
-        bool u32;
-        bool u64;
-        bool ptr;
+        bool u8 = true;
+        bool u16 = true;
+        bool u32 = true;
+        bool u64 = false;
+        bool ptr = true;
     } m_atomics;
+
+    struct {
+        uint8_t u16 = 2;
+        uint8_t u32 = 4;
+        uint8_t u64 = 8;
+        uint8_t u128 = 16;
+        uint8_t f32 = 4;
+        uint8_t f64 = 8;
+        uint8_t ptr = 4;
+    } m_alignments;
 };
 struct BackendOptsC
 {
     CodegenMode m_codegen_mode;
+    bool    m_emulated_i128;    // Influences the chosen alignment for i128/u128
     ::std::string   m_c_compiler;   // MSVC arch / GNU triplet
     ::std::vector< ::std::string>   m_compiler_opts;
     ::std::vector< ::std::string>   m_linker_opts;

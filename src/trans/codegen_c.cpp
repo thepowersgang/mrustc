@@ -205,20 +205,23 @@ namespace {
             m_outfile_path_c(outfile + ".c"),
             m_of(m_outfile_path_c)
         {
+            m_options.emulated_i128 = Target_GetCurSpec().m_backend_c.m_emulated_i128;
             switch(Target_GetCurSpec().m_backend_c.m_codegen_mode)
             {
             case CodegenMode::Gnu11:
                 m_compiler = Compiler::Gcc;
-                m_options.emulated_i128 = false;
-                if( Target_GetCurSpec().m_arch.m_pointer_bits < 64 )
+                if( Target_GetCurSpec().m_arch.m_pointer_bits < 64 && !m_options.emulated_i128 )
                 {
-                    m_options.emulated_i128 = true;
+                    WARNING(Span(), W0000, "Potentially misconfigured target, 32-bit targets require i128 emulation");
                 }
                 m_options.disallow_empty_structs = true;
                 break;
             case CodegenMode::Msvc:
                 m_compiler = Compiler::Msvc;
-                m_options.emulated_i128 = true;
+                if( !m_options.emulated_i128 )
+                {
+                    WARNING(Span(), W0000, "Potentially misconfigured target, MSVC requires i128 emulation");
+                }
                 m_options.disallow_empty_structs = true;
                 break;
             }

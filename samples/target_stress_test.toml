@@ -1,0 +1,22 @@
+[target]
+family = "fake"
+os-name = "fakest"
+env-name = "faker"
+
+[backend.c]
+variant = "msvc"
+target = "x86_64-linux-msvc"
+compiler-opts = ["/W:1234",]
+linker-opts = ["/K",]
+
+[arch]
+name = "fubar"
+pointer-bits = 128
+is-big-endian = true
+has-atomic-u8 = false
+has-atomic-u16 = false
+has-atomic-u32 = false
+has-atomic-u64 = false
+has-atomic-ptr = false
+alignments = { u16 = 1, u32 = 2, u64 = 4, u128 = 8, f32 = 3, f64 = 5, ptr = 16 }
+

@@ -15,10 +15,27 @@
 class TomlFileIter;
 struct TomlKeyValue;
 
+struct Token;
+class TomlLexer
+{
+    friend class TomlFile;
+    /// Input file stream
+    ::std::ifstream m_if;
+
+    ::std::string   m_filename;
+    unsigned    m_line;
+protected:
+    TomlLexer(const ::std::string& filename);
+    Token   get_token();
+
+public:
+    friend ::std::ostream& operator<<(::std::ostream& os, const TomlLexer& x);
+};
+
 class TomlFile
 {
     /// Input file stream
-    ::std::ifstream m_if;
+    TomlLexer   m_lexer;
 
     /// Name of the current `[]` block
     ::std::vector<::std::string>    m_current_block;
@@ -40,6 +57,8 @@ public:
 
     // Obtain the next value in the file
     TomlKeyValue get_next_value();
+
+    const TomlLexer& lexer() const;
 };
 
 struct TomlValue
