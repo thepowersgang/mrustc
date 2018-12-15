@@ -17,32 +17,32 @@
 const TargetArch ARCH_X86_64 = {
     "x86_64",
     64, false,
-    { /*atomic(u8)=*/true, false, true, true,  true },
-    { 2, 4, 8, 16, 4, 8, 8 },
+    TargetArch::Atomics(/*atomic(u8)=*/true, false, true, true,  true),
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
     };
 const TargetArch ARCH_X86 = {
     "x86",
     32, false,
     { /*atomic(u8)=*/true, false, true, false,  true },
-    { 2, 4, /*u64*/4, /*u128*/4, 4, 4, /*ptr*/4 }    // u128 has the same alignment as u64, which is u32's alignment. And f64 is 4 byte aligned
+    TargetArch::Alignments(2, 4, /*u64*/4, /*u128*/4, 4, 4, /*ptr*/4)    // u128 has the same alignment as u64, which is u32's alignment. And f64 is 4 byte aligned
 };
 const TargetArch ARCH_ARM64 = {
     "aarch64",
     64, false,
     { /*atomic(u8)=*/true, true, true, true,  true },
-    { 2, 4, 8, 16, 4, 8, 8 },
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
 };
 const TargetArch ARCH_ARM32 = {
     "arm",
     32, false,
     { /*atomic(u8)=*/true, false, true, false,  true },
-    { 2, 4, 8, 16, 4, 8, 4 } // Note, all types are natively aligned (but i128 will be emulated)
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 4) // Note, all types are natively aligned (but i128 will be emulated)
 };
 const TargetArch ARCH_M68K = {
     "m68k",
     32, true,
     { /*atomic(u8)=*/true, false, true, false,  true },
-    { 2, 4, 8, 16, 4, 8, 4 } // TODO: Does m68k have lower alignments?
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 4) // TODO: Does m68k have lower alignments?
 };
 TargetSpec  g_target;
 
