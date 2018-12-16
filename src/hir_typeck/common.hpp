@@ -38,6 +38,7 @@ extern bool visit_path_tys_with(const ::HIR::Path& ty, t_cb_visit_ty callback);
 typedef ::std::function<bool(const ::HIR::TypeRef&, ::HIR::TypeRef&)>   t_cb_clone_ty;
 /// Clones a type, calling the provided callback on every type (optionally providing a replacement)
 extern ::HIR::TypeRef clone_ty_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_clone_ty callback);
+extern ::HIR::PathParams clone_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_clone_ty callback);
 
 // Helper for passing a group of params around
 struct MonomorphState

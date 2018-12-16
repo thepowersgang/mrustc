@@ -2247,7 +2247,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
     {
         auto pt_mono = monomorphise_traitpath_with(sp, pt, monomorph_cb, false);
 
-        DEBUG(pt << " => " << pt_mono);
+        //DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {
             // NOTE: Doesn't quite work...
             //auto cmp = this->compare_pp(sp, pt_mono.m_path.m_params, des_params);
@@ -3890,6 +3890,7 @@ bool TraitResolution::find_method(const Span& sp,
                                 method_name,
                                 {}
                                 }) ) ));
+                        DEBUG("++ " << possibilities.back());
                         rv = true;
                     }
                     else if( cmp == ::HIR::Compare::Fuzzy )
@@ -3904,6 +3905,7 @@ bool TraitResolution::find_method(const Span& sp,
                                 method_name,
                                 {}
                                 }) ) ));
+                        DEBUG("++ " << possibilities.back());
                         rv = true;
                     }
                     else
@@ -3959,6 +3961,7 @@ bool TraitResolution::find_method(const Span& sp,
             if(const auto* self_ty_p = check_method_receiver(sp, *fcn_ptr, ty, access))
             {
                 possibilities.push_back(::std::make_pair(borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
+                DEBUG("++ " << possibilities.back());
                 rv = true;
             }
         }
@@ -3981,6 +3984,7 @@ bool TraitResolution::find_method(const Span& sp,
                 if(const auto* self_ty_p = check_method_receiver(sp, *fcn_ptr, ty, access))
                 {
                     possibilities.push_back(::std::make_pair(borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
+                    DEBUG("++ " << possibilities.back());
                     rv = true;
                 }
             }
@@ -4039,6 +4043,7 @@ bool TraitResolution::find_method(const Span& sp,
 
                     // Found the method, return the UFCS path for it
                     possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
+                    DEBUG("++ " << possibilities.back());
                     rv = true;
                 }
             }
@@ -4077,6 +4082,7 @@ bool TraitResolution::find_method(const Span& sp,
 
                     // Found the method, return the UFCS path for it
                     possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), mv$(final_trait_path), method_name, {}) ));
+                    DEBUG("++ " << possibilities.back());
                     rv = true;
                 }
             }
@@ -4104,6 +4110,7 @@ bool TraitResolution::find_method(const Span& sp,
                 if( *self_ty_p == *cur_check_ty )
                 {
                     possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty_p->clone(), method_name, {}) ));
+                    DEBUG("++ " << possibilities.back());
                     return true;
                 }
             }
@@ -4156,10 +4163,19 @@ bool TraitResolution::find_method(const Span& sp,
 
             // TODO: Re-monomorphise the trait path!
 
-            //if( find_trait_impls(sp, *trait_ref.first, trait_params, self_ty,  [](auto , auto ) { return true; }) ) {
-            if( find_trait_impls_crate(sp, *trait_ref.first, &trait_params, self_ty,  [](auto , auto ) { return true; }) ) {
+            bool magic_found = false;
+            bool crate_impl_found = false;
+            // NOTE: THis just detects the presence of a trait impl, not the specifics
+            find_trait_impls_crate(sp, *trait_ref.first, &trait_params, self_ty,  [&](auto impl, auto cmp) {
+                DEBUG("[find_method] " << impl << ", cmp = " << cmp);
+                magic_found = true;
+                crate_impl_found = true;
+                return true;
+                });
+            if( crate_impl_found ) {
                 DEBUG("Found trait impl " << *trait_ref.first << trait_params << " for " << self_ty << " ("<<m_ivars.fmt_type(self_ty)<<")");
                 possibilities.push_back(::std::make_pair( borrow_type, ::HIR::Path(self_ty.clone(), ::HIR::GenericPath( *trait_ref.first, mv$(trait_params) ), method_name, {}) ));
+                DEBUG("++ " << possibilities.back());
                 rv = true;
             }
         }

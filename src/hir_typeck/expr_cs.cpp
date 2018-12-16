@@ -2713,6 +2713,13 @@ namespace {
                     //   ivars (node.m_trait_param_ivars)
                     for(auto it_1 = possible_methods.begin(); it_1 != possible_methods.end(); ++ it_1)
                     {
+                        if( it_1->first != possible_methods.front().first )
+                        {
+                            it_1 = possible_methods.erase(it_1) - 1;
+                        }
+                    }
+                    for(auto it_1 = possible_methods.begin(); it_1 != possible_methods.end(); ++ it_1)
+                    {
                         if( !it_1->second.m_data.is_UfcsKnown() )
                             continue;
                         bool was_found = false;
@@ -2727,10 +2734,17 @@ namespace {
                             }
                             const auto& e2 = it_2->second.m_data.as_UfcsKnown();
 
+                            // TODO: If the trait is the same, but the type differs, pick the first?
+                            if( e1.trait == e2.trait ) {
+                                DEBUG("Duplicate trait, different type - " << e1.trait << " for " << *e1.type << " or " << *e2.type << ", picking the first");
+                                it_2 = possible_methods.erase(it_2) - 1;
+                                continue ;
+                            }
                             if( *e1.type != *e2.type )
                                 continue;
                             if( e1.trait.m_path != e2.trait.m_path )
                                 continue;
+                            assert( !(e1.trait.m_params == e2.trait.m_params) );
 
                             DEBUG("Duplicate trait in possible_methods - " << it_1->second << " and " << it_2->second);
                             if( !was_found )
@@ -2745,11 +2759,8 @@ namespace {
                                     trait_params.m_types.push_back( ::HIR::TypeRef::new_infer(ivars[i], ::HIR::InferClass::None) );
                                     //ASSERT_BUG(sp, m_ivars.get_type( trait_params.m_types.back() ).m_data.as_Infer().index == ivars[i], "A method selection ivar was bound");
                                 }
-                                // If one of these was already using the placeholder ivars, then maintain the other one?
-                                if( e2.trait.m_params == trait_params )
-                                {
-                                }
-                                else
+                                // If one of these was already using the placeholder ivars, then maintain the one with the palceholders
+                                if( e1.trait.m_params != trait_params )
                                 {
                                     e1.trait.m_params = mv$(trait_params);
                                 }
@@ -2758,6 +2769,12 @@ namespace {
                             }
                         }
                     }
+                }
+                assert( !possible_methods.empty() );
+                if( possible_methods.size() != 1 && possible_methods.front().second.m_data.is_UfcsKnown() )
+                {
+                    DEBUG("- Multiple options, deferring");
+                    return;
                 }
                 auto& ad_borrow = possible_methods.front().first;
                 auto& fcn_path = possible_methods.front().second;
@@ -4261,7 +4278,6 @@ void Context::possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef
     list.push_back( t.clone() );
 }
 void Context::possible_equate_type_bound(unsigned int ivar_index, const ::HIR::TypeRef& t) {
-    DEBUG(ivar_index << " bounded as " << t << " " << this->m_ivars.get_type(t));
     {
         ::HIR::TypeRef  ty_l;
         ty_l.m_data.as_Infer().index = ivar_index;
@@ -4278,9 +4294,21 @@ void Context::possible_equate_type_bound(unsigned int ivar_index, const ::HIR::T
     }
     auto& ent = possible_ivar_vals[ivar_index];
     for(const auto& e : ent.bounded)
+    {
         if( e == t )
+        {
+            if( t.m_data.is_Infer() )
+                DEBUG(ivar_index << " duplicate bounded " << t << " " << this->m_ivars.get_type(t));
+            else
+                DEBUG(ivar_index << " duplicate bounded " << t);
             return ;
+        }
+    }
     ent.bounded.push_back( t.clone() );
+    if( t.m_data.is_Infer() )
+        DEBUG(ivar_index << " bounded as " << t << " " << this->m_ivars.get_type(t));
+    else
+        DEBUG(ivar_index << " bounded as " << t);
 }
 void Context::possible_equate_type_disable(unsigned int ivar_index, bool is_to) {
     DEBUG(ivar_index << " ?= ?? (" << (is_to ? "to" : "from") << ")");
@@ -5593,17 +5621,49 @@ namespace {
     {
         for(const auto& bound : context.link_assoc)
         {
-            // TODO: Monomorphise this type replacing mentions of the current ivar with the replacement?
-            if( bound.impl_ty != ty_l )
-                continue ;
+            bool used_ty = false;
+            auto cb = [&](const ::HIR::TypeRef& ty, ::HIR::TypeRef& out_ty){ if( ty == ty_l ) { out_ty = new_ty.clone(); used_ty = true; return true; } else { return false; }};
+            auto t = clone_ty_with(sp, bound.impl_ty, cb);
+            auto p = clone_path_params_with(sp, bound.params, cb);
+            if(!used_ty)
+                continue;
+            // - Run EAT on t and p
+            t = context.m_resolve.expand_associated_types( sp, mv$(t) );
+            // TODO: EAT on `p`
+            DEBUG("Check " << t << " : " << bound.trait << p);
+            DEBUG("- From " << bound.impl_ty << " : " << bound.trait << bound.params);
 
             // Search for any trait impl that could match this,
-            bool has = context.m_resolve.find_trait_impls(sp, bound.trait, bound.params, new_ty, [&](const auto , auto){return true;});
-            if( !has ) {
+            bool bound_failed = true;
+            context.m_resolve.find_trait_impls(sp, bound.trait, p, t, [&](const auto impl, auto cmp){
+                // If this bound specifies an associated type, then check that that type could match
+                if( bound.name != "" )
+                {
+                    auto aty = impl.get_type(bound.name.c_str());
+                    if( aty == ::HIR::TypeRef() ) {
+                        // A possible match was found, so don't delete just yet
+                        bound_failed = false;
+                        // - Return false to keep searching
+                        return false;
+                    }
+                    else if( aty.compare_with_placeholders(sp, bound.left_ty, context.m_ivars.callback_resolve_infer()) == HIR::Compare::Unequal ) {
+                        bound_failed = true;
+                        // - Bail instantly
+                        return true;
+                    }
+                    else {
+                    }
+                }
+                bound_failed = false;
+                return true;
+                });
+            if( bound_failed ) {
                 // If none was found, remove from the possibility list
                 DEBUG("Remove possibility " << new_ty << " because it failed a bound");
                 return true;
             }
+
+            // TODO: Check for the resultant associated type
         }
 
         // Handle methods
@@ -6276,8 +6336,9 @@ namespace {
         if( !ivar_ent.bounded.empty() )
         {
             // TODO: Search know possibilties and check if they satisfy the bounds for this ivar
+            DEBUG("Options: " << ivar_ent.bounded);
             unsigned int n_good = 0;
-            const ::HIR::TypeRef*   only_good;
+            const ::HIR::TypeRef*   only_good = nullptr;
             for(const auto& new_ty : ivar_ent.bounded)
             {
                 DEBUG("- Test " << new_ty << " against current rules");
@@ -6287,11 +6348,14 @@ namespace {
                 else
                 {
                     n_good ++;
-                    only_good = &new_ty;
+                    if( !only_good )
+                        only_good = &new_ty;
                     DEBUG("> " << new_ty << " feasible");
                 }
             }
-            if(n_good == 1
+            // Picks the first if in fallback mode (which is signalled by `honour_disable` being false)
+            // - This handles the case where there's multiple valid options (needed for libcompiler_builtins)
+            if( (honour_disable ? n_good == 1 : n_good > 0)
              && ivar_ent.types_coerce_from.size() == 0 && ivar_ent.types_coerce_to.size() == 0
              && ivar_ent.types_unsize_from.size() == 0 && ivar_ent.types_unsize_to.size() == 0
                 )
@@ -6635,7 +6699,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             const auto& sp = node->span();
             if( const auto* np = dynamic_cast<::HIR::ExprNode_CallMethod*>(node) )
             {
-                WARNING(sp, W0000, "Spare Rule - {" << context.m_ivars.fmt_type(np->m_value->m_res_type) << "}." << np->m_method);
+                WARNING(sp, W0000, "Spare Rule - {" << context.m_ivars.fmt_type(np->m_value->m_res_type) << "}." << np->m_method << " -> " << context.m_ivars.fmt_type(np->m_res_type));
             }
             else
             {

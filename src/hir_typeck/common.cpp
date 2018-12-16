@@ -144,7 +144,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
 }
 
 
-::HIR::PathParams clone_ty_with__path_params(const Span& sp, const ::HIR::PathParams& tpl, t_cb_clone_ty callback) {
+::HIR::PathParams clone_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_clone_ty callback) {
     ::HIR::PathParams   rv;
     rv.m_types.reserve( tpl.m_types.size() );
     for( const auto& ty : tpl.m_types)
@@ -152,7 +152,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     return rv;
 }
 ::HIR::GenericPath clone_ty_with__generic_path(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_clone_ty callback) {
-    return ::HIR::GenericPath( tpl.m_path, clone_ty_with__path_params(sp, tpl.m_params, callback) );
+    return ::HIR::GenericPath( tpl.m_path, clone_path_params_with(sp, tpl.m_params, callback) );
 }
 ::HIR::TraitPath clone_ty_with__trait_path(const Span& sp, const ::HIR::TraitPath& tpl, t_cb_clone_ty callback) {
     ::HIR::TraitPath    rv {
@@ -181,22 +181,22 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             box$( clone_ty_with(sp, *e2.type, callback) ),
             clone_ty_with__generic_path(sp, e2.trait, callback),
             e2.item,
-            clone_ty_with__path_params(sp, e2.params, callback)
+            clone_path_params_with(sp, e2.params, callback)
             });
         ),
     (UfcsUnknown,
         return ::HIR::Path::Data::make_UfcsUnknown({
             box$( clone_ty_with(sp, *e2.type, callback) ),
             e2.item,
-            clone_ty_with__path_params(sp, e2.params, callback)
+            clone_path_params_with(sp, e2.params, callback)
             });
         ),
     (UfcsInherent,
         return ::HIR::Path::Data::make_UfcsInherent({
             box$( clone_ty_with(sp, *e2.type, callback) ),
             e2.item,
-            clone_ty_with__path_params(sp, e2.params, callback),
-            clone_ty_with__path_params(sp, e2.impl_params, callback)
+            clone_path_params_with(sp, e2.params, callback),
+            clone_path_params_with(sp, e2.impl_params, callback)
             });
         )
     )
@@ -207,7 +207,7 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
     ::HIR::TypeRef  rv;
 
     if( callback(tpl, rv) ) {
-        DEBUG(tpl << " => " << rv);
+        //DEBUG(tpl << " => " << rv);
         return rv;
     }
 
@@ -226,8 +226,9 @@ bool monomorphise_type_needed(const ::HIR::TypeRef& tpl)
             clone_ty_with__path(sp, e.path, callback),
             e.binding.clone()
             } );
-        // If the input binding was Opaque, clear it back to Unbound
-        if( e.binding.is_Opaque() ) {
+        // If the input binding was Opaque, AND the type changed, clear it back to Unbound
+        if( e.binding.is_Opaque() /*&& rv != tpl*/ ) {
+            // NOTE: The replacement can be Self=Self, which should trigger a binding clear.
             rv.m_data.as_Path().binding = ::HIR::TypeRef::TypePathBinding();
         }
         ),
@@ -323,7 +324,7 @@ namespace {
 
 ::HIR::PathParams monomorphise_path_params_with(const Span& sp, const ::HIR::PathParams& tpl, t_cb_generic callback, bool allow_infer)
 {
-    return clone_ty_with__path_params(sp, tpl, monomorphise_type_with__closure(sp, tpl, callback, allow_infer));
+    return clone_path_params_with(sp, tpl, monomorphise_type_with__closure(sp, tpl, callback, allow_infer));
 }
 ::HIR::GenericPath monomorphise_genericpath_with(const Span& sp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer)
 {
