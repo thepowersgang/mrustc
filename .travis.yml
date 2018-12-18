@@ -39,7 +39,7 @@ script:
  - cmake ..
  - make mrustc -j4
  - make minicargo -j4
- - make rust_standard_libs -j4
+ # - make rust_standard_libs -j4
 
 # Test
 # - make -f minicargo.mk output/libtest.hir      # libstd
