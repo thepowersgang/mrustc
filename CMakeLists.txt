@@ -115,7 +115,8 @@ build_rust_std_lib(
 add_custom_target(rust_standard_libs ALL
   DEPENDS
     rust_libstd
-    # rust_libpanic_unwind
+    rust_libpanic_unwind
     rust_libtest
     rust_libgetopts
-    rust_libproc_macro)
+    # rust_libproc_macro
+    )
