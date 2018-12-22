@@ -1,0 +1,12 @@
+version: 1.0.{build}
+
+before_build:
+- cmd: nuget restore vsproject/mrustc.sln
+
+build:
+  project: vsproject/mrustc.sln
+  verbosity: minimal
+
+test_script:
+- ps: cd vsproject	# Use powershell to change to the vsproject directory
+- cmd: build_std.cmd
