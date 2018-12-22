@@ -18,6 +18,14 @@
 
 namespace
 {
+    size_t Target_GetSizeOf_Required(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
+    {
+        size_t size;
+        bool type_has_size = Target_GetSizeOf(sp, resolve, ty, size);
+        ASSERT_BUG(sp, type_has_size, "Attempting to get the size of a unsized type");
+        return size;
+    }
+
     template<typename T>
     struct Fmt
     {
@@ -779,8 +787,7 @@ namespace
                             cur_ofs ++;
                         }
                         emit_literal_as_bytes(le[i], repr->fields[i].ty, out_relocations, base_ofs + cur_ofs);
-                        size_t size;
-                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[i].ty, size));
+                        size_t size = Target_GetSizeOf_Required(sp, m_resolve, repr->fields[i].ty);
                         cur_ofs += size;
                     }
                     while(cur_ofs < repr->size)
@@ -803,8 +810,7 @@ namespace
 
                         emit_literal_as_bytes(*le.val, repr->fields[le.idx].ty, out_relocations, base_ofs + cur_ofs);
 
-                        size_t size;
-                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[le.idx].ty, size));
+                        size_t size = Target_GetSizeOf(sp, m_resolve, repr->fields[le.idx].ty);
                         cur_ofs += size;
                     }
 
@@ -819,8 +825,7 @@ namespace
                         auto v = ::HIR::Literal::make_Integer(le.idx);
                         emit_literal_as_bytes(v, repr->fields[ve->field.index].ty, out_relocations, base_ofs + cur_ofs);
 
-                        size_t size;
-                        assert(Target_GetSizeOf(sp, m_resolve, repr->fields[ve->field.index].ty, size));
+                        size_t size = Target_GetSizeOf_Required(sp, m_resolve, repr->fields[ve->field.index].ty)
                         cur_ofs += size;
                     }
                     // TODO: Nonzero?
@@ -888,8 +893,7 @@ namespace
                 for(const auto& v : lit.as_List())
                 {
                     emit_literal_as_bytes(v, *te.inner, out_relocations, base_ofs);
-                    size_t size;
-                    assert(Target_GetSizeOf(sp, m_resolve, *te.inner, size));
+                    size_t size = Target_GetSizeOf(sp, m_resolve, *te.inner, size);
                     base_ofs += size;
                 }
                 } break;
