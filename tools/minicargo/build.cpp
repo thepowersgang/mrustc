@@ -62,6 +62,9 @@ class Builder
 {
     BuildOptions    m_opts;
     ::helpers::path m_compiler_path;
+#ifndef _WIN32
+    mutable ::std::mutex    chdir_mutex;
+#endif
 
 public:
     Builder(BuildOptions opts);
@@ -73,7 +76,7 @@ public:
 private:
     ::helpers::path get_crate_path(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, const char** crate_type, ::std::string* out_crate_suffix) const;
     bool spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const;
-    bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile) const;
+    bool spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile, const ::helpers::path& working_directory={}) const;
 
     ::helpers::path build_and_run_script(const PackageManifest& manifest, bool is_for_host) const;
 
@@ -537,6 +540,11 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 Builder::Builder(BuildOptions opts):
     m_opts(::std::move(opts))
 {
+    if( const char* override_path = getenv("MRUSTC_PATH") ) {
+        m_compiler_path = override_path;
+        return ;
+    }
+    // TODO: Clean this stuff up
 #ifdef _WIN32
     char buf[1024];
     size_t s = GetModuleFileName(NULL, buf, sizeof(buf)-1);
@@ -882,23 +890,14 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         }
 
         //auto _ = ScopedChdir { manifest.directory() };
-        #if _WIN32
-        #else
-        auto fd_cwd = open(".", O_DIRECTORY);
-        chdir(manifest.directory().str().c_str());
-        #endif
-        if( !this->spawn_process(script_exe_abs.str().c_str(), {}, env, out_file) )
+        if( !this->spawn_process(script_exe_abs.str().c_str(), {}, env, out_file, /*working_directory=*/manifest.directory()) )
         {
             rename(out_file.str().c_str(), (out_file+"_failed").str().c_str());
             // Build failed, return an invalid path
             return ::helpers::path();;
         }
-        #if _WIN32
-        #else
-        fchdir(fd_cwd);
-        #endif
     }
-    
+
     return out_file;
 }
 bool Builder::build_library(const PackageManifest& manifest, bool is_for_host) const
@@ -934,7 +933,7 @@ bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, con
     //env.push_back("MRUSTC_DEBUG", "");
     return spawn_process(m_compiler_path.str().c_str(), args, env, logfile);
 }
-bool Builder::spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile) const
+bool Builder::spawn_process(const char* exe_name, const StringList& args, const StringListKV& env, const ::helpers::path& logfile, const ::helpers::path& working_directory/*={}*/) const
 {
 #ifdef _WIN32
     ::std::stringstream cmdline;
@@ -986,7 +985,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
         WriteFile(si.hStdOutput, "\n", 1, &tmp, NULL);
     }
     PROCESS_INFORMATION pi = { 0 };
-    CreateProcessA(exe_name, (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
+    CreateProcessA(exe_name, (LPSTR)cmdline_str.c_str(), NULL, NULL, TRUE, 0, NULL, (working_directory != ::helpers::path() ? working_directory.str().c_str() : NULL), &si, &pi);
     CloseHandle(si.hStdOutput);
     WaitForSingleObject(pi.hProcess, INFINITE);
     DWORD status = 1;
@@ -1050,12 +1049,23 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     //    });
     envp.push_back(nullptr);
 
-    if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.get_vec().data()) != 0 )
+    // TODO: Acquire a lock
     {
-        ::std::cerr << "Unable to run process '" << exe_name << "' - " << strerror(errno) << ::std::endl;
-        DEBUG("Unable to spawn executable");
-        posix_spawn_file_actions_destroy(&fa);
-        return false;
+        ::std::lock_guard<::std::mutex> lh { this->chdir_mutex };
+        auto fd_cwd = open(".", O_DIRECTORY);
+        if( working_directory != ::helpers::path() ) {
+            chdir(working_directory.str().c_str());
+        }
+        if( posix_spawn(&pid, exe_name, &fa, /*attr=*/nullptr, (char* const*)argv.data(), (char* const*)envp.get_vec().data()) != 0 )
+        {
+            ::std::cerr << "Unable to run process '" << exe_name << "' - " << strerror(errno) << ::std::endl;
+            DEBUG("Unable to spawn executable");
+            posix_spawn_file_actions_destroy(&fa);
+            return false;
+        }
+        if( working_directory != ::helpers::path() ) {
+            fchdir(fd_cwd);
+        }
     }
     posix_spawn_file_actions_destroy(&fa);
     int status = -1;
