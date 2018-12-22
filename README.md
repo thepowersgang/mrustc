@@ -2,6 +2,9 @@ Mutabah's Rust Compiler
 
 _In-progress_ alternative rust compiler. Capable of building a fully-working copy of rustc, but not yet suitable for everyday use.
 
+[![Build Status: windows](https://ci.appveyor.com/api/projects/status/96y4ui20pl8xjm2h/branch/master?svg=true)](https://ci.appveyor.com/project/thepowersgang/mrustc/branch/master)
+[![Build Status: Linux/OSX](https://travis-ci.org/thepowersgang/mrustc.svg?branch=master)](https://travis-ci.org/thepowersgang/mrustc)
+
 Intro
 ===
 This project is an attempt at creating a simple rust compiler in C++, with the ultimate goal of being a separate re-implementation.
