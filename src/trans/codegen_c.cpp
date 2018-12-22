@@ -313,9 +313,10 @@ namespace {
                 {
                     m_of
                         << "static inline uint"<<sz<<"_t __mrustc_atomicloop"<<sz<<"(volatile uint"<<sz<<"_t* slot, uint"<<sz<<"_t param, int ordering, uint"<<sz<<"_t (*cb)(uint"<<sz<<"_t, uint"<<sz<<"_t)) {"
+                        << " int ordering_load = (ordering == memory_order_release || ordering == memory_order_acq_rel ? memory_order_relaxed : ordering);" // If Release, Load with Relaxed
                         << " for(;;) {"
-                        << " uint"<<sz<<"_t v = atomic_load_explicit((_Atomic uint"<<sz<<"_t*)slot, ordering);"
-                        << " if( atomic_compare_exchange_strong_explicit((_Atomic uint"<<sz<<"_t*)slot, &v, cb(v, param), ordering, ordering) ) return v;"
+                        << " uint"<<sz<<"_t v = atomic_load_explicit((_Atomic uint"<<sz<<"_t*)slot, ordering_load);"
+                        << " if( atomic_compare_exchange_strong_explicit((_Atomic uint"<<sz<<"_t*)slot, &v, cb(v, param), ordering, ordering_load) ) return v;"
                         << " }"
                         << "}\n"
                         ;
