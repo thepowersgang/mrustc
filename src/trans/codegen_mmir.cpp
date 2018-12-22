@@ -810,7 +810,7 @@ namespace
 
                         emit_literal_as_bytes(*le.val, repr->fields[le.idx].ty, out_relocations, base_ofs + cur_ofs);
 
-                        size_t size = Target_GetSizeOf(sp, m_resolve, repr->fields[le.idx].ty);
+                        size_t size = Target_GetSizeOf_Required(sp, m_resolve, repr->fields[le.idx].ty);
                         cur_ofs += size;
                     }
 
@@ -825,7 +825,7 @@ namespace
                         auto v = ::HIR::Literal::make_Integer(le.idx);
                         emit_literal_as_bytes(v, repr->fields[ve->field.index].ty, out_relocations, base_ofs + cur_ofs);
 
-                        size_t size = Target_GetSizeOf_Required(sp, m_resolve, repr->fields[ve->field.index].ty)
+                        size_t size = Target_GetSizeOf_Required(sp, m_resolve, repr->fields[ve->field.index].ty);
                         cur_ofs += size;
                     }
                     // TODO: Nonzero?
