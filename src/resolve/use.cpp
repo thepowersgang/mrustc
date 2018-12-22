@@ -428,28 +428,36 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 //out_path = imp_data.path;
             }
 
-            TU_MATCH_DEF(::AST::PathBinding, (*binding), (e),
-            (
-                BUG(sp2, "Wildcard import expanded to an invalid item class - " << binding->tag_str());
-                ),
-            (Crate,
+            TU_MATCH_HDR( (*binding), {)
+            TU_ARM(*binding, Crate, e) {
                 assert(e.crate_);
                 const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
                 auto rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0, allow);
                 if( ! rv.is_Unbound() ) {
                     return mv$(rv);
                 }
-                ),
-            (Module,
-                auto allow_inner = (allow == Lookup::Any ? Lookup::AnyOpt : allow);
-                assert(e.module_);
-                // TODO: Prevent infinite recursion?
-                auto rv = Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {}, allow_inner);
-                if( ! rv.is_Unbound() ) {
-                    return mv$(rv);
                 }
-                ),
-            (Enum,
+            TU_ARM(*binding, Module, e) {
+                auto allow_inner = (allow == Lookup::Any ? Lookup::AnyOpt : allow);
+                if( e.module_ ) {
+                    // TODO: Prevent infinite recursion?
+                    auto rv = Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {}, allow_inner);
+                    if( ! rv.is_Unbound() ) {
+                        return mv$(rv);
+                    }
+                }
+                else if( e.hir ) {
+                    const ::HIR::Module& hmod = *e.hir;
+                    auto rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0, allow);
+                    if( ! rv.is_Unbound() ) {
+                        return mv$(rv);
+                    }
+                }
+                else {
+                    BUG(span, "NULL module for binding on glob of " << imp_data.path);
+                }
+                }
+            TU_ARM(*binding, Enum, e) {
                 assert(e.enum_ || e.hir);
                 if( e.enum_ ) {
                     const auto& enm = *e.enum_;
@@ -470,8 +478,11 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                         return ::AST::PathBinding::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
                     }
                 }
-                )
-            )
+                } break;
+            default:
+                BUG(sp2, "Wildcard import expanded to an invalid item class - " << binding->tag_str());
+                break;
+            }
         }
     }
 
