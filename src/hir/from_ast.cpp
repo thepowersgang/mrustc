@@ -1932,25 +1932,28 @@ public:
             }
         };
         // Check for existing defintions of lang items before adding magic ones
-        if( rv.m_lang_items.count("boxed_trait") == 0 )
+        if( TARGETVER_1_19 )
         {
-            rv.m_lang_items.insert(::std::make_pair( ::std::string("boxed_trait"),  H::resolve_path(rv, false, {"ops", "Boxed"}) ));
-        }
-        if( rv.m_lang_items.count("placer_trait") == 0 )
-        {
-            rv.m_lang_items.insert(::std::make_pair( ::std::string("placer_trait"),  H::resolve_path(rv, false, {"ops", "Placer"}) ));
-        }
-        if( rv.m_lang_items.count("place_trait") == 0 )
-        {
-            rv.m_lang_items.insert(::std::make_pair( ::std::string("place_trait"),  H::resolve_path(rv, false, {"ops", "Place"}) ));
-        }
-        if( rv.m_lang_items.count("box_place_trait") == 0 )
-        {
-            rv.m_lang_items.insert(::std::make_pair( ::std::string("box_place_trait"),  H::resolve_path(rv, false, {"ops", "BoxPlace"}) ));
-        }
-        if( rv.m_lang_items.count("in_place_trait") == 0 )
-        {
-            rv.m_lang_items.insert(::std::make_pair( ::std::string("in_place_trait"),  H::resolve_path(rv, false, {"ops", "InPlace"}) ));
+            if( rv.m_lang_items.count("boxed_trait") == 0 )
+            {
+                rv.m_lang_items.insert(::std::make_pair( ::std::string("boxed_trait"),  H::resolve_path(rv, false, {"ops", "Boxed"}) ));
+            }
+            if( rv.m_lang_items.count("placer_trait") == 0 )
+            {
+                rv.m_lang_items.insert(::std::make_pair( ::std::string("placer_trait"),  H::resolve_path(rv, false, {"ops", "Placer"}) ));
+            }
+            if( rv.m_lang_items.count("place_trait") == 0 )
+            {
+                rv.m_lang_items.insert(::std::make_pair( ::std::string("place_trait"),  H::resolve_path(rv, false, {"ops", "Place"}) ));
+            }
+            if( rv.m_lang_items.count("box_place_trait") == 0 )
+            {
+                rv.m_lang_items.insert(::std::make_pair( ::std::string("box_place_trait"),  H::resolve_path(rv, false, {"ops", "BoxPlace"}) ));
+            }
+            if( rv.m_lang_items.count("in_place_trait") == 0 )
+            {
+                rv.m_lang_items.insert(::std::make_pair( ::std::string("in_place_trait"),  H::resolve_path(rv, false, {"ops", "InPlace"}) ));
+            }
         }
     }
 

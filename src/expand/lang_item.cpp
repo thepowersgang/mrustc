@@ -215,7 +215,10 @@ public:
         // collections
         else if( name == "str" ) {}
         else if( name == "slice" ) {}
-        else if( TARGETVER_1_29 && name == "slice_u8" ) {}
+        else if( TARGETVER_1_29 && name == "slice_u8" ) {}  // libcore now, `impl [u8]`
+        else if( TARGETVER_1_29 && name == "slice_alloc" ) {}   // liballoc's impls on [T]
+        else if( TARGETVER_1_29 && name == "slice_u8_alloc" ) {}   // liballoc's impls on [u8]
+        else if( TARGETVER_1_29 && name == "str_alloc" ) {}   // liballoc's impls on str
         // std - interestingly
         else if( name == "f32" ) {}
         else if( name == "f64" ) {}
