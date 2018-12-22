@@ -23,6 +23,9 @@ namespace HIR {
         (Invalid,
             os << "!";
             ),
+        (Defer,
+            os << "?";
+            ),
         (List,
             os << "[";
             for(const auto& val : e)
@@ -57,6 +60,8 @@ namespace HIR {
             return false;
         TU_MATCH(::HIR::Literal, (l,r), (le,re),
         (Invalid,
+            ),
+        (Defer,
             ),
         (List,
             if( le.size() != re.size() )

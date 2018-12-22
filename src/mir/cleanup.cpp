@@ -91,8 +91,11 @@ namespace {
     }
 }
 
-const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::Path& path,  ::HIR::TypeRef& out_ty)
+const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, const ::HIR::Path& path,  ::HIR::TypeRef& out_ty)
 {
+    const Span& sp = state.sp;
+    const auto& resolve = state.m_resolve;
+    TRACE_FUNCTION_F(path);
     TU_MATCHA( (path.m_data), (pe),
     (Generic,
         const auto& constant = resolve.m_crate.get_constant_by_path(sp, pe.m_path);
@@ -155,6 +158,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
             // Obtain `out_ty` by monomorphising the type in the trait.
             auto monomorph_cb = monomorphise_type_get_cb(sp, &*pe.type, &pe.trait.m_params, nullptr);
             out_ty = monomorphise_type_with(sp, trait_cdef.m_type, monomorph_cb);
+            resolve.expand_associated_types(sp, out_ty);
             if( best_impl )
             {
                 ASSERT_BUG(sp, best_impl->m_constants.find(pe.item) != best_impl->m_constants.end(), "Item '" << pe.item << "' missing in impl for " << path);
@@ -164,7 +168,17 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
             else
             {
                 // No impl found at all, use the default in the trait
-                return &trait_cdef.m_value_res;
+                if( trait_cdef.m_value_res.is_Defer() )
+                {
+                    // - Monomorphise and insert the item's MIR?
+                    // OR: Should a previous stage have already done this? (E.g. after typecheck)
+                    MIR_TODO(state, "Evaluate deferred trait constant - " << path);
+                }
+                else
+                {
+                    DEBUG("- Default " << trait_cdef.m_value_res);
+                    return &trait_cdef.m_value_res;
+                }
             }
         }
         ),
@@ -315,7 +329,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         }
         else
         {
-            MIR_BUG(state, "Unexpected type - " << ty);
+            MIR_BUG(state, "Unexpected type for literal from " << path << " - " << ty << " (lit = " << lit << ")");
         }
         ),
     (Primitive,
@@ -328,6 +342,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         case ::HIR::CoreType::U32:
         case ::HIR::CoreType::U16:
         case ::HIR::CoreType::U8:
+            MIR_ASSERT(state, lit.is_Integer(), "Literal for " << path << ": " << ty << " not an integer, instead " << lit);
             return ::MIR::Constant::make_Uint({ lit.as_Integer(), te });
         case ::HIR::CoreType::Isize:
         case ::HIR::CoreType::I128:
@@ -335,11 +350,14 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const Span& sp, const StaticTraitR
         case ::HIR::CoreType::I32:
         case ::HIR::CoreType::I16:
         case ::HIR::CoreType::I8:
+            MIR_ASSERT(state, lit.is_Integer(), "Literal for " << path << ": " << ty << " not an integer, instead " << lit);
             return ::MIR::Constant::make_Int({ static_cast<int64_t>(lit.as_Integer()), te });
         case ::HIR::CoreType::F64:
         case ::HIR::CoreType::F32:
+            MIR_ASSERT(state, lit.is_Float(), "Literal for " << path << ": " << ty << " not a float, instead " << lit);
             return ::MIR::Constant::make_Float({ lit.as_Float(), te });
         case ::HIR::CoreType::Bool:
+            MIR_ASSERT(state, lit.is_Integer(), "Literal for " << path << ": " << ty << " not an integer, instead " << lit);
             return ::MIR::Constant::make_Bool({ !!lit.as_Integer() });
         case ::HIR::CoreType::Str:
             MIR_BUG(state, "Const of type `str` - " << path);
@@ -1070,7 +1088,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     TU_IFLET( ::MIR::Constant, e, Const, ce,
                         // 1. Find the constant
                         ::HIR::TypeRef  ty;
-                        const auto* lit_ptr = MIR_Cleanup_GetConstant(sp, resolve, ce.p, ty);
+                        const auto* lit_ptr = MIR_Cleanup_GetConstant(state, ce.p, ty);
                         if( lit_ptr )
                         {
                             DEBUG("Replace constant " << ce.p << " with " << *lit_ptr);

@@ -1166,6 +1166,7 @@ namespace {
                 ExprVisitor_Validate    ev(m_resolve, tmp, item.m_type);
                 ev.visit_root(item.m_value);
             }
+            m_resolve.expand_associated_types(Span(), item.m_type);
         }
         void visit_enum(::HIR::ItemPath p, ::HIR::Enum& item) override {
             //auto _ = this->m_ms.set_item_generics(item.m_params);
