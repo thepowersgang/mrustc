@@ -332,7 +332,7 @@ namespace
                     else if( t.m_data.is_Slice() ) {
                         return ::HIR::CoreType::Usize;
                     }
-                    else if( t.m_data.is_TraitObject() ) { 
+                    else if( t.m_data.is_TraitObject() ) {
                         const auto& te = t.m_data.as_TraitObject();
                         //auto vtp = t.m_data.as_TraitObject().m_trait.m_path;
 
@@ -389,7 +389,7 @@ namespace
             {
                 m_of << "fn " << drop_glue_path << "(&move " << ty << ") {\n";
                 m_of << "\tlet unit: ();\n";
-                
+
                 if( const auto* ity = m_resolve.is_type_owned_box(ty) )
                 {
                     m_of << "\t0: {\n";
