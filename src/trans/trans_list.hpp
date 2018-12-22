@@ -18,6 +18,7 @@ class Function;
 class Static;
 }
 
+// TODO: This is very similar to "hir_typeck/common.hpp" MonomorphState
 struct Trans_Params
 {
     Span    sp;

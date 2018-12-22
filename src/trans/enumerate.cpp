@@ -1599,6 +1599,9 @@ void Trans_Enumerate_FillFrom_Literal(EnumState& state, const ::HIR::Literal& li
     TU_MATCHA( (lit), (e),
     (Invalid,
         ),
+    (Defer,
+        // TODO: Bug?
+        ),
     (List,
         for(const auto& v : e)
             Trans_Enumerate_FillFrom_Literal(state, v, pp);

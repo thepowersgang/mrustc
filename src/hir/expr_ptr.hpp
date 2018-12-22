@@ -105,6 +105,7 @@ public:
     ::HIR::ExprNode* get() const { return node.get(); }
     void reset(::HIR::ExprNode* p) { node.reset(p); }
 
+    const Span& span() const;
           ::HIR::ExprNode& operator*()       { return *node; }
     const ::HIR::ExprNode& operator*() const { return *node; }
           ::HIR::ExprNode* operator->()       { return &*node; }

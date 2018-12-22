@@ -16,6 +16,8 @@
 #include <trans/target.hpp>
 #include <hir/expr_state.hpp>
 
+#include <trans/monomorphise.hpp>   // For handling monomorph of MIR in provided associated constants
+
 #define CHECK_DEFER(var) do { if( var.is_Defer() ) { m_rv = ::HIR::Literal::make_Defer({}); return ; } } while(0)
 
 namespace {
@@ -382,29 +384,24 @@ namespace {
         LocalState  local_state( state, retval, args, locals );
 
         auto const_to_lit = [&](const ::MIR::Constant& c)->::HIR::Literal {
-            TU_MATCH(::MIR::Constant, (c), (e2),
-            (Int,
+            TU_MATCH_HDR( (c), {)
+            TU_ARM(c, Int, e2) {
                 return ::HIR::Literal(static_cast<uint64_t>(e2.v));
-                ),
-            (Uint,
+                }
+            TU_ARM(c, Uint, e2)
                 return ::HIR::Literal(e2.v);
-                ),
-            (Float,
+            TU_ARM(c, Float, e2)
                 return ::HIR::Literal(e2.v);
-                ),
-            (Bool,
+            TU_ARM(c, Bool, e2)
                 return ::HIR::Literal(static_cast<uint64_t>(e2.v));
-                ),
-            (Bytes,
+            TU_ARM(c, Bytes, e2)
                 return ::HIR::Literal::make_String({e2.begin(), e2.end()});
-                ),
-            (StaticString,
+            TU_ARM(c, StaticString, e2)
                 return ::HIR::Literal(e2);
-                ),
-            (Const,
+            TU_ARM(c, Const, e2) {
                 auto p = ms.monomorph(state.sp, e2.p);
                 // If there's any mention of generics in this path, then return Literal::Defer
-                if( visit_path_tys_with(e2.p, [&](const auto& ty)->bool { return ty.m_data.is_Generic(); }) )
+                if( visit_path_tys_with(p, [&](const auto& ty)->bool { return ty.m_data.is_Generic(); }) )
                 {
                     DEBUG("Return Literal::Defer for constant " << e2.p << " which references a generic parameter");
                     return ::HIR::Literal::make_Defer({});
@@ -418,7 +415,7 @@ namespace {
                     auto& item = const_cast<::HIR::Constant&>(c);
                     // Challenge: Adding items to the module might invalidate an iterator.
                     ::HIR::ItemPath mod_ip { item.m_value.m_state->m_mod_path };
-                    auto eval = Evaluator { item.m_value->span(), resolve.m_crate, NewvalState { item.m_value.m_state->m_module, mod_ip, FMT(&c << "$") } };
+                    auto eval = Evaluator { item.m_value.span(), resolve.m_crate, NewvalState { item.m_value.m_state->m_module, mod_ip, FMT(&c << "$") } };
                     DEBUG("- Evaluate " << p);
                     DEBUG("- " << ::HIR::ItemPath(p));
                     item.m_value_res = eval.evaluate_constant(::HIR::ItemPath(p), item.m_value, item.m_type.clone());
@@ -426,11 +423,10 @@ namespace {
                     //check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
                 }
                 return clone_literal( c.m_value_res );
-                ),
-            (ItemAddr,
+                }
+            TU_ARM(c, ItemAddr, e2)
                 return ::HIR::Literal::make_BorrowPath( ms.monomorph(state.sp, e2) );
-                )
-            )
+            }
             throw "";
             };
         auto read_param = [&](const ::MIR::Param& p) -> ::HIR::Literal
@@ -961,6 +957,79 @@ namespace {
             m_mod_path = saved_mp;
         }
 
+        void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
+        {
+            static Span sp;
+            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type);
+            const auto& trait = m_crate.get_trait_by_path(sp, trait_path);
+
+            StaticTraitResolve  resolve( m_crate );
+            // - TODO: Defer this call until first missing item?
+            resolve.set_impl_generics(impl.m_params);
+
+            auto mp = ::HIR::ItemPath(impl.m_src_module);
+            m_mod_path = &mp;
+            m_mod = &m_crate.get_mod_by_path(sp, impl.m_src_module);
+
+            for(const auto& vi : trait.m_values)
+            {
+                // Search for any constants that are in the trait itself, but NOT in this impl
+                // - For each of these, find the lowest parent specialisation with the constant set
+                // - Ensure that the MIR has been generated for the constant (TODO: This only needs to be done for
+                //   specialisations, not trait-provided)
+                // - Monomorphise the MIR for this impl, and let expansion happen as usual
+                if( vi.second.is_Constant() )
+                {
+                    if( impl.m_constants.count(vi.first) > 0 )
+                        continue;
+                    DEBUG("- Constant " << vi.first << " missing, looking for a source");
+                    // This trait impl doesn't have this constant, need to find the provided version that applies
+
+                    MonomorphState  ms;
+                    ms.self_ty = &impl.m_type;
+                    ms.pp_impl = &impl.m_trait_args;
+
+                    resolve.find_impl(sp, trait_path, impl.m_trait_args, impl.m_type, [&](ImplRef found_impl, bool is_fuzzed)->bool {
+                        ASSERT_BUG(sp, found_impl.m_data.is_TraitImpl(), "");
+                        // If this found impl is the current one, keep searching
+                        if( found_impl.m_data.as_TraitImpl().impl == &impl )
+                            return false;
+                        TODO(sp, "Found a possible parent specialisation of " << trait_path << impl.m_trait_args << " for " << impl.m_type << " - " << found_impl);
+                        return false;
+                        });
+                    const auto& template_const = vi.second.as_Constant();
+                    if( template_const.m_value_res.is_Defer() ) {
+                        auto eval = Evaluator { sp, m_crate, NewvalState { *m_mod, *m_mod_path, FMT("impl" << &impl << "$" << vi.first << "$") } };
+                        ::HIR::ExprPtr  ep;
+                        Trans_Params    tp(sp);
+                        tp.self_type = ms.self_ty->clone();
+                        tp.pp_impl = ms.pp_impl->clone();
+                        ep.m_mir = Trans_Monomorphise(resolve, mv$(tp), template_const.m_value.m_mir);
+                        ep.m_state = ::HIR::ExprStatePtr( ::HIR::ExprState(*m_mod, m_mod_path->get_simple_path()) );
+                        ep.m_state->stage = ::HIR::ExprState::Stage::Mir;
+                        impl.m_constants.insert(::std::make_pair(
+                            vi.first,
+                            ::HIR::TraitImpl::ImplEnt<::HIR::Constant> {
+                                /*is_specialisable=*/false,
+                                ::HIR::Constant {
+                                    template_const.m_params.clone(),
+                                    /*m_type=*/ms.monomorph(sp, template_const.m_type),
+                                    /*m_value=*/mv$(ep),
+                                    ::HIR::Literal()
+                                    }
+                                }
+                            ));
+                    }
+                    else {
+                        TODO(sp, "Assign associated type " << vi.first << " in impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type);
+                    }
+                }
+            }
+            ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+            m_mod = nullptr;
+            m_mod_path = nullptr;
+        }
+
         void visit_type(::HIR::TypeRef& ty) override
         {
             ::HIR::Visitor::visit_type(ty);
@@ -988,12 +1057,12 @@ namespace {
             ::HIR::Visitor::visit_constant(p, item);
 
             // NOTE: Consteval needed here for MIR match generation to work
-            if( item.m_value )
+            if( item.m_value || item.m_value.m_mir )
             {
-                auto eval = Evaluator { item.m_value->span(), m_crate, NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "$") } };
+                auto eval = Evaluator { item.m_value.span(), m_crate, NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "$") } };
                 item.m_value_res = eval.evaluate_constant(p, item.m_value, item.m_type.clone());
 
-                check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
+                check_lit_type(item.m_value.span(), item.m_type, item.m_value_res);
 
                 DEBUG("constant: " << item.m_type <<  " = " << item.m_value_res);
             }

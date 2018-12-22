@@ -140,6 +140,9 @@ namespace {
             TU_MATCH(::HIR::Literal, (lit), (e),
             (Invalid,
                 ),
+            (Defer,
+                // Shouldn't happen here, but ...
+                ),
             (List,
                 for(auto& val : e) {
                     visit_literal(sp, val);

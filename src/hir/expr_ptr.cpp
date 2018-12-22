@@ -45,6 +45,13 @@
 }
 
 
+const Span& HIR::ExprPtr::span() const
+{
+    static Span static_sp;
+    if( *this )
+        return (*this)->span();
+    return static_sp;
+}
 const ::MIR::Function* HIR::ExprPtr::get_mir_opt() const
 {
     if(!this->m_mir)
