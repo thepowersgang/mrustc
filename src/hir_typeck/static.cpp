@@ -2006,8 +2006,8 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
 {
     TRACE_FUNCTION_F(p << ", signature_only=" << signature_only);
     out_params = MonomorphState {};
-    TU_MATCHA( (p.m_data), (pe),
-    (Generic,
+    TU_MATCH_HDR( (p.m_data), {)
+    TU_ARM(p.m_data, Generic, pe) {
         if( pe.m_path.m_components.size() > 1 )
         {
             const auto& ti = m_crate.get_typeitem_by_path(sp, pe.m_path, /*ignore_crate_name=*/false, /*ignore_last_node=*/true);
@@ -2051,8 +2051,8 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             )
         )
         throw "";
-        ),
-    (UfcsKnown,
+        }
+    TU_ARM(p.m_data, UfcsKnown, pe) {
         out_params.self_ty = &*pe.type;
         out_params.pp_impl = &pe.trait.m_params;
         out_params.pp_method = &pe.params;
@@ -2074,8 +2074,10 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                     return false;
                 const auto& ti = *impl.m_data.as_TraitImpl().impl;
                 auto it = ti.m_constants.find(pe.item);
-                if(it == ti.m_constants.end())
+                if(it == ti.m_constants.end()) {
+                    // An impl was found, but it did't have the value
                     return false;
+                }
 
                 if( impl.more_specific_than(best_impl) )
                 {
@@ -2108,8 +2110,8 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             return &c.data;
         }
         throw "";
-        ),
-    (UfcsInherent,
+        }
+    TU_ARM(p.m_data, UfcsInherent, pe) {
         out_params.self_ty = &*pe.type;
         //out_params.pp_impl = &out_params.pp_impl_data;
         out_params.pp_impl = &pe.impl_params;
@@ -2140,10 +2142,10 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
             return false;
             });
         return rv;
-        ),
-    (UfcsUnknown,
+        }
+    TU_ARM(p.m_data, UfcsUnknown, pe) {
         BUG(sp, "UfcsUnknown - " << p);
-        )
-    )
+        }
+    }
     throw "";
 }

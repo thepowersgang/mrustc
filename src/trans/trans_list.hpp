@@ -62,6 +62,11 @@ struct TransList_Static
     const ::HIR::Static*    ptr;
     Trans_Params    pp;
 };
+struct TransList_Const
+{
+    const ::HIR::Constant*    ptr;
+    Trans_Params    pp;
+};
 
 class TransList
 {
@@ -74,6 +79,8 @@ public:
 
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Function> > m_functions;
     ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Static> > m_statics;
+    /// Constants that are still Defer
+    ::std::map< ::HIR::Path, ::std::unique_ptr<TransList_Const> > m_constants;
     ::std::map< ::HIR::Path, Trans_Params> m_vtables;
     /// Required type_id values
     ::std::set< ::HIR::TypeRef> m_typeids;

@@ -170,9 +170,10 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                 // No impl found at all, use the default in the trait
                 if( trait_cdef.m_value_res.is_Defer() )
                 {
-                    // - Monomorphise and insert the item's MIR?
-                    // OR: Should a previous stage have already done this? (E.g. after typecheck)
-                    MIR_TODO(state, "Evaluate deferred trait constant - " << path);
+                    DEBUG(state << "Found deferred trait constant - " << path);
+                    // Return null to force the replacement to not happen (yet)
+                    // - Expansion and resolution of this constant happens after/in "Trans Monomorph"
+                    return nullptr;
                 }
                 else
                 {
@@ -184,7 +185,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         ),
     (UfcsInherent,
         const ::HIR::TypeImpl* best_impl = nullptr;
-        // TODO: Associated constants (inherent)
+        // Associated constants (inherent)
         resolve.m_crate.find_type_impls(*pe.type, [&](const auto& ty)->const auto& { return ty; },
             [&](const auto& impl) {
                 auto it = impl.m_constants.find(pe.item);
@@ -366,7 +367,6 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         ),
     (Pointer,
         if( lit.is_BorrowPath() || lit.is_BorrowData() ) {
-            // TODO:
             MIR_TODO(state, "BorrowOf into pointer - " << lit << " into " << ty);
         }
         else {
@@ -715,7 +715,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
     bool source_is_dst = false;
     if( MIR_Cleanup_Unsize_GetMetadata(state, mutator, dst_ty_inner, src_ty_inner, ptr_value,  meta_value, meta_type, source_is_dst) )
     {
-        // TODO: There is a case where the source is already a fat pointer. In that case the pointer of the new DST must be the source DST pointer
+        // There is a case where the source is already a fat pointer. In that case the pointer of the new DST must be the source DST pointer
         if( source_is_dst )
         {
             auto ty_unit_ptr = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_unit());
@@ -845,7 +845,6 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
 
         if( dte.type == ste.type )
         {
-            // TODO: Use unsize code above
             return MIR_Cleanup_Unsize(state, mutator, dst_ty, *ste.inner, mv$(value));
         }
         else
@@ -1084,7 +1083,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                 auto& se = stmt.as_Assign();
 
                 TU_IFLET( ::MIR::RValue, se.src, Constant, e,
-                    // TODO: Replace `Const` with actual values
+                    // Replace `Const` with actual values
                     TU_IFLET( ::MIR::Constant, e, Const, ce,
                         // 1. Find the constant
                         ::HIR::TypeRef  ty;
