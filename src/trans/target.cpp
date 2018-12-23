@@ -42,7 +42,7 @@ const TargetArch ARCH_M68K = {
     "m68k",
     32, true,
     { /*atomic(u8)=*/true, false, true, false,  true },
-    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 4) // TODO: Does m68k have lower alignments?
+    TargetArch::Alignments(2, 2, 2, 2, 2, 2, 2)
 };
 TargetSpec  g_target;
 
