@@ -2354,7 +2354,29 @@ namespace {
             )
             this->m_completed = true;
         }
-        void visit(::HIR::ExprNode_Emplace& node) override {
+        void visit_emplace_129(::HIR::ExprNode_Emplace& node) {
+            const auto& sp = node.span();
+            const auto& exp_ty = this->context.get_type(node.m_res_type);
+            const auto& data_ty = this->context.get_type(node.m_value->m_res_type);
+            const auto& placer_ty = this->context.get_type(node.m_place->m_res_type);
+            const auto& lang_Boxed = this->context.m_lang_Box;
+            TRACE_FUNCTION_F("exp_ty=" << exp_ty << ", data_ty=" << data_ty << ", placer_ty" << placer_ty);
+            ASSERT_BUG(sp, node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer, "1.29 mode with non-box _Emplace node");
+            ASSERT_BUG(sp, placer_ty == ::HIR::TypeRef::new_unit(), "1.29 mode with box in syntax - placer type is " << placer_ty);
+
+            ASSERT_BUG(sp, !lang_Boxed.m_components.empty(), "`owbed_box` not present when `box` operator used");
+
+            // NOTE: `owned_box` shouldn't point to anything but a struct
+            const auto& str = this->context.m_crate.get_struct_by_path(sp, lang_Boxed);
+            // TODO: Store this type to avoid having to construct it every pass
+            auto boxed_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_Boxed, {data_ty.clone()}), &str );
+
+            // TODO: is there anyting special about this node that might need revisits?
+
+            context.equate_types(sp, exp_ty, boxed_ty);
+            this->m_completed = true;
+        }
+        void visit_emplace_119(::HIR::ExprNode_Emplace& node) {
             const auto& sp = node.span();
             const auto& exp_ty = this->context.get_type(node.m_res_type);
             const auto& data_ty = this->context.get_type(node.m_value->m_res_type);
@@ -2448,6 +2470,16 @@ namespace {
             }
 
             this->m_completed = true;
+        }
+        void visit(::HIR::ExprNode_Emplace& node) override {
+            switch(gTargetVersion)
+            {
+            case TargetVersion::Rustc1_19:
+                return visit_emplace_119(node);
+            case TargetVersion::Rustc1_29:
+                return visit_emplace_129(node);
+            }
+            throw "BUG: Unhandled target version";
         }
 
         void visit(::HIR::ExprNode_TupleVariant& node) override {
