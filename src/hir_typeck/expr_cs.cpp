@@ -16,6 +16,17 @@
 
 namespace {
     inline HIR::ExprNodeP mk_exprnodep(HIR::ExprNode* en, ::HIR::TypeRef ty){ en->m_res_type = mv$(ty); return HIR::ExprNodeP(en); }
+
+    inline ::HIR::SimplePath get_parent_path(const ::HIR::SimplePath& sp) {
+        auto rv = sp;
+        rv.m_components.pop_back();
+        return rv;
+    }
+    inline ::HIR::GenericPath get_parent_path(const ::HIR::GenericPath& gp) {
+        auto rv = gp.clone();
+        rv.m_path.m_components.pop_back();
+        return rv;
+    }
 }
 #define NEWNODE(TY, SP, CLASS, ...)  mk_exprnodep(new HIR::ExprNode##CLASS(SP ,## __VA_ARGS__), TY)
 
@@ -216,7 +227,8 @@ struct Context
     void possible_equate_type_disable(unsigned int ivar_index, bool is_to);
 
     // - Add a pattern binding (forcing the type to match)
-    void add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
+    void handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
+    void handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
     void add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb, ::HIR::TypeRef type);
 
     void add_var(const Span& sp, unsigned int index, const ::std::string& name, ::HIR::TypeRef type);
@@ -751,7 +763,7 @@ namespace {
             TRACE_FUNCTION_F(&node << " let " << node.m_pattern << ": " << node.m_type);
 
             this->context.add_ivars( node.m_type );
-            this->context.add_binding(node.span(), node.m_pattern, node.m_type);
+            this->context.handle_pattern(node.span(), node.m_pattern, node.m_type);
 
             if( node.m_value )
             {
@@ -791,7 +803,7 @@ namespace {
                 TRACE_FUNCTION_F("ARM " << arm.m_patterns);
                 for(auto& pat : arm.m_patterns)
                 {
-                    this->context.add_binding(node.span(), pat, val_type);
+                    this->context.handle_pattern(node.span(), pat, val_type);
                 }
 
                 if( arm.m_cond )
@@ -1088,8 +1100,7 @@ namespace {
             }
             else
             {
-                auto s_path = gp.m_path;
-                s_path.m_components.pop_back();
+                auto s_path = get_parent_path(gp.m_path);
 
                 const auto& enm = this->context.m_crate.get_enum_by_path(sp, s_path);
                 fix_param_count(sp, this->context, ::HIR::TypeRef(), false, gp, enm.m_params, gp.m_params);
@@ -1648,8 +1659,7 @@ namespace {
                     } break;
                 case ::HIR::ExprNode_PathValue::ENUM_VAR_CONSTR: {
                     const auto& var_name = e.m_path.m_components.back();
-                    auto enum_path = e.m_path;
-                    enum_path.m_components.pop_back();
+                    auto enum_path = get_parent_path(e.m_path);
                     const auto& enm = this->context.m_crate.get_enum_by_path(sp, enum_path);
                     fix_param_count(sp, this->context, ::HIR::TypeRef(), false, e, enm.m_params, e.m_params);
                     size_t idx = enm.find_variant(var_name);
@@ -1875,7 +1885,7 @@ namespace {
             TRACE_FUNCTION_F(&node << " |...| ...");
             for(auto& arg : node.m_args) {
                 this->context.add_ivars( arg.second );
-                this->context.add_binding( node.span(), arg.first, arg.second );
+                this->context.handle_pattern( node.span(), arg.first, arg.second );
             }
             this->context.add_ivars( node.m_return );
             this->context.add_ivars( node.m_code->m_res_type );
@@ -3635,7 +3645,492 @@ void Context::add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb,
 }
 
 // NOTE: Mutates the pattern to add ivars to contained paths
-void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type)
+void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type)
+{
+    TRACE_FUNCTION_F("pat = " << pat << ", type = " << type);
+
+    // TODO: 1.29 includes "match ergonomics" which allows automatic insertion of borrow/deref when matching
+    // - Handling this will make pattern matching slightly harder (all patterns needing revisist)
+    // - BUT: New bindings will still be added as usualin this pass.
+    // - Any use of `&` (or `ref`?) in the pattern disables match ergonomics for the entire pattern.
+    //   - Does `box` also do this disable?
+    //
+    //
+    // - Add a counter to each pattern indicting how many implicit borrows/derefs are applied.
+    // - When this function is called, check if the pattern is eligable for pattern auto-ref/deref
+    // - Detect if the pattern uses & or ref. If it does, then invoke the existing code
+    // - Otherwise, register a revisit for the pattern
+
+
+    struct H2 {
+        static bool has_ref_or_borrow(const Span& sp, const ::HIR::Pattern& pat) {
+            if( pat.m_binding.is_valid() && pat.m_binding.m_type != ::HIR::PatternBinding::Type::Move ) {
+                return true;
+            }
+            if( pat.m_data.is_Ref() ) {
+                return true;
+            }
+            bool rv = false;
+            TU_MATCHA( (pat.m_data), (e),
+            (Any,
+                ),
+            (Value,
+                ),
+            (Range,
+                ),
+            (Box,
+                rv |= H2::has_ref_or_borrow(sp, *e.sub);
+                ),
+            (Ref,
+                rv |= H2::has_ref_or_borrow(sp, *e.sub);
+                ),
+            (Tuple,
+                for(const auto& subpat : e.sub_patterns)
+                    rv |= H2::has_ref_or_borrow(sp, subpat);
+                ),
+            (SplitTuple,
+                for(auto& subpat : e.leading) {
+                    rv |= H2::has_ref_or_borrow(sp, subpat);
+                }
+                for(auto& subpat : e.trailing) {
+                    rv |= H2::has_ref_or_borrow(sp, subpat);
+                }
+                ),
+            (Slice,
+                for(auto& sub : e.sub_patterns)
+                    rv |= H2::has_ref_or_borrow(sp, sub);
+                ),
+            (SplitSlice,
+                for(auto& sub : e.leading)
+                    rv |= H2::has_ref_or_borrow(sp, sub);
+                for(auto& sub : e.trailing)
+                    rv |= H2::has_ref_or_borrow(sp, sub);
+                ),
+
+            // - Enums/Structs
+            (StructValue,
+                ),
+            (StructTuple,
+                for(const auto& subpat : e.sub_patterns)
+                    rv |= H2::has_ref_or_borrow(sp, subpat);
+                ),
+            (Struct,
+                for( auto& field_pat : e.sub_patterns )
+                    rv |= H2::has_ref_or_borrow(sp, field_pat.second);
+                ),
+            (EnumValue,
+                ),
+            (EnumTuple,
+                for(const auto& subpat : e.sub_patterns)
+                    rv |= H2::has_ref_or_borrow(sp, subpat);
+                ),
+            (EnumStruct,
+                for( auto& field_pat : e.sub_patterns )
+                    rv |= H2::has_ref_or_borrow(sp, field_pat.second);
+                )
+            )
+            return rv;
+        }
+    };
+
+    // 1. Determine if this pattern can apply auto-ref/deref
+    if( pat.m_data.is_Any() ) {
+        // `_` pattern, no destructure/match, so no auto-ref/deref
+        // - TODO: Does this do auto-borrow too?
+        if( pat.m_binding.is_valid() ) {
+            this->add_binding_inner(sp, pat.m_binding, type.clone());
+        }
+        return ;
+    }
+
+    // NOTE: Even if the top-level is a binding, and even if the top-level type is fully known, match ergonomics
+    // still applies.
+    if( TARGETVER_1_29 && ! H2::has_ref_or_borrow(sp, pat) ) {
+        // There's not a `&` or `ref` in the pattern, and we're targeting 1.29
+        // - Run the match ergonomics handler
+        // TODO: Default binding mode can be overridden back to "move" with `mut`
+
+        struct MatchErgonomicsRevisit:
+            public Revisitor
+        {
+            Span    sp;
+            ::HIR::TypeRef  m_outer_ty;
+            ::HIR::Pattern& m_pattern;
+            ::HIR::PatternBinding::Type m_outer_mode;
+
+            MatchErgonomicsRevisit(Span sp, ::HIR::TypeRef outer, ::HIR::Pattern& pat, ::HIR::PatternBinding::Type binding_mode=::HIR::PatternBinding::Type::Move):
+                sp(mv$(sp)), m_outer_ty(mv$(outer)),
+                m_pattern(pat),
+                m_outer_mode(binding_mode)
+            {}
+
+            void fmt(::std::ostream& os) const override {
+                os << "MatchErgonomicsRevisit { " << m_pattern << " : " << m_outer_ty << " }";
+            }
+            bool revisit(Context& context) override {
+                TRACE_FUNCTION_F("Match ergonomics - " << m_pattern << " : " << m_outer_ty);
+                return this->revisit_inner(context, m_pattern, m_outer_ty, m_outer_mode);
+            }
+            // TODO: Recurse into inner patterns, creating new revisitors?
+            // - OR, could just recurse on it.
+            // 
+            // Recusring incurs costs on every iteration, but is less expensive the first time around
+            // New revisitors are cheaper when inferrence takes multiple iterations, but takes longer first time.
+            bool revisit_inner(Context& context, ::HIR::Pattern& pattern, const ::HIR::TypeRef& type, ::HIR::PatternBinding::Type binding_mode) const {
+                if( !revisit_inner_real(context, pattern, type, binding_mode) )
+                {
+                    DEBUG("Add revisit for " << pattern << " : " << type << "(mode = " << (int)binding_mode << ")");
+                    context.add_revisit_adv( box$(( MatchErgonomicsRevisit { sp, type.clone(), pattern, binding_mode } )) );
+                }
+                return true;
+            }
+            bool revisit_inner_real(Context& context, ::HIR::Pattern& pattern, const ::HIR::TypeRef& type, ::HIR::PatternBinding::Type binding_mode) const {
+                TRACE_FUNCTION_F(pattern << " : " << type);
+
+                // Binding applies to the raw input type (not after dereferencing)
+                if( pattern.m_binding.is_valid() )
+                {
+                    // - Binding present, use the current binding mode
+                    switch(binding_mode)
+                    {
+                    case ::HIR::PatternBinding::Type::Move:
+                        context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), type);
+                        break;
+                    default:
+                        TODO(sp, "Assign variable type using mode " << (int)binding_mode << " and " << type);
+                    }
+                }
+
+                // If the type is a borrow, then count derefs required for the borrow
+                // - If the first non-borrow inner is an ivar, return false
+                unsigned n_deref = 0;
+                ::HIR::BorrowType   bt = ::HIR::BorrowType::Owned;
+                const auto* ty_p = &context.get_type(type);
+                while( ty_p->m_data.is_Borrow() ) {
+                    bt = ::std::max(bt, ty_p->m_data.as_Borrow().type);
+                    ty_p = &context.get_type( *ty_p->m_data.as_Borrow().inner );
+                    n_deref ++;
+                }
+                DEBUG("- " << n_deref << " derefs of class " << bt << " to get " << *ty_p);
+                if( ty_p->m_data.is_Infer() ) {
+                    // Still pure infer, can't do anything
+                    // - What if it's an literal?
+
+                    // TODO: Visit all inner bindings and disable coercion fallbacks on them.
+                    MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern);
+                    return false;
+                }
+                const auto& ty = *ty_p;
+
+                // Here we have a known type and binding mode for this pattern
+                // - Time to handle this pattern then recurse into sub-patterns
+
+                // Store the deref count in the pattern.
+                pattern.m_implicit_deref_count = n_deref;
+                // Determine the new binding mode from the borrow type
+                switch(bt)
+                {
+                case ::HIR::BorrowType::Owned:
+                    // No change
+                    break;
+                case ::HIR::BorrowType::Unique:
+                    switch(binding_mode)
+                    {
+                    case ::HIR::PatternBinding::Type::Move:
+                    case ::HIR::PatternBinding::Type::MutRef:
+                        binding_mode = ::HIR::PatternBinding::Type::MutRef;
+                        break;
+                    case ::HIR::PatternBinding::Type::Ref:
+                        // No change
+                        break;
+                    }
+                    break;
+                case ::HIR::BorrowType::Shared:
+                    binding_mode = ::HIR::PatternBinding::Type::Ref;
+                    break;
+                }
+
+                bool rv = false;
+                TU_MATCH_HDR( (pattern.m_data), { )
+                TU_ARM(pattern.m_data, Any, pe) {
+                    // no-op
+                    rv = true;
+                    }
+                TU_ARM(pattern.m_data, Value, pe) {
+                    // no-op?
+                    rv = true;
+                    }
+                TU_ARM(pattern.m_data, Range, pe) {
+                    // no-op?
+                    rv = true;
+                    }
+                TU_ARM(pattern.m_data, Box, pe) {
+                    // TODO: inner pattern
+                    TODO(sp, "Match ergonomics - box pattern");
+                    }
+                TU_ARM(pattern.m_data, Ref, pe) {
+                    BUG(sp, "Match ergonomics - & pattern");
+                    }
+                TU_ARM(pattern.m_data, Tuple, e) {
+                    if( !ty.m_data.is_Tuple() ) {
+                        ERROR(sp, E0000, "Matching a non-tuple with a tuple pattern - " << ty);
+                    }
+                    const auto& te = ty.m_data.as_Tuple();
+                    if( e.sub_patterns.size() != te.size() ) {
+                        ERROR(sp, E0000, "Tuple pattern with an incorrect number of fields, expected " << e.sub_patterns.size() << "-tuple, got " << ty);
+                    }
+
+                    rv = true;
+                    for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+                        rv &= this->revisit_inner(context, e.sub_patterns[i], te[i], binding_mode);
+                    }
+                TU_ARM(pattern.m_data, SplitTuple, pe) {
+                    TODO(sp, "Match ergonomics - split-tuple pattern");
+                    }
+                TU_ARM(pattern.m_data, Slice, e) {
+                    const ::HIR::TypeRef*   slice_inner;
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
+                        slice_inner = &*te.inner;
+                    )
+                    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+                        slice_inner = &*te.inner;
+                    )
+                    else {
+                        ERROR(sp, E0000, "Matching a non-array/slice with a slice pattern - " << ty);
+                    }
+                    rv = true;
+                    for(auto& sub : e.sub_patterns)
+                        rv |= this->revisit_inner(context, sub, *slice_inner, binding_mode);
+                    }
+                TU_ARM(pattern.m_data, SplitSlice, pe) {
+                    TODO(sp, "Match ergonomics - split-slice pattern");
+                    }
+                TU_ARM(pattern.m_data, StructValue, e) {
+                    context.add_ivars_params( e.path.m_params );
+                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
+                    rv = true;
+                    }
+                TU_ARM(pattern.m_data, StructTuple, e) {
+                    context.add_ivars_params( e.path.m_params );
+                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
+                    TODO(sp, "Match ergonomics - tuple struct pattern");
+                    }
+                TU_ARM(pattern.m_data, Struct, e) {
+                    context.add_ivars_params( e.path.m_params );
+                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
+                    assert(e.binding);
+                    const auto& str = *e.binding;
+
+                    // - assert check from earlier pass
+                    ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct");
+                    const auto& sd = str.m_data.as_Named();
+                    const auto& params = e.path.m_params;
+
+                    rv = true;
+                    for( auto& field_pat : e.sub_patterns )
+                    {
+                        unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - sd.begin();
+                        if( f_idx == sd.size() ) {
+                            ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
+                        }
+                        const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
+                        if( monomorphise_type_needed(field_type) ) {
+                            auto field_type_mono = monomorphise_type(sp, str.m_params, params,  field_type);
+                            rv &= this->revisit_inner(context, field_pat.second, field_type_mono, binding_mode);
+                        }
+                        else {
+                            rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
+                        }
+                    }
+                    }
+                TU_ARM(pattern.m_data, EnumValue, e) {
+                    context.add_ivars_params( e.path.m_params );
+                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
+                    rv = true;
+                    }
+                TU_ARM(pattern.m_data, EnumTuple, e) {
+                    context.add_ivars_params( e.path.m_params );
+                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
+                    assert(e.binding_ptr);
+                    const auto& enm = *e.binding_ptr;
+                    const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.m_data.as_Path().binding.as_Struct();
+                    const auto& tup_var = str.m_data.as_Tuple();
+
+                    const auto& params = e.path.m_params;
+
+                    if( e.sub_patterns.size() != tup_var.size() ) {
+                        ERROR(sp, E0000, "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size() );
+                    }
+
+                    rv = true;  // &= below ensures that all must be complete to return complete
+                    for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+                    {
+                        if( monomorphise_type_needed(tup_var[i].ent) ) {
+                            auto var_ty = monomorphise_type(sp, enm.m_params, params,  tup_var[i].ent);
+                            rv &= this->revisit_inner(context, e.sub_patterns[i], var_ty, binding_mode);
+                        }
+                        else {
+                            rv &= this->revisit_inner(context, e.sub_patterns[i], tup_var[i].ent, binding_mode);
+                        }
+                    }
+                    }
+                TU_ARM(pattern.m_data, EnumStruct, e) {
+                    context.add_ivars_params( e.path.m_params );
+                    context.equate_types( sp, ty, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
+                    assert(e.binding_ptr);
+                    TODO(sp, "Match ergonomics - enum struct pattern");
+                    }
+                }
+                return rv;
+            }
+
+            static void disable_possibilities_on_bindings(const Span& sp, Context& context, const ::HIR::Pattern& pat)
+            {
+                if( pat.m_binding.is_valid() ) {
+                    const auto& pb = pat.m_binding;
+                    context.equate_types_from_shadow(sp, context.get_var(sp, pb.m_slot));
+                }
+                TU_MATCHA( (pat.m_data), (e),
+                (Any,
+                    ),
+                (Value,
+                    ),
+                (Range,
+                    ),
+                (Box,
+                    disable_possibilities_on_bindings(sp, context, *e.sub);
+                    ),
+                (Ref,
+                    disable_possibilities_on_bindings(sp, context, *e.sub);
+                    ),
+                (Tuple,
+                    for(auto& subpat : e.sub_patterns)
+                        disable_possibilities_on_bindings(sp, context, subpat);
+                    ),
+                (SplitTuple,
+                    for(auto& subpat : e.leading) {
+                        disable_possibilities_on_bindings(sp, context, subpat);
+                    }
+                    for(auto& subpat : e.trailing) {
+                        disable_possibilities_on_bindings(sp, context, subpat);
+                    }
+                    ),
+                (Slice,
+                    for(auto& sub : e.sub_patterns)
+                        disable_possibilities_on_bindings(sp, context, sub);
+                    ),
+                (SplitSlice,
+                    for(auto& sub : e.leading)
+                        disable_possibilities_on_bindings(sp, context, sub);
+                    for(auto& sub : e.trailing)
+                        disable_possibilities_on_bindings(sp, context, sub);
+                    ),
+
+                // - Enums/Structs
+                (StructValue,
+                    ),
+                (StructTuple,
+                    for(auto& subpat : e.sub_patterns)
+                        disable_possibilities_on_bindings(sp, context, subpat);
+                    ),
+                (Struct,
+                    for(auto& field_pat : e.sub_patterns)
+                        disable_possibilities_on_bindings(sp, context, field_pat.second);
+                    ),
+                (EnumValue,
+                    ),
+                (EnumTuple,
+                    for(auto& subpat : e.sub_patterns)
+                        disable_possibilities_on_bindings(sp, context, subpat);
+                    ),
+                (EnumStruct,
+                    for(auto& field_pat : e.sub_patterns)
+                        disable_possibilities_on_bindings(sp, context, field_pat.second);
+                    )
+                )
+            }
+            static void create_bindings(const Span& sp, Context& context, ::HIR::Pattern& pat)
+            {
+                if( pat.m_binding.is_valid() ) {
+                    const auto& pb = pat.m_binding;
+                    context.add_var( sp, pb.m_slot, pb.m_name, context.m_ivars.new_ivar_tr() );
+                    // TODO: Ensure that there's no more bindings below this?
+                    // - I'll leave the option open, MIR generation should handle cases where there's multiple borrows
+                    //   or moves.
+                }
+                TU_MATCHA( (pat.m_data), (e),
+                (Any,
+                    ),
+                (Value,
+                    ),
+                (Range,
+                    ),
+                (Box,
+                    create_bindings(sp, context, *e.sub);
+                    ),
+                (Ref,
+                    create_bindings(sp, context, *e.sub);
+                    ),
+                (Tuple,
+                    for(auto& subpat : e.sub_patterns)
+                        create_bindings(sp, context, subpat);
+                    ),
+                (SplitTuple,
+                    for(auto& subpat : e.leading) {
+                        create_bindings(sp, context, subpat);
+                    }
+                    for(auto& subpat : e.trailing) {
+                        create_bindings(sp, context, subpat);
+                    }
+                    ),
+                (Slice,
+                    for(auto& sub : e.sub_patterns)
+                        create_bindings(sp, context, sub);
+                    ),
+                (SplitSlice,
+                    for(auto& sub : e.leading)
+                        create_bindings(sp, context, sub);
+                    for(auto& sub : e.trailing)
+                        create_bindings(sp, context, sub);
+                    ),
+
+                // - Enums/Structs
+                (StructValue,
+                    ),
+                (StructTuple,
+                    for(auto& subpat : e.sub_patterns)
+                        create_bindings(sp, context, subpat);
+                    ),
+                (Struct,
+                    for(auto& field_pat : e.sub_patterns)
+                        create_bindings(sp, context, field_pat.second);
+                    ),
+                (EnumValue,
+                    ),
+                (EnumTuple,
+                    for(auto& subpat : e.sub_patterns)
+                        create_bindings(sp, context, subpat);
+                    ),
+                (EnumStruct,
+                    for(auto& field_pat : e.sub_patterns)
+                        create_bindings(sp, context, field_pat.second);
+                    )
+                )
+            }
+        };
+        // - Create variables, assigning new ivars for all of them.
+        MatchErgonomicsRevisit::create_bindings(sp, *this, pat);
+        // - Add a revisit for the outer pattern (saving the current target type as well as the pattern)
+        DEBUG("Handle match ergonomics - " << pat << " with " << type);
+        this->add_revisit_adv( box$(( MatchErgonomicsRevisit { sp, type.clone(), pat } )) );
+        return ;
+    }
+
+    // ---
+    this->handle_pattern_direct_inner(sp, pat, type);
+}
+
+void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type)
 {
     TRACE_FUNCTION_F("pat = " << pat << ", type = " << type);
 
@@ -3644,7 +4139,6 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
 
         // TODO: Bindings aren't allowed within another binding
     }
-
 
     struct H {
         static void handle_value(Context& context, const Span& sp, const ::HIR::TypeRef& type, const ::HIR::Pattern::Value& val) {
@@ -3702,13 +4196,13 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             if( te.path.m_data.is_Generic() && te.path.m_data.as_Generic().m_path == m_lang_Box ) {
                 // Box<T>
                 const auto& inner = te.path.m_data.as_Generic().m_params.m_types.at(0);
-                this->add_binding(sp, *e.sub, inner);
+                this->handle_pattern_direct_inner(sp, *e.sub, inner);
                 break ;
             }
         )
 
         auto inner = this->m_ivars.new_ivar_tr();
-        this->add_binding(sp, *e.sub, inner);
+        this->handle_pattern_direct_inner(sp, *e.sub, inner);
         ::HIR::GenericPath  path { m_lang_Box, ::HIR::PathParams(mv$(inner)) };
         this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(&m_crate.get_struct_by_path(sp, m_lang_Box))) );
         ),
@@ -3718,11 +4212,11 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             if( te.type != e.type ) {
                 ERROR(sp, E0000, "Pattern-type mismatch, &-ptr mutability mismatch");
             }
-            this->add_binding(sp, *e.sub, *te.inner);
+            this->handle_pattern_direct_inner(sp, *e.sub, *te.inner);
         )
         else {
             auto inner = this->m_ivars.new_ivar_tr();
-            this->add_binding(sp, *e.sub, inner);
+            this->handle_pattern_direct_inner(sp, *e.sub, inner);
             this->equate_types(sp, type, ::HIR::TypeRef::new_borrow( e.type, mv$(inner) ));
         }
         ),
@@ -3735,14 +4229,14 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             }
 
             for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
-                this->add_binding(sp, e.sub_patterns[i], te[i] );
+                this->handle_pattern_direct_inner(sp, e.sub_patterns[i], te[i] );
         )
         else {
 
             ::std::vector< ::HIR::TypeRef>  sub_types;
             for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ ) {
                 sub_types.push_back( this->m_ivars.new_ivar_tr() );
-                this->add_binding(sp, e.sub_patterns[i], sub_types[i] );
+                this->handle_pattern_direct_inner(sp, e.sub_patterns[i], sub_types[i] );
             }
             this->equate_types(sp, ty, ::HIR::TypeRef( mv$(sub_types) ));
         }
@@ -3755,11 +4249,11 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
 
             unsigned int tup_idx = 0;
             for(auto& subpat : e.leading) {
-                this->add_binding(sp, subpat, te[tup_idx++]);
+                this->handle_pattern_direct_inner(sp, subpat, te[tup_idx++]);
             }
             tup_idx = te.size() - e.trailing.size();
             for(auto& subpat : e.trailing) {
-                this->add_binding(sp, subpat, te[tup_idx++]);
+                this->handle_pattern_direct_inner(sp, subpat, te[tup_idx++]);
             }
 
             // TODO: Should this replace the pattern with a non-split?
@@ -3775,12 +4269,12 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             leading_tys.reserve(e.leading.size());
             for(auto& subpat : e.leading) {
                 leading_tys.push_back( this->m_ivars.new_ivar_tr() );
-                this->add_binding(sp, subpat, leading_tys.back());
+                this->handle_pattern_direct_inner(sp, subpat, leading_tys.back());
             }
             ::std::vector<::HIR::TypeRef>   trailing_tys;
             for(auto& subpat : e.trailing) {
                 trailing_tys.push_back( this->m_ivars.new_ivar_tr() );
-                this->add_binding(sp, subpat, trailing_tys.back());
+                this->handle_pattern_direct_inner(sp, subpat, trailing_tys.back());
             }
 
             struct SplitTuplePatRevisit:
@@ -3831,16 +4325,16 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         const auto& ty = this->get_type(type);
         TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
             for(auto& sub : e.sub_patterns)
-                this->add_binding(sp, sub, *te.inner );
+                this->handle_pattern_direct_inner(sp, sub, *te.inner );
         )
         else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
             for(auto& sub : e.sub_patterns)
-                this->add_binding(sp, sub, *te.inner );
+                this->handle_pattern_direct_inner(sp, sub, *te.inner );
         )
         else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Infer, te,
             auto inner = this->m_ivars.new_ivar_tr();
             for(auto& sub : e.sub_patterns)
-                this->add_binding(sp, sub, inner);
+                this->handle_pattern_direct_inner(sp, sub, inner);
 
             struct SlicePatRevisit:
                 public Revisitor
@@ -3968,9 +4462,9 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         }
 
         for(auto& sub : e.leading)
-            this->add_binding( sp, sub, inner );
+            this->handle_pattern_direct_inner( sp, sub, inner );
         for(auto& sub : e.trailing)
-            this->add_binding( sp, sub, inner );
+            this->handle_pattern_direct_inner( sp, sub, inner );
         ),
 
     // - Enums/Structs
@@ -3997,10 +4491,10 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             const auto& field_type = sd[i].ent;
             if( monomorphise_type_needed(field_type) ) {
                 auto var_ty = monomorphise_type(sp, str.m_params, params,  field_type);
-                this->add_binding(sp, sub_pat, var_ty);
+                this->handle_pattern_direct_inner(sp, sub_pat, var_ty);
             }
             else {
-                this->add_binding(sp, sub_pat, field_type);
+                this->handle_pattern_direct_inner(sp, sub_pat, field_type);
             }
         }
         ),
@@ -4028,20 +4522,16 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
             if( monomorphise_type_needed(field_type) ) {
                 auto field_type_mono = monomorphise_type(sp, str.m_params, params,  field_type);
-                this->add_binding(sp, field_pat.second, field_type_mono);
+                this->handle_pattern_direct_inner(sp, field_pat.second, field_type_mono);
             }
             else {
-                this->add_binding(sp, field_pat.second, field_type);
+                this->handle_pattern_direct_inner(sp, field_pat.second, field_type);
             }
         }
         ),
     (EnumValue,
         this->add_ivars_params( e.path.m_params );
-        {
-            auto path = e.path.clone();
-            path.m_path.m_components.pop_back();
-            this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
-        }
+        this->equate_types( sp, type, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
 
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
@@ -4053,12 +4543,7 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         ),
     (EnumTuple,
         this->add_ivars_params( e.path.m_params );
-        {
-            auto path = e.path.clone();
-            path.m_path.m_components.pop_back();
-
-            this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
-        }
+        this->equate_types( sp, type, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
         assert(e.binding_ptr);
         const auto& enm = *e.binding_ptr;
         const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.m_data.as_Path().binding.as_Struct();
@@ -4074,21 +4559,16 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
         {
             if( monomorphise_type_needed(tup_var[i].ent) ) {
                 auto var_ty = monomorphise_type(sp, enm.m_params, params,  tup_var[i].ent);
-                this->add_binding(sp, e.sub_patterns[i], var_ty);
+                this->handle_pattern_direct_inner(sp, e.sub_patterns[i], var_ty);
             }
             else {
-                this->add_binding(sp, e.sub_patterns[i], tup_var[i].ent);
+                this->handle_pattern_direct_inner(sp, e.sub_patterns[i], tup_var[i].ent);
             }
         }
         ),
     (EnumStruct,
         this->add_ivars_params( e.path.m_params );
-        {
-            auto path = e.path.clone();
-            path.m_path.m_components.pop_back();
-
-            this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
-        }
+        this->equate_types( sp, type, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
 
         if( e.sub_patterns.empty() )
             return ;
@@ -4108,10 +4588,10 @@ void Context::add_binding(const Span& sp, ::HIR::Pattern& pat, const ::HIR::Type
             const ::HIR::TypeRef& field_type = tup_var[f_idx].second.ent;
             if( monomorphise_type_needed(field_type) ) {
                 auto field_type_mono = monomorphise_type(sp, enm.m_params, params,  field_type);
-                this->add_binding(sp, field_pat.second, field_type_mono);
+                this->handle_pattern_direct_inner(sp, field_pat.second, field_type_mono);
             }
             else {
-                this->add_binding(sp, field_pat.second, field_type);
+                this->handle_pattern_direct_inner(sp, field_pat.second, field_type);
             }
         }
         )
@@ -4369,6 +4849,7 @@ void Context::add_var(const Span& sp, unsigned int index, const ::std::string& n
         m_bindings.resize(index+1);
     if( m_bindings[index].name == "" ) {
         m_bindings[index] = Binding { name, mv$(type) };
+        this->require_sized(sp, m_bindings[index].ty);
     }
     else {
         ASSERT_BUG(sp, m_bindings[index].name == name, "");
@@ -6414,7 +6895,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     Context context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics };
 
     for( auto& arg : args ) {
-        context.add_binding( Span(), arg.first, arg.second );
+        context.handle_pattern( Span(), arg.first, arg.second );
     }
 
     // - Build up ruleset from node tree
@@ -6543,14 +7024,19 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 ++ it;
             }
         }
-        for( auto it = context.adv_revisits.begin(); it != context.adv_revisits.end(); )
         {
-            auto& ent = **it;
-            if( ent.revisit(context) ) {
-                it = context.adv_revisits.erase(it);
+            ::std::vector<bool> adv_revisit_remove_list;
+            size_t  len = context.adv_revisits.size();
+            for(size_t i = 0; i < len; i ++)
+            {
+                auto& ent = *context.adv_revisits[i];
+                adv_revisit_remove_list.push_back( ent.revisit(context) );
             }
-            else {
-                ++ it;
+            for(size_t i = len; i --;)
+            {
+                if( adv_revisit_remove_list[i] ) {
+                    context.adv_revisits.erase( context.adv_revisits.begin() + i );
+                }
             }
         }
 

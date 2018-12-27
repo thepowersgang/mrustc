@@ -1062,6 +1062,9 @@ bool TraitResolution::iterate_bounds_traits(const Span& sp, ::std::function<bool
             if( cb(be->type, be->trait) )
                 return true;
 
+            // TODO: Remove, or fix places where `find_named_trait_in_trait` is used along with this function
+            // - Using both leads to duplicate detections, which can confuse callers
+#if 0
             assert(be->trait.m_trait_ptr);
             const auto& trait_ref = *be->trait.m_trait_ptr;
             auto monomorph_cb = monomorphise_type_get_cb(sp, &be->type, &be->trait.m_path.m_params, nullptr, nullptr);
@@ -1073,6 +1076,7 @@ bool TraitResolution::iterate_bounds_traits(const Span& sp, ::std::function<bool
                 if( cb(be->type, tp_mono) )
                     return true;
             }
+#endif
         }
         return false;
         });
