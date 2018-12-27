@@ -18,6 +18,7 @@
 #include "operations.hpp"
 #include <mir/visit_crate_mir.hpp>
 #include <hir/expr_state.hpp>
+#include <trans/target.hpp> // Target_GetSizeAndAlignOf - for `box`
 
 namespace {
 
@@ -1557,6 +1558,17 @@ namespace {
 
         void visit(::HIR::ExprNode_Emplace& node) override
         {
+            switch(gTargetVersion)
+            {
+            case TargetVersion::Rustc1_19:
+                return visit_emplace_119(node);
+            case TargetVersion::Rustc1_29:
+                return visit_emplace_129(node);
+            }
+            throw "BUG: Unhandled target version";
+        }
+        void visit_emplace_119(::HIR::ExprNode_Emplace& node)
+        {
             if( node.m_type == ::HIR::ExprNode_Emplace::Type::Noop ) {
                 return node.m_value->visit(*this);
             }
@@ -1688,6 +1700,94 @@ namespace {
 
             m_builder.mark_value_assigned(node.span(), res);
             m_builder.set_result( node.span(), mv$(res) );
+        }
+        void visit_emplace_129(::HIR::ExprNode_Emplace& node)
+        {
+            assert( node.m_type == ::HIR::ExprNode_Emplace::Type::Boxer );
+            const auto& data_ty = node.m_value->m_res_type;
+
+            node.m_value->visit(*this);
+            auto val = m_builder.get_result(node.span());
+
+            const auto& lang_exchange_malloc = m_builder.crate().get_lang_item_path(node.span(), "exchange_malloc");
+            const auto& lang_owned_box = m_builder.crate().get_lang_item_path(node.span(), "owned_box");
+
+            ::HIR::PathParams   trait_params_data;
+            trait_params_data.m_types.push_back( data_ty.clone() );
+
+            // 1. Determine the size/alignment of the type
+            ::MIR::Param    size_param, align_param;
+            size_t  item_size, item_align;
+            if( Target_GetSizeAndAlignOf(node.span(), m_builder.resolve(), data_ty, item_size, item_align) ) {
+                size_param = ::MIR::Constant::make_Int({ static_cast<int64_t>(item_size), ::HIR::CoreType::Usize });
+                align_param = ::MIR::Constant::make_Int({ static_cast<int64_t>(item_align), ::HIR::CoreType::Usize });
+            }
+            else {
+                // Insert calls to "size_of" and "align_of" intrinsics
+                auto size_slot = m_builder.new_temporary( ::HIR::CoreType::Usize );
+                auto size__panic = m_builder.new_bb_unlinked();
+                auto size__ok = m_builder.new_bb_unlinked();
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    size__ok, size__panic,
+                    size_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "size_of", trait_params_data.clone() }),
+                    {}
+                    }));
+                m_builder.set_cur_block(size__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(size__ok);
+                auto align_slot = m_builder.new_temporary( ::HIR::CoreType::Usize );
+                auto align__panic = m_builder.new_bb_unlinked();
+                auto align__ok = m_builder.new_bb_unlinked();
+                m_builder.end_block(::MIR::Terminator::make_Call({
+                    align__ok, align__panic,
+                    align_slot.clone(), ::MIR::CallTarget::make_Intrinsic({ "align_of", trait_params_data.clone() }),
+                    {}
+                    }));
+                m_builder.set_cur_block(align__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+                m_builder.set_cur_block(align__ok);
+
+                size_param = ::std::move(size_slot);
+                align_param = ::std::move(align_slot);
+            }
+
+            // 2. Call the allocator function and get a pointer
+            // - NOTE: "exchange_malloc" returns a `*mut u8`, need to cast that to the target type
+            auto place_raw_type = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Unique, ::HIR::CoreType::U8);
+            auto place_raw = m_builder.new_temporary( place_raw_type );
+
+            auto place__panic = m_builder.new_bb_unlinked();
+            auto place__ok = m_builder.new_bb_unlinked();
+            m_builder.end_block(::MIR::Terminator::make_Call({
+                place__ok, place__panic,
+                place_raw.clone(), ::HIR::Path(lang_exchange_malloc),
+                make_vec2<::MIR::Param>( ::std::move(size_param), ::std::move(align_param) )
+                }));
+            m_builder.set_cur_block(place__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+            m_builder.set_cur_block(place__ok);
+
+            auto place_type = ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Unique, data_ty.clone());
+            auto place = m_builder.new_temporary( place_type );
+            m_builder.push_stmt_assign(node.span(), place.clone(), ::MIR::RValue::make_Cast({ mv$(place_raw), place_type.clone() }));
+            // 3. Do a non-dropping write into the target location (i.e. just a MIR assignment)
+            // TODO: This should indicate that the destination shouldn't be dropped, but since drops don't happen on
+            //       reassign currently, that's not yet an issue.
+            m_builder.push_stmt_assign(node.span(), ::MIR::LValue::make_Deref({box$(place.clone())}), mv$(val));
+            // 4. Convert the pointer into an `owned_box`
+            auto res_type = ::HIR::TypeRef::new_path(::HIR::GenericPath(lang_owned_box, mv$(trait_params_data)), &m_builder.crate().get_struct_by_path(node.span(), lang_owned_box));
+            auto res = m_builder.new_temporary(res_type);
+            auto cast__panic = m_builder.new_bb_unlinked();
+            auto cast__ok = m_builder.new_bb_unlinked();
+            ::HIR::PathParams   transmute_params;
+            transmute_params.m_types.push_back( res_type.clone() );
+            transmute_params.m_types.push_back( place_type.clone() );
+            m_builder.end_block(::MIR::Terminator::make_Call({
+                cast__ok, cast__panic,
+                res.clone(), ::MIR::CallTarget::make_Intrinsic({ "transmute", mv$(transmute_params) }),
+                {}
+                }));
+            m_builder.set_cur_block(cast__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
+            m_builder.set_cur_block(cast__ok);
+
+            m_builder.set_result(node.span(), mv$(res));
         }
 
         void visit(::HIR::ExprNode_TupleVariant& node) override
