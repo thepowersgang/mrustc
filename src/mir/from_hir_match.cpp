@@ -886,9 +886,10 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
         )
     )
 }
-void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty)
+void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& top_ty)
 {
-    TRACE_FUNCTION_F("pat="<<pat<<", ty="<<ty<<",   m_field_path=[" << m_field_path << "]");
+    static ::HIR::Pattern   empty_pattern;
+    TRACE_FUNCTION_F("pat="<<pat<<", ty="<<top_ty<<",   m_field_path=[" << m_field_path << "]");
     struct H {
         static uint64_t get_pattern_value_int(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::Pattern::Value& val) {
             TU_MATCH_DEF( ::HIR::Pattern::Value, (val), (e),
@@ -922,6 +923,16 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
     };
 
+    const auto* ty_p = &top_ty;
+    for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+    {
+        if( !ty_p->m_data.is_Borrow() )
+            BUG(sp, "Deref step " << i << "/" << pat.m_implicit_deref_count << " hit a non-borrow " << *ty_p << " from " << top_ty);
+        ty_p = &*ty_p->m_data.as_Borrow().inner;
+        m_field_path.push_back( FIELD_DEREF );
+    }
+    const auto& ty = *ty_p;
+
     // TODO: Outer handling for Value::Named patterns
     // - Convert them into either a pattern, or just a variant of this function that operates on ::HIR::Literal
     //  > It does need a way of handling unknown-value constants (e.g. <GenericT as Foo>::CONST)
@@ -931,6 +942,10 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             if( pve.binding )
             {
                 this->append_from_lit(sp, pve.binding->m_value_res, ty);
+                for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+                {
+                    m_field_path.pop_back();
+                }
                 return ;
             }
             else
@@ -940,20 +955,23 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         )
     )
 
-    TU_MATCHA( (ty.m_data), (e),
-    (Infer,   BUG(sp, "Ivar for in match type"); ),
-    (Diverge,
+    TU_MATCH_HDR( (ty.m_data), {)
+    TU_ARM(ty.m_data, Infer, e) {
+        BUG(sp, "Ivar for in match type");
+        }
+    TU_ARM(ty.m_data, Diverge, e) {
         // Since ! can never exist, mark this arm as impossible.
         // TODO: Marking as impossible (and not emitting) leads to exhuaustiveness failure.
         //this->m_is_impossible = true;
-        ),
-    (Primitive,
-        TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Matching primitive with invalid pattern - " << pat); ),
-        (Any,
+        }
+    TU_ARM(ty.m_data, Primitive, e) {
+        TU_MATCH_HDR( (pat.m_data), {)
+        default:
+            BUG(sp, "Matching primitive with invalid pattern - " << pat);
+        TU_ARM(pat.m_data, Any, pe) {
             this->push_rule( PatternRule::make_Any({}) );
-            ),
-        (Range,
+            }
+        TU_ARM(pat.m_data, Range, pe) {
             switch(e)
             {
             case ::HIR::CoreType::F32:
@@ -994,8 +1012,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
             }
-            ),
-        (Value,
+            }
+        TU_ARM(pat.m_data, Value, pe) {
             switch(e)
             {
             case ::HIR::CoreType::F32:
@@ -1035,16 +1053,16 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 BUG(sp, "Hit match over `str` - must be `&str`");
                 break;
             }
-            )
-        )
-        ),
-    (Tuple,
+            }
+        }
+        }
+    TU_ARM(ty.m_data, Tuple, e) {
         m_field_path.push_back(0);
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching tuple with invalid pattern - " << pat); ),
         (Any,
             for(const auto& sty : e) {
-                this->append_from(sp, pat, sty);
+                this->append_from(sp, empty_pattern, sty);
                 m_field_path.back() ++;
             }
             ),
@@ -1070,8 +1088,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
         )
         m_field_path.pop_back();
-        ),
-    (Path,
+        }
+    TU_ARM(ty.m_data, Path, e) {
         // This is either a struct destructure or an enum
         TU_MATCHA( (e.binding), (pbe),
         (Unbound,
@@ -1132,12 +1150,12 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
                 ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
                 (Any,
-                    // - Recurse into type and use the same pattern again
+                    // - Recurse into type using an empty pattern
                     for(const auto& fld : sd)
                     {
                         ::HIR::TypeRef  tmp;
                         const auto& sty_mono = (monomorphise_type_needed(fld.ent) ? tmp = monomorph(fld.ent) : fld.ent);
-                        this->append_from(sp, pat, sty_mono);
+                        this->append_from(sp, empty_pattern, sty_mono);
                         m_field_path.back() ++;
                     }
                     ),
@@ -1166,7 +1184,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                     {
                         ::HIR::TypeRef  tmp;
                         const auto& sty_mono = (monomorphise_type_needed(fld.second.ent) ? tmp = monomorph(fld.second.ent) : fld.second.ent);
-                        this->append_from(sp, pat, sty_mono);
+                        this->append_from(sp, empty_pattern, sty_mono);
                         m_field_path.back() ++;
                     }
                     m_field_path.pop_back();
@@ -1182,8 +1200,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                         auto it = ::std::find_if( pe.sub_patterns.begin(), pe.sub_patterns.end(), [&](const auto& x){ return x.first == fld.first; } );
                         if( it == pe.sub_patterns.end() )
                         {
-                            ::HIR::Pattern  any_pat {};
-                            this->append_from(sp, any_pat, sty_mono);
+                            this->append_from(sp, empty_pattern, sty_mono);
                         }
                         else
                         {
@@ -1289,8 +1306,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
             )
         )
-        ),
-    (Generic,
+        }
+    TU_ARM(ty.m_data, Generic, e) {
         // Generics don't destructure, so the only valid pattern is `_`
         TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Match not allowed, " << ty <<  " with " << pat); ),
@@ -1298,29 +1315,29 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             this->push_rule( PatternRule::make_Any({}) );
             )
         )
-        ),
-    (TraitObject,
+        }
+    TU_ARM(ty.m_data, TraitObject, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a trait object");
         }
-        ),
-    (ErasedType,
+        }
+    TU_ARM(ty.m_data, ErasedType, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over an erased type");
         }
-        ),
-    (Array,
+        }
+    TU_ARM(ty.m_data, Array, e) {
         // Sequential match just like tuples.
         m_field_path.push_back(0);
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         ( BUG(sp, "Matching array with invalid pattern - " << pat); ),
         (Any,
             for(unsigned int i = 0; i < e.size_val; i ++) {
-                this->append_from(sp, pat, *e.inner);
+                this->append_from(sp, empty_pattern, *e.inner);
                 m_field_path.back() ++;
             }
             ),
@@ -1336,8 +1353,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
         )
         m_field_path.pop_back();
-        ),
-    (Slice,
+        }
+    TU_ARM(ty.m_data, Slice, e) {
         TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (pe),
         (
             BUG(sp, "Matching over [T] with invalid pattern - " << pat);
@@ -1393,18 +1410,19 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 }) );
             )
         )
-        ),
-    (Borrow,
+        }
+    TU_ARM(ty.m_data, Borrow, e) {
         m_field_path.push_back( FIELD_DEREF );
-        TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
-        ( BUG(sp, "Matching borrow invalid pattern - " << pat); ),
-        (Any,
-            this->append_from( sp, pat, *e.inner );
-            ),
-        (Ref,
+        TU_MATCH_HDR( (pat.m_data), {)
+        default:
+            BUG(sp, "Matching borrow invalid pattern - " << ty << " with " << pat);
+        TU_ARM(pat.m_data, Any, pe) {
+            this->append_from( sp, empty_pattern, *e.inner );
+            }
+        TU_ARM(pat.m_data, Ref, pe) {
             this->append_from( sp, *pe.sub, *e.inner );
-            ),
-        (Value,
+            }
+        TU_ARM(pat.m_data, Value, pe) {
             // TODO: Check type?
             if( pe.val.is_String() ) {
                 const auto& s = pe.val.as_String();
@@ -1423,32 +1441,36 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             else {
                 BUG(sp, "Matching borrow invalid pattern - " << pat);
             }
-            )
-        )
+            }
+        }
         m_field_path.pop_back();
-        ),
-    (Pointer,
+        }
+    TU_ARM(ty.m_data, Pointer, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a pointer");
         }
-        ),
-    (Function,
+        }
+    TU_ARM(ty.m_data, Function, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a functon pointer");
         }
-        ),
-    (Closure,
+        }
+    TU_ARM(ty.m_data, Closure, e) {
         if( pat.m_data.is_Any() ) {
         }
         else {
             ERROR(sp, E0000, "Attempting to match over a closure");
         }
-        )
-    )
+        }
+    }
+    for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+    {
+        m_field_path.pop_back();
+    }
 }
 
 namespace {

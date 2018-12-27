@@ -46,6 +46,9 @@ namespace HIR {
         if( x.m_binding.is_valid() ) {
             os << x.m_binding;
         }
+        if( x.m_implicit_deref_count > 0 ) {
+            os << "&*" << x.m_implicit_deref_count;
+        }
         TU_MATCH(Pattern::Data, (x.m_data), (e),
         (Any,
             os << "_";

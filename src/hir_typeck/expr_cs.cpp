@@ -3858,6 +3858,10 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                 TU_ARM(pattern.m_data, Value, pe) {
                     // no-op?
+                    if( pe.val.is_String() ) {
+                        ASSERT_BUG(sp, pattern.m_implicit_deref_count >= 1, "");
+                        pattern.m_implicit_deref_count -= 1;
+                    }
                     rv = true;
                     }
                 TU_ARM(pattern.m_data, Range, pe) {

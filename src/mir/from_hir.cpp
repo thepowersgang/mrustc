@@ -1782,7 +1782,7 @@ namespace {
             m_builder.end_block(::MIR::Terminator::make_Call({
                 cast__ok, cast__panic,
                 res.clone(), ::MIR::CallTarget::make_Intrinsic({ "transmute", mv$(transmute_params) }),
-                {}
+                make_vec1( ::MIR::Param( mv$(place) ) )
                 }));
             m_builder.set_cur_block(cast__panic); m_builder.end_block( ::MIR::Terminator::make_Diverge({}) );   // HACK
             m_builder.set_cur_block(cast__ok);

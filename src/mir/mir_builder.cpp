@@ -397,6 +397,7 @@ void MirBuilder::push_stmt(const Span& sp, ::MIR::Statement stmt)
 void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
 {
     VarState*   state_p = nullptr;
+    // TODO: Tracking of complex asignment states (e.g. assignment of a field)
     TU_MATCH_DEF(::MIR::LValue, (dst), (e),
     (
         ),
@@ -420,6 +421,7 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
         drop_value_from_state(sp, *state_p, dst.clone());
         *state_p = VarState::make_Valid({});
     }
+    // TODO: What about assigning into non-tracked locations? Should still cause a drop
 }
 
 void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope, bool to_above/*=false*/)

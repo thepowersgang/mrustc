@@ -136,7 +136,7 @@ struct Pattern
 
     PatternBinding  m_binding;
     Data    m_data;
-    unsigned m_implicit_deref_count;
+    unsigned m_implicit_deref_count = 0;
 
     Pattern() {}
     Pattern(PatternBinding pb, Data d):
