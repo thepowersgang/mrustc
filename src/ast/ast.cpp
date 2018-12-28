@@ -257,7 +257,7 @@ MacroInvocation MacroInvocation::clone() const
 
 UseStmt UseStmt::clone() const
 {
-    return UseStmt(sp, path);
+    return UseStmt(sp, AST::Path(path));
 }
 
 void ExternBlock::add_item(Named<Item> named_item)

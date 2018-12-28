@@ -313,6 +313,7 @@ namespace
                 {
                     auto v = mod.m_namespace_items.find(name);
                     if( v != mod.m_namespace_items.end() ) {
+                        DEBUG("- NS: Namespace " << v->second.path);
                         path = ::AST::Path( v->second.path );
                         return true;
                     }
@@ -320,6 +321,7 @@ namespace
                 {
                     auto v = mod.m_type_items.find(name);
                     if( v != mod.m_type_items.end() ) {
+                        DEBUG("- NS: Type " << v->second.path);
                         path = ::AST::Path( v->second.path );
                         return true;
                     }
@@ -327,15 +329,10 @@ namespace
                 break;
 
             case LookupMode::Type:
-                //if( name == "IntoIterator" ) {
-                //    DEBUG("lookup_in_mod(mod="<<mod.path()<<")");
-                //    for(const auto& v : mod.m_type_items) {
-                //        DEBUG("- " << v.first << " = " << (v.second.is_pub ? "pub " : "") << v.second.path);
-                //    }
-                //}
                 {
                     auto v = mod.m_type_items.find(name);
                     if( v != mod.m_type_items.end() ) {
+                        DEBUG("- TY: Type " << v->second.path);
                         path = ::AST::Path( v->second.path );
                         return true;
                     }
@@ -345,14 +342,15 @@ namespace
                 {
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
-                        const auto& b = v->second.path.binding();
+                        const auto& b = v->second.path.m_bindings.value;
                         switch( b.tag() )
                         {
-                        case ::AST::PathBinding::TAG_EnumVar:
-                        case ::AST::PathBinding::TAG_Static:
+                        case ::AST::PathBinding_Value::TAG_EnumVar:
+                        case ::AST::PathBinding_Value::TAG_Static:
+                            DEBUG("- PV: Value " << v->second.path);
                             path = ::AST::Path( v->second.path );
                             return true;
-                        case ::AST::PathBinding::TAG_Struct:
+                        case ::AST::PathBinding_Value::TAG_Struct:
                             // TODO: Restrict this to unit-like structs
                             if( b.as_Struct().struct_ && !b.as_Struct().struct_->m_data.is_Unit() )
                                 ;
@@ -360,6 +358,7 @@ namespace
                                 ;
                             else
                             {
+                                DEBUG("- PV: Value " << v->second.path);
                                 path = ::AST::Path( v->second.path );
                                 return true;
                             }
@@ -375,6 +374,7 @@ namespace
                 {
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
+                        DEBUG("- C/V: Value " << v->second.path);
                         path = ::AST::Path( v->second.path );
                         return true;
                     }
@@ -592,7 +592,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
     {
         // Trait is specified, definitely a trait item
         // - Must resolve here
-        const auto& pb = ufcs.trait->binding();
+        const auto& pb = ufcs.trait->m_bindings.type;
         if( ! pb.is_Trait() ) {
             ERROR(sp, E0000, "UFCS trait was not a trait - " << *ufcs.trait);
         }
@@ -662,7 +662,7 @@ namespace {
         {
             np.nodes().push_back( mv$(nodes[i]) );
         }
-        np.bind( path.binding().clone() );
+        np.m_bindings = path.m_bindings.clone();
         return np;
     }
     AST::Path split_into_ufcs_ty(const Span& sp, AST::Path path, unsigned int i /*item_name_idx*/)
@@ -716,7 +716,6 @@ namespace {
                 const auto& varname = p.m_components.back();
                 auto var_idx = e.find_variant(varname);
                 ASSERT_BUG(sp, var_idx != SIZE_MAX, "Extern crate import path points to non-present variant - " << p);
-                auto pb = ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e});
 
                 // Construct output path (with same set of parameters)
                 AST::Path   rv( p.m_crate_name, {} );
@@ -724,7 +723,12 @@ namespace {
                 for(const auto& c : p.m_components)
                     rv.nodes().push_back( AST::PathNode(c) );
                 rv.nodes().back().args() = mv$( path.nodes().back().args() );
-                rv.bind( mv$(pb) );
+                if( e.m_data.is_Data() && e.m_data.as_Data()[var_idx].is_struct ) {
+                    rv.m_bindings.type = ::AST::PathBinding_Type::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e});
+                }
+                else {
+                    rv.m_bindings.value = ::AST::PathBinding_Value::make_EnumVar({nullptr, static_cast<unsigned>(var_idx), &e});
+                }
                 path = mv$(rv);
 
                 return ;
@@ -735,7 +739,7 @@ namespace {
             )
         }
 
-        ::AST::PathBinding  pb;
+        ::AST::Path::Bindings   pb;
 
         const auto& name = p.m_components.back();
         if( is_value )
@@ -749,19 +753,19 @@ namespace {
                 BUG(sp, "HIR Import item pointed to an import");
                 ),
             (Constant,
-                pb = ::AST::PathBinding::make_Static({nullptr, nullptr});
+                pb.value = ::AST::PathBinding_Value::make_Static({nullptr, nullptr});
                 ),
             (Static,
-                pb = ::AST::PathBinding::make_Static({nullptr, &e});
+                pb.value = ::AST::PathBinding_Value::make_Static({nullptr, &e});
                 ),
             (StructConstant,
-                pb = ::AST::PathBinding::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
+                pb.value = ::AST::PathBinding_Value::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
                 ),
             (Function,
-                pb = ::AST::PathBinding::make_Function({nullptr/*, &e*/});
+                pb.value = ::AST::PathBinding_Value::make_Function({nullptr/*, &e*/});
                 ),
             (StructConstructor,
-                pb = ::AST::PathBinding::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
+                pb.value = ::AST::PathBinding_Value::make_Struct({nullptr, &ext_crate.m_hir->get_typeitem_by_path(sp, e.ty, true).as_Struct()});
                 )
             )
         }
@@ -776,22 +780,22 @@ namespace {
                 BUG(sp, "HIR Import item pointed to an import");
                 ),
             (Module,
-                pb = ::AST::PathBinding::make_Module({nullptr, &e});
+                pb.type = ::AST::PathBinding_Type::make_Module({nullptr, &e});
                 ),
             (Trait,
-                pb = ::AST::PathBinding::make_Trait({nullptr, &e});
+                pb.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
                 ),
             (TypeAlias,
-                pb = ::AST::PathBinding::make_TypeAlias({nullptr/*, &e*/});
+                pb.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
                 ),
             (Struct,
-                pb = ::AST::PathBinding::make_Struct({nullptr, &e});
+                pb.type = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
                 ),
             (Union,
-                pb = ::AST::PathBinding::make_Union({nullptr, &e});
+                pb.type = ::AST::PathBinding_Type::make_Union({nullptr, &e});
                 ),
             (Enum,
-                pb = ::AST::PathBinding::make_Enum({nullptr, &e});
+                pb.type = ::AST::PathBinding_Type::make_Enum({nullptr, &e});
                 )
             )
         }
@@ -802,7 +806,7 @@ namespace {
         for(const auto& c : p.m_components)
             rv.nodes().push_back( AST::PathNode(c) );
         rv.nodes().back().args() = mv$( path.nodes().back().args() );
-        rv.bind( mv$(pb) );
+        rv.m_bindings = mv$(pb);
         path = mv$(rv);
     }
 
@@ -816,7 +820,7 @@ namespace {
             switch(mode)
             {
             case Context::LookupMode::Namespace:
-                path.bind( ::AST::PathBinding::make_Module({nullptr, &crate.m_hir->m_root_module}) );
+                path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, &crate.m_hir->m_root_module});
                 return ;
             default:
                 TODO(sp, "Looking up a non-namespace, but pointed to crate root");
@@ -862,7 +866,7 @@ namespace {
                         trait_path.nodes().back().args().m_types.push_back( ::TypeRef(sp) );
                     }
                 }
-                trait_path.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
+                trait_path.m_bindings.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
 
                 ::AST::Path new_path;
                 const auto& next_node = path_abs.nodes[i+1];
@@ -922,7 +926,12 @@ namespace {
                         ERROR(sp, E0000, "Type parameters were not expected here (enum params go on the variant)");
                     }
 
-                    path.bind( ::AST::PathBinding::make_EnumVar({nullptr, static_cast<unsigned int>(idx), &e}) );
+                    if( e.m_data.is_Data() && e.m_data.as_Data()[idx].is_struct ) {
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_EnumVar({nullptr, static_cast<unsigned int>(idx), &e});
+                    }
+                    else {
+                        path.m_bindings.value = ::AST::PathBinding_Value::make_EnumVar({nullptr, static_cast<unsigned int>(idx), &e});
+                    }
                     path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                     return;
                 }
@@ -949,22 +958,22 @@ namespace {
                         return ;
                         ),
                     (Trait,
-                        path.bind( ::AST::PathBinding::make_Trait({nullptr, &e}) );
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_Trait({nullptr, &e});
                         ),
                     (Module,
-                        path.bind( ::AST::PathBinding::make_Module({nullptr, &e}) );
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, &e});
                         ),
                     (TypeAlias,
-                        path.bind( ::AST::PathBinding::make_TypeAlias({nullptr/*, &e*/}) );
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
                         ),
                     (Enum,
-                        path.bind( ::AST::PathBinding::make_Enum({nullptr, &e}) );
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_Enum({nullptr, &e});
                         ),
                     (Struct,
-                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &e}) );
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
                         ),
                     (Union,
-                        path.bind( ::AST::PathBinding::make_Union({nullptr, &e}) );
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_Union({nullptr, &e});
                         )
                     )
                     // Update path (trim down to `start` and set crate name)
@@ -984,7 +993,7 @@ namespace {
                         ),
                     (StructConstant,
                         auto ty_path = e.ty;
-                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
+                        path.m_bindings.value = ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)});
                         path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                         return ;
                         ),
@@ -994,7 +1003,7 @@ namespace {
                         ),
                     (Constant,
                         // Bind and update path
-                        path.bind( ::AST::PathBinding::make_Static({nullptr, nullptr}) );
+                        path.m_bindings.value = ::AST::PathBinding_Value::make_Static({nullptr, nullptr});
                         path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                         return ;
                         )
@@ -1016,22 +1025,22 @@ namespace {
                         return ;
                         ),
                     (Function,
-                        path.bind( ::AST::PathBinding::make_Function({nullptr/*, &e*/}) );
+                        path.m_bindings.value = ::AST::PathBinding_Value::make_Function({nullptr/*, &e*/});
                         ),
                     (StructConstructor,
                         auto ty_path = e.ty;
-                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
+                        path.m_bindings.value = ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)});
                         ),
                     (StructConstant,
                         auto ty_path = e.ty;
-                        path.bind( ::AST::PathBinding::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)}) );
+                        path.m_bindings.value = ::AST::PathBinding_Value::make_Struct({nullptr, &crate.m_hir->get_struct_by_path(sp, ty_path)});
                         ),
                     (Static,
-                        path.bind( ::AST::PathBinding::make_Static({nullptr, &e}) );
+                        path.m_bindings.value = ::AST::PathBinding_Value::make_Static({nullptr, &e});
                         ),
                     (Constant,
                         // Bind
-                        path.bind( ::AST::PathBinding::make_Static({nullptr, nullptr}) );
+                        path.m_bindings.value = ::AST::PathBinding_Value::make_Static({nullptr, nullptr});
                         )
                     )
                     path = split_into_crate(sp, mv$(path), start,  crate.m_name);
@@ -1088,7 +1097,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
             const auto& name_ref = it->second;
             DEBUG("#" << i << " \"" << n.name() << "\" = " << name_ref.path << (name_ref.is_import ? " (import)" : "") );
 
-            TU_MATCH_DEF(::AST::PathBinding, (name_ref.path.binding()), (e),
+            TU_MATCH_DEF(::AST::PathBinding_Type, (name_ref.path.m_bindings.type), (e),
             (
                 ERROR(sp, E0000, "Encountered non-namespace item '" << n.name() << "' ("<<name_ref.path<<") in path " << path);
                 ),
@@ -1235,7 +1244,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     if( ! Context::lookup_in_mod(*mod, path_abs.nodes.back().name(), mode,  tmp) ) {
         ERROR(sp, E0000, "Couldn't find " << Context::lookup_mode_msg(mode) << " '" << path_abs.nodes.back().name() << "' of " << path);
     }
-    assert( ! tmp.binding().is_Unbound() );
+    ASSERT_BUG(sp, tmp.m_bindings.has_binding(), "Lookup for " << path << " succeeded, but had no binding");
 
     // Replaces the path with the one returned by `lookup_in_mod`, ensuring that `use` aliases are eliminated
     DEBUG("Replace " << path << " with " << tmp);
@@ -1283,7 +1292,8 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             // - If the next component isn't found in the located module
             //  > Instead use the type name.
             if( ! p.m_class.is_Local() && coretype_fromstring(e.nodes[0].name()) != CORETYPE_INVAL ) {
-                TU_IFLET( ::AST::PathBinding, p.binding(), Module, pe,
+                if( const auto* pep = p.m_bindings.type.opt_Module() ) {
+                    const auto& pe = *pep;
                     bool found = false;
                     const auto& name = e.nodes[1].name();
                     if( !pe.module_ ) {
@@ -1340,7 +1350,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     }
 
                     DEBUG("Primitive module hack yeilded " << p);
-                )
+                }
             }
 
             if( e.nodes.size() > 1 )
@@ -1447,7 +1457,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         BUG(sp, "Path wasn't absolutised correctly");
         ),
     (Local,
-        if( path.binding().is_Unbound() )
+        if( !path.m_bindings.has_binding() )
         {
             TODO(sp, "Bind unbound local path - " << path);
         }
@@ -1565,7 +1575,7 @@ void Resolve_Absolute_Type(Context& context,  TypeRef& type)
             assert( ufcs.nodes.size() == 1);
         )
 
-        TU_IFLET(::AST::PathBinding, e.path.binding(), Trait, be,
+        TU_IFLET(::AST::PathBinding_Type, e.path.m_bindings.type, Trait, be,
             auto ty = ::TypeRef( type.span(), ::make_vec1(Type_TraitPath { {}, mv$(e.path)}), {} );
             type = mv$(ty);
             return ;
@@ -2157,7 +2167,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
 
                 item_context.pop(def.params());
 
-                const_cast< ::AST::Trait*>(def.trait().ent.binding().as_Trait().trait_)->set_is_marker();
+                const_cast< ::AST::Trait*>(def.trait().ent.m_bindings.type.as_Trait().trait_)->set_is_marker();
             }
             else
             {

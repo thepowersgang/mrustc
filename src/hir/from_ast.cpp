@@ -214,11 +214,10 @@ const ::AST::Crate* g_ast_crate_ptr;
     (StructTuple,
         unsigned int leading_count  = e.tup_pat.start.size();
         unsigned int trailing_count = e.tup_pat.end  .size();
-        TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
-        (
+        TU_MATCH_HDRA( (e.path.m_bindings.value), {)
+        default:
             BUG(pat.span(), "Encountered StructTuple pattern not pointing to a enum variant or a struct - " << e.path);
-            ),
-        (EnumVar,
+        TU_ARMA(EnumVar, pb) {
             assert( pb.enum_ || pb.hir );
             unsigned int field_count;
             if( pb.enum_ ) {
@@ -268,8 +267,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                     mv$(sub_patterns)
                     })
                 };
-            ),
-        (Struct,
+            }
+        TU_ARMA(Struct, pb) {
             assert( pb.struct_ || pb.hir );
             unsigned int field_count;
             if( pb.struct_ ) {
@@ -317,8 +316,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                     mv$(sub_patterns)
                     })
                 };
-            )
-        )
+            }
+        }
         ),
     (Struct,
         ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> > sub_patterns;
@@ -326,11 +325,10 @@ const ::AST::Crate* g_ast_crate_ptr;
             sub_patterns.push_back( ::std::make_pair(sp.first, LowerHIR_Pattern(sp.second)) );
 
 
-        TU_MATCH_DEF(::AST::PathBinding, (e.path.binding()), (pb),
-        (
+        TU_MATCH_HDRA( (e.path.m_bindings.type), {)
+        default:
             BUG(pat.span(), "Encountered Struct pattern not pointing to a enum variant or a struct - " << e.path);
-            ),
-        (EnumVar,
+        TU_ARMA(EnumVar, pb) {
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_EnumStruct({
@@ -340,8 +338,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                     e.is_exhaustive
                     })
                 };
-            ),
-        (TypeAlias,
+            }
+        TU_ARMA(TypeAlias, pb) {
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Struct({
@@ -351,8 +349,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                     e.is_exhaustive
                     })
                 };
-            ),
-        (Struct,
+            }
+        TU_ARMA(Struct, pb) {
             return ::HIR::Pattern {
                 mv$(binding),
                 ::HIR::Pattern::Data::make_Struct({
@@ -362,8 +360,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                     e.is_exhaustive
                     })
                 };
-            )
-        )
+            }
+        }
         ),
 
     (Value,
@@ -750,9 +748,9 @@ const ::AST::Crate* g_ast_crate_ptr;
         TU_IFLET(::AST::Path::Class, e.path.m_class, Local, l,
             unsigned int slot;
             // NOTE: TypeParameter is unused
-            TU_IFLET(::AST::PathBinding, e.path.binding(), Variable, p,
-                slot = p.slot;
-            )
+            if( const auto* p = e.path.m_bindings.value.opt_Variable() ) {
+                slot = p->slot;
+            }
             else {
                 BUG(ty.span(), "Unbound local encountered in " << e.path);
             }
@@ -768,7 +766,7 @@ const ::AST::Crate* g_ast_crate_ptr;
         for(const auto& t : e.traits)
         {
             DEBUG("t = " << t.path);
-            const auto& tb = t.path.binding().as_Trait();
+            const auto& tb = t.path.m_bindings.type.as_Trait();
             assert( tb.trait_ || tb.hir );
             if( (tb.trait_ ? tb.trait_->is_marker() : tb.hir->m_is_marker) )
             {
@@ -1361,7 +1359,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     // Populate trait list
     for(const auto& item : ast_mod.m_type_items)
     {
-        if( item.second.path.binding().is_Trait() ) {
+        if( item.second.path.m_bindings.type.is_Trait() ) {
             auto sp = LowerHIR_SimplePath(Span(), item.second.path);
             if( ::std::find(mod.m_traits.begin(), mod.m_traits.end(), sp) == mod.m_traits.end() )
                 mod.m_traits.push_back( mv$(sp) );
@@ -1500,16 +1498,14 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
         if( ie.second.is_import ) {
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path );
             ::HIR::TypeItem ti;
-            TU_MATCH_DEF( ::AST::PathBinding, (ie.second.path.binding()), (pb),
-            (
+            if( const auto* pb = ie.second.path.m_bindings.type.opt_EnumVar() ) {
+                DEBUG("Import NS " << ie.first << " = " << hir_path << " (Enum Variant)");
+                ti = ::HIR::TypeItem::make_Import({ mv$(hir_path), true, pb->idx });
+            }
+            else {
                 DEBUG("Import NS " << ie.first << " = " << hir_path);
                 ti = ::HIR::TypeItem::make_Import({ mv$(hir_path), false, 0 });
-                ),
-            (EnumVar,
-                DEBUG("Import NS " << ie.first << " = " << hir_path << " (Enum Variant)");
-                ti = ::HIR::TypeItem::make_Import({ mv$(hir_path), true, pb.idx });
-                )
-            )
+            }
             _add_mod_ns_item(mod, ie.first, ie.second.is_pub, mv$(ti));
         }
     }
@@ -1520,16 +1516,15 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             auto hir_path = LowerHIR_SimplePath( sp, ie.second.path );
             ::HIR::ValueItem    vi;
 
-            TU_MATCH_DEF( ::AST::PathBinding, (ie.second.path.binding()), (pb),
-            (
+            TU_MATCH_HDRA( (ie.second.path.m_bindings.value), {)
+            default:
                 DEBUG("Import VAL " << ie.first << " = " << hir_path);
                 vi = ::HIR::ValueItem::make_Import({ mv$(hir_path), false, 0 });
-                ),
-            (EnumVar,
+            TU_ARMA(EnumVar, pb) {
                 DEBUG("Import VAL " << ie.first << " = " << hir_path << " (Enum Variant)");
                 vi = ::HIR::ValueItem::make_Import({ mv$(hir_path), true, pb.idx });
-                )
-            )
+                }
+            }
             _add_mod_val_item(mod, ie.first, ie.second.is_pub, mv$(vi));
         }
     }
@@ -1566,7 +1561,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
 
         if( impl.def().trait().ent.is_valid() )
         {
-            const auto& pb = impl.def().trait().ent.binding();
+            const auto& pb = impl.def().trait().ent.m_bindings.type;
             ASSERT_BUG(Span(), pb.is_Trait(), "Binding for trait path in impl isn't a Trait - " << impl.def().trait().ent);
             ASSERT_BUG(Span(), pb.as_Trait().trait_ || pb.as_Trait().hir, "Trait pointer for trait path in impl isn't set");
             bool is_marker = (pb.as_Trait().trait_ ? pb.as_Trait().trait_->is_marker() : pb.as_Trait().hir->m_is_marker);

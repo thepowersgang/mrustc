@@ -45,7 +45,36 @@ class Static;
 class Function;
 class ExternCrate;
 
-TAGGED_UNION_EX(PathBinding, (), Unbound, (
+TAGGED_UNION_EX(PathBinding_Value, (), Unbound, (
+    (Unbound, struct {
+        }),
+    (Struct, struct {
+        const Struct* struct_;
+        const ::HIR::Struct* hir;
+        }),
+    (Static, struct {
+        const Static* static_;
+        const ::HIR::Static* hir; // if nullptr and static_ == nullptr, points to a `const`
+        }),
+    (Function, struct {
+        const Function* func_;
+        }),
+    (EnumVar, struct {
+        const Enum* enum_;
+        unsigned int idx;
+        const ::HIR::Enum*  hir;
+        }),
+    (Variable, struct {
+        unsigned int slot;
+        })
+    ),
+    (), (),
+    (
+    public:
+        PathBinding_Value clone() const;
+        )
+    );
+TAGGED_UNION_EX(PathBinding_Type, (), Unbound, (
     (Unbound, struct {
         }),
     (Crate, struct {
@@ -71,13 +100,7 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
         const Trait* trait_;
         const ::HIR::Trait* hir;
         }),
-    (Static, struct {
-        const Static* static_;
-        const ::HIR::Static* hir; // if nullptr and static_ == nullptr, points to a `const`
-        }),
-    (Function, struct {
-        const Function* func_;
-        }),
+
     (EnumVar, struct {
         const Enum* enum_;
         unsigned int idx;
@@ -86,31 +109,48 @@ TAGGED_UNION_EX(PathBinding, (), Unbound, (
     (TypeAlias, struct {
         const TypeAlias* alias_;
         }),
-    (StructMethod, struct {
-        const Struct* struct_;
-        ::std::string name;
-        }),
-    (TraitMethod, struct {
-        const Trait* trait_;
-        ::std::string name;
-        }),
 
     (TypeParameter, struct {
         unsigned int level;
         unsigned int idx;
-        }),
-    (Variable, struct {
-        unsigned int slot;
         })
     ),
     (), (),
     (
     public:
-        PathBinding clone() const;
+        PathBinding_Type clone() const;
+        )
+    );
+TAGGED_UNION_EX(PathBinding_Macro, (), Unbound, (
+    (Unbound, struct {
+        }),
+    (ProcMacroDerive, struct {
+        const ExternCrate* crate_;
+        ::std::string   mac_name;
+        }),
+    (ProcMacroAttribute, struct {
+        const ExternCrate* crate_;
+        ::std::string   mac_name;
+        }),
+    (ProcMacro, struct {
+        const ExternCrate* crate_;
+        ::std::string   mac_name;
+        }),
+    (MacroRules, struct {
+        const ExternCrate* crate_;  // Can be NULL
+        //const MacroRules* mac;
+        })
+    ),
+    (), (),
+    (
+    public:
+        PathBinding_Macro clone() const;
         )
     );
 
-extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding& x);
+extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Value& x);
+extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Type& x);
+extern ::std::ostream& operator<<(::std::ostream& os, const PathBinding_Macro& x);
 
 struct PathParams
 {
@@ -191,23 +231,30 @@ public:
 public:
     Class   m_class;
 
-private:
-    PathBinding m_binding;
-public:
+    struct Bindings {
+        PathBinding_Value value;
+        PathBinding_Type type;
+        PathBinding_Macro macro;
+
+        Bindings clone() const {
+            return Bindings {
+                value.clone(), type.clone(), macro.clone()
+                };
+        }
+        bool has_binding() const {
+            return !value.is_Unbound() || !type.is_Unbound() || !macro.is_Unbound();
+        }
+    } m_bindings;
+
     virtual ~Path();
     // INVALID
     Path():
         m_class()
     {}
     Path(Path&&) = default;
-    Path& operator=(AST::Path&& x) {
-        m_class = mv$(x.m_class);
-        m_binding = mv$(x.m_binding);
-        //DEBUG("Path, " << x);
-        return *this;
-    }
+    Path& operator=(AST::Path&& x) = default;
 
-    Path(const Path& x);
+    /*explicit*/ Path(const Path& x);
     Path& operator=(const AST::Path&) = delete;
 
     // ABSOLUTE
@@ -281,7 +328,7 @@ public:
         //if( m_class.is_Invalid() )
         //    m_class = Class::make_Relative({});
         nodes().push_back( mv$(node) );
-        m_binding = PathBinding();
+        m_bindings = Bindings();
     }
 
     bool is_trivial() const {
@@ -318,8 +365,6 @@ public:
 
     bool is_concrete() const;
 
-    bool is_bound() const { return !m_binding.is_Unbound(); }
-    const PathBinding& binding() const { return m_binding; }
     void bind_variable(unsigned int slot);
 
     ::std::vector<PathNode>& nodes() {
@@ -353,14 +398,9 @@ private:
 
     void check_param_counts(const GenericParams& params, bool expect_params, PathNode& node);
 public:
-    void bind_enum_var(const Enum& ent, const ::std::string& name, const ::std::vector<TypeRef>& args={});
-    void bind_function(const Function& ent, const ::std::vector<TypeRef>& args={}) {
-        (void)args;
-        m_binding = PathBinding::make_Function({&ent});
-    }
-
-    void bind(::AST::PathBinding pb) {
-        m_binding = mv$(pb);
+    void bind_enum_var(const Enum& ent, const ::std::string& name);
+    void bind_function(const Function& ent) {
+        m_bindings.value = PathBinding_Value::make_Function({&ent});
     }
 };
 

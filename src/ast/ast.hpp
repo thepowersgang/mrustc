@@ -466,7 +466,6 @@ struct UseStmt
 {
     Span    sp;
     ::AST::Path path;
-    ::AST::PathBinding  alt_binding;
 
     UseStmt(Span sp, Path p):
         sp(sp),
