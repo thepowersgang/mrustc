@@ -20,6 +20,7 @@
 #include "../include/ident.hpp"
 
 class TypeRef;
+class MacroRules;
 
 namespace HIR {
 class Module;
@@ -138,7 +139,7 @@ TAGGED_UNION_EX(PathBinding_Macro, (), Unbound, (
         }),
     (MacroRules, struct {
         const ExternCrate* crate_;  // Can be NULL
-        //const MacroRules* mac;
+        const MacroRules* mac;
         })
     ),
     (), (),

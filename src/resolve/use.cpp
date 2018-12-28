@@ -307,6 +307,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 rv.value = ::AST::PathBinding_Value::make_Static({&e});
                 ),
             (Struct,
+                // TODO: What happens with name collisions?
                 if( !e.m_data.is_Struct() )
                     rv.value = ::AST::PathBinding_Value::make_Struct({&e});
                 rv.type = ::AST::PathBinding_Type::make_Struct({&e});
@@ -321,8 +322,18 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 rv.type = ::AST::PathBinding_Type::make_Module({&e});
                 )
             )
-            return rv;
         }
+    }
+    // TODO: macros
+    for(const auto& mac : mod.macros())
+    {
+        if( mac.name == des_item_name ) {
+            TODO(span, "Import of macro - " << des_item_name);
+        }
+    }
+    if( rv.has_binding() )
+    {
+        return rv;
     }
 
     // Imports
@@ -690,7 +701,17 @@ namespace {
 }
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start)
 {
-    return Resolve_Use_GetBinding__ext(span, crate, path, ec.m_hir->m_root_module, start);
+    auto rv = Resolve_Use_GetBinding__ext(span, crate, path, ec.m_hir->m_root_module, start);
+    if( start + 1 == path.nodes().size() )
+    {
+        const auto& name = path.nodes().back().name();
+        auto it = ec.m_hir->m_exported_macros.find( name );
+        if( it != ec.m_hir->m_exported_macros.end() )
+        {
+            rv.macro = ::AST::PathBinding_Macro::make_MacroRules({ &ec, &*it->second });
+        }
+    }
+    return rv;
 }
 
 ::AST::Path::Bindings Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules)
@@ -747,7 +768,7 @@ namespace {
             {
                 if( enum_.variants()[j].m_name == node2.name() ) {
                     variant_index = j;
-                    is_value = !enum_.variants()[i].m_data.is_Struct();
+                    is_value = !enum_.variants()[j].m_data.is_Struct();
                     break ;
                 }
             }
@@ -755,6 +776,7 @@ namespace {
                 ERROR(span, E0000, "Unknown enum variant '" << node2.name() << "'");
             }
 
+            DEBUG("AST Enum variant - " << variant_index << ", is_value=" << is_value << " " << enum_.variants()[variant_index].m_data.tag_str());
             if( is_value ) {
                 rv.value = ::AST::PathBinding_Value::make_EnumVar({&enum_, static_cast<unsigned int>(variant_index)});
             }

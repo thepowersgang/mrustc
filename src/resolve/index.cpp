@@ -59,6 +59,7 @@ namespace {
 
 void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
+    ASSERT_BUG(sp, ir.m_bindings.has_binding(), "");
     auto& list = get_mod_index(mod, location);
 
     bool was_import = (ir != mod.path() + name);
@@ -262,16 +263,28 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
     for(const auto& it : hmod.m_mod_items) {
         const auto& ve = *it.second;
         if( ve.is_public ) {
+            const auto* vep = &ve.ent;
             AST::Path   p;
-            if( ve.ent.is_Import() ) {
-                p = hir_to_ast( ve.ent.as_Import().path );
+            if( vep->is_Import() ) {
+                const auto& spath = vep->as_Import().path;
+                p = hir_to_ast( spath );
+
+                ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
+                const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
+                for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
+                    const auto& it = hmod->m_mod_items.at( spath.m_components[i] );
+                    ASSERT_BUG(sp, it->ent.is_Module(), "");
+                    hmod = &it->ent.as_Module();
+                }
+                vep = &hmod->m_mod_items.at( spath.m_components.back() )->ent;
             }
             else {
                 p = path + it.first;
             }
-            TU_MATCHA( (ve.ent), (e),
+            TU_MATCHA( (*vep), (e),
             (Import,
                 //throw "";
+                TODO(sp, "Get binding for HIR import? " << e.path);
                 ),
             (Module,
                 p.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, &e});
