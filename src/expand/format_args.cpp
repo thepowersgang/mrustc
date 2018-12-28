@@ -431,27 +431,18 @@ namespace {
         toks.push_back( mv$(t3) );
         toks.push_back( mv$(t4) );
     }
-}
 
-class CFormatArgsExpander:
-    public ExpandProcMacro
-{
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand_format_args(const Span& sp, const ::AST::Crate& crate, TTStream& lex, bool add_newline)
     {
         Token   tok;
 
-        auto lex = TTStream(sp, tt);
-        lex.parse_state().module = &mod;
-        if( ident != "" )
-            ERROR(sp, E0000, "format_args! doesn't take an ident");
+        auto format_string_node = Parse_ExprVal(lex);
+        ASSERT_BUG(sp, format_string_node, "No expression returned");
+        Expand_BareExpr(crate, lex.parse_state().get_current_mod(), format_string_node);
 
-        auto n = Parse_ExprVal(lex);
-        ASSERT_BUG(sp, n, "No expression returned");
-        Expand_BareExpr(crate, mod, n);
-
-        auto* format_string_np = dynamic_cast<AST::ExprNode_String*>(&*n);
+        auto* format_string_np = dynamic_cast<AST::ExprNode_String*>(&*format_string_node);
         if( !format_string_np ) {
-            ERROR(sp, E0000, "format_args! requires a string literal - got " << *n);
+            ERROR(sp, E0000, "format_args! requires a string literal - got " << *format_string_node);
         }
         const auto& format_string_sp = format_string_np->span();
         const auto& format_string = format_string_np->m_value;
@@ -497,6 +488,10 @@ class CFormatArgsExpander:
         ::std::vector< FmtFrag> fragments;
         ::std::string   tail;
         ::std::tie( fragments, tail ) = parse_format_string(format_string_sp, format_string,  named_args_index, free_args.size());
+        if( add_newline )
+        {
+            tail += "\n";
+        }
 
         bool is_simple = true;
         for(unsigned int i = 0; i < fragments.size(); i ++)
@@ -719,7 +714,40 @@ class CFormatArgsExpander:
 
         return box$( TTStreamO(sp, TokenTree(Ident::Hygiene::new_scope(), mv$(toks))) );
     }
+}
+
+class CFormatArgsExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    {
+        Token   tok;
+
+        auto lex = TTStream(sp, tt);
+        lex.parse_state().module = &mod;
+        if( ident != "" )
+            ERROR(sp, E0000, "format_args! doesn't take an ident");
+
+        return expand_format_args(sp, crate, lex, /*add_newline=*/false);
+    }
+};
+
+class CFormatArgsNlExpander:
+    public ExpandProcMacro
+{
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    {
+        Token   tok;
+
+        auto lex = TTStream(sp, tt);
+        lex.parse_state().module = &mod;
+        if( ident != "" )
+            ERROR(sp, E0000, "format_args_nl! doesn't take an ident");
+
+        return expand_format_args(sp, crate, lex, /*add_newline=*/true);
+    }
 };
 
 STATIC_MACRO("format_args", CFormatArgsExpander);
+STATIC_MACRO("format_args_nl", CFormatArgsNlExpander);
 

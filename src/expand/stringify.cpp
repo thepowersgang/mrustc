@@ -22,6 +22,7 @@ class CExpander:
         {
             if(!rv.empty())
                 rv += " ";
+            DEBUG(" += " << tok);
             rv += tok.to_str();
         }
 

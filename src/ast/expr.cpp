@@ -358,7 +358,8 @@ NODE(ExprNode_Tuple, {
 })
 
 NODE(ExprNode_NamedValue, {
-    os << m_path;
+    m_path.print_pretty(os, false);
+    //os << m_path;
 },{
     return NEWNODE(ExprNode_NamedValue, AST::Path(m_path));
 })

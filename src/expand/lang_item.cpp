@@ -78,6 +78,8 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
 
     else if( name == "debug_trait" ) { /* TODO: Poke derive() with this */ }
 
+    else if( TARGETVER_1_29 && name == "termination" ) { }    // 1.29 - trait used for non-() main
+
     // Structs
     else if( name == "non_zero" ) { }
     else if( name == "phantom_data" ) { }
@@ -222,6 +224,8 @@ public:
         // std - interestingly
         else if( name == "f32" ) {}
         else if( name == "f64" ) {}
+        else if( TARGETVER_1_29 && name == "f32_runtime" ) {}
+        else if( TARGETVER_1_29 && name == "f64_runtime" ) {}
         else {
             ERROR(sp, E0000, "Unknown lang item '" << name << "' on impl");
         }
