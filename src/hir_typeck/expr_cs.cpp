@@ -3917,7 +3917,24 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 TU_ARM(pattern.m_data, StructTuple, e) {
                     context.add_ivars_params( e.path.m_params );
                     context.equate_types( sp, ty, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
-                    TODO(sp, "Match ergonomics - tuple struct pattern");
+
+                    assert(e.binding);
+                    const auto& str = *e.binding;
+
+                    // - assert check from earlier pass
+                    ASSERT_BUG(sp, str.m_data.is_Tuple(), "Struct-tuple pattern on non-Tuple struct");
+                    const auto& sd = str.m_data.as_Tuple();
+                    const auto& params = e.path.m_params;
+
+                    rv = true;
+                    for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
+                    {
+                        /*const*/ auto& sub_pat = e.sub_patterns[i];
+                        const auto& field_type = sd[i].ent;
+                        ::HIR::TypeRef  tmp;
+                        const auto& var_ty = (monomorphise_type_needed(field_type) ? (tmp = monomorphise_type(sp, str.m_params, params,  field_type)) : field_type);
+                        rv &= this->revisit_inner(context, sub_pat, var_ty, binding_mode);
+                    }
                     }
                 TU_ARM(pattern.m_data, Struct, e) {
                     context.add_ivars_params( e.path.m_params );
@@ -3982,7 +3999,28 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     context.add_ivars_params( e.path.m_params );
                     context.equate_types( sp, ty, ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr)) );
                     assert(e.binding_ptr);
-                    TODO(sp, "Match ergonomics - enum struct pattern");
+
+                    const auto& enm = *e.binding_ptr;
+                    const auto& str = *enm.m_data.as_Data()[e.binding_idx].type.m_data.as_Path().binding.as_Struct();
+                    const auto& tup_var = str.m_data.as_Named();
+                    const auto& params = e.path.m_params;
+
+                    rv = true;  // &= below ensures that all must be complete to return complete
+                    for( auto& field_pat : e.sub_patterns )
+                    {
+                        unsigned int f_idx = ::std::find_if( tup_var.begin(), tup_var.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - tup_var.begin();
+                        if( f_idx == tup_var.size() ) {
+                            ERROR(sp, E0000, "Enum variant " << e.path << " doesn't have a field " << field_pat.first);
+                        }
+                        const ::HIR::TypeRef& field_type = tup_var[f_idx].second.ent;
+                        if( monomorphise_type_needed(field_type) ) {
+                            auto field_type_mono = monomorphise_type(sp, enm.m_params, params,  field_type);
+                            rv &= this->revisit_inner(context, field_pat.second, field_type_mono, binding_mode);
+                        }
+                        else {
+                            rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
+                        }
+                    }
                     }
                 }
                 return rv;
