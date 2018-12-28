@@ -42,6 +42,8 @@ class Item;
 using ::std::unique_ptr;
 using ::std::move;
 
+typedef bool    Visibility;
+
 enum eItemType
 {
     ITEM_TRAIT,

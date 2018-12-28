@@ -87,7 +87,15 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         }
         if( TARGETVER_1_29 && tok.str() == "dyn" )
         {
-            return Parse_Type_TraitObject(lex, {});
+            if( lex.lookahead(0) == TOK_PAREN_OPEN ) {
+                GET_TOK(tok, lex);
+                auto rv = Parse_Type_TraitObject(lex, {});
+                GET_CHECK_TOK(tok, lex, TOK_PAREN_CLOSE);
+                return rv;
+            }
+            else {
+                return Parse_Type_TraitObject(lex, {});
+            }
         }
         // or a primitive
         //if( auto ct = coretype_fromstring(tok.str()) )

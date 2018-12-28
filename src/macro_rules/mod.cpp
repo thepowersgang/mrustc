@@ -156,6 +156,16 @@ bool is_token_item(eTokenType tt) {
         return false;
     }
 }
+bool is_token_vis(eTokenType tt) {
+    switch(tt)
+    {
+    case TOK_RWORD_PUB:
+    case TOK_INTERPOLATED_VIS:
+        return true;
+    default:
+        return true;    // TODO: Is this true? it can capture just nothing
+    }
+}
 
 MacroRulesPtr::~MacroRulesPtr()
 {
@@ -188,6 +198,7 @@ MacroRulesPtr::~MacroRulesPtr()
         case MacroPatEnt::PAT_BLOCK: os << "block"; break;
         case MacroPatEnt::PAT_META:  os << "meta"; break;
         case MacroPatEnt::PAT_ITEM:  os << "item"; break;
+        case MacroPatEnt::PAT_VIS:   os << "vis"; break;
         }
         break;
     }
@@ -209,6 +220,7 @@ MacroRulesPtr::~MacroRulesPtr()
     case MacroPatEnt::PAT_BLOCK: os << "PAT_BLOCK"; break;
     case MacroPatEnt::PAT_META:  os << "PAT_META"; break;
     case MacroPatEnt::PAT_ITEM:  os << "PAT_ITEM"; break;
+    case MacroPatEnt::PAT_VIS:   os << "PAT_VIS"; break;
     }
     return os;
 }

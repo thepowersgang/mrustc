@@ -40,6 +40,7 @@ extern ::std::vector<AST::PathNode> Parse_PathNodes(TokenStream& lex, eParsePath
 extern AST::PathParams Parse_Path_GenericList(TokenStream& lex);
 
 
+extern AST::Visibility Parse_Publicity(TokenStream& lex, bool allow_restricted=true);
 extern AST::HigherRankedBounds Parse_HRB(TokenStream& lex);
 extern AST::AttributeList  Parse_ItemAttrs(TokenStream& lex);
 extern void Parse_ParentAttrs(TokenStream& lex, AST::AttributeList& out);

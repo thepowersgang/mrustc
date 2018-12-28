@@ -44,6 +44,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const Position& p);
 class TypeRef;
 class TokenTree;
 namespace AST {
+    typedef bool Visibility;
     class Pattern;
     class Path;
     class ExprNode;
@@ -120,12 +121,14 @@ public:
     uint64_t intval() const { return m_data.as_Integer().m_intval; }
     double floatval() const { return m_data.as_Float().m_floatval; }
 
+    // TODO: Replace these with a way of getting a InterpolatedFragment&
     TypeRef& frag_type() { assert(m_type == TOK_INTERPOLATED_TYPE); return *reinterpret_cast<TypeRef*>( m_data.as_Fragment() ); }
     AST::Path& frag_path() { assert(m_type == TOK_INTERPOLATED_PATH); return *reinterpret_cast<AST::Path*>( m_data.as_Fragment() ); }
     AST::Pattern& frag_pattern() { assert(m_type == TOK_INTERPOLATED_PATTERN); return *reinterpret_cast<AST::Pattern*>( m_data.as_Fragment() ); }
     AST::Attribute& frag_meta() { assert(m_type == TOK_INTERPOLATED_META); return *reinterpret_cast<AST::Attribute*>( m_data.as_Fragment() ); }
     ::std::unique_ptr<AST::ExprNode> take_frag_node();
     ::AST::Named<AST::Item> take_frag_item();
+    ::AST::Visibility take_frag_vis();
 
     bool operator==(const Token& r) const {
         if(type() != r.type())

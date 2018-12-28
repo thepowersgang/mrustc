@@ -655,6 +655,8 @@ bool Macro_TryPatternCap(TokenStream& lex, MacroPatEnt::Type type)
         return LOOK_AHEAD(lex) == TOK_IDENT || LOOK_AHEAD(lex) == TOK_INTERPOLATED_META;
     case MacroPatEnt::PAT_ITEM:
         return is_token_item( LOOK_AHEAD(lex) ) || LOOK_AHEAD(lex) == TOK_IDENT;
+    case MacroPatEnt::PAT_VIS:
+        return is_token_vis( LOOK_AHEAD(lex) );
     }
     BUG(lex.point_span(), "Fell through");
 }
@@ -723,6 +725,8 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
             CHECK_TOK(tok, TOK_IDENT);
         // TODO: TOK_INTERPOLATED_IDENT
         return InterpolatedFragment( TokenTree(lex.getHygiene(), tok) );
+    case MacroPatEnt::PAT_VIS:
+        return InterpolatedFragment( Parse_Publicity(lex, /*allow_restricted=*/true) );
     }
     throw "";
 }
@@ -1817,6 +1821,26 @@ namespace
         }
         return true;
     }
+    bool consume_vis(TokenStreamRO& lex)
+    {
+        TRACE_FUNCTION;
+        if( lex.consume_if(TOK_INTERPOLATED_VIS) )
+        {
+            return true;
+        }
+        else if( lex.consume_if(TOK_RWORD_PUB) )
+        {
+            if( lex.next() == TOK_PAREN_OPEN )
+            {
+                return consume_tt(lex);
+            }
+            return true;
+        }
+        else
+        {
+            return true;
+        }
+    }
 
     bool consume_from_frag(TokenStreamRO& lex, MacroPatEnt::Type type)
     {
@@ -1891,6 +1915,8 @@ namespace
             break;
         case MacroPatEnt::PAT_ITEM:
             return consume_item(lex);
+        case MacroPatEnt::PAT_VIS:
+            return consume_vis(lex);
         }
         return true;
     }

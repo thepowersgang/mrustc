@@ -124,6 +124,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
     switch(tok.type())
     {
     // Items:
+    case TOK_INTERPOLATED_VIS:
     case TOK_RWORD_PUB:
         // NOTE: Allowed, but doesn't do much
     case TOK_RWORD_TYPE:

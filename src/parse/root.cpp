@@ -49,9 +49,14 @@ void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::AttributeList& mod_a
 bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv);
 
 //::AST::Path Parse_Publicity(TokenStream& lex)
-bool Parse_Publicity(TokenStream& lex, bool allow_restricted=true)
+::AST::Visibility Parse_Publicity(TokenStream& lex, bool allow_restricted/*=true*/)
 {
     Token   tok;
+    if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_VIS )
+    {
+        GET_TOK(tok, lex);
+        return tok.take_frag_vis();
+    }
     if( LOOK_AHEAD(lex) == TOK_RWORD_PUB )
     {
         GET_TOK(tok, lex);

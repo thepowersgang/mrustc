@@ -60,6 +60,7 @@ struct MacroPatEnt
         PAT_BLOCK,
         PAT_META,
         PAT_ITEM,   // :item
+        PAT_VIS,
     } type;
 
     MacroPatEnt():

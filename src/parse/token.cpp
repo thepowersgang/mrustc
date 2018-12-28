@@ -35,6 +35,9 @@ Token::~Token()
     case TOK_INTERPOLATED_META:
         delete reinterpret_cast<AST::Attribute*>(m_data.as_Fragment());
         break;
+    case TOK_INTERPOLATED_VIS:
+        delete reinterpret_cast<AST::Visibility*>(m_data.as_Fragment());
+        break;
     default:
         break;
     }
@@ -68,7 +71,12 @@ Token::Token(const InterpolatedFragment& frag)
 {
     switch(frag.m_type)
     {
-    case InterpolatedFragment::TT:  throw "";
+    case InterpolatedFragment::TT:
+        throw "";
+    case InterpolatedFragment::VIS:
+        m_type = TOK_INTERPOLATED_VIS;
+        m_data = new AST::Visibility( *reinterpret_cast<const AST::Visibility*>(frag.m_ptr) );
+        break;
     case InterpolatedFragment::TYPE:
         m_type = TOK_INTERPOLATED_TYPE;
         m_data = new TypeRef( reinterpret_cast<const TypeRef*>(frag.m_ptr)->clone() );
@@ -106,7 +114,12 @@ Token::Token(TagTakeIP, InterpolatedFragment frag)
 {
     switch(frag.m_type)
     {
-    case InterpolatedFragment::TT:  throw "";
+    case InterpolatedFragment::TT:
+        throw "";
+    case InterpolatedFragment::VIS:
+        m_type = TOK_INTERPOLATED_VIS;
+        m_data = new AST::Visibility( mv$(*reinterpret_cast<AST::Visibility*>(frag.m_ptr)) );
+        break;
     case InterpolatedFragment::TYPE:
         m_type = TOK_INTERPOLATED_TYPE;
         m_data = new TypeRef( mv$(*reinterpret_cast<TypeRef*>(frag.m_ptr)) );
@@ -228,6 +241,15 @@ Token Token::clone() const
     delete ptr;
     return mv$(rv);
 }
+::AST::Visibility Token::take_frag_vis()
+{
+    assert( m_type == TOK_INTERPOLATED_VIS );
+    auto ptr = reinterpret_cast<AST::Visibility*>(m_data.as_Fragment());
+    m_data.as_Fragment() = nullptr;
+    auto rv = mv$( *ptr );
+    delete ptr;
+    return mv$(rv);
+}
 
 const char* Token::typestr(enum eTokenType type)
 {
@@ -309,6 +331,7 @@ struct EscapedString {
     case TOK_INTERPOLATED_META: return "/*:meta*/";
     case TOK_INTERPOLATED_ITEM: return "/*:item*/";
     case TOK_INTERPOLATED_IDENT: return "/*:ident*/";
+    case TOK_INTERPOLATED_VIS: return "/*:vis*/";
     // Value tokens
     case TOK_IDENT:     return m_data.as_String();
     case TOK_LIFETIME:  return "'" + m_data.as_String();

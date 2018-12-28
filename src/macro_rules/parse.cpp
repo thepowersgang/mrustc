@@ -82,6 +82,8 @@ public:
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_BLOCK) );
                 else if( type == "item" )
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_ITEM) );
+                else if( /*TARGETVER_1_29 && */ type == "vis" ) // TODO: Should this be selective?
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_VIS) );
                 else
                     ERROR(lex.point_span(), E0000, "Unknown fragment type '" << type << "'");
                 break; }
@@ -424,6 +426,19 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
                 ERROR(sp, E0000, "Incompatible macro fragments");
             return false;
         case MacroPatEnt::PAT_ITEM:
+            return true;
+        default:
+            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
+        }
+    // Matches visibility specifiers
+    case MacroPatEnt::PAT_VIS:
+        switch(left.type)
+        {
+        case MacroPatEnt::PAT_TOKEN:
+            if( is_token_vis(left.tok.type()) )
+                ERROR(sp, E0000, "Incompatible macro fragments");
+            return false;
+        case MacroPatEnt::PAT_VIS:
             return true;
         default:
             ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
