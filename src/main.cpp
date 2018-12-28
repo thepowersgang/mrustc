@@ -98,7 +98,6 @@ void init_debug_list()
             {
                 s = ::std::string { debug_string, end };
                 debug_string = end + 1;
-                g_debug_disable_map.erase( s );
             }
             else
             {
