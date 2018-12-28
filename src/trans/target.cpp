@@ -509,6 +509,7 @@ void Target_SetCfg(const ::std::string& target_name)
         if(s == "32")   return g_target.m_arch.m_atomics.u32;
         if(s == "64")   return g_target.m_arch.m_atomics.u64;
         if(s == "ptr")  return g_target.m_arch.m_atomics.ptr;   // Has an atomic pointer-sized value
+        if(s == "cas")  return g_target.m_arch.m_atomics.ptr;   // TODO: Atomic compare-and-set option
         return false;
         });
     Cfg_SetValueCb("target_feature", [](const ::std::string& s) {
