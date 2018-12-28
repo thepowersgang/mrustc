@@ -879,56 +879,54 @@ namespace {
         )
     )
 
-    auto struct_repr = ::HIR::Struct::Repr::Rust;
+    auto rv = ::HIR::Struct {
+        LowerHIR_GenericParams(ent.params(), nullptr),
+        ::HIR::Struct::Repr::Rust,
+        mv$(data)
+        };
+
     if( const auto* attr_repr = attrs.get("repr") )
     {
-        ASSERT_BUG(Span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
-        bool is_c = false;
-        bool is_simd = false;
-        bool is_packed = false;
-        ASSERT_BUG(Span(), attr_repr->items().size() > 0, "#[repr] attribute malformed, " << *attr_repr);
+        ASSERT_BUG(attr_repr->span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
+        ASSERT_BUG(attr_repr->span(), attr_repr->items().size() > 0, "#[repr] attribute malformed, " << *attr_repr);
         for( const auto& a : attr_repr->items() )
         {
-            ASSERT_BUG(Span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
             const auto& repr_str = a.name();
             if( repr_str == "C" ) {
-                is_c = true;
+                ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
+                rv.m_repr = ::HIR::Struct::Repr::C;
             }
             else if( repr_str == "packed" ) {
-                is_packed = true;
+                ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
+                rv.m_repr = ::HIR::Struct::Repr::Packed;
             }
             else if( repr_str == "simd" ) {
-                is_simd = true;
+                ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
+                rv.m_repr = ::HIR::Struct::Repr::Simd;
             }
             else if( repr_str == "transparent" ) {
+                ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
                 // TODO: Mark so the C backend knows that it's supposed to be transparent
+                //rv.m_repr = ::HIR::Struct::Repr::Transparent;
+            }
+            else if( repr_str == "align" ) {
+                //ASSERT_BUG(a.span(), a.has_string(), "#[repr(aligned)] attribute malformed, " << *attr_repr);
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
+                // TODO: Alignment repr
+                //rv.m_repr = ::HIR::Struct::Repr::Aligned;
+                //rv.m_align_size = ::std::stol(a.string());
             }
             else {
                 TODO(a.span(), "Handle struct repr '" << repr_str << "'");
             }
         }
-
-        if( is_packed ) {
-            // TODO: What if `simd` is present?
-            // NOTE: repr(packed,C) is treated as the same as repr(packed) in mrustc
-            struct_repr = ::HIR::Struct::Repr::Packed;
-        }
-        else if( is_c ) {
-            // TODO: What if `simd` is present?
-            struct_repr = ::HIR::Struct::Repr::C;
-        }
-        else if( is_simd ) {
-            struct_repr = ::HIR::Struct::Repr::Simd;
-        }
-        else {
-        }
     }
 
-    return ::HIR::Struct {
-        LowerHIR_GenericParams(ent.params(), nullptr),
-        struct_repr,
-        mv$(data)
-        };
+    return rv;
 }
 
 ::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(::std::string, ::HIR::Struct)> push_struct)
