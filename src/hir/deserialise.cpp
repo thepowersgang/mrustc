@@ -270,7 +270,7 @@
             case ::MacroPatEnt::PAT_ITEM:
                 break;
             default:
-                throw "";
+                BUG(Span(), "Bad tag for MacroPatEnt - #" << static_cast<int>(rv.type) << " " << rv.type);
             }
             return rv;
         }
@@ -282,7 +282,7 @@
             return rv;
         }
         ::MacroExpansionEnt deserialise_macroexpansionent() {
-            switch(m_in.read_tag())
+            switch(auto tag = m_in.read_tag())
             {
             case 0:
                 return ::MacroExpansionEnt( deserialise_token() );
@@ -305,7 +305,7 @@
                     });
                 }
             default:
-                throw "";
+                BUG(Span(), "Bad tag for MacroExpansionEnt - " << tag);
             }
         }
 
@@ -331,7 +331,7 @@
                 return ::Token::Data::make_Float({ dty, m_in.read_double() });
                 }
             default:
-                throw ::std::runtime_error(FMT("Invalid Token data tag - " << tag));
+                BUG(Span(), "Bad tag for Token::Data - " << static_cast<int>(tag));
             }
         }
 
@@ -362,7 +362,7 @@
             case ::MIR::Param::TAG_LValue:  return deserialise_mir_lvalue();
             case ::MIR::Param::TAG_Constant: return deserialise_mir_constant();
             default:
-                throw ::std::runtime_error(FMT("Invalid MIR LValue tag - " << tag));
+                BUG(Span(), "Bad tag for MIR::Param - " << tag);
             }
         }
         ::MIR::LValue deserialise_mir_lvalue() {
@@ -395,14 +395,14 @@
                 } )
             #undef _
             default:
-                throw ::std::runtime_error(FMT("Invalid MIR LValue tag - " << tag));
+                BUG(Span(), "Bad tag for MIR::LValue - " << tag);
             }
         }
         ::MIR::RValue deserialise_mir_rvalue()
         {
             TRACE_FUNCTION;
 
-            switch( m_in.read_tag() )
+            switch(auto tag = m_in.read_tag())
             {
             #define _(x, ...)    case ::MIR::RValue::TAG_##x: return ::MIR::RValue::make_##x( __VA_ARGS__ );
             _(Use, deserialise_mir_lvalue() )
@@ -456,14 +456,14 @@
                 })
             #undef _
             default:
-                throw "";
+                BUG(Span(), "Bad tag for MIR::RValue - " << tag);
             }
         }
         ::MIR::Constant deserialise_mir_constant()
         {
             TRACE_FUNCTION;
 
-            switch( m_in.read_tag() )
+            switch(auto tag = m_in.read_tag())
             {
             #define _(x, ...)    case ::MIR::Constant::TAG_##x: DEBUG("- " #x); return ::MIR::Constant::make_##x( __VA_ARGS__ );
             _(Int, {
@@ -492,13 +492,13 @@
             _(ItemAddr, deserialise_path() )
             #undef _
             default:
-                throw "";
+                BUG(Span(), "Bad tag for MIR::Const - " << tag);
             }
         }
 
         ::HIR::TypeItem deserialise_typeitem()
         {
-            switch( m_in.read_tag() )
+            switch(auto tag = m_in.read_tag())
             {
             case 0: {
                 auto spath = deserialise_simplepath();
@@ -518,12 +518,12 @@
             case 6:
                 return ::HIR::TypeItem( deserialise_union() );
             default:
-                throw "";
+                BUG(Span(), "Bad tag for HIR::TypeItem - " << tag);
             }
         }
         ::HIR::ValueItem deserialise_valueitem()
         {
-            switch( m_in.read_tag() )
+            switch(auto tag = m_in.read_tag())
             {
             case 0: {
                 auto spath = deserialise_simplepath();
@@ -541,7 +541,7 @@
             case 5:
                 return ::HIR::ValueItem::make_StructConstructor({ deserialise_simplepath() });
             default:
-                throw "";
+                BUG(Span(), "Bad tag for HIR::ValueItem - " << tag);
             }
         }
 
@@ -655,7 +655,7 @@
 
         ::HIR::TraitValueItem deserialise_traitvalueitem()
         {
-            switch( m_in.read_tag() )
+            switch(auto tag = m_in.read_tag())
             {
             #define _(x, ...)    case ::HIR::TraitValueItem::TAG_##x: DEBUG("- " #x); return ::HIR::TraitValueItem::make_##x( __VA_ARGS__ ); break;
             _(Constant, deserialise_constant() )
@@ -663,8 +663,7 @@
             _(Function, deserialise_function() )
             #undef _
             default:
-                DEBUG("Invalid TraitValueItem tag");
-                throw "";
+                BUG(Span(), "Bad tag for HIR::TraitValueItem - " << tag);
             }
         }
         ::HIR::AssociatedType deserialise_associatedtype()
@@ -798,7 +797,7 @@
             })
         #undef _
         default:
-            throw ::std::runtime_error(FMT("Bad TypeRef tag - " << tag));
+            BUG(Span(), "Bad tag for HIR::TypeRef - " << tag);
         }
         return rv;
     }
@@ -843,7 +842,7 @@
     ::HIR::Path HirDeserialiser::deserialise_path()
     {
         TRACE_FUNCTION;
-        switch( m_in.read_tag() )
+        switch(auto tag = m_in.read_tag())
         {
         case 0:
             DEBUG("Generic");
@@ -865,7 +864,7 @@
                 deserialise_pathparams()
                 } );
         default:
-            throw "";
+            BUG(Span(), "Bad tag for HIR::Path - " << tag);
         }
     }
 
@@ -891,7 +890,7 @@
     }
     ::HIR::GenericBound HirDeserialiser::deserialise_genericbound()
     {
-        switch( m_in.read_tag() )
+        switch(auto tag = m_in.read_tag())
         {
         case 0:
             return ::HIR::GenericBound::make_Lifetime({});
@@ -908,8 +907,7 @@
                 deserialise_type()
                 });
         default:
-            DEBUG("Bad GenericBound tag");
-            throw "";
+            BUG(Span(), "Bad tag for HIR::GenericBound - " << tag);
         }
     }
 
@@ -918,7 +916,7 @@
         TRACE_FUNCTION;
         struct H {
             static ::HIR::Enum::Class deserialise_enumclass(HirDeserialiser& des) {
-                switch( des.m_in.read_tag() )
+                switch( auto tag = des.m_in.read_tag() )
                 {
                 case ::HIR::Enum::Class::TAG_Data:
                     return ::HIR::Enum::Class::make_Data( des.deserialise_vec<::HIR::Enum::DataVariant>() );
@@ -928,7 +926,7 @@
                         des.deserialise_vec<::HIR::Enum::ValueVariant>()
                         });
                 default:
-                    throw "";
+                    BUG(Span(), "Bad tag for HIR::Enum::Class - " << tag);
                 }
             }
         };
@@ -978,7 +976,7 @@
         DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
 
         ::HIR::Struct::Data data;
-        switch( m_in.read_tag() )
+        switch( auto tag = m_in.read_tag() )
         {
         case ::HIR::Struct::Data::TAG_Unit:
             DEBUG("Unit");
@@ -993,7 +991,7 @@
             data = ::HIR::Struct::Data( deserialise_vec< ::std::pair< ::std::string, ::HIR::VisEnt< ::HIR::TypeRef> > >() );
             break;
         default:
-            throw "";
+            BUG(Span(), "Bad tag for HIR::Struct::Data - " << tag);
         }
         auto align = static_cast<unsigned>(m_in.read_u64c());
         auto markings = deserialise_markings();
@@ -1023,7 +1021,7 @@
 
     ::HIR::Literal HirDeserialiser::deserialise_literal()
     {
-        switch( m_in.read_tag() )
+        switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::HIR::Literal::TAG_##x:   return ::HIR::Literal::make_##x(__VA_ARGS__);
         _(Invalid, {})
@@ -1039,7 +1037,7 @@
         _(String,  m_in.read_string() )
         #undef _
         default:
-            throw "";
+            BUG(Span(), "Unknown literal when deserialising - " << tag);
         }
     }
 
@@ -1069,7 +1067,7 @@
     {
         TRACE_FUNCTION;
 
-        switch( m_in.read_tag() )
+        switch( auto tag = m_in.read_tag() )
         {
         case 0:
             return ::MIR::Statement::make_Assign({
@@ -1102,8 +1100,7 @@
                 deserialise_vec<unsigned int>()
                 });
         default:
-            ::std::cerr << "Bad tag for a MIR Statement" << ::std::endl;
-            throw "";
+            BUG(Span(), "Bad tag for MIR::Statement - " << tag);
         }
     }
     ::MIR::Terminator HirDeserialiser::deserialise_mir_terminator()
@@ -1115,7 +1112,7 @@
     }
     ::MIR::Terminator HirDeserialiser::deserialise_mir_terminator_()
     {
-        switch( m_in.read_tag() )
+        switch( auto tag = m_in.read_tag() )
         {
         #define _(x, ...)    case ::MIR::Terminator::TAG_##x: return ::MIR::Terminator::make_##x( __VA_ARGS__ );
         _(Incomplete, {})
@@ -1147,13 +1144,13 @@
             })
         #undef _
         default:
-            throw "";
+            BUG(Span(), "Bad tag for MIR::Terminator - " << tag);
         }
     }
     ::MIR::SwitchValues HirDeserialiser::deserialise_mir_switchvalues()
     {
         TRACE_FUNCTION;
-        switch(m_in.read_tag())
+        switch(auto tag = m_in.read_tag())
         {
         #define _(x, ...)    case ::MIR::SwitchValues::TAG_##x: return ::MIR::SwitchValues::make_##x( __VA_ARGS__ );
         _(Unsigned, deserialise_vec_c<uint64_t>([&](){ return m_in.read_u64c(); }))
@@ -1161,13 +1158,13 @@
         _(String  , deserialise_vec<::std::string>())
         #undef _
         default:
-            throw "";
+            BUG(Span(), "Bad tag for MIR::SwitchValues - " << tag);
         }
     }
 
     ::MIR::CallTarget HirDeserialiser::deserialise_mir_calltarget()
     {
-        switch( m_in.read_tag() )
+        switch(auto tag = m_in.read_tag())
         {
         #define _(x, ...)    case ::MIR::CallTarget::TAG_##x: return ::MIR::CallTarget::make_##x( __VA_ARGS__ );
         _(Value, deserialise_mir_lvalue() )
@@ -1178,7 +1175,7 @@
             })
         #undef _
         default:
-            throw "";
+            BUG(Span(), "Bad tag for MIR::CallTarget - " << tag);
         }
     }
 
