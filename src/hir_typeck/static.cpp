@@ -1600,7 +1600,7 @@ bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty)
         return true;
         ),
     (Diverge,
-        // The ! type is kinda Copy ...
+        // The ! type is kinda Sized ...
         return true;
         ),
     (Closure,
@@ -1643,6 +1643,85 @@ bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty)
         return true;
         )
     )
+    throw "";
+}
+bool StaticTraitResolve::type_is_impossible(const Span& sp, const ::HIR::TypeRef& ty) const
+{
+    TU_MATCH_HDRA( (ty.m_data), {)
+        break;
+    default:
+        return false;
+    TU_ARMA(Diverge, _e)
+        return true;
+    TU_ARMA(Path, e) {
+        TU_MATCHA( (e.binding), (pbe),
+        (Unbound,
+            // BUG?
+            return false;
+            ),
+        (Opaque,
+            // TODO: This can only be with UfcsKnown, so check if the trait specifies ?Sized
+            return false;
+            ),
+        (Struct,
+            const auto& params = e.path.m_data.as_Generic().m_params;
+            // TODO: Check all fields, if one flags this, then it's impossible.
+            const auto& str = *pbe;
+            TU_MATCH_HDRA( (str.m_data), {)
+            TU_ARMA(Unit, e)
+                return false;
+            TU_ARMA(Tuple, e) {
+                for(const auto& fld : e)
+                {
+                    const auto& tpl = fld.ent;
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty = (monomorphise_type_needed(tpl) ? tmp = monomorphise_type_with(sp, tpl, monomorphise_type_get_cb(sp, nullptr, &params, nullptr)) : tpl);
+                    if( type_is_impossible(sp, ty) )
+                        return true;
+                }
+                return false;
+                }
+            TU_ARMA(Named, e)
+                for(const auto& fld : e)
+                {
+                    TODO(sp, "type_is_impossible for struct " << ty << " - " << fld.second.ent);
+                }
+            }
+            ),
+        (Enum,
+            // TODO: Check all variants.
+            TODO(sp, "type_is_impossible for enum " << ty);
+            ),
+        (Union,
+            // TODO: Check all variants? Or just one?
+            TODO(sp, "type_is_impossible for union " << ty);
+            )
+        )
+        return true;
+        }
+    TU_ARMA(Borrow, e)
+        return type_is_impossible(sp, *e.inner);
+    TU_ARMA(Pointer, e) {
+        return false;
+        //return type_is_impossible(sp, *e.inner);
+        }
+    TU_ARMA(Function, e) {
+        // TODO: Check all arguments?
+        return true;
+        }
+    TU_ARMA(Array, e) {
+        return type_is_impossible(sp, *e.inner);
+        }
+    TU_ARMA(Slice, e) {
+        return type_is_impossible(sp, *e.inner);
+        }
+    TU_ARMA(Tuple, e) {
+        for(const auto& ty : e)
+            if( type_is_impossible(sp, ty) )
+                return true;
+        return false;
+        }
+    }
     throw "";
 }
 

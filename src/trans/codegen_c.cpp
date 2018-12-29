@@ -2730,6 +2730,7 @@ namespace {
                         // Emit a call to box_free for the type
                         ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
                         // TODO: This is specific to the official liballoc's owned_box
+                        // TODO: Shared logic with Box drop glue above.
                         m_of << indent << Trans_Mangle(box_free) << "("; emit_lvalue(e.slot); m_of << "._0._0._0);\n";
                     }
                     else

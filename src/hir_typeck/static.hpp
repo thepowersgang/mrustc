@@ -184,6 +184,7 @@ public:
     bool type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool type_is_clone(const Span& sp, const ::HIR::TypeRef& ty) const; // 1.29
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
+    bool type_is_impossible(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool can_unsize(const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) const;
 
     /// Returns `true` if the passed type either implements Drop, or contains a type that implements Drop

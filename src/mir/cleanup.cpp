@@ -214,8 +214,8 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
     (
         if( path == ::HIR::GenericPath() )
-            MIR_TODO(state, "Literal of type " << ty << " - " << path << " - " << lit);
-        DEBUG("Unknown type " << ty << " - Return BorrowOf");
+            MIR_TODO(state, "Literal of type " << ty << " - " << lit);
+        DEBUG("Unknown type " << ty << ", but a path was provided - Return ItemAddr " << path);
         return ::MIR::Constant( mv$(path) );
         ),
     (Tuple,
@@ -454,6 +454,11 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         else {
             MIR_TODO(state, "Const with type " << ty);
         }
+        ),
+    (Function,
+        //MIR_TODO(state, "Const function pointer " << lit << " w/ type " << ty);
+        MIR_ASSERT(state, lit.is_BorrowPath(), "");
+        return ::MIR::Constant::make_ItemAddr( lit.as_BorrowPath().clone() );
         )
     )
 }

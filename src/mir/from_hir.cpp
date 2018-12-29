@@ -207,22 +207,22 @@ namespace {
                 allow_refutable = 2;
             }
 
-            TU_MATCHA( (pat.m_data), (e),
-            (Any,
-                ),
-            (Box,
+            TU_MATCH_HDRA( (pat.m_data), {)
+            TU_ARMA(Any, e) {
+                }
+            TU_ARMA(Box, e) {
                 destructure_from_ex(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }), allow_refutable);
-                ),
-            (Ref,
+                }
+            TU_ARMA(Ref, e) {
                 destructure_from_ex(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }), allow_refutable);
-                ),
-            (Tuple,
+                }
+            TU_ARMA(Tuple, e) {
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
                     destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
                 }
-                ),
-            (SplitTuple,
+                }
+            TU_ARMA(SplitTuple, e) {
                 assert(e.total_size >= e.leading.size() + e.trailing.size());
                 for(unsigned int i = 0; i < e.leading.size(); i ++ )
                 {
@@ -234,17 +234,17 @@ namespace {
                 {
                     destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), ofs+i}), allow_refutable);
                 }
-                ),
-            (StructValue,
+                }
+            TU_ARMA(StructValue, e) {
                 // Nothing.
-                ),
-            (StructTuple,
+                }
+            TU_ARMA(StructTuple, e) {
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
                     destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
                 }
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, e) {
                 const auto& str = *e.binding;
                 const auto& fields = str.m_data.as_Named();
                 for(const auto& fld_pat : e.sub_patterns)
@@ -252,31 +252,48 @@ namespace {
                     unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
                     destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval.clone() ), idx}), allow_refutable);
                 }
-                ),
+                }
             // Refutable
-            (Value,
+            TU_ARMA(Value, e) {
                 ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                ),
-            (Range,
+                }
+            TU_ARMA(Range, e) {
                 ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
-                ),
-            (EnumValue,
+                }
+            TU_ARMA(EnumValue, e) {
                 const auto& enm = *e.binding_ptr;
                 if( enm.num_variants() > 1 )
                 {
                     ASSERT_BUG(sp, allow_refutable, "Refutable pattern not expected - " << pat);
                 }
-                ),
-            (EnumTuple,
+                }
+            TU_ARMA(EnumTuple, e) {
                 const auto& enm = *e.binding_ptr;
-                ASSERT_BUG(sp, enm.num_variants() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
+                const auto& variants = enm.m_data.as_Data();
+                // TODO: Check that this is the only non-impossible arm
+                if( !allow_refutable )
+                {
+                    for(size_t i = 0; i < variants.size(); i ++)
+                    {
+                        const auto& var_ty = variants[i].type;
+                        if( i == e.binding_idx ) {
+                            continue;
+                        }
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty = (monomorphise_type_needed(var_ty) ? tmp = monomorphise_type_with(sp, var_ty, monomorphise_type_get_cb(sp, nullptr, &e.path.m_params, nullptr)) : var_ty);
+                        if( m_builder.resolve().type_is_impossible(sp, ty) ) {
+                            continue;
+                        }
+                        ERROR(sp, E0000, "Variant " << variants[i].name << " not handled");
+                    }
+                }
                 auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
                     destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval_var.clone() ), i}), allow_refutable);
                 }
-                ),
-            (EnumStruct,
+                }
+            TU_ARMA(EnumStruct, e) {
                 const auto& enm = *e.binding_ptr;
                 ASSERT_BUG(sp, enm.num_variants() == 1 || allow_refutable, "Refutable pattern not expected - " << pat);
                 ASSERT_BUG(sp, enm.m_data.is_Data(), "Expected struct variant - " << pat);
@@ -289,8 +306,8 @@ namespace {
                     unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
                     destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval_var.clone() ), idx}), allow_refutable);
                 }
-                ),
-            (Slice,
+                }
+            TU_ARMA(Slice, e) {
                 // These are only refutable if T is [T]
                 bool ty_is_array = false;
                 m_builder.with_val_type(sp, lval, [&ty_is_array](const auto& ty){
@@ -316,8 +333,8 @@ namespace {
                         destructure_from_ex(sp, subpat, ::MIR::LValue::make_Field({ box$(lval.clone()), i }), allow_refutable );
                     }
                 }
-                ),
-            (SplitSlice,
+                }
+            TU_ARMA(SplitSlice, e) {
                 // These are only refutable if T is [T]
                 bool ty_is_array = false;
                 unsigned int array_size = 0;
@@ -412,8 +429,8 @@ namespace {
                         }
                     }
                 }
-                )
-            )
+                }
+            } // TU_MATCH_HDRA
         }
 
         // -- ExprVisitor
