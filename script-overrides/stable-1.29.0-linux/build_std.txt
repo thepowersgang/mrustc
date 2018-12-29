@@ -1,5 +1,5 @@
-# TODO: THis is the windows set
-cargo:rustc-link-lib=advapi32
-cargo:rustc-link-lib=ws2_32
-cargo:rustc-link-lib=userenv
-cargo:rustc-link-lib=shell32
+# TODO: Build libbacktrace
+cargo:rustc-link-lib=dl
+cargo:rustc-link-lib=rt
+cargo:rustc-link-lib=pthread
+

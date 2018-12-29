@@ -153,7 +153,10 @@ output/libtest.hir output/libpanic_unwind.hir output/libproc_macro.hir: output/l
 output/rustc output/cargo: output/libtest.hir
 	$(MAKE_MINICARGO) $@
 
-TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir output/librust_test_helpers.a
+TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir
+ifeq ($(RUSTC_VERSION),1.19.0)
+TEST_DEPS += output/librust_test_helpers.a
+endif
 
 fcn_extcrate = $(patsubst %,output/lib%.hir,$(1))
 
