@@ -268,6 +268,7 @@
             case ::MacroPatEnt::PAT_BLOCK:
             case ::MacroPatEnt::PAT_META:
             case ::MacroPatEnt::PAT_ITEM:
+            case ::MacroPatEnt::PAT_VIS:
                 break;
             default:
                 BUG(Span(), "Bad tag for MacroPatEnt - #" << static_cast<int>(rv.type) << " " << rv.type);
