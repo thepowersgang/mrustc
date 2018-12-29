@@ -31,6 +31,7 @@ class CExpander_assert:
         ::std::vector<TokenTree> toks;
 
         toks.push_back( Token(TOK_RWORD_IF) );
+        toks.push_back( Token(TOK_EXCLAM) );
 
         GET_TOK(tok, lex);
         if( tok == TOK_COMMA )
