@@ -63,21 +63,25 @@ TransList Trans_Enumerate_Main(const ::HIR::Crate& crate)
     auto c_start_path = crate.get_lang_item_path_opt("mrustc-start");
     if( c_start_path == ::HIR::SimplePath() )
     {
+        // user entrypoint
+        auto main_path = crate.get_lang_item_path(Span(), "mrustc-main");
+        const auto& main_fcn = crate.get_function_by_path(sp, main_path);
+
+        state.enum_fcn( main_path, main_fcn, {} );
+
         // "start" language item
         // - Takes main, and argc/argv as arguments
         {
             auto start_path = crate.get_lang_item_path(sp, "start");
             const auto& fcn = crate.get_function_by_path(sp, start_path);
 
-            state.enum_fcn( start_path, fcn, {} );
-        }
-
-        // user entrypoint
-        {
-            auto main_path = crate.get_lang_item_path(Span(), "mrustc-main");
-            const auto& fcn = crate.get_function_by_path(sp, main_path);
-
-            state.enum_fcn( main_path, fcn, {} );
+            Trans_Params    lang_start_pp;
+            if( TARGETVER_1_29 )
+            {
+                // With 1.29, this now takes main's return type as a type parameter
+                lang_start_pp.pp_method.m_types.push_back( main_fcn.m_return.clone() );
+            }
+            state.enum_fcn( start_path, fcn, mv$(lang_start_pp) );
         }
     }
     else
