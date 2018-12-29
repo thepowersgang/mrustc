@@ -638,6 +638,8 @@ int main(int argc, char *argv[])
             crate_type = ::AST::Crate::Type::Executable;
         }
 
+        // TODO: For 1.29 executables/dylibs, add oom/panic shims
+
         // Enumerate items to be passed to codegen
         TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() {
             switch( crate_type )

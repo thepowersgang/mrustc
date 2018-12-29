@@ -639,6 +639,84 @@ namespace {
                         << "__thread void* mrustc_panic_value;\n"
                         ;
                 }
+
+                // Allocator shims
+                if( TARGETVER_1_29 )
+                {
+                    const char* alloc_prefix = "__rdl_";
+                    for(size_t i = 0; i < NUM_ALLOCATOR_METHODS; i++)
+                    {
+                        struct H {
+                            static void ty_args(::std::vector<const char*>& out, AllocatorDataTy t) {
+                                switch(t)
+                                {
+                                case AllocatorDataTy::Unit:
+                                case AllocatorDataTy::ResultPtr:  // (..., *mut i8) + *mut u8
+                                    throw "";
+                                // - Args
+                                case AllocatorDataTy::Layout: // usize, usize
+                                    out.push_back("uintptr_t");
+                                    out.push_back("uintptr_t");
+                                    break;
+                                case AllocatorDataTy::Ptr:    // *mut u8
+                                    out.push_back("int8_t*");
+                                    break;
+                                case AllocatorDataTy::Usize:
+                                    out.push_back("uintptr_t");
+                                    break;
+                                }
+                            }
+                            static const char* ty_ret(AllocatorDataTy t) {
+                                switch(t)
+                                {
+                                case AllocatorDataTy::Unit:
+                                    return "void";
+                                case AllocatorDataTy::ResultPtr:  // (..., *mut i8) + *mut u8
+                                    return "int8_t*";
+                                // - Args
+                                case AllocatorDataTy::Layout: // usize, usize
+                                case AllocatorDataTy::Ptr:    // *mut u8
+                                case AllocatorDataTy::Usize:
+                                    throw "";
+                                }
+                                throw "";
+                            }
+                            static void emit_proto(::std::ostream& os, const AllocatorMethod& method, const char* name_prefix, const ::std::vector<const char*>& args) {
+                                os << H::ty_ret(method.ret) << " " << name_prefix << method.name << "(";
+                                for(size_t j = 0; j < args.size(); j ++)
+                                {
+                                    if( j != 0 )
+                                        os << ", ";
+                                    os << args[j] << " a" << j;
+                                }
+                                os << ")";
+                            }
+                        };
+                        const auto& method = ALLOCATOR_METHODS[i];
+                        ::std::vector<const char*>  args;
+                        for(size_t j = 0; j < method.n_args; j ++)
+                            H::ty_args(args, method.args[j]);
+                        H::emit_proto(m_of, method, "__rust_", args); m_of << " {\n";
+                        m_of << "\textern "; H::emit_proto(m_of, method, alloc_prefix, args); m_of << ";\n";
+                        m_of << "\t" << alloc_prefix << method.name << "(";
+                        for(size_t j = 0; j < args.size(); j ++)
+                        {
+                            if( j != 0 )
+                                m_of << ", ";
+                            m_of << "a" << j;
+                        }
+                        m_of << ");\n";
+                        m_of << "}\n";
+                    }
+
+                    // TODO: Bind `panic_impl` lang item to the item tagged with `panic_implementation`
+                    // TODO: Bind `oom` lang item to the item tagged with `alloc_error_handler`
+                    // - Can do this in enumerate/auto_impls instead, for better iteraction with enum
+                    // XXX: HACK HACK HACK - This only works with libcore/libstd's current layout
+                    m_of << "uint32_t panic_impl(uintptr_t payload) { extern uint32_t __rust_start_panic(uintptr_t payload); return __rust_start_panic(payload); }\n";
+                    m_of << "struct s__ZN4core5alloc6Layout_A { uintptr_t a, b; };\n";
+                    m_of << "void oom_impl(struct s__ZN4core5alloc6Layout_A l) { extern void _ZN3std5alloc8rust_oom(struct s__ZN4core5alloc6Layout_A l); _ZN3std5alloc8rust_oom(l); }\n";
+                }
             }
 
             m_of.flush();
@@ -2188,6 +2266,13 @@ namespace {
                 m_of << "\tlongjmp(*mrustc_panic_target, 1);\n";
                 m_of << "}\n";
                 return;
+            }
+            else if( item.m_linkage.name.rfind("llvm.", 0) == 0 )
+            {
+                emit_function_header(p, item, params);
+                m_of << " { abort(); }\n";
+                m_mir_res = nullptr;
+                return ;
             }
             else
             {
