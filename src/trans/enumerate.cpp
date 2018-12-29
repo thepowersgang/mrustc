@@ -1376,7 +1376,11 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
             // Must have been a dynamic dispatch request, just leave as-is
         }
         // - <fn(...) as Fn*>::call*
-        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type->m_data.is_Function() )
+        else if( path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().type->m_data.is_Function() && (
+               path_mono.m_data.as_UfcsKnown().trait.m_path == state.crate.get_lang_item_path_opt("fn")
+            || path_mono.m_data.as_UfcsKnown().trait.m_path == state.crate.get_lang_item_path_opt("fn_mut")
+            || path_mono.m_data.as_UfcsKnown().trait.m_path == state.crate.get_lang_item_path_opt("fn_once")
+            ) )
         {
             // Must have been a dynamic dispatch request, just leave as-is
         }

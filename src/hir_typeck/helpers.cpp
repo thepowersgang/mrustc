@@ -1120,6 +1120,107 @@ bool TraitResolution::iterate_aty_bounds(const Span& sp, const ::HIR::Path::Data
     return false;
 }
 
+bool TraitResolution::find_trait_impls_magic(const Span& sp,
+        const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
+        const ::HIR::TypeRef& ty,
+        t_cb_trait_impl_r callback
+        ) const
+{
+    static ::HIR::PathParams    null_params;
+    static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
+
+    const auto& lang_Sized = this->m_crate.get_lang_item_path(sp, "sized");
+    const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
+    //const auto& lang_Clone = this->m_crate.get_lang_item_path(sp, "clone");
+    const auto& lang_Unsize = this->m_crate.get_lang_item_path(sp, "unsize");
+    const auto& lang_CoerceUnsized = this->m_crate.get_lang_item_path(sp, "coerce_unsized");
+
+    const auto& type = this->m_ivars.get_type(ty);
+    TRACE_FUNCTION_F("trait = " << trait << params  << ", type = " << type);
+
+    if( trait == lang_Sized ) {
+        auto cmp = type_is_sized(sp, type);
+        if( cmp != ::HIR::Compare::Unequal ) {
+            return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+        }
+        else {
+            return false;
+        }
+    }
+
+    if( trait == lang_Copy ) {
+        auto cmp = this->type_is_copy(sp, type);
+        if( cmp != ::HIR::Compare::Unequal ) {
+            return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+        }
+        else {
+            return false;
+        }
+    }
+
+    if( TARGETVER_1_29 && trait == this->m_crate.get_lang_item_path(sp, "clone") )
+    {
+        auto cmp = this->type_is_clone(sp, type);
+        if( cmp != ::HIR::Compare::Unequal ) {
+            return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
+        }
+        else {
+            return false;
+        }
+    }
+
+    // Magic Unsize impls to trait objects
+    if( trait == lang_Unsize )
+    {
+        ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
+        const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
+
+        if( find_trait_impls_bound(sp, trait, params, type, callback) )
+            return true;
+
+        bool rv = false;
+        auto cb = [&](auto new_dst) {
+            ::HIR::PathParams   real_params { mv$(new_dst) };
+            rv = callback( ImplRef(type.clone(), mv$(real_params), {}), ::HIR::Compare::Fuzzy );
+            };
+        //if( dst_ty.m_data.is_Infer() || type.m_data.is_Infer() )
+        //{
+        //    rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Fuzzy );
+        //    return rv;
+        //}
+        auto cmp = this->can_unsize(sp, dst_ty, type, cb);
+        if( cmp == ::HIR::Compare::Equal )
+        {
+            assert(!rv);
+            rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Equal );
+        }
+        return rv;
+    }
+
+    // Magical CoerceUnsized impls for various types
+    if( trait == lang_CoerceUnsized ) {
+        const auto& dst_ty = params.m_types.at(0);
+        // - `*mut T => *const T`
+        TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Pointer, e,
+            TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, Pointer, de,
+                if( de.type < e.type ) {
+                    auto cmp = e.inner->compare_with_placeholders(sp, *de.inner, this->m_ivars.callback_resolve_infer());
+                    if( cmp != ::HIR::Compare::Unequal )
+                    {
+                        ::HIR::PathParams   pp;
+                        pp.m_types.push_back( dst_ty.clone() );
+                        if( callback( ImplRef(type.clone(), mv$(pp), {}), cmp ) ) {
+                            return true;
+                        }
+                    }
+                }
+            )
+        )
+    }
+
+    return false;
+}
+
 bool TraitResolution::find_trait_impls(const Span& sp,
         const ::HIR::SimplePath& trait, const ::HIR::PathParams& params,
         const ::HIR::TypeRef& ty,
@@ -1143,11 +1244,6 @@ bool TraitResolution::find_trait_impls(const Span& sp,
     }
 #endif
 
-    const auto& lang_Sized = this->m_crate.get_lang_item_path(sp, "sized");
-    const auto& lang_Copy = this->m_crate.get_lang_item_path(sp, "copy");
-    //const auto& lang_Clone = this->m_crate.get_lang_item_path(sp, "clone");
-    const auto& lang_Unsize = this->m_crate.get_lang_item_path(sp, "unsize");
-    const auto& lang_CoerceUnsized = this->m_crate.get_lang_item_path(sp, "coerce_unsized");
     const auto& trait_fn = this->m_crate.get_lang_item_path(sp, "fn");
     const auto& trait_fn_mut = this->m_crate.get_lang_item_path(sp, "fn_mut");
     const auto& trait_fn_once = this->m_crate.get_lang_item_path(sp, "fn_once");
@@ -1156,35 +1252,8 @@ bool TraitResolution::find_trait_impls(const Span& sp,
 
     if( magic_trait_impls )
     {
-        if( trait == lang_Sized ) {
-            auto cmp = type_is_sized(sp, type);
-            if( cmp != ::HIR::Compare::Unequal ) {
-                return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
-            }
-            else {
-                return false;
-            }
-        }
-
-        if( trait == lang_Copy ) {
-            auto cmp = this->type_is_copy(sp, type);
-            if( cmp != ::HIR::Compare::Unequal ) {
-                return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
-            }
-            else {
-                return false;
-            }
-        }
-        
-        if( TARGETVER_1_29 && trait == this->m_crate.get_lang_item_path(sp, "clone") )
-        {
-            auto cmp = this->type_is_clone(sp, type);
-            if( cmp != ::HIR::Compare::Unequal ) {
-                return callback( ImplRef(&type, &null_params, &null_assoc), cmp );
-            }
-            else {
-                return false;
-            }
+        if( find_trait_impls_magic(sp, trait, params, ty, callback) ) {
+            return true;
         }
     }
 
@@ -1467,58 +1536,6 @@ bool TraitResolution::find_trait_impls(const Span& sp,
                 return true;
         }
     )
-
-    if( magic_trait_impls )
-    {
-        // Magic Unsize impls to trait objects
-        if( trait == lang_Unsize )
-        {
-            ASSERT_BUG(sp, params.m_types.size() == 1, "Unsize trait requires a single type param");
-            const auto& dst_ty = this->m_ivars.get_type(params.m_types[0]);
-
-            if( find_trait_impls_bound(sp, trait, params, type, callback) )
-                return true;
-
-            bool rv = false;
-            auto cb = [&](auto new_dst) {
-                ::HIR::PathParams   real_params { mv$(new_dst) };
-                rv = callback( ImplRef(type.clone(), mv$(real_params), {}), ::HIR::Compare::Fuzzy );
-                };
-            //if( dst_ty.m_data.is_Infer() || type.m_data.is_Infer() )
-            //{
-            //    rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Fuzzy );
-            //    return rv;
-            //}
-            auto cmp = this->can_unsize(sp, dst_ty, type, cb);
-            if( cmp == ::HIR::Compare::Equal )
-            {
-                assert(!rv);
-                rv = callback( ImplRef(type.clone(), params.clone(), {}), ::HIR::Compare::Equal );
-            }
-            return rv;
-        }
-
-        // Magical CoerceUnsized impls for various types
-        if( trait == lang_CoerceUnsized ) {
-            const auto& dst_ty = params.m_types.at(0);
-            // - `*mut T => *const T`
-            TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Pointer, e,
-                TU_IFLET( ::HIR::TypeRef::Data, dst_ty.m_data, Pointer, de,
-                    if( de.type < e.type ) {
-                        auto cmp = e.inner->compare_with_placeholders(sp, *de.inner, this->m_ivars.callback_resolve_infer());
-                        if( cmp != ::HIR::Compare::Unequal )
-                        {
-                            ::HIR::PathParams   pp;
-                            pp.m_types.push_back( dst_ty.clone() );
-                            if( callback( ImplRef(type.clone(), mv$(pp), {}), cmp ) ) {
-                                return true;
-                            }
-                        }
-                    }
-                )
-            )
-        }
-    }
 
     // 1. Search generic params
     if( find_trait_impls_bound(sp, trait, params, type, callback) )
@@ -4169,7 +4186,12 @@ bool TraitResolution::find_method(const Span& sp,
 
             bool magic_found = false;
             bool crate_impl_found = false;
-            // NOTE: THis just detects the presence of a trait impl, not the specifics
+
+            crate_impl_found = find_trait_impls_magic(sp, *trait_ref.first, trait_params, self_ty,  [&](auto impl, auto cmp) {
+                return true;
+                });
+
+            // NOTE: This just detects the presence of a trait impl, not the specifics
             find_trait_impls_crate(sp, *trait_ref.first, &trait_params, self_ty,  [&](auto impl, auto cmp) {
                 DEBUG("[find_method] " << impl << ", cmp = " << cmp);
                 magic_found = true;
