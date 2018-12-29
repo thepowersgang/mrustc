@@ -331,33 +331,21 @@ namespace {
 
         void visit(::HIR::ExprNode_Block& node) override
         {
-            if( node.m_nodes.size() == 0 ) {
-                m_os << "{";
-                if( node.m_value_node )
-                {
-                    m_os << " ";
-                    this->visit_node_ptr(node.m_value_node);
-                }
-                m_os << " }";
+            m_os << "{\n";
+            inc_indent();
+            for(auto& sn : node.m_nodes) {
+                m_os << indent();
+                this->visit_node_ptr(sn);
+                m_os << ";\n";
             }
-            else {
-                m_os << "{\n";
-                inc_indent();
-                for(auto& sn : node.m_nodes) {
-                    m_os << "\n";
-                    m_os << indent();
-                    this->visit_node_ptr(sn);
-                    m_os << ";\n";
-                }
-                if( node.m_value_node )
-                {
-                    m_os << indent();
-                    this->visit_node_ptr(node.m_value_node);
-                    m_os << "\n";
-                }
-                dec_indent();
-                m_os << indent() << "}";
+            if( node.m_value_node )
+            {
+                m_os << indent();
+                this->visit_node_ptr(node.m_value_node);
+                m_os << "\n";
             }
+            dec_indent();
+            m_os << indent() << "}";
         }
 
         void visit(::HIR::ExprNode_Asm& node) override
