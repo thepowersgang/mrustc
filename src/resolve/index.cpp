@@ -212,7 +212,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
             }}
             // - Values
-            TU_MATCH_HDRA( (i_data.path.m_bindings.value), {)
+            {TU_MATCH_HDRA( (i_data.path.m_bindings.value), {)
             TU_ARMA(Unbound, _e) {
                 DEBUG(i.name << " - Not a value");
                 }
@@ -226,7 +226,23 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Function, e)
                 _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
-            }
+            }}
+            // - Macros
+            {TU_MATCH_HDRA( (i_data.path.m_bindings.macro), {)
+            TU_ARMA(Unbound, _e) {
+                DEBUG(i.name << " - Not a macro");
+                }
+            TU_ARMA(MacroRules, e) {
+                ::std::vector<::std::string>    path;
+                path.push_back( i_data.path.m_class.as_Absolute().crate );
+                for(const auto& node : i_data.path.m_class.as_Absolute().nodes )
+                    path.push_back( node.name() );
+                mod.m_macro_imports.push_back({
+                    i.is_pub, i.name, mv$(path), e.mac
+                    });
+                }
+            // TODO: Other imports (e.g. derives, which have different naming structures)
+            }}
         }
         else
         {

@@ -2236,15 +2236,15 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         bool found = false;
         for(const auto& mac_path : mod.m_macro_imports)
         {
-            if( mac_path.first.back() == mac_name )
+            if( mac_path.name == mac_name )
             {
-                if( mac_path.second ) {
+                if( mac_path.macro_ptr ) {
                     // macro_rules! based derive?
                     TODO(sp, "Custom derive using macro_rules?");
                 }
                 else {
                     // proc_macro - Invoke the handler.
-                    auto lex = ProcMacro_Invoke(sp, crate, mac_path.first, path.nodes().back().name(), item);
+                    auto lex = ProcMacro_Invoke(sp, crate, mac_path.path, path.nodes().back().name(), item);
                     if( lex )
                     {
                         Parse_ModRoot_Items(*lex, mod);

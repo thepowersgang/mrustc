@@ -1803,6 +1803,25 @@ public:
                 }
             }
         }
+        for( const auto& mac : crate.m_root_module.m_macro_imports )
+        {
+            if( mac.is_pub )
+            {
+                // TODO: Why does this to such a move?
+                auto v = ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.macro_ptr)) )) );
+
+                auto it = macros.find(mac.name);
+                if( it == macros.end() )
+                {
+                    auto res = macros.insert( mv$(v) );
+                    DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+                }
+                else {
+                    DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
+                    it->second = mv$( v.second );
+                }
+            }
+        }
     }
     // - Proc Macros
     if( crate.m_crate_type == ::AST::Crate::Type::ProcMacro )

@@ -1044,7 +1044,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
         }
         for( const auto& mi: mod.m_macro_imports )
-            DEBUG("- Imports '" << mi.first << "'");
+            DEBUG("- Imports '" << mi.path << "'");
     }
 
     // Insert prelude if: Enabled for this module, present for the crate, and this module is not an anon

@@ -537,7 +537,13 @@ public:
 
     // List of macros imported from other modules (via #[macro_use], includes proc macros)
     // - First value is an absolute path to the macro (including crate name)
-    ::std::vector<::std::pair< ::std::vector<::std::string>, const MacroRules* >>  m_macro_imports;
+    struct MacroImport {
+        bool    is_pub;
+        ::std::string   name;   // Can be different, if `use foo as bar` is used
+        ::std::vector<::std::string>    path;   // includes the crate name
+        const MacroRules*   macro_ptr;
+    };
+    ::std::vector<MacroImport>  m_macro_imports;
 
 public:
     Module() {}
