@@ -856,6 +856,26 @@ namespace {
             }
         }
 
+        void emit_box_drop(unsigned indent_level, const ::HIR::TypeRef& inner_type, const ::MIR::LValue& slot, bool run_destructor)
+        {
+            auto indent = RepeatLitStr { "\t", static_cast<int>(indent_level) };
+            // Emit a call to box_free for the type
+            if( run_destructor )
+            {
+                auto inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, inner_type.clone() );
+                m_of << indent; emit_ctype(inner_ptr, FMT_CB(ss, ss << "i"; )); m_of << " = "; emit_lvalue(slot); m_of << "._0._0._0;\n";
+                emit_destructor_call( ::MIR::LValue::make_Local(~0u), inner_type, true, indent_level );
+            }
+            // TODO: This is specific to the official liballoc's owned_box
+            ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { inner_type.clone() } };
+            if( TARGETVER_1_29 ) {
+                // In 1.29, `box_free` takes Unique, so pass the Unique within the Box
+                m_of << indent << Trans_Mangle(box_free) << "("; emit_lvalue(slot); m_of << "._0);\n";
+            }
+            else {
+                m_of << indent << Trans_Mangle(box_free) << "("; emit_lvalue(slot); m_of << "._0._0._0);\n";
+            }
+        }
         void emit_box_drop_glue(::HIR::GenericPath p, const ::HIR::Struct& item)
         {
             auto struct_ty = ::HIR::TypeRef( p.clone(), &item );
@@ -875,13 +895,7 @@ namespace {
             m_mir_res = &mir_res;
             m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
 
-            // Obtain inner pointer
-            // TODO: This is very specific to the structure of the official liballoc's Box.
-            m_of << "\t"; emit_ctype(args[0].second, FMT_CB(ss, ss << "arg0"; ));    m_of << " = rv->_0._0._0;\n";
-            // Call destructor of inner data
-            emit_destructor_call( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) }), *ity, true, 1);
-            // Emit a call to box_free for the type
-            m_of << "\t" << Trans_Mangle(box_free) << "(arg0);\n";
+            emit_box_drop(1, *ity, ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) }), /*run_destructor=*/true);
 
             m_of << "}\n";
             m_mir_res = nullptr;
@@ -1068,6 +1082,7 @@ namespace {
             ::MIR::Function empty_fcn;
             ::MIR::TypeResolve  top_mir_res { sp, m_resolve, FMT_CB(ss, ss << "struct " << p;), ::HIR::TypeRef(), {}, empty_fcn };
             m_mir_res = &top_mir_res;
+            // TODO: repr(transparent) and repr(align(foo))
             bool is_packed = item.m_repr == ::HIR::Struct::Repr::Packed;
 
             TRACE_FUNCTION_F(p);
@@ -2727,11 +2742,7 @@ namespace {
                     // Shallow drops are only valid on owned_box
                     if( const auto* ity = m_resolve.is_type_owned_box(ty) )
                     {
-                        // Emit a call to box_free for the type
-                        ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { ity->clone() } };
-                        // TODO: This is specific to the official liballoc's owned_box
-                        // TODO: Shared logic with Box drop glue above.
-                        m_of << indent << Trans_Mangle(box_free) << "("; emit_lvalue(e.slot); m_of << "._0._0._0);\n";
+                        emit_box_drop(1, *ity, e.slot, /*run_destructor=*/false);
                     }
                     else
                     {
