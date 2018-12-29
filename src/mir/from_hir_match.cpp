@@ -1119,7 +1119,7 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 (Any,
                     // _ on a box, recurse into the box type.
                     m_field_path.push_back(FIELD_DEREF);
-                    this->append_from(sp, pat, inner_ty);
+                    this->append_from(sp, empty_pattern, inner_ty);
                     m_field_path.pop_back();
                     ),
                 (Box,

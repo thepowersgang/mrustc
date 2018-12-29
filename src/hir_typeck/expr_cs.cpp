@@ -3881,7 +3881,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                 TU_ARM(pattern.m_data, Value, pe) {
                     // no-op?
-                    if( pe.val.is_String() ) {
+                    if( pe.val.is_String() || pe.val.is_ByteString() ) {
                         ASSERT_BUG(sp, pattern.m_implicit_deref_count >= 1, "");
                         pattern.m_implicit_deref_count -= 1;
                     }

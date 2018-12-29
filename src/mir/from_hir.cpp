@@ -1218,7 +1218,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Cast& node) override
         {
-            TRACE_FUNCTION_F("_Cast");
+            TRACE_FUNCTION_F("_Cast " << node.m_res_type);
             this->visit_node_ptr(node.m_value);
 
             const auto& ty_out = node.m_res_type;
@@ -2009,7 +2009,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Field& node) override
         {
-            TRACE_FUNCTION_F("_Field");
+            TRACE_FUNCTION_F("_Field \"" << node.m_field << "\"");
             this->visit_node_ptr(node.m_value);
             auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
 
