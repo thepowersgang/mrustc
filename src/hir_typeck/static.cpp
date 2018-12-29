@@ -1928,6 +1928,12 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
         if( e.binding.is_Opaque() )
             return true;
 
+        // In 1.29, "manually_drop" is a struct with special behaviour (instead of being a union)
+        if( TARGETVER_1_29 && e.path.m_data.as_Generic().m_path == m_crate.get_lang_item_path_opt("manually_drop") )
+        {
+            return false;
+        }
+
         auto pp = ::HIR::PathParams();
         bool has_direct_drop = this->find_impl(sp, m_lang_Drop, &pp, ty, [&](auto , bool){ return true; }, true);
         if( has_direct_drop )
