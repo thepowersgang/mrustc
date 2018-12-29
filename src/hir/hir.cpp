@@ -93,6 +93,21 @@ namespace HIR {
         )
         return true;
     }
+
+    ::std::ostream& operator<<(::std::ostream& os, const Struct::Repr& x) {
+        os << "repr(";
+        switch(x)
+        {
+        case Struct::Repr::Rust:    os << "Rust";   break;
+        case Struct::Repr::C:   os << "C";  break;
+        case Struct::Repr::Packed:  os << "packed"; break;
+        case Struct::Repr::Simd:    os << "simd";   break;
+        case Struct::Repr::Aligned: os << "align(?)";   break;
+        case Struct::Repr::Transparent: os << "transparent";    break;
+        }
+        os << ")";
+        return os;
+    }
 }
 
 size_t HIR::Enum::find_variant(const ::std::string& name) const

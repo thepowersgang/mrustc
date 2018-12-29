@@ -517,139 +517,6 @@ void Target_SetCfg(const ::std::string& target_name)
         });
 }
 
-namespace {
-    // Returns NULL when the repr can't be determined
-    ::std::unique_ptr<StructRepr> make_struct_repr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
-    {
-        TRACE_FUNCTION_F(ty);
-        ::std::vector<StructRepr::Ent>  ents;
-        bool packed = false;
-        bool allow_sort = false;
-        if( const auto* te = ty.m_data.opt_Path() )
-        {
-            const auto& str = *te->binding.as_Struct();
-            auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr, &te->path.m_data.as_Generic().m_params, nullptr);
-            auto monomorph = [&](const auto& tpl) {
-                auto rv = monomorphise_type_with(sp, tpl, monomorph_cb);
-                resolve.expand_associated_types(sp, rv);
-                return rv;
-                };
-            TU_MATCHA( (str.m_data), (se),
-            (Unit,
-                ),
-            (Tuple,
-                unsigned int idx = 0;
-                for(const auto& e : se)
-                {
-                    auto ty = monomorph(e.ent);
-                    size_t  size, align;
-                    if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
-                        return nullptr;
-                    if( size == SIZE_MAX )
-                        BUG(sp, "Unsized type in tuple struct");
-                    ents.push_back(StructRepr::Ent { idx++, size, align, mv$(ty) });
-                }
-                ),
-            (Named,
-                unsigned int idx = 0;
-                for(const auto& e : se)
-                {
-                    auto ty = monomorph(e.second.ent);
-                    size_t  size, align;
-                    if( !Target_GetSizeAndAlignOf(sp, resolve, ty, size,align) )
-                        return nullptr;
-                    if( size == SIZE_MAX )
-                        BUG(sp, "Unsized type in struct");
-                    ents.push_back(StructRepr::Ent { idx++, size, align, mv$(ty) });
-                }
-                )
-            )
-            switch(str.m_repr)
-            {
-            case ::HIR::Struct::Repr::Packed:
-                packed = true;
-                TODO(sp, "make_struct_repr - repr(packed)");    // needs codegen to know to pack the structure
-                break;
-            case ::HIR::Struct::Repr::Simd:
-            case ::HIR::Struct::Repr::C:
-                // No sorting, no packing
-                break;
-            case ::HIR::Struct::Repr::Rust:
-                allow_sort = true;
-                break;
-            }
-        }
-        else if( const auto* te = ty.m_data.opt_Tuple() )
-        {
-            unsigned int idx = 0;
-            for(const auto& t : *te)
-            {
-                size_t  size, align;
-                if( !Target_GetSizeAndAlignOf(sp, resolve, t, size,align) )
-                    return nullptr;
-                if( size == SIZE_MAX )
-                    BUG(sp, "Unsized type in tuple");
-                ents.push_back(StructRepr::Ent { idx++, size, align, t.clone() });
-            }
-        }
-        else
-        {
-            BUG(sp, "Unexpected type in creating struct repr");
-        }
-
-
-        if( allow_sort )
-        {
-            // TODO: Sort by alignment then size (largest first)
-            // - Requires codegen to use this information
-        }
-
-        StructRepr  rv;
-        size_t  cur_ofs = 0;
-        size_t  max_align = 1;
-        for(auto& e : ents)
-        {
-            // Increase offset to fit alignment
-            if( !packed )
-            {
-                while( cur_ofs % e.align != 0 )
-                {
-                    rv.ents.push_back({ ~0u, 1, 1, ::HIR::TypeRef( ::HIR::CoreType::U8 ) });
-                    cur_ofs ++;
-                }
-            }
-            max_align = ::std::max(max_align, e.align);
-
-            rv.ents.push_back(mv$(e));
-            cur_ofs += e.size;
-        }
-        if( !packed )
-        {
-            while( cur_ofs % max_align != 0 )
-            {
-                rv.ents.push_back({ ~0u, 1, 1, ::HIR::TypeRef( ::HIR::CoreType::U8 ) });
-                cur_ofs ++;
-            }
-        }
-        return box$(rv);
-    }
-}
-const StructRepr* Target_GetStructRepr(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty)
-{
-    // TODO: Thread safety
-    // Map of generic paths to struct representations.
-    static ::std::map<::HIR::TypeRef, ::std::unique_ptr<StructRepr>>  s_cache;
-
-    auto it = s_cache.find(ty);
-    if( it != s_cache.end() )
-    {
-        return it->second.get();
-    }
-
-    auto ires = s_cache.insert(::std::make_pair( ty.clone(), make_struct_repr(sp, resolve, ty) ));
-    return ires.first->second.get();
-}
-
 bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve, const ::HIR::TypeRef& ty, size_t& out_size, size_t& out_align)
 {
     TRACE_FUNCTION_FR(ty, "size=" << out_size << ", align=" << out_align);
@@ -904,6 +771,9 @@ namespace {
             case ::HIR::Struct::Repr::Simd:
                 // No sorting, no packing
                 break;
+            case ::HIR::Struct::Repr::Aligned:
+                // TODO: Update the minimum alignment
+            case ::HIR::Struct::Repr::Transparent:
             case ::HIR::Struct::Repr::Rust:
                 allow_sort = true;
                 break;

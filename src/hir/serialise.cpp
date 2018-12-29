@@ -975,6 +975,7 @@
                 )
             )
 
+            m_out.write_u64c(item.m_forced_alignment);
             serialise(item.m_markings);
             serialise(item.m_struct_markings);
         }

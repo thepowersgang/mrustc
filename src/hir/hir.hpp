@@ -267,6 +267,8 @@ public:
         C,
         Packed,
         Simd,
+        Aligned,    // Alignment stored elsewhere
+        Transparent,
     };
     TAGGED_UNION(Data, Unit,
         (Unit, struct {}),
@@ -277,10 +279,12 @@ public:
     GenericParams   m_params;
     Repr    m_repr;
     Data    m_data;
+    unsigned    m_forced_alignment = 0;
 
     TraitMarkings   m_markings;
     StructMarkings  m_struct_markings;
 };
+extern ::std::ostream& operator<<(::std::ostream& os, const Struct::Repr& x);
 class Union
 {
 public:

@@ -894,31 +894,32 @@ namespace {
             const auto& repr_str = a.name();
             if( repr_str == "C" ) {
                 ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
-                rv.m_repr = ::HIR::Struct::Repr::C;
+                if( rv.m_repr != ::HIR::Struct::Repr::Packed )
+                {
+                    ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
+                    rv.m_repr = ::HIR::Struct::Repr::C;
+                }
             }
             else if( repr_str == "packed" ) {
                 ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust || rv.m_repr == ::HIR::Struct::Repr::C, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
                 rv.m_repr = ::HIR::Struct::Repr::Packed;
             }
             else if( repr_str == "simd" ) {
                 ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
                 rv.m_repr = ::HIR::Struct::Repr::Simd;
             }
             else if( repr_str == "transparent" ) {
                 ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
-                // TODO: Mark so the C backend knows that it's supposed to be transparent
-                //rv.m_repr = ::HIR::Struct::Repr::Transparent;
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
+                rv.m_repr = ::HIR::Struct::Repr::Transparent;
             }
             else if( repr_str == "align" ) {
                 //ASSERT_BUG(a.span(), a.has_string(), "#[repr(aligned)] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes");
-                // TODO: Alignment repr
-                //rv.m_repr = ::HIR::Struct::Repr::Aligned;
-                //rv.m_align_size = ::std::stol(a.string());
+                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
+                rv.m_repr = ::HIR::Struct::Repr::Aligned;
+                //rv.m_forced_alignment = ::std::stol(a.string());
             }
             else {
                 TODO(a.span(), "Handle struct repr '" << repr_str << "'");

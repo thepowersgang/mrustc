@@ -995,11 +995,12 @@
         default:
             throw "";
         }
+        auto align = static_cast<unsigned>(m_in.read_u64c());
         auto markings = deserialise_markings();
         auto str_markings = deserialise_str_markings();
 
         return ::HIR::Struct {
-            mv$(params), repr, mv$(data), mv$(markings), mv$(str_markings)
+            mv$(params), repr, mv$(data), align, mv$(markings), mv$(str_markings)
             };
     }
     ::HIR::Trait HirDeserialiser::deserialise_trait()
