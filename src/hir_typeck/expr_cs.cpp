@@ -3112,6 +3112,14 @@ namespace {
             ::HIR::ExprVisitorDef::visit_pattern(sp, pat);
         }
 
+        void visit(::HIR::ExprNode_Block& node) override {
+            ::HIR::ExprVisitorDef::visit(node);
+            if( node.m_value_node )
+            {
+                check_types_equal(node.span(), node.m_res_type, node.m_value_node->m_res_type);
+            }
+        }
+
         void visit(::HIR::ExprNode_Let& node) override {
             this->check_type_resolved_top(node.span(), node.m_type);
             ::HIR::ExprVisitorDef::visit(node);
@@ -3319,6 +3327,21 @@ namespace {
                     this->check_type_resolved(sp, st, top_type);
                 )
             )
+        }
+
+        void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
+        {
+            DEBUG(sp << " - " << l << " == " << r);
+            if( /*l.m_data.is_Diverge() ||*/ r.m_data.is_Diverge() ) {
+                // Diverge, matches everything.
+                // TODO: Is this always true?
+            }
+            else if( l != r ) {
+                ERROR(sp, E0000, "Type mismatch - " << l << " != " << r);
+            }
+            else {
+                // All good
+            }
         }
     };
 }
@@ -5746,6 +5769,7 @@ namespace {
 
                         // If the coercion is of a block, do the reborrow on the last node of the block
                         // - Cleans up the dumped MIR and prevents needing a reborrow elsewhere.
+                        // - TODO: Alter the block's result types
                         ::HIR::ExprNodeP* npp = node_ptr_ptr;
                         while( auto* p = dynamic_cast< ::HIR::ExprNode_Block*>(&**npp) )
                         {
@@ -5755,7 +5779,7 @@ namespace {
                             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, src),
                                 "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(src)
                                 );
-                            p->m_res_type = new_type.clone();
+                            p->m_res_type = dst.clone();
                             npp = &p->m_value_node;
                         }
                         ::HIR::ExprNodeP& node_ptr = *npp;
@@ -5784,7 +5808,7 @@ namespace {
                             context.equate_types(sp, *dep->inner, *se.inner);
                             return CoerceResult::Custom;
                         case CoerceResult::Unsize:
-                            DEBUG("- NEWNODE _Unsize " << &*node_ptr << " -> " << dst);
+                            DEBUG("- NEWNODE _Unsize " << &node_ptr << " " << &*node_ptr << " -> " << dst);
                             auto span = node_ptr->span();
                             node_ptr = NEWNODE( dst.clone(), span, _Unsize,  mv$(node_ptr), dst.clone() );
                             return CoerceResult::Custom;
@@ -6973,7 +6997,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         context.add_ivars(root_ptr->m_res_type);
         root_ptr->visit(visitor);
 
-        DEBUG("Return type = " << new_res_ty);
+        DEBUG("Return type = " << new_res_ty << ", root_ptr = " << typeid(*root_ptr).name() << " " << root_ptr->m_res_type);
         context.equate_types_coerce(sp, new_res_ty, root_ptr);
     }
 
@@ -7267,6 +7291,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         }
         BUG(root_ptr->span(), "Spare rules left after typecheck stabilised");
     }
+    DEBUG("root_ptr = " << typeid(*root_ptr).name() << " " << root_ptr->m_res_type);
 
     // - Recreate the pointer
     expr.reset( root_ptr.release() );

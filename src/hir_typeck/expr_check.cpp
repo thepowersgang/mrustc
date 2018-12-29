@@ -1050,6 +1050,7 @@ namespace {
         }
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
+            //DEBUG(sp << " - " << l << " == " << r);
             if( /*l.m_data.is_Diverge() ||*/ r.m_data.is_Diverge() ) {
                 // Diverge, matches everything.
                 // TODO: Is this always true?
