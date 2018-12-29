@@ -37,7 +37,7 @@ struct Context
     {
     public:
         virtual void fmt(::std::ostream& os) const = 0;
-        virtual bool revisit(Context& context) = 0;
+        virtual bool revisit(Context& context, bool is_fallback) = 0;
     };
 
     struct Binding
@@ -3790,24 +3790,26 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
             void fmt(::std::ostream& os) const override {
                 os << "MatchErgonomicsRevisit { " << m_pattern << " : " << m_outer_ty << " }";
             }
-            bool revisit(Context& context) override {
-                TRACE_FUNCTION_F("Match ergonomics - " << m_pattern << " : " << m_outer_ty);
-                return this->revisit_inner(context, m_pattern, m_outer_ty, m_outer_mode);
+            bool revisit(Context& context, bool is_fallback_mode) override {
+                TRACE_FUNCTION_F("Match ergonomics - " << m_pattern << " : " << m_outer_ty << (is_fallback_mode ? " (fallback)": ""));
+                return this->revisit_inner_real(context, m_pattern, m_outer_ty, m_outer_mode, is_fallback_mode);
             }
             // TODO: Recurse into inner patterns, creating new revisitors?
             // - OR, could just recurse on it.
             // 
             // Recusring incurs costs on every iteration, but is less expensive the first time around
             // New revisitors are cheaper when inferrence takes multiple iterations, but takes longer first time.
-            bool revisit_inner(Context& context, ::HIR::Pattern& pattern, const ::HIR::TypeRef& type, ::HIR::PatternBinding::Type binding_mode) const {
-                if( !revisit_inner_real(context, pattern, type, binding_mode) )
+            bool revisit_inner(Context& context, ::HIR::Pattern& pattern, const ::HIR::TypeRef& type, ::HIR::PatternBinding::Type binding_mode) const
+            {
+                if( !revisit_inner_real(context, pattern, type, binding_mode, false) )
                 {
                     DEBUG("Add revisit for " << pattern << " : " << type << "(mode = " << (int)binding_mode << ")");
                     context.add_revisit_adv( box$(( MatchErgonomicsRevisit { sp, type.clone(), pattern, binding_mode } )) );
                 }
                 return true;
             }
-            bool revisit_inner_real(Context& context, ::HIR::Pattern& pattern, const ::HIR::TypeRef& type, ::HIR::PatternBinding::Type binding_mode) const {
+            bool revisit_inner_real(Context& context, ::HIR::Pattern& pattern, const ::HIR::TypeRef& type, ::HIR::PatternBinding::Type binding_mode, bool is_fallback) const
+            {
                 TRACE_FUNCTION_F(pattern << " : " << type);
 
                 // Binding applies to the raw input type (not after dereferencing)
@@ -3837,7 +3839,72 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 DEBUG("- " << n_deref << " derefs of class " << bt << " to get " << *ty_p);
                 if( ty_p->m_data.is_Infer() ) {
                     // Still pure infer, can't do anything
-                    // - What if it's an literal?
+                    // - What if it's a literal?
+
+                    if( n_deref == 0 && is_fallback )
+                    {
+                        ::HIR::TypeRef  possible_type;
+                        // TODO: Get a potential type from the pattern, and set as a possibility.
+                        // - Note, this is only if no derefs were applied
+                        TU_MATCH_HDR( (pattern.m_data), { )
+                        TU_ARM(pattern.m_data, Any, pe) {
+                            // No type information.
+                            }
+                        TU_ARM(pattern.m_data, Value, pe) {
+                            // TODO: Get type info
+                            }
+                        TU_ARM(pattern.m_data, Range, pe) {
+                            // TODO: Get type info (same as Value)
+                            }
+                        TU_ARM(pattern.m_data, Box, pe) {
+                            // TODO: Get type info (Box<_>)
+                            }
+                        TU_ARM(pattern.m_data, Ref, pe) {
+                            BUG(sp, "Match ergonomics - & pattern");
+                            }
+                        TU_ARM(pattern.m_data, Tuple, e) {
+                            // TODO: Get type info `(T, U, ...)`
+                            }
+                        TU_ARM(pattern.m_data, SplitTuple, pe) {
+                            // Can't get type information, tuple size is unkown
+                            }
+                        TU_ARM(pattern.m_data, Slice, e) {
+                            // Can be either a [T] or [T; n]. Can't provide a hint
+                            }
+                        TU_ARM(pattern.m_data, SplitSlice, pe) {
+                            // Can be either a [T] or [T; n]. Can't provide a hint
+                            }
+                        TU_ARM(pattern.m_data, StructValue, e) {
+                            context.add_ivars_params( e.path.m_params );
+                            possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
+                            }
+                        TU_ARM(pattern.m_data, StructTuple, e) {
+                            context.add_ivars_params( e.path.m_params );
+                            possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
+                            }
+                        TU_ARM(pattern.m_data, Struct, e) {
+                            context.add_ivars_params( e.path.m_params );
+                            possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
+                            }
+                        TU_ARM(pattern.m_data, EnumValue, e) {
+                            context.add_ivars_params( e.path.m_params );
+                            possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
+                            }
+                        TU_ARM(pattern.m_data, EnumTuple, e) {
+                            context.add_ivars_params( e.path.m_params );
+                            possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
+                            }
+                        TU_ARM(pattern.m_data, EnumStruct, e) {
+                            context.add_ivars_params( e.path.m_params );
+                            possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
+                            }
+                        }
+                        if( possible_type != ::HIR::TypeRef() )
+                        {
+                            DEBUG("Possible equate " << possible_type);
+                            context.equate_types( sp, *ty_p, possible_type );
+                        }
+                    }
 
                     // TODO: Visit all inner bindings and disable coercion fallbacks on them.
                     MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern);
@@ -4360,7 +4427,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                 void fmt(::std::ostream& os) const override {
                     os << "SplitTuplePatRevisit { " << m_outer_ty << " = (" << m_leading_tys << ", ..., " << m_trailing_tys << ") }";
                 }
-                bool revisit(Context& context) override {
+                bool revisit(Context& context, bool is_fallback) override {
                     const auto& ty = context.get_type(m_outer_ty);
                     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Infer, te,
                         return false;
@@ -4414,7 +4481,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                 {}
 
                 void fmt(::std::ostream& os) const override { os << "SlicePatRevisit { " << inner << ", " << type << ", " << size; }
-                bool revisit(Context& context) override {
+                bool revisit(Context& context, bool is_fallback) override {
                     const auto& ty = context.get_type(type);
                     TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
                         context.equate_types(sp, *te.inner, inner);
@@ -4489,7 +4556,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                 {}
 
                 void fmt(::std::ostream& os) const override { os << "SplitSlice inner=" << inner << ", outer=" << type << ", binding="<<var_ty<<", " << min_size; }
-                bool revisit(Context& context) override {
+                bool revisit(Context& context, bool is_fallback) override {
                     const auto& ty = context.get_type(this->type);
                     if( ty.m_data.is_Infer() )
                         return false;
@@ -6881,12 +6948,6 @@ namespace {
         static Span _span;
         const auto& sp = _span;
 
-        if( ! ivar_ent.has_rules() ) {
-            // No rules, don't do anything (and don't print)
-            DEBUG(i << ": No rules");
-            return false;
-        }
-
         if( honour_disable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
         {
             DEBUG(i << ": forced unknown");
@@ -6898,9 +6959,18 @@ namespace {
         const auto& ty_l = context.m_ivars.get_type(ty_l_ivar);
 
         if( ty_l != ty_l_ivar ) {
-            DEBUG("- IVar " << i << " had possibilities, but was known to be " << ty_l);
-            // Completely clear by reinitialising
-            ivar_ent = Context::IVarPossible();
+            if( ivar_ent.has_rules() )
+            {
+                DEBUG("- IVar " << i << " had possibilities, but was known to be " << ty_l);
+                // Completely clear by reinitialising
+                ivar_ent = Context::IVarPossible();
+            }
+            return false;
+        }
+
+        if( ! ivar_ent.has_rules() ) {
+            // No rules, don't do anything (and don't print)
+            DEBUG(i << ": No rules");
             return false;
         }
 
@@ -7096,7 +7166,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             for(size_t i = 0; i < len; i ++)
             {
                 auto& ent = *context.adv_revisits[i];
-                adv_revisit_remove_list.push_back( ent.revisit(context) );
+                adv_revisit_remove_list.push_back( ent.revisit(context, /*is_fallback=*/false) );
             }
             for(size_t i = len; i --;)
             {
@@ -7233,6 +7303,16 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 }
             }
         } // `if peek_changed` (ivar possibilities #2)
+
+        if( !context.m_ivars.peek_changed() )
+        {
+            size_t  len = context.adv_revisits.size();
+            for(size_t i = 0; i < len; i ++)
+            {
+                auto& ent = *context.adv_revisits[i];
+                ent.revisit(context, /*is_fallback=*/true);
+            }
+        }
 
         // Finally. If nothing changed, apply ivar defaults
         if( !context.m_ivars.peek_changed() )
