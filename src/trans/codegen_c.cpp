@@ -1965,10 +1965,10 @@ namespace {
                         break;
                     case ::HIR::CoreType::U64:
                     case ::HIR::CoreType::Usize:
-                        m_of << ::std::hex << "0x" << e << ::std::dec;
+                        m_of << ::std::hex << "0x" << e << "ull" << ::std::dec;
                         break;
                     case ::HIR::CoreType::U128:
-                        m_of << ::std::hex << "0x" << e << ::std::dec;
+                        m_of << ::std::hex << "0x" << e << "ull" << ::std::dec;
                         break;
                     case ::HIR::CoreType::I8:
                         m_of << static_cast<uint16_t>( static_cast<int8_t>(e) );
@@ -1982,7 +1982,7 @@ namespace {
                     case ::HIR::CoreType::I64:
                     case ::HIR::CoreType::I128:
                     case ::HIR::CoreType::Isize:
-                        m_of << static_cast<int64_t>(e);
+                        m_of << static_cast<int64_t>(e) << "ll";
                         break;
                     case ::HIR::CoreType::Char:
                         assert(0 <= e && e <= 0x10FFFF);
@@ -5629,6 +5629,16 @@ namespace {
                 {
                     switch(c.t)
                     {
+                    // TODO: These should already have been truncated/reinterpreted, but just in case.
+                    case ::HIR::CoreType::I8:
+                        m_of << static_cast<int>( static_cast<int8_t>(c.v) );   // cast to int, because `int8_t` is printed as a `char`
+                        break;
+                    case ::HIR::CoreType::I16:
+                        m_of << static_cast<int16_t>(c.v);
+                        break;
+                    case ::HIR::CoreType::I32:
+                        m_of << static_cast<int32_t>(c.v);
+                        break;
                     case ::HIR::CoreType::I64:
                     case ::HIR::CoreType::Isize:
                         m_of << c.v;
