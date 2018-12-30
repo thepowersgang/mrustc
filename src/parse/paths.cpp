@@ -39,6 +39,8 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
         return AST::Path(AST::Path::TagSuper(), count, Parse_PathNodes(lex, generic_mode));
         }
 
+    case TOK_RWORD_CRATE:
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
     case TOK_DOUBLE_COLON:
         return Parse_Path(lex, true, generic_mode);
 

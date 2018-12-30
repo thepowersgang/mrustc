@@ -1396,6 +1396,8 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
     case TOK_IDENT:
         path.append( AST::PathNode(mv$(tok.str()), {}) );
         break;
+    case TOK_RWORD_CRATE:
+        break;
     // Leading :: is allowed and ignored for the $crate feature
     case TOK_DOUBLE_COLON:
         // Absolute path
