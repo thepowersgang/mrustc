@@ -63,7 +63,65 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     }
     else
     {
-        TODO(Span(), "auto Clone for " << ty << " - Not Copy");
+        const auto& lang_Clone = state.resolve.m_crate.get_lang_item_path(sp, "clone");
+        TU_MATCH_HDRA( (ty.m_data), {)
+        default:
+            TODO(sp, "auto Clone for " << ty << " - Not Copy");
+        TU_ARMA(Tuple, te) {
+            assert(te.size() > 0);
+
+            ::std::vector< ::MIR::Param>   values;
+            // For each field of the tuple, create a clone (either using Copy if posible, or calling Clone::clone)
+            for(const auto& subty : te)
+            {
+                auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), values.size() });
+                if( state.resolve.type_is_copy(sp, subty) )
+                {
+                    values.push_back( ::std::move(fld_lvalue) );
+                }
+                else
+                {
+                    // Allocate to locals (one for the `&T`, the other for the cloned `T`)
+                    auto borrow_lv = ::MIR::LValue::make_Local( mir_fcn.locals.size() );
+                    mir_fcn.locals.push_back(::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, subty.clone()));
+                    auto res_lv = ::MIR::LValue::make_Local( mir_fcn.locals.size() );
+                    mir_fcn.locals.push_back(subty.clone());
+
+                    // Call `<T as Clone>::clone`, passing a borrow of the field
+                    ::MIR::BasicBlock   bb;
+                    bb.statements.push_back(::MIR::Statement::make_Assign({
+                            borrow_lv.clone(),
+                            ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
+                            }));
+                    bb.terminator = ::MIR::Terminator::make_Call({
+                            mir_fcn.blocks.size() + 2,  // return block (after the panic block below)
+                            mir_fcn.blocks.size() + 1,  // panic block (next block)
+                            res_lv.clone(),
+                            ::MIR::CallTarget( ::HIR::Path(subty.clone(), lang_Clone, "clone") ),
+                            ::make_vec1<::MIR::Param>( ::std::move(borrow_lv) )
+                            });
+                    mir_fcn.blocks.push_back(::std::move( bb ));
+
+                    // Stub panic handling (TODO: Make this iterate `values` and drop all of them)
+                    ::MIR::BasicBlock   panic_bb;
+                    bb.terminator = ::MIR::Terminator::make_Diverge({});
+                    mir_fcn.blocks.push_back(::std::move( panic_bb ));
+
+                    // Save the output of the `clone` call
+                    values.push_back( ::std::move(res_lv) );
+                }
+            }
+
+            // Construct the result tuple
+            ::MIR::BasicBlock   bb;
+            bb.statements.push_back(::MIR::Statement::make_Assign({
+                ::MIR::LValue::make_Return({}),
+                ::MIR::RValue::make_Tuple({ mv$(values) })
+                }));
+            bb.terminator = ::MIR::Terminator::make_Return({});
+            mir_fcn.blocks.push_back(::std::move( bb ));
+            }
+        }
     }
 
     // Function

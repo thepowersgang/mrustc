@@ -1393,6 +1393,7 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         {
             const auto& pe = path_mono.m_data.as_UfcsKnown();
             ASSERT_BUG(sp, pe.item == "clone", "");
+            // TODO: If this is !Copy, then we need to ensure that the inner type's clone impls are also available
             // Add this type to a list of types that will have the impl auto-generated
             state.rv.auto_clone_impls.insert( pe.type->clone() );
         }
