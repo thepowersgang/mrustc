@@ -1188,6 +1188,15 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 )
                 Expand_Attrs(var.m_attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
             }
+            // Handle cfg on variants (kinda hacky)
+            for(auto it = e.variants().begin(); it != e.variants().end(); ) {
+                if( it->m_name == "" ) {
+                    it = e.variants().erase(it);
+                }
+                else {
+                    ++ it;
+                }
+            }
             ),
         (Union,
             Expand_GenericParams(crate, modstack, mod,  e.m_params);
