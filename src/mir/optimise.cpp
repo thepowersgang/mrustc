@@ -2219,75 +2219,85 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         const auto& val_l = se.val_l.as_Constant();
                         const auto& val_r = se.val_r.as_Constant();
 
-                        ::MIR::Constant new_value;
-                        bool replace = false;
-                        switch(se.op)
+                        if( val_l.is_Const() || val_r.is_Const() )
                         {
-                        case ::MIR::eBinOp::EQ:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l == val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::NE:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l != val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::LT:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l < val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::LE:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l <= val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::GT:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l > val_r});
-                            }
-                            break;
-                        case ::MIR::eBinOp::GE:
-                            if( val_l.is_Const() || val_r.is_Const() )
-                                ;
-                            else
-                            {
-                                replace = true;
-                                new_value = ::MIR::Constant::make_Bool({val_l >= val_r});
-                            }
-                            break;
-                        // TODO: Other binary operations
-                        // Could emit a TODO?
-                        default:
-                            break;
                         }
-
-                        if( replace )
+                        else
                         {
-                            DEBUG(state << " " << e->src << " = " << new_value);
-                            e->src = mv$(new_value);
-                            changed = true;
+                            struct H {
+                                static int64_t truncate_s(::HIR::CoreType ct, int64_t v) {
+                                    return v;
+                                }
+                                static uint64_t truncate_u(::HIR::CoreType ct, uint64_t v) {
+                                    switch(ct)
+                                    {
+                                    case ::HIR::CoreType::U8:   return v & 0xFF;
+                                    case ::HIR::CoreType::U16:  return v & 0xFFFF;
+                                    case ::HIR::CoreType::U32:  return v & 0xFFFFFFFF;
+                                    case ::HIR::CoreType::U64:  return v;
+                                    case ::HIR::CoreType::U128: return v;
+                                    case ::HIR::CoreType::Usize:    return v;
+                                    case ::HIR::CoreType::Char:
+                                        //MIR_BUG(state, "Invalid use of operator on char");
+                                        break;
+                                    default:
+                                        // Invalid type for Uint literal
+                                        break;
+                                    }
+                                    return v;
+                                }
+                            };
+                            ::MIR::Constant new_value;
+                            switch(se.op)
+                            {
+                            case ::MIR::eBinOp::EQ:
+                                new_value = ::MIR::Constant::make_Bool({val_l == val_r});
+                                break;
+                            case ::MIR::eBinOp::NE:
+                                new_value = ::MIR::Constant::make_Bool({val_l != val_r});
+                                break;
+                            case ::MIR::eBinOp::LT:
+                                new_value = ::MIR::Constant::make_Bool({val_l < val_r});
+                                break;
+                            case ::MIR::eBinOp::LE:
+                                new_value = ::MIR::Constant::make_Bool({val_l <= val_r});
+                                break;
+                            case ::MIR::eBinOp::GT:
+                                new_value = ::MIR::Constant::make_Bool({val_l > val_r});
+                                break;
+                            case ::MIR::eBinOp::GE:
+                                new_value = ::MIR::Constant::make_Bool({val_l >= val_r});
+                                break;
+
+                            case ::MIR::eBinOp::ADD:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
+                                //{TU_MATCH_HDRA( (val_l, val_r), {)
+                                {TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v + re.v) });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v + re.v) });
+                                    }
+                                }}
+                                break;
+                            // TODO: Other binary operations
+                            // Could emit a TODO?
+                            default:
+                                break;
+                            }
+
+                            if( new_value != ::MIR::Constant() )
+                            {
+                                DEBUG(state << " " << e->src << " = " << new_value);
+                                e->src = mv$(new_value);
+                                changed = true;
+                            }
                         }
                     }
                     ),
