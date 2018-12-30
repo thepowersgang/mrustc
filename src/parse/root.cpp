@@ -1887,15 +1887,32 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
             if( sub_path == "-" ) {
                 ERROR(lex.point_span(), E0000, "Cannot load module from file when reading stdin");
             }
-            else if( path_attr.size() == 0 && ! mod_fileinfo.controls_dir )
-            {
-                ERROR(lex.point_span(), E0000, "Can't load from files outside of mod.rs or crate root");
-            }
             else if( !H::check_item_cfg(meta_items) ) {
                 // Ignore - emit Item::None
                 item_name = mv$(name);
                 item_data = ::AST::Item( );
                 break ;
+            }
+            else if( path_attr.size() == 0 && ! mod_fileinfo.controls_dir )
+            {
+                // TODO: Also search for curmod/submod.rs
+                //::std::string newpath_file = (mod_path.nodes().size() > 1 ? dirname(mod_fileinfo.path) + mod_path.nodes()[mod_path.nodes().size()-2].name() + "/" + name + ".rs" : "");
+                ::std::string newpath_file = (mod_path.nodes().size() >= 1 ? dirname(mod_fileinfo.path) + mod_path.nodes()[mod_path.nodes().size()-1].name() + "/" + name + ".rs" : "");
+                DEBUG("newpath_file = '" << newpath_file << "' " << mod_fileinfo.path << " " << mod_path);
+                ::std::ifstream ifs_file(newpath_file);
+                if( ifs_file.is_open() )
+                {
+                    submod.m_file_info.path = newpath_file;
+                    submod.m_file_info.controls_dir = false;
+                    DEBUG("- path = " << submod.m_file_info.path);
+                    Lexer sub_lex(submod.m_file_info.path);
+                    Parse_ModRoot(sub_lex, submod, meta_items);
+                    GET_CHECK_TOK(tok, sub_lex, TOK_EOF);
+                }
+                else
+                {
+                    ERROR(lex.point_span(), E0000, "Can't load from files outside of mod.rs or crate root");
+                }
             }
             else
             {
@@ -1917,7 +1934,9 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
                 else if( ifs_file.is_open() )
                 {
                     submod.m_file_info.path = newpath_file;
+                    submod.m_file_info.controls_dir = false;
                 }
+                // TODO: If this is not a controlling file, look in `modname/` for the new module
                 else
                 {
                     // Can't find file
