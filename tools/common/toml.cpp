@@ -263,8 +263,7 @@ TomlKeyValue TomlFile::get_next_value()
     }
     if( m_current_composite.empty() )
     {
-        // TODO: Allow EOF?
-        if(t.m_type != Token::Type::Newline)
+        if(t.m_type != Token::Type::Newline && t.m_type != Token::Type::Eof)
             throw ::std::runtime_error(::format("Unexpected token in TOML file after entry - ", t));
     }
     else
