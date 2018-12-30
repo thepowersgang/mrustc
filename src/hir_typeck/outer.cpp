@@ -291,24 +291,52 @@ namespace {
             TU_IFLET(::HIR::TypeRef::Data, ty.m_data, ErasedType, e,
                 if( e.m_origin == ::HIR::SimplePath() )
                 {
-                    // If not, ensure taht we're checking a function return type, and error if not
-                    if( ! m_fcn_path )
-                        ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
-                    assert(m_fcn_ptr);
-                    DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
+                    // If not, figure out what to do with it
 
-                    ::HIR::PathParams    params;
-                    for(unsigned int i = 0; i < m_fcn_ptr->m_params.m_types.size(); i ++)
-                        params.m_types.push_back(::HIR::TypeRef(m_fcn_ptr->m_params.m_types[i].m_name, 256+i));
-                    // Populate with function path
-                    e.m_origin = m_fcn_path->get_full_path();
-                    TU_MATCHA( (e.m_origin.m_data), (e2),
-                    (Generic, e2.m_params = mv$(params); ),
-                    (UfcsInherent, e2.params = mv$(params); ),
-                    (UfcsKnown, e2.params = mv$(params); ),
-                    (UfcsUnknown, throw ""; )
-                    )
-                    e.m_index = m_fcn_erased_count++;
+                    // If the function path is set, we're processing the return type of a function
+                    // - Add this to the list of erased types associated with the function
+                    if( m_fcn_path )
+                    {
+                        assert(m_fcn_ptr);
+                        DEBUG(*m_fcn_path << " " << m_fcn_erased_count);
+
+                        ::HIR::PathParams    params;
+                        for(unsigned int i = 0; i < m_fcn_ptr->m_params.m_types.size(); i ++)
+                            params.m_types.push_back(::HIR::TypeRef(m_fcn_ptr->m_params.m_types[i].m_name, 256+i));
+                        // Populate with function path
+                        e.m_origin = m_fcn_path->get_full_path();
+                        TU_MATCHA( (e.m_origin.m_data), (e2),
+                        (Generic, e2.m_params = mv$(params); ),
+                        (UfcsInherent, e2.params = mv$(params); ),
+                        (UfcsKnown, e2.params = mv$(params); ),
+                        (UfcsUnknown, throw ""; )
+                        )
+                        e.m_index = m_fcn_erased_count++;
+                    }
+                    // If the function _pointer_ is set (but not the path), then we're in the function arguments
+                    // - Add a un-namable generic parameter (TODO: Prevent this from being explicitly set when called)
+                    else if( m_fcn_ptr )
+                    {
+                        size_t idx = m_fcn_ptr->m_params.m_types.size();
+                        auto new_ty = ::HIR::TypeRef( FMT("impl$" << idx), 256 + idx );
+                        m_fcn_ptr->m_params.m_types.push_back({ FMT("impl$" << idx), ::HIR::TypeRef(), true });
+                        for( const auto& trait : e.m_traits )
+                        {
+                            m_fcn_ptr->m_params.m_bounds.push_back(::HIR::GenericBound::make_TraitBound({
+                                    new_ty.clone(),
+                                    trait.clone()
+                                    }));
+                        }
+                        if( e.m_lifetime != ::HIR::LifetimeRef() )
+                        {
+                            TODO(sp, "Add bound " << new_ty << " : " << e.m_lifetime);
+                        }
+                        ty = ::std::move(new_ty);
+                    }
+                    else
+                    {
+                        ERROR(sp, E0000, "Use of an erased type outside of a function return - " << ty);
+                    }
                 }
             )
         }
@@ -682,6 +710,12 @@ namespace {
             m_fcn_erased_count = 0;
             visit_type(item.m_return);
             m_fcn_path = nullptr;
+            // TODO: Visit arguments
+            for(auto& arg : item.m_args)
+            {
+                visit_type(arg.second);
+            }
+            m_fcn_ptr = nullptr;
 
             ::HIR::Visitor::visit_function(p, item);
         }
