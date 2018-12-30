@@ -81,6 +81,11 @@ void Expand_TestHarness(::AST::Crate& crate)
             }
             desc_vals.push_back({ {}, "should_panic", mv$(should_panic_val) });
         }
+        if( TARGETVER_1_29 )
+        {
+            // TODO: Get this from attributes
+            desc_vals.push_back({ {}, "allow_fail", NEWNODE(_Bool, false) });
+        }
         auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path("test", { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
 
         ::AST::ExprNode_StructLiteral::t_values   descandfn_vals;
