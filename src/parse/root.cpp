@@ -48,7 +48,6 @@ AST::Attribute  Parse_MetaItem(TokenStream& lex);
 void Parse_ModRoot(TokenStream& lex, AST::Module& mod, AST::AttributeList& mod_attrs);
 bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv);
 
-//::AST::Path Parse_Publicity(TokenStream& lex)
 ::AST::Visibility Parse_Publicity(TokenStream& lex, bool allow_restricted/*=true*/)
 {
     Token   tok;
@@ -56,6 +55,12 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
     {
         GET_TOK(tok, lex);
         return tok.take_frag_vis();
+    }
+    if( LOOK_AHEAD(lex) == TOK_RWORD_CRATE )
+    {
+        // TODO: Return a path that indicates the entire current crate
+        GET_TOK(tok, lex);
+        return true;
     }
     if( LOOK_AHEAD(lex) == TOK_RWORD_PUB )
     {

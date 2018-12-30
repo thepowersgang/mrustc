@@ -1824,7 +1824,7 @@ namespace
     bool consume_vis(TokenStreamRO& lex)
     {
         TRACE_FUNCTION;
-        if( lex.consume_if(TOK_INTERPOLATED_VIS) )
+        if( lex.consume_if(TOK_INTERPOLATED_VIS) || lex.consume_if(TOK_RWORD_CRATE) )
         {
             return true;
         }
@@ -2065,7 +2065,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
                 DEBUG(i << " ExpectTok(" << *e << ") == " << tok);
                 if( tok != *e )
                 {
-                    ERROR(sp, E0000, "Expected token in match arm");
+                    ERROR(sp, E0000, "Expected token " << *e << " in match arm, got " << tok);
                     break;
                 }
             }

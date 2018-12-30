@@ -160,6 +160,7 @@ bool is_token_vis(eTokenType tt) {
     switch(tt)
     {
     case TOK_RWORD_PUB:
+    case TOK_RWORD_CRATE:
     case TOK_INTERPOLATED_VIS:
         return true;
     default:
