@@ -517,7 +517,11 @@ public:
     struct FileInfo
     {
         bool    controls_dir = false;
+        bool    force_no_load = false;
+        // Path to this module
         ::std::string   path = "!";
+        // Directory controlled by this module
+        ::std::string   dir = "";
     };
 
     FileInfo    m_file_info;
