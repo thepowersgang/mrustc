@@ -41,6 +41,7 @@ AST::Path Parse_Path(TokenStream& lex, eParsePathGenericMode generic_mode)
 
     case TOK_RWORD_CRATE:
         GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        return Parse_Path(lex, true, generic_mode);
     case TOK_DOUBLE_COLON:
         return Parse_Path(lex, true, generic_mode);
 
@@ -82,7 +83,13 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
     Token   tok;
     if( is_abs )
     {
-        if( GET_TOK(tok, lex) == TOK_STRING ) {
+        // QUIRK: `::crate::foo` is valid (semi-surprisingly)
+        if( LOOK_AHEAD(lex) == TOK_RWORD_CRATE ) {
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_CRATE);
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            return AST::Path("", Parse_PathNodes(lex, generic_mode));
+        }
+        else if( GET_TOK(tok, lex) == TOK_STRING ) {
             ::std::string   cratename = tok.str();
             GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
             return AST::Path(cratename, Parse_PathNodes(lex, generic_mode));
