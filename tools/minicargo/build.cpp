@@ -869,6 +869,8 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         env.push_back("OPT_LEVEL", "2");
         env.push_back("DEBUG", "0");
         env.push_back("PROFILE", "release");
+        // TODO: All cfg(foo_bar) become CARGO_CFG_FOO_BAR
+        env.push_back("CARGO_CFG_TARGET_POINTER_WIDTH", "32");
         for(const auto& dep : manifest.dependencies())
         {
             if( ! dep.is_disabled() )
