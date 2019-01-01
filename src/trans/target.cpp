@@ -587,6 +587,8 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         }
         ),
     (Path,
+        if( te.binding.is_Opaque() )
+            return false;
         const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
         if( !repr )
         {
