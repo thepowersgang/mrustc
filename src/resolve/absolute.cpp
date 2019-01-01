@@ -78,12 +78,16 @@ namespace
         unsigned int m_block_level;
         bool m_frozen_bind_set;
 
+        // Destination `GenericParams` for in_band_lifetimes
+        ::AST::GenericParams* m_ibl_target_generics;
+
         Context(const ::AST::Crate& crate, const ::AST::Module& mod):
             m_crate(crate),
             m_mod(mod),
             m_var_count(~0u),
             m_block_level(0),
-            m_frozen_bind_set( false )
+            m_frozen_bind_set( false ),
+            m_ibl_target_generics(nullptr)
         {}
 
         void push(const ::AST::HigherRankedBounds& params) {
@@ -1501,6 +1505,30 @@ void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRe
             }
         }
 
+        if( TARGETVER_1_29 )
+        {
+            // If parsing a function header, add a new lifetime param to the function
+            // - Does the same apply to impl headers?
+            if( context.m_ibl_target_generics )
+            {
+                ASSERT_BUG(sp, !context.m_name_context.empty(), "Name context stack is empty");
+                ASSERT_BUG(sp, context.m_name_context.back().is_Generic(), "Name context stack end not Generic, instead " << context.m_name_context.back().tag_str());
+                auto& context_gen = context.m_name_context.back().as_Generic();
+                auto& def_gen = *context.m_ibl_target_generics;
+                // 1. Assert that the last item of `context.m_name_context` is Generic, and matches `m_ibl_target_generics`
+                ASSERT_BUG(sp, context_gen.lifetimes.size() == def_gen.lft_params().size(), "");
+                ASSERT_BUG(sp, context_gen.types.size() == def_gen.ty_params().size(), "");
+                //ASSERT_BUG(sp, context_gen.constants.size() == def_gen.val_params().size(), "");
+                // 2. Add the new lifetime to both `m_ibl_target_generics` and the last entry in m_name_context
+                size_t idx = def_gen.lft_params().size();
+                def_gen.add_lft_param(AST::LifetimeParam(sp, {}, lft.name()));
+                // TODO: Is this always a method-level set?
+                auto level = GenericSlot::Level::Method;
+                context_gen.lifetimes.push_back( NamedI<GenericSlot> { lft.name(), GenericSlot { level, static_cast<unsigned short>(idx) } } );
+                lft.set_binding( idx | (static_cast<int>(level) << 8) );
+                return ;
+            }
+        }
         ERROR(sp, E0000, "Couldn't find lifetime " << lft);
     }
 }
@@ -1929,26 +1957,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
             ),
         (Function,
             DEBUG("Function - " << i.name);
-            item_context.push( e.params(), GenericSlot::Level::Method );
-            Resolve_Absolute_Generic(item_context,  e.params());
-
-            Resolve_Absolute_Type( item_context, e.rettype() );
-            for(auto& arg : e.args())
-                Resolve_Absolute_Type( item_context, arg.second );
-
-            {
-                auto _h = item_context.enter_rootblock();
-                item_context.push_block();
-                for(auto& arg : e.args()) {
-                    Resolve_Absolute_Pattern( item_context, false, arg.first );
-                }
-
-                Resolve_Absolute_Expr( item_context, e.code() );
-
-                item_context.pop_block();
-            }
-
-            item_context.pop( e.params() );
+            Resolve_Absolute_Function(item_context, e);
             ),
         (Static,
             DEBUG("Static - " << i.name);
@@ -2009,9 +2018,11 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn)
     item_context.push( fcn.params(), GenericSlot::Level::Method );
     Resolve_Absolute_Generic(item_context,  fcn.params());
 
+    item_context.m_ibl_target_generics = &fcn.params();
     Resolve_Absolute_Type( item_context, fcn.rettype() );
     for(auto& arg : fcn.args())
         Resolve_Absolute_Type( item_context, arg.second );
+    item_context.m_ibl_target_generics = nullptr;
 
     {
         auto _h = item_context.enter_rootblock();
