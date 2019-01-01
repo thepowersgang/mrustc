@@ -3816,10 +3816,17 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 if( pattern.m_binding.is_valid() )
                 {
                     // - Binding present, use the current binding mode
+                    pattern.m_binding.m_type = binding_mode;
                     switch(binding_mode)
                     {
                     case ::HIR::PatternBinding::Type::Move:
                         context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), type);
+                        break;
+                    case ::HIR::PatternBinding::Type::MutRef:
+                        context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type.clone()));
+                        break;
+                    case ::HIR::PatternBinding::Type::Ref:
+                        context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, type.clone()));
                         break;
                     default:
                         TODO(sp, "Assign variable type using mode " << (int)binding_mode << " and " << type);
@@ -3832,7 +3839,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 ::HIR::BorrowType   bt = ::HIR::BorrowType::Owned;
                 const auto* ty_p = &context.get_type(type);
                 while( ty_p->m_data.is_Borrow() ) {
-                    bt = ::std::max(bt, ty_p->m_data.as_Borrow().type);
+                    DEBUG("bt " << bt << ", " << ty_p->m_data.as_Borrow().type);
+                    bt = ::std::min(bt, ty_p->m_data.as_Borrow().type);
                     ty_p = &context.get_type( *ty_p->m_data.as_Borrow().inner );
                     n_deref ++;
                 }

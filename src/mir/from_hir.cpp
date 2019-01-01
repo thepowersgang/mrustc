@@ -207,6 +207,11 @@ namespace {
                 allow_refutable = 2;
             }
 
+            for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+            {
+                lval = ::MIR::LValue::make_Deref({ box$( mv$(lval) ) });
+            }
+
             TU_MATCH_HDRA( (pat.m_data), {)
             TU_ARMA(Any, e) {
                 }
