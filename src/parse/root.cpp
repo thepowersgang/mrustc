@@ -1964,7 +1964,8 @@ namespace {
         }
         else
         {
-            sub_path = mod_fileinfo.path;
+            sub_path = dirname(mod_fileinfo.path) + mod_path.nodes().back().name() + "/" + name;
+            //sub_path = mod_fileinfo.path;
             sub_file_controls_dir = false;
         }
         DEBUG("Mod '" << name << "', sub_path = " << sub_path);
@@ -2032,7 +2033,10 @@ namespace {
                 else if( ifs_file.is_open() )
                 {
                     submod.m_file_info.path = newpath_file;
-                    //submod.m_file_info.controls_dir = false;
+                    if( path_attr == "" )
+                    {
+                        submod.m_file_info.controls_dir = false;
+                    }
                 }
                 // TODO: If this is not a controlling file, look in `modname/` for the new module
                 else
