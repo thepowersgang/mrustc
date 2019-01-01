@@ -91,6 +91,25 @@ namespace {
             auto _g = m_resolve.set_impl_generics(impl.m_params);
             ::HIR::Visitor::visit_type_impl(impl);
         }
+        void visit_marker_impl(const ::HIR::SimplePath& trait_path, ::HIR::MarkerImpl& impl) override {
+            ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
+            TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
+            auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
+            auto _g = m_resolve.set_impl_generics(impl.m_params);
+
+            // TODO: Push a bound that `Self: ThisTrait`
+            m_current_type = &impl.m_type;
+            m_current_trait = &m_crate.get_trait_by_path(Span(), trait_path);
+            m_current_trait_path = &p;
+
+            // The implemented trait is always in scope
+            m_traits.push_back( ::std::make_pair( &trait_path, m_current_trait) );
+            ::HIR::Visitor::visit_marker_impl(trait_path, impl);
+            m_traits.pop_back( );
+
+            m_current_trait = nullptr;
+            m_current_type = nullptr;
+        }
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override {
             ::HIR::ItemPath    p( impl.m_type, trait_path, impl.m_trait_args );
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
