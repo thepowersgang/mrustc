@@ -17,7 +17,7 @@ enum class IndexName
     Value,
 };
 
-void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst_mod, const AST::UseStmt& i_data, bool is_pub);
+void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst_mod, const AST::UseItem::Ent& i_data, bool is_pub);
 
 ::std::ostream& operator<<(::std::ostream& os, const IndexName& loc)
 {
@@ -178,8 +178,8 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
     {
         if( ! i.data.is_Use() )
             continue ;
-        const auto& i_data = i.data.as_Use();
-        if( i.name != "" )
+        for(const auto& i_data : i.data.as_Use().entries)
+        if( i_data.name != "" )
         {
             // TODO: Ensure that the path is canonical?
 
@@ -190,47 +190,47 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             // - Types
             {TU_MATCH_HDRA( (i_data.path.m_bindings.type), {)
             TU_ARMA(Unbound, _e) {
-                DEBUG(i.name << " - Not a type/module");
+                DEBUG(i_data.name << " - Not a type/module");
                 }
             TU_ARMA(TypeParameter, e)
                 BUG(sp, "Import was bound to type parameter");
             TU_ARMA(Crate , e)
-                _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item(sp, mod, IndexName::Namespace, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Module, e)
-                _add_item(sp, mod, IndexName::Namespace, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item(sp, mod, IndexName::Namespace, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Enum, e)
-                _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Union, e)
-                _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Trait, e)
-                _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(TypeAlias, e)
-                _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Struct, e)
-                _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(EnumVar, e)
-                _add_item_type(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_type(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             }}
             // - Values
             {TU_MATCH_HDRA( (i_data.path.m_bindings.value), {)
             TU_ARMA(Unbound, _e) {
-                DEBUG(i.name << " - Not a value");
+                DEBUG(i_data.name << " - Not a value");
                 }
             TU_ARMA(Variable, e)
                 BUG(sp, "Import was bound to a variable");
             TU_ARMA(Struct, e)
-                _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(EnumVar, e)
-                _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Static  , e)
-                _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             TU_ARMA(Function, e)
-                _add_item_value(sp, mod, i.name, i.is_pub,  i_data.path, !allow_collide);
+                _add_item_value(sp, mod, i_data.name, i.is_pub,  i_data.path, !allow_collide);
             }}
             // - Macros
             {TU_MATCH_HDRA( (i_data.path.m_bindings.macro), {)
             TU_ARMA(Unbound, _e) {
-                DEBUG(i.name << " - Not a macro");
+                DEBUG(i_data.name << " - Not a macro");
                 }
             TU_ARMA(MacroRules, e) {
                 ::std::vector<::std::string>    path;
@@ -238,7 +238,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 for(const auto& node : i_data.path.m_class.as_Absolute().nodes )
                     path.push_back( node.name() );
                 mod.m_macro_imports.push_back({
-                    i.is_pub, i.name, mv$(path), e.mac
+                    i.is_pub, i_data.name, mv$(path), e.mac
                     });
                 }
             // TODO: Other imports (e.g. derives, which have different naming structures)
@@ -411,16 +411,19 @@ void Resolve_Index_Module_Wildcard__submod(AST::Crate& crate, AST::Module& dst_m
         {
             if( ! i.data.is_Use() )
                 continue ;
-            if( i.name != "" )
-                continue ;
-            Resolve_Index_Module_Wildcard__use_stmt(crate, dst_mod, i.data.as_Use(), import_as_pub);
+            for(const auto& e : i.data.as_Use().entries)
+            {
+                if( e.name != "" )
+                    continue ;
+                Resolve_Index_Module_Wildcard__use_stmt(crate, dst_mod, e, import_as_pub);
+            }
         }
     }
 
     stack.erase(&src_mod);
 }
 
-void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst_mod, const AST::UseStmt& i_data, bool is_pub)
+void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst_mod, const AST::UseItem::Ent& i_data, bool is_pub)
 {
     const auto& sp = i_data.sp;
     const auto& b = i_data.path.m_bindings.type;
@@ -443,7 +446,9 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
             Resolve_Index_Module_Wildcard__submod(crate, dst_mod, *e.module_, is_pub);
         }
     )
-    else TU_IFLET(::AST::PathBinding_Type, b, Enum, e,
+    else if( const auto* ep = b.opt_Enum() )
+    {
+        const auto& e = *ep;
         ASSERT_BUG(sp, e.enum_ || e.hir, "Glob import but enum pointer not set - " << i_data.path);
         if( e.enum_ )
         {
@@ -500,7 +505,7 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
                 }
             }
         }
-    )
+    }
     else
     {
         BUG(sp, "Invalid path binding for glob import: " << b.tag_str() << " - "<<i_data.path);
@@ -522,9 +527,12 @@ void Resolve_Index_Module_Wildcard(AST::Crate& crate, AST::Module& mod)
     {
         if( ! i.data.is_Use() )
             continue ;
-        if( i.name != "" )
-            continue ;
-        Resolve_Index_Module_Wildcard__use_stmt(crate, mod, i.data.as_Use(), i.is_pub);
+        for(const auto& e : i.data.as_Use().entries )
+        {
+            if( e.name != "" )
+                continue ;
+            Resolve_Index_Module_Wildcard__use_stmt(crate, mod, e, i.is_pub);
+        }
     }
 
     // Mark this as having all the items it ever will.

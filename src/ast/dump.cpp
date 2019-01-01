@@ -619,17 +619,26 @@ void RustPrinter::handle_module(const AST::Module& mod)
         //    m_os << "\n";
         //    need_nl = false;
         //}
-        if( i_data.path == AST::Path() ) {
+        if( i_data.entries.empty() ) {
             continue ;
         }
-        m_os << indent() << (i.is_pub ? "pub " : "") << "use " << i_data;
-        if( i.name == "" )
-        {
-            m_os << "::*";
+        m_os << indent() << (i.is_pub ? "pub " : "") << "use ";
+        if( i_data.entries.size() > 1 ) {
+            m_os << "{";
         }
-        else if( i_data.path.nodes().back().name() != i.name )
+        for(const auto& ent : i_data.entries)
         {
-            m_os << " as " << i.name;
+            if( &ent != &i_data.entries.front() )
+                m_os << ", ";
+            m_os << ent.path;
+            if( ent.name == "" ) {
+                m_os << "::*";
+            }
+            else if( ent.name != ent.path.nodes().back().name() ) {
+                m_os << " as " << ent.name;
+            }
+            else {
+            }
         }
         m_os << ";\n";
     }

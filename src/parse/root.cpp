@@ -1322,138 +1322,58 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
     return rv;
 }
 
-void Parse_Use_Wildcard(Span sp, AST::Path base_path, ::std::function<void(AST::UseStmt, ::std::string)> fcn)
+/// Parse multiple items from a use "statement"
+void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries, AST::Path& path)
 {
-    fcn( AST::UseStmt(mv$(sp), mv$(base_path)), "" ); // HACK! Empty path indicates wilcard import
-}
-void Parse_Use_Set(TokenStream& lex, const ProtoSpan& ps, const AST::Path& base_path, ::std::function<void(AST::UseStmt, ::std::string)> fcn)
-{
-    TRACE_FUNCTION;
-
     Token   tok;
-    do {
-        AST::Path   path;
-        ::std::string   name;
-        if( GET_TOK(tok, lex) == TOK_RWORD_SELF ) {
-            path = ::AST::Path(base_path);
-            name = base_path[base_path.size()-1].name();
-        }
-        else if( tok.type() == TOK_BRACE_CLOSE ) {
-            break ;
-        }
-        else {
-            path = ::AST::Path(base_path);
 
-            while(1)
-            {
-                CHECK_TOK(tok, TOK_IDENT);
-                path += AST::PathNode(tok.str(), {});
-                if( !TARGETVER_1_29 )
-                    break;
-                if( lex.lookahead(0) != TOK_DOUBLE_COLON )
-                    break;
-                GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-                GET_TOK(tok, lex);
-            }
-            name = mv$(tok.str());
-        }
-
-        if( GET_TOK(tok, lex) == TOK_RWORD_AS ) {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            name = mv$(tok.str());
-        }
-        else {
-            PUTBACK(tok, lex);
-        }
-        fcn(AST::UseStmt(lex.end_span(ps), mv$(path)), mv$(name));
-    } while( GET_TOK(tok, lex) == TOK_COMMA );
-    PUTBACK(tok, lex);
-}
-
-void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::string)> fcn)
-{
-    TRACE_FUNCTION;
-
-    Token   tok;
-    AST::Path   path = AST::Path("", {});
-    ::std::vector<AST::PathNode>    nodes;
-    ProtoSpan   span_start = lex.start_span();
-
-    switch( GET_TOK(tok, lex) )
+    do
     {
-    case TOK_RWORD_SELF:
-        path = AST::Path( AST::Path::TagSelf(), {} );    // relative path
-        break;
-    case TOK_RWORD_SUPER: {
-        unsigned int count = 1;
-        while( LOOK_AHEAD(lex) == TOK_DOUBLE_COLON && lex.lookahead(1) == TOK_RWORD_SUPER ) {
-            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
-            GET_CHECK_TOK(tok, lex, TOK_RWORD_SUPER);
-            count += 1;
-        }
-        path = AST::Path( AST::Path::TagSuper(), count, {} );
-        break; }
-    case TOK_IDENT:
-        path.append( AST::PathNode(mv$(tok.str()), {}) );
-        break;
-    case TOK_RWORD_CRATE:
-        break;
-    // Leading :: is allowed and ignored for the $crate feature
-    case TOK_DOUBLE_COLON:
-        // Absolute path
-        // HACK! mrustc emits $crate as `::"crate-name"`
-        if( LOOK_AHEAD(lex) == TOK_STRING )
+        switch( GET_TOK(tok, lex) )
         {
-            GET_CHECK_TOK(tok, lex, TOK_STRING);
-            path = ::AST::Path(tok.str(), {});
-        }
-        else {
-            PUTBACK(tok, lex);
-        }
-        break;
-    case TOK_BRACE_OPEN:
-        Parse_Use_Set(lex, span_start, path, fcn);
-        GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
-        return;
-    case TOK_STAR:
-        Parse_Use_Wildcard( lex.end_span(span_start), mv$(path), fcn );
-        return;
-    case TOK_INTERPOLATED_PATH:
-        path = mv$(tok.frag_path());
-        break;
-    default:
-        throw ParseError::Unexpected(lex, tok);
-    }
-    while( GET_TOK(tok, lex) == TOK_DOUBLE_COLON )
-    {
-        if( GET_TOK(tok, lex) == TOK_IDENT )
-        {
+        case TOK_IDENT:
             path.append( AST::PathNode( mv$(tok.str()), {}) );
-        }
-        else
-        {
-            //path.set_span( lex.end_span(span_start) );
-            switch( tok.type() )
-            {
-            case TOK_BRACE_OPEN:
-                Parse_Use_Set(lex, span_start, mv$(path), fcn);
-                GET_CHECK_TOK(tok, lex, TOK_BRACE_CLOSE);
-                break ;
-            case TOK_STAR:
-                Parse_Use_Wildcard( lex.end_span(span_start), mv$(path), fcn );
-                break ;
-            default:
+            break;
+        case TOK_BRACE_OPEN:
+            // Can't be an empty list
+            if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE ) {
                 throw ParseError::Unexpected(lex, tok);
             }
-            // early return - This branch is either the end of the use statement, or a syntax error
+            // Keep looping until a comma
+            do {
+                if( LOOK_AHEAD(lex) == TOK_BRACE_CLOSE ) {
+                    // Trailing comma
+                    GET_TOK(tok, lex);
+                    break;
+                }
+                // - Handle `self` in braces differently
+                else if( LOOK_AHEAD(lex) == TOK_RWORD_SELF ) {
+                    GET_TOK(tok, lex);
+                    auto name = path.nodes().back().name();
+                    entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
+                }
+                else {
+                    size_t l = path.nodes().size();
+
+                    Parse_Use_Inner(lex, entries, path);
+
+                    assert(l <= path.nodes().size());
+                    path.nodes().resize( l );
+                }
+            } while( GET_TOK(tok, lex) == TOK_COMMA );
+            CHECK_TOK(tok, TOK_BRACE_CLOSE);
+            return;
+        case TOK_STAR:
+            entries.push_back({ lex.point_span(), AST::Path(path), "" });
             return ;
+        default:
+            throw ParseError::Unexpected(lex, tok);
         }
-    }
-    //path.set_span( lex.end_span(span_start) );
+    } while( GET_TOK(tok, lex) == TOK_DOUBLE_COLON );
 
     ::std::string name;
-    // This should only be allowed if the last token was an ident
-    // - Above checks ensure this
+
+    // NOTE: The above loop has to run once, so the last token HAS to have been an ident
     if( tok.type() == TOK_RWORD_AS )
     {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -1466,7 +1386,67 @@ void Parse_Use(TokenStream& lex, ::std::function<void(AST::UseStmt, ::std::strin
         name = path.nodes().back().name();
     }
 
-    fcn( AST::UseStmt(lex.end_span(span_start), mv$(path)), name);
+    // TODO: Get a span covering the final node.
+    entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
+}
+::AST::UseItem Parse_Use(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+
+    Token   tok;
+    AST::Path   path = AST::Path("", {});
+    ::std::vector<AST::PathNode>    nodes;
+    ProtoSpan   span_start = lex.start_span();
+
+    ::std::vector<AST::UseItem::Ent>    entries;
+
+    switch( GET_TOK(tok, lex) )
+    {
+    case TOK_RWORD_SELF:
+        path = AST::Path( AST::Path::TagSelf(), {} );    // relative path
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        break;
+    case TOK_RWORD_SUPER: {
+        unsigned int count = 1;
+        while( LOOK_AHEAD(lex) == TOK_DOUBLE_COLON && lex.lookahead(1) == TOK_RWORD_SUPER ) {
+            GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+            GET_CHECK_TOK(tok, lex, TOK_RWORD_SUPER);
+            count += 1;
+        }
+        path = AST::Path( AST::Path::TagSuper(), count, {} );
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        break; }
+    case TOK_RWORD_CRATE:
+        // 1.29 absolute path
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        break;
+    // Leading :: is allowed and ignored for the $crate feature
+    case TOK_DOUBLE_COLON:
+        // Absolute path
+        // HACK! mrustc emits $crate as `::"crate-name"`
+        if( LOOK_AHEAD(lex) == TOK_STRING )
+        {
+            GET_CHECK_TOK(tok, lex, TOK_STRING);
+            path = ::AST::Path(tok.str(), {});
+        }
+        else
+        {
+            PUTBACK(tok, lex);
+        }
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        break;
+    case TOK_INTERPOLATED_PATH:
+        path = mv$(tok.frag_path());
+        GET_CHECK_TOK(tok, lex, TOK_DOUBLE_COLON);
+        break;
+    default:
+        PUTBACK(tok, lex);
+        break;
+    }
+
+    Parse_Use_Inner(lex, entries, path);
+
+    return AST::UseItem { lex.end_span(span_start), mv$(entries) };
 }
 
 
@@ -1655,16 +1635,7 @@ namespace {
     switch( GET_TOK(tok, lex) )
     {
     case TOK_RWORD_USE:
-        // NOTE: The only problem here is with things like `use foo::{a, b, c}` - all others are a single statement.
-        // - These are caught by the condition in the closure
-        Parse_Use(lex, [&](AST::UseStmt p, std::string s) {
-                DEBUG(mod_path << " - use " << p << " as '" << s << "'");
-                if( !item_data.is_None() )
-                    TODO(lex.point_span(), "Encode multi-item use statements as a single Item");
-                item_data = ::AST::Item(mv$(p));
-                item_name = mv$(s);
-            });
-        assert( !item_data.is_None() );
+        item_data = Parse_Use(lex);
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
         break;
 
@@ -2072,26 +2043,7 @@ void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::AttributeList meta_
     SET_MODULE(lex, mod);
     lex.parse_state().parent_attrs = &meta_items;
 
-    //TRACE_FUNCTION;
-    Token   tok;
-
-    // `use ...`
-    // TODO: This doesn't spot `pub(path) use`.
-    if( LOOK_AHEAD(lex) == TOK_RWORD_USE || (lex.lookahead(0) == TOK_RWORD_PUB && lex.lookahead(1) == TOK_RWORD_USE) )
-    {
-        bool    is_public = Parse_Publicity(lex);
-        GET_CHECK_TOK(tok, lex, TOK_RWORD_USE);
-
-        Parse_Use(lex, [&mod,is_public,&meta_items](AST::UseStmt p, std::string s) {
-                DEBUG(mod.path() << " - use " << p << " as '" << s << "'");
-                mod.add_alias(is_public, mv$(p), s, meta_items.clone());
-            });
-        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-    }
-    else
-    {
-        mod.add_item( Parse_Mod_Item_S(lex, mod.m_file_info, mod.path(), mv$(meta_items)) );
-    }
+    mod.add_item( Parse_Mod_Item_S(lex, mod.m_file_info, mod.path(), mv$(meta_items)) );
 }
 
 void Parse_ModRoot_Items(TokenStream& lex, AST::Module& mod)

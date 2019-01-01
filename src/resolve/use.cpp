@@ -113,39 +113,42 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         auto& use_stmt_data = use_stmt.data.as_Use();
 
         const Span& span = use_stmt_data.sp;
-        use_stmt_data.path = Resolve_Use_AbsolutisePath(span, path, mv$(use_stmt_data.path));
-        if( !use_stmt_data.path.m_class.is_Absolute() )
-            BUG(span, "Use path is not absolute after absolutisation");
-
-        // NOTE: Use statements can refer to _three_ different items
-        // - types/modules ("type namespace")
-        // - values ("value namespace")
-        // - macros ("macro namespace")
-        // TODO: Have Resolve_Use_GetBinding return the actual path
-        use_stmt_data.path.m_bindings = Resolve_Use_GetBinding(span, crate, use_stmt_data.path, parent_modules);
-        if( !use_stmt_data.path.m_bindings.has_binding() )
+        for(auto& use_ent : use_stmt_data.entries)
         {
-            ERROR(span, E0000, "Unable to resolve `use` target " << use_stmt_data.path);
-        }
-        DEBUG("'" << use_stmt.name << "' = " << use_stmt_data.path);
+            use_ent.path = Resolve_Use_AbsolutisePath(span, path, mv$(use_ent.path));
+            if( !use_ent.path.m_class.is_Absolute() )
+                BUG(span, "Use path is not absolute after absolutisation");
 
-        // - If doing a glob, ensure the item type is valid
-        if( use_stmt.name == "" )
-        {
-            TU_MATCH_DEF(::AST::PathBinding_Type, (use_stmt_data.path.m_bindings.type), (e),
-            (
-                ERROR(span, E0000, "Wildcard import of invalid item type - " << use_stmt_data.path);
-                ),
-            (Enum,
-                ),
-            (Crate,
-                ),
-            (Module,
+            // NOTE: Use statements can refer to _three_ different items
+            // - types/modules ("type namespace")
+            // - values ("value namespace")
+            // - macros ("macro namespace")
+            // TODO: Have Resolve_Use_GetBinding return the actual path
+            use_ent.path.m_bindings = Resolve_Use_GetBinding(span, crate, use_ent.path, parent_modules);
+            if( !use_ent.path.m_bindings.has_binding() )
+            {
+                ERROR(span, E0000, "Unable to resolve `use` target " << use_ent.path);
+            }
+            DEBUG("'" << use_ent.name << "' = " << use_ent.path);
+
+            // - If doing a glob, ensure the item type is valid
+            if( use_ent.name == "" )
+            {
+                TU_MATCH_DEF(::AST::PathBinding_Type, (use_ent.path.m_bindings.type), (e),
+                (
+                    ERROR(span, E0000, "Wildcard import of invalid item type - " << use_ent.path);
+                    ),
+                (Enum,
+                    ),
+                (Crate,
+                    ),
+                (Module,
+                    )
                 )
-            )
-        }
-        else
-        {
+            }
+            else
+            {
+            }
         }
     }
 
@@ -342,111 +345,116 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         if( ! imp.data.is_Use() )
             continue ;
         const auto& imp_data = imp.data.as_Use();
-        const Span& sp2 = imp_data.sp;
-        if( imp.name == des_item_name ) {
-            DEBUG("- Named import " << imp.name << " = " << imp_data);
-            if( !imp_data.path.m_bindings.has_binding() ) {
-                DEBUG(" > Needs resolve");
-                // TODO: Handle possibility of recursion
-                //out_path = imp_data.path;
-                return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_data.path), parent_modules);
-            }
-            else {
-                //out_path = imp_data.path;
-                return imp_data.path.m_bindings.clone();
-            }
-        }
-        if( imp.is_pub && imp.name == "" ) {
-            DEBUG("- Search glob of " << imp_data.path);
-            // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
-            ::AST::Path::Bindings   bindings_;
-            const auto* bindings = &imp_data.path.m_bindings;
-            if( bindings->type.is_Unbound() ) {
-                DEBUG("Temp resolving wildcard " << imp_data);
-                // Handle possibility of recursion
-                static ::std::vector<const ::AST::UseStmt*>    resolve_stack_ptrs;
-                if( ::std::find(resolve_stack_ptrs.begin(), resolve_stack_ptrs.end(), &imp_data) == resolve_stack_ptrs.end() )
-                {
-                    resolve_stack_ptrs.push_back( &imp_data );
-                    bindings_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_data.path), parent_modules);
-                    // *waves hand* I'm not evil.
-                    const_cast< ::AST::Path::Bindings&>( imp_data.path.m_bindings ) = bindings_.clone();
-                    bindings = &bindings_;
-                    resolve_stack_ptrs.pop_back();
+        for( const auto& imp_e : imp_data.entries )
+        {
+            const Span& sp2 = imp_e.sp;
+            if( imp_e.name == des_item_name ) {
+                DEBUG("- Named import " << imp_e.name << " = " << imp_e.path);
+                if( !imp_e.path.m_bindings.has_binding() ) {
+                    DEBUG(" > Needs resolve");
+                    // TODO: Handle possibility of recursion
+                    //out_path = imp_e.path;
+                    return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules);
                 }
                 else {
-                    continue ;
+                    //out_path = imp_e.path;
+                    return imp_e.path.m_bindings.clone();
                 }
-            }
-            else {
-                //out_path = imp_data.path;
             }
 
-            TU_MATCH_HDRA( (bindings->type), {)
-            TU_ARMA(Crate, e) {
-                assert(e.crate_);
-                const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
-                auto rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0);
-                if( rv.has_binding() ) {
-                    return mv$(rv);
-                }
-                }
-            TU_ARMA(Module, e) {
-                if( e.module_ ) {
-                    // TODO: Prevent infinite recursion?
-                    auto rv = Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {});
-                    if( rv.has_binding() ) {
-                        return mv$(rv);
+            if( imp.is_pub && imp_e.name == "" )
+            {
+                DEBUG("- Search glob of " << imp_e.path);
+                // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
+                ::AST::Path::Bindings   bindings_;
+                const auto* bindings = &imp_e.path.m_bindings;
+                if( bindings->type.is_Unbound() ) {
+                    DEBUG("Temp resolving wildcard " << imp_e.path);
+                    // Handle possibility of recursion
+                    static ::std::vector<const ::AST::UseItem*>    resolve_stack_ptrs;
+                    if( ::std::find(resolve_stack_ptrs.begin(), resolve_stack_ptrs.end(), &imp_data) == resolve_stack_ptrs.end() )
+                    {
+                        resolve_stack_ptrs.push_back( &imp_data );
+                        bindings_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules);
+                        // *waves hand* I'm not evil.
+                        const_cast< ::AST::Path::Bindings&>( imp_e.path.m_bindings ) = bindings_.clone();
+                        bindings = &bindings_;
+                        resolve_stack_ptrs.pop_back();
+                    }
+                    else {
+                        continue ;
                     }
                 }
-                else if( e.hir ) {
-                    const ::HIR::Module& hmod = *e.hir;
+                else {
+                    //out_path = imp_e.path;
+                }
+
+                TU_MATCH_HDRA( (bindings->type), {)
+                TU_ARMA(Crate, e) {
+                    assert(e.crate_);
+                    const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
                     auto rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0);
                     if( rv.has_binding() ) {
                         return mv$(rv);
                     }
-                }
-                else {
-                    BUG(span, "NULL module for binding on glob of " << imp_data.path);
-                }
-                }
-            TU_ARMA(Enum, e) {
-                assert(e.enum_ || e.hir);
-                if( e.enum_ ) {
-                    const auto& enm = *e.enum_;
-                    unsigned int i = 0;
-                    for(const auto& var : enm.variants())
-                    {
-                        if( var.m_name == des_item_name ) {
+                    }
+                TU_ARMA(Module, e) {
+                    if( e.module_ ) {
+                        // TODO: Prevent infinite recursion?
+                        auto rv = Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {});
+                        if( rv.has_binding() ) {
+                            return mv$(rv);
+                        }
+                    }
+                    else if( e.hir ) {
+                        const ::HIR::Module& hmod = *e.hir;
+                        auto rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0);
+                        if( rv.has_binding() ) {
+                            return mv$(rv);
+                        }
+                    }
+                    else {
+                        BUG(span, "NULL module for binding on glob of " << imp_e.path);
+                    }
+                    }
+                TU_ARMA(Enum, e) {
+                    assert(e.enum_ || e.hir);
+                    if( e.enum_ ) {
+                        const auto& enm = *e.enum_;
+                        unsigned int i = 0;
+                        for(const auto& var : enm.variants())
+                        {
+                            if( var.m_name == des_item_name ) {
+                                ::AST::Path::Bindings   rv;
+                                if( var.m_data.is_Struct() )
+                                    rv.type = ::AST::PathBinding_Type::make_EnumVar({ &enm, i });
+                                else
+                                    rv.value = ::AST::PathBinding_Value::make_EnumVar({ &enm, i });
+                                return rv;
+                            }
+                            i ++;
+                        }
+                    }
+                    else {
+                        const auto& enm = *e.hir;
+                        auto idx = enm.find_variant(des_item_name);
+                        if( idx != SIZE_MAX )
+                        {
                             ::AST::Path::Bindings   rv;
-                            if( var.m_data.is_Struct() )
-                                rv.type = ::AST::PathBinding_Type::make_EnumVar({ &enm, i });
-                            else
-                                rv.value = ::AST::PathBinding_Value::make_EnumVar({ &enm, i });
+                            if( enm.m_data.is_Data() && enm.m_data.as_Data()[idx].is_struct ) {
+                                rv.type = ::AST::PathBinding_Type::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
+                            }
+                            else {
+                                rv.value = ::AST::PathBinding_Value::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
+                            }
                             return rv;
                         }
-                        i ++;
                     }
+                    } break;
+                default:
+                    BUG(sp2, "Wildcard import expanded to an invalid item class - " << bindings->type.tag_str());
+                    break;
                 }
-                else {
-                    const auto& enm = *e.hir;
-                    auto idx = enm.find_variant(des_item_name);
-                    if( idx != SIZE_MAX )
-                    {
-                        ::AST::Path::Bindings   rv;
-                        if( enm.m_data.is_Data() && enm.m_data.as_Data()[idx].is_struct ) {
-                            rv.type = ::AST::PathBinding_Type::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
-                        }
-                        else {
-                            rv.value = ::AST::PathBinding_Value::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
-                        }
-                        return rv;
-                    }
-                }
-                } break;
-            default:
-                BUG(sp2, "Wildcard import expanded to an invalid item class - " << bindings->type.tag_str());
-                break;
             }
         }
     }

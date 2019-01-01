@@ -462,20 +462,18 @@ public:
 private:
 };
 
-struct UseStmt
+struct UseItem
 {
-    Span    sp;
-    ::AST::Path path;
+    Span    sp; // Span covering the entire `use foo;`
+    struct Ent {
+        Span    sp; // Span covering just the path (final component)
+        ::AST::Path path;
+        ::std::string   name;   // If "", this is a glob/wildcard use
+    };
+    ::std::vector<Ent>  entries;
 
-    UseStmt(Span sp, Path p):
-        sp(sp),
-        path(p)
-    {
-    }
-
-    UseStmt clone() const;
-
-    friend ::std::ostream& operator<<(::std::ostream& os, const UseStmt& x);
+    UseItem clone() const;
+    //friend ::std::ostream& operator<<(::std::ostream& os, const UseItem& x);
 };
 
 class ExternBlock
@@ -549,6 +547,13 @@ public:
     };
     ::std::vector<MacroImport>  m_macro_imports;
 
+    struct Import {
+        bool    is_pub;
+        ::std::string   name;
+        ::AST::Path path;   // If `name` is "", then this is a module/enum to glob
+    };
+    ::std::vector<Import>   m_item_imports;
+
 public:
     Module() {}
     Module(::AST::Path path):
@@ -566,7 +571,6 @@ public:
     void add_item(Named<Item> item);
     void add_item(bool is_pub, ::std::string name, Item it, AttributeList attrs);
     void add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, AttributeList attrs);
-    void add_alias(bool is_public, UseStmt path, ::std::string name, AttributeList attrs);
     void add_macro_invocation(MacroInvocation item);
 
     void add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro);
@@ -595,7 +599,7 @@ TAGGED_UNION_EX(Item, (), None,
     (
     (None, struct {} ),
     (MacroInv, MacroInvocation),
-    (Use, UseStmt),
+    (Use, UseItem),
 
     // Nameless items
     (ExternBlock, ExternBlock),

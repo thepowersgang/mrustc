@@ -241,23 +241,23 @@ bool Impl::has_named_item(const ::std::string& name) const
     return os << impl.m_def;
 }
 
-::std::ostream& operator<<(::std::ostream& os, const UseStmt& x)
-{
-    os << "Use(" << x.path << ")";
-    return os;
-}
-
-
 
 MacroInvocation MacroInvocation::clone() const
 {
     return MacroInvocation(m_span, m_macro_name, m_ident, m_input.clone());
 }
 
-
-UseStmt UseStmt::clone() const
+UseItem UseItem::clone() const
 {
-    return UseStmt(sp, AST::Path(path));
+    decltype(this->entries) entries;
+    for(const auto& e : this->entries)
+    {
+        entries.push_back({ e.sp, e.path, e.name });
+    }
+    return UseItem {
+        this->sp,
+        mv$(entries)
+        };
 }
 
 void ExternBlock::add_item(Named<Item> named_item)
@@ -295,9 +295,6 @@ void Module::add_item(bool is_pub, ::std::string name, Item it, AttributeList at
 }
 void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, AttributeList attrs) {
     this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
-}
-void Module::add_alias(bool is_public, UseStmt us, ::std::string name, AttributeList attrs) {
-    this->add_item( is_public, mv$(name), Item(mv$(us)), mv$(attrs) );
 }
 void Module::add_macro_invocation(MacroInvocation item) {
     this->add_item( false, "", Item( mv$(item) ), ::AST::AttributeList {} );

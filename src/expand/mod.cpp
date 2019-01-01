@@ -1051,7 +1051,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     if( crate.m_prelude_path != AST::Path() )
     {
         if( mod.m_insert_prelude && ! mod.is_anon() ) {
-            mod.add_alias(false, ::AST::UseStmt(Span(), crate.m_prelude_path), "", {});
+            mod.add_item(false, "", ::AST::UseItem { Span(), ::make_vec1(::AST::UseItem::Ent { Span(), crate.m_prelude_path, "" }) }, {});
         }
     }
 
