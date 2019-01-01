@@ -3781,6 +3781,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
             ::HIR::Pattern& m_pattern;
             ::HIR::PatternBinding::Type m_outer_mode;
 
+            mutable ::std::vector<::HIR::TypeRef>   m_temp_ivars;
+
             MatchErgonomicsRevisit(Span sp, ::HIR::TypeRef outer, ::HIR::Pattern& pat, ::HIR::PatternBinding::Type binding_mode=::HIR::PatternBinding::Type::Move):
                 sp(mv$(sp)), m_outer_ty(mv$(outer)),
                 m_pattern(pat),
@@ -3852,7 +3854,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     if( n_deref == 0 && is_fallback )
                     {
                         ::HIR::TypeRef  possible_type;
-                        // TODO: Get a potential type from the pattern, and set as a possibility.
+                        // Get a potential type from the pattern, and set as a possibility.
                         // - Note, this is only if no derefs were applied
                         TU_MATCH_HDR( (pattern.m_data), { )
                         TU_ARM(pattern.m_data, Any, pe) {
@@ -3871,7 +3873,15 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                             BUG(sp, "Match ergonomics - & pattern");
                             }
                         TU_ARM(pattern.m_data, Tuple, e) {
-                            // TODO: Get type info `(T, U, ...)`
+                            // Get type info `(T, U, ...)`
+                            if( m_temp_ivars.size() != e.sub_patterns.size() ) {
+                                for(size_t i = 0; i < e.sub_patterns.size(); i ++)
+                                    m_temp_ivars.push_back( context.m_ivars.new_ivar_tr() );
+                            }
+                            decltype(m_temp_ivars)  tuple;
+                            for(const auto& ty : m_temp_ivars)
+                                tuple.push_back(ty.clone());
+                            possible_type = ::HIR::TypeRef( ::std::move(tuple) );
                             }
                         TU_ARM(pattern.m_data, SplitTuple, pe) {
                             // Can't get type information, tuple size is unkown
