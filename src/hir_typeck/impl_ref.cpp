@@ -56,6 +56,15 @@ bool ImplRef::overlaps_with(const ::HIR::Crate& crate, const ImplRef& other) con
     )
     return false;
 }
+bool ImplRef::has_magic_params() const
+{
+    TU_IFLET(Data, m_data, TraitImpl, e,
+        for(const auto& t : e.params_ph)
+            if( visit_ty_with(t, [](const ::HIR::TypeRef& t){ return t.m_data.is_Generic() && (t.m_data.as_Generic().binding >> 8) == 2; }) )
+                return true;
+    )
+    return false;
+}
 bool ImplRef::type_is_specialisable(const char* name) const
 {
     TU_MATCH(Data, (this->m_data), (e),
