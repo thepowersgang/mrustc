@@ -544,7 +544,7 @@ namespace {
             // Outputs can also (sometimes) be rvalues (only for `*m`?)
             for(auto& v : node.m_outputs) {
                 this->visit_node_ptr(v.value);
-                if( v.spec[0] != '=' )
+                if( v.spec[0] != '=' && v.spec[0] != '+' )  // TODO: what does '+' mean?
                     ERROR(node.span(), E0000, "Assembly output specifiers must start with =");
                 ::MIR::LValue   lv;
                 if(v.spec[1] == '*')
