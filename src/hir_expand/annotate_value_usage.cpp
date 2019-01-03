@@ -452,11 +452,19 @@ namespace {
             throw "";
         }
 
-        ::HIR::ValueUsage get_usage_for_pattern(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
+        ::HIR::ValueUsage get_usage_for_pattern(const Span& sp, const ::HIR::Pattern& pat, const ::HIR::TypeRef& outer_ty) const
         {
             if( pat.m_binding.is_valid() ) {
-                return get_usage_for_pattern_binding(sp, pat.m_binding, ty);
+                return get_usage_for_pattern_binding(sp, pat.m_binding, outer_ty);
             }
+
+            // Implicit derefs
+            const ::HIR::TypeRef* typ = &outer_ty;
+            for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
+            {
+                typ = &*typ->m_data.as_Borrow().inner;
+            }
+            const ::HIR::TypeRef& ty = *typ;
 
             TU_MATCHA( (pat.m_data), (pe),
             (Any,
