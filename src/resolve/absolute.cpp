@@ -2184,12 +2184,13 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             {
                 item_context.push_self( def.type() );
                 item_context.push(def.params(), GenericSlot::Level::Top);
-                Resolve_Absolute_Generic(item_context,  def.params());
 
                 Resolve_Absolute_Type(item_context, def.type());
                 if( def.trait().ent.is_valid() ) {
                     Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
                 }
+
+                Resolve_Absolute_Generic(item_context,  def.params());
 
                 Resolve_Absolute_ImplItems(item_context,  e.items());
 
