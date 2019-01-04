@@ -1319,6 +1319,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
     {
         if( !ep.m_mir )
         {
+            TRACE_FUNCTION_F(ip);
             ASSERT_BUG(Span(), ep.m_state, "No ExprState for " << ip);
 
             auto& ep_mut = const_cast<::HIR::ExprPtr&>(ep);

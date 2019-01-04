@@ -1093,7 +1093,7 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         // 1. Find the constant
                         ::HIR::TypeRef  ty;
                         const auto* lit_ptr = MIR_Cleanup_GetConstant(state, ce.p, ty);
-                        if( lit_ptr )
+                        if( lit_ptr && !lit_ptr->is_Defer() )
                         {
                             DEBUG("Replace constant " << ce.p << " with " << *lit_ptr);
                             se.src = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_ptr, mv$(ty), mv$(ce.p));

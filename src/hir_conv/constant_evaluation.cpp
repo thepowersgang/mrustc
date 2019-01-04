@@ -64,7 +64,7 @@ namespace {
         {
         }
 
-        ::HIR::Literal evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp);
+        ::HIR::Literal evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, MonomorphState ms={});
 
         ::HIR::Literal evaluate_constant_mir(const ::HIR::ItemPath& ip, const ::MIR::Function& fcn, MonomorphState ms, ::HIR::TypeRef exp, ::std::vector< ::HIR::Literal> args);
     };
@@ -511,6 +511,10 @@ namespace {
                     ),
                 (Cast,
                     auto inval = local_state.read_lval(e.val);
+                    if( inval.is_Defer() ) {
+                        val = ::HIR::Literal::make_Defer({});
+                    }
+                    else
                     TU_MATCH_DEF(::HIR::TypeRef::Data, (e.type.m_data), (te),
                     (
                         // NOTE: Can be an unsizing!
@@ -696,7 +700,9 @@ namespace {
                     ),
                 (MakeDst,
                     auto ptr = read_param(e.ptr_val);
+                    if(ptr.is_Defer()) return ::HIR::Literal::make_Defer({});
                     auto meta = read_param(e.meta_val);
+                    if(meta.is_Defer()) return ::HIR::Literal::make_Defer({});
                     if( ! meta.is_Integer() ) {
                         MIR_TODO(state, "RValue::MakeDst - (non-integral meta) " << ptr << " , " << meta);
                     }
@@ -707,26 +713,39 @@ namespace {
                 (Tuple,
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
-                    for(const auto& v : e.vals)
+                    for(const auto& v : e.vals) {
                         vals.push_back( read_param(v) );
+                        if( vals.back().is_Defer() ) {
+                            return ::HIR::Literal::make_Defer({});
+                        }
+                    }
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     ),
                 (Array,
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
-                    for(const auto& v : e.vals)
+                    for(const auto& v : e.vals) {
                         vals.push_back( read_param(v) );
+                        if( vals.back().is_Defer() ) {
+                            return ::HIR::Literal::make_Defer({});
+                        }
+                    }
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     ),
                 (Variant,
                     auto ival = read_param(e.val);
+                    if(ival.is_Defer()) return ::HIR::Literal::make_Defer({});
                     val = ::HIR::Literal::make_Variant({ e.index, box$(ival) });
                     ),
                 (Struct,
                     ::std::vector< ::HIR::Literal>  vals;
                     vals.reserve( e.vals.size() );
-                    for(const auto& v : e.vals)
+                    for(const auto& v : e.vals) {
                         vals.push_back( read_param(v) );
+                        if( vals.back().is_Defer() ) {
+                            return ::HIR::Literal::make_Defer({});
+                        }
+                    }
                     val = ::HIR::Literal::make_List( mv$(vals) );
                     )
                 )
@@ -735,15 +754,18 @@ namespace {
                 dst = mv$(val);
             }
             state.set_cur_stmt_term(cur_block);
-            TU_MATCH_DEF( ::MIR::Terminator, (block.terminator), (e),
-            (
+            TU_MATCH_HDRA( (block.terminator), {)
+            default:
                 MIR_BUG(state, "Unexpected terminator - " << block.terminator);
-                ),
-            (Goto,
+            TU_ARMA(Goto, e) {
                 cur_block = e;
-                ),
-            (Return,
-                if( exp.m_data.is_Primitive() )
+                }
+            TU_ARMA(Return, e) {
+                if( retval.is_Defer() )
+                {
+                    // 
+                }
+                else if( exp.m_data.is_Primitive() )
                 {
                     switch( exp.m_data.as_Primitive() )
                     {
@@ -784,8 +806,8 @@ namespace {
                     }
                 }
                 return retval;
-                ),
-            (Call,
+                }
+            TU_ARMA(Call, e) {
                 auto& dst = local_state.get_lval(e.ret_val);
                 if( const auto* te = e.fcn.opt_Intrinsic() )
                 {
@@ -827,12 +849,12 @@ namespace {
                     MIR_BUG(state, "Unexpected terminator - " << block.terminator);
                 }
                 cur_block = e.ret_block;
-                )
-            )
+                }
+            }
         }
     }
 
-    ::HIR::Literal Evaluator::evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp)
+    ::HIR::Literal Evaluator::evaluate_constant(const ::HIR::ItemPath& ip, const ::HIR::ExprPtr& expr, ::HIR::TypeRef exp, MonomorphState ms/*={}*/)
     {
         TRACE_FUNCTION_F(ip);
         const auto* mir = this->resolve.m_crate.get_or_gen_mir(ip, expr, exp);
@@ -841,7 +863,6 @@ namespace {
             ::HIR::TypeRef  ty_self { "Self", GENERIC_Self };
             // Might want to have a fully-populated MonomorphState for expanding inside impl blocks
             // HACK: Generate a roughly-correct one
-            MonomorphState  ms;
             const auto& top_ip = ip.get_top_ip();
             if( top_ip.trait && !top_ip.ty ) {
                 ms.self_ty = &ty_self;
@@ -936,6 +957,7 @@ namespace {
         const ::HIR::Crate& m_crate;
         const ::HIR::Module*  m_mod;
         const ::HIR::ItemPath*  m_mod_path;
+        MonomorphState  m_monomorph_state;
 
     public:
         Expander(const ::HIR::Crate& crate):
@@ -1025,7 +1047,16 @@ namespace {
                     }
                 }
             }
+
+            ::HIR::PathParams   pp_impl;
+            for(const auto& tp : impl.m_params.m_types)
+                pp_impl.m_types.push_back( ::HIR::TypeRef(tp.m_name, pp_impl.m_types.size() | 256) );
+            m_monomorph_state.pp_impl = &pp_impl;
+
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
+
+            m_monomorph_state.pp_impl = nullptr;
+
             m_mod = nullptr;
             m_mod_path = nullptr;
         }
@@ -1060,7 +1091,7 @@ namespace {
             if( item.m_value || item.m_value.m_mir )
             {
                 auto eval = Evaluator { item.m_value.span(), m_crate, NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "$") } };
-                item.m_value_res = eval.evaluate_constant(p, item.m_value, item.m_type.clone());
+                item.m_value_res = eval.evaluate_constant(p, item.m_value, item.m_type.clone(), m_monomorph_state.clone());
 
                 check_lit_type(item.m_value.span(), item.m_type, item.m_value_res);
 
