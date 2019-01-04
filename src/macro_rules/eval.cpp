@@ -1586,6 +1586,7 @@ namespace
                 return false;
             if( !lex.consume_if(TOK_EXCLAM) )
                 return false;
+            lex.consume_if(TOK_IDENT);
             bool need_semicolon = (lex.next() != TOK_BRACE_OPEN);
             consume_tt(lex);
             if( need_semicolon )
