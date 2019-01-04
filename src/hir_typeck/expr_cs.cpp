@@ -3835,6 +3835,12 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                 }
 
+                // For `_` patterns, there's nothing to match, so they just succeed with no derefs
+                if( pattern.m_data.is_Any() )
+                {
+                    return true;
+                }
+
                 // If the type is a borrow, then count derefs required for the borrow
                 // - If the first non-borrow inner is an ivar, return false
                 unsigned n_deref = 0;
