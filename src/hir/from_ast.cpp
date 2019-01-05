@@ -1155,6 +1155,9 @@ namespace {
         (None,
             // Ignore.
             ),
+        (MacroInv,
+            // Ignore.
+            ),
         (Type,
             bool is_sized = true;
             ::std::vector< ::HIR::TraitPath>    trait_bounds;

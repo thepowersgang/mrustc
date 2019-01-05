@@ -1933,7 +1933,9 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
     {
         TU_MATCH(AST::Item, (i.data), (e),
         (None, ),
-        (MacroInv,    BUG(i.data.span, "Resolve_Absolute_ImplItems - MacroInv");),
+        (MacroInv,
+            //BUG(i.data.span, "Resolve_Absolute_ImplItems - MacroInv");
+            ),
         (ExternBlock, BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
         (Impl,        BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
         (NegImpl,     BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
