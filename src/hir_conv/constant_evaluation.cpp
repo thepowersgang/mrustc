@@ -978,6 +978,11 @@ namespace {
             m_mod = saved_m;
             m_mod_path = saved_mp;
         }
+        void visit_function(::HIR::ItemPath p, ::HIR::Function& f) override
+        {
+            TRACE_FUNCTION_F(p);
+            ::HIR::Visitor::visit_function(p, f);
+        }
 
         void visit_trait_impl(const ::HIR::SimplePath& trait_path, ::HIR::TraitImpl& impl) override
         {
@@ -1147,6 +1152,7 @@ namespace {
 
                 void visit_type(::HIR::TypeRef& ty) override {
                     // Need to evaluate array sizes
+                    DEBUG("expr type " << ty);
                     m_exp.visit_type(ty);
                 }
                 void visit_path_params(::HIR::PathParams& pp) override {

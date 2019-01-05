@@ -865,6 +865,8 @@ class ExprVisitorDef:
 public:
     #define NV(nt)  virtual void visit(nt& n);
 
+    virtual void visit_node_ptr(::std::unique_ptr<ExprNode>& node_ptr) override;
+
     NV(ExprNode_Block)
     NV(ExprNode_Asm)
     NV(ExprNode_Return)

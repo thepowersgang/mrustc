@@ -507,6 +507,7 @@ namespace {
                 params_placeholders.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
                 impl_path_params.m_types.push_back( ::HIR::TypeRef(params.m_types[i].m_name, i) );
             }
+            DEBUG("params_placeholders = " << params_placeholders << ", ofs_item = " << ofs_item << ", ofs_impl = " << ofs_impl);
 
             auto monomorph_cb = [&](const auto& ty)->const ::HIR::TypeRef& {
                 const auto& ge = ty.m_data.as_Generic();
