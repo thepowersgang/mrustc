@@ -334,10 +334,6 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             TODO(span, "Import of macro - " << des_item_name);
         }
     }
-    if( rv.has_binding() )
-    {
-        return rv;
-    }
 
     // Imports
     for( const auto& imp : mod.items() )
@@ -352,14 +348,19 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 DEBUG("- Named import " << imp_e.name << " = " << imp_e.path);
                 if( !imp_e.path.m_bindings.has_binding() ) {
                     DEBUG(" > Needs resolve");
-                    // TODO: Handle possibility of recursion
-                    //out_path = imp_e.path;
-                    return Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules);
+                    static ::std::vector<const ::AST::Module*> s_mods;
+                    if( ::std::find(s_mods.begin(), s_mods.end(), &mod) == s_mods.end() )
+                    {
+                        s_mods.push_back(&mod);
+                        rv.merge_from( Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules) );
+                        s_mods.pop_back();
+                    }
                 }
                 else {
                     //out_path = imp_e.path;
-                    return imp_e.path.m_bindings.clone();
+                    rv.merge_from( imp_e.path.m_bindings.clone() );
                 }
+                continue ;
             }
 
             if( imp.is_pub && imp_e.name == "" )
@@ -393,25 +394,19 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 TU_ARMA(Crate, e) {
                     assert(e.crate_);
                     const ::HIR::Module& hmod = e.crate_->m_hir->m_root_module;
-                    auto rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0);
-                    if( rv.has_binding() ) {
-                        return mv$(rv);
+                    auto imp_rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0);
+                    if( imp_rv.has_binding() ) {
+                        rv.merge_from( imp_rv );
                     }
                     }
                 TU_ARMA(Module, e) {
                     if( e.module_ ) {
                         // TODO: Prevent infinite recursion?
-                        auto rv = Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {});
-                        if( rv.has_binding() ) {
-                            return mv$(rv);
-                        }
+                        rv.merge_from( Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {}) );
                     }
                     else if( e.hir ) {
                         const ::HIR::Module& hmod = *e.hir;
-                        auto rv = Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0);
-                        if( rv.has_binding() ) {
-                            return mv$(rv);
-                        }
+                        rv.merge_from( Resolve_Use_GetBinding__ext(sp2, crate, AST::Path("", { AST::PathNode(des_item_name,{}) }), hmod, 0) );
                     }
                     else {
                         BUG(span, "NULL module for binding on glob of " << imp_e.path);
@@ -425,12 +420,13 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                         for(const auto& var : enm.variants())
                         {
                             if( var.m_name == des_item_name ) {
-                                ::AST::Path::Bindings   rv;
+                                ::AST::Path::Bindings   tmp_rv;
                                 if( var.m_data.is_Struct() )
-                                    rv.type = ::AST::PathBinding_Type::make_EnumVar({ &enm, i });
+                                    tmp_rv.type = ::AST::PathBinding_Type::make_EnumVar({ &enm, i });
                                 else
-                                    rv.value = ::AST::PathBinding_Value::make_EnumVar({ &enm, i });
-                                return rv;
+                                    tmp_rv.value = ::AST::PathBinding_Value::make_EnumVar({ &enm, i });
+                                rv.merge_from(tmp_rv);
+                                break;
                             }
                             i ++;
                         }
@@ -440,14 +436,15 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                         auto idx = enm.find_variant(des_item_name);
                         if( idx != SIZE_MAX )
                         {
-                            ::AST::Path::Bindings   rv;
+                            ::AST::Path::Bindings   tmp_rv;
                             if( enm.m_data.is_Data() && enm.m_data.as_Data()[idx].is_struct ) {
-                                rv.type = ::AST::PathBinding_Type::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
+                                tmp_rv.type = ::AST::PathBinding_Type::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
                             }
                             else {
-                                rv.value = ::AST::PathBinding_Value::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
+                                tmp_rv.value = ::AST::PathBinding_Value::make_EnumVar({ nullptr, static_cast<unsigned>(idx), &enm });
                             }
-                            return rv;
+                            rv.merge_from(tmp_rv);
+                            break;
                         }
                     }
                     } break;
@@ -457,6 +454,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 }
             }
         }
+    }
+    if( rv.has_binding() )
+    {
+        return rv;
     }
 
     if( mod.path().nodes().size() > 0 && mod.path().nodes().back().name()[0] == '#' ) {

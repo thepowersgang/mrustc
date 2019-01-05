@@ -245,6 +245,14 @@ public:
         bool has_binding() const {
             return !value.is_Unbound() || !type.is_Unbound() || !macro.is_Unbound();
         }
+        void merge_from(const Bindings& x) {
+            if(value.is_Unbound())
+                value = x.value.clone();
+            if(type.is_Unbound())
+                type = x.type.clone();
+            if(macro.is_Unbound())
+                macro = x.macro.clone();
+        }
     } m_bindings;
 
     virtual ~Path();
