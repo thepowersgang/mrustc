@@ -639,6 +639,141 @@ AST::Struct Parse_Struct(TokenStream& lex, const AST::AttributeList& meta_items)
     }
 }
 
+AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
+{
+    Token   tok;
+
+    auto item_attrs = Parse_ItemAttrs(lex);
+    SET_ATTRS(lex, item_attrs);
+
+    auto ps = lex.start_span();
+    {
+        ::AST::MacroInvocation  inv;
+        if( Parse_MacroInvocation_Opt(lex, inv) )
+        {
+            return AST::Named<AST::Item>( "", AST::Item(mv$(inv)), false );
+        }
+    }
+
+    GET_TOK(tok, lex);
+    bool is_specialisable = false;
+    if( tok.type() == TOK_IDENT && tok.str() == "default" ) {
+        is_specialisable = true;
+        GET_TOK(tok, lex);
+    }
+    // TODO: Mark specialisation
+    (void)is_specialisable;
+
+    bool fn_is_const = false;
+    bool fn_is_unsafe = false;
+    ::std::string   abi = ABI_RUST;
+
+    ::std::string   name;
+    ::AST::Item   rv;
+    switch(tok.type())
+    {
+    case TOK_RWORD_STATIC: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        name = mv$(tok.str());
+        GET_CHECK_TOK(tok, lex, TOK_COLON);
+        auto ty = Parse_Type(lex);
+        GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+
+        ::AST::Expr val;
+        if(GET_TOK(tok, lex) == TOK_EQUAL) {
+            val = Parse_Expr(lex);
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_SEMICOLON);
+
+        rv = ::AST::Static(::AST::Static::STATIC, mv$(ty), val);
+        break; }
+    case TOK_RWORD_CONST: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        name = mv$(tok.str());
+        GET_CHECK_TOK(tok, lex, TOK_COLON);
+        auto ty = Parse_Type(lex);
+
+        ::AST::Expr val;
+        if(GET_TOK(tok, lex) == TOK_EQUAL) {
+            val = Parse_Expr(lex);
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_SEMICOLON);
+
+        rv = ::AST::Static(AST::Static::CONST, mv$(ty), val);
+        break; }
+    // Associated type
+    case TOK_RWORD_TYPE: {
+        auto atype_params = ::AST::GenericParams { };
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        name = mv$(tok.str());
+        if( GET_TOK(tok, lex) == TOK_COLON )
+        {
+            // Bounded associated type
+            Parse_TypeBound(lex, atype_params, TypeRef(lex.point_span(), "Self", 0xFFFF));
+            GET_TOK(tok, lex);
+        }
+        if( tok.type() == TOK_RWORD_WHERE ) {
+            throw ParseError::Todo(lex, "Where clause on associated type");
+        }
+
+        TypeRef default_type = TypeRef( lex.point_span() );
+        if( tok.type() == TOK_EQUAL ) {
+            default_type = Parse_Type(lex);
+            GET_TOK(tok, lex);
+        }
+
+        CHECK_TOK(tok, TOK_SEMICOLON);
+        rv = ::AST::TypeAlias( mv$(atype_params), mv$(default_type) );
+        break; }
+
+    // Functions (possibly unsafe)
+    case TOK_RWORD_UNSAFE:
+        fn_is_unsafe = true;
+        if( GET_TOK(tok, lex) == TOK_RWORD_EXTERN )
+    case TOK_RWORD_EXTERN:
+        {
+            abi = "C";
+            if( GET_TOK(tok, lex) == TOK_STRING )
+                abi = tok.str();
+            else
+                PUTBACK(tok, lex);
+
+            GET_TOK(tok, lex);
+        }
+        CHECK_TOK(tok, TOK_RWORD_FN);
+    case TOK_RWORD_FN: {
+        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+        name = mv$(tok.str());
+        // Self allowed, prototype-form allowed (optional names and no code)
+        auto fcn = Parse_FunctionDef(lex, abi, true, true,  fn_is_unsafe, fn_is_const);
+        if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
+        {
+            PUTBACK(tok, lex);
+            // Enter a new hygine scope for the function body. (TODO: Should this be in Parse_ExprBlock?)
+            lex.push_hygine();
+            fcn.set_code( Parse_ExprBlock(lex) );
+            lex.pop_hygine();
+        }
+        else if( tok.type() == TOK_SEMICOLON )
+        {
+            // Accept it
+        }
+        else
+        {
+            throw ParseError::Unexpected(lex, tok);
+        }
+        rv = ::std::move(fcn);
+        break; }
+    default:
+        throw ParseError::Unexpected(lex, tok);
+    }
+
+    rv.attrs = ::std::move( item_attrs );
+    return ::AST::Named<::AST::Item>( mv$(name), mv$(rv), true );
+}
+
 AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items)
 {
     TRACE_FUNCTION;
@@ -689,131 +824,7 @@ AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items
     {
         PUTBACK(tok, lex);
 
-        auto item_attrs = Parse_ItemAttrs(lex);
-        SET_ATTRS(lex, item_attrs);
-
-        auto ps = lex.start_span();
-        {
-            ::AST::MacroInvocation  inv;
-            if( Parse_MacroInvocation_Opt(lex, inv) )
-            {
-                trait.items().push_back( AST::Named<AST::Item>("", AST::Item(mv$(inv)), false) );
-                continue ;
-            }
-            GET_TOK(tok, lex);
-        }
-
-        bool is_specialisable = false;
-        if( tok.type() == TOK_IDENT && tok.str() == "default" ) {
-            is_specialisable = true;
-            GET_TOK(tok, lex);
-        }
-        // TODO: Mark specialisation
-        (void)is_specialisable;
-
-        bool fn_is_const = false;
-        bool fn_is_unsafe = false;
-        ::std::string   abi = ABI_RUST;
-        switch(tok.type())
-        {
-        case TOK_RWORD_STATIC: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = mv$(tok.str());
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            auto ty = Parse_Type(lex);
-            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
-
-            ::AST::Expr val;
-            if(GET_TOK(tok, lex) == TOK_EQUAL) {
-                val = Parse_Expr(lex);
-                GET_TOK(tok, lex);
-            }
-            CHECK_TOK(tok, TOK_SEMICOLON);
-
-            trait.add_static( mv$(name), mv$(item_attrs), ::AST::Static(AST::Static::STATIC, mv$(ty), val) );
-            break; }
-        case TOK_RWORD_CONST: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = mv$(tok.str());
-            GET_CHECK_TOK(tok, lex, TOK_COLON);
-            auto ty = Parse_Type(lex);
-
-            ::AST::Expr val;
-            if(GET_TOK(tok, lex) == TOK_EQUAL) {
-                val = Parse_Expr(lex);
-                GET_TOK(tok, lex);
-            }
-            CHECK_TOK(tok, TOK_SEMICOLON);
-
-            trait.add_static( mv$(name), mv$(item_attrs), ::AST::Static(AST::Static::CONST, mv$(ty), val) );
-            break; }
-        // Associated type
-        case TOK_RWORD_TYPE: {
-            auto atype_params = ::AST::GenericParams { };
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            auto name = mv$(tok.str());
-            if( GET_TOK(tok, lex) == TOK_COLON )
-            {
-                // Bounded associated type
-                Parse_TypeBound(lex, atype_params, TypeRef(lex.point_span(), "Self", 0xFFFF));
-                GET_TOK(tok, lex);
-            }
-            if( tok.type() == TOK_RWORD_WHERE ) {
-                throw ParseError::Todo(lex, "Where clause on associated type");
-            }
-
-            TypeRef default_type = TypeRef( lex.point_span() );
-            if( tok.type() == TOK_EQUAL ) {
-                default_type = Parse_Type(lex);
-                GET_TOK(tok, lex);
-            }
-
-            CHECK_TOK(tok, TOK_SEMICOLON);
-            trait.add_type( ::std::move(name), mv$(item_attrs), ::std::move(default_type) );
-            trait.items().back().data.as_Type().params() = mv$(atype_params);
-            break; }
-
-        // Functions (possibly unsafe)
-        case TOK_RWORD_UNSAFE:
-            fn_is_unsafe = true;
-            if( GET_TOK(tok, lex) == TOK_RWORD_EXTERN )
-        case TOK_RWORD_EXTERN:
-            {
-                abi = "C";
-                if( GET_TOK(tok, lex) == TOK_STRING )
-                    abi = tok.str();
-                else
-                    PUTBACK(tok, lex);
-
-                GET_TOK(tok, lex);
-            }
-            CHECK_TOK(tok, TOK_RWORD_FN);
-        case TOK_RWORD_FN: {
-            GET_CHECK_TOK(tok, lex, TOK_IDENT);
-            ::std::string name = mv$(tok.str());
-            // Self allowed, prototype-form allowed (optional names and no code)
-            auto fcn = Parse_FunctionDef(lex, abi, true, true,  fn_is_unsafe, fn_is_const);
-            if( GET_TOK(tok, lex) == TOK_BRACE_OPEN )
-            {
-                PUTBACK(tok, lex);
-                // Enter a new hygine scope for the function body. (TODO: Should this be in Parse_ExprBlock?)
-                lex.push_hygine();
-                fcn.set_code( Parse_ExprBlock(lex) );
-                lex.pop_hygine();
-            }
-            else if( tok.type() == TOK_SEMICOLON )
-            {
-                // Accept it
-            }
-            else
-            {
-                throw ParseError::Unexpected(lex, tok);
-            }
-            trait.add_function( ::std::move(name), mv$(item_attrs), ::std::move(fcn) );
-            break; }
-        default:
-            throw ParseError::Unexpected(lex, tok);
-        }
+        trait.items().push_back( Parse_Trait_Item(lex) );
     }
 
     return trait;

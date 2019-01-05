@@ -953,7 +953,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
 
         TU_MATCH_DEF(AST::Item, (*i.data), (e),
         (
-            throw ::std::runtime_error("BUG: Unknown item type in impl block");
+            BUG(Span(), "Unknown item type in impl block - " << i.data->tag_str());
             ),
         (None, ),
         (MacroInv,
@@ -1214,17 +1214,44 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             ),
         (Trait,
             Expand_GenericParams(crate, modstack, mod,  e.params());
-            for(auto& ti : e.items())
+            auto& trait_items = e.items();
+            for(size_t idx = 0; idx < trait_items.size(); idx ++)
             {
+                auto& ti = trait_items[idx];
                 DEBUG(" - " << ti.name << " " << ti.data.tag_str());
                 auto attrs = mv$(ti.data.attrs);
                 Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, ti.data);
 
                 TU_MATCH_DEF(AST::Item, (ti.data), (e),
                 (
-                    throw ::std::runtime_error("BUG: Unknown item type in impl block");
+                    BUG(Span(), "Unknown item type in trait block - " << ti.data.tag_str());
                     ),
                 (None, ),
+                (MacroInv,
+                    if( e.name() != "" )
+                    {
+                        TRACE_FUNCTION_F("Macro invoke " << e.name());
+                        // Move out of the module to avoid invalidation if a new macro invocation is added
+                        auto mi_owned = mv$(e);
+
+                        auto ttl = Expand_Macro(crate, modstack, mod, mi_owned);
+
+                        if( ttl.get() )
+                        {
+                            // Re-parse tt
+                            size_t insert_pos = idx+1;
+                            while( ttl->lookahead(0) != TOK_EOF )
+                            {
+                                auto i = Parse_Trait_Item(*ttl);
+                                trait_items.insert( trait_items.begin() + insert_pos, mv$(i) );
+                                insert_pos ++;
+                            }
+                            // - Any new macro invocations ends up at the end of the list and handled
+                        }
+                        // Move back in (using the index, as the old pointer may be invalid)
+                        trait_items[idx].data.as_MacroInv() = mv$(mi_owned);
+                    }
+                    ),
                 (Function,
                     Expand_GenericParams(crate, modstack, mod,  e.params());
                     for(auto& arg : e.args()) {
