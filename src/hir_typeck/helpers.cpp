@@ -2575,7 +2575,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         if( cmp != ::HIR::Compare::Unequal )
         {
             if( markings ) {
-                ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Auto trait with no params returned a fuzzy match from destructure");
+                ASSERT_BUG(sp, cmp == ::HIR::Compare::Equal, "Auto trait with no params returned a fuzzy match from destructure - " << trait << " for " << type);
                 markings->auto_impls.insert( ::std::make_pair(trait, ::HIR::TraitMarkings::AutoMarking { {}, true }) );
             }
             return callback( ImplRef(&type, params_ptr, &null_assoc), cmp );
@@ -2641,7 +2641,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             // HELPER: Get a possibily monomorphised version of the input type (stored in `tmp` if needed)
             auto monomorph_get = [&](const auto& ty)->const ::HIR::TypeRef& {
                 if( monomorphise_type_needed(ty) ) {
-                    return (tmp = monomorphise_type_with(sp, ty,  monomorph_cb));
+                    return (tmp = this->expand_associated_types(sp, monomorphise_type_with(sp, ty,  monomorph_cb)));
                 }
                 else {
                     return ty;
@@ -2710,9 +2710,11 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             BUG(sp, "UfcsUnknown in typeck - " << type);
             ),
         (UfcsKnown,
-            // If unbound, use Fuzzy
-            if(e.binding.is_Unbound())
+            // If unbound, use Fuzzy {
+            if(e.binding.is_Unbound()) {
+                DEBUG("- Unbound UfcsKnown, returning Fuzzy");
                 return ::HIR::Compare::Fuzzy;
+            }
             // Otherwise, it's opaque. Check the bounds on the trait.
             TODO(sp, "Check trait bounds for bound on " << type);
             ),
