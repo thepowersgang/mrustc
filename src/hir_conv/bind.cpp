@@ -317,6 +317,8 @@ namespace {
                 return ;
             }
 
+            TRACE_FUNCTION_F(path);
+
             if( params.m_types.size() == 0 && fill_infer ) {
                 for(const auto& typ : param_defs.m_types) {
                     (void)typ;
@@ -337,9 +339,20 @@ namespace {
                         auto ty = clone_ty_with(sp, typ.m_default, [&](const auto& ty, auto& out){
                             if(const auto* te = ty.m_data.opt_Generic() )
                             {
-                                if( te->binding != GENERIC_Self || !self_ty )
+                                if( te->binding == GENERIC_Self ) {
+                                    if( !self_ty )
+                                        TODO(sp, "Self enountered in default params, but no Self available - " << ty << " in " << typ.m_default << " for " << path);
+                                    out = self_ty->clone();
+                                }
+                                // NOTE: Should only be seeing impl-level params here. Method-level ones are only seen in expression context.
+                                else if( (te->binding >> 8) == 0 ) {
+                                    auto idx = te->binding & 0xFF;
+                                    ASSERT_BUG(sp, idx < params.m_types.size(), "TODO: Handle use of latter types in defaults");
+                                    out = params.m_types[idx].clone();
+                                }
+                                else {
                                     TODO(sp, "Monomorphise in fix_param_count - encountered " << ty << " in " << typ.m_default);
-                                out = self_ty->clone();
+                                }
                                 return true;
                             }
                             return false;
