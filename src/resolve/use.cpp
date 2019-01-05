@@ -217,6 +217,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 (None,
                     // Deleted, ignore
                     ),
+                (MacroInv,
+                    // TODO: Should this already be deleted?
+                    ),
                 (Type,
                     ),
                 (Function,
@@ -764,33 +767,57 @@ namespace {
             return Resolve_Use_GetBinding__ext(span, crate, path,  *e.crate_, i+1);
             }
         TU_ARMA(Enum, e) {
-            const auto& enum_ = *e.enum_;
+            ASSERT_BUG(span, e.enum_ || e.hir, "nullptr enum pointer in node " << i << " of " << path);
+            ASSERT_BUG(span, e.enum_ == nullptr || e.hir == nullptr, "both AST and HIR pointers set in node " << i << " of " << path);
             i += 1;
             if( i != nodes.size() - 1 ) {
                 ERROR(span, E0000, "Encountered enum at unexpected location in import");
             }
+            ASSERT_BUG(span, i < nodes.size(), "Enum import position error, " << i << " >= " << nodes.size() << " - " << path);
 
             const auto& node2 = nodes[i];
-             int    variant_index = -1;
-            bool    is_value;
-            for( unsigned int j = 0; j < enum_.variants().size(); j ++ )
-            {
-                if( enum_.variants()[j].m_name == node2.name() ) {
-                    variant_index = j;
-                    is_value = !enum_.variants()[j].m_data.is_Struct();
-                    break ;
-                }
-            }
-            if( variant_index < 0 ) {
-                ERROR(span, E0000, "Unknown enum variant '" << node2.name() << "'");
-            }
 
-            DEBUG("AST Enum variant - " << variant_index << ", is_value=" << is_value << " " << enum_.variants()[variant_index].m_data.tag_str());
+            unsigned    variant_index = 0;
+            bool    is_value;
+            if(e.hir)
+            {
+                const auto& enum_ = *e.hir;
+                size_t idx = enum_.find_variant(node2.name());
+                if( idx == ~0u ) {
+                    ERROR(span, E0000, "Unknown enum variant " << path);
+                }
+                TU_MATCH_HDRA( (enum_.m_data), {)
+                TU_ARMA(Value, ve) {
+                    is_value = true;
+                    }
+                TU_ARMA(Data, ve) {
+                    is_value = !ve[idx].is_struct;
+                    }
+                }
+                DEBUG("AST Enum variant - " << variant_index << ", is_value=" << is_value);
+            }
+            else
+            {
+                const auto& enum_ = *e.enum_;
+                for( const auto& var : enum_.variants() )
+                {
+                    if( var.m_name == node2.name() ) {
+                        is_value = !var.m_data.is_Struct();
+                        break ;
+                    }
+                    variant_index ++;
+                }
+                if( variant_index == enum_.variants().size() ) {
+                    ERROR(span, E0000, "Unknown enum variant '" << node2.name() << "'");
+                }
+
+                DEBUG("AST Enum variant - " << variant_index << ", is_value=" << is_value << " " << enum_.variants()[variant_index].m_data.tag_str());
+            }
             if( is_value ) {
-                rv.value = ::AST::PathBinding_Value::make_EnumVar({&enum_, static_cast<unsigned int>(variant_index)});
+                rv.value = ::AST::PathBinding_Value::make_EnumVar({e.enum_, variant_index, e.hir});
             }
             else {
-                rv.type = ::AST::PathBinding_Type::make_EnumVar({&enum_, static_cast<unsigned int>(variant_index)});
+                rv.type = ::AST::PathBinding_Type::make_EnumVar({e.enum_, variant_index, e.hir});
             }
             return rv;
             }
