@@ -198,11 +198,11 @@ bool ImplRef::type_is_specialisable(const char* name) const
     static Span  sp;
     TU_MATCH(Data, (this->m_data), (e),
     (TraitImpl,
-        DEBUG("name=" << name << " " << *this);
         auto it = e.impl->m_types.find(name);
         if( it == e.impl->m_types.end() )
             return ::HIR::TypeRef();
         const ::HIR::TypeRef& tpl_ty = it->second.data;
+        DEBUG("name=" << name << " tpl_ty=" << tpl_ty << " " << *this);
         if( monomorphise_type_needed(tpl_ty) ) {
             return monomorphise_type_with(sp, tpl_ty, this->get_cb_monomorph_traitimpl(sp));
         }

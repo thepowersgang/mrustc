@@ -256,6 +256,7 @@ namespace {
 
     void apply_bounds_as_rules(Context& context, const Span& sp, const ::HIR::GenericParams& params_def, t_cb_generic monomorph_cb, bool is_impl_level)
     {
+        TRACE_FUNCTION;
         for(const auto& bound : params_def.m_bounds)
         {
             TU_MATCH(::HIR::GenericBound, (bound), (be),
@@ -409,11 +410,13 @@ namespace {
 
         // --- Monomorphise the argument/return types (into current context)
         for(const auto& arg : fcn.m_args) {
-            DEBUG("Arg " << arg.first << ": " << arg.second);
+            TRACE_FUNCTION_FR(path << " - Arg " << arg.first << ": " << arg.second, "Arg " << arg.first << " : " << cache.m_arg_types.back());
             cache.m_arg_types.push_back( monomorphise_type_with(sp, arg.second,  monomorph_cb, false) );
         }
-        DEBUG("Ret " << fcn.m_return);
-        cache.m_arg_types.push_back( monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false) );
+        {
+            TRACE_FUNCTION_FR(path << " - Ret " << fcn.m_return, "Ret " << cache.m_arg_types.back());
+            cache.m_arg_types.push_back( monomorphise_type_with(sp, fcn.m_return,  monomorph_cb, false) );
+        }
 
         // --- Apply bounds by adding them to the associated type ruleset
         apply_bounds_as_rules(context, sp, *cache.m_fcn_params, cache.m_monomorph_cb, /*is_impl_level=*/false);

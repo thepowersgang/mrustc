@@ -229,18 +229,21 @@ void ::HIR::Visitor::visit_enum(::HIR::ItemPath p, ::HIR::Enum& item)
 }
 void ::HIR::Visitor::visit_union(::HIR::ItemPath p, ::HIR::Union& item)
 {
+    TRACE_FUNCTION_F(p);
     this->visit_params(item.m_params);
     for(auto& var : item.m_variants)
         this->visit_type(var.second.ent);
 }
 void ::HIR::Visitor::visit_associatedtype(ItemPath p, ::HIR::AssociatedType& item)
 {
+    TRACE_FUNCTION_F(p);
     for(auto& bound : item.m_trait_bounds)
         this->visit_trait_path(bound);
     this->visit_type(item.m_default);
 }
 void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 {
+    TRACE_FUNCTION_F(p);
     this->visit_params(item.m_params);
     for(auto& arg : item.m_args)
     {
@@ -252,11 +255,13 @@ void ::HIR::Visitor::visit_function(::HIR::ItemPath p, ::HIR::Function& item)
 }
 void ::HIR::Visitor::visit_static(::HIR::ItemPath p, ::HIR::Static& item)
 {
+    TRACE_FUNCTION_F(p);
     this->visit_type(item.m_type);
     this->visit_expr(item.m_value);
 }
 void ::HIR::Visitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 {
+    TRACE_FUNCTION_F(p);
     this->visit_params(item.m_params);
     this->visit_type(item.m_type);
     this->visit_expr(item.m_value);
@@ -264,6 +269,7 @@ void ::HIR::Visitor::visit_constant(::HIR::ItemPath p, ::HIR::Constant& item)
 
 void ::HIR::Visitor::visit_params(::HIR::GenericParams& params)
 {
+    TRACE_FUNCTION_F(params.fmt_args() << params.fmt_bounds());
     for(auto& tps : params.m_types)
         this->visit_type( tps.m_default );
     for(auto& bound : params.m_bounds )

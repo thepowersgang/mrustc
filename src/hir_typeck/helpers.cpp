@@ -2292,6 +2292,10 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
         )
     )
 
+    //if(type.m_data.is_Infer()) {
+    //    return false;
+    //}
+
     // NOTE: Even if the type is completely unknown (infer or unbound UFCS), search the bound list.
 
     // TODO: A bound can imply something via its associated types. How deep can this go?
@@ -2930,9 +2934,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     auto i_tp = impl.get_trait_params();
                     for(auto& t : i_tp.m_types)
                         this->expand_associated_types_inplace( sp, t, {} );
-                    DEBUG(real_type << " ?= " << i_ty);
+                    DEBUG("[ftic_check_params] " << real_type << " ?= " << i_ty);
                     cmp &= real_type .match_test_generics_fuzz(sp, i_ty, cb_infer, cb_match);
-                    DEBUG(real_trait_path.m_params << " ?= " << i_tp);
+                    DEBUG("[ftic_check_params] " << real_trait_path.m_params << " ?= " << i_tp);
                     cmp &= real_trait_path.m_params .match_test_generics_fuzz(sp, i_tp, cb_infer, cb_match);
                     DEBUG("[ftic_check_params] - Re-check result: " << cmp);
                 }
