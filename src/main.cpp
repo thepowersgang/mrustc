@@ -52,6 +52,7 @@ void init_debug_list()
 
     g_debug_disable_map.insert( "Resolve Type Aliases" );
     g_debug_disable_map.insert( "Resolve Bind" );
+    g_debug_disable_map.insert( "Resolve UFCS Outer" );
     g_debug_disable_map.insert( "Resolve UFCS paths" );
     g_debug_disable_map.insert( "Resolve HIR Markings" );
     g_debug_disable_map.insert( "Constant Evaluate" );
@@ -477,6 +478,16 @@ int main(int argc, char *argv[])
         CompilePhaseV("Resolve HIR Markings", [&]() {
             ConvertHIR_Markings(*hir_crate);
             });
+        // Determine what trait to use for <T>::Foo in outer scope
+        CompilePhaseV("Resolve UFCS Outer", [&]() {
+            ConvertHIR_ResolveUFCS_Outer(*hir_crate);
+            });
+        if( params.debug.dump_hir ) {
+            CompilePhaseV("Dump HIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+                HIR_Dump( os, *hir_crate );
+                });
+        }
         // Determine what trait to use for <T>::Foo (and does some associated type expansion)
         CompilePhaseV("Resolve UFCS paths", [&]() {
             ConvertHIR_ResolveUFCS(*hir_crate);

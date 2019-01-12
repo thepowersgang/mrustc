@@ -434,7 +434,9 @@ bool StaticTraitResolve::find_impl__check_bound(
         static bool compare_pp(const Span& sp, const ::HIR::PathParams& left, const ::HIR::PathParams& right) {
             ASSERT_BUG( sp, left.m_types.size() == right.m_types.size(), "Parameter count mismatch" );
             for(unsigned int i = 0; i < left.m_types.size(); i ++) {
-                if( left.m_types[i] != right.m_types[i] ) {
+                // TODO: Permits fuzzy comparison to handle placeholder params, should instead do a match/test/assign
+                if( left.m_types[i].compare_with_placeholders(sp, right.m_types[i], [](const auto&t)->const ::HIR::TypeRef&{return t;}) == ::HIR::Compare::Unequal ) {
+                //if( left.m_types[i] != right.m_types[i] ) {
                     return false;
                 }
             }
@@ -670,7 +672,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                             });
                     }
                     if( !rv ) {
-                        DEBUG("> Fail (assoc) - " << b_ty_mono << " : " << aty_src_trait);
+                        DEBUG("> Fail (assoc " << aty_name << ") - " << b_ty_mono << " : " << aty_src_trait);
                         return false;
                     }
                 }
@@ -1331,10 +1333,17 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
         auto pt_mono = monomorphise_traitpath_with(sp, pt, monomorph_cb, false);
 
         DEBUG(pt << " => " << pt_mono);
-        if( pt.m_path.m_path == des && pt_mono.m_path.m_params == des_params )
+        // TODO: When in pre-typecheck mode, this needs to be a fuzzy match (because there might be a UfcsUnknown in the
+        // monomorphed version) OR, there may be placeholders
+        if( pt.m_path.m_path == des )
         {
-            callback( pt_mono.m_path.m_params, mv$(pt_mono.m_type_bounds) );
-            return true;
+            auto cmp = pt_mono.m_path.m_params.compare_with_placeholders(sp, des_params, [](const auto& t)->const ::HIR::TypeRef&{return t;});
+            // pt_mono.m_path.m_params == des_params )
+            if( cmp != ::HIR::Compare::Unequal )
+            {
+                callback( pt_mono.m_path.m_params, mv$(pt_mono.m_type_bounds) );
+                return true;
+            }
         }
     }
 

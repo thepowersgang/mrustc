@@ -97,7 +97,7 @@ OBJ +=  hir/hir.o hir/generic_params.o
 OBJ +=  hir/crate_ptr.o hir/expr_ptr.o
 OBJ +=  hir/type.o hir/path.o hir/expr.o hir/pattern.o
 OBJ +=  hir/visitor.o hir/crate_post_load.o
-OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/bind.o hir_conv/markings.o
+OBJ += hir_conv/expand_type.o hir_conv/constant_evaluation.o hir_conv/resolve_ufcs.o hir_conv/resolve_ufcs_outer.o hir_conv/bind.o hir_conv/markings.o
 OBJ += hir_typeck/outer.o hir_typeck/common.o hir_typeck/helpers.o hir_typeck/static.o hir_typeck/impl_ref.o
 OBJ += hir_typeck/expr_visit.o
 OBJ += hir_typeck/expr_cs.o
@@ -222,7 +222,7 @@ rust_tests: RUST_TESTS_run-pass
 
 .PHONY: RUST_TESTS RUST_TESTS_run-pass
 RUST_TESTS: RUST_TESTS_run-pass
-RUST_TESTS_run-pass: output/librust_test_helpers.a
+RUST_TESTS_run-pass:
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output/rust_tests/run-pass
 	./tools/bin/testrunner -o output/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt

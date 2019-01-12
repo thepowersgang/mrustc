@@ -5,6 +5,8 @@
  * hir_conv/resolve_ufcs.cpp
  * - Resolve unkown UFCS traits into inherent or trait
  * - HACK: Will likely be replaced with a proper typeck pass (no it won't)
+ *
+ * - TODO: What are the rules for UFCS lookup?
  */
 #include "main_bindings.hpp"
 #include <hir/hir.hpp>
@@ -115,6 +117,13 @@ namespace {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type << " (mod=" << impl.m_src_module << ")");
             auto _t = this->push_mod_traits( this->m_crate.get_mod_by_path(Span(), impl.m_src_module) );
             auto _g = m_resolve.set_impl_generics(impl.m_params);
+            // TODO: Handle resolution of all items in m_resolve.m_type_equalities
+            // - params might reference each other, so `set_item_generics` has to have been called
+            // - But `m_type_equalities` can end up with non-resolved UFCS paths
+            for(auto& e : m_resolve.m_type_equalities)
+            {
+                visit_type(e.second);
+            }
 
             // TODO: Push a bound that `Self: ThisTrait`
             m_current_type = &impl.m_type;
