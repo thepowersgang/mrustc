@@ -484,6 +484,20 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Lib });
         }
     }
+    // - If there's no binary section, but src/main.rs exists, add as a binary
+    if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Bin; }) )
+    {
+        // No library, add one pointing to lib.rs
+        if( ::std::ifstream(package_dir / "src" / "main.rs").good() )
+        {
+            DEBUG("- Implicit binary");
+            rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Bin });
+        }
+    }
+    if( rv.m_targets.empty() )
+    {
+        throw ::std::runtime_error(format("Manifest file ", path, " didn't specify any targets (and src/{main,lib}.rs doesn't exist)"));
+    }
 
     // Default target names
     for(auto& tgt : rv.m_targets)
