@@ -2733,7 +2733,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         return res;
     )
     else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Generic, e,
-        TODO(sp, "Check trait bounds on " << type);
+        auto l_res = ::HIR::Compare::Unequal;
+        this->find_trait_impls(sp, trait, *params_ptr, type, [&](auto, auto cmp){ l_res = cmp; return (cmp == ::HIR::Compare::Equal); });
+        return l_res;
     )
     else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Tuple, e,
         ::HIR::Compare  res = ::HIR::Compare::Equal;
