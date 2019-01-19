@@ -62,12 +62,13 @@ class Builder
 {
     BuildOptions    m_opts;
     ::helpers::path m_compiler_path;
+    size_t m_total_targets;
 
 public:
-    Builder(BuildOptions opts);
+    Builder(BuildOptions opts, size_t total_targets);
 
-    bool build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host) const;
-    bool build_library(const PackageManifest& manifest, bool is_for_host) const;
+    bool build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const;
+    bool build_library(const PackageManifest& manifest, bool is_for_host, size_t index) const;
     ::helpers::path build_build_script(const PackageManifest& manifest, bool is_for_host, bool* out_is_rebuilt) const;
 
 private:
@@ -256,7 +257,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
 bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 {
     bool include_build = !opts.build_script_overrides.is_valid();
-    Builder builder { ::std::move(opts) };
+    Builder builder { ::std::move(opts), m_list.size() };
 
     // Pre-count how many dependencies are remaining for each package
     struct BuildState
@@ -409,7 +410,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
                     }
 
                     DEBUG("Thread " << my_idx << ": Starting " << cur << " - " << list[cur].package->name());
-                    if( ! builder->build_library(*list[cur].package, list[cur].is_host) )
+                    if( ! builder->build_library(*list[cur].package, list[cur].is_host, cur) )
                     {
                         queue.failure = true;
                         queue.signal_all();
@@ -470,7 +471,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         {
             auto cur = state.get_next();
 
-            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host) )
+            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host, cur) )
             {
                 return false;
             }
@@ -484,7 +485,7 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
         {
             auto cur = state.get_next();
 
-            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host) )
+            if( ! builder.build_library(*m_list[cur].package, m_list[cur].is_host, cur) )
             {
                 return false;
             }
@@ -529,13 +530,14 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 
     // Now that all libraries are done, build the binaries (if present)
     return this->m_root_manifest.foreach_binaries([&](const auto& bin_target) {
-        return builder.build_target(this->m_root_manifest, bin_target, /*is_for_host=*/false);
+        return builder.build_target(this->m_root_manifest, bin_target, /*is_for_host=*/false, ~0u);
         });
 }
 
 
-Builder::Builder(BuildOptions opts):
-    m_opts(::std::move(opts))
+Builder::Builder(BuildOptions opts, size_t total_targets):
+    m_opts(::std::move(opts)),
+    m_total_targets(total_targets)
 {
 #ifdef _WIN32
     char buf[1024];
@@ -623,7 +625,7 @@ Builder::Builder(BuildOptions opts):
     return outfile;
 }
 
-bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host) const
+bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const
 {
     const char* crate_type;
     ::std::string   crate_suffix;
@@ -660,7 +662,18 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         // TODO: Run commands specified by build script (override)
     }
 
-    ::std::cout << "BUILDING " << target.m_name << " from " << manifest.name() << " v" << manifest.version() << " with features [" << manifest.active_features() << "]" << ::std::endl;
+    {
+        // TODO: Determine what number and total targets there are
+        if( index != ~0u )
+            ::std::cout << "(" << index << "/" << m_total_targets << ") ";
+        ::std::cout << "BUILDING ";
+        if(target.m_name != manifest.name())
+            ::std::cout << target.m_name << " from ";
+        ::std::cout << manifest.name() << " v" << manifest.version();
+        if( !manifest.active_features().empty() )
+            ::std::cout << " with features [" << manifest.active_features() << "]";
+        ::std::cout << ::std::endl;
+    }
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
@@ -903,7 +916,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     
     return out_file;
 }
-bool Builder::build_library(const PackageManifest& manifest, bool is_for_host) const
+bool Builder::build_library(const PackageManifest& manifest, bool is_for_host, size_t index) const
 {
     if( manifest.build_script() != "" )
     {
@@ -929,7 +942,7 @@ bool Builder::build_library(const PackageManifest& manifest, bool is_for_host) c
         }
     }
 
-    return this->build_target(manifest, manifest.get_library(), is_for_host);
+    return this->build_target(manifest, manifest.get_library(), is_for_host, index);
 }
 bool Builder::spawn_process_mrustc(const StringList& args, StringListKV env, const ::helpers::path& logfile) const
 {
