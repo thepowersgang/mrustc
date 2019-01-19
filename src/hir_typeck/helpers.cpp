@@ -1981,7 +1981,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
         (
             ),
         (TraitBound,
-            DEBUG("Trait bound - " << be.type << " : " << be.trait);
+            DEBUG("[expand_associated_types_inplace__UfcsKnown] Trait bound - " << be.type << " : " << be.trait);
             // 1. Check if the type matches
             //  - TODO: This should be a fuzzier match?
             if( be.type != *pe.type )
@@ -1993,7 +1993,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 if( it == be.trait.m_type_bounds.end() ) {
                     // If not, assume it's opaque and return as such
                     // TODO: What happens if there's two bounds that overlap? 'F: FnMut<()>, F: FnOnce<(), Output=Bar>'
-                    DEBUG("Found impl for " << input << " but no bound on item, assuming opaque");
+                    DEBUG("[expand_associated_types_inplace__UfcsKnown] Found impl for " << input << " but no bound on item, assuming opaque");
                 }
                 else {
                     assume_opaque = false;
@@ -2066,6 +2066,7 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
     }
 
     // If the type of this UfcsKnown is ALSO a UfcsKnown - Check if it's bounded by this trait with equality
+    //  e.g. `<<Foo as Bar>::Baz as Trait2>::Type` may have an ATY bound `trait Bar { type Baz: Trait2<Type=...> }`
     // Use bounds on other associated types too (if `pe.type` was resolved to a fixed associated type)
     TU_IFLET(::HIR::TypeRef::Data, pe.type->m_data, Path, te_inner,
         TU_IFLET(::HIR::Path::Data, te_inner.path.m_data, UfcsKnown, pe_inner,
@@ -2099,7 +2100,10 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
             {
                 // If the bound is for Self and the outer trait
                 // - TODO: Fuzzy check the parameters?
-                if( bound.m_path == pe.trait ) {
+                ::HIR::GenericPath  tmp_tp;
+                const auto& bound_tp = monomorphise_genericpath_with_opt(sp, tmp_tp, bound.m_path, cb_placeholders_trait);
+                DEBUG(bound_tp << " ?= " << pe.trait);
+                if( bound_tp == pe.trait ) {
                     auto it = bound.m_type_bounds.find( pe.item );
                     if( it != bound.m_type_bounds.end() ) {
                         if( monomorphise_type_needed(it->second) ) {
@@ -2115,10 +2119,10 @@ void TraitResolution::expand_associated_types_inplace__UfcsKnown(const Span& sp,
                 }
 
                 // TODO: Find trait in this trait.
-                const auto& bound_trait = m_crate.get_trait_by_path(sp, bound.m_path.m_path);
+                const auto& bound_trait = m_crate.get_trait_by_path(sp, bound_tp.m_path);
                 bool replaced = this->find_named_trait_in_trait(sp,
                         pe.trait.m_path,pe.trait.m_params,
-                        bound_trait, bound.m_path.m_path,bound.m_path.m_params, *pe.type,
+                        bound_trait, bound_tp.m_path,bound_tp.m_params, *pe.type,
                         [&](const auto&, const auto& x, const auto& assoc){
                             auto it = assoc.find(pe.item);
                             if( it != assoc.end() ) {
@@ -2292,9 +2296,9 @@ bool TraitResolution::find_trait_impls_bound(const Span& sp, const ::HIR::Simple
         )
     )
 
-    //if(type.m_data.is_Infer()) {
-    //    return false;
-    //}
+    if(type.m_data.is_Infer()) {
+        return false;
+    }
 
     // NOTE: Even if the type is completely unknown (infer or unbound UFCS), search the bound list.
 

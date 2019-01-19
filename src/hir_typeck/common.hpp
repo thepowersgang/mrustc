@@ -29,6 +29,23 @@ extern ::HIR::Path monomorphise_path_with(const Span& sp, const ::HIR::Path& tpl
 extern ::HIR::TypeRef monomorphise_type_with(const Span& sp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true);
 extern ::HIR::TypeRef monomorphise_type(const Span& sp, const ::HIR::GenericParams& params_def, const ::HIR::PathParams& params,  const ::HIR::TypeRef& tpl);
 
+// Wrappers to only monomorphise if required
+static inline const ::HIR::TypeRef& monomorphise_type_with_opt(const Span& sp, ::HIR::TypeRef& tmp, const ::HIR::TypeRef& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_type_needed(tpl) ? tmp = monomorphise_type_with(sp, tpl, callback, allow_infer) : tpl);
+}
+static inline const ::HIR::Path& monomorphise_path_with_opt(const Span& sp, ::HIR::Path& tmp, const ::HIR::Path& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_path_needed(tpl) ? tmp = monomorphise_path_with(sp, tpl, callback, allow_infer) : tpl);
+}
+static inline const ::HIR::GenericPath& monomorphise_genericpath_with_opt(const Span& sp, ::HIR::GenericPath& tmp, const ::HIR::GenericPath& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_genericpath_needed(tpl) ? tmp = monomorphise_genericpath_with(sp, tpl, callback, allow_infer) : tpl);
+}
+static inline const ::HIR::TraitPath& monomorphise_traitpath_with_opt(const Span& sp, ::HIR::TraitPath& tmp, const ::HIR::TraitPath& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_traitpath_needed(tpl) ? tmp = monomorphise_traitpath_with(sp, tpl, callback, allow_infer) : tpl);
+}
+static inline const ::HIR::PathParams& monomorphise_pathparams_with_opt(const Span& sp, ::HIR::PathParams& tmp, const ::HIR::PathParams& tpl, t_cb_generic callback, bool allow_infer=true) {
+    return (monomorphise_pathparams_needed(tpl) ? tmp = monomorphise_path_params_with(sp, tpl, callback, allow_infer) : tpl);
+}
+
 typedef ::std::function<bool(const ::HIR::TypeRef&)> t_cb_visit_ty;
 /// Calls the provided callback on every type seen when recursing the type.
 /// If the callback returns `true`, no further types are visited and the function returns `true`.

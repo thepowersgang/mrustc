@@ -6,7 +6,9 @@
  * - Resolve unkown UFCS traits into inherent or trait
  * - HACK: Will likely be replaced with a proper typeck pass (no it won't)
  *
- * - TODO: What are the rules for UFCS lookup?
+ * TODO: Remove this pass, except maybe for running EAT on outer types
+ * - Expression code can handle picking UFCS functions better than this code can
+ * - Outer EAT is nice, but StaticTraitResolve will need to handle non-EAT-ed types when doing lookups
  */
 #include "main_bindings.hpp"
 #include <hir/hir.hpp>
