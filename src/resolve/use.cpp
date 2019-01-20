@@ -351,12 +351,16 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 DEBUG("- Named import " << imp_e.name << " = " << imp_e.path);
                 if( !imp_e.path.m_bindings.has_binding() ) {
                     DEBUG(" > Needs resolve");
-                    static ::std::vector<const ::AST::Module*> s_mods;
-                    if( ::std::find(s_mods.begin(), s_mods.end(), &mod) == s_mods.end() )
+                    static ::std::vector<const ::AST::Path*> s_mods;
+                    if( ::std::find(s_mods.begin(), s_mods.end(), &imp_e.path) == s_mods.end() )
                     {
-                        s_mods.push_back(&mod);
+                        s_mods.push_back(&imp_e.path);
                         rv.merge_from( Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules) );
                         s_mods.pop_back();
+                    }
+                    else
+                    {
+                        DEBUG("Recursion!");
                     }
                 }
                 else {
@@ -799,6 +803,7 @@ namespace {
             else
             {
                 const auto& enum_ = *e.enum_;
+                is_value = false;
                 for( const auto& var : enum_.variants() )
                 {
                     if( var.m_name == node2.name() ) {
