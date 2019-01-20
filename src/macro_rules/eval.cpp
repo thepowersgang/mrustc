@@ -1073,9 +1073,11 @@ namespace
         case TOK_PAREN_OPEN:
         case TOK_SQUARE_OPEN:
             return consume_tt(lex);
+        case TOK_IDENT:
+            if( TARGETVER_1_29 && lex.next_tok().str() == "dyn" )
+                lex.consume();
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:
-        case TOK_IDENT:
         case TOK_DOUBLE_COLON:
         case TOK_INTERPOLATED_IDENT:
         case TOK_INTERPOLATED_PATH:
