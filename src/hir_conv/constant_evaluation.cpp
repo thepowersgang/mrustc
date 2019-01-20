@@ -1048,7 +1048,19 @@ namespace {
                             ));
                     }
                     else {
-                        TODO(sp, "Assign associated type " << vi.first << " in impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type);
+                        //TODO(sp, "Assign associated type " << vi.first << " in impl" << impl.m_params.fmt_args() << " " << trait_path << impl.m_trait_args << " for " << impl.m_type);
+                        impl.m_constants.insert(::std::make_pair(
+                            vi.first,
+                            ::HIR::TraitImpl::ImplEnt<::HIR::Constant> {
+                                /*is_specialisable=*/false,
+                                ::HIR::Constant {
+                                    template_const.m_params.clone(),
+                                    /*m_type=*/ms.monomorph(sp, template_const.m_type),
+                                    /*m_value=*/::HIR::ExprPtr(),
+                                    clone_literal(template_const.m_value_res)
+                                    }
+                                }
+                            ));
                     }
                 }
             }
