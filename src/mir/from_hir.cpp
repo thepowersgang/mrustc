@@ -251,6 +251,7 @@ namespace {
                 }
             TU_ARMA(Struct, e) {
                 const auto& str = *e.binding;
+                ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct - " << e.path);
                 const auto& fields = str.m_data.as_Named();
                 for(const auto& fld_pat : e.sub_patterns)
                 {
@@ -304,6 +305,7 @@ namespace {
                 ASSERT_BUG(sp, enm.m_data.is_Data(), "Expected struct variant - " << pat);
                 const auto& var = enm.m_data.as_Data()[e.binding_idx];;
                 const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct - " << e.path);
                 const auto& fields = str.m_data.as_Named();
                 auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
                 for(const auto& fld_pat : e.sub_patterns)

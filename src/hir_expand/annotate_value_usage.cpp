@@ -560,10 +560,10 @@ namespace {
                 ),
             (EnumStruct,
                 const auto& enm = *pe.binding_ptr;
-                ASSERT_BUG(sp, enm.m_data.is_Data(), "");
+                ASSERT_BUG(sp, enm.m_data.is_Data(), "EnumStruct pattern on non-data enum");
                 const auto& var = enm.m_data.as_Data().at(pe.binding_idx);
                 const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
-                ASSERT_BUG(sp, str.m_data.is_Named(), "");
+                ASSERT_BUG(sp, str.m_data.is_Named(), "EnumStruct pattern on non-struct variant - " << pe.path);
                 const auto& flds = str.m_data.as_Named();
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
 
