@@ -848,7 +848,7 @@ namespace {
                 cur_ofs ++;
             }
         }
-        rv.align = max_align;
+        rv.align = packed ? 1 : max_align;
         rv.size = cur_ofs;
         rv.fields = ::std::move(fields);
         DEBUG("size = " << rv.size << ", align = " << rv.align);
