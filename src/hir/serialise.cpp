@@ -479,6 +479,8 @@
             (Invalid,
                 //BUG(Span(), "Literal::Invalid encountered in HIR");
                 ),
+            (Defer,
+                ),
             (List,
                 serialise_vec(e);
                 ),

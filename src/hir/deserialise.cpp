@@ -1027,6 +1027,7 @@
         {
         #define _(x, ...)    case ::HIR::Literal::TAG_##x:   return ::HIR::Literal::make_##x(__VA_ARGS__);
         _(Invalid, {})
+        _(Defer, {})
         _(List,   deserialise_vec< ::HIR::Literal>() )
         _(Variant, {
             static_cast<unsigned int>(m_in.read_count()),
@@ -1039,7 +1040,7 @@
         _(String,  m_in.read_string() )
         #undef _
         default:
-            BUG(Span(), "Unknown literal when deserialising - " << tag);
+            BUG(Span(), "Unknown HIR::Literal tag when deserialising - " << tag);
         }
     }
 
