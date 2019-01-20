@@ -94,7 +94,8 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
                 return rv;
             }
             else {
-                return Parse_Type_TraitObject(lex, {});
+                ::AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
+                return Parse_Type_TraitObject(lex, mv$(hrbs));
             }
         }
         // or a primitive
@@ -198,7 +199,8 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
                 types.push_back( Parse_Type(lex) );
             }
             CHECK_TOK(tok, TOK_PAREN_CLOSE);
-            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(types)); }
+            return TypeRef(TypeRef::TagTuple(), lex.end_span(ps), mv$(types));
+        }
         }
     default:
         throw ParseError::Unexpected(lex, tok);
@@ -369,11 +371,7 @@ TypeRef Parse_Type_ErasedType(TokenStream& lex, bool allow_trait_list)
         }
         else
         {
-            AST::HigherRankedBounds hrbs;
-            if( lex.lookahead(0) == TOK_RWORD_FOR )
-            {
-                hrbs = Parse_HRB(lex);
-            }
+            AST::HigherRankedBounds hrbs = Parse_HRB_Opt(lex);
             traits.push_back({ mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
         }
     } while( GET_TOK(tok, lex) == TOK_PLUS );
