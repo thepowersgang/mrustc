@@ -436,6 +436,9 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
 
         arm.m_attrs = Parse_ItemAttrs(lex);
 
+        // HACK: Questionably valid, but 1.29 librustc/hir/lowering.rs needs this
+        if( LOOK_AHEAD(lex) == TOK_PIPE )
+            GET_TOK(tok, lex);
         do {
             // Refutable pattern
             arm.m_patterns.push_back( Parse_Pattern(lex, true) );
