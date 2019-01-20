@@ -63,6 +63,7 @@ class Builder
     BuildOptions    m_opts;
     ::helpers::path m_compiler_path;
     size_t m_total_targets;
+    mutable size_t m_targets_built;
 
 public:
     Builder(BuildOptions opts, size_t total_targets);
@@ -537,7 +538,8 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 
 Builder::Builder(BuildOptions opts, size_t total_targets):
     m_opts(::std::move(opts)),
-    m_total_targets(total_targets)
+    m_total_targets(total_targets),
+    m_targets_built(0)
 {
 #ifdef _WIN32
     char buf[1024];
@@ -631,6 +633,8 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     ::std::string   crate_suffix;
     auto outfile = this->get_crate_path(manifest, target, is_for_host,  &crate_type, &crate_suffix);
 
+    size_t this_target_idx = (index != ~0u ? m_targets_built++ : ~0u);
+
     // TODO: Determine if it needs re-running
     // Rerun if:
     // > `outfile` is missing
@@ -664,8 +668,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
 
     {
         // TODO: Determine what number and total targets there are
-        if( index != ~0u )
-            ::std::cout << "(" << index << "/" << m_total_targets << ") ";
+        if( index != ~0u ) {
+            //::std::cout << "(" << index << "/" << m_total_targets << ") ";
+            ::std::cout << "(" << this_target_idx << "/" << m_total_targets << ") ";
+        }
         ::std::cout << "BUILDING ";
         if(target.m_name != manifest.name())
             ::std::cout << target.m_name << " from ";
