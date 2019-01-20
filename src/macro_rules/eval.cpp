@@ -1712,29 +1712,46 @@ namespace
                 return false;
             return consume_tt(lex);
         case TOK_IDENT:
-            if( lex.next_tok().str() != "union" )
-                return false;
-            lex.consume();
-            if( lex.next() == TOK_EXCLAM )
+            if( lex.next_tok().str() == "union" )
             {
-                bool need_semicolon = (lex.next() != TOK_BRACE_OPEN);
-                consume_tt(lex);
-                if( need_semicolon )
+                lex.consume();
+                if( lex.next() == TOK_EXCLAM )
                 {
-                    if( !lex.consume_if(TOK_SEMICOLON) )
-                        return false;
+                    bool need_semicolon = (lex.next() != TOK_BRACE_OPEN);
+                    consume_tt(lex);
+                    if( need_semicolon )
+                    {
+                        if( !lex.consume_if(TOK_SEMICOLON) )
+                            return false;
+                    }
+                    return true;
                 }
-                return true;
+                else
+                {
+                    if( !H::maybe_generics(lex) )
+                        return false;
+                    if( !H::maybe_where(lex) )
+                        return false;
+                    if( lex.next() != TOK_BRACE_OPEN )
+                        return false;
+                    return consume_tt(lex);
+                }
+            }
+            else if( lex.next_tok().str() == "auto" )
+            {
+                lex.consume();
+                if( lex.consume_if(TOK_RWORD_TRAIT) )
+                {
+                    goto trait;
+                }
+                else
+                {
+                    return false;
+                }
             }
             else
             {
-                if( !H::maybe_generics(lex) )
-                    return false;
-                if( !H::maybe_where(lex) )
-                    return false;
-                if( lex.next() != TOK_BRACE_OPEN )
-                    return false;
-                return consume_tt(lex);
+                return false;
             }
             break;
         // const fn
@@ -1760,6 +1777,19 @@ namespace
                 if( !lex.consume_if(TOK_SEMICOLON) )
                     return false;
             }
+            break;
+        case TOK_RWORD_TRAIT:
+            lex.consume();
+        trait:
+            if( !lex.consume_if(TOK_IDENT) )
+                return false;
+
+            if( !H::maybe_generics(lex) )
+                return false;
+            if(lex.next() != TOK_BRACE_OPEN)
+                return false;
+            if( !consume_tt(lex) )
+                return false;
             break;
         case TOK_RWORD_EXTERN:
             lex.consume();
