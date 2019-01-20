@@ -4015,8 +4015,9 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
                     const auto& te = ty.m_data.as_Tuple();
                     if( pe.leading.size() + pe.trailing.size() > te.size() ) {
-                        ERROR(sp, E0000, "Split-tuple pattern with an incorrect number of fields, expected at most " << (pe.leading.size() + pe.trailing.size()) << "-tuple, got " << ty);
+                        ERROR(sp, E0000, "Split-tuple pattern with an incorrect number of fields, expected at most " << (pe.leading.size() + pe.trailing.size()) << "-tuple, got " << te.size());
                     }
+                    pe.total_size = te.size();
                     rv = true;
                     for(size_t i = 0; i < pe.leading.size(); i++)
                         rv &= this->revisit_inner(context, pe.leading[i], te[i], binding_mode);
