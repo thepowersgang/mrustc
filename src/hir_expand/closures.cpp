@@ -194,12 +194,20 @@ namespace {
         public ::HIR::ExprVisitorDef
     {
         const ::HIR::Crate& m_crate;
+        StaticTraitResolve  m_resolve;
         t_cb_generic    m_monomorph_cb;
+        bool    m_run_eat;
     public:
-        ExprVisitor_Fixup(const ::HIR::Crate& crate, t_cb_generic monomorph_cb):
+        ExprVisitor_Fixup(const ::HIR::Crate& crate, const ::HIR::GenericParams* params, t_cb_generic monomorph_cb):
             m_crate(crate),
-            m_monomorph_cb( mv$(monomorph_cb) )
+            m_resolve(crate),
+            m_monomorph_cb( mv$(monomorph_cb) ),
+            m_run_eat(false)
         {
+            if( params ) {
+                m_resolve.set_impl_generics_raw(*params);
+                m_run_eat = true;
+            }
         }
 
         static void fix_type(const ::HIR::Crate& crate, t_cb_generic monomorph_cb, ::HIR::TypeRef& ty) {
@@ -210,6 +218,14 @@ namespace {
                 DEBUG(ty << " -> " << path);
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
             )
+
+            if( auto* e = ty.m_data.opt_Path() )
+            {
+                if( e->binding.is_Unbound() && e->path.m_data.is_UfcsKnown() )
+                {
+                    e->binding = ::HIR::TypeRef::TypePathBinding::make_Opaque({});
+                }
+            }
         }
 
         void visit_root(::HIR::ExprPtr& root)
@@ -258,8 +274,15 @@ namespace {
 
         void visit_type(::HIR::TypeRef& ty) override
         {
+            bool run_eat = m_run_eat;
+            m_run_eat = false;
             fix_type(m_crate, m_monomorph_cb, ty);
             ::HIR::ExprVisitorDef::visit_type(ty);
+            if( run_eat ) {
+                // TODO: Instead of running EAT, just mark any Unbound UfcsKnown types as Opaque
+                //m_resolve.expand_associated_types(Span(), ty);
+                m_run_eat = true;
+            }
         }
     };
 
@@ -628,7 +651,7 @@ namespace {
                 }
 
                 // - Fix type to replace closure types with known paths
-                ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
+                ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
                 fixup.visit_type(ty_mono);
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, mv$(ty_mono) } );
             }
@@ -670,7 +693,7 @@ namespace {
 
             {
                 DEBUG("-- Fixing types in body code");
-                ExprVisitor_Fixup   fixup { m_resolve.m_crate, monomorph_cb };
+                ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
                 fixup.visit_root( body_code );
 
                 DEBUG("-- Fixing types in signature");
@@ -1094,7 +1117,7 @@ namespace {
                 }
 
                 {
-                    ExprVisitor_Fixup   fixup(m_resolve.m_crate, [](const auto& x)->const auto&{ return x; });
+                    ExprVisitor_Fixup   fixup(m_resolve.m_crate, nullptr, [](const auto& x)->const auto&{ return x; });
                     fixup.visit_root( item.m_code );
                 }
             }
