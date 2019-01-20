@@ -142,18 +142,14 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
                 auto ps = lex.start_span();
                 DEBUG("Fn() hack");
                 ::std::vector<TypeRef>  args;
-                if( GET_TOK(tok, lex) == TOK_PAREN_CLOSE )
-                {
-                    // Empty list
-                }
-                else
-                {
-                    PUTBACK(tok, lex);
-                    do {
-                        // TODO: Trailing commas
-                        args.push_back( Parse_Type(lex) );
-                    } while( GET_TOK(tok, lex) == TOK_COMMA );
-                }
+                do {
+                    // Trailing comma or empty list support
+                    if( lex.lookahead(0) == TOK_PAREN_CLOSE ) {
+                        GET_TOK(tok, lex);
+                        break;
+                    }
+                    args.push_back( Parse_Type(lex) );
+                } while( GET_TOK(tok, lex) == TOK_COMMA );
                 CHECK_TOK(tok, TOK_PAREN_CLOSE);
 
                 TypeRef ret_type = TypeRef( TypeRef::TagUnit(), Span(tok.get_pos()) );
