@@ -266,6 +266,15 @@ namespace {
                 this->visit_pattern_Value(sp, pat, e.start);
                 this->visit_pattern_Value(sp, pat, e.end);
                 ),
+            (StructValue,
+                const auto& str = get_struct_ptr(sp, m_crate, e.path);
+                TU_IFLET(::HIR::Struct::Data, str.m_data, Unit, _,
+                    e.binding = &str;
+                )
+                else {
+                    ERROR(sp, E0000, "Struct value pattern on non-unit struct " << e.path);
+                }
+                ),
             (StructTuple,
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
@@ -288,6 +297,17 @@ namespace {
                 }
                 e.binding = &str;
                 ),
+            (EnumValue,
+                auto p = get_enum_ptr(sp, m_crate, e.path);
+                if( p.first->m_data.is_Data() )
+                {
+                    const auto& var = p.first->m_data.as_Data()[p.second];
+                    if( var.is_struct || var.type != ::HIR::TypeRef::new_unit() )
+                        ERROR(sp, E0000, "Enum value pattern on non-unit variant " << e.path);
+                }
+                e.binding_ptr = p.first;
+                e.binding_idx = p.second;
+                ),
             (EnumTuple,
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 if( !p.first->m_data.is_Data() )
@@ -300,11 +320,54 @@ namespace {
                 ),
             (EnumStruct,
                 auto p = get_enum_ptr(sp, m_crate, e.path);
-                if( !p.first->m_data.is_Data() )
-                    ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
-                const auto& var = p.first->m_data.as_Data()[p.second];
-                if( !var.is_struct )
-                    ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
+                if( !e.is_exhaustive && e.sub_patterns.empty() )
+                {
+                    if( !p.first->m_data.is_Data() ) {
+                        pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                                ::std::move(e.path), p.first, p.second
+                                });
+                    }
+                    else {
+                        const auto& var = p.first->m_data.as_Data()[p.second];
+                        if( var.type == ::HIR::TypeRef::new_unit() )
+                        {
+                            pat.m_data = ::HIR::Pattern::Data::make_EnumValue({
+                                    ::std::move(e.path), p.first, p.second
+                                    });
+                        }
+                        else if( !var.is_struct )
+                        {
+                            ASSERT_BUG(sp, var.type.m_data.is_Path(), "");
+                            ASSERT_BUG(sp, var.type.m_data.as_Path().binding.is_Struct(), "");
+                            const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
+                            ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
+                            const auto& flds = str.m_data.as_Tuple();
+                            ::std::vector<HIR::Pattern> subpats;
+                            for(size_t i = 0; i < flds.size(); i ++)
+                                subpats.push_back(::HIR::Pattern { });
+                            pat.m_data = ::HIR::Pattern::Data::make_EnumTuple({
+                                    ::std::move(e.path), p.first, p.second, mv$(subpats)
+                                    });
+                        }
+                        else
+                        {
+                            // Keep as a struct pattern
+                        }
+                    }
+                }
+                else
+                {
+                    if( !p.first->m_data.is_Data() )
+                    {
+                        ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
+                    }
+                    else
+                    {
+                        const auto& var = p.first->m_data.as_Data()[p.second];
+                        if( !var.is_struct )
+                            ERROR(sp, E0000, "Enum struct pattern `" << pat << "` on non-struct variant " << e.path);
+                    }
+                }
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
                 )
