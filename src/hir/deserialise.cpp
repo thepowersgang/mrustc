@@ -81,7 +81,7 @@
         template<typename T>
         ::std::vector<T> deserialise_vec()
         {
-            TRACE_FUNCTION_F("<" << typeid(T).name() << ">");
+            TRACE_FUNCTION_FR("<" << typeid(T).name() << ">", m_in.get_pos());
             size_t n = m_in.read_count();
             DEBUG("n = " << n);
             ::std::vector<T>    rv;
@@ -971,7 +971,7 @@
     }
     ::HIR::Struct HirDeserialiser::deserialise_struct()
     {
-        TRACE_FUNCTION;
+        TRACE_FUNCTION_FR("", m_in.get_pos());
         auto params = deserialise_genericparams();
         auto repr = static_cast< ::HIR::Struct::Repr>( m_in.read_tag() );
         DEBUG("params = " << params.fmt_args() << params.fmt_bounds());
@@ -995,6 +995,7 @@
             BUG(Span(), "Bad tag for HIR::Struct::Data - " << tag);
         }
         auto align = static_cast<unsigned>(m_in.read_u64c());
+        DEBUG("align = " << align);
         auto markings = deserialise_markings();
         auto str_markings = deserialise_str_markings();
 

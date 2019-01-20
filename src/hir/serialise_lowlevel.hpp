@@ -147,12 +147,14 @@ class Reader
 {
     ReaderInner*    m_inner;
     ReadBuffer  m_buffer;
+    size_t  m_pos;
 public:
     Reader(const ::std::string& path);
     Reader(const Writer&) = delete;
     Reader(Writer&&) = delete;
     ~Reader();
 
+    size_t get_pos() const { return m_pos; }
     void read(void* dst, size_t count);
 
     uint8_t read_u8() {

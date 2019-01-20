@@ -186,7 +186,8 @@ void ReadBuffer::populate(ReaderInner& is)
 
 Reader::Reader(const ::std::string& filename):
     m_inner( new ReaderInner(filename) ),
-    m_buffer(1024)
+    m_buffer(1024),
+    m_pos(0)
 {
 }
 Reader::~Reader()
@@ -198,6 +199,7 @@ void Reader::read(void* buf, size_t len)
 {
     auto used = m_buffer.read(buf, len);
     if( used == len ) {
+        m_pos += len;
         return ;
     }
     buf = reinterpret_cast<uint8_t*>(buf) + used;
@@ -214,6 +216,8 @@ void Reader::read(void* buf, size_t len)
         if( used != len )
             throw ::std::runtime_error( FMT("Reader::read - Requested " << len << " bytes from buffer, got " << used) );
     }
+
+    m_pos += len;
 }
 
 
