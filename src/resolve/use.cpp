@@ -334,7 +334,8 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
     for(const auto& mac : mod.macros())
     {
         if( mac.name == des_item_name ) {
-            TODO(span, "Import of macro - " << des_item_name);
+            rv.macro = ::AST::PathBinding_Macro::make_MacroRules({ nullptr, &*mac.data });
+            break;
         }
     }
 
