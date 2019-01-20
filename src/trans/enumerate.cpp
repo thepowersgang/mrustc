@@ -1393,9 +1393,30 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         {
             const auto& pe = path_mono.m_data.as_UfcsKnown();
             ASSERT_BUG(sp, pe.item == "clone", "");
-            // TODO: If this is !Copy, then we need to ensure that the inner type's clone impls are also available
+            const auto& inner_ty = *pe.type;
+            // If this is !Copy, then we need to ensure that the inner type's clone impls are also available
+            ::StaticTraitResolve    resolve { state.crate };
+            if( !resolve.type_is_copy(sp, inner_ty) )
+            {
+                auto enum_impl = [&](const ::HIR::TypeRef& ity) {
+                    if( !resolve.type_is_copy(sp, ity) )
+                    {
+                        auto p = ::HIR::Path(ity.clone(), pe.trait.clone(), "clone");
+                        Trans_Enumerate_FillFrom_Path(state, p, {});
+                    }
+                    };
+                if( const auto* te = inner_ty.m_data.opt_Tuple() ) {
+                    for(const auto& ity : *te)
+                    {
+                        enum_impl(ity);
+                    }
+                }
+                else {
+                    BUG(sp, "Unhandled magic clone in enumerate - " << inner_ty);
+                }
+            }
             // Add this type to a list of types that will have the impl auto-generated
-            state.rv.auto_clone_impls.insert( pe.type->clone() );
+            state.rv.auto_clone_impls.insert( inner_ty.clone() );
         }
         else
         {
