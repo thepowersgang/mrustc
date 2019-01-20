@@ -3690,9 +3690,10 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
     struct H2 {
         static bool has_ref_or_borrow(const Span& sp, const ::HIR::Pattern& pat) {
-            if( pat.m_binding.is_valid() && pat.m_binding.m_type != ::HIR::PatternBinding::Type::Move ) {
-                return true;
-            }
+            // TODO: Turns out that this isn't valid. See libsyntax 1.29
+            //if( pat.m_binding.is_valid() && pat.m_binding.m_type != ::HIR::PatternBinding::Type::Move ) {
+            //    return true;
+            //}
             if( pat.m_data.is_Ref() ) {
                 return true;
             }
@@ -3821,8 +3822,11 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 if( pattern.m_binding.is_valid() )
                 {
                     // - Binding present, use the current binding mode
-                    pattern.m_binding.m_type = binding_mode;
-                    switch(binding_mode)
+                    if( pattern.m_binding.m_type == ::HIR::PatternBinding::Type::Move )
+                    {
+                        pattern.m_binding.m_type = binding_mode;
+                    }
+                    switch(pattern.m_binding.m_type)
                     {
                     case ::HIR::PatternBinding::Type::Move:
                         context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), type);
@@ -4006,7 +4010,18 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         rv &= this->revisit_inner(context, e.sub_patterns[i], te[i], binding_mode);
                     }
                 TU_ARM(pattern.m_data, SplitTuple, pe) {
-                    TODO(sp, "Match ergonomics - split-tuple pattern");
+                    if( !ty.m_data.is_Tuple() ) {
+                        ERROR(sp, E0000, "Matching a non-tuple with a tuple pattern - " << ty);
+                    }
+                    const auto& te = ty.m_data.as_Tuple();
+                    if( pe.leading.size() + pe.trailing.size() > te.size() ) {
+                        ERROR(sp, E0000, "Split-tuple pattern with an incorrect number of fields, expected at most " << (pe.leading.size() + pe.trailing.size()) << "-tuple, got " << ty);
+                    }
+                    rv = true;
+                    for(size_t i = 0; i < pe.leading.size(); i++)
+                        rv &= this->revisit_inner(context, pe.leading[i], te[i], binding_mode);
+                    for(size_t i = 0; i < pe.trailing.size(); i++)
+                        rv &= this->revisit_inner(context, pe.trailing[i], te[te.size() - pe.trailing.size() + i], binding_mode);
                     }
                 TU_ARM(pattern.m_data, Slice, e) {
                     const ::HIR::TypeRef*   slice_inner;
