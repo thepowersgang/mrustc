@@ -1361,6 +1361,11 @@ void Parse_Use_Inner(TokenStream& lex, ::std::vector<AST::UseItem::Ent>& entries
                 else if( LOOK_AHEAD(lex) == TOK_RWORD_SELF ) {
                     GET_TOK(tok, lex);
                     auto name = path.nodes().back().name();
+                    if( LOOK_AHEAD(lex) == TOK_RWORD_AS ) {
+                        GET_TOK(tok, lex);
+                        GET_CHECK_TOK(tok, lex, TOK_IDENT);
+                        name = mv$(tok.str());
+                    }
                     entries.push_back({ lex.point_span(), AST::Path(path), ::std::move(name) });
                 }
                 else {
