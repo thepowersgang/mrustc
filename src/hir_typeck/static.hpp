@@ -16,8 +16,8 @@ class StaticTraitResolve
 public:
     const ::HIR::Crate&   m_crate;
 
-    ::HIR::GenericParams*   m_impl_generics;
-    ::HIR::GenericParams*   m_item_generics;
+    const ::HIR::GenericParams*   m_impl_generics;
+    const ::HIR::GenericParams*   m_item_generics;
 
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
@@ -86,19 +86,35 @@ public:
             ptr = nullptr;
         }
     };
-    NullOnDrop< ::HIR::GenericParams> set_impl_generics(::HIR::GenericParams& gps) {
+    NullOnDrop<const ::HIR::GenericParams> set_impl_generics(const ::HIR::GenericParams& gps) {
+        set_impl_generics_raw(gps);
+        return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);
+    }
+    NullOnDrop<const ::HIR::GenericParams> set_item_generics(const ::HIR::GenericParams& gps) {
+        set_item_generics_raw(gps);
+        return NullOnDrop<const ::HIR::GenericParams>(m_item_generics);
+    }
+    void set_impl_generics_raw(const ::HIR::GenericParams& gps) {
         assert( !m_impl_generics );
         m_impl_generics = &gps;
         m_type_equalities.clear();
         prep_indexes();
-        return NullOnDrop< ::HIR::GenericParams>(m_impl_generics);
     }
-    NullOnDrop< ::HIR::GenericParams> set_item_generics(::HIR::GenericParams& gps) {
+    void clear_impl_generics() {
+        m_impl_generics = nullptr;
+        m_type_equalities.clear();
+        prep_indexes();
+    }
+    void set_item_generics_raw(const ::HIR::GenericParams& gps) {
         assert( !m_item_generics );
         m_item_generics = &gps;
         m_type_equalities.clear();
         prep_indexes();
-        return NullOnDrop< ::HIR::GenericParams>(m_item_generics);
+    }
+    void clear_item_generics() {
+        m_item_generics = nullptr;
+        m_type_equalities.clear();
+        prep_indexes();
     }
     /// \}
 
