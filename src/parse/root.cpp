@@ -1325,8 +1325,19 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             i.span = lex.end_span(ps);
             rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
             break; }
+        case TOK_RWORD_TYPE: {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = mv$(tok.str());
+            GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+            auto sp = lex.end_span(ps);
+            //TODO(sp, "Extern type");
+            auto i = ::AST::Item(::AST::TypeAlias( ::AST::GenericParams(), ::TypeRef(sp) ));
+            i.attrs = mv$(meta_items);
+            i.span = mv$(sp);
+            rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
+            break; }
         default:
-            throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC});
+            throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC, TOK_RWORD_TYPE});
         }
     }
 
