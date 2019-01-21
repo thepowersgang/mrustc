@@ -84,6 +84,8 @@ public:
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_ITEM) );
                 else if( /*TARGETVER_1_29 && */ type == "vis" ) // TODO: Should this be selective?
                     ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_VIS) );
+                else if( /*TARGETVER_1_29 && */ type == "lifetime" ) // TODO: Should this be selective?
+                    ret.push_back( MacroPatEnt(name, idx, MacroPatEnt::PAT_LIFETIME) );
                 else
                     ERROR(lex.point_span(), E0000, "Unknown fragment type '" << type << "'");
                 break; }
@@ -439,6 +441,18 @@ bool patterns_are_same(const Span& sp, const MacroPatEnt& left, const MacroPatEn
                 ERROR(sp, E0000, "Incompatible macro fragments");
             return false;
         case MacroPatEnt::PAT_VIS:
+            return true;
+        default:
+            ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
+        }
+    case MacroPatEnt::PAT_LIFETIME:
+        switch(left.type)
+        {
+        case MacroPatEnt::PAT_TOKEN:
+            if( left.tok.type() == TOK_LIFETIME )
+                ERROR(sp, E0000, "Incompatible macro fragments");
+            return false;
+        case MacroPatEnt::PAT_LIFETIME:
             return true;
         default:
             ERROR(sp, E0000, "Incompatible macro fragments " << right << " used with " << left);
