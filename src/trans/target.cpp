@@ -511,6 +511,20 @@ namespace
                 ARCH_X86_64
                 };
         }
+        else if(target_name == "arm-unknown-haiku")
+        {
+            return TargetSpec {
+                "unix", "haiku", "gnu", {CodegenMode::Gnu11, true, "arm-unknown-haiku", {}, {}},
+                ARCH_ARM32
+                };
+        }
+        else if(target_name == "x86_64-unknown-haiku")
+        {
+            return TargetSpec {
+                "unix", "haiku", "gnu", {CodegenMode::Gnu11, false, "x86_64-unknown-haiku", {}, {}},
+                ARCH_X86_64
+                };
+        }
         else
         {
             ::std::cerr << "Unknown target name '" << target_name << "'" << ::std::endl;
