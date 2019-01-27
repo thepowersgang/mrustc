@@ -109,7 +109,7 @@ PathBinding_Macro PathBinding_Macro::clone() const
     for(const auto& v : x.m_lifetimes) {
         if(needs_comma) os << ", ";
         needs_comma = true;
-        os << "'" << v;
+        os << v;
     }
     for(const auto& v : x.m_types) {
         if(needs_comma) os << ", ";

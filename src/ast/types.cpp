@@ -323,7 +323,7 @@ namespace AST {
             os << "'_";
         }
         else {
-            os << "'" << x.m_name;
+            os << "'" << x.m_name.name;
             if( x.m_binding != LifetimeRef::BINDING_UNBOUND ) {
                 os << "/*" << x.m_binding << "*/";
             }
