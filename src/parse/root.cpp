@@ -1499,14 +1499,19 @@ bool Parse_MacroInvocation_Opt(TokenStream& lex,  AST::MacroInvocation& out_inv)
     {
         // Good
     }
+    else if( lex.lookahead(0) == TOK_INTERPOLATED_PATH && lex.lookahead(1) == TOK_EXCLAM )
+    {
+        // Also good.
+    }
     else
     {
         return false;
     }
 
     auto ps = lex.start_span();
-    GET_CHECK_TOK(tok, lex, TOK_IDENT);
-    auto name = tok.str();
+    auto name_path = Parse_Path(lex, PATH_GENERIC_NONE);
+    ASSERT_BUG(lex.point_span(), name_path.nodes().size() == 1, "TODO: Support multi-component paths in macro invocations");
+    auto name = name_path.nodes()[0].name();
     GET_CHECK_TOK(tok, lex, TOK_EXCLAM);
 
     bool is_braced = (lex.lookahead(0) == TOK_BRACE_OPEN || (lex.lookahead(0) == TOK_IDENT && lex.lookahead(1) == TOK_BRACE_OPEN));

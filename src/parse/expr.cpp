@@ -57,13 +57,18 @@ ExprNodeP Parse_ExprBlockNode(TokenStream& lex, bool is_unsafe/*=false*/)
 
     ::std::shared_ptr<AST::Module> local_mod;
 
+    if( LOOK_AHEAD(lex) == TOK_INTERPOLATED_BLOCK )
+    {
+        GET_TOK(tok, lex);
+        return tok.take_frag_node();
+    }
+
     GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
 
     bool last_value_yielded = false;
     while( LOOK_AHEAD(lex) != TOK_BRACE_CLOSE )
     {
         last_value_yielded = false;
-        DEBUG("tok = " << tok);
 
         // NOTE: Doc comments can appear within a function and apply to the function
         if( lex.parse_state().parent_attrs )
