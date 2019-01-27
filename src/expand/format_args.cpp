@@ -183,7 +183,7 @@ namespace {
                             s ++;
                         } while(isdigit(*s));
                         if( arg_idx >= n_free )
-                            ERROR(sp, E0000, "Positional argument " << arg_idx << " out of range");
+                            ERROR(sp, E0000, "Positional argument " << arg_idx << " out of range in \"" << format_string << "\"");
                         index = arg_idx;
                     }
                     else {

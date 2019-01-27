@@ -1068,11 +1068,11 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
 
         auto dat = mv$(i.data);
 
-        TU_MATCH(::AST::Item, (dat), (e),
-        (None,
-            // Skip, nothing
-            ),
-        (MacroInv,
+        TU_MATCH_HDRA( (dat), {)
+        TU_ARMA(None, e) {
+            // Skip: nothing
+            }
+        TU_ARMA(MacroInv, e) {
             // Move out of the module to avoid invalidation if a new macro invocation is added
             auto mi_owned = mv$(e);
 
@@ -1089,11 +1089,11 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 Parse_ModRoot_Items(*ttl, mod);
             }
             dat.as_MacroInv() = mv$(mi_owned);
-            ),
-        (Use,
+            }
+        TU_ARMA(Use, e) {
             // No inner expand.
-            ),
-        (ExternBlock,
+            }
+        TU_ARMA(ExternBlock, e) {
             // TODO: Run expand on inner items?
             // HACK: Just convert inner items into outer items
             auto items = mv$( e.items() );
@@ -1101,32 +1101,32 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             {
                 mod.items().push_back( mv$(i2) );
             }
-            ),
-        (Impl,
+            }
+        TU_ARMA(Impl, e) {
             Expand_Impl(crate, modstack, modpath, mod,  e);
             if( e.def().type().is_wildcard() ) {
                 dat = AST::Item();
             }
-            ),
-        (NegImpl,
+            }
+        TU_ARMA(NegImpl, e) {
             Expand_ImplDef(crate, modstack, modpath, mod,  e);
             if( e.type().is_wildcard() ) {
                 dat = AST::Item();
             }
-            ),
-        (Module,
+            }
+        TU_ARMA(Module, e) {
             LList<const AST::Module*>   sub_modstack(&modstack, &e);
             Expand_Mod(crate, sub_modstack, path, e);
-            ),
-        (Crate,
+            }
+        TU_ARMA(Crate, e) {
             // Can't recurse into an `extern crate`
             if(crate.m_extern_crates.count(e.name) == 0)
             {
                 e.name = crate.load_extern_crate( i.data.span, e.name );
             }
-            ),
+            }
 
-        (Struct,
+        TU_ARMA(Struct, e) {
             Expand_GenericParams(crate, modstack, mod,  e.params());
             TU_MATCH(AST::StructData, (e.m_data), (sd),
             (Unit,
@@ -1158,8 +1158,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 }
                 )
             )
-            ),
-        (Enum,
+            }
+        TU_ARMA(Enum, e) {
             Expand_GenericParams(crate, modstack, mod,  e.params());
             for(auto& var : e.variants()) {
                 Expand_Attrs(var.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
@@ -1197,10 +1197,11 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     ++ it;
                 }
             }
-            ),
-        (Union,
+            }
+        TU_ARMA(Union, e) {
             Expand_GenericParams(crate, modstack, mod,  e.m_params);
-            for(auto it = e.m_variants.begin(); it != e.m_variants.end(); ) {
+            for(auto it = e.m_variants.begin(); it != e.m_variants.end(); )
+            {
                 auto& si = *it;
                 Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
                 Expand_Type(crate, modstack, mod,  si.m_type);
@@ -1211,8 +1212,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 else
                     ++it;
             }
-            ),
-        (Trait,
+            }
+        TU_ARMA(Trait, e) {
             Expand_GenericParams(crate, modstack, mod,  e.params());
             auto& trait_items = e.items();
             for(size_t idx = 0; idx < trait_items.size(); idx ++)
@@ -1270,16 +1271,20 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     )
                 )
 
-                Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, ti.data);
-                if( ti.data.attrs.m_items.size() == 0 )
-                    ti.data.attrs = mv$(attrs);
-            }
-            ),
-        (Type,
-            Expand_Type(crate, modstack, mod,  e.type());
-            ),
+                {
+                    auto& ti = trait_items[idx];
 
-        (Function,
+                    Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, ti.data);
+                    if( ti.data.attrs.m_items.size() == 0 )
+                        ti.data.attrs = mv$(attrs);
+                }
+            }
+            }
+        TU_ARMA(Type, e) {
+            Expand_Type(crate, modstack, mod,  e.type());
+            }
+
+        TU_ARMA(Function, e) {
             Expand_GenericParams(crate, modstack, mod,  e.params());
             for(auto& arg : e.args()) {
                 Expand_Pattern(crate, modstack, mod,  arg.first, false);
@@ -1287,12 +1292,12 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
             Expand_Type(crate, modstack, mod,  e.rettype());
             Expand_Expr(crate, modstack, e.code());
-            ),
-        (Static,
+            }
+        TU_ARMA(Static, e) {
             Expand_Expr(crate, modstack, e.value());
             Expand_Type(crate, modstack, mod,  e.type());
-            )
-        )
+            }
+        }
         Expand_Attrs(attrs, AttrStage::Post,  crate, path, mod, dat);
 
         {

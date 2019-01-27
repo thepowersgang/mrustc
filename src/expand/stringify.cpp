@@ -26,6 +26,9 @@ class CExpander:
             rv += tok.to_str();
         }
 
+        // TODO: Strip out any `{...}` sequences that aren't from nested
+        // strings.
+
         return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, mv$(rv)))) );
     }
 };
