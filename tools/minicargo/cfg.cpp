@@ -215,6 +215,13 @@ bool CfgChecker::check_cfg(CfgParseLexer& p) const
                 rv &= check_cfg(p);
             } while(p.consume_if(','));
         }
+        else if( name == "any" ) {
+            rv = false;
+            do
+            {
+                rv |= check_cfg(p);
+            } while(p.consume_if(','));
+        }
         else {
             TODO("Unknown fragment in cfg - " << name.to_string());
         }

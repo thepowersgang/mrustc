@@ -26,6 +26,14 @@ struct PackageVersion
 
     static PackageVersion from_string(const ::std::string& s);
 
+    PackageVersion next_minor() const {
+        if(major == 0) {
+            return PackageVersion { 0, minor, patch+1 };
+        }
+        else {
+            return PackageVersion { major, minor+1, 0 };
+        }
+    }
     PackageVersion next_breaking() const {
         if(major == 0) {
             return PackageVersion { 0, minor + 1, 0 };
@@ -87,7 +95,8 @@ struct PackageVersionSpec
     {
         enum class Type
         {
-            Compatible,
+            Compatible, // "^" - Allows anything up to the next major version
+            MinorCompatible,   // "~X.Y" - Allows anything up to the next minor version
             Greater,
             GreaterEqual,
             Equal,
@@ -116,6 +125,7 @@ struct PackageVersionSpec
             switch(b.ty)
             {
             case Bound::Type::Compatible: os << "^";  break;
+            case Bound::Type::MinorCompatible: os << "~"; break;
             case Bound::Type::Greater:    os << ">";  break;
             case Bound::Type::GreaterEqual: os << ">=";  break;
             case Bound::Type::Equal:      os << "=";  break;

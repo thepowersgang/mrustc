@@ -865,6 +865,10 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             // Default, compatible
             pos ++;
             break;
+        case '~':
+            ty = PackageVersionSpec::Bound::Type::MinorCompatible;
+            pos ++;
+            break;
         case '=':
             ty = PackageVersionSpec::Bound::Type::Equal;
             pos ++;
@@ -921,6 +925,9 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
         }
         else
         {
+            // NOTE: This changes the behaviour of ~ rules to be bounded on the major version instead
+            if( ty == PackageVersionSpec::Bound::Type::MinorCompatible )
+                ty = PackageVersionSpec::Bound::Type::Compatible;
             v.minor = 0;
             v.patch = 0;
         }
@@ -943,11 +950,17 @@ bool PackageVersionSpec::accepts(const PackageVersion& v) const
         switch(b.ty)
         {
         case Bound::Type::Compatible:
-            // To be compatible, it has to be higher?
-            // - TODO: Isn't a patch version compatible?
+            // ^ rules are >= specified, and < next major/breaking
             if( !(v >= b.ver) )
                 return false;
             if( !(v < b.ver.next_breaking()) )
+                return false;
+            break;
+        case Bound::Type::MinorCompatible:
+            // ~ rules are >= specified, and < next minor
+            if( !(v >= b.ver) )
+                return false;
+            if( !(v < b.ver.next_minor()) )
                 return false;
             break;
         case Bound::Type::GreaterEqual:
