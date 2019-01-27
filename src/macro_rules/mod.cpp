@@ -182,7 +182,7 @@ MacroRulesPtr::~MacroRulesPtr()
     switch(x.type)
     {
     case MacroPatEnt::PAT_TOKEN: os << "=" << x.tok; break;
-    case MacroPatEnt::PAT_LOOP:  os << "loop w/ "  << x.tok << " [" << x.subpats << "]";  break;
+    case MacroPatEnt::PAT_LOOP:  os << "loop" << x.name << " w/ "  << x.tok << " [" << x.subpats << "]";  break;
     default:
         os << "$" << x.name << ":";
         switch(x.type)
@@ -228,6 +228,37 @@ MacroRulesPtr::~MacroRulesPtr()
     return os;
 }
 
+::std::ostream& operator<<(::std::ostream& os, const SimplePatEnt& x)
+{
+    TU_MATCH_HDRA( (x), { )
+    TU_ARMA(End, _e) os << "End";
+    TU_ARMA(LoopStart, _e) os << "LoopStart";
+    TU_ARMA(LoopNext, _e) os << "LoopNext";
+    TU_ARMA(LoopEnd, _e) os << "LoopEnd";
+    TU_ARMA(Jump, e) {
+        os << "Jump(->" << e.jump_target << ")";
+        }
+    TU_ARMA(ExpectTok, e) {
+        os << "Expect(" << e << ")";
+        }
+    TU_ARMA(ExpectPat, e) {
+        os << "Expect($" << e.idx << " = " << e.type << ")";
+        }
+    TU_ARMA(If, e) {
+        os << "If(" << (e.is_equal ? "=" : "!=") << "[";
+        for(const auto& p : e.ents) {
+            if(p.ty == MacroPatEnt::PAT_TOKEN)
+                os << p.tok;
+            else
+                os << p.ty;
+            os << ", ";
+        }
+        os << "] ->" << e.jump_target << ")";
+        }
+    }
+    return os;
+}
+
 ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x)
 {
     TU_MATCH( MacroExpansionEnt, (x), (e),
@@ -250,6 +281,9 @@ MacroRulesPtr::~MacroRulesPtr()
 }
 
 MacroRules::~MacroRules()
+{
+}
+MacroRulesArm::~MacroRulesArm()
 {
 }
 

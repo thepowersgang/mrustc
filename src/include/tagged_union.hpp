@@ -122,7 +122,7 @@
 #define TU_ARM(VAR, TAG, NAME)  break; case ::std::remove_reference<decltype(VAR)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(auto& NAME = (VAR).as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
 
 #define TU_MATCH_HDRA(VARS, brace)  TU_MATCH_HDRA_(::std::remove_reference<decltype(TU_FIRST VARS)>::type, VARS, brace)
-#define TU_MATCH_HDRA_(CLASS, VARS, brace)  const auto& tu_match_hdr2_v = (TU_FIRST VARS); switch( tu_match_hdr2_v.tag() ) brace case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");
+#define TU_MATCH_HDRA_(CLASS, VARS, brace)  auto& tu_match_hdr2_v = (TU_FIRST VARS); switch( tu_match_hdr2_v.tag() ) brace case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");
 // Evil hack: two for loops, the inner stops the outer after it's done.
 #define TU_ARMA(TAG, NAME)  break; case ::std::remove_reference<decltype(tu_match_hdr2_v)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(auto& NAME = tu_match_hdr2_v.as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
 

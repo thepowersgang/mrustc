@@ -415,6 +415,34 @@
                 serialise_vec(pe.subpats);
             }
         }
+        void serialise(const ::SimplePatIfCheck& e) {
+            m_out.write_tag( static_cast<int>(e.ty) );
+            serialise(e.tok);
+        }
+        void serialise(const ::SimplePatEnt& pe) {
+            m_out.write_tag( pe.tag() );
+            TU_MATCH_HDRA( (pe), { )
+            TU_ARMA(End, _e) {}
+            TU_ARMA(LoopStart, _e) {}
+            TU_ARMA(LoopNext, _e) {}
+            TU_ARMA(LoopEnd, _e) {}
+            TU_ARMA(Jump, e) {
+                m_out.write_count(e.jump_target);
+                }
+            TU_ARMA(ExpectTok, e) {
+                serialise(e);
+                }
+            TU_ARMA(ExpectPat, e) {
+                m_out.write_tag( static_cast<int>(e.type) );
+                m_out.write_count(e.idx);
+                }
+            TU_ARMA(If, e) {
+                m_out.write_bool(e.is_equal);
+                m_out.write_count(e.jump_target);
+                serialise_vec(e.ents);
+                }
+            }
+        }
         void serialise(const ::MacroRulesArm& arm) {
             serialise_vec(arm.m_param_names);
             serialise_vec(arm.m_pattern);

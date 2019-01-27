@@ -18,6 +18,7 @@
 #include <set>
 
 class MacroExpander;
+class SimplePatEnt;
 
 TAGGED_UNION(MacroExpansionEnt, Token,
     // TODO: have a "raw" stream instead of just tokens
@@ -42,6 +43,7 @@ struct MacroPatEnt
 {
     ::std::string   name;
     unsigned int    name_index = 0;
+    // TODO: Include a point span for the token?
     Token   tok;
 
     ::std::vector<MacroPatEnt>  subpats;
@@ -95,6 +97,39 @@ struct MacroPatEnt
     friend ::std::ostream& operator<<(::std::ostream& os, const MacroPatEnt::Type& x);
 };
 
+struct SimplePatIfCheck
+{
+    MacroPatEnt::Type   ty; // If PAT_TOKEN, token is checked
+    Token   tok;
+};
+
+/// Simple pattern entry for macro_rules! arm patterns
+TAGGED_UNION( SimplePatEnt, End,
+    // End of the pattern stream (expects EOF, and terminates the match process)
+    (End, struct{}),
+    (LoopStart, struct{}),
+    (LoopNext, struct{}),
+    (LoopEnd, struct{}),
+    (Jump, struct {
+        size_t jump_target;
+        }),
+    // Expect a specific token, erroring/failing the arm if nt met
+    (ExpectTok, Token),
+    // Expect a pattern match
+    (ExpectPat, struct {
+        MacroPatEnt::Type   type;
+        unsigned int    idx;
+        }),
+    // Compare the head of the input stream and poke the pattern stream
+    (If, struct {
+        bool is_equal;
+        size_t  jump_target;
+        ::std::vector<SimplePatIfCheck> ents;
+        })
+    );
+
+extern::std::ostream& operator<<(::std::ostream& os, const SimplePatEnt& x);
+
 /// An expansion arm within a macro_rules! blcok
 struct MacroRulesArm
 {
@@ -102,14 +137,15 @@ struct MacroRulesArm
     ::std::vector< ::std::string>   m_param_names;
 
     /// Patterns
-    ::std::vector<MacroPatEnt>  m_pattern;
+    ::std::vector<SimplePatEnt> m_pattern;
 
     /// Rule contents
     ::std::vector<MacroExpansionEnt> m_contents;
 
+    ~MacroRulesArm();
     MacroRulesArm()
     {}
-    MacroRulesArm(::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents):
+    MacroRulesArm(::std::vector<SimplePatEnt> pattern, ::std::vector<MacroExpansionEnt> contents):
         m_pattern( mv$(pattern) ),
         m_contents( mv$(contents) )
     {}

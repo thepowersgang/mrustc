@@ -244,6 +244,45 @@
             }
             return rv;
         }
+        ::SimplePatIfCheck deserialise_simplepatifcheck() {
+            return ::SimplePatIfCheck {
+                static_cast<::MacroPatEnt::Type>(m_in.read_tag()),
+                deserialise_token()
+                };
+        }
+        ::SimplePatEnt deserialise_simplepatent() {
+            auto tag = static_cast< ::SimplePatEnt::Tag>( m_in.read_tag() );
+            switch(tag)
+            {
+            case ::SimplePatEnt::TAG_End:
+                return ::SimplePatEnt::make_End({});
+            case ::SimplePatEnt::TAG_LoopStart:
+                return ::SimplePatEnt::make_LoopStart({});
+            case ::SimplePatEnt::TAG_LoopNext:
+                return ::SimplePatEnt::make_LoopNext({});
+            case ::SimplePatEnt::TAG_LoopEnd:
+                return ::SimplePatEnt::make_LoopEnd({});
+            case ::SimplePatEnt::TAG_Jump:
+                return ::SimplePatEnt::make_Jump({ m_in.read_count() });
+            case ::SimplePatEnt::TAG_ExpectTok:
+                return SimplePatEnt::make_ExpectTok({
+                    deserialise_token()
+                    });
+            case ::SimplePatEnt::TAG_ExpectPat:
+                return SimplePatEnt::make_ExpectPat({
+                    static_cast<::MacroPatEnt::Type>(m_in.read_tag()),
+                    static_cast<unsigned>(m_in.read_count())
+                    });
+            case SimplePatEnt::TAG_If:
+                return SimplePatEnt::make_If({
+                    m_in.read_bool(),
+                    m_in.read_count(),
+                    deserialise_vec_c< SimplePatIfCheck>([&](){ return deserialise_simplepatifcheck(); })
+                    });
+            default:
+                BUG(Span(), "Bad tag for MacroPatEnt - #" << static_cast<int>(tag));
+            }
+        }
         ::MacroPatEnt deserialise_macropatent() {
             auto s = m_in.read_string();
             auto n = static_cast<unsigned int>(m_in.read_count());
@@ -278,7 +317,7 @@
         ::MacroRulesArm deserialise_macrorulesarm() {
             ::MacroRulesArm rv;
             rv.m_param_names = deserialise_vec< ::std::string>();
-            rv.m_pattern = deserialise_vec_c< ::MacroPatEnt>( [&](){ return deserialise_macropatent(); } );
+            rv.m_pattern = deserialise_vec_c< ::SimplePatEnt>( [&](){ return deserialise_simplepatent(); } );
             rv.m_contents = deserialise_vec_c< ::MacroExpansionEnt>( [&](){ return deserialise_macroexpansionent(); } );
             return rv;
         }
