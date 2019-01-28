@@ -372,7 +372,7 @@ public:
     }
     //const ::std::string& crate() const { return m_crate; }
 
-    bool is_concrete() const;
+    bool is_parent_of(const Path& x) const;
 
     void bind_variable(unsigned int slot);
 

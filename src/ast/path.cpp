@@ -230,6 +230,28 @@ AST::Path::Path(const Path& x):
     )
 }
 
+bool Path::is_parent_of(const Path& x) const
+{
+    if( !this->m_class.is_Absolute() || !x.m_class.is_Absolute() )
+        return false;
+    const auto& te = this->m_class.as_Absolute();
+    const auto& xe = x.m_class.as_Absolute();
+
+    if( te.crate != xe.crate )
+        return false;
+
+    if( te.nodes.size() > xe.nodes.size() )
+        return false;
+
+    for(size_t i = 0; i < te.nodes.size(); i ++)
+    {
+        if( te.nodes[i].name() != xe.nodes[i].name() )
+            return false;
+    }
+
+    return true;
+}
+
 void Path::bind_variable(unsigned int slot)
 {
     m_bindings.value = PathBinding_Value::make_Variable({slot});

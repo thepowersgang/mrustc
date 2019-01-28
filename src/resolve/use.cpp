@@ -22,7 +22,7 @@ enum class Lookup
 
 ::AST::Path Resolve_Use_AbsolutisePath(const ::AST::Path& base_path, ::AST::Path path);
 void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path path, ::std::span< const ::AST::Module* > parent_modules={});
-::AST::Path::Bindings Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules);
+::AST::Path::Bindings Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& source_mod_path, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules);
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start);
 
 
@@ -124,7 +124,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             // - values ("value namespace")
             // - macros ("macro namespace")
             // TODO: Have Resolve_Use_GetBinding return the actual path
-            use_ent.path.m_bindings = Resolve_Use_GetBinding(span, crate, use_ent.path, parent_modules);
+            use_ent.path.m_bindings = Resolve_Use_GetBinding(span, crate, path, use_ent.path, parent_modules);
             if( !use_ent.path.m_bindings.has_binding() )
             {
                 ERROR(span, E0000, "Unable to resolve `use` target " << use_ent.path);
@@ -251,7 +251,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 
 ::AST::Path::Bindings Resolve_Use_GetBinding_Mod(
         const Span& span,
-        const ::AST::Crate& crate, const ::AST::Module& mod,
+        const ::AST::Crate& crate, const ::AST::Path& source_mod_path, const ::AST::Module& mod,
         const ::std::string& des_item_name,
         ::std::span< const ::AST::Module* > parent_modules
     )
@@ -356,7 +356,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     if( ::std::find(s_mods.begin(), s_mods.end(), &imp_e.path) == s_mods.end() )
                     {
                         s_mods.push_back(&imp_e.path);
-                        rv.merge_from( Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules) );
+                        rv.merge_from( Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules) );
                         s_mods.pop_back();
                     }
                     else
@@ -371,9 +371,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 continue ;
             }
 
-            if( imp.is_pub && imp_e.name == "" )
+            // TODO: Correct privacy rules (if the origin of this lookup can see this item)
+            if( (imp.is_pub || mod.path().is_parent_of(source_mod_path)) && imp_e.name == "" )
             {
-                DEBUG("- Search glob of " << imp_e.path);
+                DEBUG("- Search glob of " << imp_e.path << " in " << mod.path());
                 // INEFFICIENT! Resolves and throws away the result (because we can't/shouldn't mutate here)
                 ::AST::Path::Bindings   bindings_;
                 const auto* bindings = &imp_e.path.m_bindings;
@@ -384,7 +385,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     if( ::std::find(resolve_stack_ptrs.begin(), resolve_stack_ptrs.end(), &imp_data) == resolve_stack_ptrs.end() )
                     {
                         resolve_stack_ptrs.push_back( &imp_data );
-                        bindings_ = Resolve_Use_GetBinding(sp2, crate, Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules);
+                        bindings_ = Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules);
                         // *waves hand* I'm not evil.
                         const_cast< ::AST::Path::Bindings&>( imp_e.path.m_bindings ) = bindings_.clone();
                         bindings = &bindings_;
@@ -410,7 +411,17 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 TU_ARMA(Module, e) {
                     if( e.module_ ) {
                         // TODO: Prevent infinite recursion?
-                        rv.merge_from( Resolve_Use_GetBinding_Mod(span, crate, *e.module_, des_item_name, {}) );
+                        static ::std::vector<const AST::Module*>  s_use_glob_mod_stack;
+                        if( ::std::find(s_use_glob_mod_stack.begin(), s_use_glob_mod_stack.end(), &*e.module_) == s_use_glob_mod_stack.end() )
+                        {
+                            s_use_glob_mod_stack.push_back( &*e.module_ );
+                            rv.merge_from( Resolve_Use_GetBinding_Mod(span, crate, mod.path(), *e.module_, des_item_name, {}) );
+                            s_use_glob_mod_stack.pop_back();
+                        }
+                        else
+                        {
+                            DEBUG("Recursion prevented of " << e.module_->path());
+                        }
                     }
                     else if( e.hir ) {
                         const ::HIR::Module& hmod = *e.hir;
@@ -470,7 +481,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 
     if( mod.path().nodes().size() > 0 && mod.path().nodes().back().name()[0] == '#' ) {
         assert( parent_modules.size() > 0 );
-        return Resolve_Use_GetBinding_Mod(span, crate, *parent_modules.back(), des_item_name, parent_modules.subspan(0, parent_modules.size()-1));
+        return Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *parent_modules.back(), des_item_name, parent_modules.subspan(0, parent_modules.size()-1));
     }
     else {
         //if( allow == Lookup::Any )
@@ -731,7 +742,7 @@ namespace {
     return rv;
 }
 
-::AST::Path::Bindings Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules)
+::AST::Path::Bindings Resolve_Use_GetBinding(const Span& span, const ::AST::Crate& crate, const ::AST::Path& source_mod_path, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules)
 {
     TRACE_FUNCTION_F(path);
     //::AST::Path rv;
@@ -760,7 +771,7 @@ namespace {
         //rv = Resolve_Use_CanoniseAndBind_Mod(span, crate, *mod, mv$(rv), nodes[i].name(), parent_modules, Lookup::Type);
         //const auto& b = rv.binding();
         assert(mod);
-        auto b = Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.at(i).name(), parent_modules);
+        auto b = Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *mod, nodes.at(i).name(), parent_modules);
         TU_MATCH_HDRA( (b.type), {)
         default:
             ERROR(span, E0000, "Unexpected item type " << b.type.tag_str() << " in import of " << path);
@@ -783,7 +794,7 @@ namespace {
             const auto& node2 = nodes[i];
 
             unsigned    variant_index = 0;
-            bool    is_value;
+            bool    is_value = false;
             if(e.hir)
             {
                 const auto& enum_ = *e.hir;
@@ -804,7 +815,6 @@ namespace {
             else
             {
                 const auto& enum_ = *e.enum_;
-                is_value = false;
                 for( const auto& var : enum_.variants() )
                 {
                     if( var.m_name == node2.name() ) {
@@ -841,7 +851,7 @@ namespace {
     }
 
     assert(mod);
-    return Resolve_Use_GetBinding_Mod(span, crate, *mod, nodes.back().name(), parent_modules);
+    return Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *mod, nodes.back().name(), parent_modules);
 }
 
 //::AST::PathBinding_Macro Resolve_Use_GetBinding_Macro(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path, ::std::span< const ::AST::Module* > parent_modules)
