@@ -67,7 +67,7 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std
     {
         if( error_on_collision )
         {
-            ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ")");
+            ERROR(sp, E0000, "Duplicate definition of name '" << name << "' in " << location << " scope (" << mod.path() << ") " << ir << ", and " << list[name].path);
         }
         else if( list.at(name).path == ir )
         {
