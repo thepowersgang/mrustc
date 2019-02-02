@@ -156,28 +156,26 @@ const ::AST::Crate* g_ast_crate_ptr;
         }
     };
 
-    TU_MATCH(::AST::Pattern::Data, (pat.data()), (e),
-    (MaybeBind,
+    TU_MATCH_HDRA( (pat.data()), {)
+    TU_ARMA(MaybeBind, e) {
         BUG(pat.span(), "Encountered MaybeBind pattern");
-        ),
-    (Macro,
+        }
+    TU_ARMA(Macro, e) {
         BUG(pat.span(), "Encountered Macro pattern");
-        ),
-    (Any,
+        }
+    TU_ARMA(Any, e)
         return ::HIR::Pattern {
             mv$(binding),
             ::HIR::Pattern::Data::make_Any({})
             };
-        ),
-    (Box,
+    TU_ARMA(Box, e)
         return ::HIR::Pattern {
             mv$(binding),
             ::HIR::Pattern::Data::make_Box({
                 box$(LowerHIR_Pattern( *e.sub ))
                 })
             };
-        ),
-    (Ref,
+    TU_ARMA(Ref, e)
         return ::HIR::Pattern {
             mv$(binding),
             ::HIR::Pattern::Data::make_Ref({
@@ -185,8 +183,7 @@ const ::AST::Crate* g_ast_crate_ptr;
                 box$(LowerHIR_Pattern( *e.sub ))
                 })
             };
-        ),
-    (Tuple,
+    TU_ARMA(Tuple, e) {
         auto leading  = H::lowerhir_patternvec( e.start );
         auto trailing = H::lowerhir_patternvec( e.end   );
 
@@ -209,9 +206,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                     })
                 };
         }
-        ),
-
-    (StructTuple,
+        }
+    TU_ARMA(StructTuple, e) {
         unsigned int leading_count  = e.tup_pat.start.size();
         unsigned int trailing_count = e.tup_pat.end  .size();
         TU_MATCH_HDRA( (e.path.m_bindings.value), {)
@@ -318,12 +314,25 @@ const ::AST::Crate* g_ast_crate_ptr;
                 };
             }
         }
-        ),
-    (Struct,
+        }
+    TU_ARMA(Struct, e) {
         ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> > sub_patterns;
         for(const auto& sp : e.sub_patterns)
             sub_patterns.push_back( ::std::make_pair(sp.first, LowerHIR_Pattern(sp.second)) );
 
+        if( e.sub_patterns.empty() && !e.is_exhaustive ) {
+            if( e.path.m_bindings.value.is_EnumVar() ) {
+                return ::HIR::Pattern {
+                    mv$(binding),
+                    ::HIR::Pattern::Data::make_EnumStruct({
+                        LowerHIR_GenericPath(pat.span(), e.path),
+                        nullptr, 0,
+                        mv$(sub_patterns),
+                        e.is_exhaustive
+                        })
+                    };
+            }
+        }
 
         TU_MATCH_HDRA( (e.path.m_bindings.type), {)
         default:
@@ -362,9 +371,9 @@ const ::AST::Crate* g_ast_crate_ptr;
                 };
             }
         }
-        ),
+        }
 
-    (Value,
+    TU_ARMA(Value, e) {
         struct H {
             static ::HIR::CoreType get_int_type(const Span& sp, const ::eCoreType ct) {
                 switch(ct)
@@ -448,8 +457,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                     })
                 };
         }
-        ),
-    (Slice,
+        }
+    TU_ARMA(Slice, e) {
         ::std::vector< ::HIR::Pattern>  leading;
         for(const auto& sp : e.sub_pats)
             leading.push_back( LowerHIR_Pattern(sp) );
@@ -459,8 +468,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                 mv$(leading)
                 })
             };
-        ),
-    (SplitSlice,
+        }
+    TU_ARMA(SplitSlice, e) {
         ::std::vector< ::HIR::Pattern>  leading;
         for(const auto& sp : e.leading)
             leading.push_back( LowerHIR_Pattern(sp) );
@@ -483,8 +492,8 @@ const ::AST::Crate* g_ast_crate_ptr;
                 mv$(trailing)
                 })
             };
-        )
-    )
+        }
+    }
     throw "unreachable";
 }
 
@@ -889,12 +898,17 @@ namespace {
     {
         ASSERT_BUG(attr_repr->span(), attr_repr->has_sub_items(), "#[repr] attribute malformed, " << *attr_repr);
         ASSERT_BUG(attr_repr->span(), attr_repr->items().size() > 0, "#[repr] attribute malformed, " << *attr_repr);
+        // TODO: Change reprs to be a flag set (instead of an enum)?
+        // (Or at least make C be a flag)
         for( const auto& a : attr_repr->items() )
         {
             const auto& repr_str = a.name();
             if( repr_str == "C" ) {
                 ASSERT_BUG(a.span(), a.has_noarg(), "#[repr] attribute malformed, " << *attr_repr);
-                if( rv.m_repr != ::HIR::Struct::Repr::Packed )
+                if( rv.m_repr == ::HIR::Struct::Repr::Aligned )
+                {
+                }
+                else if( rv.m_repr != ::HIR::Struct::Repr::Packed )
                 {
                     ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
                     rv.m_repr = ::HIR::Struct::Repr::C;

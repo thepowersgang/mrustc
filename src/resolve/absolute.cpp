@@ -350,7 +350,7 @@ namespace
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
                         const auto& b = v->second.path.m_bindings.value;
-                        if( b.is_EnumVar() ) {
+                        if( const auto* be = b.opt_EnumVar() ) {
                             DEBUG("- TY: Enum variant " << v->second.path);
                             path = ::AST::Path( v->second.path );
                             return true;
