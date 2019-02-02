@@ -41,10 +41,12 @@ namespace AST {
 
     class LifetimeRef
     {
+    public:
         static const uint16_t BINDING_STATIC = 0xFFFF;
         static const uint16_t BINDING_UNBOUND = 0xFFFE;
         static const uint16_t BINDING_INFER = 0xFFFD;
 
+    private:
         Ident   m_name;
         uint16_t  m_binding;
 

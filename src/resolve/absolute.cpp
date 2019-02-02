@@ -65,6 +65,9 @@ namespace
             }),
         (Generic, struct {
             // Map of names to slots
+            GenericSlot::Level level;
+            ::AST::GenericParams*   params_def; // TODO: What if it's HRBs?, they have a different type
+            //::AST::HigherRankedBounds*  hrbs_def;
             ::std::vector< Named< GenericSlot > > types;
             ::std::vector< Named< GenericSlot > > constants;
             ::std::vector< NamedI< GenericSlot > > lifetimes;
@@ -91,7 +94,7 @@ namespace
         {}
 
         void push(const ::AST::HigherRankedBounds& params) {
-            auto e = Ent::make_Generic({});
+            auto e = Ent::make_Generic({ GenericSlot::Level::Hrb, nullptr /*, &params*/ });
             auto& data = e.as_Generic();
 
             for(size_t i = 0; i < params.m_lifetimes.size(); i ++)
@@ -101,8 +104,8 @@ namespace
 
             m_name_context.push_back(mv$(e));
         }
-        void push(const ::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
-            auto   e = Ent::make_Generic({});
+        void push(/*const */::AST::GenericParams& params, GenericSlot::Level level, bool has_self=false) {
+            auto   e = Ent::make_Generic({ level, &params });
             auto& data = e.as_Generic();
 
             if( has_self ) {
@@ -283,6 +286,7 @@ namespace
             Type,
             Constant,
             PatternValue,
+            //PatternAny,
             Variable,
         };
         static const char* lookup_mode_msg(LookupMode mode) {
@@ -341,7 +345,38 @@ namespace
                         return true;
                     }
                 }
+                // HACK: For `Enum::Var { .. }` patterns matching value variants
+                {
+                    auto v = mod.m_value_items.find(name);
+                    if( v != mod.m_value_items.end() ) {
+                        const auto& b = v->second.path.m_bindings.value;
+                        if( b.is_EnumVar() ) {
+                            DEBUG("- TY: Enum variant " << v->second.path);
+                            path = ::AST::Path( v->second.path );
+                            return true;
+                        }
+                    }
+                }
                 break;
+            //case LookupMode::PatternAny:
+            //    {
+            //        auto v = mod.m_type_items.find(name);
+            //        if( v != mod.m_type_items.end() ) {
+            //            DEBUG("- TY: Type " << v->second.path);
+            //            path = ::AST::Path( v->second.path );
+            //            return true;
+            //        }
+            //        auto v2 = mod.m_value_items.find(name);
+            //        if( v2 != mod.m_value_items.end() ) {
+            //            const auto& b = v2->second.path.m_bindings.value;
+            //            if( b.is_EnumVar() ) {
+            //                DEBUG("- TY: Enum variant " << v2->second.path);
+            //                path = ::AST::Path( v2->second.path );
+            //                return true;
+            //            }
+            //        }
+            //    }
+            //    break;
             case LookupMode::PatternValue:
                 {
                     auto v = mod.m_value_items.find(name);
@@ -548,6 +583,11 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn);
 
 void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::AST::PathParams& args)
 {
+    // TODO: Lifetime params
+    for(auto& arg : args.m_lifetimes)
+    {
+        Resolve_Absolute_Lifetime(context, sp, arg);
+    }
     for(auto& arg : args.m_types)
     {
         Resolve_Absolute_Type(context, arg);
@@ -1489,6 +1529,17 @@ void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRe
             return ;
         }
 
+        if( lft.name() == "_" )
+        {
+            if( TARGETVER_1_19 )
+            {
+                ERROR(sp, E0000, "'_ is not a valid lifetime name in 1.19 mode");
+            }
+            // Note: '_ is just an explicit elided lifetime
+            lft.set_binding(AST::LifetimeRef::BINDING_INFER);
+            return ;
+        }
+
         for(auto it = context.m_name_context.rbegin(); it != context.m_name_context.rend(); ++ it)
         {
             if( const auto* e = it->opt_Generic() )
@@ -1508,25 +1559,33 @@ void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRe
         if( TARGETVER_1_29 )
         {
             // If parsing a function header, add a new lifetime param to the function
-            // - Does the same apply to impl headers?
+            // - Does the same apply to impl headers? Yes it does.
             if( context.m_ibl_target_generics )
             {
                 ASSERT_BUG(sp, !context.m_name_context.empty(), "Name context stack is empty");
-                ASSERT_BUG(sp, context.m_name_context.back().is_Generic(), "Name context stack end not Generic, instead " << context.m_name_context.back().tag_str());
-                auto& context_gen = context.m_name_context.back().as_Generic();
-                auto& def_gen = *context.m_ibl_target_generics;
-                // 1. Assert that the last item of `context.m_name_context` is Generic, and matches `m_ibl_target_generics`
-                ASSERT_BUG(sp, context_gen.lifetimes.size() == def_gen.lft_params().size(), "");
-                ASSERT_BUG(sp, context_gen.types.size() == def_gen.ty_params().size(), "");
-                //ASSERT_BUG(sp, context_gen.constants.size() == def_gen.val_params().size(), "");
-                // 2. Add the new lifetime to both `m_ibl_target_generics` and the last entry in m_name_context
-                size_t idx = def_gen.lft_params().size();
-                def_gen.add_lft_param(AST::LifetimeParam(sp, {}, lft.name()));
-                // TODO: Is this always a method-level set?
-                auto level = GenericSlot::Level::Method;
-                context_gen.lifetimes.push_back( NamedI<GenericSlot> { lft.name(), GenericSlot { level, static_cast<unsigned short>(idx) } } );
-                lft.set_binding( idx | (static_cast<int>(level) << 8) );
-                return ;
+                auto it = context.m_name_context.rbegin();
+                ASSERT_BUG(sp, it->is_Generic(), "Name context stack end not Generic, instead " << it->tag_str());
+                while( it->as_Generic().level == GenericSlot::Level::Hrb ) {
+                    it ++;
+                    ASSERT_BUG(sp, it != context.m_name_context.rend(), "");
+                    ASSERT_BUG(sp, it->is_Generic(), "Name context stack end not Generic, instead " << it->tag_str());
+                }
+                if( it->as_Generic().level != GenericSlot::Level::Hrb )
+                {
+                    auto& context_gen = it->as_Generic();
+                    auto& def_gen = *context.m_ibl_target_generics;
+                    auto level = context_gen.level;
+                    // 1. Assert that the last item of `context.m_name_context` is Generic, and matches `m_ibl_target_generics`
+                    ASSERT_BUG(sp, context_gen.lifetimes.size() == def_gen.lft_params().size(), "");
+                    ASSERT_BUG(sp, context_gen.types.size() == def_gen.ty_params().size(), "");
+                    //ASSERT_BUG(sp, context_gen.constants.size() == def_gen.val_params().size(), "");
+                    // 2. Add the new lifetime to both `m_ibl_target_generics` and the last entry in m_name_context
+                    size_t idx = def_gen.lft_params().size();
+                    def_gen.add_lft_param(AST::LifetimeParam(sp, {}, lft.name()));
+                    context_gen.lifetimes.push_back( NamedI<GenericSlot> { lft.name(), GenericSlot { level, static_cast<unsigned short>(idx) } } );
+                    lft.set_binding( idx | (static_cast<int>(level) << 8) );
+                    return ;
+                }
             }
         }
         ERROR(sp, E0000, "Couldn't find lifetime " << lft);
@@ -1903,6 +1962,10 @@ void Resolve_Absolute_Pattern(Context& context, bool allow_refutable,  ::AST::Pa
             Resolve_Absolute_Pattern(context, allow_refutable,  sp);
         ),
     (Struct,
+        // TODO: `Struct { .. }` patterns can match anything
+        //if( e.sub_patterns.empty() && !e.is_exhaustive ) {
+        //    auto rv = this->lookup_opt(name, src_context, mode);
+        //}
         Resolve_Absolute_Path(context, pat.span(), Context::LookupMode::Type, e.path);
         for(auto& sp : e.sub_patterns)
             Resolve_Absolute_Pattern(context, allow_refutable,  sp.second);
@@ -2165,14 +2228,17 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (Impl,
             auto& def = e.def();
-            DEBUG("impl " << def.trait().ent << " for " << def.type());
             if( !def.type().is_valid() )
             {
-                DEBUG("---- MARKER IMPL for " << def.trait().ent);
+                TRACE_FUNCTION_F("impl " << def.trait().ent << " for ..");
                 item_context.push(def.params(), GenericSlot::Level::Top);
-                Resolve_Absolute_Generic(item_context,  def.params());
+
+                item_context.m_ibl_target_generics = &def.params();
                 assert( def.trait().ent.is_valid() );
                 Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
+                item_context.m_ibl_target_generics = nullptr;
+
+                Resolve_Absolute_Generic(item_context,  def.params());
 
                 if( e.items().size() != 0 ) {
                     ERROR(i.data.span, E0000, "impl Trait for .. with methods");
@@ -2184,13 +2250,16 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             }
             else
             {
+                TRACE_FUNCTION_F("impl " << def.trait().ent << " for " << def.type());
                 item_context.push_self( def.type() );
                 item_context.push(def.params(), GenericSlot::Level::Top);
 
+                item_context.m_ibl_target_generics = &def.params();
                 Resolve_Absolute_Type(item_context, def.type());
                 if( def.trait().ent.is_valid() ) {
                     Resolve_Absolute_Path(item_context, def.trait().sp, Context::LookupMode::Type, def.trait().ent);
                 }
+                item_context.m_ibl_target_generics = nullptr;
 
                 Resolve_Absolute_Generic(item_context,  def.params());
 
@@ -2202,15 +2271,18 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             ),
         (NegImpl,
             auto& impl_def = e;
-            DEBUG("impl ! " << impl_def.trait().ent << " for " << impl_def.type());
+            TRACE_FUNCTION_F("impl ! " << impl_def.trait().ent << " for " << impl_def.type());
             item_context.push_self( impl_def.type() );
             item_context.push(impl_def.params(), GenericSlot::Level::Top);
-            Resolve_Absolute_Generic(item_context,  impl_def.params());
 
+            item_context.m_ibl_target_generics = &impl_def.params();
             Resolve_Absolute_Type(item_context, impl_def.type());
             if( !impl_def.trait().ent.is_valid() )
                 BUG(i.data.span, "Encountered negative impl with no trait");
             Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
+            item_context.m_ibl_target_generics = nullptr;
+
+            Resolve_Absolute_Generic(item_context,  impl_def.params());
 
             // No items
 
