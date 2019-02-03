@@ -628,7 +628,17 @@ const ::AST::Crate* g_ast_crate_ptr;
         return ::HIR::Path( LowerHIR_GenericPath(sp, path) );
         ),
     (UFCS,
-        if( e.nodes.size() != 1 )
+        if( e.nodes.size() == 0 )
+        {
+            if( !e.trait )
+                TODO(sp, "Handle UFCS inherent and no nodes - " << path);
+            if( e.trait->is_valid() )
+                TODO(sp, "Handle UFCS w/ trait and no nodes - " << path);
+            auto type = LowerHIR_Type(*e.type);
+            ASSERT_BUG(sp, type.m_data.is_Path(), "No nodes and non-Path type - " << path);
+            return mv$(type.m_data.as_Path().path);
+        }
+        if( e.nodes.size() > 1 )
             TODO(sp, "Handle UFCS with multiple nodes - " << path);
         // - No associated type bounds allowed in UFCS paths
         auto params = LowerHIR_PathParams(sp, e.nodes.front().args(), false);

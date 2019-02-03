@@ -255,9 +255,10 @@ public:
             {
                 if( node.m_is_struct )
                 {
-                    auto new_path = upper_visitor.expand_alias_gp(node.span(), node.m_path);
-                    if( new_path.m_path.m_components.size() != 0 )
+                    auto new_type = ConvertHIR_ExpandAliases_GetExpansion(upper_visitor.m_crate, node.m_path, /*in_expr=*/true);
+                    if( new_type != ::HIR::TypeRef() )
                     {
+                        auto new_path = mv$(new_type.m_data.as_Path().path);
                         DEBUG("Replacing " << node.m_path << " with " << new_path);
                         node.m_path = mv$(new_path);
                     }

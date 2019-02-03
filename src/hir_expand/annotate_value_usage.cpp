@@ -356,13 +356,15 @@ namespace {
         void visit(::HIR::ExprNode_StructLiteral& node) override
         {
             const auto& sp = node.span();
+            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "Struct literal with non-Generic path - " << node.m_path);
+            auto& ty_path = node.m_path.m_data.as_Generic();
             if( node.m_base_value ) {
                 bool is_moved = false;
                 const auto& tpb = node.m_base_value->m_res_type.m_data.as_Path().binding;
                 const ::HIR::Struct* str;
                 if( tpb.is_Enum() ) {
                     const auto& enm = *tpb.as_Enum();
-                    auto idx = enm.find_variant(node.m_path.m_path.m_components.back());
+                    auto idx = enm.find_variant(ty_path.m_path.m_components.back());
                     ASSERT_BUG(sp, idx != SIZE_MAX, "");
                     const auto& var_ty = enm.m_data.as_Data()[idx].type;
                     str = var_ty.m_data.as_Path().binding.as_Struct();
@@ -379,7 +381,7 @@ namespace {
                     provided_mask[idx] = true;
                 }
 
-                const auto monomorph_cb = monomorphise_type_get_cb(node.span(), nullptr, &node.m_path.m_params, nullptr);
+                const auto monomorph_cb = monomorphise_type_get_cb(node.span(), nullptr, &ty_path.m_params, nullptr);
                 for( unsigned int i = 0; i < fields.size(); i ++ ) {
                     if( ! provided_mask[i] ) {
                         const auto& ty_o = fields[i].second.ent;

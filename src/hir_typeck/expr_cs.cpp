@@ -1193,7 +1193,10 @@ namespace {
         {
             const auto& sp = node.span();
             TRACE_FUNCTION_F(&node << " " << node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
-            this->add_ivars_generic_path(node.span(), node.m_path);
+            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "Struct literal with non-Generic path - " << node.m_path);
+            auto& ty_path = node.m_path.m_data.as_Generic();
+
+            this->add_ivars_generic_path(node.span(), ty_path);
             for( auto& val : node.m_values ) {
                 this->context.add_ivars( val.second->m_res_type );
             }
@@ -1202,7 +1205,7 @@ namespace {
             }
 
             // - Create ivars in path, and set result type
-            const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, node.m_path);
+            const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, ty_path);
             this->context.equate_types(node.span(), node.m_res_type, ty);
             if( node.m_base_value ) {
                 this->context.equate_types(node.span(), node.m_base_value->m_res_type, ty);
@@ -1214,7 +1217,7 @@ namespace {
             (Unbound, ),
             (Opaque, ),
             (Enum,
-                const auto& var_name = node.m_path.m_path.m_components.back();
+                const auto& var_name = ty_path.m_path.m_components.back();
                 const auto& enm = *e;
                 auto idx = enm.find_variant(var_name);
                 ASSERT_BUG(sp, idx != SIZE_MAX, "");
@@ -1257,7 +1260,7 @@ namespace {
             ASSERT_BUG(node.span(), fields_ptr, "");
             const ::HIR::t_struct_fields& fields = *fields_ptr;
 
-            const auto& ty_params = node.m_path.m_params.m_types;
+            const auto& ty_params = ty_path.m_params.m_types;
             auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {
@@ -1281,7 +1284,7 @@ namespace {
             {
                 const auto& name = val.first;
                 auto it = ::std::find_if(fields.begin(), fields.end(), [&](const auto& v)->bool{ return v.first == name; });
-                ASSERT_BUG(node.span(), it != fields.end(), "Field '" << name << "' not found in struct " << node.m_path);
+                ASSERT_BUG(node.span(), it != fields.end(), "Field '" << name << "' not found in struct " << ty_path);
                 const auto& des_ty_r = it->second.ent;
                 auto& des_ty_cache = node.m_value_types[it - fields.begin()];
                 const auto* des_ty = &des_ty_r;
@@ -3164,7 +3167,7 @@ namespace {
             this->check_type_resolved_genericpath(node.span(), node.m_path);
         }
         void visit(::HIR::ExprNode_StructLiteral& node) override {
-            this->check_type_resolved_pp(node.span(), node.m_path.m_params, ::HIR::TypeRef());
+            this->check_type_resolved_path(node.span(), node.m_path);
             for(auto& ty : node.m_value_types) {
                 if( ty != ::HIR::TypeRef() ) {
                     this->check_type_resolved_top(node.span(), ty);

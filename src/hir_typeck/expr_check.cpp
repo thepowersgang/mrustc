@@ -496,6 +496,8 @@ namespace {
             if( node.m_base_value) {
                 check_types_equal( node.m_base_value->span(), node.m_res_type, node.m_base_value->m_res_type );
             }
+            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "_StructLiteral with non-Generic path - " << node.m_path);
+            auto& ty_path = node.m_path.m_data.as_Generic();
 
             // - Create ivars in path, and set result type
             const auto& ty = node.m_res_type;
@@ -506,7 +508,7 @@ namespace {
             (Unbound, ),
             (Opaque, ),
             (Enum,
-                const auto& var_name = node.m_path.m_path.m_components.back();
+                const auto& var_name = ty_path.m_path.m_components.back();
                 const auto& enm = *e;
                 auto idx = enm.find_variant(var_name);
                 ASSERT_BUG(sp, idx != SIZE_MAX, "");
@@ -536,7 +538,7 @@ namespace {
             const ::HIR::t_struct_fields& fields = *fields_ptr;
 
             #if 1
-            const auto& ty_params = node.m_path.m_params.m_types;
+            const auto& ty_params = ty_path.m_params.m_types;
             auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
                 if( ge.binding == 0xFFFF ) {

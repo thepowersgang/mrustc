@@ -2365,13 +2365,18 @@ namespace {
         {
             TRACE_FUNCTION_F("_StructLiteral");
 
-            TU_MATCH(::HIR::TypeRef::TypePathBinding, (node.m_res_type.m_data.as_Path().binding), (e),
-            (Unbound, ),
-            (Opaque, ),
-            (Enum,
-                auto enum_path = node.m_path.clone();
+            ASSERT_BUG(node.span(), node.m_path.m_data.is_Generic(), "_StructLiteral with non-Generic path - " << node.m_path);
+            const auto& ty_path = node.m_path.m_data.as_Generic();
+
+            TU_MATCH_HDRA( (node.m_res_type.m_data.as_Path().binding), {)
+            TU_ARMA(Unbound, _e) {
+                }
+            TU_ARMA(Opaque, _e) {
+                }
+            TU_ARMA(Enum, e) {
+                auto enum_path = ty_path.clone();
                 enum_path.m_path.m_components.pop_back();
-                const auto& var_name = node.m_path.m_path.m_components.back();
+                const auto& var_name = ty_path.m_path.m_components.back();
 
                 const auto& enm = *e;
                 size_t idx = enm.find_variant(var_name);
@@ -2381,7 +2386,7 @@ namespace {
                 const auto& str = *var_ty.m_data.as_Path().binding.as_Struct();
 
                 // Take advantage of the identical generics to cheaply clone/monomorph the path.
-                ::HIR::GenericPath struct_path = node.m_path.clone();
+                ::HIR::GenericPath struct_path = ty_path.clone();
                 struct_path.m_path = var_ty.m_data.as_Path().path.m_data.as_Generic().m_path;
 
                 this->visit_sl_inner(node, str, struct_path);
@@ -2396,22 +2401,22 @@ namespace {
                     static_cast<unsigned>(idx),
                     mv$(v)
                     }) );
-                ),
-            (Union,
+                }
+            TU_ARMA(Union, e) {
                 BUG(node.span(), "_StructLiteral Union isn't valid?");
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, e) {
                 if(e->m_data.is_Unit()) {
                     m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({
-                        node.m_path.clone(),
+                        ty_path.clone(),
                         {}
                         }) );
                     return ;
                 }
 
-                this->visit_sl_inner(node, *e, node.m_path);
-                )
-            )
+                this->visit_sl_inner(node, *e, ty_path);
+                }
+            }
         }
         void visit(::HIR::ExprNode_UnionLiteral& node) override
         {

@@ -645,7 +645,7 @@ namespace {
 
                 void visit(::HIR::ExprNode_StructLiteral& node) override
                 {
-                    upper_visitor.visit_generic_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
+                    upper_visitor.visit_path(node.m_path, ::HIR::Visitor::PathContext::TYPE);
                     ::HIR::ExprVisitorDef::visit(node);
                 }
                 void visit(::HIR::ExprNode_ArraySized& node) override

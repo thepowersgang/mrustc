@@ -158,7 +158,7 @@ DEF_VISIT(ExprNode_PathValue, node,
 )
 DEF_VISIT(ExprNode_Variable, , )
 DEF_VISIT(ExprNode_StructLiteral, node,
-    visit_generic_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
+    visit_path(::HIR::Visitor::PathContext::VALUE, node.m_path);
     if( node.m_base_value )
         visit_node_ptr(node.m_base_value);
     for(auto& val : node.m_values)

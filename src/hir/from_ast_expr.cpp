@@ -528,7 +528,7 @@ struct LowerHIR_ExprNode_Visitor:
                 values.push_back( ::std::make_pair(val.name, LowerHIR_ExprNode_Inner(*val.value)) );
             // TODO: What if `v.m_path` is an associated type (that's known to be a struct)
             m_rv.reset( new ::HIR::ExprNode_StructLiteral( v.span(),
-                LowerHIR_GenericPath(v.span(), v.m_path),
+                LowerHIR_Path(v.span(), v.m_path),
                 ! v.m_path.m_bindings.type.is_EnumVar(),
                 LowerHIR_ExprNode_Inner_Opt(v.m_base_value.get()),
                 mv$(values)
