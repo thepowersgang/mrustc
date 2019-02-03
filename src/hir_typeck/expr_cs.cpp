@@ -5965,6 +5965,38 @@ namespace {
                 return CoerceResult::Equality;
             }
         }
+        else if( src.m_data.is_Closure() )
+        {
+            if( dst.m_data.is_Function() )
+            {
+                const auto& de = dst.m_data.as_Function();
+                const auto& se = src.m_data.as_Closure();
+                auto& node_ptr = *node_ptr_ptr;
+                auto span = node_ptr->span();
+                if( de.m_abi != ABI_RUST ) {
+                    ERROR(span, E0000, "Cannot use closure for extern function pointer");
+                }
+                if( de.m_arg_types.size() != se.m_arg_types.size() ) {
+                    ERROR(span, E0000, "Mismatched argument count coercing closure to fn(...)");
+                }
+                for(size_t i = 0; i < de.m_arg_types.size(); i++)
+                {
+                    context.equate_types(sp, de.m_arg_types[i], se.m_arg_types[i]);
+                }
+                context.equate_types(sp, *de.m_rettype, *se.m_rettype);
+                node_ptr = NEWNODE( dst.clone(), span, _Cast,  mv$(node_ptr), dst.clone() );
+                return CoerceResult::Custom;
+            }
+            else if( const auto* dep = dst.m_data.opt_Infer() )
+            {
+                context.possible_equate_type_coerce_from(dep->index, src);
+                return CoerceResult::Unknown;
+            }
+            else
+            {
+                return CoerceResult::Equality;
+            }
+        }
         else
         {
             // TODO: ! should be handled above or in caller?
