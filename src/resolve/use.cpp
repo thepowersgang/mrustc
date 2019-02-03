@@ -645,6 +645,9 @@ namespace {
                 (TypeAlias,
                     rv.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr});
                     ),
+                (ExternType,
+                    rv.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr});   // Lazy.
+                    ),
                 (Enum,
                     rv.type = ::AST::PathBinding_Type::make_Enum({nullptr, &e});
                     ),

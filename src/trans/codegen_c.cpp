@@ -1013,6 +1013,9 @@ namespace {
                 (Struct,
                     m_of << "struct s_" << Trans_Mangle(te.path) << ";\n";
                     ),
+                (ExternType,
+                    m_of << "struct x_" << Trans_Mangle(te.path) << ";\n";
+                    ),
                 (Union,
                     m_of << "union u_" << Trans_Mangle(te.path) << ";\n";
                     ),
@@ -1837,6 +1840,7 @@ namespace {
                     TU_MATCHA((te.binding), (pbe),
                     (Unbound, MIR_BUG(*m_mir_res, "Unbound type path " << ty); ),
                     (Opaque, MIR_BUG(*m_mir_res, "Opaque type path " << ty); ),
+                    (ExternType, MIR_BUG(*m_mir_res, "Extern type literal " << ty); ),
                     (Struct,
                         TU_MATCHA( (pbe->m_data), (se),
                         (Unit,
@@ -5351,6 +5355,9 @@ namespace {
                     TU_MATCHA((te.binding), (pbe),
                     (Unbound, MIR_BUG(*m_mir_res, "Unbound type path " << ty); ),
                     (Opaque, MIR_BUG(*m_mir_res, "Opaque type path " << ty); ),
+                    (ExternType,
+                        MIR_BUG(*m_mir_res, "Extern type literal");
+                        ),
                     (Struct,
                         TU_MATCHA( (pbe->m_data), (se),
                         (Unit,
@@ -5834,6 +5841,10 @@ namespace {
                     ),
                 (Enum,
                     m_of << "struct e_" << Trans_Mangle(te.path);
+                    ),
+                (ExternType,
+                    m_of << "struct x_" << Trans_Mangle(te.path);
+                    //return ;
                     ),
                 (Unbound,
                     MIR_BUG(*m_mir_res, "Unbound type path in trans - " << ty);

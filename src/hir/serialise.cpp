@@ -834,6 +834,10 @@
             (Union,
                 m_out.write_tag(6);
                 serialise(e);
+                ),
+            (ExternType,
+                m_out.write_tag(7);
+                serialise(e);
                 )
             )
         }
@@ -1018,6 +1022,11 @@
 
             serialise_vec(item.m_variants);
 
+            serialise(item.m_markings);
+        }
+        void serialise(const ::HIR::ExternType& item)
+        {
+            TRACE_FUNCTION_F("ExternType");
             serialise(item.m_markings);
         }
         void serialise(const ::HIR::Trait& item)

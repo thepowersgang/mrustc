@@ -462,6 +462,9 @@ namespace {
             (Union,
                 BUG(sp, "Union in TupleVariant");
                 ),
+            (ExternType,
+                BUG(sp, "ExternType in TupleVariant");
+                ),
             (Struct,
                 ASSERT_BUG(sp, e->m_data.is_Tuple(), "Pointed struct in TupleVariant (" << node.m_path << ") isn't a Tuple");
                 fields_ptr = &e->m_data.as_Tuple();
@@ -521,6 +524,9 @@ namespace {
                 ),
             (Union,
                 TODO(sp, "Union in StructLiteral");
+                ),
+            (ExternType,
+                BUG(sp, "ExternType in StructLiteral");
                 ),
             (Struct,
                 if( e->m_data.is_Unit() )
@@ -610,6 +616,9 @@ namespace {
                 ),
             (Union,
                 BUG(sp, "Union with _UnitVariant");
+                ),
+            (ExternType,
+                BUG(sp, "ExternType with _UnitVariant");
                 ),
             (Struct,
                 assert( e->m_data.is_Unit() );

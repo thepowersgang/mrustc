@@ -1144,6 +1144,9 @@ namespace {
                 ),
             (Union,
                 BUG(sp, "TupleVariant pointing to a union");
+                ),
+            (ExternType,
+                BUG(sp, "TupleVariant pointing to a extern type");
                 )
             )
             assert(fields_ptr);
@@ -1216,6 +1219,7 @@ namespace {
             TU_MATCH(::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (e),
             (Unbound, ),
             (Opaque, ),
+            (ExternType, ), // Error?
             (Enum,
                 const auto& var_name = ty_path.m_path.m_components.back();
                 const auto& enm = *e;
@@ -4900,6 +4904,10 @@ void Context::require_sized(const Span& sp, const ::HIR::TypeRef& ty_)
             // Already checked by type_is_sized
             params_def = nullptr;
             ),
+        (ExternType,
+            static ::HIR::GenericParams empty_params;
+            params_def = &empty_params;
+            ),
         (Enum,
             params_def = &pb->m_params;
             ),
@@ -5550,6 +5558,13 @@ namespace {
                         ),
                     (Opaque,
                         // Handled above in bounded
+                        ),
+                    (ExternType,
+                        // Must be equal
+                        if( sbe == dbe )
+                        {
+                            return CoerceResult::Equality;
+                        }
                         ),
                     (Enum,
                         // Must be equal
@@ -6472,6 +6487,9 @@ namespace {
                         (Unbound,   return false; ),
                         (Opaque,
                             // TODO: Check bounds?
+                            return false;
+                            ),
+                        (ExternType,
                             return false;
                             ),
                         (Struct,

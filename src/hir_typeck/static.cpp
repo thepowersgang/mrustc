@@ -851,6 +851,9 @@ bool StaticTraitResolve::find_impl__check_crate(
                 ),
             (Union,
                 TODO(sp, "Check auto trait destructure on union " << type);
+                ),
+            (ExternType,
+                TODO(sp, "Check auto trait destructure on extern type " << type);
                 )
             )
             DEBUG("- Nothing failed, calling callback");
@@ -1629,6 +1632,10 @@ bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty)
                 return false;
             }
             ),
+        (ExternType,
+            // Extern types aren't Sized
+            return false;
+            ),
         (Enum,
             ),
         (Union,
@@ -1732,6 +1739,10 @@ bool StaticTraitResolve::type_is_impossible(const Span& sp, const ::HIR::TypeRef
         (Union,
             // TODO: Check all variants? Or just one?
             TODO(sp, "type_is_impossible for union " << ty);
+            ),
+        (ExternType,
+            // Extern types are possible, just not usable
+            return false;
             )
         )
         return true;
@@ -2031,6 +2042,10 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
             ),
         (Union,
             // Unions don't have drop glue unless they impl Drop
+            return false;
+            ),
+        (ExternType,
+            // Extern types don't have drop glue
             return false;
             )
         )

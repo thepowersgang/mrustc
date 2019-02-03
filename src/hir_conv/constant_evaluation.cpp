@@ -169,6 +169,8 @@ namespace {
                 ),
             (Enum,
                 ),
+            (ExternType,
+                ),
             (TypeAlias,
                 )
             )

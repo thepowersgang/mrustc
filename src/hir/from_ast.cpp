@@ -1187,6 +1187,7 @@ namespace {
             ::std::vector< ::HIR::TraitPath>    trait_bounds;
             ::std::string   lifetime_bound;
             auto gps = LowerHIR_GenericParams(i.params(), &is_sized);
+
             for(auto& b : gps.m_bounds)
             {
                 TU_MATCH(::HIR::GenericBound, (b), (be),
@@ -1463,6 +1464,15 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             _add_mod_ns_item( mod, item.name, item.is_pub, ::HIR::TypeItem::make_Import({ ::HIR::SimplePath(e.name, {}), false, 0} ) );
             ),
         (Type,
+            if( e.type().m_data.is_Any() )
+            {
+                if( !e.params().lft_params().empty() || !e.params().ty_params().empty() || !e.params().bounds().empty() )
+                {
+                    ERROR(item.data.span, E0000, "Generics on extern type");
+                }
+                _add_mod_ns_item(mod, item.name, item.is_pub, ::HIR::ExternType {});
+                break;
+            }
             _add_mod_ns_item( mod,  item.name, item.is_pub, ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(e) ) );
             ),
         (Struct,

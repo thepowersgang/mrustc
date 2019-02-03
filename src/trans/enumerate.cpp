@@ -570,6 +570,9 @@ namespace {
                     (Opaque,
                         BUG(Span(), "Opaque type hit in enumeration - " << ty);
                         ),
+                    (ExternType,
+                        // No innards to visit
+                        ),
                     (Struct,
                         visit_struct(te.path.m_data.as_Generic(), *tpb);
                         ),
@@ -1064,15 +1067,10 @@ void Trans_Enumerate_Types(EnumState& state)
                 TU_MATCHA( (te.binding), (tpb),
                 (Unbound,   ),
                 (Opaque,   ),
-                (Struct,
-                    markings_ptr = &tpb->m_markings;
-                    ),
-                (Union,
-                    markings_ptr = &tpb->m_markings;
-                    ),
-                (Enum,
-                    markings_ptr = &tpb->m_markings;
-                    )
+                (ExternType, markings_ptr = &tpb->m_markings; ),
+                (Struct, markings_ptr = &tpb->m_markings; ),
+                (Union,  markings_ptr = &tpb->m_markings; ),
+                (Enum,   markings_ptr = &tpb->m_markings; )
                 )
                 ASSERT_BUG(Span(), markings_ptr, "Path binding not set correctly - " << ty);
 

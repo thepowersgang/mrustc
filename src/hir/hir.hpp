@@ -215,6 +215,13 @@ struct StructMarkings
     unsigned int coerce_param = ~0u;
 };
 
+class ExternType
+{
+public:
+    // TODO: do extern types need any associated data?
+    TraitMarkings   m_markings;
+};
+
 class Enum
 {
 public:
@@ -367,6 +374,7 @@ TAGGED_UNION(TypeItem, Import,
     (Import, struct { ::HIR::SimplePath path; bool is_variant; unsigned int idx; }),
     (Module, Module),
     (TypeAlias, TypeAlias), // NOTE: These don't introduce new values
+    (ExternType, ExternType),
     (Enum,      Enum),
     (Struct,    Struct),
     (Union,     Union),

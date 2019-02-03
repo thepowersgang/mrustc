@@ -74,7 +74,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
             // For each field of the tuple, create a clone (either using Copy if posible, or calling Clone::clone)
             for(const auto& subty : te)
             {
-                auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), values.size() });
+                auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), static_cast<unsigned>(values.size()) });
                 if( state.resolve.type_is_copy(sp, subty) )
                 {
                     values.push_back( ::std::move(fld_lvalue) );
@@ -94,8 +94,8 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
                             ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
                             }));
                     bb.terminator = ::MIR::Terminator::make_Call({
-                            mir_fcn.blocks.size() + 2,  // return block (after the panic block below)
-                            mir_fcn.blocks.size() + 1,  // panic block (next block)
+                            static_cast<unsigned>(mir_fcn.blocks.size() + 2),  // return block (after the panic block below)
+                            static_cast<unsigned>(mir_fcn.blocks.size() + 1),  // panic block (next block)
                             res_lv.clone(),
                             ::MIR::CallTarget( ::HIR::Path(subty.clone(), lang_Clone, "clone") ),
                             ::make_vec1<::MIR::Param>( ::std::move(borrow_lv) )

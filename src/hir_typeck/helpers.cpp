@@ -2477,6 +2477,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     ),
                 (Opaque,
                     ),
+                (ExternType,
+                    markings = &tpb->m_markings;
+                    ),
                 (Struct,
                     markings = &tpb->m_markings;
                     ),
@@ -2710,6 +2713,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 ),
             (Union,
                 TODO(sp, "Check auto trait destructure on union " << type);
+                ),
+            (ExternType,
+                TODO(sp, "Check auto trait destructure on extern type " << type);
                 )
             )
             DEBUG("- Nothing failed, calling callback");
@@ -3140,6 +3146,10 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
             ),
         (Opaque,
             // TODO: Check bounds
+            ),
+        (ExternType,
+            // Is it sized? No.
+            return ::HIR::Compare::Unequal;
             ),
         (Enum,
             // HAS to be Sized
@@ -4322,6 +4332,9 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             ),
         (Enum,
             // No fields on enums either
+            ),
+        (ExternType,
+            // No fields on extern types
             ),
         (Union,
             const auto& unm = *be;

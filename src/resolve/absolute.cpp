@@ -350,7 +350,7 @@ namespace
                     auto v = mod.m_value_items.find(name);
                     if( v != mod.m_value_items.end() ) {
                         const auto& b = v->second.path.m_bindings.value;
-                        if( const auto* be = b.opt_EnumVar() ) {
+                        if( /*const auto* be =*/ b.opt_EnumVar() ) {
                             DEBUG("- TY: Enum variant " << v->second.path);
                             path = ::AST::Path( v->second.path );
                             return true;
@@ -832,6 +832,9 @@ namespace {
             (TypeAlias,
                 pb.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
                 ),
+            (ExternType,
+                pb.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
+                ),
             (Struct,
                 pb.type = ::AST::PathBinding_Type::make_Struct({nullptr, &e});
                 ),
@@ -880,8 +883,8 @@ namespace {
             if( it == hmod->m_mod_items.end() )
                 ERROR(sp, E0000, "Couldn't find path component '" << n.name() << "' of " << path);
 
-            TU_MATCH(::HIR::TypeItem, (it->second->ent), (e),
-            (Import,
+            TU_MATCH_HDRA( (it->second->ent), {)
+            TU_ARMA(Import, e) {
                 // - Update path then restart
                 auto newpath = AST::Path(e.path.m_crate_name, {});
                 for(const auto& n : e.path.m_components)
@@ -892,11 +895,11 @@ namespace {
                 // TODO: Recursion limit
                 Resolve_Absolute_Path_BindAbsolute(context, sp, mode, path);
                 return ;
-                ),
-            (Module,
+                }
+            TU_ARMA(Module, e) {
                 hmod = &e;
-                ),
-            (Trait,
+                }
+            TU_ARMA(Trait, e) {
                 auto trait_path = ::AST::Path( crate.m_name, {} );
                 for(unsigned int j = start; j <= i; j ++)
                     trait_path.nodes().push_back( path_abs.nodes[j].name() );
@@ -940,23 +943,15 @@ namespace {
 
                 path = mv$(new_path);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
-                ),
-            (TypeAlias,
+                }
+            case ::HIR::TypeItem::TAG_ExternType:
+            case ::HIR::TypeItem::TAG_TypeAlias:
+            case ::HIR::TypeItem::TAG_Struct:
+            case ::HIR::TypeItem::TAG_Union:
                 path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                 path = split_into_ufcs_ty(sp, mv$(path), i-start);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
-                ),
-            (Struct,
-                path = split_into_crate(sp, mv$(path), start,  crate.m_name);
-                path = split_into_ufcs_ty(sp, mv$(path), i-start);
-                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
-                ),
-            (Union,
-                path = split_into_crate(sp, mv$(path), start,  crate.m_name);
-                path = split_into_ufcs_ty(sp, mv$(path), i-start);
-                return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
-                ),
-            (Enum,
+            TU_ARMA(Enum, e) {
                 const auto& last_node = path_abs.nodes.back();
                 // If this refers to an enum variant, return the full path
                 auto idx = e.find_variant(last_node.name());
@@ -982,8 +977,8 @@ namespace {
                 path = split_into_crate(sp, mv$(path), start,  crate.m_name);
                 path = split_into_ufcs_ty(sp, mv$(path), i-start);
                 return Resolve_Absolute_Path_BindUFCS(context, sp, mode,  path);
-                )
-            )
+                }
+            }
         }
 
         const auto& name = path_abs.nodes.back().name();
@@ -1006,6 +1001,9 @@ namespace {
                         ),
                     (Module,
                         path.m_bindings.type = ::AST::PathBinding_Type::make_Module({nullptr, &e});
+                        ),
+                    (ExternType,
+                        path.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});
                         ),
                     (TypeAlias,
                         path.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr/*, &e*/});

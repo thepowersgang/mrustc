@@ -43,6 +43,9 @@ void Trans_Codegen(const ::std::string& outfile, const TransOptions& opt, const 
                 TU_MATCHA( (te.binding), (tpb),
                 (Unbound,  throw ""; ),
                 (Opaque,  throw ""; ),
+                (ExternType,
+                    //codegen->emit_extern_type(sp, te.path.m_data.as_Generic(), *tpb);
+                    ),
                 (Struct,
                     codegen->emit_struct(sp, te.path.m_data.as_Generic(), *tpb);
                     ),

@@ -47,6 +47,9 @@ void ::HIR::Visitor::visit_module(::HIR::ItemPath p, ::HIR::Module& mod)
             DEBUG("type " << name);
             this->visit_type_alias(p + name, e);
             ),
+        (ExternType,
+            DEBUG("extern type " << name);
+            ),
         (Enum,
             DEBUG("enum " << name);
             this->visit_enum(p + name, e);

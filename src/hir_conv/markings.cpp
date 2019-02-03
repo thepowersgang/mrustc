@@ -333,6 +333,7 @@ public:
             TU_MATCHA( (te.binding), (tpb),
             (Unbound, ),
             (Opaque, ),
+            (ExternType, markings_ptr = &tpb->m_markings; ),
             (Struct, markings_ptr = &tpb->m_markings; ),
             (Union , markings_ptr = &tpb->m_markings; ),
             (Enum  , markings_ptr = &tpb->m_markings; )

@@ -2405,6 +2405,9 @@ namespace {
             TU_ARMA(Union, e) {
                 BUG(node.span(), "_StructLiteral Union isn't valid?");
                 }
+            TU_ARMA(ExternType, e) {
+                BUG(node.span(), "_StructLiteral ExternType isn't valid?");
+                }
             TU_ARMA(Struct, e) {
                 if(e->m_data.is_Unit()) {
                     m_builder.set_result( node.span(), ::MIR::RValue::make_Struct({

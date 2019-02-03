@@ -241,7 +241,15 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                     i.is_pub, i_data.name, mv$(path), e.mac
                     });
                 }
-            // TODO: Other imports (e.g. derives, which have different naming structures)
+            TU_ARMA(ProcMacro, e) {
+                TODO(sp, "ProcMacro import");
+                }
+            TU_ARMA(ProcMacroAttribute, e) {
+                TODO(sp, "ProcMacroAttribute import");
+                }
+            TU_ARMA(ProcMacroDerive, e) {
+                TODO(sp, "ProcMacroDerive import");
+                }
             }}
         }
         else
@@ -318,6 +326,9 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
                 p.m_bindings.type = ::AST::PathBinding_Type::make_Enum({nullptr});
                 ),
             (TypeAlias,
+                p.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr});
+                ),
+            (ExternType,
                 p.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({nullptr});
                 )
             )

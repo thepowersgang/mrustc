@@ -456,6 +456,10 @@ namespace {
                     (TypeAlias,
                         BUG(sp, "TypeAlias encountered after `Resolve Type Aliases` - " << ty);
                         ),
+                    (ExternType,
+                        e.binding = ::HIR::TypeRef::TypePathBinding::make_ExternType(&e3);
+                        DEBUG("- " << ty);
+                        ),
                     (Struct,
                         fix_param_count(sp, pe, e3.m_params,  pe.m_params);
                         e.binding = ::HIR::TypeRef::TypePathBinding::make_Struct(&e3);

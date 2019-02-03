@@ -19,6 +19,7 @@
 
 namespace HIR {
 
+class ExternType;
 class Struct;
 class Union;
 class Enum;
@@ -152,6 +153,7 @@ public:
     TAGGED_UNION_EX(TypePathBinding, (), Unbound, (
     (Unbound, struct {}),   // Not yet bound, either during lowering OR during resolution (when associated and still being resolved)
     (Opaque, struct {}),    // Opaque, i.e. An associated type of a generic (or Self in a trait)
+    (ExternType, const ::HIR::ExternType*),
     (Struct, const ::HIR::Struct*),
     (Union, const ::HIR::Union*),
     (Enum, const ::HIR::Enum*)

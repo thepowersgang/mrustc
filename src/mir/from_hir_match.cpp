@@ -802,6 +802,9 @@ void PatternRulesetBuilder::append_from_lit(const Span& sp, const ::HIR::Literal
                 )
             )
             ),
+        (ExternType,
+            TODO(sp, "Match extern type");
+            ),
         (Union,
             TODO(sp, "Match union");
             ),
@@ -1216,6 +1219,9 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             ),
         (Union,
             TODO(sp, "Match over union - " << ty);
+            ),
+        (ExternType,
+            TODO(sp, "Match over extern type - " << ty);
             ),
         (Enum,
             auto monomorph = [&](const auto& ty) {
@@ -1738,6 +1744,9 @@ namespace {
                 (Opaque,
                     BUG(sp, "Destructuring an opaque type - " << *cur_ty);
                     ),
+                (ExternType,
+                    BUG(sp, "Destructuring an extern type - " << *cur_ty);
+                    ),
                 (Struct,
                     // TODO: Should this do a call to expand_associated_types?
                     auto monomorph = [&](const auto& ty) {
@@ -2172,6 +2181,9 @@ int MIR_LowerHIR_Match_Simple__GeneratePattern(MirBuilder& builder, const Span& 
                 ),
             (Union,
                 TODO(sp, "Match over Union");
+                ),
+            (ExternType,
+                TODO(sp, "Match over ExternType");
                 ),
             (Enum,
                 auto monomorph = [&](const auto& ty) {
@@ -2826,6 +2838,9 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
                 ),
             (Union,
                 TODO(sp, "Match over Union");
+                ),
+            (ExternType,
+                TODO(sp, "Match over ExternType - " << ty);
                 ),
             (Enum,
                 )
