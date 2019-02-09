@@ -3359,8 +3359,7 @@ bool TraitResolution::trait_contains_type(const Span& sp, const ::HIR::GenericPa
         return ::HIR::Compare::Equal;
         ),
     (Array,
-        // TODO: Clone here?
-        return type_is_copy(sp, *e.inner);
+        return type_is_clone(sp, *e.inner);
         )
     )
 }

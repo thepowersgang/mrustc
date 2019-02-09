@@ -102,6 +102,10 @@ struct Pattern
             const Struct*   binding;
             ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns;
             bool is_exhaustive;
+
+            bool is_wildcard() const {
+                return sub_patterns.empty() && !is_exhaustive;
+            }
             } ),
         // Refutable
         (Value,     struct { Value val; } ),

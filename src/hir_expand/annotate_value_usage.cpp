@@ -520,6 +520,12 @@ namespace {
                 ),
             (Struct,
                 const auto& str = *pe.binding;
+                if( pe.is_wildcard() )
+                    return ::HIR::ValueUsage::Borrow;
+                if( pe.sub_patterns.empty() && (TU_TEST1(str.m_data, Tuple, .empty()) || str.m_data.is_Unit()) ) {
+                    return ::HIR::ValueUsage::Borrow;
+                }
+                ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-brace struct");
                 const auto& flds = str.m_data.as_Named();
                 auto monomorph_cb = monomorphise_type_get_cb(sp, nullptr,  &pe.path.m_params, nullptr);
 

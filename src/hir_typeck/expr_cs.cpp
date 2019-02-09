@@ -1196,16 +1196,24 @@ namespace {
         {
             const auto& sp = node.span();
             TRACE_FUNCTION_F(&node << " " << node.m_path << "{...} [" << (node.m_is_struct ? "struct" : "enum") << "]");
-            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "Struct literal with non-Generic path - " << node.m_path);
-            auto& ty_path = node.m_path.m_data.as_Generic();
 
-            this->add_ivars_generic_path(node.span(), ty_path);
+            this->add_ivars_path(node.span(), node.m_path);
+
             for( auto& val : node.m_values ) {
                 this->context.add_ivars( val.second->m_res_type );
             }
             if( node.m_base_value ) {
                 this->context.add_ivars( node.m_base_value->m_res_type );
             }
+
+            // TODO: The path can be a Ufcs (any type)
+            if( !node.m_path.m_data.is_Generic() )
+            {
+                auto t = this->context.m_resolve.expand_associated_types(sp, ::HIR::TypeRef::new_path( mv$(node.m_path), {} ));
+                node.m_path = mv$(t.m_data.as_Path().path);
+            }
+            ASSERT_BUG(sp, node.m_path.m_data.is_Generic(), "Struct literal with non-Generic path - " << node.m_path);
+            auto& ty_path = node.m_path.m_data.as_Generic();
 
             // - Create ivars in path, and set result type
             const auto ty = this->get_structenum_ty(node.span(), node.m_is_struct, ty_path);
@@ -3997,8 +4005,21 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     rv = true;
                     }
                 TU_ARM(pattern.m_data, Box, pe) {
-                    // TODO: inner pattern
-                    TODO(sp, "Match ergonomics - box pattern");
+                    // Box<T>
+                    if( TU_TEST2(ty.m_data, Path, .path.m_data, Generic, .m_path == context.m_lang_Box) )
+                    {
+                        const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
+                        const auto& inner = path.m_params.m_types.at(0);
+                        rv = this->revisit_inner(context, *pe.sub, inner, binding_mode);
+                    }
+                    else
+                    {
+                        TODO(sp, "Match ergonomics - box pattern - Non Box<T> type: " << ty);
+                        //auto inner = this->m_ivars.new_ivar_tr();
+                        //this->handle_pattern_direct_inner(sp, *e.sub, inner);
+                        //::HIR::GenericPath  path { m_lang_Box, ::HIR::PathParams(mv$(inner)) };
+                        //this->equate_types( sp, type, ::HIR::TypeRef::new_path(mv$(path), ::HIR::TypeRef::TypePathBinding(&m_crate.get_struct_by_path(sp, m_lang_Box))) );
+                    }
                     }
                 TU_ARM(pattern.m_data, Ref, pe) {
                     BUG(sp, "Match ergonomics - & pattern");
@@ -4082,25 +4103,34 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     assert(e.binding);
                     const auto& str = *e.binding;
 
-                    // - assert check from earlier pass
-                    ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct");
-                    const auto& sd = str.m_data.as_Named();
-                    const auto& params = e.path.m_params;
-
-                    rv = true;
-                    for( auto& field_pat : e.sub_patterns )
+                    //if( ! e.is_wildcard() )
+                    if( e.sub_patterns.empty() )
                     {
-                        unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - sd.begin();
-                        if( f_idx == sd.size() ) {
-                            ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
-                        }
-                        const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
-                        if( monomorphise_type_needed(field_type) ) {
-                            auto field_type_mono = monomorphise_type(sp, str.m_params, params,  field_type);
-                            rv &= this->revisit_inner(context, field_pat.second, field_type_mono, binding_mode);
-                        }
-                        else {
-                            rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
+                        // TODO: Check the field count?
+                        rv = true;
+                    }
+                    else
+                    {
+                        // - assert check from earlier pass
+                        ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct");
+                        const auto& sd = str.m_data.as_Named();
+                        const auto& params = e.path.m_params;
+
+                        rv = true;
+                        for( auto& field_pat : e.sub_patterns )
+                        {
+                            unsigned int f_idx = ::std::find_if( sd.begin(), sd.end(), [&](const auto& x){ return x.first == field_pat.first; } ) - sd.begin();
+                            if( f_idx == sd.size() ) {
+                                ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
+                            }
+                            const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
+                            if( monomorphise_type_needed(field_type) ) {
+                                auto field_type_mono = monomorphise_type(sp, str.m_params, params,  field_type);
+                                rv &= this->revisit_inner(context, field_pat.second, field_type_mono, binding_mode);
+                            }
+                            else {
+                                rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
+                            }
                         }
                     }
                     }
@@ -4684,7 +4714,7 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
         this->add_ivars_params( e.path.m_params );
         this->equate_types( sp, type, ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding)) );
 
-        if( e.sub_patterns.empty() )
+        if( e.is_wildcard() )
             return ;
 
         assert(e.binding);
@@ -5140,6 +5170,7 @@ namespace {
         {
             DEBUG("- Moving into block");
             assert( p->m_value_node );
+            // Block result and the inner node's result must be the same type
             ASSERT_BUG( p->span(), context.m_ivars.types_equal(p->m_res_type, p->m_value_node->m_res_type),
                 "Block and result mismatch - " << context.m_ivars.fmt_type(p->m_res_type) << " != " << context.m_ivars.fmt_type(p->m_value_node->m_res_type));
             // - Override the the result type to the desired result
@@ -5253,7 +5284,7 @@ namespace {
                 return CoerceResult::Equality;
             }
             context.possible_equate_type_unsize_to(sep->index, dst);
-            DEBUG("Src ivar");
+            DEBUG("Src is ivar (" << src << "), return Unknown");
             return CoerceResult::Unknown;
         }
         else
@@ -5926,10 +5957,20 @@ namespace {
                         context.m_ivars.mark_change();
 
                         // Continue on with coercion (now that node_ptr is updated)
-                        switch( check_unsize_tys(context, sp, *dep->inner, *se.inner, node_ptr_ptr) )
+                        switch( check_unsize_tys(context, sp, *dep->inner, *se.inner, &node_ptr) )
                         {
                         case CoerceResult::Unknown:
-                            return CoerceResult::Unknown;
+                            // Add new coercion at the new inner point
+                            if( &node_ptr != node_ptr_ptr )
+                            {
+                                DEBUG("Unknown check_unsize_tys after autoderef - " << dst << " := " << node_ptr->m_res_type);
+                                context.equate_types_coerce(sp, dst, node_ptr);
+                                return CoerceResult::Custom;
+                            }
+                            else
+                            {
+                                return CoerceResult::Unknown;
+                            }
                         case CoerceResult::Custom:
                             return CoerceResult::Custom;
                         case CoerceResult::Equality:
@@ -6824,9 +6865,17 @@ namespace {
                     const auto& re_inner = r.m_data.is_Borrow() ? r.m_data.as_Borrow().inner : r.m_data.as_Pointer().inner;
 
                     if( le.type < re_borrow_type ) {
+                        if( !context.m_ivars.types_equal(*le.inner, *re_inner) ) {
+                            return DedupKeep::Both;
+                        }
+                        DEBUG("- Remove " << r);
                         return DedupKeep::Left;
                     }
                     else if( le.type > re_borrow_type ) {
+                        if( !context.m_ivars.types_equal(*le.inner, *re_inner) ) {
+                            return DedupKeep::Both;
+                        }
+                        DEBUG("- Remove " << l);
                         return DedupKeep::Right;
                     }
                     else {
