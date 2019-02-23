@@ -30,6 +30,7 @@ extern int _putenv_s(const char*, const char*);
 # include <mutex>
 # include <condition_variable>
 #endif
+#include <fstream>
 #include <climits>
 #include <cassert>
 #ifdef _WIN32
@@ -889,9 +890,24 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         #endif
         if( !this->spawn_process(script_exe_abs.str().c_str(), {}, env, out_file) )
         {
-            rename(out_file.str().c_str(), (out_file+"_failed").str().c_str());
+            ::std::cerr << "Calling " << script_exe_abs << " failed" << ::std::endl;
+            {
+                ::std::ifstream ifs(out_file);
+                char    linebuf[512];
+                while( !ifs.getline(linebuf, sizeof(linebuf)-1).eof() )
+                {
+                    if( strncmp(linebuf, "cargo:", 6) == 0 ) {
+                        continue;
+                    }
+                    ::std::cerr << linebuf << ::std::endl;
+                }
+            }
+
+            auto failed_filename = out_file+"_failed.txt";
+            remove(failed_filename.str().c_str());
+            rename(out_file.str().c_str(), failed_filename.str().c_str());
             // Build failed, return an invalid path
-            return ::helpers::path();;
+            return ::helpers::path();
         }
         #if _WIN32
         #else
@@ -993,7 +1009,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
     GetExitCodeProcess(pi.hProcess, &status);
     if (status != 0)
     {
-        DEBUG("Compiler exited with non-zero exit status " << status);
+        DEBUG("Process exited with non-zero exit status " << status);
         return false;
     }
 #else
