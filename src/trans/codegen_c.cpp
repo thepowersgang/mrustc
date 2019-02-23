@@ -305,7 +305,7 @@ namespace {
                 // 64-bit bit ops (gcc intrinsics)
                 m_of
                     << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
-                    << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
+                    << "\treturn ( (v >> 32) != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
                     << "}\n"
                     << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
@@ -317,10 +317,10 @@ namespace {
                     << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
                     << "\treturn (v >> 32 != 0 ? __popcnt64(v>>32) : 32 + __popcnt64(v));\n"
                     << "}\n"
-                    << "static inline int __builtin_ctz(uint32_t v) { int rv; _BitScanReverse(&rv, v); return rv; }\n"
-                    << "static inline int __builtin_clz(uint32_t v) { int rv; _BitScanForward(&rv, v); return rv; }\n"
+                    << "static inline int __builtin_ctz(uint32_t v) { int rv; _BitScanForward(&rv, v); return rv; }\n"
+                    << "static inline int __builtin_clz(uint32_t v) { int rv; _BitScanReverse(&rv, v); return 31 - rv; }\n"
                     << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
-                    << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
+                    << "\treturn ( (v >> 32) != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v) );\n"
                     << "}\n"
                     << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
@@ -1935,7 +1935,11 @@ namespace {
             (String,
                 m_of << "{ ";
                 this->print_escaped_string(e);
-                m_of << ", " << e.size() << "}";
+                // TODO: Better type checking?
+                if( !ty.m_data.is_Array() ) {
+                    m_of << ", " << e.size();
+                }
+                m_of << "}";
                 )
             )
         }
