@@ -794,6 +794,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     args.push_back("--crate-type"); args.push_back("bin");
     args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(this->get_output_dir(true).str()); // NOTE: Forces `is_for_host` to true here.
+    if( true )
+    {
+        args.push_back("-g");
+    }
     for(const auto& d : m_opts.lib_search_dirs)
     {
         args.push_back("-L");
@@ -893,22 +897,24 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         //auto _ = ScopedChdir { manifest.directory() };
         if( !this->spawn_process(script_exe_abs.str().c_str(), {}, env, out_file, /*working_directory=*/manifest.directory()) )
         {
-            ::std::cerr << "Calling " << script_exe_abs << " failed" << ::std::endl;
-            {
-                ::std::ifstream ifs(out_file);
-                char    linebuf[512];
-                while( !ifs.getline(linebuf, sizeof(linebuf)-1).eof() )
-                {
-                    if( strncmp(linebuf, "cargo:", 6) == 0 ) {
-                        continue;
-                    }
-                    ::std::cerr << linebuf << ::std::endl;
-                }
-            }
-
             auto failed_filename = out_file+"_failed.txt";
             remove(failed_filename.str().c_str());
             rename(out_file.str().c_str(), failed_filename.str().c_str());
+
+            ::std::cerr << "Calling " << script_exe_abs << " failed" << ::std::endl;
+            {
+                ::std::ifstream ifs(failed_filename);
+                char    linebuf[1024];
+                while( ifs.good() && !ifs.eof() )
+                {
+                    ifs.getline(linebuf, sizeof(linebuf)-1);
+                    if( strncmp(linebuf, "cargo:", 6) == 0 ) {
+                        continue;
+                    }
+                    ::std::cerr << "> " << linebuf << ::std::endl;
+                }
+            }
+
             // Build failed, return an invalid path
             return ::helpers::path();
         }
