@@ -38,6 +38,13 @@ public:
         return m_str != "";
     }
 
+    bool operator==(const path& p) const {
+        return m_str == p.m_str;
+    }
+    bool operator!=(const path& p) const {
+        return m_str != p.m_str;
+    }
+
     path& operator/=(const path& p)
     {
         if(!p.is_valid())

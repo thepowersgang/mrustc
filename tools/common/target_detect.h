@@ -75,6 +75,15 @@
 // - Apple devices
 #elif defined(__APPLE__)
 # define DEFAULT_TARGET_NAME "x86_64-apple-macosx"
+// - Haiku
+#elif defined(__HAIKU__)
+# if defined(__x86_64__)
+# define DEFAULT_TARGET_NAME "x86_64-unknown-haiku"
+# elif defined(__arm__)
+# define DEFAULT_TARGET_NAME "arm-unknown-haiku"
+# else
+#  warning "Unable to detect a suitable default target (Haiku)"
+# endif
 // - Unknown
 #else
 # warning "Unable to detect a suitable default target"

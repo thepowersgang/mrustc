@@ -42,7 +42,7 @@ const TargetArch ARCH_M68K = {
     "m68k",
     32, true,
     { /*atomic(u8)=*/true, false, true, false,  true },
-    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 4) // TODO: Does m68k have lower alignments?
+    TargetArch::Alignments(2, 2, 2, 2, 2, 2, 2)
 };
 TargetSpec  g_target;
 
@@ -508,6 +508,20 @@ namespace
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
                 "unix", "macos", "gnu", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {}, {}},
+                ARCH_X86_64
+                };
+        }
+        else if(target_name == "arm-unknown-haiku")
+        {
+            return TargetSpec {
+                "unix", "haiku", "gnu", {CodegenMode::Gnu11, true, "arm-unknown-haiku", {}, {}},
+                ARCH_ARM32
+                };
+        }
+        else if(target_name == "x86_64-unknown-haiku")
+        {
+            return TargetSpec {
+                "unix", "haiku", "gnu", {CodegenMode::Gnu11, false, "x86_64-unknown-haiku", {}, {}},
                 ARCH_X86_64
                 };
         }

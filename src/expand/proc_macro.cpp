@@ -977,7 +977,7 @@ uint64_t ProcMacroInv::recv_v128u()
     for(;;)
     {
         auto b = recv_u8();
-        v |= static_cast<uint64_t>(b) << ofs;
+        v |= static_cast<uint64_t>(b & 0x7F) << ofs;
         if( (b & 0x80) == 0 )
             break;
         ofs += 7;
