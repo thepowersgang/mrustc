@@ -45,6 +45,7 @@ struct Context
     class Revisitor
     {
     public:
+        virtual const Span& span() const = 0;
         virtual void fmt(::std::ostream& os) const = 0;
         virtual bool revisit(Context& context, bool is_fallback) = 0;
     };
@@ -3809,11 +3810,15 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 m_outer_mode(binding_mode)
             {}
 
+            const Span& span() const override {
+                return sp;
+            }
             void fmt(::std::ostream& os) const override {
                 os << "MatchErgonomicsRevisit { " << m_pattern << " : " << m_outer_ty << " }";
             }
             bool revisit(Context& context, bool is_fallback_mode) override {
                 TRACE_FUNCTION_F("Match ergonomics - " << m_pattern << " : " << m_outer_ty << (is_fallback_mode ? " (fallback)": ""));
+                m_outer_ty = context.m_resolve.expand_associated_types(sp, mv$(m_outer_ty));
                 return this->revisit_inner_real(context, m_pattern, m_outer_ty, m_outer_mode, is_fallback_mode);
             }
             // TODO: Recurse into inner patterns, creating new revisitors?
@@ -3876,7 +3881,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     n_deref ++;
                 }
                 DEBUG("- " << n_deref << " derefs of class " << bt << " to get " << *ty_p);
-                if( ty_p->m_data.is_Infer() ) {
+                if( ty_p->m_data.is_Infer() || TU_TEST1(ty_p->m_data, Path, .binding.is_Unbound()) )
+                {
                     // Still pure infer, can't do anything
                     // - What if it's a literal?
 
@@ -3953,11 +3959,6 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         }
                     }
 
-                    // TODO: Visit all inner bindings and disable coercion fallbacks on them.
-                    MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern);
-                    return false;
-                }
-                if( TU_TEST1(ty_p->m_data, Path, .binding.is_Unbound()) ) {
                     // TODO: Visit all inner bindings and disable coercion fallbacks on them.
                     MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern);
                     return false;
@@ -4092,14 +4093,20 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     ASSERT_BUG(sp, str.m_data.is_Tuple(), "Struct-tuple pattern on non-Tuple struct");
                     const auto& sd = str.m_data.as_Tuple();
                     const auto& params = e.path.m_params;
+                    ::HIR::TypeRef  tmp;
+                    auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
+                        return (monomorphise_type_needed(field_type)
+                                ? (tmp = context.m_resolve.expand_associated_types(sp, monomorphise_type(sp, str.m_params, params,  field_type)))
+                                : field_type
+                                );
+                        };
 
                     rv = true;
                     for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                     {
                         /*const*/ auto& sub_pat = e.sub_patterns[i];
                         const auto& field_type = sd[i].ent;
-                        ::HIR::TypeRef  tmp;
-                        const auto& var_ty = (monomorphise_type_needed(field_type) ? (tmp = monomorphise_type(sp, str.m_params, params,  field_type)) : field_type);
+                        const auto& var_ty = maybe_monomorph(field_type);
                         rv &= this->revisit_inner(context, sub_pat, var_ty, binding_mode);
                     }
                     }
@@ -4122,6 +4129,14 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         const auto& sd = str.m_data.as_Named();
                         const auto& params = e.path.m_params;
 
+                        ::HIR::TypeRef  tmp;
+                        auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
+                            return (monomorphise_type_needed(field_type)
+                                    ? (tmp = context.m_resolve.expand_associated_types(sp, monomorphise_type(sp, str.m_params, params,  field_type)))
+                                    : field_type
+                                    );
+                            };
+
                         rv = true;
                         for( auto& field_pat : e.sub_patterns )
                         {
@@ -4129,14 +4144,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                             if( f_idx == sd.size() ) {
                                 ERROR(sp, E0000, "Struct " << e.path << " doesn't have a field " << field_pat.first);
                             }
-                            const ::HIR::TypeRef& field_type = sd[f_idx].second.ent;
-                            if( monomorphise_type_needed(field_type) ) {
-                                auto field_type_mono = monomorphise_type(sp, str.m_params, params,  field_type);
-                                rv &= this->revisit_inner(context, field_pat.second, field_type_mono, binding_mode);
-                            }
-                            else {
-                                rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
-                            }
+                            const ::HIR::TypeRef& field_type = maybe_monomorph(sd[f_idx].second.ent);
+                            rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
                         }
                     }
                     }
@@ -4155,6 +4164,14 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
                     const auto& params = e.path.m_params;
 
+                    ::HIR::TypeRef  tmp;
+                    auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
+                        return (monomorphise_type_needed(field_type)
+                                ? (tmp = context.m_resolve.expand_associated_types(sp, monomorphise_type(sp, str.m_params, params,  field_type)))
+                                : field_type
+                                );
+                        };
+
                     if( e.sub_patterns.size() != tup_var.size() ) {
                         ERROR(sp, E0000, "Enum pattern with an incorrect number of fields - " << e.path << " - expected " << tup_var.size() << ", got " << e.sub_patterns.size() );
                     }
@@ -4162,13 +4179,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     rv = true;  // &= below ensures that all must be complete to return complete
                     for( unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                     {
-                        if( monomorphise_type_needed(tup_var[i].ent) ) {
-                            auto var_ty = monomorphise_type(sp, enm.m_params, params,  tup_var[i].ent);
-                            rv &= this->revisit_inner(context, e.sub_patterns[i], var_ty, binding_mode);
-                        }
-                        else {
-                            rv &= this->revisit_inner(context, e.sub_patterns[i], tup_var[i].ent, binding_mode);
-                        }
+                        const auto& var_ty = maybe_monomorph(tup_var[i].ent);
+                        rv &= this->revisit_inner(context, e.sub_patterns[i], var_ty, binding_mode);
                     }
                     }
                 TU_ARM(pattern.m_data, EnumStruct, e) {
@@ -4181,6 +4193,14 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     const auto& tup_var = str.m_data.as_Named();
                     const auto& params = e.path.m_params;
 
+                    ::HIR::TypeRef  tmp;
+                    auto maybe_monomorph = [&](const ::HIR::TypeRef& field_type)->const ::HIR::TypeRef& {
+                        return (monomorphise_type_needed(field_type)
+                                ? (tmp = context.m_resolve.expand_associated_types(sp, monomorphise_type(sp, str.m_params, params,  field_type)))
+                                : field_type
+                                );
+                        };
+
                     rv = true;  // &= below ensures that all must be complete to return complete
                     for( auto& field_pat : e.sub_patterns )
                     {
@@ -4188,14 +4208,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         if( f_idx == tup_var.size() ) {
                             ERROR(sp, E0000, "Enum variant " << e.path << " doesn't have a field " << field_pat.first);
                         }
-                        const ::HIR::TypeRef& field_type = tup_var[f_idx].second.ent;
-                        if( monomorphise_type_needed(field_type) ) {
-                            auto field_type_mono = monomorphise_type(sp, enm.m_params, params,  field_type);
-                            rv &= this->revisit_inner(context, field_pat.second, field_type_mono, binding_mode);
-                        }
-                        else {
-                            rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
-                        }
+                        const ::HIR::TypeRef& field_type = maybe_monomorph(tup_var[f_idx].second.ent);
+                        rv &= this->revisit_inner(context, field_pat.second, field_type, binding_mode);
                     }
                     }
                 }
@@ -4510,6 +4524,9 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                     m_pat_total_size(pat_total_size)
                 {}
 
+                const Span& span() const override {
+                    return sp;
+                }
                 void fmt(::std::ostream& os) const override {
                     os << "SplitTuplePatRevisit { " << m_outer_ty << " = (" << m_leading_tys << ", ..., " << m_trailing_tys << ") }";
                 }
@@ -4566,6 +4583,9 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                     sp(mv$(sp)), inner(mv$(inner)), type(mv$(type)), size(size)
                 {}
 
+                const Span& span() const override {
+                    return sp;
+                }
                 void fmt(::std::ostream& os) const override { os << "SlicePatRevisit { " << inner << ", " << type << ", " << size; }
                 bool revisit(Context& context, bool is_fallback) override {
                     const auto& ty = context.get_type(type);
@@ -4641,6 +4661,9 @@ void Context::handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, c
                     sp(mv$(sp)), inner(mv$(inner)), type(mv$(type)), var_ty(mv$(var_ty)), min_size(size)
                 {}
 
+                const Span& span() const override {
+                    return sp;
+                }
                 void fmt(::std::ostream& os) const override { os << "SplitSlice inner=" << inner << ", outer=" << type << ", binding="<<var_ty<<", " << min_size; }
                 bool revisit(Context& context, bool is_fallback) override {
                     const auto& ty = context.get_type(this->type);
@@ -7292,6 +7315,10 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             else
             {
             }
+        }
+        for(const auto& adv : context.adv_revisits)
+        {
+            WARNING(adv->span(), W0000, "Spare Rule - " << FMT_CB(os, adv->fmt(os)));
         }
         BUG(root_ptr->span(), "Spare rules left after typecheck stabilised");
     }
