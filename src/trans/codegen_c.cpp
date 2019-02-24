@@ -648,13 +648,14 @@ namespace {
                     if( getenv(varname.c_str()) ) {
                         args.push_back( getenv(varname.c_str()) );
                     }
+                    else if (system(("which " + Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" + " >/dev/null 2>&1").c_str()) == 0) {
+                        args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
+                    }
                     else if( getenv("CC") ) {
                         args.push_back( getenv("CC") );
                     }
                     else {
-                        // TODO: Determine if the compiler can't be found, and fall back to `gcc` if that's the case
-                        args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
-                        //args.push_back( "gcc" );
+                        args.push_back("gcc");
                     }
                 }
                 for( const auto& a : Target_GetCurSpec().m_backend_c.m_compiler_opts )
@@ -1324,7 +1325,7 @@ namespace {
                 assert(1 + union_fields.size() + 1 >= repr->fields.size());
                 // Make the union!
                 // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
-                // TODO: 
+                // TODO:
                 if( !this->type_is_bad_zst(repr->fields[0].ty) || ::std::any_of(union_fields.begin(), union_fields.end(), [this,repr](auto x){ return !this->type_is_bad_zst(repr->fields[x].ty); }) )
                 {
                     m_of << "\tunion {\n";
@@ -3667,7 +3668,7 @@ namespace {
             m_of << "(";
             for(unsigned int j = 0; j < e.args.size(); j ++) {
                 if(j != 0)  m_of << ",";
-                m_of << " "; 
+                m_of << " ";
                 if( m_options.disallow_empty_structs && TU_TEST1(e.args[j], LValue, .is_Field()) )
                 {
                     ::HIR::TypeRef tmp;
@@ -3916,7 +3917,7 @@ namespace {
         void emit_intrinsic_call(const ::std::string& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
         {
             const auto& mir_res = *m_mir_res;
-            enum class Ordering 
+            enum class Ordering
             {
                 SeqCst,
                 Acquire,
@@ -4081,7 +4082,7 @@ namespace {
                             m_of << "*(volatile uint8_t*)";
                         else
                             m_of << "*(volatile int8_t*)";
-                        emit_param(e.args.at(0)); 
+                        emit_param(e.args.at(0));
                         switch(op)
                         {
                         case AtomicOp::Add: m_of << " += "; break;
