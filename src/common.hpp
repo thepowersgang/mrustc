@@ -244,6 +244,11 @@ inline Join<T> join(const char *sep, const ::std::vector<T> v) {
 namespace std {
 
 template <typename T>
+inline auto operator<<(::std::ostream& os, const T& v) -> decltype(v.fmt(os)) {
+    return v.fmt(os);
+}
+
+template <typename T>
 inline ::std::ostream& operator<<(::std::ostream& os, const ::std::vector<T*>& v) {
     if( v.size() > 0 )
     {

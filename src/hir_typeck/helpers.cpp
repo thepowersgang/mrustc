@@ -3651,12 +3651,16 @@ const ::HIR::TypeRef* TraitResolution::autoderef(const Span& sp, const ::HIR::Ty
         DEBUG("Deref " << ty << " into " << *e.inner);
         return &this->m_ivars.get_type(*e.inner);
     )
-    // TODO: Just doing `*[1,2,3]` doesn't work, but this is needed to allow `[1,2,3].iter()` to work
+    // HACK?: Just doing `*[1,2,3]` doesn't work, but this is needed to allow `[1,2,3].iter()` to work
     else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, e,
         DEBUG("Deref " << ty << " into [" << *e.inner << "]");
         tmp_type = ::HIR::TypeRef::new_slice( e.inner->clone() );
         return &tmp_type;
     )
+    // Shortcut, don't look up a Deref impl for primitives or slices
+    else if( ty.m_data.is_Slice() || ty.m_data.is_Primitive() ) {
+        return nullptr;
+    }
     else {
         bool succ = this->find_trait_impls(sp, this->m_crate.get_lang_item_path(sp, "deref"), ::HIR::PathParams {}, ty, [&](auto impls, auto match) {
             tmp_type = impls.get_type("Target");
@@ -3812,7 +3816,7 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
     case ::HIR::Function::Receiver::Value:
         if( access >= TraitResolution::MethodAccess::Move )
         {
-            return &ty;
+            return &this->m_ivars.get_type(ty);
         }
         break;
     case ::HIR::Function::Receiver::BorrowOwned:
@@ -3865,7 +3869,7 @@ const ::HIR::TypeRef* TraitResolution::check_method_receiver(const Span& sp, con
                 };
             if( fcn.m_args.front().second .match_test_generics(sp, ty, this->m_ivars.callback_resolve_infer(), cb_getself) ) {
                 assert(detected_self_ty);
-                return detected_self_ty;
+                return &this->m_ivars.get_type(*detected_self_ty);
             }
         }
         return nullptr;
