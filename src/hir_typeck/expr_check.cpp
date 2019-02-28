@@ -306,11 +306,10 @@ namespace {
             }
 
             // Check castability
-            TU_MATCH_DEF(::HIR::TypeRef::Data, (dst_ty.m_data), (de),
-            (
-                ERROR(sp, E0000, "Invalid cast to " << dst_ty);
-                ),
-            (Pointer,
+            TU_MATCH_HDRA( (dst_ty.m_data), {)
+            default:
+                ERROR(sp, E0000, "Invalid cast to\n " << dst_ty << "\n from\n " << src_ty);
+            TU_ARMA(Pointer, de) {
                 TU_MATCH_DEF(::HIR::TypeRef::Data, (src_ty.m_data), (se),
                 (
                     ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
@@ -346,11 +345,29 @@ namespace {
                     this->check_types_equal(sp, *de.inner, *se.inner);
                     )
                 )
-                ),
-            (Primitive,
+                }
+            TU_ARMA(Function, de) {
+                // NOTE: cast fn() only valid from:
+                // - the same function pointer (already checked, but eventually could be a stripping of the path tag)
+                // - A capture-less closure
+                TU_MATCH_HDRA( (src_ty.m_data), {)
+                default:
+                    // TODO: Closure structs are also allowed, iff they don't have captures
+                    //ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
+                    break;
+                //TU_ARMA(Path, se) {
+                //    }
+                //TU_ARMA(Function, se) {
+                //    }
+                TU_ARMA(Closure, se) {
+                    // Allowed, but won't exist after expansion
+                    }
+                }
+                }
+            TU_ARMA(Primitive, de) {
                 // TODO: Check cast to primitive
-                )
-            )
+                }
+            }
 
             node.m_value->visit( *this );
         }
