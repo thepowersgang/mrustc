@@ -122,6 +122,10 @@ namespace {
         void visit(::HIR::ExprNode_LoopControl& node) override
         {
             // NOTE: Leaf
+            if( node.m_value )
+            {
+                this->visit_node_ptr(node.m_value);
+            }
         }
         void visit(::HIR::ExprNode_Match& node) override
         {
