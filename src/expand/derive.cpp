@@ -832,54 +832,21 @@ public:
 
         // TODO: Compare the discriminants using the `discriminant_value` intrinsic
         // - Requires a way of emitting said intrinsic into the AST
-        for(unsigned int a = 0; a < enm.variants().size(); a ++ )
+        // - LAZY WAY - hard-code ::"core"::intrinsics::discriminant_value
         {
-            for(unsigned int b = 0; b < enm.variants().size(); b ++ )
-            {
-                if( a == b )
-                    continue ;
+            auto code = NEWNODE(CallPath, this->get_path(opts.core_name, "cmp", "PartialOrd", "partial_cmp"),
+                ::make_vec2(
+                    NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, this->get_path(opts.core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path("self")) )) ),
+                    NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, this->get_path(opts.core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path("v")) )) )
+                    )
+                );
+            ::std::vector< AST::Pattern>    pats = make_vec1( AST::Pattern() );
 
-                struct H {
-                    static ::AST::Pattern get_pat_nc(const Span& sp, const AST::Path& base_path, const AST::EnumVariant& v) {
-                        AST::Path   var_path = base_path + v.m_name;
-
-                        TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
-                        (Value,
-                            return AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Named(var_path));
-                            ),
-                        (Tuple,
-                            return AST::Pattern(AST::Pattern::TagNamedTuple(), sp, var_path, AST::Pattern::TuplePat { {}, true, {} });
-                            ),
-                        (Struct,
-                            return AST::Pattern(AST::Pattern::TagStruct(), sp, var_path, {}, false);
-                            )
-                        )
-                        throw "";
-                    }
-                };
-                ::AST::Pattern  pat_a = H::get_pat_nc(sp, base_path, enm.variants()[a]);
-                ::AST::Pattern  pat_b = H::get_pat_nc(sp, base_path, enm.variants()[b]);
-
-                ::std::vector< AST::Pattern>    pats;
-                {
-                    ::std::vector< AST::Pattern>    tuple_pats;
-                    tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), sp, false, mv$(pat_a)) );
-                    tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), sp, false, mv$(pat_b)) );
-                    pats.push_back( AST::Pattern(AST::Pattern::TagTuple(), sp, mv$(tuple_pats)) );
-                }
-
-                auto code = NEWNODE(CallPath, this->get_path(opts.core_name, "option", "Option", "Some"),
-                    ::make_vec1(
-                        NEWNODE(NamedValue, this->get_path(opts.core_name, "cmp", "Ordering", (a < b ? "Less" : "Greater")))
-                        )
-                    );
-
-                arms.push_back(AST::ExprNode_Match_Arm(
-                    mv$(pats),
-                    nullptr,
-                    mv$(code)
-                    ));
-            }
+            arms.push_back(AST::ExprNode_Match_Arm(
+                mv$(pats),
+                nullptr,
+                mv$(code)
+                ));
         }
 
         ::std::vector<AST::ExprNodeP>   vals;
@@ -1217,50 +1184,21 @@ public:
                 ));
         }
 
-        for(unsigned int a = 0; a < enm.variants().size(); a ++ )
+
         {
-            for(unsigned int b = 0; b < enm.variants().size(); b ++ )
-            {
-                if( a == b )
-                    continue ;
+            auto code = NEWNODE(CallPath, this->get_path(opts.core_name, "cmp", "Ord", "cmp"),
+                ::make_vec2(
+                    NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, this->get_path(opts.core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path("self")) )) ),
+                    NEWNODE(UniOp, AST::ExprNode_UniOp::REF, NEWNODE(CallPath, this->get_path(opts.core_name, "intrinsics", "discriminant_value"), make_vec1( NEWNODE(NamedValue, AST::Path("v")) )) )
+                    )
+                );
+            ::std::vector< AST::Pattern>    pats = make_vec1( AST::Pattern() );
 
-                struct H {
-                    static ::AST::Pattern get_pat_nc(const Span& sp, const AST::Path& base_path, const AST::EnumVariant& v) {
-                        AST::Path   var_path = base_path + v.m_name;
-
-                        TU_MATCH(::AST::EnumVariantData, (v.m_data), (e),
-                        (Value,
-                            return AST::Pattern(AST::Pattern::TagValue(), sp, AST::Pattern::Value::make_Named(var_path));
-                            ),
-                        (Tuple,
-                            return AST::Pattern(AST::Pattern::TagNamedTuple(), sp, var_path, AST::Pattern::TuplePat { {}, true, {} });
-                            ),
-                        (Struct,
-                            return AST::Pattern(AST::Pattern::TagStruct(), sp, var_path, {}, false);
-                            )
-                        )
-                        throw "";
-                    }
-                };
-                ::AST::Pattern  pat_a = H::get_pat_nc(sp, base_path, enm.variants()[a]);
-                ::AST::Pattern  pat_b = H::get_pat_nc(sp, base_path, enm.variants()[b]);
-
-                ::std::vector< AST::Pattern>    pats;
-                {
-                    ::std::vector< AST::Pattern>    tuple_pats;
-                    tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), sp, false, mv$(pat_a)) );
-                    tuple_pats.push_back( AST::Pattern(AST::Pattern::TagReference(), sp, false, mv$(pat_b)) );
-                    pats.push_back( AST::Pattern(AST::Pattern::TagTuple(), sp, mv$(tuple_pats)) );
-                }
-
-                auto code = NEWNODE(NamedValue, this->get_path(opts.core_name, "cmp", "Ordering", (a < b ? "Less" : "Greater")));
-
-                arms.push_back(AST::ExprNode_Match_Arm(
-                    mv$(pats),
-                    nullptr,
-                    mv$(code)
-                    ));
-            }
+            arms.push_back(AST::ExprNode_Match_Arm(
+                mv$(pats),
+                nullptr,
+                mv$(code)
+                ));
         }
 
         ::std::vector<AST::ExprNodeP>   vals;
