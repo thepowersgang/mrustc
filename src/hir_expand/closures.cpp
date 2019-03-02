@@ -349,6 +349,8 @@ namespace {
         {
             // NOTE: Fixup isn't needed, there's no self
             //fix_fn_params(code, closure_type, args_argent.second);
+            assert(code.m_bindings.size() > 0);
+            code.m_bindings[0] = ::HIR::TypeRef::new_unit();
             return ::HIR::TraitImpl {
                 mv$(params), {}, mv$(closure_type),
                 make_map1(
@@ -1178,7 +1180,7 @@ namespace {
             ::HIR::SimplePath   root_mod_path(crate.m_crate_name,{});
             m_cur_mod_path = &root_mod_path;
             m_new_type = [&](auto s)->auto {
-                auto name = FMT("closure_I_" << closure_count);
+                auto name = FMT("closure#I_" << closure_count);
                 closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) } ));
                 crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
@@ -1229,7 +1231,7 @@ namespace {
             unsigned int closure_count = 0;
             auto saved_nt = mv$(m_new_type);
             m_new_type = [&](auto s)->auto {
-                auto name = FMT("closure_" << closure_count);
+                auto name = FMT("closure#" << closure_count);
                 closure_count += 1;
                 auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) }) );
                 mod.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
