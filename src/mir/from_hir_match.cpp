@@ -1094,19 +1094,19 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
         }
     TU_ARM(ty.m_data, Path, e) {
         // This is either a struct destructure or an enum
-        TU_MATCHA( (e.binding), (pbe),
-        (Unbound,
+        TU_MATCH_HDRA( (e.binding), {)
+        TU_ARMA(Unbound, pbe) {
             BUG(sp, "Encounterd unbound path - " << e.path);
-            ),
-        (Opaque,
+            }
+        TU_ARMA(Opaque, be) {
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
             ( BUG(sp, "Matching opaque type with invalid pattern - " << pat); ),
             (Any,
                 this->push_rule( PatternRule::make_Any({}) );
                 )
             )
-            ),
-        (Struct,
+            }
+        TU_ARMA(Struct, pbe) {
             auto monomorph = [&](const auto& ty) {
                 auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
@@ -1216,14 +1216,19 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 )
                 )
             )
-            ),
-        (Union,
+            }
+        TU_ARMA(Union, pbe) {
             TODO(sp, "Match over union - " << ty);
-            ),
-        (ExternType,
-            TODO(sp, "Match over extern type - " << ty);
-            ),
-        (Enum,
+            }
+        TU_ARMA(ExternType, pbe) {
+            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+            ( BUG(sp, "Matching extern type with invalid pattern - " << pat); ),
+            (Any,
+                this->push_rule( PatternRule::make_Any({}) );
+                )
+            )
+            }
+        TU_ARMA(Enum, pbe) {
             auto monomorph = [&](const auto& ty) {
                 auto rv = monomorphise_type(sp, pbe->m_params, e.path.m_data.as_Generic().m_params, ty);
                 this->m_resolve.expand_associated_types(sp, rv);
@@ -1310,8 +1315,8 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
                 this->push_rule( PatternRule::make_Variant({ pe.binding_idx, mv$(sub_builder.m_rules) }) );
                 )
             )
-            )
-        )
+            }
+        }
         }
     TU_ARM(ty.m_data, Generic, e) {
         // Generics don't destructure, so the only valid pattern is `_`
