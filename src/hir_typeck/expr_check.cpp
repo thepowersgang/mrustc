@@ -352,15 +352,13 @@ namespace {
                 // - A capture-less closure
                 TU_MATCH_HDRA( (src_ty.m_data), {)
                 default:
-                    // TODO: Closure structs are also allowed, iff they don't have captures
-                    //ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
+                    ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     break;
-                //TU_ARMA(Path, se) {
-                //    }
                 //TU_ARMA(Function, se) {
                 //    }
                 TU_ARMA(Closure, se) {
                     // Allowed, but won't exist after expansion
+                    // TODO: Check argument types
                     }
                 }
                 }
@@ -659,8 +657,8 @@ namespace {
             const ::HIR::Function*  fcn_ptr = nullptr;
             ::std::function<const ::HIR::TypeRef&(const ::HIR::TypeRef&)>    monomorph_cb;
 
-            TU_MATCH(::HIR::Path::Data, (path.m_data), (e),
-            (Generic,
+            TU_MATCH_HDRA( (path.m_data), {)
+            TU_ARMA(Generic, e) {
                 const auto& path_params = e.m_params;
 
                 const auto& fcn = m_resolve.m_crate.get_function_by_path(sp, e.m_path);
@@ -685,8 +683,8 @@ namespace {
                             BUG(sp, "Generic bounding out of total range");
                         }
                     };
-                ),
-            (UfcsKnown,
+                }
+            TU_ARMA(UfcsKnown, e) {
                 const auto& trait_params = e.trait.m_params;
                 const auto& path_params = e.params;
 
@@ -705,11 +703,11 @@ namespace {
                 fcn_ptr = &fcn;
 
                 monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &trait_params, &path_params);
-                ),
-            (UfcsUnknown,
+                }
+            TU_ARMA(UfcsUnknown, e) {
                 TODO(sp, "Hit a UfcsUnknown (" << path << ") - Is this an error?");
-                ),
-            (UfcsInherent,
+                }
+            TU_ARMA(UfcsInherent, e) {
                 // - Locate function (and impl block)
                 const ::HIR::TypeImpl* impl_ptr = nullptr;
                 m_resolve.m_crate.find_type_impls(*e.type, [&](const auto& ty)->const ::HIR::TypeRef& { return ty; },
@@ -731,14 +729,15 @@ namespace {
 
 
                 // NOTE: Trusts the existing cache.
-                ASSERT_BUG(sp, e.impl_params.m_types.size() == impl_ptr->m_params.m_types.size(), "");
+                ASSERT_BUG(sp, e.impl_params.m_types.size() == impl_ptr->m_params.m_types.size(),
+                        "Path impl_params cache is missized - " << e.impl_params.m_types.size() << " != " << impl_ptr->m_params.m_types.size());
                 auto& impl_params = e.impl_params;
 
                 // Create monomorphise callback
                 const auto& fcn_params = e.params;
                 monomorph_cb = monomorphise_type_get_cb(sp, &*e.type, &impl_params, &fcn_params);
-                )
-            )
+                }
+            }
 
             assert( fcn_ptr );
             const auto& fcn = *fcn_ptr;
