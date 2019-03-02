@@ -384,6 +384,10 @@ namespace {
             if( node.m_label != "" ) {
                 m_os << " '" << node.m_label;
             }
+            if( node.m_value ) {
+                m_os << " ";
+                this->visit_node_ptr(node.m_value);
+            }
         }
         void visit(::HIR::ExprNode_Match& node) override
         {
