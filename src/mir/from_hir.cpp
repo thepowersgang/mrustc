@@ -251,12 +251,15 @@ namespace {
                 }
             TU_ARMA(Struct, e) {
                 const auto& str = *e.binding;
-                ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct - " << e.path);
-                const auto& fields = str.m_data.as_Named();
-                for(const auto& fld_pat : e.sub_patterns)
+                if( !e.sub_patterns.empty() )
                 {
-                    unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
-                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval.clone() ), idx}), allow_refutable);
+                    ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct - " << pat);
+                    const auto& fields = str.m_data.as_Named();
+                    for(const auto& fld_pat : e.sub_patterns)
+                    {
+                        unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
+                        destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval.clone() ), idx}), allow_refutable);
+                    }
                 }
                 }
             // Refutable
@@ -1256,11 +1259,10 @@ namespace {
 
             auto val = m_builder.get_result_in_lvalue(node.m_value->span(), node.m_value->m_res_type);
 
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_out.m_data), (de),
-            (
+            TU_MATCH_HDRA( (ty_out.m_data), {)
+            default:
                 BUG(node.span(), "Invalid cast to " << ty_out << " from " << ty_in);
-                ),
-            (Pointer,
+            TU_ARMA(Pointer, de) {
                 if( ty_in.m_data.is_Primitive() ) {
                     const auto& ie = ty_in.m_data.as_Primitive();
                     switch(ie)
@@ -1294,8 +1296,8 @@ namespace {
                 else {
                     BUG(node.span(), "Cannot cast to pointer from " << ty_in);
                 }
-                ),
-            (Primitive,
+                }
+            TU_ARMA(Primitive, de) {
                 switch(de)
                 {
                 case ::HIR::CoreType::Str:
@@ -1362,8 +1364,8 @@ namespace {
                     }
                     break;
                 }
-                )
-            )
+                }
+            }
             auto res = m_builder.new_temporary(node.m_res_type);
             m_builder.push_stmt_assign(node.span(), res.clone(), ::MIR::RValue::make_Cast({ mv$(val), node.m_res_type.clone() }));
             m_builder.set_result( node.span(), mv$(res) );
@@ -1506,8 +1508,8 @@ namespace {
             this->visit_node_ptr(node.m_value);
             auto val = m_builder.get_result_in_lvalue(node.m_value->span(), ty_val);
 
-            TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty_val.m_data), (te),
-            (
+            TU_MATCH_HDRA( (ty_val.m_data), {)
+            default: {
                 if( m_builder.is_type_owned_box( ty_val ) )
                 {
                     // Box magically derefs.
@@ -1568,14 +1570,14 @@ namespace {
 
                     m_builder.set_cur_block(ok_block);
                 }
-                ),
-            (Pointer,
+                }
+            TU_ARMA(Pointer, te) {
                 // Deref on a pointer - TODO: Requires unsafe
-                ),
-            (Borrow,
+                }
+            TU_ARMA(Borrow, te) {
                 // Deref on a borrow - Always valid... assuming borrowck is there :)
-                )
-            )
+                }
+            }
 
             m_builder.set_result( node.span(), ::MIR::LValue::make_Deref({ box$(val) }) );
         }
