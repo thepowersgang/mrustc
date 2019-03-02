@@ -184,102 +184,108 @@ namespace {
     }
 }   // namespace
 
-::HIR::Pattern HIR::Pattern::clone() const
+namespace { ::HIR::Pattern::Data clone_pattern_data(const ::HIR::Pattern::Data& m_data)
 {
     TU_MATCH(::HIR::Pattern::Data, (m_data), (e),
     (Any,
-        return Pattern(m_binding, Data::make_Any({}));
+        return ::HIR::Pattern::Data::make_Any({});
         ),
     (Box,
-        return Pattern(m_binding, Data::make_Box({
+        return ::HIR::Pattern::Data::make_Box({
             box$( e.sub->clone() )
-            }));
+            });
         ),
     (Ref,
-        return Pattern(m_binding, Data::make_Ref({
+        return ::HIR::Pattern::Data::make_Ref({
             e.type, box$(e.sub->clone())
-            }));
+            });
         ),
     (Tuple,
-        return Pattern(m_binding, Data::make_Tuple({
+        return ::HIR::Pattern::Data::make_Tuple({
             clone_pat_vec(e.sub_patterns)
-            }));
+            });
         ),
     (SplitTuple,
-        return Pattern(m_binding, Data::make_SplitTuple({
+        return ::HIR::Pattern::Data::make_SplitTuple({
             clone_pat_vec(e.leading),
             clone_pat_vec(e.trailing),
             e.total_size
-            }));
+            });
         ),
     (StructValue,
-        return Pattern(m_binding, Data::make_StructValue({
+        return ::HIR::Pattern::Data::make_StructValue({
             e.path.clone(), e.binding
-            }));
+            });
         ),
     (StructTuple,
-        return Pattern(m_binding, Data::make_StructTuple({
+        return ::HIR::Pattern::Data::make_StructTuple({
             e.path.clone(),
             e.binding,
             clone_pat_vec(e.sub_patterns)
-            }));
+            });
         ),
     (Struct,
-        return Pattern(m_binding, Data::make_Struct({
+        return ::HIR::Pattern::Data::make_Struct({
             e.path.clone(),
             e.binding,
             clone_pat_fields(e.sub_patterns),
             e.is_exhaustive
-            }));
+            });
         ),
 
     (Value,
-        return Pattern(m_binding, Data::make_Value({
+        return ::HIR::Pattern::Data::make_Value({
             clone_patval(e.val)
-            }));
+            });
         ),
     (Range,
-        return Pattern(m_binding, Data::make_Range({
+        return ::HIR::Pattern::Data::make_Range({
             clone_patval(e.start),
             clone_patval(e.end)
-            }));
+            });
         ),
 
     (EnumValue,
-        return Pattern(m_binding, Data::make_EnumValue({ e.path.clone(), e.binding_ptr, e.binding_idx }));
+        return ::HIR::Pattern::Data::make_EnumValue({ e.path.clone(), e.binding_ptr, e.binding_idx });
         ),
     (EnumTuple,
-        return Pattern(m_binding, Data::make_EnumTuple({
+        return ::HIR::Pattern::Data::make_EnumTuple({
             e.path.clone(),
             e.binding_ptr,
             e.binding_idx,
             clone_pat_vec(e.sub_patterns)
-            }));
+            });
         ),
     (EnumStruct,
-        return Pattern(m_binding, Data::make_EnumStruct({
+        return ::HIR::Pattern::Data::make_EnumStruct({
             e.path.clone(),
             e.binding_ptr,
             e.binding_idx,
             clone_pat_fields(e.sub_patterns),
             e.is_exhaustive
-            }));
+            });
         ),
     (Slice,
-        return Pattern(m_binding, Data::make_Slice({
+        return ::HIR::Pattern::Data::make_Slice({
             clone_pat_vec(e.sub_patterns)
-            }));
+            });
         ),
     (SplitSlice,
-        return Pattern(m_binding, Data::make_SplitSlice({
+        return ::HIR::Pattern::Data::make_SplitSlice({
             clone_pat_vec(e.leading),
             e.extra_bind,
             clone_pat_vec(e.trailing)
-            }));
+            });
         )
     )
 
     throw "";
+} }
+::HIR::Pattern HIR::Pattern::clone() const
+{
+    auto rv = Pattern(m_binding, clone_pattern_data(m_data));
+    rv.m_implicit_deref_count = m_implicit_deref_count;
+    return rv;
 }
 
 
