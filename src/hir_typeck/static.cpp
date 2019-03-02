@@ -105,7 +105,8 @@ bool StaticTraitResolve::find_impl(
             }
         }
         else if( TARGETVER_1_29 && trait_path == m_lang_Clone ) {
-            if( type.m_data.is_Tuple() || type.m_data.is_Array() || type.m_data.is_Function() )
+            if( type.m_data.is_Tuple() || type.m_data.is_Array() || type.m_data.is_Function() || type.m_data.is_Closure()
+                    || TU_TEST2(type.m_data, Path, .path.m_data, Generic, .m_path.m_components.back().compare(0, 8, "closure#") == 0 ) )
             {
                 if( this->type_is_clone(sp, type) ) {
                     return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
@@ -1517,10 +1518,17 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
         return rv;
         ),
     (Path,
-        {
+        if(true) {
             auto it = m_clone_cache.find(ty);
             if( it != m_clone_cache.end() )
                 return it->second;
+        }
+        if( TU_TEST1(e.path.m_data, Generic, .m_path.m_components.back().compare(0, 8, "closure#") == 0 ) )
+        {
+            bool rv = true;
+            // TODO: Check all captures
+            m_clone_cache.insert(::std::make_pair( ty.clone(), rv ));
+            return rv;
         }
         auto pp = ::HIR::PathParams();
         bool rv = this->find_impl(sp, m_lang_Clone, &pp, ty, [&](auto , bool){ return true; }, true);
@@ -2257,12 +2265,12 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
         m_crate.find_type_impls(*pe.type, [](const auto&x)->const ::HIR::TypeRef& { return x; }, [&](const auto& impl) {
             DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
             // TODO: Populate pp_impl
-            ASSERT_BUG(sp, impl.m_params.m_types.size() == pe.impl_params.m_types.size(), "");
             // TODO: Specialisation
             {
                 auto fit = impl.m_methods.find(pe.item);
                 if( fit != impl.m_methods.end() )
                 {
+                    ASSERT_BUG(sp, impl.m_params.m_types.size() == pe.impl_params.m_types.size(), "Mismatch in param counts " << p << ", params are " << impl.m_params.fmt_args());
                     DEBUG("- Contains method, good");
                     rv = ValuePtr { &fit->second.data };
                     return true;
@@ -2272,6 +2280,7 @@ StaticTraitResolve::ValuePtr StaticTraitResolve::get_value(const Span& sp, const
                 auto it = impl.m_constants.find(pe.item);
                 if( it != impl.m_constants.end() )
                 {
+                    ASSERT_BUG(sp, impl.m_params.m_types.size() == pe.impl_params.m_types.size(), "Mismatch in param counts " << p << ", params are " << impl.m_params.fmt_args());
                     rv = ValuePtr { &it->second.data };
                     return true;
                 }
