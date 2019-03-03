@@ -117,6 +117,7 @@ namespace {
 {
     static Span sp;
     TRACE_FUNCTION;
+    assert(tpl);
 
     ::MIR::Function output;
 
@@ -350,6 +351,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             const auto& path = fcn_ent.first;
             const auto& pp = fcn_ent.second->pp;
             TRACE_FUNCTION_FR(path, path);
+            ASSERT_BUG(Span(), fcn.m_code.m_mir, "No code for " << path);
 
             auto mir = Trans_Monomorphise(resolve, fcn_ent.second->pp, fcn.m_code.m_mir);
 
