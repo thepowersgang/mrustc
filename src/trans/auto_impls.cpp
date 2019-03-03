@@ -44,6 +44,48 @@ namespace {
     };
 }
 
+namespace {
+    ::MIR::Param clone_field(const State& state, const Span& sp, ::MIR::Function& mir_fcn, const ::HIR::TypeRef& subty, ::MIR::LValue fld_lvalue)
+    {
+        if( state.resolve.type_is_copy(sp, subty) )
+        {
+            return ::std::move(fld_lvalue);
+        }
+        else
+        {
+            const auto& lang_Clone = state.resolve.m_crate.get_lang_item_path(sp, "clone");
+            // Allocate to locals (one for the `&T`, the other for the cloned `T`)
+            auto borrow_lv = ::MIR::LValue::make_Local( mir_fcn.locals.size() );
+            mir_fcn.locals.push_back(::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, subty.clone()));
+            auto res_lv = ::MIR::LValue::make_Local( mir_fcn.locals.size() );
+            mir_fcn.locals.push_back(subty.clone());
+
+            // Call `<T as Clone>::clone`, passing a borrow of the field
+            ::MIR::BasicBlock   bb;
+            bb.statements.push_back(::MIR::Statement::make_Assign({
+                    borrow_lv.clone(),
+                    ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
+                    }));
+            bb.terminator = ::MIR::Terminator::make_Call({
+                    static_cast<unsigned>(mir_fcn.blocks.size() + 2),  // return block (after the panic block below)
+                    static_cast<unsigned>(mir_fcn.blocks.size() + 1),  // panic block (next block)
+                    res_lv.clone(),
+                    ::MIR::CallTarget( ::HIR::Path(subty.clone(), lang_Clone, "clone") ),
+                    ::make_vec1<::MIR::Param>( ::std::move(borrow_lv) )
+                    });
+            mir_fcn.blocks.push_back(::std::move( bb ));
+
+            // Stub panic handling (TODO: Make this iterate `values` and drop all of them)
+            ::MIR::BasicBlock   panic_bb;
+            bb.terminator = ::MIR::Terminator::make_Diverge({});
+            mir_fcn.blocks.push_back(::std::move( panic_bb ));
+
+            // Save the output of the `clone` call
+            return ::std::move(res_lv);
+        }
+    }
+}
+
 void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
 {
     Span    sp;
@@ -63,53 +105,64 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     }
     else
     {
-        const auto& lang_Clone = state.resolve.m_crate.get_lang_item_path(sp, "clone");
         TU_MATCH_HDRA( (ty.m_data), {)
         default:
-            TODO(sp, "auto Clone for " << ty << " - Not Copy");
+            TODO(sp, "auto Clone for " << ty << " - Unknown and not Copy");
+        TU_ARMA(Path, te) {
+            // closures are identified by the name starting with 'closure#'
+            if( TU_TEST1(te.path.m_data, Generic, .m_path.m_components.back().compare(0, 8, "closure#") == 0) ) {
+                const auto& gp = te.path.m_data.as_Generic();
+                const auto& str = state.resolve.m_crate.get_struct_by_path(sp, gp.m_path);
+                Trans_Params p;
+                p.sp = sp;
+                p.pp_impl = gp.m_params.clone();
+                ::std::vector< ::MIR::Param>   values; values.reserve( str.m_data.as_Tuple().size() );
+                for(const auto& fld : str.m_data.as_Tuple())
+                {
+                    ::HIR::TypeRef  tmp;
+                    const auto& ty_m = monomorphise_type_needed(fld.ent) ? (tmp = p.monomorph(state.resolve, fld.ent)) : fld.ent;
+                    auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), static_cast<unsigned>(values.size()) });
+                    values.push_back( clone_field(state, sp, mir_fcn, ty_m, mv$(fld_lvalue)) );
+                }
+                // Construct the result value
+                ::MIR::BasicBlock   bb;
+                bb.statements.push_back(::MIR::Statement::make_Assign({
+                    ::MIR::LValue::make_Return({}),
+                    ::MIR::RValue::make_Struct({ gp.clone(), mv$(values) })
+                    }));
+                bb.terminator = ::MIR::Terminator::make_Return({});
+                mir_fcn.blocks.push_back(::std::move( bb ));
+            }
+            else {
+                TODO(sp, "auto Clone for " << ty << " - Unknown and not Copy");
+            }
+            }
+        TU_ARMA(Array, te) {
+            ASSERT_BUG(sp, te.size_val < 256, "TODO: Is more than 256 elements sane for auto-generated non-Copy Clone impl? " << ty);
+            ::std::vector< ::MIR::Param>   values; values.reserve(te.size_val);
+            for(size_t i = 0; i < te.size_val; i ++)
+            {
+                auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), static_cast<unsigned>(i) });
+                values.push_back( clone_field(state, sp, mir_fcn, *te.inner, mv$(fld_lvalue)) );
+            }
+            // Construct the result
+            ::MIR::BasicBlock   bb;
+            bb.statements.push_back(::MIR::Statement::make_Assign({
+                ::MIR::LValue::make_Return({}),
+                ::MIR::RValue::make_Array({ mv$(values) })
+                }));
+            bb.terminator = ::MIR::Terminator::make_Return({});
+            mir_fcn.blocks.push_back(::std::move( bb ));
+            }
         TU_ARMA(Tuple, te) {
             assert(te.size() > 0);
 
-            ::std::vector< ::MIR::Param>   values;
+            ::std::vector< ::MIR::Param>   values; values.reserve(te.size());
             // For each field of the tuple, create a clone (either using Copy if posible, or calling Clone::clone)
             for(const auto& subty : te)
             {
                 auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), static_cast<unsigned>(values.size()) });
-                if( state.resolve.type_is_copy(sp, subty) )
-                {
-                    values.push_back( ::std::move(fld_lvalue) );
-                }
-                else
-                {
-                    // Allocate to locals (one for the `&T`, the other for the cloned `T`)
-                    auto borrow_lv = ::MIR::LValue::make_Local( mir_fcn.locals.size() );
-                    mir_fcn.locals.push_back(::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, subty.clone()));
-                    auto res_lv = ::MIR::LValue::make_Local( mir_fcn.locals.size() );
-                    mir_fcn.locals.push_back(subty.clone());
-
-                    // Call `<T as Clone>::clone`, passing a borrow of the field
-                    ::MIR::BasicBlock   bb;
-                    bb.statements.push_back(::MIR::Statement::make_Assign({
-                            borrow_lv.clone(),
-                            ::MIR::RValue::make_Borrow({ 0, ::HIR::BorrowType::Shared, mv$(fld_lvalue) })
-                            }));
-                    bb.terminator = ::MIR::Terminator::make_Call({
-                            static_cast<unsigned>(mir_fcn.blocks.size() + 2),  // return block (after the panic block below)
-                            static_cast<unsigned>(mir_fcn.blocks.size() + 1),  // panic block (next block)
-                            res_lv.clone(),
-                            ::MIR::CallTarget( ::HIR::Path(subty.clone(), lang_Clone, "clone") ),
-                            ::make_vec1<::MIR::Param>( ::std::move(borrow_lv) )
-                            });
-                    mir_fcn.blocks.push_back(::std::move( bb ));
-
-                    // Stub panic handling (TODO: Make this iterate `values` and drop all of them)
-                    ::MIR::BasicBlock   panic_bb;
-                    bb.terminator = ::MIR::Terminator::make_Diverge({});
-                    mir_fcn.blocks.push_back(::std::move( panic_bb ));
-
-                    // Save the output of the `clone` call
-                    values.push_back( ::std::move(res_lv) );
-                }
+                values.push_back( clone_field(state, sp, mir_fcn, subty, mv$(fld_lvalue)) );
             }
 
             // Construct the result tuple
