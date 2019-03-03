@@ -1169,6 +1169,7 @@ namespace {
             TRACE_FUNCTION_F(p);
             auto item_ty = ::HIR::TypeRef::new_path(p.clone(), &item);
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, item_ty);
+            MIR_ASSERT(*m_mir_res, repr, "No repr for struct " << p);
 
             ::std::vector<unsigned> fields;
             for(const auto& ent : repr->fields)
@@ -5843,8 +5844,8 @@ namespace {
                     m_of << "struct e_" << Trans_Mangle(te.path);
                     ),
                 (ExternType,
-                    m_of << "struct x_" << Trans_Mangle(te.path);
-                    //return ;
+                    //m_of << "struct x_" << Trans_Mangle(te.path);
+                    return ;
                     ),
                 (Unbound,
                     MIR_BUG(*m_mir_res, "Unbound type path in trans - " << ty);
