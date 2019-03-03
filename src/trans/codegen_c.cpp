@@ -5659,6 +5659,7 @@ namespace {
                         }
                         else
                         {
+                            m_of << "(int128_t)";
                             m_of << c.v;
                             m_of << "ll";
                         }
@@ -5692,6 +5693,7 @@ namespace {
                     }
                     else
                     {
+                        m_of << "(uint128_t)";
                         m_of << ::std::hex << "0x" << c.v << "ull" << ::std::dec;
                     }
                     break;
