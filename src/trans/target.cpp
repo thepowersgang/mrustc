@@ -589,6 +589,13 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
     (Path,
         if( te.binding.is_Opaque() )
             return false;
+        if( te.binding.is_ExternType() )
+        {
+            DEBUG("sizeof on extern type - unsized");
+            out_align = 0;
+            out_size = SIZE_MAX;
+            return true;
+        }
         const auto* repr = Target_GetTypeRepr(sp, resolve, ty);
         if( !repr )
         {
@@ -1157,6 +1164,11 @@ namespace {
         else if( TU_TEST1(ty.m_data, Path, .binding.is_Enum()) )
         {
             return make_type_repr_enum(sp, resolve, ty);
+        }
+        else if( TU_TEST1(ty.m_data, Path, .binding.is_ExternType()) )
+        {
+            // TODO: Do extern types need anything?
+            return nullptr;
         }
         else if( ty.m_data.is_Primitive() )
         {
