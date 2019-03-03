@@ -536,6 +536,13 @@
             }
         }
 
+        ::HIR::ExternType deserialise_externtype()
+        {
+            return ::HIR::ExternType {
+                deserialise_markings()
+                };
+        }
+
         ::HIR::TypeItem deserialise_typeitem()
         {
             switch(auto tag = m_in.read_tag())
@@ -557,6 +564,8 @@
                 return ::HIR::TypeItem( deserialise_trait() );
             case 6:
                 return ::HIR::TypeItem( deserialise_union() );
+            case 7:
+                return ::HIR::TypeItem( deserialise_externtype() );
             default:
                 BUG(Span(), "Bad tag for HIR::TypeItem - " << tag);
             }
