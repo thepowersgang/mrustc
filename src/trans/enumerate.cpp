@@ -1205,6 +1205,7 @@ namespace {
             const auto& trait_vi = trait_vi_it->second;
 
             bool is_dynamic = false;
+            bool any_impl = false;
             ::std::vector<::HIR::TypeRef>    best_impl_params;
             const ::HIR::TraitImpl* best_impl = nullptr;
             resolve.find_impl(sp, pe->trait.m_path, pe->trait.m_params, *pe->type, [&](auto impl_ref, auto is_fuzz) {
@@ -1216,12 +1217,12 @@ namespace {
                     // TODO: This can only really happen if it's a trait object magic impl, which should become a vtable lookup.
                     return true;
                 }
+                any_impl = true;
                 const auto& impl_ref_e = impl_ref.m_data.as_TraitImpl();
                 const auto& impl = *impl_ref_e.impl;
                 ASSERT_BUG(sp, impl.m_trait_args.m_types.size() == pe->trait.m_params.m_types.size(), "Trait parameter count mismatch " << impl.m_trait_args << " vs " << pe->trait.m_params);
 
                 if( best_impl == nullptr || impl.more_specific_than(*best_impl) ) {
-                    best_impl = &impl;
                     bool is_spec = false;
                     TU_MATCHA( (trait_vi), (ve),
                     (Constant,
@@ -1235,7 +1236,8 @@ namespace {
                     (Static,
                         if( pe->item == "vtable#" ) {
                             is_spec = true;
-                            break;
+                            DEBUG("VTable, quick return");
+                            return true;
                         }
                         auto it = impl.m_statics.find(pe->item);
                         if( it == impl.m_statics.end() ) {
@@ -1253,6 +1255,7 @@ namespace {
                         is_spec = fit->second.is_specialisable;
                         )
                     )
+                    best_impl = &impl;
                     best_impl_params.clear();
                     for(unsigned int i = 0; i < impl_ref_e.params.size(); i ++)
                     {
@@ -1271,50 +1274,62 @@ namespace {
                 });
             if( is_dynamic )
                 return EntPtr::make_AutoGenerate( {} );
-            if( !best_impl )
+            if( !any_impl )
                 return EntPtr {};
-            const auto& impl = *best_impl;
+            if( best_impl )
+            {
+                const auto& impl = *best_impl;
 
-            impl_pp.m_types = mv$(best_impl_params);
+                impl_pp.m_types = mv$(best_impl_params);
 
-            TU_MATCHA( (trait_vi), (ve),
-            (Constant,
-                auto it = impl.m_constants.find(pe->item);
-                if( it != impl.m_constants.end() )
-                {
+                // Fallback on default/provided items
+                TU_MATCH_HDRA( (trait_vi), {)
+                TU_ARMA(Constant, ve) {
+                    auto it = impl.m_constants.find(pe->item);
+                    ASSERT_BUG(sp, it != impl.m_constants.end(), "best_impl set, but item not found - " << path);
                     DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                     return EntPtr { &it->second.data };
-                }
-                TODO(sp, "Associated constant - " << path);
-                ),
-            (Static,
-                if( pe->item == "vtable#" )
-                {
-                    DEBUG("VTable, autogen");
-                    return EntPtr::make_AutoGenerate( {} );
-                }
-                auto it = impl.m_statics.find(pe->item);
-                if( it != impl.m_statics.end() )
-                {
+                    }
+                TU_ARMA(Static, ve) {
+                    assert(pe->item != "vtable#");
+                    auto it = impl.m_statics.find(pe->item);
+                    ASSERT_BUG(sp, it != impl.m_statics.end(), "best_impl set, but item not found - " << path);
                     DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                     return EntPtr { &it->second.data };
-                }
-                TODO(sp, "Associated static - " << path);
-                ),
-            (Function,
-                auto fit = impl.m_methods.find(pe->item);
-                if( fit != impl.m_methods.end() )
-                {
+                    }
+                TU_ARMA(Function, ve) {
+                    auto fit = impl.m_methods.find(pe->item);
+                    ASSERT_BUG(sp, fit != impl.m_methods.end(), "best_impl set, but item not found - " << path);
                     DEBUG("Found impl" << impl.m_params.fmt_args() << " " << impl.m_type);
                     return EntPtr { &fit->second.data };
+                    }
                 }
-                impl_pp = pe->trait.m_params.clone();
-                // HACK! By adding a new parameter here, the MIR will always be monomorphised
-                impl_pp.m_types.push_back( ::HIR::TypeRef() );
-                return EntPtr { &ve };
-                )
-            )
-            BUG(sp, "");
+            }
+            else
+            {
+                // Fallback on default/provided items
+                TU_MATCH_HDRA( (trait_vi), {)
+                TU_ARMA(Constant, ve) {
+                    TODO(sp, "Associated constant - " << path);
+                    }
+                TU_ARMA(Static, ve) {
+                    if( pe->item == "vtable#" )
+                    {
+                        DEBUG("VTable, autogen");
+                        return EntPtr::make_AutoGenerate( {} );
+                    }
+                    TODO(sp, "Associated static - " << path);
+                    }
+                TU_ARMA(Function, ve) {
+                    ASSERT_BUG(sp, ve.m_code.m_mir, "Attempting to use default method with no body MIR - " << path);
+                    impl_pp = pe->trait.m_params.clone();
+                    // HACK! By adding a new parameter here, the MIR will always be monomorphised
+                    impl_pp.m_types.push_back( ::HIR::TypeRef() );
+                    return EntPtr { &ve };
+                    }
+                }
+            }
+            throw "unreachable";
         }
         else
         {
@@ -1331,6 +1346,24 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
     Span    sp;
     auto path_mono = pp.monomorph(state.crate, path);
     DEBUG("- " << path_mono);
+    // TODO: If already in the list, return early
+    if( state.rv.m_functions.count(path) ) {
+        DEBUG("> Already done function");
+        return ;
+    }
+    if( state.rv.m_statics.count(path) ) {
+        DEBUG("> Already done static");
+        return ;
+    }
+    if( state.rv.m_constants.count(path) ) {
+        DEBUG("> Already done constant");
+        return ;
+    }
+    if( state.rv.m_vtables.count(path) ) {
+        DEBUG("> Already done vtable");
+        return ;
+    }
+
     Trans_Params  sub_pp(sp);
     TU_MATCHA( (path_mono.m_data), (pe),
     (Generic,
@@ -1352,11 +1385,11 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
     // Get the item type
     // - Valid types are Function and Static
     auto item_ref = get_ent_fullpath(sp, state.crate, path_mono, sub_pp.pp_impl);
-    TU_MATCHA( (item_ref), (e),
-    (NotFound,
+    TU_MATCH_HDRA( (item_ref), {)
+    TU_ARMA(NotFound, e) {
         BUG(sp, "Item not found for " << path_mono);
-        ),
-    (AutoGenerate,
+        }
+    TU_ARMA(AutoGenerate, e) {
         if( path_mono.m_data.is_Generic() )
         {
             // Leave generation of struct/enum constructors to codgen
@@ -1390,7 +1423,7 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         else if( TARGETVER_1_29 && path_mono.m_data.is_UfcsKnown() && path_mono.m_data.as_UfcsKnown().trait == state.crate.get_lang_item_path_opt("clone") )
         {
             const auto& pe = path_mono.m_data.as_UfcsKnown();
-            ASSERT_BUG(sp, pe.item == "clone", "");
+            ASSERT_BUG(sp, pe.item == "clone" || pe.item == "clone_from", "Unexpected Clone method called, " << path_mono);
             const auto& inner_ty = *pe.type;
             // If this is !Copy, then we need to ensure that the inner type's clone impls are also available
             ::StaticTraitResolve    resolve { state.crate };
@@ -1399,7 +1432,7 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
                 auto enum_impl = [&](const ::HIR::TypeRef& ity) {
                     if( !resolve.type_is_copy(sp, ity) )
                     {
-                        auto p = ::HIR::Path(ity.clone(), pe.trait.clone(), "clone");
+                        auto p = ::HIR::Path(ity.clone(), pe.trait.clone(), pe.item);
                         Trans_Enumerate_FillFrom_Path(state, p, {});
                     }
                     };
@@ -1407,6 +1440,22 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
                     for(const auto& ity : *te)
                     {
                         enum_impl(ity);
+                    }
+                }
+                else if( const auto* te = inner_ty.m_data.opt_Array() ) {
+                    enum_impl(*te->inner);
+                }
+                else if( TU_TEST2(inner_ty.m_data, Path, .path.m_data, Generic, .m_path.m_components.back().compare(0, 8, "closure#") == 0) ) {
+                    const auto& gp = inner_ty.m_data.as_Path().path.m_data.as_Generic();
+                    const auto& str = state.crate.get_struct_by_path(sp, gp.m_path);
+                    Trans_Params p;
+                    p.sp = sp;
+                    p.pp_impl = gp.m_params.clone();
+                    for(const auto& fld : str.m_data.as_Tuple())
+                    {
+                        ::HIR::TypeRef  tmp;
+                        const auto& ty_m = monomorphise_type_needed(fld.ent) ? (tmp = p.monomorph(resolve, fld.ent)) : fld.ent;
+                        enum_impl(ty_m);
                     }
                 }
                 else {
@@ -1420,21 +1469,21 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         {
             BUG(sp, "AutoGenerate returned for unknown path type - " << path_mono);
         }
-        ),
-    (Function,
+        }
+    TU_ARMA(Function, e) {
         // Add this path (monomorphised) to the queue
         state.enum_fcn(mv$(path_mono), *e, mv$(sub_pp));
-        ),
-    (Static,
+        }
+    TU_ARMA(Static, e) {
         if( auto* ptr = state.rv.add_static(mv$(path_mono)) )
         {
             Trans_Enumerate_FillFrom(state, *e, *ptr, mv$(sub_pp));
         }
-        ),
-    (Constant,
+        }
+    TU_ARMA(Constant, e) {
         Trans_Enumerate_FillFrom_Literal(state, e->m_value_res, sub_pp);
-        )
-    )
+        }
+    }
 }
 void Trans_Enumerate_FillFrom_MIR_LValue(EnumState& state, const ::MIR::LValue& lv, const Trans_Params& pp)
 {
