@@ -1922,11 +1922,45 @@ namespace {
         break;
 
     case TOK_RWORD_MACRO:
-        if( TARGETVER_1_19 )
+        if( TARGETVER_1_29 )
+        {
+            GET_CHECK_TOK(tok, lex, TOK_IDENT);
+            auto name = tok.str();
+            if( lex.lookahead(0) != TOK_PAREN_OPEN )
+            {
+                GET_TOK(tok, lex);
+                throw ParseError::Unexpected(lex, tok);
+            }
+
+            //::std::vector< ::std::string>   names;
+            //auto arm_pat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
+            auto args_tt = Parse_TT(lex, false);
+            if( lex.lookahead(0) != TOK_BRACE_OPEN )
+            {
+                GET_TOK(tok, lex);
+                throw ParseError::Unexpected(lex, tok);
+            }
+            //auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, names);
+            auto body_tt = Parse_TT(lex, false);
+
+            // TODO: Invoke the macro_rules parsers here
+            // - Could also do the same level of parsing when `macro_rules! foo {` is seen (i.e. parse macros at parse
+            //   time, instead of during expand).
+            // - That would simplify some of the expand logic...
+
+            // Lazy option: create a TT
+            ::std::vector<TokenTree>    out;
+            out.push_back(mv$(args_tt));
+            out.push_back(TokenTree( Token(TOK_FATARROW) ));
+            out.push_back(mv$(body_tt));
+
+            item_name = "";
+            item_data = ::AST::Item( AST::MacroInvocation(lex.end_span(ps), "macro_rules", name, TokenTree({}, mv$(out))) );
+        }
+        else
         {
             throw ParseError::Unexpected(lex, tok);
         }
-        TODO(lex.point_span(), "macro items");
         break;
 
     case TOK_RWORD_MOD: {
