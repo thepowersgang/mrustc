@@ -47,6 +47,9 @@ struct LowerHIR_ExprNode_Visitor:
 
         m_rv.reset( static_cast< ::HIR::ExprNode*>(rv) );
     }
+    virtual void visit(::AST::ExprNode_Try& v) override {
+        TODO(v.span(), "Handle _Try");
+    }
     virtual void visit(::AST::ExprNode_Macro& v) override {
         BUG(v.span(), "Hit ExprNode_Macro");
     }

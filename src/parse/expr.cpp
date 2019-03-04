@@ -254,6 +254,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
         case TOK_BRACE_OPEN:
             { PUTBACK(tok, lex); ret = Parse_ExprBlockNode(lex); }
 
+            // If the block is followed by `.` or `?`, it's actually an expression!
             if( lex.lookahead(0) == TOK_DOT || lex.lookahead(0) == TOK_QMARK ) {
                 lex.putback( Token(Token::TagTakeIP(), InterpolatedFragment(InterpolatedFragment::EXPR, ret.release())) );
                 return Parse_ExprBlockLine_Stmt(lex, *add_silence);
@@ -468,6 +469,17 @@ ExprNodeP Parse_Expr_Match(TokenStream& lex)
     CHECK_TOK(tok, TOK_BRACE_CLOSE);
 
     return NEWNODE( AST::ExprNode_Match, ::std::move(switch_val), ::std::move(arms) );
+}
+
+/// "do catch" block
+ExprNodeP Parse_Expr_Try(TokenStream& lex)
+{
+    TRACE_FUNCTION;
+    //Token   tok;
+
+    auto inner = Parse_ExprBlockNode(lex);
+    //TODO(lex.point_span(), "do catch");
+    return NEWNODE(AST::ExprNode_Try, ::std::move(inner));
 }
 
 /// Parses the 'stmt' fragment specifier
@@ -1126,6 +1138,23 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         return Parse_WhileStmt(lex, "");
     case TOK_RWORD_FOR:
         return Parse_ForStmt(lex, "");
+    case TOK_RWORD_DO:
+        if( TARGETVER_1_29 )
+        {
+            // `do catch` - stabilised later as `try`
+            if( GET_TOK(tok, lex) == TOK_IDENT && tok.str() == "catch" )
+            {
+                return Parse_Expr_Try(lex);
+            }
+            else
+            {
+                throw ParseError::Unexpected(lex, tok);
+            }
+        }
+        else
+        {
+            throw ParseError::Unexpected(lex, tok);
+        }
     case TOK_RWORD_MATCH:
         return Parse_Expr_Match(lex);
     case TOK_RWORD_IF:

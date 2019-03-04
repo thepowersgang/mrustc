@@ -93,6 +93,12 @@ NODE(ExprNode_Block, {
     return NEWNODE(ExprNode_Block, m_is_unsafe, m_yields_final_value, mv$(nodes), m_local_mod);
 })
 
+NODE(ExprNode_Try, {
+    os << "try " << *m_inner;
+},{
+    return NEWNODE(ExprNode_Try, m_inner->clone());
+})
+
 NODE(ExprNode_Macro, {
     os << m_name << "!";
     if( m_ident.size() > 0 )
@@ -470,6 +476,9 @@ NV(ExprNode_Block, {
     for( auto& child : node.m_nodes )
         visit(child);
     //UNINDENT();
+})
+NV(ExprNode_Try, {
+    visit(node.m_inner);
 })
 NV(ExprNode_Macro,
 {

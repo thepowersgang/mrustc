@@ -547,6 +547,9 @@ struct CExpandExpr:
 
         this->modstack = mv$(prev_modstack);
     }
+    void visit(::AST::ExprNode_Try& node) override {
+        this->visit_nodelete(node, node.m_inner);
+    }
     void visit(::AST::ExprNode_Asm& node) override {
         for(auto& v : node.m_output)
             this->visit_nodelete(node, v.value);

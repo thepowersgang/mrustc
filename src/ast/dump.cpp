@@ -71,6 +71,10 @@ public:
         dec_indent();
         m_os << indent() << "}";
     }
+    virtual void visit(AST::ExprNode_Try& n) override {
+        m_os << "try ";
+        AST::NodeVisitor::visit(n.m_inner);
+    }
     virtual void visit(AST::ExprNode_Macro& n) override {
         m_expr_root = false;
         m_os << n.m_name << "!( /* TODO: Macro TT */ )";

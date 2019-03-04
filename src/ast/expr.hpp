@@ -74,6 +74,19 @@ struct ExprNode_Block:
     NODE_METHODS();
 };
 
+struct ExprNode_Try:
+    public ExprNode
+{
+    ExprNodeP   m_inner;
+
+    ExprNode_Try(ExprNodeP inner):
+        m_inner(mv$(inner))
+    {
+    }
+
+    NODE_METHODS();
+};
+
 struct ExprNode_Macro:
     public ExprNode
 {
@@ -633,6 +646,7 @@ public:
         virtual void visit(nt& node) = 0/*; \
         virtual void visit(const nt& node) = 0*/
     NT(ExprNode_Block);
+    NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
     NT(ExprNode_Flow);
@@ -678,6 +692,7 @@ public:
         virtual void visit(nt& node) override;/* \
         virtual void visit(const nt& node) override*/
     NT(ExprNode_Block);
+    NT(ExprNode_Try);
     NT(ExprNode_Macro);
     NT(ExprNode_Asm);
     NT(ExprNode_Flow);

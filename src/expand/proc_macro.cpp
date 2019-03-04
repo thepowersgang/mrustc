@@ -516,6 +516,9 @@ namespace {
             TODO(sp, "");
             m_pmi.send_symbol("}");
         }
+        void visit(::AST::ExprNode_Try& node) {
+            TODO(sp, "ExprNode_Try");
+        }
         void visit(::AST::ExprNode_Macro& node) {
             TODO(sp, "ExprNode_Macro");
         }
