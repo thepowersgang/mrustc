@@ -98,6 +98,7 @@ class ExternCrate
 {
 public:
     ::std::string   m_name;
+    ::std::string   m_short_name;
     ::std::string   m_filename;
     ::HIR::CratePtr m_hir;
 

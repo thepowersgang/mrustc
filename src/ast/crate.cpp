@@ -180,6 +180,7 @@ void Crate::load_externs()
 
 ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
     m_name(name),
+    m_short_name(name),
     m_filename(path)
 {
     TRACE_FUNCTION_F("name=" << name << ", path='" << path << "'");

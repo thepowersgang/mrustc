@@ -500,6 +500,18 @@ namespace
                 break;
             }
 
+            // #![feature(extern_prelude)] - 2018-style extern paths
+            if( mode == LookupMode::Namespace && TARGETVER_1_29 && true /*m_crate.has_feature("extern_prelude")*/ )
+            {
+                DEBUG("Extern crates - " << FMT_CB(os, for(const auto& v: m_crate.m_extern_crates) os << v.first << ":" << v.second.m_short_name <<",";));
+                auto it = ::std::find_if(m_crate.m_extern_crates.begin(), m_crate.m_extern_crates.end(), [&](const auto& x){ return x.second.m_short_name == name; });
+                if( it != m_crate.m_extern_crates.end() )
+                {
+                    DEBUG("- Found '" << name << "'");
+                    return AST::Path(it->first, {});
+                }
+            }
+
             return AST::Path();
         }
 
@@ -583,7 +595,6 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn);
 
 void Resolve_Absolute_PathParams(/*const*/ Context& context, const Span& sp, ::AST::PathParams& args)
 {
-    // TODO: Lifetime params
     for(auto& arg : args.m_lifetimes)
     {
         Resolve_Absolute_Lifetime(context, sp, arg);
@@ -1560,6 +1571,7 @@ void Resolve_Absolute_Lifetime(Context& context, const Span& sp, AST::LifetimeRe
             // - Does the same apply to impl headers? Yes it does.
             if( context.m_ibl_target_generics )
             {
+                DEBUG("Considering in-band-lifetimes");
                 ASSERT_BUG(sp, !context.m_name_context.empty(), "Name context stack is empty");
                 auto it = context.m_name_context.rbegin();
                 ASSERT_BUG(sp, it->is_Generic(), "Name context stack end not Generic, instead " << it->tag_str());
@@ -2079,14 +2091,17 @@ void Resolve_Absolute_Function(Context& item_context, ::AST::Function& fcn)
 {
     TRACE_FUNCTION_F("");
     item_context.push( fcn.params(), GenericSlot::Level::Method );
+    item_context.m_ibl_target_generics = &fcn.params();
+    DEBUG("- Generics");
     Resolve_Absolute_Generic(item_context,  fcn.params());
 
-    item_context.m_ibl_target_generics = &fcn.params();
+    DEBUG("- Prototype types");
     Resolve_Absolute_Type( item_context, fcn.rettype() );
     for(auto& arg : fcn.args())
         Resolve_Absolute_Type( item_context, arg.second );
     item_context.m_ibl_target_generics = nullptr;
 
+    DEBUG("- Body");
     {
         auto _h = item_context.enter_rootblock();
         item_context.push_block();
