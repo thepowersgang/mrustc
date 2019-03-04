@@ -347,6 +347,10 @@ struct CExpandExpr:
     LList<const AST::Module*>   modstack;
     ::std::unique_ptr<::AST::ExprNode> replacement;
 
+    // Stack of `try { ... }` blocks (the string is the loop label for the desugaring)
+    ::std::vector< ::std::string>   m_try_stack;
+    unsigned m_try_index = 0;
+
     AST::ExprNode_Block*    current_block = nullptr;
 
     CExpandExpr(::AST::Crate& crate, LList<const AST::Module*> ms):
@@ -548,7 +552,20 @@ struct CExpandExpr:
         this->modstack = mv$(prev_modstack);
     }
     void visit(::AST::ExprNode_Try& node) override {
+        // Desugar into
+        // ```
+        // loop '#tryNNN {
+        //   break '#tryNNN { ... }
+        // }
+        // ```
+        // NOTE: MIR lowering and HIR typecheck need to know to skip these (OR resolve should handle naming all loop blocks)
+        m_try_stack.push_back(FMT("#try" << m_try_index++));
         this->visit_nodelete(node, node.m_inner);
+        auto loop_name = mv$(m_try_stack.back());
+        m_try_stack.pop_back();
+
+        auto break_node = AST::ExprNodeP(new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, loop_name, mv$(node.m_inner)));
+        this->replacement = AST::ExprNodeP(new AST::ExprNode_Loop(loop_name, mv$(break_node)));
     }
     void visit(::AST::ExprNode_Asm& node) override {
         for(auto& v : node.m_output)
@@ -837,8 +854,8 @@ struct CExpandExpr:
                 ::make_vec1( ::AST::Pattern(::AST::Pattern::TagNamedTuple(), node.span(), path_Err, ::make_vec1( ::AST::Pattern(::AST::Pattern::TagBind(), node.span(), "e") )) ),
                 nullptr,
                 ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
-                    ::AST::ExprNode_Flow::RETURN,
-                    "",
+                    (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of return if in a try block.
+                    (m_try_stack.empty() ? "" : m_try_stack.back()),
                     ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
                         ::AST::Path(path_Try_from_error),
                         ::make_vec1(
