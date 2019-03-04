@@ -34,7 +34,7 @@ namespace {
         };
 
         Align   align = Align::Unspec;
-        char    align_char = ' ';
+        uint32_t align_char = ' ';
 
         Sign    sign = Sign::Unspec;
         bool    alternate = false;
@@ -117,6 +117,71 @@ namespace {
             return os;
         }
     };
+
+    uint32_t parse_utf8(const char* s, int& out_len)
+    {
+        uint8_t v1 = s[0];
+        if( v1 < 0x80 )
+        {
+            out_len = 1;
+            return v1;
+        }
+        else if( (v1 & 0xC0) == 0x80 )
+        {
+            // Invalid (continuation)
+            out_len = 1;
+            return 0xFFFE;
+        }
+        else if( (v1 & 0xE0) == 0xC0 ) {
+            // Two bytes
+            out_len = 2;
+
+            uint8_t e1 = s[1];
+            if( (e1 & 0xC0) != 0x80 )  return 0xFFFE;
+
+            uint32_t outval
+                = ((v1 & 0x1F) << 6)
+                | ((e1 & 0x3F) <<0)
+                ;
+            return outval;
+        }
+        else if( (v1 & 0xF0) == 0xE0 ) {
+            // Three bytes
+            out_len = 3;
+            uint8_t e1 = s[1];
+            if( (e1 & 0xC0) != 0x80 )  return 0xFFFE;
+            uint8_t e2 = s[2];
+            if( (e2 & 0xC0) != 0x80 )  return 0xFFFE;
+
+            uint32_t outval
+                = ((v1 & 0x0F) << 12)
+                | ((e1 & 0x3F) <<  6)
+                | ((e2 & 0x3F) <<  0)
+                ;
+            return outval;
+        }
+        else if( (v1 & 0xF8) == 0xF0 ) {
+            // Four bytes
+            out_len = 4;
+            uint8_t e1 = s[1];
+            if( (e1 & 0xC0) != 0x80 )  return 0xFFFE;
+            uint8_t e2 = s[2];
+            if( (e2 & 0xC0) != 0x80 )  return 0xFFFE;
+            uint8_t e3 = s[3];
+            if( (e3 & 0xC0) != 0x80 )  return 0xFFFE;
+
+            uint32_t outval
+                = ((v1 & 0x07) << 18)
+                | ((e1 & 0x3F) << 12)
+                | ((e2 & 0x3F) <<  6)
+                | ((e3 & 0x3F) <<  0)
+                ;
+            return outval;
+        }
+        else {
+            throw "";   // Should be impossible.
+        }
+    }
 
     /// Parse a format string into a sequence of fragments.
     ///
@@ -209,9 +274,15 @@ namespace {
                     s ++;   // eat ':'
 
                     // Alignment
-                    if( s[0] != '\0' && (s[1] == '<' || s[1] == '^' || s[1] == '>') ) {
-                        args.align_char = s[0];
-                        s ++;
+                    // - Padding character, a single unicode codepoint followed by '<'/'^'/'>'
+                    {
+                        int next_c_i;
+                        uint32_t ch = parse_utf8(s, next_c_i);
+                        char next_c = s[next_c_i];
+                        if( ch != '}' && ch != '\0' && (next_c == '<' || next_c == '^' || next_c == '>') ) {
+                            args.align_char = ch;
+                            s += next_c_i;
+                        }
                     }
                     if( *s == '<' ) {
                         args.align = FmtArgs::Align::Left;
@@ -338,16 +409,17 @@ namespace {
                         }
                     }
 
+                    if( s[0] == '\0' )
+                        ERROR(sp, E0000, "Unexpected end of formatting string");
+
                     // Parse ident?
                     // - Lazy way is to just handle a single char and ensure that it is just a single char
-                    if( s[0] != '}' && s[0] != '\0' && s[1] != '}' ) {
-                        TODO(sp, "Parse formatting fragment at \"" << fmt_frag_str << "\" (long type)");
+                    if( s[0] != '}' && s[1] != '}' ) {
+                        TODO(sp, "Parse formatting fragment at \"" << fmt_frag_str << "\" (long type) - s=...\"" << s << "\"");
                     }
 
                     switch(s[0])
                     {
-                    case '\0':
-                        ERROR(sp, E0000, "Unexpected end of formatting string");
                     default:
                         ERROR(sp, E0000, "Unknown formatting type specifier '" << *s << "'");
                     case '}':      trait_name = "Display"; break;
