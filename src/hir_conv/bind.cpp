@@ -256,17 +256,17 @@ namespace {
 
             ::HIR::Visitor::visit_pattern(pat);
 
-            TU_MATCH_DEF(::HIR::Pattern::Data, (pat.m_data), (e),
-            (
-                ),
-            (Value,
+            TU_MATCH_HDRA( (pat.m_data), {)
+            default:
+                // Nothing
+            TU_ARMA(Value, e) {
                 this->visit_pattern_Value(sp, pat, e.val);
-                ),
-            (Range,
+                }
+            TU_ARMA(Range, e) {
                 this->visit_pattern_Value(sp, pat, e.start);
                 this->visit_pattern_Value(sp, pat, e.end);
-                ),
-            (StructValue,
+                }
+            TU_ARMA(StructValue, e) {
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Unit, _,
                     e.binding = &str;
@@ -274,8 +274,8 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct value pattern on non-unit struct " << e.path);
                 }
-                ),
-            (StructTuple,
+                }
+            TU_ARMA(StructTuple, e) {
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 TU_IFLET(::HIR::Struct::Data, str.m_data, Tuple, _,
                     e.binding = &str;
@@ -283,8 +283,8 @@ namespace {
                 else {
                     ERROR(sp, E0000, "Struct tuple pattern on non-tuple struct " << e.path);
                 }
-                ),
-            (Struct,
+                }
+            TU_ARMA(Struct, e) {
                 const auto& str = get_struct_ptr(sp, m_crate, e.path);
                 if(str.m_data.is_Named() ) {
                 }
@@ -296,8 +296,8 @@ namespace {
                     ERROR(sp, E0000, "Struct pattern `" << pat << "` on field-less struct " << e.path);
                 }
                 e.binding = &str;
-                ),
-            (EnumValue,
+                }
+            TU_ARMA(EnumValue, e) {
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 if( p.first->m_data.is_Data() )
                 {
@@ -307,8 +307,8 @@ namespace {
                 }
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
-                ),
-            (EnumTuple,
+                }
+            TU_ARMA(EnumTuple, e) {
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 if( !p.first->m_data.is_Data() )
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
@@ -317,8 +317,8 @@ namespace {
                     ERROR(sp, E0000, "Enum tuple pattern on non-tuple variant " << e.path);
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
-                ),
-            (EnumStruct,
+                }
+            TU_ARMA(EnumStruct, e) {
                 auto p = get_enum_ptr(sp, m_crate, e.path);
                 if( !e.is_exhaustive && e.sub_patterns.empty() )
                 {
@@ -338,7 +338,7 @@ namespace {
                         else if( !var.is_struct )
                         {
                             ASSERT_BUG(sp, var.type.m_data.is_Path(), "");
-                            ASSERT_BUG(sp, var.type.m_data.as_Path().binding.is_Struct(), "");
+                            ASSERT_BUG(sp, var.type.m_data.as_Path().binding.is_Struct(), "EnumStruct pattern on unexpected variant " << e.path << " with " << var.type.m_data.as_Path().binding.tag_str());
                             const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
                             ASSERT_BUG(sp, str.m_data.is_Tuple(), "");
                             const auto& flds = str.m_data.as_Tuple();
@@ -370,8 +370,8 @@ namespace {
                 }
                 e.binding_ptr = p.first;
                 e.binding_idx = p.second;
-                )
-            )
+                }
+            }
         }
         static void fix_param_count(const Span& sp, const ::HIR::GenericPath& path, const ::HIR::GenericParams& param_defs, ::HIR::PathParams& params, bool fill_infer=true, const ::HIR::TypeRef* self_ty=nullptr)
         {
@@ -862,11 +862,12 @@ namespace {
 void ConvertHIR_Bind(::HIR::Crate& crate)
 {
     Visitor exp { crate };
-    exp.visit_crate( crate );
 
     // Also visit extern crates to update their pointers
     for(auto& ec : crate.m_ext_crates)
     {
         exp.visit_crate( *ec.second.m_data );
     }
+
+    exp.visit_crate( crate );
 }
