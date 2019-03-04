@@ -1921,6 +1921,14 @@ namespace {
         item_data = ::AST::Item( Parse_TraitDef(lex, meta_items) );
         break;
 
+    case TOK_RWORD_MACRO:
+        if( TARGETVER_1_19 )
+        {
+            throw ParseError::Unexpected(lex, tok);
+        }
+        TODO(lex.point_span(), "macro items");
+        break;
+
     case TOK_RWORD_MOD: {
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto name = mv$(tok.str());

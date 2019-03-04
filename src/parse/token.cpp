@@ -477,6 +477,7 @@ struct EscapedString {
 
     case TOK_RWORD_BE:      return "be";
     case TOK_RWORD_UNSIZED: return "unsized";
+    case TOK_RWORD_MACRO:   return "macro";
     }
     throw ParseError::BugCheck("Reached end of Token::to_str");
 }

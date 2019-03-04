@@ -155,6 +155,7 @@ static const struct {
   TOKENT("in",      TOK_RWORD_IN),
   TOKENT("let",     TOK_RWORD_LET),
   TOKENT("loop",    TOK_RWORD_LOOP),
+  TOKENT("macro",   TOK_RWORD_MACRO),
   TOKENT("match",   TOK_RWORD_MATCH),
   TOKENT("mod",     TOK_RWORD_MOD),
   TOKENT("move",    TOK_RWORD_MOVE),
