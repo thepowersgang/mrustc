@@ -564,7 +564,10 @@ struct CExpandExpr:
         auto loop_name = mv$(m_try_stack.back());
         m_try_stack.pop_back();
 
-        auto break_node = AST::ExprNodeP(new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, loop_name, mv$(node.m_inner)));
+        auto core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? "" : "core");
+        auto path_Ok  = ::AST::Path(core_crate, {::AST::PathNode("result"), ::AST::PathNode("Result"), ::AST::PathNode("Ok")});
+        auto ok_node = ::AST::ExprNodeP(new ::AST::ExprNode_CallPath( mv$(path_Ok), ::make_vec1(mv$(node.m_inner)) ));
+        auto break_node = AST::ExprNodeP(new AST::ExprNode_Flow(AST::ExprNode_Flow::BREAK, loop_name, mv$(ok_node)));
         this->replacement = AST::ExprNodeP(new AST::ExprNode_Loop(loop_name, mv$(break_node)));
     }
     void visit(::AST::ExprNode_Asm& node) override {
