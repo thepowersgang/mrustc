@@ -597,13 +597,15 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
             case ::HIR::InferClass::Integer:
             case ::HIR::InferClass::Float:
                 // `type` can't be an ivar, so it has to be a primitive (or an associated?)
-                TU_MATCH_DEF(::HIR::TypeRef::Data, (type.m_data), (l_e),
-                (
-                    ),
-                (Primitive,
-                    check_type_class_primitive(sp, type, e.ty_class, l_e);
-                    )
-                )
+                if( const auto* l_e = type.m_data.opt_Primitive() ) {
+                    check_type_class_primitive(sp, type, e.ty_class, *l_e);
+                }
+                else if( type.m_data.is_Diverge() ) {
+                    // ... acceptable
+                }
+                else {
+                    BUG(sp, "Setting primitive to " << type);
+                }
                 break;
             }
         )
