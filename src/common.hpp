@@ -105,6 +105,10 @@ static inline Ordering ord(signed char l, signed char r)
 {
     return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
 }
+static inline Ordering ord(int l, int r)
+{
+    return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));
+}
 static inline Ordering ord(short l, short r)
 {
     return (l == r ? OrdEqual : (l > r ? OrdGreater : OrdLess));

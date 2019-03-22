@@ -1489,7 +1489,7 @@ namespace {
     Ordering ord_rule_compatible(const PatternRule& a, const PatternRule& b)
     {
         if(a.tag() != b.tag())
-            return ::ord( (unsigned)a.tag(), b.tag() );
+            return ::ord( (unsigned)a.tag(), (unsigned)b.tag() );
 
         TU_MATCHA( (a, b), (ae, be),
         (Any,

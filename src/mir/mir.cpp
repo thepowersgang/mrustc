@@ -55,7 +55,7 @@ namespace MIR {
     ::Ordering Constant::ord(const Constant& b) const
     {
         if( this->tag() != b.tag() )
-            return ::ord( static_cast<unsigned int>(this->tag()), b.tag() );
+            return ::ord( static_cast<unsigned int>(this->tag()), static_cast<unsigned int>(b.tag()) );
         TU_MATCHA( (*this,b), (ae,be),
         (Int,
             if( ae.v != be.v )
