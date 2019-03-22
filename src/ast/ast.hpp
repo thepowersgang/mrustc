@@ -599,6 +599,7 @@ TAGGED_UNION_EX(Item, (), None,
     (
     (None, struct {} ),
     (MacroInv, MacroInvocation),
+    // TODO: MacroDefinition
     (Use, UseItem),
 
     // Nameless items
