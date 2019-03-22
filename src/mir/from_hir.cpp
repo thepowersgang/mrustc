@@ -671,6 +671,11 @@ namespace {
                 }
                 target_block = &*it;
             }
+            else {
+                if( target_block->label != "" && target_block->label[0] == '#' ) {
+                    TODO(node.span(), "Break within try block, want to break parent loop instead");
+                }
+            }
 
             if( node.m_continue ) {
                 ASSERT_BUG(node.span(), !node.m_value, "Continue with a value isn't valid");
