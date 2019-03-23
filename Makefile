@@ -48,7 +48,7 @@ CXXFLAGS += -Wno-unknown-warning-option
 RUST_FLAGS := --cfg debug_assertions
 RUST_FLAGS += -g
 RUST_FLAGS += -O
-RUST_FLAGS += -L output/
+RUST_FLAGS += -L output$(OUTDIR_SUF)/
 RUST_FLAGS += $(RUST_FLAGS_EXTRA)
 
 SHELL = bash
@@ -143,22 +143,22 @@ $(error Unknown rustc channel)
 endif
 RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 
-MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(RUSTC_VERSION) RUSTC_CHANNEL=$(RUSTC_SRC_TY)
+MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(RUSTC_VERSION) RUSTC_CHANNEL=$(RUSTC_SRC_TY) OUTDIR_SUF=$(OUTDIR_SUF)
 
 
-output/libstd.hir: $(BIN)
+output$(OUTDIR_SUF)/libstd.hir: $(BIN)
 	$(MAKE_MINICARGO) $@
-output/libtest.hir output/libpanic_unwind.hir output/libproc_macro.hir: output/libstd.hir
+output$(OUTDIR_SUF)/libtest.hir output$(OUTDIR_SUF)/libpanic_unwind.hir output$(OUTDIR_SUF)/libproc_macro.hir: output$(OUTDIR_SUF)/libstd.hir
 	$(MAKE_MINICARGO) $@
-output/rustc output/cargo: output/libtest.hir
+output$(OUTDIR_SUF)/rustc output$(OUTDIR_SUF)/cargo: output$(OUTDIR_SUF)/libtest.hir
 	$(MAKE_MINICARGO) $@
 
-TEST_DEPS := output/libstd.hir output/libtest.hir output/libpanic_unwind.hir
+TEST_DEPS := output$(OUTDIR_SUF)/libstd.hir output$(OUTDIR_SUF)/libtest.hir output$(OUTDIR_SUF)/libpanic_unwind.hir
 ifeq ($(RUSTC_VERSION),1.19.0)
-TEST_DEPS += output/librust_test_helpers.a
+TEST_DEPS += output$(OUTDIR_SUF)/librust_test_helpers.a
 endif
 
-fcn_extcrate = $(patsubst %,output/lib%.hir,$(1))
+fcn_extcrate = $(patsubst %,output$(OUTDIR_SUF)/lib%.hir,$(1))
 
 fn_getdeps = \
   $(shell cat $1 \
@@ -208,8 +208,8 @@ endif
 .PHONY: local_tests
 local_tests:
 	@$(MAKE) -C tools/testrunner
-	@mkdir -p output/local_tests
-	./tools/bin/testrunner -o output/local_tests samples/test
+	@mkdir -p output$(OUTDIR_SUF)/local_tests
+	./tools/bin/testrunner -o output$(OUTDIR_SUF)/local_tests samples/test
 
 # 
 # RUSTC TESTS
@@ -224,12 +224,12 @@ rust_tests: RUST_TESTS_run-pass
 RUST_TESTS: RUST_TESTS_run-pass
 RUST_TESTS_run-pass:
 	@$(MAKE) -C tools/testrunner
-	@mkdir -p output/rust_tests/run-pass
-	./tools/bin/testrunner -o output/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
-output/librust_test_helpers.a: output/rust_test_helpers.o
+	@mkdir -p output$(OUTDIR_SUF)/rust_tests/run-pass
+	./tools/bin/testrunner -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
+output$(OUTDIR_SUF)/librust_test_helpers.a: output$(OUTDIR_SUF)/rust_test_helpers.o
 	@mkdir -p $(dir $@)
 	ar cur $@ $<
-output/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
+output$(OUTDIR_SUF)/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
 	@mkdir -p $(dir $@)
 	$(CC) -c $< -o $@
 
@@ -240,40 +240,40 @@ output/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
 
 LIB_TESTS := collections #std
 #LIB_TESTS += rustc_data_structures
-rust_tests-libs: $(patsubst %,output/lib%-test_out.txt, $(LIB_TESTS))
+rust_tests-libs: $(patsubst %,output$(OUTDIR_SUF)/lib%-test_out.txt, $(LIB_TESTS))
 
-RUNTIME_ARGS_output/libcollections-test := --test-threads 1
-RUNTIME_ARGS_output/libstd-test := --test-threads 1
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_index_nonexistent
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_drops
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_drop
-RUNTIME_ARGS_output/libstd-test += --skip ::collections::hash::map::test_map::test_placement_panic
-RUNTIME_ARGS_output/libstd-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Unbounded execution
+RUNTIME_ARGS_output$(OUTDIR_SUF)/libcollections-test := --test-threads 1
+RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test := --test-threads 1
+RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::collections::hash::map::test_map::test_index_nonexistent
+RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::collections::hash::map::test_map::test_drops
+RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::collections::hash::map::test_map::test_placement_drop
+RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::collections::hash::map::test_map::test_placement_panic
+RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Unbounded execution
 
-output/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(TEST_DEPS)
+output$(OUTDIR_SUF)/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(TEST_DEPS)
 	@echo "--- [MRUSTC] --test -o $@"
-	@mkdir -p output/
+	@mkdir -p output$(OUTDIR_SUF)/
 	@rm -f $@
 	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-output/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(TEST_DEPS)
+output$(OUTDIR_SUF)/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(TEST_DEPS)
 	@echo "--- [MRUSTC] $@"
-	@mkdir -p output/
+	@mkdir -p output$(OUTDIR_SUF)/
 	@rm -f $@
 	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
 #	# HACK: Work around gdb returning success even if the program crashed
 	@test -e $@
-output/%_out.txt: output/%
+output$(OUTDIR_SUF)/%_out.txt: output$(OUTDIR_SUF)/%
 	@echo "--- [$<]"
 	$V./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
 
 # "hello, world" test - Invoked by the `make test` target
-output/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
+output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
 	@mkdir -p $(dir $@)
 	@echo "--- [MRUSTC] -o $@"
 	$(DBG) $(BIN) $< -o $@ $(RUST_FLAGS) $(PIPECMD)
-output/rust/test_run-pass_hello_out.txt: output/rust/test_run-pass_hello
+output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/test_run-pass_hello
 	@echo "--- [$<]"
 	@./$< | tee $@
 
@@ -283,22 +283,22 @@ output/rust/test_run-pass_hello_out.txt: output/rust/test_run-pass_hello
 #
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
-test: output/libstd.hir output/rust/test_run-pass_hello_out.txt $(BIN)
+test: output$(OUTDIR_SUF)/libstd.hir output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt $(BIN)
 
 #
 # TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
 #
-test_rustos: $(addprefix output/rust_os/,libkernel.hir)
+test_rustos: $(addprefix output$(OUTDIR_SUF)/rust_os/,libkernel.hir)
 
 RUSTOS_ENV := RUST_VERSION="mrustc 0.1"
 RUSTOS_ENV += TK_GITSPEC="unknown"
 RUSTOS_ENV += TK_VERSION="0.1"
 RUSTOS_ENV += TK_BUILD="mrustc:0"
 
-output/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output/libcore.hir output/libstack_dst.hir $(BIN)
+output$(OUTDIR_SUF)/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output$(OUTDIR_SUF)/libcore.hir output$(OUTDIR_SUF)/libstack_dst.hir $(BIN)
 	@mkdir -p $(dir $@)
 	export $(RUSTOS_ENV) ; $(DBG) $(BIN) $(RUST_FLAGS) $< -o $@ --cfg arch=amd64 $(PIPECMD)
-output/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
+output$(OUTDIR_SUF)/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
 	@mkdir -p $(dir $@)
 	$(DBG) $(BIN) $(RUST_FLAGS) $< -o $@ --cfg feature=no_std $(PIPECMD)
 
