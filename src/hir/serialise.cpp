@@ -400,6 +400,7 @@
         void serialise(const ::MacroRules& mac)
         {
             //m_exported: IGNORE, should be set
+            assert(mac.m_rules.size() > 0);
             serialise_vec(mac.m_rules);
             m_out.write_string(mac.m_source_crate);
         }

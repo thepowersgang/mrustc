@@ -352,8 +352,10 @@ void MacroPatternStream::if_succeeded()
     TU_MATCH_HDRA( (m_simple_ents[m_cur_pos-1]), {)
     default:
         BUG(Span(), "Unexpected " << m_simple_ents[m_cur_pos-1]);
-    TU_ARMA(If, e)
+    TU_ARMA(If, e) {
+        ASSERT_BUG(Span(), e.jump_target < m_simple_ents.size(), "Jump target " << e.jump_target << " out of range " << m_simple_ents.size());
         m_cur_pos = e.jump_target;
+        }
     }
     m_condition_met = true;
 }
@@ -1724,6 +1726,7 @@ namespace
 unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& rules, TokenTree input, AST::Module& mod,  ParameterMappings& bound_tts)
 {
     TRACE_FUNCTION;
+    ASSERT_BUG(sp, rules.m_rules.size() > 0, "Empty macro_rules set");
 
     ::std::vector< ::std::pair<size_t, ::std::vector<bool>> >    matches;
     for(size_t i = 0; i < rules.m_rules.size(); i ++)
@@ -1812,6 +1815,7 @@ unsigned int Macro_InvokeRules_MatchPattern(const Span& sp, const MacroRules& ru
     if( matches.size() == 0 )
     {
         // ERROR!
+	// TODO: Keep track of where each arm failed.
         TODO(sp, "No arm matched");
     }
     else

@@ -1834,6 +1834,9 @@ public:
                     auto res = macros.insert( mv$(v) );
                     DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
                 }
+                else if( v.second->m_rules.empty() ) {
+                    // Skip
+                }
                 else {
                     DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
                     it->second = mv$( v.second );
@@ -1852,6 +1855,9 @@ public:
                 {
                     auto res = macros.insert( mv$(v) );
                     DEBUG("- Import " << mac.name << "! (from \"" << res.first->second->m_source_crate << "\")");
+                }
+                else if( v.second->m_rules.empty() ) {
+                    // Skip
                 }
                 else {
                     DEBUG("- Replace " << mac.name << "! (from \"" << it->second->m_source_crate << "\") with one from \"" << v.second->m_source_crate << "\"");
