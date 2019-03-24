@@ -470,20 +470,27 @@ namespace {
                     size_t start = rv.size();
                     macro_pattern_to_simple_inner(sp, rv, ent.subpats);
                     push( SimplePatEnt::make_LoopNext({}) );
+                    size_t rewrite_start = rv.size();
                     if( ent.tok != TOK_NULL )
                     {
-                        size_t end = rv.size() + 3;
+                        // If the loop terminator is also valid after the loop
+                        // - Terminate the loop if the next two tokens aren't `<SEP>` folled by any of `<ENTRY>`
                         if( ::std::find(skip_pats.begin(), skip_pats.end(), ExpTok(MacroPatEnt::PAT_TOKEN, &ent.tok)) != skip_pats.end() ) {
+                            size_t expect_and_jump_pos = rv.size() + entry_pats.size() + 1;
                             for(const auto& p : entry_pats)
                             {
                                 auto v = ::make_vec2<SimplePatIfCheck>(
                                     { MacroPatEnt::PAT_TOKEN, ent.tok},
                                     { p.ty, *p.tok }
                                     );
-                                push_ifv(false, mv$(v), ~0u);
+                                // Jump if equal
+                                push_ifv(true, mv$(v), expect_and_jump_pos);
                             }
+                            // If any of the above succeeded, they'll jump past this jump
+                            push( SimplePatEnt::make_Jump({ ~0u }) );
                         }
                         else {
+                            size_t end = rv.size() + 3;
                             push_if( false, MacroPatEnt::PAT_TOKEN, ent.tok, end );
                         }
                         push( SimplePatEnt::make_ExpectTok(ent.tok) );
@@ -495,6 +502,21 @@ namespace {
                         for(const auto& p : entry_pats)
                         {
                             push_if(true, p.ty, *p.tok, start);
+                        }
+                    }
+
+                    size_t post_loop = rv.size();
+                    for(size_t i = rewrite_start; i < post_loop; i++)
+                    {
+                        if( auto* pe = rv[i].opt_If() ) {
+                            if(pe->jump_target == ~0u) {
+                                pe->jump_target = post_loop;
+                            }
+                        }
+                        if( auto* pe = rv[i].opt_Jump() ) {
+                            if(pe->jump_target == ~0u) {
+                                pe->jump_target = post_loop;
+                            }
                         }
                     }
                     push( SimplePatEnt::make_LoopEnd({}) );
@@ -587,6 +609,20 @@ namespace {
             default:
                 push( SimplePatEnt::make_ExpectPat({ ent.type, ent.name_index }) );
                 break;
+            }
+        }
+
+        for(size_t i = level_start; i < rv.size(); i ++)
+        {
+            TU_MATCH_HDRA( (rv[i]), { )
+            default:
+                // Ignore
+            TU_ARMA(If, e) {
+                ASSERT_BUG(sp, e.jump_target < rv.size(), "If target out of bounds, " << e.jump_target << " >= " << rv.size());
+                }
+            TU_ARMA(Jump, e) {
+                ASSERT_BUG(sp, e.jump_target < rv.size(), "Jump target out of bounds, " << e.jump_target << " >= " << rv.size());
+                }
             }
         }
     }
