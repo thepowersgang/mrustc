@@ -94,6 +94,7 @@ struct Context
 
     struct IVarPossible
     {
+        bool force_disable = false;
         bool force_no_to = false;
         bool force_no_from = false;
         // Target types for coercion/unsizing (these types are known to exist in the function)
@@ -203,6 +204,7 @@ struct Context
         equate_types_shadow(sp, l, false);
     }
     void equate_types_shadow(const Span& sp, const ::HIR::TypeRef& ty, bool is_to);
+    void equate_types_shadow_strong(const Span& sp, const ::HIR::TypeRef& ty);
 
     /// Possible type that this ivar can coerce to
     void possible_equate_type_coerce_to(unsigned int ivar_index, const ::HIR::TypeRef& t) {
@@ -235,6 +237,7 @@ struct Context
 
     void possible_equate_type(unsigned int ivar_index, const ::HIR::TypeRef& t, bool is_to, bool is_borrow);
     void possible_equate_type_disable(unsigned int ivar_index, bool is_to);
+    void possible_equate_type_disable_strong(const Span& sp, unsigned int ivar_index);
 
     // - Add a pattern binding (forcing the type to match)
     void handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
@@ -4894,6 +4897,46 @@ void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l, bool 
         )
     )
 }
+void Context::equate_types_shadow_strong(const Span& sp, const ::HIR::TypeRef& ty)
+{
+    // TODO: Would like to use visit_ty_with in a way that can be told to not recurse (for non-Generic paths)
+    TU_MATCH_DEF(::HIR::TypeRef::Data, (this->get_type(ty).m_data), (e),
+    (
+        // TODO: Shadow sub-types too
+        ),
+    (Path,
+        TU_MATCH_DEF( ::HIR::Path::Data, (e.path.m_data), (pe),
+        (
+            ),
+        (Generic,
+            for(const auto& sty : pe.m_params.m_types)
+                this->equate_types_shadow_strong(sp, sty);
+            )
+        )
+        ),
+    (Tuple,
+        for(const auto& sty : e)
+            this->equate_types_shadow_strong(sp, sty);
+        ),
+    (Borrow,
+        this->equate_types_shadow_strong(sp, *e.inner);
+        ),
+    (Array,
+        this->equate_types_shadow_strong(sp, *e.inner);
+        ),
+    (Slice,
+        this->equate_types_shadow_strong(sp, *e.inner);
+        ),
+    (Closure,
+        for(const auto& aty : e.m_arg_types)
+            this->equate_types_shadow_strong(sp, aty);
+        this->equate_types_shadow_strong(sp, *e.m_rettype);
+        ),
+    (Infer,
+        this->possible_equate_type_disable_strong(sp, e.index);
+        )
+    )
+}
 void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const ::HIR::SimplePath& trait, ::HIR::PathParams pp, const ::HIR::TypeRef& impl_ty, const char *name, bool is_op)
 {
     for(const auto& a : this->link_assoc)
@@ -5094,6 +5137,21 @@ void Context::possible_equate_type_disable(unsigned int ivar_index, bool is_to) 
     else {
         ent.force_no_from = true;
     }
+}
+void Context::possible_equate_type_disable_strong(const Span& sp, unsigned int ivar_index)
+{
+    DEBUG(ivar_index << " = ??");
+    {
+        ::HIR::TypeRef  ty_l;
+        ty_l.m_data.as_Infer().index = ivar_index;
+        ASSERT_BUG(sp, m_ivars.get_type(ty_l).m_data.is_Infer(), "possible_equate_type_disable_strong on known ivar");
+    }
+
+    if( ivar_index >= possible_ivar_vals.size() ) {
+        possible_ivar_vals.resize( ivar_index + 1 );
+    }
+    auto& ent = possible_ivar_vals[ivar_index];
+    ent.force_disable = true;
 }
 
 void Context::add_var(const Span& sp, unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
@@ -6102,10 +6160,10 @@ namespace {
         }
         else if( src.m_data.is_Closure() )
         {
+            const auto& se = src.m_data.as_Closure();
             if( dst.m_data.is_Function() )
             {
                 const auto& de = dst.m_data.as_Function();
-                const auto& se = src.m_data.as_Closure();
                 auto& node_ptr = *node_ptr_ptr;
                 auto span = node_ptr->span();
                 if( de.m_abi != ABI_RUST ) {
@@ -6124,6 +6182,11 @@ namespace {
             }
             else if( const auto* dep = dst.m_data.opt_Infer() )
             {
+                // Prevent inferrence of argument/return types
+                for(const auto& at : se.m_arg_types)
+                    context.equate_types_to_shadow(sp, at);
+                context.equate_types_to_shadow(sp, *se.m_rettype);
+                // Add as a possiblity
                 context.possible_equate_type_coerce_from(dep->index, src);
                 return CoerceResult::Unknown;
             }
@@ -6231,7 +6294,7 @@ namespace {
         // - This generates an exact equation.
         if( v.left_ty != ::HIR::TypeRef() )
         {
-            context.equate_types_from_shadow(sp, v.left_ty);
+            context.equate_types_shadow_strong(sp, v.left_ty);
         }
 
         // Locate applicable trait impl
@@ -6522,13 +6585,16 @@ namespace {
                 if( bound.name != "" )
                 {
                     auto aty = impl.get_type(bound.name.c_str());
+                    // The associated type is not present, what does that mean?
                     if( aty == ::HIR::TypeRef() ) {
+                        DEBUG("[check_ivar_poss__fails_bounds] No ATY for " << bound.name << " in impl");
                         // A possible match was found, so don't delete just yet
                         bound_failed = false;
                         // - Return false to keep searching
                         return false;
                     }
                     else if( aty.compare_with_placeholders(sp, bound.left_ty, context.m_ivars.callback_resolve_infer()) == HIR::Compare::Unequal ) {
+                        DEBUG("[check_ivar_poss__fails_bounds] ATY " << context.m_ivars.fmt_type(aty) << " != left " << context.m_ivars.fmt_type(bound.left_ty));
                         bound_failed = true;
                         // - Bail instantly
                         return true;
@@ -6585,9 +6651,14 @@ namespace {
         static Span _span;
         const auto& sp = _span;
 
-        if( honour_disable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
+        if( ivar_ent.force_disable )
         {
             DEBUG(i << ": forced unknown");
+            return false;
+        }
+        if( honour_disable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
+        {
+            DEBUG(i << ": coercion blocked");
             return false;
         }
 
@@ -7199,9 +7270,9 @@ namespace {
         {
             // TODO: Search know possibilties and check if they satisfy the bounds for this ivar
             DEBUG("Options: " << ivar_ent.bounded);
-            unsigned int n_good = 0;
             unsigned int n_good_ints = 0;
-            const ::HIR::TypeRef*   only_good = nullptr;
+            ::std::vector<const ::HIR::TypeRef*>    good_types;
+            good_types.reserve(ivar_ent.bounded.size());
             for(const auto& new_ty : ivar_ent.bounded)
             {
                 DEBUG("- Test " << new_ty << " against current rules");
@@ -7210,9 +7281,7 @@ namespace {
                 }
                 else
                 {
-                    n_good ++;
-                    if( !only_good )
-                        only_good = &new_ty;
+                    good_types.push_back(&new_ty);
 
                     if( new_ty.m_data.is_Primitive() )
                         n_good_ints ++;
@@ -7220,21 +7289,36 @@ namespace {
                     DEBUG("> " << new_ty << " feasible");
                 }
             }
+            DEBUG(good_types.size() << " valid options (" << n_good_ints << " primitives)");
             // Picks the first if in fallback mode (which is signalled by `honour_disable` being false)
             // - This handles the case where there's multiple valid options (needed for libcompiler_builtins)
             // TODO: Only pick any if all options are the same class (or just all are integers)
-            if( (honour_disable ? n_good == 1 : n_good > 0) )
-            //if( n_good == 1 || (honour_disable ? false : n_good == n_good_ints) )
+            if( good_types.empty() )
             {
-                if( honour_disable )
-                    DEBUG("Only " << *only_good << " fits current bound sets");
-                else
-                    DEBUG("Picking " << *only_good << " as first of " << n_good << " options");
+
+            }
+            else if( good_types.size() == 1 )
+            {
                 // Since it's the only possibility, choose it?
-                context.equate_types(sp, ty_l, *only_good);
+                DEBUG("Only " << *good_types.front() << " fits current bound sets");
+                context.equate_types(sp, ty_l, *good_types.front());
                 return true;
             }
-            DEBUG(n_good << " valid options (" << n_good_ints << " primitives)");
+            else if( good_types.size() > 0 && !honour_disable )
+            {
+                auto typ_is_borrow = [&](const ::HIR::TypeRef* typ) { return typ->m_data.is_Borrow(); };
+                // NOTE: We want to select from sets of primitives and generics (which can be interchangable)
+                if( ::std::all_of(good_types.begin(), good_types.end(), typ_is_borrow) == ::std::any_of(good_types.begin(), good_types.end(), typ_is_borrow) )
+                {
+                    DEBUG("Picking " << *good_types.front() << " as first of " << good_types.size() << " options");
+                    context.equate_types(sp, ty_l, *good_types.front());
+                    return true;
+                }
+                else
+                {
+                    // Mix of borrows with non-borrows
+                }
+            }
         }
 
         return false;
@@ -7407,8 +7491,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             // Check the possible equations
             DEBUG("--- IVar possibilities");
             // TODO: De-duplicate this with the block ~80 lines below
-            // NOTE: Ordering is a hack for libgit2
-            for(unsigned int i = context.possible_ivar_vals.size(); i --; )
+            for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
+            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i]) ) {
                     static Span sp;
@@ -7517,8 +7601,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             // Check the possible equations
             DEBUG("--- IVar possibilities (fallback)");
-            // NOTE: Ordering is a hack for libgit2
-            for(unsigned int i = context.possible_ivar_vals.size(); i --; )
+            for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
+            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i], /*honour_disable=*/false) ) {
 # if 1
