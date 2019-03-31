@@ -2534,8 +2534,9 @@ namespace {
             const auto& ty_o = this->context.get_type(node.m_value->m_res_type);
             TRACE_FUNCTION_F("CallValue: ty=" << ty_o);
 
+            //this->context.equate_types_from_shadow(node.span(), node.m_res_type);
+            this->context.equate_types_shadow_strong(node.span(), node.m_res_type);
             // - Shadow (prevent ivar guessing) every parameter
-            this->context.equate_types_from_shadow(node.span(), node.m_res_type);
             for( const auto& arg_ty : node.m_arg_ivars ) {
                 this->context.equate_types_to_shadow(node.span(), arg_ty);
             }
@@ -2974,7 +2975,8 @@ namespace {
             const auto& field_name = node.m_field;
             TRACE_FUNCTION_F("(Field) name=" << field_name << ", ty = " << this->context.m_ivars.fmt_type(node.m_value->m_res_type));
 
-            this->context.equate_types_from_shadow(node.span(), node.m_res_type);
+            //this->context.equate_types_from_shadow(node.span(), node.m_res_type);
+            this->context.equate_types_shadow_strong(node.span(), node.m_res_type);
 
             ::HIR::TypeRef  out_type;
 
@@ -6793,11 +6795,146 @@ namespace {
             }
             (void)n_ivars;
 
+            struct TypeRestrictiveOrdering {
+                static Ordering get_ordering_infer(const Span& sp, const ::HIR::TypeRef& r)
+                {
+                    // For infer, only concrete types are more restrictive
+                    TU_MATCH_HDRA( (r.m_data), { )
+                    default:
+                        return OrdLess;
+                    TU_ARMA(Path, te) {
+                        if( te.binding.is_Opaque() )
+                            return OrdLess;
+                        if( te.binding.is_Unbound() )
+                            return OrdEqual;
+                        // TODO: Check if the type is concrete? (Check an unsizing param if present)
+                        return OrdLess;
+                        }
+                    TU_ARMA(Borrow, _)
+                        return OrdEqual;
+                    TU_ARMA(Infer, _)
+                        return OrdEqual;
+                    TU_ARMA(Pointer, _)
+                        return OrdEqual;
+                    }
+                    throw "";
+                }
+                // Ordering of `l` relative to `r`, OrdLess means that the LHS is less restrictive
+                static Ordering get_ordering_ty(const Span& sp, const Context& context, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r)
+                {
+                    if( l == r ) {
+                        return OrdEqual;
+                    }
+                    if( l.m_data.is_Infer() ) {
+                        return get_ordering_infer(sp, r);
+                    }
+                    if( r.m_data.is_Infer() ) {
+                        switch( get_ordering_infer(sp, l) )
+                        {
+                        case OrdLess:   return OrdGreater;
+                        case OrdEqual:  return OrdEqual;
+                        case OrdGreater:return OrdLess;
+                        }
+                    }
+                    if( l.m_data.is_Path() ) {
+                        // Path types can be unsize targets, and can also act like infers
+                        // - If it's a Unbound treat as Infer
+                        // - If Opaque, then search for a CoerceUnsized/Unsize bound?
+                        // - If Struct, look for ^ tag
+                        // - Else, more/equal specific
+                        TODO(sp, l << " with " << r << " - LHS is Path");
+                    }
+                    if( r.m_data.is_Path() ) {
+                        // Path types can be unsize targets, and can also act like infers
+                        TODO(sp, l << " with " << r << " - RHS is Path");
+                    }
+
+                    // Slice < Array
+                    if( l.m_data.tag() == r.m_data.tag() ) {
+                        return OrdEqual;
+                    }
+                    else {
+                        if( l.m_data.is_Slice() && r.m_data.is_Array() ) {
+                            return OrdGreater;
+                        }
+                        if( l.m_data.is_Array() && r.m_data.is_Slice() ) {
+                            return OrdLess;
+                        }
+                        TODO(sp, "Compare " << l << " and " << r);
+                    }
+                }
+
+                // Returns the restrictiveness ordering of `l` relative to `r`
+                // - &T is more restrictive than *const T
+                // - &mut T is more restrictive than &T
+                // Restrictive means that left can't be coerced from right
+                static Ordering get_ordering_ptr(const Span& sp, const Context& context, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r)
+                {
+                    Ordering cmp;
+                    TRACE_FUNCTION_FR(l << " , " << r, cmp);
+                    // Get ordering of this type to the current destination
+                    // - If lesser/greater then ignore/update
+                    // - If equal then what? (Instant error? Leave as-is and let the asignment happen? Disable the asignment?)
+                    static const ::HIR::TypeRef::Data::Tag tag_ordering[] = {
+                        ::HIR::TypeRef::Data::TAG_Pointer,
+                        ::HIR::TypeRef::Data::TAG_Borrow,
+                        ::HIR::TypeRef::Data::TAG_Path, // Strictly speaking, Path == Generic
+                        ::HIR::TypeRef::Data::TAG_Generic,
+                        };
+                    static const ::HIR::TypeRef::Data::Tag* tag_ordering_end = &tag_ordering[ sizeof(tag_ordering) / sizeof(tag_ordering[0] )];
+                    if( l.m_data.tag() != r.m_data.tag() )
+                    {
+                        auto p_l = ::std::find(tag_ordering, tag_ordering_end, l.m_data.tag());
+                        auto p_r = ::std::find(tag_ordering, tag_ordering_end, r.m_data.tag());
+                        if( p_l == tag_ordering_end ) {
+                            TODO(sp, "Type " << l << " not in ordering list");
+                        }
+                        if( p_r == tag_ordering_end ) {
+                            TODO(sp, "Type " << r << " not in ordering list");
+                        }
+                        cmp = ord( static_cast<int>(p_l-p_r), 0 );
+                    }
+                    else
+                    {
+                        TU_MATCH_HDRA( (l.m_data), { )
+                        default:
+                            BUG(sp, "Unexpected type class " << l << " in get_ordering_ty");
+                            break;
+                        TU_ARMA(Generic, _te_l) {
+                            cmp = OrdEqual;
+                            }
+                        TU_ARMA(Path, te_l) {
+                            //const auto& te = dest_type->m_data.as_Path();
+                            // TODO: Prevent this rule from applying?
+                            return OrdEqual;
+                            }
+                        TU_ARMA(Borrow, te_l) {
+                            const auto& te_r = r.m_data.as_Borrow();
+                            cmp = ord( (int)te_l.type, (int)te_r.type );   // Unique>Shared in the listing, and Unique is more restrictive than Shared
+                            if( cmp == OrdEqual )
+                            {
+                                cmp = get_ordering_ty(sp, context, context.m_ivars.get_type(*te_l.inner), context.m_ivars.get_type(*te_r.inner));
+                            }
+                            }
+                        TU_ARMA(Pointer, te_l) {
+                            const auto& te_r = r.m_data.as_Pointer();
+                            cmp = ord( (int)te_r.type, (int)te_l.type );   // Note, reversed ordering because we want Unique>Shared
+                            if( cmp == OrdEqual )
+                            {
+                                cmp = get_ordering_ty(sp, context, context.m_ivars.get_type(*te_l.inner), context.m_ivars.get_type(*te_r.inner));
+                            }
+                            }
+                        }
+                    }
+                    return cmp;
+                }
+            };
+
             // If there's multiple source types (which means that this ivar has to be a coercion from one of them)
             // Look for the least permissive of the available destination types and assign to that
             #if 1
             if( ::std::all_of(possible_tys.begin(), possible_tys.end(), [](const auto& ent){ return ent.is_pointer; })
-                ||  ::std::none_of(possible_tys.begin(), possible_tys.end(), [](const auto& ent){ return ent.is_pointer; })
+                //||  ::std::none_of(possible_tys.begin(), possible_tys.end(), [](const auto& ent){ return ent.is_pointer; })
                 )
             {
                 // 1. Count distinct (and non-ivar) source types
@@ -6828,6 +6965,7 @@ namespace {
                         num_distinct += 1;
                     }
                 }
+                DEBUG("- " << num_distinct << " distinct possibilities");
                 // 2. Find the most restrictive destination type
                 // - Borrows are more restrictive than pointers
                 // - Borrows of Sized types are more restrictive than any other
@@ -6844,128 +6982,17 @@ namespace {
                         continue ;
                     }
 
-                    // Get ordering of this type to the current destination
-                    // - If lesser/greater then ignore/update
-                    // - If equal then what? (Instant error? Leave as-is and let the asignment happen? Disable the asignment?)
-                    static const ::HIR::TypeRef::Data::Tag tag_ordering[] = {
-                        ::HIR::TypeRef::Data::TAG_Pointer,
-                        ::HIR::TypeRef::Data::TAG_Borrow,
-                        ::HIR::TypeRef::Data::TAG_Path, // Strictly speaking, Path == Generic
-                        ::HIR::TypeRef::Data::TAG_Generic,
-                        };
-                    static const ::HIR::TypeRef::Data::Tag* tag_ordering_end = &tag_ordering[ sizeof(tag_ordering) / sizeof(tag_ordering[0] )];
-                    Ordering cmp;   // Ordering of this type relative to the current most restrictve destination (of restrictiveness)
-                    if( dest_type->m_data.tag() != ent.ty->m_data.tag() )
-                    {
-                        auto p1 = ::std::find(tag_ordering, tag_ordering_end, dest_type->m_data.tag());
-                        auto p2 = ::std::find(tag_ordering, tag_ordering_end, ent.ty->m_data.tag());
-                        if( p1 == tag_ordering_end ) {
-                            TODO(sp, "Type " << *dest_type << " not in ordering list");
-                        }
-                        if( p2 == tag_ordering_end ) {
-                            TODO(sp, "Type " << *dest_type << " not in ordering list");
-                        }
-                        cmp = ord( static_cast<int>(p2-p1), 0 );
-                    }
-                    else
-                    {
-                        struct H {
-                            static Ordering get_ordering_infer(const Span& sp, const ::HIR::TypeRef& r)
-                            {
-                                // For infer, only concrete types are more restrictive
-                                TU_MATCH_HDRA( (r.m_data), { )
-                                default:
-                                    return OrdLess;
-                                TU_ARMA(Path, te) {
-                                    if( te.binding.is_Opaque() )
-                                        return OrdLess;
-                                    if( te.binding.is_Unbound() )
-                                        return OrdEqual;
-                                    // TODO: Check if the type is concrete? (Check an unsizing param if present)
-                                    return OrdLess;
-                                    }
-                                TU_ARMA(Borrow, _)
-                                    return OrdEqual;
-                                TU_ARMA(Infer, _)
-                                    return OrdEqual;
-                                TU_ARMA(Pointer, _)
-                                    return OrdEqual;
-                                }
-                                throw "";
-                            }
-                            static Ordering get_ordering_ty(const Span& sp, const Context& context, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r)
-                            {
-                                if( l == r ) {
-                                    return OrdEqual;
-                                }
-                                if( l.m_data.is_Infer() ) {
-                                    return get_ordering_infer(sp, r);
-                                }
-                                if( r.m_data.is_Infer() ) {
-                                    switch( H::get_ordering_infer(sp, l) )
-                                    {
-                                    case OrdLess:   return OrdGreater;
-                                    case OrdEqual:  return OrdEqual;
-                                    case OrdGreater:return OrdLess;
-                                    }
-                                }
-                                if( l.m_data.is_Path() ) {
-                                    // Path types can be unsize targets, and can also act like infers
-                                    // - If it's a Unbound treat as Infer
-                                    // - If Opaque, then search for a CoerceUnsized/Unsize bound?
-                                    // - If Struct, look for ^ tag
-                                    // - Else, more/equal specific
-                                    TODO(sp, l << " with " << r << " - LHS is Path");
-                                }
-                                if( r.m_data.is_Path() ) {
-                                    // Path types can be unsize targets, and can also act like infers
-                                    TODO(sp, l << " with " << r << " - RHS is Path");
-                                }
-
-                                TODO(sp, "Compare " << l << " and " << r);
-                            }
-                        };
-                        TU_MATCH_HDRA( (ent.ty->m_data), { )
-                        default:
-                            BUG(sp, "Unexpected type class " << *ent.ty);
-                            break;
-                        TU_ARMA(Generic, _te2) {
-                            cmp = OrdEqual;
-                            }
-                        TU_ARMA(Path, te2) {
-                            //const auto& te = dest_type->m_data.as_Path();
-                            // TODO: Prevent this rule from applying?
-                            cmp = OrdEqual;
-                            }
-                        TU_ARMA(Borrow, te2) {
-                            const auto& te = dest_type->m_data.as_Borrow();
-                            cmp = ord( (int)te2.type, (int)te.type );   // Note, reversed ordering because we want Unique>Shared
-                            if( cmp == OrdEqual )
-                            {
-                                cmp = H::get_ordering_ty(sp, context, context.m_ivars.get_type(*te.inner), context.m_ivars.get_type(*te2.inner));
-                            }
-                            }
-                        TU_ARMA(Pointer, te2) {
-                            const auto& te = dest_type->m_data.as_Pointer();
-                            cmp = ord( (int)te2.type, (int)te.type );   // Note, reversed ordering because we want Unique>Shared
-                            if( cmp == OrdEqual )
-                            {
-                                cmp = H::get_ordering_ty(sp, context, context.m_ivars.get_type(*te.inner), context.m_ivars.get_type(*te2.inner));
-                            }
-                            }
-                        }
-                    }
-
+                    auto cmp = TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *dest_type);
                     switch(cmp)
                     {
                     case OrdLess:
-                        // This entry is less restrictive, so don't update `dest_type`
+                        // This entry is less restrictive, so DO update `dest_type`
+                        dest_type = ent.ty;
                         break;
                     case OrdEqual:
                         break;
                     case OrdGreater:
-                        // This entry is mode restrictive, so DO update `dest_type`
-                        dest_type = ent.ty;
+                        // This entry is more restrictive, so don't update `dest_type`
                         break;
                     }
                 }
@@ -6978,6 +7005,50 @@ namespace {
                 }
             }
 #endif
+
+            // TODO: If in fallback mode, pick the most permissive option
+            // - E.g. If the options are &mut T and *const T, use the *const T
+            if( !honour_disable )
+            {
+                // All are coercions (not unsizings)
+                if( ::std::all_of(possible_tys.begin(), possible_tys.end(), [](const auto& ent){ return ent.is_pointer; }) && n_ivars == 0 )
+                {
+                    // Find the least restrictive destination, and most restrictive source
+                    const ::HIR::TypeRef*   dest_type = nullptr;
+                    bool any_ivar_present = false;
+                    for(const auto& ent : possible_tys)
+                    {
+                        if( visit_ty_with(*ent.ty, [](const ::HIR::TypeRef& t){ return t.m_data.is_Infer(); }) ) {
+                            any_ivar_present = true;
+                        }
+                        if( !dest_type ) {
+                            dest_type = ent.ty;
+                            continue ;
+                        }
+
+                        auto cmp = TypeRestrictiveOrdering::get_ordering_ptr(sp, context, *ent.ty, *dest_type);
+                        switch(cmp)
+                        {
+                        case OrdLess:
+                            // This entry is less restrictive, so DO update `dest_type`
+                            dest_type = ent.ty;
+                            break;
+                        case OrdEqual:
+                            break;
+                        case OrdGreater:
+                            // This entry is more restrictive, so don't update `dest_type`
+                            break;
+                        }
+                    }
+
+                    if( dest_type && n_ivars == 0 && any_ivar_present == false )
+                    {
+                        DEBUG("Suitable option " << *dest_type << " from " << possible_tys);
+                        context.equate_types(sp, ty_l, *dest_type);
+                        return true;
+                    }
+                }
+            }
 
 #if 1
             DEBUG("possible_tys = " << possible_tys);
