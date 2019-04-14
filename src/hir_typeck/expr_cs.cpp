@@ -2742,6 +2742,7 @@ namespace {
             const auto& ty = this->context.get_type(node.m_value->m_res_type);
             TRACE_FUNCTION_F("(CallMethod) {" << this->context.m_ivars.fmt_type(ty) << "}." << node.m_method << node.m_params
                 << "(" << FMT_CB(os, for( const auto& arg_node : node.m_args ) os << this->context.m_ivars.fmt_type(arg_node->m_res_type) << ", ";) << ")"
+                << " -> " << this->context.m_ivars.fmt_type(node.m_res_type)
                 );
 
             // Make sure that no mentioned types are inferred until this method is known
@@ -6430,7 +6431,11 @@ namespace {
         else if( count == 0 ) {
             // No applicable impl
             // - TODO: This should really only fire when there isn't an impl. But it currently fires when _
-            DEBUG("No impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
+            if( v.name == "" )
+                DEBUG("No impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty));
+            else
+                DEBUG("No impl of " << v.trait << context.m_ivars.fmt(v.params) << " for " << context.m_ivars.fmt_type(v.impl_ty)
+                    << " with " << v.name << " = " << context.m_ivars.fmt_type(v.left_ty));
 
             const auto& ty = context.get_type(v.impl_ty);
             bool is_known = !ty.m_data.is_Infer() && !(ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Unbound());
@@ -6837,16 +6842,52 @@ namespace {
                         }
                     }
                     if( l.m_data.is_Path() ) {
+                        const auto& te_l = l.m_data.as_Path();
                         // Path types can be unsize targets, and can also act like infers
                         // - If it's a Unbound treat as Infer
                         // - If Opaque, then search for a CoerceUnsized/Unsize bound?
                         // - If Struct, look for ^ tag
                         // - Else, more/equal specific
-                        TODO(sp, l << " with " << r << " - LHS is Path");
+                        TU_MATCH_HDRA( (r.m_data), { )
+                        default:
+                            // An ivar is less restrictive?
+                            if( te_l.binding.is_Unbound() )
+                                return OrdLess;
+                            TODO(sp, l << " with " << r << " - LHS is Path, RHS is ?");
+                        TU_ARMA(Path, te_r) {
+                            if( te_l.binding.is_Unbound() && te_r.binding.is_Unbound() )
+                            {
+                                return OrdEqual;
+                            }
+                            if( te_l.binding.is_Unbound() )
+                                return OrdLess;
+                            if( te_r.binding.is_Unbound() )
+                            {
+                                return OrdGreater;
+                            }
+                            else if( te_r.binding.is_Opaque() )
+                            {
+                                TODO(sp, l << " with " << r << " - LHS is Path, RHS is opaque type");
+                            }
+                            else if( TU_TEST1(te_r.binding, Struct, ->m_struct_markings.can_unsize) )
+                            {
+                                TODO(sp, l << " with " << r << " - LHS is Path, RHS is unsize-capable struct");
+                            }
+                            else
+                            {
+                                return OrdEqual;
+                            }
+                            }
+                        }
                     }
                     if( r.m_data.is_Path() ) {
                         // Path types can be unsize targets, and can also act like infers
-                        TODO(sp, l << " with " << r << " - RHS is Path");
+                        switch( get_ordering_ty(sp, context, r, l) )
+                        {
+                        case OrdLess:   return OrdGreater;
+                        case OrdEqual:  return OrdEqual;
+                        case OrdGreater:return OrdLess;
+                        }
                     }
 
                     // Slice < Array
