@@ -7631,7 +7631,8 @@ namespace {
             }
             DEBUG("possible_tys = " << possible_tys);
 
-            if( possible_tys.size() == 1 && n_ivars == 0 )
+            // If there's only one option (or one real option w/ ivars, if in fallback mode) - equate it
+            if( possible_tys.size() == 1 && (n_ivars == 0 || !honour_disable) )
             {
                 const auto& new_ty = *possible_tys[0].ty;
                 DEBUG("Only " << new_ty << " is an option");
@@ -7810,7 +7811,7 @@ namespace {
                 context.equate_types(sp, ty_l, *good_types.front());
                 return true;
             }
-            else if( good_types.size() > 0 && !honour_disable )
+            else if( good_types.size() > 0 && !honour_disable && good_types.size() > n_good_ints )
             {
                 auto typ_is_borrow = [&](const ::HIR::TypeRef* typ) { return typ->m_data.is_Borrow(); };
                 // NOTE: We want to select from sets of primitives and generics (which can be interchangable)
