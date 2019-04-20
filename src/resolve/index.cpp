@@ -296,10 +296,19 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
                 ASSERT_BUG(sp, crate.m_extern_crates.count(spath.m_crate_name) == 1, "Crate " << spath.m_crate_name << " is not loaded");
                 const auto* hmod = &crate.m_extern_crates.at(spath.m_crate_name).m_hir->m_root_module;
                 for(unsigned int i = 0; i < spath.m_components.size()-1; i ++) {
-                    const auto& it = hmod->m_mod_items.at( spath.m_components[i] );
-                    ASSERT_BUG(sp, it->ent.is_Module(), "");
-                    hmod = &it->ent.as_Module();
+                    const auto& hit = hmod->m_mod_items.at( spath.m_components[i] );
+                    // Only support enums on the penultimate component
+                    if( i == spath.m_components.size()-2 && hit->ent.is_Enum() ) {
+                        p.m_bindings.type = ::AST::PathBinding_Type::make_EnumVar({nullptr, 0});
+                        _add_item_type( sp, dst_mod, it.first, is_pub, mv$(p), false );
+                        hmod = nullptr;
+                        break ;
+                    }
+                    ASSERT_BUG(sp, hit->ent.is_Module(), "Path component " << spath.m_components[i] << " of " << spath << " is not a module, instead " << hit->ent.tag_str());
+                    hmod = &hit->ent.as_Module();
                 }
+                if( !hmod )
+                    continue ;
                 vep = &hmod->m_mod_items.at( spath.m_components.back() )->ent;
             }
             else {
