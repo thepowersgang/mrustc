@@ -789,6 +789,20 @@ bool ::HIR::TypeRef::match_test_generics(const Span& sp, const ::HIR::TypeRef& x
     assert(!"Fell off end of clone_binding");
     throw "";
 }
+bool HIR::TypeRef::TypePathBinding::operator==(const HIR::TypeRef::TypePathBinding& x) const
+{
+    if( this->tag() != x.tag() )
+        return false;
+    TU_MATCH(::HIR::TypeRef::TypePathBinding, (*this, x), (te, xe),
+    (Unbound, return true;),
+    (Opaque, return true;),
+    (ExternType, return te == xe;),
+    (Struct, return te == xe;),
+    (Union , return te == xe;),
+    (Enum  , return te == xe;)
+    )
+    throw "";
+}
 
 
 ::HIR::TypeRef HIR::TypeRef::clone() const

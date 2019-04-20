@@ -159,6 +159,9 @@ public:
     (Enum, const ::HIR::Enum*)
     ), (), (), (
         TypePathBinding clone() const;
+
+        bool operator==(const TypePathBinding& x) const;
+        bool operator!=(const TypePathBinding& x) const { return !(*this == x); }
     )
     );
 
