@@ -5512,18 +5512,28 @@ namespace {
         }
         else if(const auto* sep = src.m_data.opt_Infer())
         {
-            if(sep->is_lit() && !dst.m_data.is_TraitObject())
+            if(sep->is_lit())
             {
-                // Literal to anything other than a trait object must be an equality
-                DEBUG("Literal with primitive");
-                return CoerceResult::Equality;
+                if( !dst.m_data.is_TraitObject())
+                {
+                    // Literal to anything other than a trait object must be an equality
+                    DEBUG("Literal with primitive");
+                    return CoerceResult::Equality;
+                }
+                else
+                {
+                    // Fall through
+                }
             }
-            if( context_mut )
+            else
             {
-                context_mut->possible_equate_type_unsize_to(sep->index, dst);
+                if( context_mut )
+                {
+                    context_mut->possible_equate_type_unsize_to(sep->index, dst);
+                }
+                DEBUG("Src is ivar (" << src << "), return Unknown");
+                return CoerceResult::Unknown;
             }
-            DEBUG("Src is ivar (" << src << "), return Unknown");
-            return CoerceResult::Unknown;
         }
         else
         {
@@ -5727,78 +5737,34 @@ namespace {
                 // Check for trait impl
                 if( trait.m_path != ::HIR::SimplePath() )
                 {
-                    ImplRef best_impl;
-                    unsigned int count = 0;
-                    bool found = context.m_resolve.find_trait_impls(sp, trait.m_path, trait.m_params, src, [&](auto impl, auto cmp) {
-                        DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
-                        count ++;
-                        best_impl = mv$(impl);
-                        return cmp == ::HIR::Compare::Equal;
-                        });
-                    if( count == 0 )
+                    // Just call equate_types_assoc to add the required bounds.
+                    if( context_mut )
                     {
-                        // TODO: Get a better idea of when there won't ever be an applicable impl
-                        if( !context.m_ivars.type_contains_ivars(src) ) {
-                            ERROR(sp, E0000, "The trait " << dep->m_trait << " is not implemented for " << src);
+                        for(const auto& tyb : dep->m_trait.m_type_bounds)
+                        {
+                            context_mut->equate_types_assoc(sp, tyb.second,  trait.m_path, trait.m_params.clone(), src, tyb.first.c_str(), false);
                         }
-                        DEBUG("No impl, but there may eventaully be one");
-                        return CoerceResult::Unknown;
+                        if( dep->m_trait.m_type_bounds.empty() )
+                        {
+                            context_mut->add_trait_bound(sp, src,  trait.m_path, trait.m_params.clone());
+                        }
                     }
-                    if( !found )
+                    else
                     {
-                        if(count > 1)
-                        {
-                            DEBUG("Defer as there are multiple applicable impls");
-                            return CoerceResult::Unknown;
-                        }
-
-                        if( best_impl.has_magic_params() ) {
-                            DEBUG("Defer as there were magic parameters");
-                            return CoerceResult::Unknown;
-                        }
-
-                        // TODO: Get a better way of equating these that doesn't require getting copies of the impl's types
-                        if( context_mut )
-                        {
-                            context_mut->equate_types(sp, src, best_impl.get_impl_type());
-                            auto args = best_impl.get_trait_params();
-                            assert(trait.m_params.m_types.size() == args.m_types.size());
-                            for(unsigned int i = 0; i < trait.m_params.m_types.size(); i ++)
-                            {
-                                context_mut->equate_types(sp, trait.m_params.m_types[i], args.m_types[i]);
-                            }
-                            for(const auto& tyb : dep->m_trait.m_type_bounds)
-                            {
-                                auto ty = best_impl.get_type(tyb.first.c_str());
-                                if( ty != ::HIR::TypeRef() )
-                                {
-                                    context_mut->equate_types(sp, tyb.second, ty);
-                                }
-                                else
-                                {
-                                    // Error? Log? ...
-                                    DEBUG("Associated type " << tyb.first << " not present in impl, can't equate");
-                                }
-                            }
-                        }
+                        // TODO: Should this check?
                     }
                 }
 
-                for(const auto& marker : dep->m_markers)
+                if( context_mut )
                 {
-                    bool found = context.m_resolve.find_trait_impls(sp, marker.m_path, marker.m_params, src, [&](auto impl, auto cmp) {
-                        DEBUG("TraitObject coerce from - cmp="<<cmp<<", " << impl);
-                        return cmp == ::HIR::Compare::Equal;
-                        });
-                    // TODO: Allow fuzz and equate same as above?
-                    if( !found )
+                    for(const auto& marker : dep->m_markers)
                     {
-                        // TODO: Get a better idea of when there won't ever be an applicable impl
-                        if( !context.m_ivars.type_contains_ivars(src) ) {
-                            ERROR(sp, E0000, "The trait " << marker << " is not implemented for " << src);
-                        }
-                        return CoerceResult::Unknown;
+                        context_mut->add_trait_bound(sp, src,  marker.m_path, marker.m_params.clone());
                     }
+                }
+                else
+                {
+                    // TODO: Should this check?
                 }
 
                 // Add _Unsize operator
@@ -6842,6 +6808,12 @@ namespace {
             return false;
         }
 
+        // Don't attempt to guess literalS
+        if( ty_l.m_data.as_Infer().is_lit() )
+        {
+            DEBUG(i << ": Literal " << ty_l);
+            return false;
+        }
         if( ! ivar_ent.has_rules() ) {
             // No rules, don't do anything (and don't print)
             DEBUG(i << ": No rules");
@@ -7811,7 +7783,7 @@ namespace {
                 context.equate_types(sp, ty_l, *good_types.front());
                 return true;
             }
-            else if( good_types.size() > 0 && !honour_disable && good_types.size() > n_good_ints )
+            else if( good_types.size() > 0 && !honour_disable )
             {
                 auto typ_is_borrow = [&](const ::HIR::TypeRef* typ) { return typ->m_data.is_Borrow(); };
                 // NOTE: We want to select from sets of primitives and generics (which can be interchangable)
