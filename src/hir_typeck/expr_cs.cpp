@@ -60,16 +60,18 @@ struct Context
     /// Inferrence variable equalities
     struct Coercion
     {
+        unsigned rule_idx;
         ::HIR::TypeRef  left_ty;
         ::HIR::ExprNodeP* right_node_ptr;
 
         friend ::std::ostream& operator<<(::std::ostream& os, const Coercion& v) {
-            os << v.left_ty << " := " << v.right_node_ptr << " " << &**v.right_node_ptr << " (" << (*v.right_node_ptr)->m_res_type << ")";
+            os << "R" << v.rule_idx << " " << v.left_ty << " := " << v.right_node_ptr << " " << &**v.right_node_ptr << " (" << (*v.right_node_ptr)->m_res_type << ")";
             return os;
         }
     };
     struct Associated
     {
+        unsigned rule_idx;
         Span    span;
         ::HIR::TypeRef  left_ty;
 
@@ -83,10 +85,10 @@ struct Context
 
         friend ::std::ostream& operator<<(::std::ostream& os, const Associated& v) {
             if( v.name == "" ) {
-                os << "req ty " << v.impl_ty << " impl " << v.trait << v.params;
+                os << "R" << v.rule_idx << " " << "req ty " << v.impl_ty << " impl " << v.trait << v.params;
             }
             else {
-                os << v.left_ty << " = " << "< `" << v.impl_ty << "` as `" << v.trait << v.params << "` >::" << v.name;
+                os << "R" << v.rule_idx << " " << v.left_ty << " = " << "< `" << v.impl_ty << "` as `" << v.trait << v.params << "` >::" << v.name;
             }
             return os;
         }
@@ -136,6 +138,7 @@ struct Context
     HMTypeInferrence    m_ivars;
     TraitResolution m_resolve;
 
+    unsigned next_rule_idx;
     ::std::vector<Coercion> link_coerce;
     ::std::vector<Associated> link_assoc;
     /// Nodes that need revisiting (e.g. method calls when the receiver isn't known)
@@ -3520,7 +3523,7 @@ void Context::dump() const {
     DEBUG("--- CS Context - " << link_coerce.size() << " Coercions, " << link_assoc.size() << " associated, " << to_visit.size() << " nodes, " << adv_revisits.size() << " callbacks");
     for(const auto& v : link_coerce) {
         //DEBUG(v);
-        DEBUG(this->m_ivars.fmt_type(v.left_ty) << " := " << v.right_node_ptr << " " << &**v.right_node_ptr << " (" << this->m_ivars.fmt_type((*v.right_node_ptr)->m_res_type) << ")");
+        DEBUG("R" << v.rule_idx << " " << this->m_ivars.fmt_type(v.left_ty) << " := " << v.right_node_ptr << " " << &**v.right_node_ptr << " (" << this->m_ivars.fmt_type((*v.right_node_ptr)->m_res_type) << ")");
     }
     for(const auto& v : link_assoc) {
         DEBUG(v);
@@ -4983,9 +4986,10 @@ void Context::equate_types_coerce(const Span& sp, const ::HIR::TypeRef& l, ::HIR
     this->m_ivars.get_type(l);
     // - Just record the equality
     this->link_coerce.push_back(Coercion {
+        this->next_rule_idx ++,
         l.clone(), &node_ptr
         });
-    DEBUG("equate_types_coerce(" << this->link_coerce.back() << ")");
+    DEBUG("++ " << this->link_coerce.back());
     this->m_ivars.mark_change();
 }
 void Context::equate_types_shadow(const Span& sp, const ::HIR::TypeRef& l, bool is_to)
@@ -5088,6 +5092,7 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
         return ;
     }
     this->link_assoc.push_back(Associated {
+        this->next_rule_idx ++,
         sp,
         l.clone(),
 
@@ -5097,7 +5102,7 @@ void Context::equate_types_assoc(const Span& sp, const ::HIR::TypeRef& l,  const
         name,
         is_op
         });
-    DEBUG("(" << this->link_assoc.back() << ")");
+    DEBUG("++ " << this->link_assoc.back());
     this->m_ivars.mark_change();
 }
 void Context::add_revisit(::HIR::ExprNode& node) {
