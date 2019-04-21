@@ -619,9 +619,9 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
         }
 
         #if 1
-        TU_IFLET(::HIR::TypeRef::Data, type.m_data, Diverge, e,
+        if( type.m_data.is_Diverge() ) {
             root_ivar.type->m_data.as_Infer().ty_class = ::HIR::InferClass::Diverge;
-        )
+        }
         else
         #endif
         root_ivar.type = box$( mv$(type) );

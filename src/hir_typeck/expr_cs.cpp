@@ -155,8 +155,9 @@ struct Context
 
     Context(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
         m_crate(crate),
-        m_resolve(m_ivars, crate, impl_params, item_params),
-        m_lang_Box( crate.get_lang_item_path_opt("owned_box") )
+        m_resolve(m_ivars, crate, impl_params, item_params)
+        ,next_rule_idx( 0 )
+        ,m_lang_Box( crate.get_lang_item_path_opt("owned_box") )
     {
     }
 
@@ -6908,6 +6909,22 @@ namespace {
             }
             DEBUG("possible_tys = " << possible_tys);
 
+            if( ty_l.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge )
+            {
+                // There's a coercion (not an unsizing) AND there's no sources
+                // - This ensures that the ! is directly as a value, and not as a generic param or behind a pointer
+                if( ::std::any_of(possible_tys.begin(), possible_tys.end(), [](const PossibleType& ent){ return ent.is_pointer; })
+                 && ::std::none_of(possible_tys.begin(), possible_tys.end(), [](const PossibleType& ent){ return ent.can_deref; })
+                 )
+                {
+                    // There are no source possibilities, this has to be a `!`
+                    DEBUG("- Diverge with no source types, force setting to !");
+                    DEBUG("Set IVar " << i << " = !");
+                    context.m_ivars.get_type(ty_l_ivar) = ::HIR::TypeRef::new_diverge();
+                    return true;
+                }
+            }
+
             // Filter out ivars
             // - TODO: Should this also remove &_ types? (maybe not, as they give information about borrow classes)
             size_t n_ivars;
@@ -6915,6 +6932,7 @@ namespace {
             size_t n_dst_ivars;
             {
                 auto new_end = ::std::remove_if(possible_tys.begin(), possible_tys.end(), [](const PossibleType& ent) {
+                        // TODO: Should this remove Unbound associated types too?
                         return ent.ty->m_data.is_Infer();
                         });
                 n_ivars = possible_tys.end() - new_end;
@@ -6934,6 +6952,138 @@ namespace {
                 possible_tys.erase(new_end, possible_tys.end());
             }
             (void)n_ivars;
+
+            // === If there's no source ivars, find the least permissive source ===
+            // - If this source can't be unsized (e.g. in `&_, &str`, `&str` is the least permissive, and can't be
+            // coerced without a `*const _` in the list), then equate to that
+            // 1. Find the most accepting pointer type (if there is at least one coercion source)
+            // 2. Look for an option that uses that pointer type, and contains an unsized type (that isn't a trait
+            //    object with markers)
+            // 3. Assign to that known most-permissive option
+            // Do the oposite for the destination types (least permissive pointer, pick any Sized type)
+            if( n_src_ivars == 0 || fallback_ty == IvarPossFallbackType::Assume )
+            {
+                static const ::HIR::TypeRef::Data::Tag tag_ordering[] = {
+                    //::HIR::TypeRef::Data::TAG_Generic,
+                    ::HIR::TypeRef::Data::TAG_Path, // Strictly speaking, Path == Generic?
+                    ::HIR::TypeRef::Data::TAG_Borrow,
+                    ::HIR::TypeRef::Data::TAG_Pointer,
+                    };
+                struct H {
+                    static Ordering ord_accepting_ptr(const ::HIR::TypeRef& ty_l, const ::HIR::TypeRef& ty_r)
+                    {
+                        // Ordering in increasing acceptiveness:
+                        // - Paths, Borrows, Raw Pointers
+                        if( ty_l.m_data.tag() != ty_r.m_data.tag() )
+                        {
+                            const auto* tag_ordering_end = tag_ordering+sizeof(tag_ordering)/sizeof(tag_ordering[0]);
+                            auto it_l = ::std::find(tag_ordering, tag_ordering_end, ty_l.m_data.tag());
+                            auto it_r = ::std::find(tag_ordering, tag_ordering_end, ty_r.m_data.tag());
+                            if( it_l == tag_ordering_end || it_r == tag_ordering_end ) {
+                                // Huh?
+                                return OrdEqual;
+                            }
+                            if( it_l < it_r )
+                                return OrdLess;
+                            else if( it_l > it_r )
+                                return OrdGreater;
+                            else
+                                throw "Impossible";
+                        }
+
+                        switch(ty_l.m_data.tag())
+                        {
+                        case ::HIR::TypeRef::Data::TAG_Borrow:
+                            // Reverse order - Shared is numerically lower than Unique, but is MORE accepting
+                            return ::ord( static_cast<int>(ty_r.m_data.as_Borrow().type), static_cast<int>(ty_l.m_data.as_Borrow().type) );
+                        case ::HIR::TypeRef::Data::TAG_Pointer:
+                            // Reverse order - Shared is numerically lower than Unique, but is MORE accepting
+                            return ::ord( static_cast<int>(ty_r.m_data.as_Pointer().type), static_cast<int>(ty_l.m_data.as_Pointer().type) );
+                        case ::HIR::TypeRef::Data::TAG_Path:
+                            return OrdEqual;
+                        case ::HIR::TypeRef::Data::TAG_Generic:
+                            return OrdEqual;
+                        default:
+                            // Technically a bug/error
+                            return OrdEqual;
+                        }
+                    }
+
+                    static const ::HIR::TypeRef* match_and_extract_ptr_ty(const ::HIR::TypeRef& ptr_tpl, const ::HIR::TypeRef& ty)
+                    {
+                        if( ty.m_data.tag() != ptr_tpl.m_data.tag() )
+                            return nullptr;
+                        TU_MATCH_HDRA( (ty.m_data), { )
+                        TU_ARMA(Borrow, te) {
+                            if( te.type == ptr_tpl.m_data.as_Borrow().type ) {
+                                return &*te.inner;
+                            }
+                            }
+                        TU_ARMA(Pointer, te) {
+                            if( te.type == ptr_tpl.m_data.as_Pointer().type ) {
+                                return &*te.inner;
+                            }
+                            }
+                        TU_ARMA(Path, te) {
+                            if( te.binding == ptr_tpl.m_data.as_Path().binding ) {
+                                // TODO: Get inner
+                            }
+                            } break;
+                        default:
+                            break;
+                        }
+                        return nullptr;
+                    }
+                };
+                const ::HIR::TypeRef* ptr_ty = nullptr;
+                if( ::std::any_of(possible_tys.begin(), possible_tys.end(), [&](const auto& ent){ return ent.can_deref && ent.is_pointer; }) )
+                {
+                    for(const auto& ent : possible_tys)
+                    {
+                        if( !ent.can_deref )
+                            continue;
+
+                        if( ptr_ty == nullptr )
+                        {
+                            ptr_ty = ent.ty;
+                        }
+                        else if( H::ord_accepting_ptr(*ent.ty, *ptr_ty) == OrdGreater )
+                        {
+                            ptr_ty = ent.ty;
+                        }
+                        else
+                        {
+                        }
+                    }
+                }
+
+                for(const auto& ent : possible_tys)
+                {
+                    // Sources only
+                    if( ! ent.can_deref )
+                        continue ;
+                    // Must match `ptr_ty`'s outer pointer
+                    const ::HIR::TypeRef* inner_ty = (ptr_ty ? H::match_and_extract_ptr_ty(*ptr_ty, *ent.ty) : ent.ty);
+                    if( !inner_ty )
+                        continue;
+
+                    bool is_max_accepting = false;
+                    if( inner_ty->m_data.is_Slice() ) {
+                        is_max_accepting = true;
+                    }
+                    else if( TU_TEST1(inner_ty->m_data, Primitive, == ::HIR::CoreType::Str) ) {
+                        is_max_accepting = true;
+                    }
+                    else {
+                    }
+                    if( is_max_accepting )
+                    {
+                        DEBUG("Most accepting pointer class, and most permissive inner type - " << *ent.ty);
+                        context.equate_types(sp, ty_l, *ent.ty);
+                        return true;
+                    }
+                }
+            }
 
             struct TypeRestrictiveOrdering {
                 static Ordering get_ordering_infer(const Span& sp, const ::HIR::TypeRef& r)
@@ -7609,7 +7759,8 @@ namespace {
             DEBUG("possible_tys = " << possible_tys);
 
             // If there's only one option (or one real option w/ ivars, if in fallback mode) - equate it
-            if( possible_tys.size() == 1 && (n_ivars == 0 || !honour_disable) )
+            //if( possible_tys.size() == 1 && (n_ivars == 0 || !honour_disable) )
+            if( possible_tys.size() == 1 && n_ivars == 0 )
             {
                 const auto& new_ty = *possible_tys[0].ty;
                 DEBUG("Only " << new_ty << " is an option");
