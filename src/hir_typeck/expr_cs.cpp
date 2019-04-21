@@ -84,12 +84,15 @@ struct Context
         bool    is_operator;
 
         friend ::std::ostream& operator<<(::std::ostream& os, const Associated& v) {
+            os << "R" << v.rule_idx << " ";
             if( v.name == "" ) {
-                os << "R" << v.rule_idx << " " << "req ty " << v.impl_ty << " impl " << v.trait << v.params;
+                os << "req ty " << v.impl_ty << " impl " << v.trait << v.params;
             }
             else {
-                os << "R" << v.rule_idx << " " << v.left_ty << " = " << "< `" << v.impl_ty << "` as `" << v.trait << v.params << "` >::" << v.name;
+                os << v.left_ty << " = " << "< `" << v.impl_ty << "` as `" << v.trait << v.params << "` >::" << v.name;
             }
+            if( v.is_operator )
+                os << " - op";
             return os;
         }
     };
@@ -5802,12 +5805,22 @@ namespace {
             unsigned int count = 0;
 
             ::HIR::PathParams   pp { dst.clone() };
-            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, src, [&best_impl,&count](auto impl, auto cmp){
+            bool found = context.m_resolve.find_trait_impls(sp, lang_Unsize, pp, src, [&best_impl,&count,&context](auto impl, auto cmp){
                     DEBUG("[check_unsize_tys] Found impl " << impl << (cmp == ::HIR::Compare::Fuzzy ? " (fuzzy)" : ""));
-                    if( impl.more_specific_than(best_impl) )
+                    if( !impl.overlaps_with(context.m_crate, best_impl) )
+                    {
+                        // No overlap, count it as a new possibility
+                        if( count == 0 )
+                            best_impl = mv$(impl);
+                        count ++;
+                    }
+                    else if( impl.more_specific_than(best_impl) )
                     {
                         best_impl = mv$(impl);
-                        count ++;
+                    }
+                    else
+                    {
+                        // Less specific
                     }
                     // TODO: Record the best impl (if fuzzy) and equate params
                     return cmp != ::HIR::Compare::Fuzzy;
@@ -5830,6 +5843,7 @@ namespace {
             {
                 // TODO: Fuzzy?
                 //context.equate_types(sp, *e.inner, *s_e.inner);
+                DEBUG("Multiple impls");
             }
         }
 
@@ -6814,7 +6828,8 @@ namespace {
             return false;
         }
 
-        // Don't attempt to guess literalS
+        // Don't attempt to guess literals
+        // - What about if they're bounded?
         if( ty_l.m_data.as_Infer().is_lit() )
         {
             DEBUG(i << ": Literal " << ty_l);

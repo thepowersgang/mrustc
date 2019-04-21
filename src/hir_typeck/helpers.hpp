@@ -57,6 +57,7 @@ public:
 public: // ?? - Needed once, anymore?
     struct IVar
     {
+        //bool could_be_diverge;    // TODO: use this instead of InferClass::Diverge
         unsigned int alias; // If not ~0, this points to another ivar
         ::std::unique_ptr< ::HIR::TypeRef> type;    // Type (only nullptr if alias!=0)
 

@@ -619,8 +619,12 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
         }
 
         #if 1
-        if( type.m_data.is_Diverge() ) {
-            root_ivar.type->m_data.as_Infer().ty_class = ::HIR::InferClass::Diverge;
+        if( type.m_data.is_Diverge() )
+        {
+            if( root_ivar.type->m_data.as_Infer().ty_class == ::HIR::InferClass::None )
+            {
+                root_ivar.type->m_data.as_Infer().ty_class = ::HIR::InferClass::Diverge;
+            }
         }
         else
         #endif
@@ -2276,6 +2280,7 @@ bool TraitResolution::find_named_trait_in_trait(const Span& sp,
 
         //DEBUG(pt << " => " << pt_mono);
         if( pt.m_path.m_path == des ) {
+            //DEBUG("Found potential " << pt_mono);
             // NOTE: Doesn't quite work...
             //auto cmp = this->compare_pp(sp, pt_mono.m_path.m_params, des_params);
             //if( cmp != ::HIR::Compare::Unequal )

@@ -32,10 +32,24 @@ bool ImplRef::more_specific_than(const ImplRef& other) const
         )
         ),
     (BoundedPtr,
-        return true;
+        if( !other.m_data.is_BoundedPtr() )
+            return false;
+        const auto& oe = other.m_data.as_BoundedPtr();
+        assert( *te.type == *oe.type );
+        assert( *te.trait_args == *oe.trait_args );
+        if( te.assoc->size() > oe.assoc->size() )
+            return true;
+        return false;
         ),
     (Bounded,
-        return true;
+        if( !other.m_data.is_Bounded() )
+            return false;
+        const auto& oe = other.m_data.as_Bounded();
+        assert( te.type == oe.type );
+        assert( te.trait_args == oe.trait_args );
+        if( te.assoc.size() > oe.assoc.size() )
+            return true;
+        return false;
         )
     )
     throw "";
@@ -50,8 +64,21 @@ bool ImplRef::overlaps_with(const ::HIR::Crate& crate, const ImplRef& other) con
             return te.impl->overlaps_with( crate, *oe.impl );
         ),
     (BoundedPtr,
+        // TODO: Bounded and BoundedPtr are compatible
+        if( *te.type != *oe.type )
+            return false;
+        if( *te.trait_args != *oe.trait_args )
+            return false;
+        // Don't check associated types
+        return true;
         ),
     (Bounded,
+        if( te.type != oe.type )
+            return false;
+        if( te.trait_args != oe.trait_args )
+            return false;
+        // Don't check associated types
+        return true;
         )
     )
     return false;
