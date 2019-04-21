@@ -2549,9 +2549,9 @@ namespace {
     }
 
     // NOTE: Can't clean up yet, as consteval isn't done
-    //MIR_Cleanup(resolve, path, fcn, args, ptr->m_res_type);
+    //MIR_Cleanup(resolve, path, fcn, args, ret_ty);
     //DEBUG("MIR Dump:" << ::std::endl << FMT_CB(ss, MIR_Dump_Fcn(ss, fcn, 1);));
-    MIR_Validate(resolve, path, fcn, args, ptr->m_res_type);
+    MIR_Validate(resolve, path, fcn, args, ret_ty);
 
     if( getenv("MRUSTC_VALIDATE_FULL_EARLY") ) {
         MIR_Validate_Full(resolve, path, fcn, args, ptr->m_res_type);
