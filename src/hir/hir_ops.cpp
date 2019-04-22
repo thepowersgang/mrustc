@@ -271,6 +271,10 @@ namespace {
             return ::OrdGreater;
         }
 
+        if( left == right ) {
+            return ::OrdEqual;
+        }
+
         TU_MATCH(::HIR::TypeRef::Data, (left.m_data), (le),
         (Generic,
             throw "";
@@ -335,7 +339,7 @@ namespace {
             ),
         (Function,
             TU_IFLET(::HIR::TypeRef::Data, right.m_data, Function, re,
-                TODO(sp, "Function");
+                TODO(sp, "Function - " << left << " vs " << right);
                 //return typelist_ord_specific(sp, le.arg_types, re.arg_types);
             )
             else {

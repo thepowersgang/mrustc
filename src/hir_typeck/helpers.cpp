@@ -2637,10 +2637,12 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         };
 
     // - If the type is a path (struct/enum/...), search for impls for all contained types.
-    TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Path, e,
+    if(const auto* ep = type.m_data.opt_Path())
+    {
+        const auto& e = *ep;
         ::HIR::Compare  res = ::HIR::Compare::Equal;
-        TU_MATCH( ::HIR::Path::Data, (e.path.m_data), (pe),
-        (Generic,
+        TU_MATCH_HDRA( (e.path.m_data), {)
+        TU_ARMA(Generic, pe) { //(
             ::HIR::TypeRef  tmp;
             auto monomorph_cb = [&](const auto& gt)->const ::HIR::TypeRef& {
                 const auto& ge = gt.m_data.as_Generic();
@@ -2726,25 +2728,30 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 )
             )
             DEBUG("- Nothing failed, calling callback");
-            ),
-        (UfcsUnknown,
+            }
+        TU_ARMA(UfcsUnknown, pe) {
             BUG(sp, "UfcsUnknown in typeck - " << type);
-            ),
-        (UfcsKnown,
+            }
+        TU_ARMA(UfcsKnown, pe) {
             // If unbound, use Fuzzy {
             if(e.binding.is_Unbound()) {
                 DEBUG("- Unbound UfcsKnown, returning Fuzzy");
                 return ::HIR::Compare::Fuzzy;
             }
             // Otherwise, it's opaque. Check the bounds on the trait.
+            if( TU_TEST1(pe.type->m_data, Generic, .binding >> 8 == 2) )
+            {
+                DEBUG("- UfcsKnown of placeholder, returning Fuzzy");
+                return ::HIR::Compare::Fuzzy;
+            }
             TODO(sp, "Check trait bounds for bound on " << type);
-            ),
-        (UfcsInherent,
+            }
+        TU_ARMA(UfcsInherent, pe) {
             TODO(sp, "Auto trait lookup on UFCS Inherent type");
-            )
-        )
+            }
+        }
         return res;
-    )
+    }
     else TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Generic, e,
         auto l_res = ::HIR::Compare::Unequal;
         this->find_trait_impls(sp, trait, *params_ptr, type, [&](auto, auto cmp){ l_res = cmp; return (cmp == ::HIR::Compare::Equal); });
