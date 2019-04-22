@@ -4033,6 +4033,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     // Still pure infer, can't do anything
                     // - What if it's a literal?
 
+                    // TODO: Don't do fallback if the ivar is marked as being hard blocked
                     if( n_deref == 0 && is_fallback )
                     {
                         ::HIR::TypeRef  possible_type;
@@ -6425,6 +6426,12 @@ namespace {
             context.equate_types_shadow_strong(sp, v.left_ty);
         }
 
+        // HACK? Soft-prevent inferrence of the param types
+        for(const auto& t : v.params.m_types)
+        {
+            context.equate_types_to_shadow(sp, t);
+        }
+
         // Locate applicable trait impl
         unsigned int count = 0;
         DEBUG("Searching for impl " << v.trait << v.params << " for " << context.m_ivars.fmt_type(v.impl_ty));
@@ -6938,6 +6945,14 @@ namespace {
                     context.m_ivars.get_type(ty_l_ivar) = ::HIR::TypeRef::new_diverge();
                     return true;
                 }
+            }
+
+            // If there's no disable flags set, and there's only one option, pick it.
+            // - Slight hack to speed up flow-down inference
+            if( possible_tys.size() == 1 && possible_tys[0].can_deref && !(ivar_ent.force_no_to || ivar_ent.force_no_from) ) {
+                DEBUG("One possibility (before ivar removal), setting to " << *possible_tys[0].ty);
+                context.equate_types(sp, ty_l, *possible_tys[0].ty);
+                return true;
             }
 
             // Filter out ivars
