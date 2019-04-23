@@ -2266,6 +2266,7 @@ namespace {
                     {
                         if( dst_inner.m_data.is_Infer() )
                         {
+                            DEBUG("- Fallback mode, assume inner types are equal");
                             this->context.equate_types(sp, *e.inner, *s_e.inner);
                         }
                     }
@@ -4034,6 +4035,17 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     // - What if it's a literal?
 
                     // TODO: Don't do fallback if the ivar is marked as being hard blocked
+                    if( const auto* te = ty_p->m_data.opt_Infer() )
+                    {
+                        if( te->index < context.possible_ivar_vals.size()
+                            && context.possible_ivar_vals[te->index].force_disable
+                            )
+                        {
+                            MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern);
+                            return false;
+                        }
+                    }
+
                     if( n_deref == 0 && is_fallback )
                     {
                         ::HIR::TypeRef  possible_type;
@@ -6810,7 +6822,6 @@ namespace {
             DEBUG(i << ": forced unknown");
             return false;
         }
-        // TODO: This shouldn't just return, it should instead add a placeholder possibility
         if( fallback_ty != IvarPossFallbackType::IgnoreWeakDisable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
         {
             DEBUG(i << ": coercion blocked");
@@ -6874,6 +6885,8 @@ namespace {
                 ::std::ostream& fmt(::std::ostream& os) const {
                     return os << (is_pointer ? "C" : "-") << (can_deref ? "D" : "-") << " " << *ty;
                 }
+
+                bool is_source() const { return this->can_deref; }
             };
 
             bool allow_unsized = !(i < context.m_ivars_sized.size() ? context.m_ivars_sized.at(i) : false);
@@ -6920,7 +6933,7 @@ namespace {
                         if( ent2.can_deref ) {
                             continue ;
                         }
-                        if( *ent.ty == *ent2.ty ) {
+                        if( *ent.ty != ::HIR::TypeRef() && *ent.ty == *ent2.ty ) {
                             DEBUG("- Source/Destination type");
                             context.equate_types(sp, ty_l, *ent.ty);
                             return true;
@@ -6947,12 +6960,24 @@ namespace {
                 }
             }
 
-            // If there's no disable flags set, and there's only one option, pick it.
+            // If there's no disable flags set, and there's only one source, pick it.
             // - Slight hack to speed up flow-down inference
-            if( possible_tys.size() == 1 && possible_tys[0].can_deref && !(ivar_ent.force_no_to || ivar_ent.force_no_from) ) {
+            if( possible_tys.size() == 1 && possible_tys[0].can_deref && !ivar_ent.force_no_from ) {
                 DEBUG("One possibility (before ivar removal), setting to " << *possible_tys[0].ty);
                 context.equate_types(sp, ty_l, *possible_tys[0].ty);
                 return true;
+            }
+            //if( possible_tys.size() == 1 && !possible_tys[0].can_deref && !ivar_ent.force_no_to ) {
+            //    DEBUG("One possibility (before ivar removal), setting to " << *possible_tys[0].ty);
+            //    context.equate_types(sp, ty_l, *possible_tys[0].ty);
+            //    return true;
+            //}
+
+            // TODO: This shouldn't just return, instead the above null placeholders should be tested
+            if( fallback_ty != IvarPossFallbackType::IgnoreWeakDisable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
+            {
+                DEBUG(i << ": coercion blocked");
+                return false;
             }
 
             // Filter out ivars
@@ -8238,6 +8263,9 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             {
                 auto& ent = *context.adv_revisits[i];
                 ent.revisit(context, /*is_fallback=*/true);
+                if( context.m_ivars.peek_changed() ) {
+                    break;
+                }
             }
         }
 
