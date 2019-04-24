@@ -383,7 +383,7 @@ namespace {
                             if( next_free == n_free ) {
                                 ERROR(sp, E0000, "Not enough arguments passed, expected at least " << n_free+1);
                             }
-                            args.prec = next_free + n_named;
+                            args.prec = next_free;
                             next_free ++;
                         }
                         else if( ::std::isdigit(*s) ) {
@@ -447,7 +447,7 @@ namespace {
                     if( next_free == n_free ) {
                         ERROR(sp, E0000, "Not enough arguments passed, expected at least " << n_free+1);
                     }
-                    index = next_free + n_named;
+                    index = next_free;
                     next_free ++;
                 }
 
