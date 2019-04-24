@@ -215,9 +215,9 @@ namespace {
 
 namespace {
     bool is_unbounded_infer(const ::HIR::TypeRef& type) {
-        TU_IFLET( ::HIR::TypeRef::Data, type.m_data, Infer, e,
-            return e.ty_class == ::HIR::InferClass::None || e.ty_class == ::HIR::InferClass::Diverge;
-        )
+        if( const auto* e = type.m_data.opt_Infer() ) {
+            return e->ty_class == ::HIR::InferClass::None || e->ty_class == ::HIR::InferClass::Diverge;
+        }
         else {
             return false;
         }
@@ -229,6 +229,8 @@ bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_reso
     // NOTE: Don't return any impls when the type is an unbouned ivar. Wouldn't be able to pick anything anyway
     // TODO: For `Unbound`, it could be valid, if the target is a generic.
     // - Pure infer could also be useful (for knowing if there's any other potential impls)
+
+    // TODO: Allow unbounded types iff there's some non-unbounded parameters?
     if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
         return false;
     }

@@ -2324,6 +2324,9 @@ namespace {
             do {
                 const auto& ty = this->context.get_type(*current_ty);
                 DEBUG("(Index): (: " << ty << ")[: " << trait_pp.m_types[0] << "]");
+                if( ty.m_data.is_Infer() ) {
+                    return ;
+                }
 
                 ::HIR::TypeRef  possible_index_type;
                 ::HIR::TypeRef  possible_res_type;
@@ -3951,6 +3954,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
             ::HIR::PatternBinding::Type m_outer_mode;
 
             mutable ::std::vector<::HIR::TypeRef>   m_temp_ivars;
+            mutable ::HIR::TypeRef  m_possible_type;
 
             MatchErgonomicsRevisit(Span sp, ::HIR::TypeRef outer, ::HIR::Pattern& pat, ::HIR::PatternBinding::Type binding_mode=::HIR::PatternBinding::Type::Move):
                 sp(mv$(sp)), m_outer_ty(mv$(outer)),
@@ -3982,6 +3986,78 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     context.add_revisit_adv( box$(( MatchErgonomicsRevisit { sp, type.clone(), pattern, binding_mode } )) );
                 }
                 return true;
+            }
+            const ::HIR::TypeRef& get_possible_type(Context& context, ::HIR::Pattern& pattern) const
+            {
+                if( m_possible_type == ::HIR::TypeRef() )
+                {
+                    ::HIR::TypeRef  possible_type;
+                    // Get a potential type from the pattern, and set as a possibility.
+                    // - Note, this is only if no derefs were applied
+                    TU_MATCH_HDR( (pattern.m_data), { )
+                    TU_ARM(pattern.m_data, Any, pe) {
+                        // No type information.
+                        }
+                    TU_ARM(pattern.m_data, Value, pe) {
+                        // TODO: Get type info
+                        }
+                    TU_ARM(pattern.m_data, Range, pe) {
+                        // TODO: Get type info (same as Value)
+                        }
+                    TU_ARM(pattern.m_data, Box, pe) {
+                        // TODO: Get type info (Box<_>)
+                        }
+                    TU_ARM(pattern.m_data, Ref, pe) {
+                        BUG(sp, "Match ergonomics - & pattern");
+                        }
+                    TU_ARM(pattern.m_data, Tuple, e) {
+                        // Get type info `(T, U, ...)`
+                        if( m_temp_ivars.size() != e.sub_patterns.size() ) {
+                            for(size_t i = 0; i < e.sub_patterns.size(); i ++)
+                                m_temp_ivars.push_back( context.m_ivars.new_ivar_tr() );
+                        }
+                        decltype(m_temp_ivars)  tuple;
+                        for(const auto& ty : m_temp_ivars)
+                            tuple.push_back(ty.clone());
+                        possible_type = ::HIR::TypeRef( ::std::move(tuple) );
+                        }
+                    TU_ARM(pattern.m_data, SplitTuple, pe) {
+                        // Can't get type information, tuple size is unkown
+                        }
+                    TU_ARM(pattern.m_data, Slice, e) {
+                        // Can be either a [T] or [T; n]. Can't provide a hint
+                        }
+                    TU_ARM(pattern.m_data, SplitSlice, pe) {
+                        // Can be either a [T] or [T; n]. Can't provide a hint
+                        }
+                    TU_ARM(pattern.m_data, StructValue, e) {
+                        context.add_ivars_params( e.path.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
+                        }
+                    TU_ARM(pattern.m_data, StructTuple, e) {
+                        context.add_ivars_params( e.path.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
+                        }
+                    TU_ARM(pattern.m_data, Struct, e) {
+                        context.add_ivars_params( e.path.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
+                        }
+                    TU_ARM(pattern.m_data, EnumValue, e) {
+                        context.add_ivars_params( e.path.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
+                        }
+                    TU_ARM(pattern.m_data, EnumTuple, e) {
+                        context.add_ivars_params( e.path.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
+                        }
+                    TU_ARM(pattern.m_data, EnumStruct, e) {
+                        context.add_ivars_params( e.path.m_params );
+                        possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
+                        }
+                    }
+                    m_possible_type = ::std::move(possible_type);
+                }
+                return m_possible_type;
             }
             bool revisit_inner_real(Context& context, ::HIR::Pattern& pattern, const ::HIR::TypeRef& type, ::HIR::PatternBinding::Type binding_mode, bool is_fallback) const
             {
@@ -4046,76 +4122,30 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         }
                     }
 
-                    if( n_deref == 0 && is_fallback )
+                    // If there's no dereferences done, then 
+                    if( n_deref == 0 )
                     {
-                        ::HIR::TypeRef  possible_type;
-                        // Get a potential type from the pattern, and set as a possibility.
-                        // - Note, this is only if no derefs were applied
-                        TU_MATCH_HDR( (pattern.m_data), { )
-                        TU_ARM(pattern.m_data, Any, pe) {
-                            // No type information.
-                            }
-                        TU_ARM(pattern.m_data, Value, pe) {
-                            // TODO: Get type info
-                            }
-                        TU_ARM(pattern.m_data, Range, pe) {
-                            // TODO: Get type info (same as Value)
-                            }
-                        TU_ARM(pattern.m_data, Box, pe) {
-                            // TODO: Get type info (Box<_>)
-                            }
-                        TU_ARM(pattern.m_data, Ref, pe) {
-                            BUG(sp, "Match ergonomics - & pattern");
-                            }
-                        TU_ARM(pattern.m_data, Tuple, e) {
-                            // Get type info `(T, U, ...)`
-                            if( m_temp_ivars.size() != e.sub_patterns.size() ) {
-                                for(size_t i = 0; i < e.sub_patterns.size(); i ++)
-                                    m_temp_ivars.push_back( context.m_ivars.new_ivar_tr() );
-                            }
-                            decltype(m_temp_ivars)  tuple;
-                            for(const auto& ty : m_temp_ivars)
-                                tuple.push_back(ty.clone());
-                            possible_type = ::HIR::TypeRef( ::std::move(tuple) );
-                            }
-                        TU_ARM(pattern.m_data, SplitTuple, pe) {
-                            // Can't get type information, tuple size is unkown
-                            }
-                        TU_ARM(pattern.m_data, Slice, e) {
-                            // Can be either a [T] or [T; n]. Can't provide a hint
-                            }
-                        TU_ARM(pattern.m_data, SplitSlice, pe) {
-                            // Can be either a [T] or [T; n]. Can't provide a hint
-                            }
-                        TU_ARM(pattern.m_data, StructValue, e) {
-                            context.add_ivars_params( e.path.m_params );
-                            possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
-                            }
-                        TU_ARM(pattern.m_data, StructTuple, e) {
-                            context.add_ivars_params( e.path.m_params );
-                            possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
-                            }
-                        TU_ARM(pattern.m_data, Struct, e) {
-                            context.add_ivars_params( e.path.m_params );
-                            possible_type = ::HIR::TypeRef::new_path(e.path.clone(), ::HIR::TypeRef::TypePathBinding(e.binding));
-                            }
-                        TU_ARM(pattern.m_data, EnumValue, e) {
-                            context.add_ivars_params( e.path.m_params );
-                            possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
-                            }
-                        TU_ARM(pattern.m_data, EnumTuple, e) {
-                            context.add_ivars_params( e.path.m_params );
-                            possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
-                            }
-                        TU_ARM(pattern.m_data, EnumStruct, e) {
-                            context.add_ivars_params( e.path.m_params );
-                            possible_type = ::HIR::TypeRef::new_path(get_parent_path(e.path), ::HIR::TypeRef::TypePathBinding(e.binding_ptr));
-                            }
-                        }
+                        const ::HIR::TypeRef& possible_type = get_possible_type(context, pattern);
                         if( possible_type != ::HIR::TypeRef() )
                         {
-                            DEBUG("Possible equate " << possible_type);
-                            context.equate_types( sp, *ty_p, possible_type );
+                            if( const auto* te = ty_p->m_data.opt_Infer() )
+                            {
+                                context.possible_equate_type_unsize_to(te->index, possible_type);
+                            }
+                            else if( is_fallback )
+                            {
+                                DEBUG("Fallback equate " << possible_type);
+                                context.equate_types(sp, *ty_p, possible_type);
+                            }
+                            else
+                            {
+                            }
+
+                            //if( is_fallback )
+                            //{
+                            //    DEBUG("Possible equate " << possible_type);
+                            //    context.equate_types( sp, *ty_p, possible_type );
+                            //}
                         }
                     }
 
@@ -6442,6 +6472,16 @@ namespace {
         for(const auto& t : v.params.m_types)
         {
             context.equate_types_to_shadow(sp, t);
+        }
+
+        // If the impl type is an unbounded ivar, and there's no trait args - don't bother searching
+        if( const auto* e = context.m_ivars.get_type(v.impl_ty).m_data.opt_Infer() )
+        {
+            // TODO: ?
+            if( !e->is_lit() && v.params.m_types.empty() )
+            {
+                return false;
+            }
         }
 
         // Locate applicable trait impl

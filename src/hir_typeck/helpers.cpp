@@ -2445,6 +2445,8 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         t_cb_trait_impl_r callback
         ) const
 {
+    // TODO: Have a global cache of impls that don't reference either generics or ivars
+
     static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
     TRACE_FUNCTION_F(trait << FMT_CB(ss, if(params_ptr) { ss << *params_ptr; } else { ss << "<?>"; }) << " for " << type);
 
