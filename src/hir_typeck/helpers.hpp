@@ -150,17 +150,19 @@ class TraitResolution
     const ::HIR::Crate& m_crate;
     const ::HIR::GenericParams* m_impl_params;
     const ::HIR::GenericParams* m_item_params;
+    const ::HIR::SimplePath&    m_vis_path;
 
     ::std::map< ::HIR::TypeRef, ::HIR::TypeRef> m_type_equalities;
 
     ::HIR::SimplePath   m_lang_Box;
     mutable ::std::vector< ::HIR::TypeRef>  m_eat_active_stack;
 public:
-    TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
+    TraitResolution(const HMTypeInferrence& ivars, const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& vis_path):
         m_ivars(ivars),
         m_crate(crate),
         m_impl_params( impl_params ),
         m_item_params( item_params )
+        ,m_vis_path(vis_path)
     {
         prep_indexes();
         m_lang_Box = crate.get_lang_item_path_opt("owned_box");

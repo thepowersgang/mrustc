@@ -32,7 +32,7 @@ namespace {
 
             ::std::vector< decltype(mod.m_mod_items)::value_type> new_types;
             m_new_type = [&](bool pub, auto name, auto s)->auto {
-                auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { pub, ::HIR::TypeItem( mv$(s) ) }) );
+                auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { (pub ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none()), ::HIR::TypeItem( mv$(s) ) }) );
                 auto ret = (p + name).get_simple_path();
                 new_types.push_back( ::std::make_pair( mv$(name), mv$(boxed)) );
                 return ret;
@@ -173,7 +173,7 @@ namespace {
                             DEBUG("- '" << vi.first << "' is @" << fields.size());
                             fields.push_back( ::std::make_pair(
                                 vi.first,
-                                ::HIR::VisEnt< ::HIR::TypeRef> { true, mv$(fcn_type) }
+                                ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_global(), mv$(fcn_type) }
                                 ) );
                             ),
                         (Static,
@@ -204,11 +204,11 @@ namespace {
             ft.m_abi = ABI_RUST;
             ft.m_rettype.reset( new ::HIR::TypeRef(::HIR::TypeRef::new_unit()) );
             ft.m_arg_types.push_back( ::HIR::TypeRef::new_pointer(::HIR::BorrowType::Owned, ::HIR::TypeRef::new_unit()) );
-            vtc.fields.push_back(::std::make_pair( "#drop_glue", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::TypeRef(mv$(ft)) } ));
+            vtc.fields.push_back(::std::make_pair( "#drop_glue", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::TypeRef(mv$(ft)) } ));
             // - Size of data
-            vtc.fields.push_back(::std::make_pair( "#size", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::CoreType::Usize } ));
+            vtc.fields.push_back(::std::make_pair( "#size", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize } ));
             // - Alignment of data
-            vtc.fields.push_back(::std::make_pair( "#align", ::HIR::VisEnt<::HIR::TypeRef> { false, ::HIR::CoreType::Usize } ));
+            vtc.fields.push_back(::std::make_pair( "#align", ::HIR::VisEnt<::HIR::TypeRef> { ::HIR::Publicity::new_none(), ::HIR::CoreType::Usize } ));
             // - Add methods
             if( ! vtc.add_ents_from_trait(tr, trait_path) )
             {

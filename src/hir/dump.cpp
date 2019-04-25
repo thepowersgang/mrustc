@@ -152,7 +152,7 @@ namespace {
                 m_os << "(";
                 for(const auto& fld : flds)
                 {
-                    m_os << (fld.is_public ? "pub " : "") << fld.ent << ", ";
+                    m_os << fld.publicity << " " << fld.ent << ", ";
                 }
                 if( item.m_params.m_bounds.empty() )
                 {
@@ -175,7 +175,7 @@ namespace {
                 inc_indent();
                 for(const auto& fld : flds)
                 {
-                    m_os << indent() << (fld.second.is_public ? "pub " : "") << fld.first << ": " << fld.second.ent << ",\n";
+                    m_os << indent() << fld.second.publicity << " " << fld.first << ": " << fld.second.ent << ",\n";
                 }
                 dec_indent();
                 m_os << indent() << "}\n";

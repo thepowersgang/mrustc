@@ -101,10 +101,14 @@
                 rv.push_back( cb() );
             return rv;
         }
+        ::HIR::Publicity deserialise_pub()
+        {
+            return (m_in.read_bool() ? ::HIR::Publicity::new_global() : ::HIR::Publicity::new_none());
+        }
         template<typename T>
         ::HIR::VisEnt<T> deserialise_visent()
         {
-            return ::HIR::VisEnt<T> { m_in.read_bool(), D<T>::des(*this) };
+            return ::HIR::VisEnt<T> { deserialise_pub(), D<T>::des(*this) };
         }
 
         template<typename T>
@@ -153,7 +157,7 @@
             {
                 auto name = m_in.read_string();
                 rv.m_methods.insert( ::std::make_pair( mv$(name), ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> {
-                    m_in.read_bool(), m_in.read_bool(), deserialise_function()
+                    deserialise_pub(), m_in.read_bool(), deserialise_function()
                     } ) );
             }
             size_t const_count = m_in.read_count();
@@ -161,7 +165,7 @@
             {
                 auto name = m_in.read_string();
                 rv.m_constants.insert( ::std::make_pair( mv$(name), ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> {
-                    m_in.read_bool(), m_in.read_bool(), deserialise_constant()
+                    deserialise_pub(), m_in.read_bool(), deserialise_constant()
                     } ) );
             }
             // m_src_module doesn't matter after typeck

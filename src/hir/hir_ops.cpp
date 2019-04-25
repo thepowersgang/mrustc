@@ -1036,6 +1036,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 ms.m_impl_generics = ep.m_state->m_impl_generics;
                 ms.m_item_generics = ep.m_state->m_item_generics;
                 ms.m_traits = ep.m_state->m_traits;
+                ms.m_mod_paths.push_back(ep.m_state->m_mod_path);
                 Typecheck_Code(ms, const_cast<::HIR::Function::args_t&>(args), ret_ty, ep_mut);
                 //Debug_SetStagePre("Expand HIR Annotate");
                 HIR_Expand_AnnotateUsage_Expr(*this, ep_mut);

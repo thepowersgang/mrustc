@@ -36,7 +36,7 @@ namespace {
     public:
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
         {
-            m_ms.push_traits(mod);
+            m_ms.push_traits(p, mod);
             ::HIR::Visitor::visit_module(p, mod);
             m_ms.pop_traits(mod);
         }
@@ -58,7 +58,7 @@ namespace {
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
             const auto& mod = this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module);
-            m_ms.push_traits(mod);
+            m_ms.push_traits(impl.m_src_module, mod);
             ::HIR::Visitor::visit_type_impl(impl);
             m_ms.pop_traits(mod);
         }
@@ -68,7 +68,7 @@ namespace {
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
             const auto& mod = this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module);
-            m_ms.push_traits(mod);
+            m_ms.push_traits(impl.m_src_module, mod);
             m_ms.m_traits.push_back( ::std::make_pair( &trait_path, &this->m_ms.m_crate.get_trait_by_path(Span(), trait_path) ) );
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             m_ms.m_traits.pop_back( );
@@ -80,7 +80,7 @@ namespace {
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
             const auto& mod = this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module);
-            m_ms.push_traits(mod);
+            m_ms.push_traits(impl.m_src_module, mod);
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
             m_ms.pop_traits(mod);
         }

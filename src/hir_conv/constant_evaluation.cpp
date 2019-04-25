@@ -1035,6 +1035,7 @@ namespace {
                         tp.pp_impl = ms.pp_impl->clone();
                         ep.m_mir = Trans_Monomorphise(resolve, mv$(tp), template_const.m_value.m_mir);
                         ep.m_state = ::HIR::ExprStatePtr( ::HIR::ExprState(*m_mod, m_mod_path->get_simple_path()) );
+                        DEBUG("TMP TMP " << trait_path << " - " << ep.m_state->m_mod_path);
                         ep.m_state->stage = ::HIR::ExprState::Stage::Mir;
                         impl.m_constants.insert(::std::make_pair(
                             vi.first,
@@ -1211,7 +1212,7 @@ namespace {
                 {
                     // ::std::unique_ptr<VisEnt<ValueItem>>
                     ::std::unique_ptr<::HIR::VisEnt<::HIR::ValueItem>>  iv;
-                    iv.reset( new ::HIR::VisEnt<::HIR::ValueItem> { false, ::HIR::ValueItem::make_Static(mv$(v.second)) } );
+                    iv.reset( new ::HIR::VisEnt<::HIR::ValueItem> { ::HIR::Publicity::new_none(), ::HIR::ValueItem::make_Static(mv$(v.second)) } );
                     mod.m_value_items.insert(::std::make_pair( v.first, mv$(iv) ));
                 }
                 mod.m_inline_statics.clear();

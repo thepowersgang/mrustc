@@ -868,8 +868,19 @@ const ::AST::Crate* g_ast_crate_ptr;
 
 namespace {
     template<typename T>
-    ::HIR::VisEnt<T> new_visent(bool pub, T v) {
+    ::HIR::VisEnt<T> new_visent(HIR::Publicity pub, T v) {
         return ::HIR::VisEnt<T> { pub, mv$(v) };
+    }
+
+    ::HIR::SimplePath get_parent_module(const ::HIR::ItemPath& p) {
+        const ::HIR::ItemPath*  parent_ip = p.parent;
+        assert(parent_ip);
+        while(parent_ip->name && parent_ip->name[0] == '#')
+        {
+            parent_ip = parent_ip->parent;
+            assert(parent_ip);
+        }
+        return parent_ip->get_simple_path();
     }
 }
 
@@ -877,6 +888,9 @@ namespace {
 {
     TRACE_FUNCTION_F(path);
     ::HIR::Struct::Data data;
+
+    auto priv_path = ::HIR::Publicity::new_priv( get_parent_module(path) );
+    auto get_pub = [&](bool is_pub){ return is_pub ? ::HIR::Publicity::new_global() : priv_path; };
 
     TU_MATCH(::AST::StructData, (ent.m_data), (e),
     (Unit,
@@ -886,14 +900,14 @@ namespace {
         ::HIR::Struct::Data::Data_Tuple fields;
 
         for(const auto& field : e.ents)
-            fields.push_back( { field.m_is_public, LowerHIR_Type(field.m_type) } );
+            fields.push_back( { get_pub(field.m_is_public), LowerHIR_Type(field.m_type) } );
 
         data = ::HIR::Struct::Data::make_Tuple( mv$(fields) );
         ),
     (Struct,
         ::HIR::Struct::Data::Data_Named fields;
         for(const auto& field : e.ents)
-            fields.push_back( ::std::make_pair( field.m_name, new_visent(field.m_is_public, LowerHIR_Type(field.m_type)) ) );
+            fields.push_back( ::std::make_pair( field.m_name, new_visent( get_pub(field.m_is_public), LowerHIR_Type(field.m_type)) ) );
         data = ::HIR::Struct::Data::make_Named( mv$(fields) );
         )
     )
@@ -956,7 +970,6 @@ namespace {
 
 ::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(::std::string, ::HIR::Struct)> push_struct)
 {
-
     // 1. Figure out what sort of enum this is (value or data)
     bool has_value = false;
     bool has_data = false;
@@ -1053,14 +1066,14 @@ namespace {
                 {
                     ::HIR::Struct::Data::Data_Tuple fields;
                     for(const auto& field : ve->m_sub_types)
-                        fields.push_back( new_visent(true, LowerHIR_Type(field)) );
+                        fields.push_back( new_visent(::HIR::Publicity::new_global(), LowerHIR_Type(field)) );
                     data = ::HIR::Struct::Data::make_Tuple( mv$(fields) );
                 }
                 else if( const auto* ve = var.m_data.opt_Struct() )
                 {
                     ::HIR::Struct::Data::Data_Named fields;
                     for(const auto& field : ve->m_fields)
-                        fields.push_back( ::std::make_pair( field.m_name, new_visent(true, LowerHIR_Type(field.m_type)) ) );
+                        fields.push_back( ::std::make_pair( field.m_name, new_visent(::HIR::Publicity::new_global(), LowerHIR_Type(field.m_type)) ) );
                     data = ::HIR::Struct::Data::make_Named( mv$(fields) );
                 }
                 else
@@ -1106,6 +1119,9 @@ namespace {
 }
 ::HIR::Union LowerHIR_Union(::HIR::ItemPath path, const ::AST::Union& f, const ::AST::AttributeList& attrs)
 {
+    auto priv_path = ::HIR::Publicity::new_priv( get_parent_module(path) );
+    auto get_pub = [&](bool is_pub){ return is_pub ? ::HIR::Publicity::new_global() : priv_path; };
+
     auto repr = ::HIR::Union::Repr::Rust;
 
     if( const auto* attr_repr = attrs.get("repr") )
@@ -1124,7 +1140,7 @@ namespace {
 
     ::HIR::Struct::Data::Data_Named variants;
     for(const auto& field : f.m_variants)
-        variants.push_back( ::std::make_pair( field.m_name, new_visent(field.m_is_public, LowerHIR_Type(field.m_type)) ) );
+        variants.push_back( ::std::make_pair( field.m_name, new_visent(get_pub(field.m_is_public), LowerHIR_Type(field.m_type)) ) );
 
     return ::HIR::Union {
         LowerHIR_GenericParams(f.m_params, nullptr),
@@ -1369,10 +1385,10 @@ namespace {
         };
 }
 
-void _add_mod_ns_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::HIR::TypeItem ti) {
+void _add_mod_ns_item(::HIR::Module& mod, ::std::string name, ::HIR::Publicity is_pub,  ::HIR::TypeItem ti) {
     mod.m_mod_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::TypeItem> { is_pub, mv$(ti) }) ) );
 }
-void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::HIR::ValueItem ti) {
+void _add_mod_val_item(::HIR::Module& mod, ::std::string name, ::HIR::Publicity is_pub,  ::HIR::ValueItem ti) {
     mod.m_value_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::ValueItem> { is_pub, mv$(ti) }) ) );
 }
 
@@ -1382,6 +1398,9 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
     ::HIR::Module   mod { };
 
     mod.m_traits = mv$(traits);
+
+    auto priv_path = ::HIR::Publicity::new_priv( path.get_simple_path() );
+    auto get_pub = [&](bool is_pub)->::HIR::Publicity{ return (is_pub ? ::HIR::Publicity::new_global() : priv_path); };
 
     // Populate trait list
     for(const auto& item : ast_mod.m_type_items)
@@ -1402,7 +1421,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             ::std::string name = FMT("#" << i);
             auto item_path = ::HIR::ItemPath(path, name.c_str());
             auto ti = ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, item_path, mod.m_traits) );
-            _add_mod_ns_item( mod,  mv$(name), false, mv$(ti) );
+            _add_mod_ns_item( mod,  mv$(name), get_pub(false), mv$(ti) );
         }
     }
 
@@ -1456,12 +1475,12 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
             // Ignore - The index is used to add `Import`s
             ),
         (Module,
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Module(e, mv$(item_path)) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Module(e, mv$(item_path)) );
             ),
         (Crate,
             // All 'extern crate' items should be normalised into a list in the crate root
             // - If public, add a namespace import here referring to the root of the imported crate
-            _add_mod_ns_item( mod, item.name, item.is_pub, ::HIR::TypeItem::make_Import({ ::HIR::SimplePath(e.name, {}), false, 0} ) );
+            _add_mod_ns_item( mod, item.name, get_pub(item.is_pub), ::HIR::TypeItem::make_Import({ ::HIR::SimplePath(e.name, {}), false, 0} ) );
             ),
         (Type,
             if( e.type().m_data.is_Any() )
@@ -1470,39 +1489,39 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
                 {
                     ERROR(item.data.span, E0000, "Generics on extern type");
                 }
-                _add_mod_ns_item(mod, item.name, item.is_pub, ::HIR::ExternType {});
+                _add_mod_ns_item(mod, item.name, get_pub(item.is_pub), ::HIR::ExternType {});
                 break;
             }
-            _add_mod_ns_item( mod,  item.name, item.is_pub, ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(e) ) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), ::HIR::TypeItem::make_TypeAlias( LowerHIR_TypeAlias(e) ) );
             ),
         (Struct,
             /// Add value reference
             if( e.m_data.is_Unit() ) {
-                _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstant({item_path.get_simple_path()}) );
+                _add_mod_val_item( mod,  item.name, get_pub(item.is_pub), ::HIR::ValueItem::make_StructConstant({item_path.get_simple_path()}) );
             }
             else if( e.m_data.is_Tuple() ) {
-                _add_mod_val_item( mod,  item.name, item.is_pub, ::HIR::ValueItem::make_StructConstructor({item_path.get_simple_path()}) );
+                _add_mod_val_item( mod,  item.name, get_pub(item.is_pub), ::HIR::ValueItem::make_StructConstructor({item_path.get_simple_path()}) );
             }
             else {
             }
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Struct(item_path, e, item.data.attrs) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Struct(item_path, e, item.data.attrs) );
             ),
         (Enum,
-            auto enm = LowerHIR_Enum(item_path, e, item.data.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, item.is_pub, mv$(str)); });
-            _add_mod_ns_item( mod,  item.name, item.is_pub, mv$(enm) );
+            auto enm = LowerHIR_Enum(item_path, e, item.data.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, get_pub(item.is_pub), mv$(str)); });
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), mv$(enm) );
             ),
         (Union,
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Union(item_path, e, item.data.attrs) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Union(item_path, e, item.data.attrs) );
             ),
         (Trait,
-            _add_mod_ns_item( mod,  item.name, item.is_pub, LowerHIR_Trait(item_path.get_simple_path(), e) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Trait(item_path.get_simple_path(), e) );
             ),
         (Function,
-            _add_mod_val_item(mod, item.name, item.is_pub,  LowerHIR_Function(item_path, item.data.attrs, e, ::HIR::TypeRef{}));
+            _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  LowerHIR_Function(item_path, item.data.attrs, e, ::HIR::TypeRef{}));
             ),
         (Static,
             if( e.s_class() == ::AST::Static::CONST )
-                _add_mod_val_item(mod, item.name, item.is_pub,  ::HIR::ValueItem::make_Constant(::HIR::Constant {
+                _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  ::HIR::ValueItem::make_Constant(::HIR::Constant {
                     ::HIR::GenericParams {},
                     LowerHIR_Type( e.type() ),
                     LowerHIR_Expr( e.value() )
@@ -1516,7 +1535,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
                     linkage.name = item.name;
                 }
 
-                _add_mod_val_item(mod, item.name, item.is_pub,  ::HIR::ValueItem::make_Static(::HIR::Static {
+                _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  ::HIR::ValueItem::make_Static(::HIR::Static {
                     mv$(linkage),
                     (e.s_class() == ::AST::Static::MUT),
                     LowerHIR_Type( e.type() ),
@@ -1542,7 +1561,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
                 DEBUG("Import NS " << ie.first << " = " << hir_path);
                 ti = ::HIR::TypeItem::make_Import({ mv$(hir_path), false, 0 });
             }
-            _add_mod_ns_item(mod, ie.first, ie.second.is_pub, mv$(ti));
+            _add_mod_ns_item(mod, ie.first, get_pub(ie.second.is_pub), mv$(ti));
         }
     }
     for( const auto& ie : ast_mod.m_value_items )
@@ -1561,7 +1580,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, bool is_pub,  ::H
                 vi = ::HIR::ValueItem::make_Import({ mv$(hir_path), true, pb.idx });
                 }
             }
-            _add_mod_val_item(mod, ie.first, ie.second.is_pub, mv$(vi));
+            _add_mod_val_item(mod, ie.first, get_pub(ie.second.is_pub), mv$(vi));
         }
     }
 
@@ -1687,6 +1706,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             auto type = LowerHIR_Type(impl.def().type());
             ::HIR::ItemPath    path(type);
 
+            auto priv_path = ::HIR::Publicity::new_priv( LowerHIR_SimplePath(Span(), ast_mod.path()) ); // TODO: Does this need to consume anon modules?
+            auto get_pub = [&](bool is_pub){ return is_pub ? ::HIR::Publicity::new_global() : priv_path; };
+
             ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> > methods;
             ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> > constants;
 
@@ -1703,7 +1725,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     ),
                 (Static,
                     if( e.s_class() == ::AST::Static::CONST ) {
-                        constants.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> { item.is_pub, item.is_specialisable, ::HIR::Constant {
+                        constants.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> { get_pub(item.is_pub), item.is_specialisable, ::HIR::Constant {
                             ::HIR::GenericParams {},
                             LowerHIR_Type( e.type() ),
                             LowerHIR_Expr( e.value() )
@@ -1715,7 +1737,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     ),
                 (Function,
                     methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> {
-                        item.is_pub, item.is_specialisable, LowerHIR_Function(item_path, item.data->attrs, e, type)
+                        get_pub(item.is_pub), item.is_specialisable, LowerHIR_Function(item_path, item.data->attrs, e, type)
                         } ) );
                     )
                 )

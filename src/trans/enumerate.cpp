@@ -152,14 +152,14 @@ namespace {
         const bool EMIT_ALL = true;
         for(auto& vi : mod.m_value_items)
         {
-            Trans_Enumerate_ValItem(state, vi.second->ent, EMIT_ALL || (is_visible && vi.second->is_public), [&](){ return mod_path + vi.first; });
+            Trans_Enumerate_ValItem(state, vi.second->ent, EMIT_ALL || (is_visible && vi.second->publicity.is_global()), [&](){ return mod_path + vi.first; });
         }
 
         for(auto& ti : mod.m_mod_items)
         {
             if(auto* e = ti.second->ent.opt_Module() )
             {
-                Trans_Enumerate_Public_Mod(state, *e, mod_path + ti.first, ti.second->is_public);
+                Trans_Enumerate_Public_Mod(state, *e, mod_path + ti.first, ti.second->publicity.is_global());
             }
         }
     }

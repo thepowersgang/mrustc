@@ -4334,8 +4334,8 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             (Tuple,
                 for( unsigned int i = 0; i < se.size(); i ++ )
                 {
-                    // TODO: Privacy
-                    if( FMT(i) == name ) {
+                    DEBUG(i << ": " << se[i].publicity);
+                    if( se[i].publicity.is_visible(this->m_vis_path) && FMT(i) == name ) {
                         field_ty = monomorphise_type_with(sp, se[i].ent, monomorph);
                         return true;
                     }
@@ -4344,8 +4344,8 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             (Named,
                 for( const auto& fld : se )
                 {
-                    // TODO: Privacy
-                    if( fld.first == name ) {
+                    DEBUG(fld.first << ": " << fld.second.publicity << ", " << this->m_vis_path);
+                    if( fld.second.publicity.is_visible(this->m_vis_path) && fld.first == name ) {
                         field_ty = monomorphise_type_with(sp, fld.second.ent, monomorph);
                         return true;
                     }
@@ -4379,7 +4379,7 @@ bool TraitResolution::find_field(const Span& sp, const ::HIR::TypeRef& ty, const
             for( const auto& fld : unm.m_variants )
             {
                 // TODO: Privacy
-                if( fld.first == name ) {
+                if( fld.second.publicity.is_visible(this->m_vis_path) && fld.first == name ) {
                     field_ty = monomorphise_type_with(sp, fld.second.ent, monomorph);
                     return true;
                 }

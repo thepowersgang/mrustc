@@ -120,7 +120,7 @@ namespace {
             m_cur_module.ptr = &mod;
             m_cur_module.path = &p;
 
-            m_ms.push_traits(mod);
+            m_ms.push_traits(p, mod);
             ::HIR::Visitor::visit_module(p, mod);
             m_ms.pop_traits(mod);
 
@@ -512,12 +512,16 @@ namespace {
 
         void visit_type_impl(::HIR::TypeImpl& impl) override
         {
-            TRACE_FUNCTION_F("impl " << impl.m_type);
+            TRACE_FUNCTION_F("impl " << impl.m_type << " - from " << impl.m_src_module);
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
+            auto mod_ip = ::HIR::ItemPath(impl.m_src_module);
             const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
-            if(mod)
-                m_ms.push_traits(*mod);
+            if(mod) {
+                m_ms.push_traits(impl.m_src_module, *mod);
+                m_cur_module.ptr = mod;
+                m_cur_module.path = &mod_ip;
+            }
             ::HIR::Visitor::visit_type_impl(impl);
             if(mod)
                 m_ms.pop_traits(*mod);
@@ -527,9 +531,13 @@ namespace {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type);
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
+            auto mod_ip = ::HIR::ItemPath(impl.m_src_module);
             const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
-            if(mod)
-                m_ms.push_traits(*mod);
+            if(mod) {
+                m_ms.push_traits(impl.m_src_module, *mod);
+                m_cur_module.ptr = mod;
+                m_cur_module.path = &mod_ip;
+            }
             m_ms.m_traits.push_back( ::std::make_pair( &trait_path, &this->m_ms.m_crate.get_trait_by_path(Span(), trait_path) ) );
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
             m_ms.m_traits.pop_back( );
@@ -541,9 +549,13 @@ namespace {
             TRACE_FUNCTION_F("impl " << trait_path << " for " << impl.m_type << " { }");
             auto _ = this->m_ms.set_impl_generics(impl.m_params);
 
+            auto mod_ip = ::HIR::ItemPath(impl.m_src_module);
             const auto* mod = (impl.m_src_module != ::HIR::SimplePath() ? &this->m_ms.m_crate.get_mod_by_path(Span(), impl.m_src_module) : nullptr);
-            if(mod)
-                m_ms.push_traits(*mod);
+            if(mod) {
+                m_ms.push_traits(impl.m_src_module, *mod);
+                m_cur_module.ptr = mod;
+                m_cur_module.path = &mod_ip;
+            }
             ::HIR::Visitor::visit_marker_impl(trait_path, impl);
             if(mod)
                 m_ms.pop_traits(*mod);

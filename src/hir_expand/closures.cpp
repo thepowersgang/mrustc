@@ -720,7 +720,7 @@ namespace {
                 // - Fix type to replace closure types with known paths
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
                 fixup.visit_type(ty_mono);
-                capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { false, mv$(ty_mono) } );
+                capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty_mono) } );
             }
             auto closure_struct_path = m_new_type(
                 ::HIR::Struct {
@@ -1182,7 +1182,7 @@ namespace {
             m_new_type = [&](auto s)->auto {
                 auto name = FMT("closure#I_" << closure_count);
                 closure_count += 1;
-                auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) } ));
+                auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
                 crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
                 return ::HIR::SimplePath(crate.m_crate_name, {}) + name;
                 };
@@ -1209,7 +1209,7 @@ namespace {
                     crate.m_type_impls.push_back( ::HIR::TypeImpl {
                         mv$(impl.second.m_params),
                         mv$(impl.second.m_type),
-                        make_map1(impl.second.m_methods.begin()->first, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { true, false,  mv$(impl.second.m_methods.begin()->second.data) }),
+                        make_map1(impl.second.m_methods.begin()->first, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { ::HIR::Publicity::new_global(), false,  mv$(impl.second.m_methods.begin()->second.data) }),
                         {},
                         mv$(impl.second.m_src_module)
                         } );
@@ -1233,7 +1233,7 @@ namespace {
             m_new_type = [&](auto s)->auto {
                 auto name = FMT("closure#" << closure_count);
                 closure_count += 1;
-                auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { false, ::HIR::TypeItem( mv$(s) ) }) );
+                auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) }) );
                 mod.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
                 return (p + name).get_simple_path();
                 };

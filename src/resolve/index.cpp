@@ -286,7 +286,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
 {
     for(const auto& it : hmod.m_mod_items) {
         const auto& ve = *it.second;
-        if( ve.is_public ) {
+        if( ve.publicity.is_global() ) {
             const auto* vep = &ve.ent;
             AST::Path   p;
             if( vep->is_Import() ) {
@@ -346,7 +346,7 @@ void Resolve_Index_Module_Wildcard__glob_in_hir_mod(const Span& sp, const AST::C
     }
     for(const auto& it : hmod.m_value_items) {
         const auto& ve = *it.second;
-        if( ve.is_public ) {
+        if( ve.publicity.is_global() ) {
             AST::Path   p;
             const auto* vep = &ve.ent;
             if( ve.ent.is_Import() ) {

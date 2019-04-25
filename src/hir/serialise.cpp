@@ -60,7 +60,7 @@
         template<typename T>
         void serialise(const ::HIR::VisEnt<T>& e)
         {
-            m_out.write_bool(e.is_public);
+            m_out.write_bool(e.publicity.is_global());  // At this stage, we only care if the item is visible outside the crate or not
             serialise(e.ent);
         }
         template<typename T>
@@ -322,14 +322,14 @@
             m_out.write_count(impl.m_methods.size());
             for(const auto& v : impl.m_methods) {
                 m_out.write_string(v.first);
-                m_out.write_bool(v.second.is_pub);
+                m_out.write_bool(v.second.publicity.is_global());
                 m_out.write_bool(v.second.is_specialisable);
                 serialise(v.second.data);
             }
             m_out.write_count(impl.m_constants.size());
             for(const auto& v : impl.m_constants) {
                 m_out.write_string(v.first);
-                m_out.write_bool(v.second.is_pub);
+                m_out.write_bool(v.second.publicity.is_global());
                 m_out.write_bool(v.second.is_specialisable);
                 serialise(v.second.data);
             }

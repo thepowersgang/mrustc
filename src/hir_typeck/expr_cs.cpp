@@ -156,9 +156,9 @@ struct Context
 
     const ::HIR::SimplePath m_lang_Box;
 
-    Context(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params):
+    Context(const ::HIR::Crate& crate, const ::HIR::GenericParams* impl_params, const ::HIR::GenericParams* item_params, const ::HIR::SimplePath& mod_path):
         m_crate(crate),
-        m_resolve(m_ivars, crate, impl_params, item_params)
+        m_resolve(m_ivars, crate, impl_params, item_params, mod_path)
         ,next_rule_idx( 0 )
         ,m_lang_Box( crate.get_lang_item_path_opt("owned_box") )
     {
@@ -8062,7 +8062,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
     TRACE_FUNCTION;
 
     auto root_ptr = expr.into_unique();
-    Context context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics };
+    assert(!ms.m_mod_paths.empty());
+    Context context { ms.m_crate, ms.m_impl_generics, ms.m_item_generics, ms.m_mod_paths.back() };
 
     for( auto& arg : args ) {
         context.handle_pattern( Span(), arg.first, arg.second );
