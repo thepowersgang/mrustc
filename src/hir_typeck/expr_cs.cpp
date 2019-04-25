@@ -6996,6 +6996,7 @@ namespace {
                     DEBUG("- Diverge with no source types, force setting to !");
                     DEBUG("Set IVar " << i << " = !");
                     context.m_ivars.get_type(ty_l_ivar) = ::HIR::TypeRef::new_diverge();
+                    context.m_ivars.mark_change();
                     return true;
                 }
             }
