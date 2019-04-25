@@ -52,7 +52,7 @@ namespace
             os << "arg" << e.idx;
             break;
         TU_ARM(x.e, Static, e)
-            os << e;
+            os << *e;
             break;
         TU_ARM(x.e, Deref, e)
             os << "*" << fmt(*e.val);

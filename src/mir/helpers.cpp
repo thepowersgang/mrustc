@@ -82,7 +82,7 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
         return m_fcn.locals.at(e);
         ),
     (Static,
-        return get_static_type(tmp,  e);
+        return get_static_type(tmp,  *e);
         ),
     (Field,
         const auto& ty = this->get_lvalue_type(tmp, *e.val);

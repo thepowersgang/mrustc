@@ -689,7 +689,7 @@
                 m_out.write_count(e);
                 ),
             (Static,
-                serialise_path(e);
+                serialise_path(*e);
                 ),
             (Field,
                 serialise(e.val);

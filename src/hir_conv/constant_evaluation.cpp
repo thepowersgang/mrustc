@@ -319,7 +319,7 @@ namespace {
                     return args[e.idx];
                     ),
                 (Static,
-                    MIR_TODO(state, "LValue::Static - " << e);
+                    MIR_TODO(state, "LValue::Static - " << *e);
                     ),
                 (Field,
                     auto& val = get_lval(*e.val);
@@ -495,7 +495,7 @@ namespace {
                     }
                     else if( const auto* p = e.val.opt_Static() ) {
                         // Borrow of a static, emit BorrowPath with the same path
-                        val = ::HIR::Literal::make_BorrowPath( p->clone() );
+                        val = ::HIR::Literal::make_BorrowPath( (*p)->clone() );
                     }
                     else {
                         auto inner_val = local_state.read_lval(e.val);

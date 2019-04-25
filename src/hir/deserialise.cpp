@@ -423,7 +423,7 @@
             _(Return, {})
             _(Argument, { static_cast<unsigned int>(m_in.read_count()) } )
             _(Local,   static_cast<unsigned int>(m_in.read_count()) )
-            _(Static,  deserialise_path() )
+            _(Static,  box$(deserialise_path()) )
             _(Field, {
                 box$( deserialise_mir_lvalue() ),
                 static_cast<unsigned int>(m_in.read_count())

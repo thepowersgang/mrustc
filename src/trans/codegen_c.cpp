@@ -5522,7 +5522,7 @@ namespace {
                     m_of << "var" << e;
                 ),
             (Static,
-                m_of << Trans_Mangle(e);
+                m_of << Trans_Mangle(*e);
                 ),
             (Field,
                 ::HIR::TypeRef  tmp;

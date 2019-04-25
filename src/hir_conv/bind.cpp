@@ -712,7 +712,7 @@ namespace {
                         (Argument,
                             ),
                         (Static,
-                            upper_visitor.visit_path(e, ::HIR::Visitor::PathContext::VALUE);
+                            upper_visitor.visit_path(*e, ::HIR::Visitor::PathContext::VALUE);
                             ),
                         (Field,
                             H::visit_lvalue(upper_visitor, *e.val);

@@ -19,7 +19,7 @@ namespace {
         (Argument,  return e; ),
         (Local,  return e; ),
         (Static,
-            return params.monomorph(resolve, e);
+            return box$(params.monomorph(resolve, *e));
             ),
         (Field,
             return ::MIR::LValue::make_Field({

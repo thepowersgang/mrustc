@@ -187,7 +187,7 @@ namespace {
                 os << "_$" << e;
                 ),
             (Static,
-                os << e;
+                os << *e;
                 ),
             (Field,
                 os << "(";

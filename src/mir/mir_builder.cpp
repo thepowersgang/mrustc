@@ -1622,20 +1622,20 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
         cb( m_output.locals.at(e) );
         ),
     (Static,
-        TU_MATCHA( (e.m_data), (pe),
+        TU_MATCHA( (e->m_data), (pe),
         (Generic,
             ASSERT_BUG(sp, pe.m_params.m_types.empty(), "Path params on static");
             const auto& s = m_resolve.m_crate.get_static_by_path(sp, pe.m_path);
             cb( s.m_type );
             ),
         (UfcsKnown,
-            TODO(sp, "Static - UfcsKnown - " << e);
+            TODO(sp, "Static - UfcsKnown - " << *e);
             ),
         (UfcsUnknown,
-            BUG(sp, "Encountered UfcsUnknown in Static - " << e);
+            BUG(sp, "Encountered UfcsUnknown in Static - " << *e);
             ),
         (UfcsInherent,
-            TODO(sp, "Static - UfcsInherent - " << e);
+            TODO(sp, "Static - UfcsInherent - " << *e);
             )
         )
         ),

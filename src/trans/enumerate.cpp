@@ -735,7 +735,7 @@ void Trans_Enumerate_Types(EnumState& state)
                                 ),
                             (Static,
                                 if( tmp_ty_ptr ) {
-                                    const auto& path = e;
+                                    const auto& path = *e;
                                     TU_MATCHA( (path.m_data), (pe),
                                     (Generic,
                                         ASSERT_BUG(Span(), pe.m_params.m_types.empty(), "Path params on static - " << path);
@@ -1495,7 +1495,7 @@ void Trans_Enumerate_FillFrom_MIR_LValue(EnumState& state, const ::MIR::LValue& 
     (Local,
         ),
     (Static,
-        Trans_Enumerate_FillFrom_Path(state, e, pp);
+        Trans_Enumerate_FillFrom_Path(state, *e, pp);
         ),
     (Field,
         Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val, pp);

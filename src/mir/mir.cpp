@@ -104,7 +104,7 @@ namespace MIR {
             os << "Local(" << e << ")";
             ),
         (Static,
-            os << "Static(" << e << ")";
+            os << "Static(" << *e << ")";
             ),
         (Field,
             os << "Field(" << e.field_index << ", " << *e.val << ")";
@@ -543,7 +543,7 @@ namespace MIR {
     (Return, return LValue(e); ),
     (Argument, return LValue(e); ),
     (Local,  return LValue(e); ),
-    (Static, return LValue(e.clone()); ),
+    (Static, return LValue(box$(e->clone())); ),
     (Field, return LValue::make_Field({
         box$( e.val->clone() ),
         e.field_index

@@ -2195,7 +2195,7 @@ namespace {
                     m_builder.set_result( node.span(), mv$(tmp) );
                     ),
                 (Static,
-                    m_builder.set_result( node.span(), ::MIR::LValue::make_Static(node.m_path.clone()) );
+                    m_builder.set_result( node.span(), ::MIR::LValue::make_Static(box$(node.m_path.clone())) );
                     ),
                 (StructConstant,
                     // TODO: Why is this still a PathValue?

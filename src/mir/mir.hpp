@@ -17,6 +17,62 @@ namespace MIR {
 typedef unsigned int    RegionId;
 typedef unsigned int    BasicBlockId;
 
+#if 0
+// TODO: Store LValues as:
+// - A packed root value (one word, using the low bits as an enum descriminator)
+// - A list of (inner to outer) wrappers
+struct LValue
+{
+    class Storage
+    {
+        uintptr_t   val;
+    public:
+        ~Storage()
+        {
+            if( is_Static() ) {
+                delete reinterpret_cast<::HIR::Path*>(val & ~3u);
+                val = 0;
+            }
+        }
+        bool is_Argument() const { return val != (MAX_ARG << 2) && (val & 3) == 0; }
+        bool is_Return() const { return val == (MAX_ARG << 2); }
+        bool is_Local() const { return (val & 3) == 1; }
+        bool is_Static() const { return (val & 3) == 2; }
+
+        const ::HIR::Path& as_Static() const { assert(is_Static()); return *reinterpret_cast<const ::HIR::Path*>(val & ~3u); }
+    };
+    class Wrapper
+    {
+        uintptr_t   val;
+    public:
+        bool is_Deref() const { return (val & 3) == 0; }
+        // Stores the field index
+        bool is_Field() const { return (val & 3) == 1; }
+        // Stores the variant index
+        bool is_Downcast() const { return (val & 3) == 2; }
+        // Stores a Local index
+        bool is_Index() const { return (val & 3) == 3; }
+
+        const unsigned as_Field() const { assert(is_Field()); return (val >> 2); }
+        const unsigned as_Index() const { assert(is_Index()); return (val >> 2); }
+    };
+
+    Storage m_root;
+    ::std::vector<Wrapper>  m_wrappers;
+
+    LValue clone() const;
+
+    class Ref
+    {
+        LValue& r;
+        size_t wrapper_idx;
+    public::
+        LValue clone() const;
+        void replace(LValue x) const;
+    };
+};
+#endif
+
 // "LVALUE" - Assignable values
 TAGGED_UNION_EX(LValue, (), Return, (
     // Function return
@@ -26,7 +82,7 @@ TAGGED_UNION_EX(LValue, (), Return, (
     // Variable/Temporary
     (Local, unsigned int),
     // `static` or `static mut`
-    (Static, ::HIR::Path),
+    (Static, ::std::unique_ptr<::HIR::Path>),
     // Field access (tuple, struct, tuple struct, enum field, ...)
     // NOTE: Also used to index an array/slice by a compile-time known index (e.g. in destructuring)
     (Field, struct {

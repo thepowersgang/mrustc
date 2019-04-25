@@ -1159,7 +1159,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 return ::MIR::LValue::make_Local(this->var_base + se);
                 ),
             (Static,
-                return this->monomorph( se );
+                return box$(this->monomorph( *se ));
                 ),
             (Deref,
                 return ::MIR::LValue::make_Deref({ box$(this->clone_lval(*se.val)) });
