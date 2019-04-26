@@ -4410,7 +4410,8 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
             {
                 if( pat.m_binding.is_valid() ) {
                     const auto& pb = pat.m_binding;
-                    context.equate_types_from_shadow(sp, context.get_var(sp, pb.m_slot));
+                    //context.equate_types_from_shadow(sp, context.get_var(sp, pb.m_slot));
+                    context.equate_types_shadow_strong(sp, context.get_var(sp, pb.m_slot));
                 }
                 TU_MATCHA( (pat.m_data), (e),
                 (Any,
@@ -7853,6 +7854,31 @@ namespace {
                 it = (remove_option ? possible_tys.erase(it) : it + 1);
             }
             DEBUG("possible_tys = " << possible_tys);
+
+            // Find a CD option that can deref to a `--` option
+            for(const auto& e : possible_tys)
+            {
+                if( e.is_pointer && e.can_deref )
+                {
+                    ::HIR::TypeRef  tmp;
+                    const auto* dty = context.m_resolve.autoderef(sp, *e.ty, tmp);
+                    if( dty && !dty->m_data.is_Infer() )
+                    {
+                        for(const auto& e2 : possible_tys)
+                        {
+                            if( !e2.is_pointer && !e2.can_deref )
+                            {
+                                if( context.m_ivars.types_equal(*dty, *e2.ty) )
+                                {
+                                    DEBUG("Coerce source can deref once to an unsize destination, picking source " << *e.ty);
+                                    context.equate_types(sp, ty_l, *e.ty);
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             // If there's only one option (or one real option w/ ivars, if in fallback mode) - equate it
             //if( possible_tys.size() == 1 && (n_ivars == 0 || !honour_disable) )
