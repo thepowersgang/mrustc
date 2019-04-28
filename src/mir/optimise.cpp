@@ -191,7 +191,7 @@ void MIR_Optimise(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 #endif
 
         // >> Move common statements (assignments) across gotos.
-        change_happened |= MIR_Optimise_CommonStatements(state, fcn);
+        //change_happened |= MIR_Optimise_CommonStatements(state, fcn);
 
         // >> Combine Duplicate Blocks
         change_happened |= MIR_Optimise_UnifyBlocks(state, fcn);
@@ -859,12 +859,31 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
 {
     bool inline_happened = false;
     TRACE_FUNCTION_FR("", inline_happened);
+    struct InlineEvent {
+        ::HIR::Path path;
+        ::std::vector<size_t>   bb_list;
+        InlineEvent(::HIR::Path p)
+            :path(::std::move(p))
+        {
+        }
+        bool has_bb(size_t i) const {
+            return ::std::find(this->bb_list.begin(), this->bb_list.end(), i) != this->bb_list.end();
+        }
+        void add_range(size_t start, size_t count) {
+            for(size_t j = 0; j < count; j++)
+            {
+                this->bb_list.push_back(start + j);
+            }
+        }
+    };
+    ::std::vector<InlineEvent>  inlined_functions;
 
     struct H
     {
         static bool can_inline(const ::HIR::Path& path, const ::MIR::Function& fcn, bool minimal)
         {
             // TODO: If the function is marked as `inline(always)`, then inline it regardless of the contents
+            // TODO: Take a monomorph helper so recursion can be detected
 
             if( minimal ) {
                 return false;
@@ -888,6 +907,7 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                     return false;
                 // Detect and avoid simple recursion.
                 // - This won't detect mutual recursion - that also needs prevention.
+                // TODO: This is the pre-monomorph path, but we're comparing with the post-monomorph path
                 if( blk0_te.fcn.is_Path() && blk0_te.fcn.as_Path() == path )
                     return false;
                 return true;
@@ -906,6 +926,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                         const auto& te = fcn.blocks[i].terminator.as_Call();
                         // Recursion, don't inline.
                         if( te.fcn.is_Path() && te.fcn.as_Path() == path )
+                            return false;
+                        // HACK: Only allow if the wrapped function is an intrinsic
+                        // - Works around the TODO about monomorphed paths above
+                        if(!te.fcn.is_Intrinsic())
                             return false;
                     }
                 }
@@ -1272,6 +1296,15 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             if( ! te->fcn.is_Path() )
                 continue ;
             const auto& path = te->fcn.as_Path();
+            DEBUG(state << fcn.blocks[i].terminator);
+
+            for(const auto& e : inlined_functions)
+            {
+                if( path == e.path &&  e.has_bb(i) )
+                {
+                    MIR_BUG(state, "Recursive inline of " << path);
+                }
+            }
 
             Cloner  cloner { state.sp, state.m_resolve, *te };
             const auto* called_mir = get_called_mir(state, list, path,  cloner.params);
@@ -1292,7 +1325,6 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
                 DEBUG("Can't inline " << path);
                 continue ;
             }
-            DEBUG(state << fcn.blocks[i].terminator);
             TRACE_FUNCTION_F("Inline " << path);
 
             // Allocate a temporary for the return value
@@ -1350,6 +1382,17 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             }
             cloner.const_assignments.clear();
 
+            // Record the inline event
+            for(auto& e : inlined_functions)
+            {
+                if( e.has_bb(i) )
+                {
+                    e.add_range(cloner.bb_base, new_blocks.size());
+                }
+            }
+            inlined_functions.push_back(InlineEvent(path.clone()));
+            inlined_functions.back().add_range(cloner.bb_base, new_blocks.size());
+
             // Apply
             DEBUG("- Append new blocks");
             fcn.blocks.reserve( fcn.blocks.size() + new_blocks.size() );
@@ -1359,6 +1402,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             }
             fcn.blocks[i].terminator = ::MIR::Terminator::make_Goto( cloner.bb_base );
             inline_happened = true;
+
+            // TODO: Store the inlined path along with the start and end BBs, and then use that to detect recursive
+            // inlining
+            // - Recursive inlining should be an immediate panic.
         }
     }
     return inline_happened;
@@ -3604,6 +3651,14 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
                             to_remove_statements[stmt_idx] = true;
                             continue ;
                         }
+                    }
+
+                    // HACK: Remove drop if it's of an unused value (TODO: only if it's conditional?)
+                    if( se->slot.is_Local() && local_rewrite_table[se->slot.as_Local()] == ~0u )
+                    {
+                        DEBUG(state << "Remove " << stmt << " - Dropping non-set value");
+                        to_remove_statements[stmt_idx] = true;
+                        continue ;
                     }
                 }
 
