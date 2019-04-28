@@ -2049,7 +2049,7 @@ namespace {
                 const auto& ty = this->context.get_type(rty);
                 // TODO: Search the entire type for `!`? (What about pointers to it? or Option/Result?)
                 // - A correct search will search for unconditional (ignoring enums with a non-! variant) non-rawptr instances of ! in the type
-                return ty.m_data.is_Diverge();// || (ty.m_data.is_Infer() && ty.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge);
+                return ty.m_data.is_Diverge();
                 };
 
             assert( !node.m_nodes.empty() );
@@ -2066,6 +2066,7 @@ namespace {
                     diverges = false;
                     break;
                 default:
+                    this->context.equate_types_from_shadow(node.span(), node.m_res_type);
                     return ;
                 }
             )
@@ -3114,7 +3115,7 @@ namespace {
         void visit_node_ptr(::HIR::ExprNodeP& node_ptr) override {
             auto& node = *node_ptr;
             const char* node_ty = typeid(node).name();
-            TRACE_FUNCTION_FR(&node << " " << &node << " " << node_ty << " : " << node.m_res_type, node_ty);
+            TRACE_FUNCTION_FR(&node_ptr << " " << &node << " " << node_ty << " : " << node.m_res_type, &node << " " << node_ty);
             this->check_type_resolved_top(node.span(), node.m_res_type);
             DEBUG(node_ty << " : = " << node.m_res_type);
             ::HIR::ExprVisitorDef::visit_node_ptr(node_ptr);
@@ -3164,6 +3165,15 @@ namespace {
             if( node.m_value_node )
             {
                 check_types_equal(node.span(), node.m_res_type, node.m_value_node->m_res_type);
+            }
+            // If the last node diverges (yields `!`) then this block can yield `!` (or anything)
+            else if( ! node.m_nodes.empty() && node.m_nodes.back()->m_res_type == ::HIR::TypeRef::new_diverge() )
+            {
+            }
+            else
+            {
+                // Non-diverging (empty, or with a non-diverging last node) blocks must yield `()`
+                check_types_equal(node.span(), node.m_res_type, ::HIR::TypeRef::new_unit());
             }
         }
 
@@ -3379,9 +3389,9 @@ namespace {
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
             DEBUG(sp << " - " << l << " == " << r);
-            if( /*l.m_data.is_Diverge() ||*/ r.m_data.is_Diverge() ) {
-                // Diverge, matches everything.
-                // TODO: Is this always true?
+            if( r.m_data.is_Diverge() ) {
+                // Diverge on the right is always valid
+                // - NOT on the left, because `!` can become everything, but nothing can become `!`
             }
             else if( l != r ) {
                 ERROR(sp, E0000, "Type mismatch - " << l << " != " << r);
@@ -6894,7 +6904,15 @@ namespace {
             DEBUG(i << ": Literal " << ty_l);
             return false;
         }
-        if( ! ivar_ent.has_rules() ) {
+        if( ! ivar_ent.has_rules() )
+        {
+            if( ty_l.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge )
+            {
+                DEBUG("Set IVar " << i << " = ! (no rules, and is diverge-class ivar)");
+                context.m_ivars.get_type(ty_l_ivar) = ::HIR::TypeRef::new_diverge();
+                context.m_ivars.mark_change();
+                return true;
+            }
             // No rules, don't do anything (and don't print)
             DEBUG(i << ": No rules");
             return false;
@@ -8186,6 +8204,10 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
             if( rule.name != "" ) {
                 rule.left_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.left_ty));
+                // HACK: If the left type is `!`, remove the type bound
+                //if( rule.left_ty.m_data.is_Diverge() ) {
+                //    rule.name = "";
+                //}
             }
             rule.impl_ty = context.m_resolve.expand_associated_types(rule.span, mv$(rule.impl_ty));
 
@@ -8254,7 +8276,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i]) ) {
                     static Span sp;
-                    assert( context.possible_ivar_vals[i].has_rules() );
+                    //assert( context.possible_ivar_vals[i].has_rules() );
                     // Disable all metioned ivars in the possibilities
                     for(const auto& ty : context.possible_ivar_vals[i].types_coerce_to)
                         context.equate_types_from_shadow(sp,ty);
