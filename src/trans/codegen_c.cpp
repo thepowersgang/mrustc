@@ -5288,8 +5288,21 @@ namespace {
             auto v = m_resolve.get_value(m_mir_res->sp, path, params);
             if( const auto* e = v.opt_Constant() )
             {
-                ty = params.monomorph(m_mir_res->sp, (*e)->m_type);
-                return (*e)->m_value_res;
+                const auto& hir_const = **e;
+                ty = params.monomorph(m_mir_res->sp, hir_const.m_type);
+                if( hir_const.m_value_res.is_Defer() )
+                {
+                    // Do some form of lookup of a pre-cached evaluated monomorphised constant
+                    // - Maybe on the `Constant` entry there can be a list of pre-monomorphised values
+                    auto it = hir_const.m_monomorph_cache.find(path);
+                    if( it == hir_const.m_monomorph_cache.end() )
+                    {
+                        MIR_BUG(*m_mir_res, "Constant with Defer literal and no cached monomorphisation - " << path);
+                        // TODO: Can do the consteval here?
+                    }
+                    return it->second;
+                }
+                return hir_const.m_value_res;
             }
             else
             {

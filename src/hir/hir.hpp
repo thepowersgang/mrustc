@@ -173,6 +173,9 @@ public:
     TypeRef m_type;
     ExprPtr m_value;
     Literal   m_value_res;
+
+    // A cache of monomorphised versions when the `const` depends on generics for its value
+    mutable ::std::map< ::HIR::Path, Literal>   m_monomorph_cache;
 };
 class Function
 {

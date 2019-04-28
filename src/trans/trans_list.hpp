@@ -95,6 +95,7 @@ public:
 
     TransList_Function* add_function(::HIR::Path p);
     TransList_Static* add_static(::HIR::Path p);
+    TransList_Const* add_const(::HIR::Path p);
     bool add_vtable(::HIR::Path p, Trans_Params pp) {
         return m_vtables.insert( ::std::make_pair( mv$(p), mv$(pp) ) ).second;
     }

@@ -38,6 +38,21 @@ TransList_Static* TransList::add_static(::HIR::Path p)
         return nullptr;
     }
 }
+TransList_Const* TransList::add_const(::HIR::Path p)
+{
+    auto rv = m_constants.insert( ::std::make_pair(mv$(p), nullptr) );
+    if( rv.second )
+    {
+        DEBUG("Const " << rv.first->first);
+        assert( !rv.first->second );
+        rv.first->second.reset( new TransList_Const {} );
+        return &*rv.first->second;
+    }
+    else
+    {
+        return nullptr;
+    }
+}
 
 t_cb_generic Trans_Params::get_cb() const
 {

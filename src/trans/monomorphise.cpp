@@ -10,6 +10,7 @@
 #include <mir/mir.hpp>
 #include <hir/hir.hpp>
 #include <mir/operations.hpp>   // Needed for post-monomorph checks and optimisations
+#include <hir_conv/constant_evaluation.hpp>
 
 namespace {
     ::MIR::LValue monomorph_LValue(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::LValue& tpl)
@@ -361,8 +362,8 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             for(const auto& a : fcn.m_args)
                 args.push_back(::std::make_pair( ::HIR::Pattern{}, pp.monomorph(resolve, a.second) ));
 
-            ::std::string s = FMT(path);
-            ::HIR::ItemPath ip(s);
+            //::std::string s = FMT(path);
+            ::HIR::ItemPath ip(path);
             MIR_Validate(resolve, ip, *mir, args, ret_type);
             MIR_Cleanup(resolve, ip, *mir, args, ret_type);
             MIR_Optimise(resolve, ip, *mir, args, ret_type);
@@ -372,6 +373,31 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
             fcn_ent.second->monomorphised.arg_tys = ::std::move(args);
             fcn_ent.second->monomorphised.code = ::std::move(mir);
         }
+    }
+
+    // Also do constants and statics (stored in where?)
+    for(auto& ent : list.m_constants)
+    {
+        const auto& path = ent.first;
+        const auto& pp = ent.second->pp;
+        const auto& c = *ent.second->ptr;
+        TRACE_FUNCTION_FR(path, path);
+        auto ty = pp.monomorph(resolve, c.m_type);
+        // 1. Evaluate the constant
+        struct Nvs: public ::HIR::Evaluator::Newval
+        {
+            ::HIR::Path new_static(::HIR::TypeRef type, ::HIR::Literal value) override {
+                TODO(Span(), "Create new static in monomorph pass - " << value << " : " << type);
+            }
+        } nvs;
+        auto eval = ::HIR::Evaluator { pp.sp, crate, nvs };
+        MonomorphState   ms;
+        ms.self_ty = &pp.self_type;
+        ms.pp_impl = &pp.pp_impl;
+        ms.pp_method = &pp.pp_method;
+        auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
+        // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
+        c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
     }
 }
 

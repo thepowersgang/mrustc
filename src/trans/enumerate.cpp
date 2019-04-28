@@ -903,6 +903,10 @@ void Trans_Enumerate_Types(EnumState& state)
                             return blank;
                         }
 
+                        static void visit_const(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::Constant& p)
+                        {
+                        }
+
                         static void visit_param(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::Param& p)
                         {
                             TU_MATCHA( (p), (e),
@@ -910,6 +914,7 @@ void Trans_Enumerate_Types(EnumState& state)
                                 H::visit_lvalue(tv, pp, fcn, e);
                                 ),
                             (Constant,
+                                H::visit_const(tv, pp, fcn, e);
                                 )
                             )
                         }
@@ -937,6 +942,7 @@ void Trans_Enumerate_Types(EnumState& state)
                                 H::visit_lvalue(tv,pp,fcn, re);
                                 ),
                             (Constant,
+                                H::visit_const(tv,pp,fcn, re);
                                 ),
                             (SizedArray,
                                 H::visit_param(tv,pp,fcn, re.val);
@@ -1182,14 +1188,14 @@ namespace {
                         return true;
                     }
                 }
-                //{
-                //    auto it = impl.m_constants.find(e.item);
-                //    if( it != impl.m_constants.end() )
-                //    {
-                //        rv = EntPtr { &it->second.data };
-                //        return true;
-                //    }
-                //}
+                {
+                    auto it = impl.m_constants.find(pe->item);
+                    if( it != impl.m_constants.end() )
+                    {
+                        rv = EntPtr { &it->second.data };
+                        return true;
+                    }
+                }
                 return false;
                 });
             return rv;
@@ -1481,7 +1487,19 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
         }
         }
     TU_ARMA(Constant, e) {
-        Trans_Enumerate_FillFrom_Literal(state, e->m_value_res, sub_pp);
+        if( e->m_value_res.is_Defer() )
+        {
+            if( auto* slot = state.rv.add_const(mv$(path_mono)) )
+            {
+                Trans_Enumerate_FillFrom_MIR(state, *e->m_value.m_mir, sub_pp);
+                slot->ptr = e;
+                slot->pp = ::std::move(sub_pp);
+            }
+        }
+        else
+        {
+            Trans_Enumerate_FillFrom_Literal(state, e->m_value_res, sub_pp);
+        }
         }
     }
 }
@@ -1522,7 +1540,8 @@ void Trans_Enumerate_FillFrom_MIR_Constant(EnumState& state, const ::MIR::Consta
     (Bytes, ),
     (StaticString, ),  // String
     (Const,
-        //Trans_Enumerate_FillFrom_Path(state, ce.p, pp);
+        // - Check if this constant has a value of Defer
+        Trans_Enumerate_FillFrom_Path(state, ce.p, pp);
         ),
     (ItemAddr,
         Trans_Enumerate_FillFrom_Path(state, ce, pp);
