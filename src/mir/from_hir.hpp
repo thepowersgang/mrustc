@@ -70,8 +70,8 @@ TAGGED_UNION_EX(VarState, (), Invalid, (
     (), (),
     (
         VarState clone() const;
-        bool operator==(VarState& x) const;
-        bool operator!=(VarState& x) const { return !(*this == x); }
+        bool operator==(const VarState& x) const;
+        bool operator!=(const VarState& x) const { return !(*this == x); }
         )
     );
 extern ::std::ostream& operator<<(::std::ostream& os, const VarState& x);
@@ -110,7 +110,7 @@ TAGGED_UNION(ScopeType, Owning,
         }),
     // State which should end up with no mutation of variable states
     (Freeze, struct {
-        //::std::map<unsigned int,VarState>    changed_slots;
+        ::std::map<unsigned int,VarState>    changed_slots;
         //::std::map<unsigned int,VarState>    changed_args;
         })
     );

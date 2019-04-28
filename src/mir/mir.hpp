@@ -159,6 +159,9 @@ TAGGED_UNION_EX(Constant, (), Int, (
         }),
     (Bytes, ::std::vector< ::std::uint8_t>),    // Byte string
     (StaticString, ::std::string),  // String
+    // TODO: Should these ::HIR::Path structures be behind pointers?
+    // - HIR::Path is ~11 words long, without it MIR::Constant is 4 instead of 12
+    // - MIR::Param is quite common, potential large space saving.
     (Const, struct { ::HIR::Path p; }),   // `const`
     (ItemAddr, ::HIR::Path) // address of a value
     ), (), (), (

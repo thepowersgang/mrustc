@@ -1554,7 +1554,6 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     (Split,
         ),
     (Freeze,
-        //DEBUG("Freeze");
         )
     )
 
@@ -1606,6 +1605,28 @@ void MirBuilder::complete_scope(ScopeDef& sd)
 
         ASSERT_BUG(sd.span, e.end_state_valid, "");
         H::apply_end_state(sd.span, *this, e.end_state);
+    }
+    else if( const auto* e = sd.data.opt_Freeze() )
+    {
+        TRACE_FUNCTION_F("Freeze");
+        for(auto& ent : e->changed_slots)
+        {
+            auto& vs = this->get_slot_state_mut(sd.span, ent.first, SlotType::Local);
+            auto lv = ::MIR::LValue::make_Local(ent.first);
+            DEBUG(lv << " " << vs << " => " << ent.second);
+            if( vs != ent.second )
+            {
+                if( vs.is_Valid() ) {
+                    ERROR(sd.span, E0000, "Value went from " << vs << " => " << ent.second << " over freeze");
+                }
+                else if( !this->lvalue_is_copy(sd.span, lv) ) {
+                    ERROR(sd.span, E0000, "Non-Copy value went from " << vs << " => " << ent.second << " over freeze");
+                }
+                else {
+                    // It's a Copy value, and it wasn't originally fully Valid - allowable
+                }
+            }
+        }
     }
 }
 
@@ -1919,20 +1940,38 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotT
                 }
             }
         }
-        else if( scope_def.data.is_Freeze() )
+        // Freeze is used for `match` guards
+        // - These are only allowed to modify the (known `bool`) condition variable
+        // TODO: Some guards have more complex pieces of code, with self-contained scopes, allowable?
+        // - Those should already have defined their own scope?
+        // - OR, allow mutations here but ONLY if it's of a Copy type, and force it uninit at the end of the scope
+        else if( auto* e = scope_def.data.opt_Freeze() )
         {
+            // If modified variable is the guard's result variable, allow it.
+            if( type != SlotType::Local ) {
+                DEBUG("Mutating state of arg" << idx);
+                ERROR(sp, E0000, "Attempting to move/initialise a value where not allowed");
+            }
             if( type == SlotType::Local && idx == m_if_cond_lval.as_Local() )
             {
+                // The guard condition variable is allowed to be mutated, and falls through to the upper scope
             }
             else
             {
-                // NOTE: This is only used in match conditions
-                DEBUG("Mutating state of ?" << idx);
-                ERROR(sp, E0000, "Attempting to move/initialise a value where not allowed");
+                DEBUG("Mutating state of local" << idx);
+                auto& states = e->changed_slots;
+                if( states.count(idx) == 0 )
+                {
+                    auto state = get_slot_state(sp, idx, type).clone();
+                    states.insert(::std::make_pair( idx, mv$(state) ));
+                }
+                ret = &states[idx];
+                break;  // Stop searching
             }
         }
         else
         {
+            // Unknown scope type?
         }
     }
     if( ret )
@@ -2259,7 +2298,7 @@ VarState VarState::clone() const
     )
     throw "";
 }
-bool VarState::operator==(VarState& x) const
+bool VarState::operator==(const VarState& x) const
 {
     if( this->tag() != x.tag() )
         return false;
