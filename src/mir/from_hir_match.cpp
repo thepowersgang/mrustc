@@ -2819,40 +2819,37 @@ void MatchGenGrouped::gen_dispatch(const ::std::vector<t_rules_subset>& rules, s
         // Matching over a path can only happen with an enum.
         // TODO: What about `box` destructures?
         // - They're handled via hidden derefs
-        if( !te.binding.is_Enum() ) {
-            TU_MATCHA( (te.binding), (pbe),
-            (Unbound,
-                BUG(sp, "Encounterd unbound path - " << te.path);
+        TU_MATCH_HDR( (te.binding), { )
+        TU_ARM(te.binding, Unbound, pbe) {
+            BUG(sp, "Encounterd unbound path - " << te.path);
+            }
+        TU_ARM(te.binding, Opaque, pbe) {
+            BUG(sp, "Attempting to match over opaque type - " << ty);
+            }
+        TU_ARM(te.binding, Struct, pbe) {
+            const auto& str_data = pbe->m_data;
+            TU_MATCHA( (str_data), (sd),
+            (Unit,
+                BUG(sp, "Attempting to match over unit type - " << ty);
                 ),
-            (Opaque,
-                BUG(sp, "Attempting to match over opaque type - " << ty);
+            (Tuple,
+                TODO(sp, "Matching on tuple-like struct?");
                 ),
-            (Struct,
-                const auto& str_data = pbe->m_data;
-                TU_MATCHA( (str_data), (sd),
-                (Unit,
-                    BUG(sp, "Attempting to match over unit type - " << ty);
-                    ),
-                (Tuple,
-                    TODO(sp, "Matching on tuple-like struct?");
-                    ),
-                (Named,
-                    TODO(sp, "Matching on struct?");
-                    )
-                )
-                ),
-            (Union,
-                TODO(sp, "Match over Union");
-                ),
-            (ExternType,
-                TODO(sp, "Match over ExternType - " << ty);
-                ),
-            (Enum,
+            (Named,
+                TODO(sp, "Matching on struct? - " << ty);
                 )
             )
+            }
+        TU_ARM(te.binding, Union, pbe) {
+            TODO(sp, "Match over Union");
+            }
+        TU_ARM(te.binding, ExternType, pbe) {
+            TODO(sp, "Match over ExternType - " << ty);
+            }
+        TU_ARM(te.binding, Enum, pbe) {
+            this->gen_dispatch__enum(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
+            }
         }
-
-        this->gen_dispatch__enum(mv$(ty), mv$(val), rules, ofs, arm_targets, def_blk);
         ),
     (Generic,
         BUG(sp, "Attempting to match a generic");
