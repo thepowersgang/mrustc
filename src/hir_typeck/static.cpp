@@ -7,6 +7,7 @@
  */
 #include "static.hpp"
 #include <algorithm>
+#include <hir/expr.hpp>
 
 void StaticTraitResolve::prep_indexes()
 {
@@ -163,6 +164,47 @@ bool StaticTraitResolve::find_impl(
             return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
         }
     )
+    if(const auto* e = type.m_data.opt_Closure())
+    {
+        if( trait_path == m_lang_Fn || trait_path == m_lang_FnMut || trait_path == m_lang_FnOnce )
+        {
+            if( trait_params )
+            {
+                const auto& des_arg_tys = trait_params->m_types.at(0).m_data.as_Tuple();
+                if( des_arg_tys.size() != e->m_arg_types.size() ) {
+                    return false;
+                }
+                for(unsigned int i = 0; i < des_arg_tys.size(); i ++)
+                {
+                    if( des_arg_tys[i] != e->m_arg_types[i] ) {
+                        return false;
+                    }
+                }
+            }
+            else
+            {
+                trait_params = &null_params;
+            }
+            switch( e->node->m_class )
+            {
+            case ::HIR::ExprNode_Closure::Class::Unknown:
+                break;
+            case ::HIR::ExprNode_Closure::Class::NoCapture:
+                break;
+            case ::HIR::ExprNode_Closure::Class::Once:
+                if( trait_path == m_lang_FnMut )
+                    return false;
+            case ::HIR::ExprNode_Closure::Class::Mut:
+                if( trait_path == m_lang_Fn )
+                    return false;
+            case ::HIR::ExprNode_Closure::Class::Shared:
+                break;
+            }
+            ::std::map< ::std::string, ::HIR::TypeRef>  assoc;
+            assoc.insert( ::std::make_pair("Output", e->m_rettype->clone()) );
+            return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
+        }
+    }
 
     // ----
     // TraitObject traits and supertraits
