@@ -138,3 +138,6 @@ static inline t_cb_generic monomorphise_type_get_cb(const Span& sp, const ::HIR:
 }
 
 extern void check_type_class_primitive(const Span& sp, const ::HIR::TypeRef& type, ::HIR::InferClass ic, ::HIR::CoreType ct);
+
+class StaticTraitResolve;
+extern void Typecheck_Expressions_ValidateOne(const StaticTraitResolve& resolve, const ::std::vector<::std::pair< ::HIR::Pattern, ::HIR::TypeRef>>& args, const ::HIR::TypeRef& ret_ty, const ::HIR::ExprPtr& code);

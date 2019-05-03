@@ -22,14 +22,18 @@ namespace {
         const ::HIR::TypeRef&   ret_type;
         ::std::vector< const ::HIR::TypeRef*>   closure_ret_types;
         ::std::vector<const ::HIR::ExprNode_Loop*>  m_loops;
+        //const ::HIR::ExprPtr* m_cur_expr;
 
         ::HIR::SimplePath   m_lang_Index;
 
     public:
+        bool expand_erased_types;
+
         ExprVisitor_Validate(const StaticTraitResolve& res, const t_args& args, const ::HIR::TypeRef& ret_type):
             m_resolve(res),
             //m_args(args),
             ret_type(ret_type)
+            ,expand_erased_types(true)
         {
             m_lang_Index = m_resolve.m_crate.get_lang_item_path_opt("index");
         }
@@ -131,6 +135,7 @@ namespace {
             TRACE_FUNCTION_F(&node << " let " << node.m_pattern << ": " << node.m_type);
             if(node.m_value)
             {
+                check_pattern(node.m_pattern, node.m_value->m_res_type);
                 check_types_equal(node.span(), node.m_type, node.m_value->m_res_type);
                 node.m_value->visit(*this);
             }
@@ -141,6 +146,10 @@ namespace {
             node.m_value->visit(*this);
             for(auto& arm : node.m_arms)
             {
+                for(const auto& pat : arm.m_patterns)
+                {
+                    check_pattern(pat, node.m_value->m_res_type);
+                }
                 check_types_equal(node.span(), node.m_res_type, arm.m_code->m_res_type);
                 arm.m_code->visit( *this );
             }
@@ -149,9 +158,11 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " if ... { ... } else { ... }");
             node.m_cond->visit( *this );
+            node.m_true->visit( *this );
             check_types_equal(node.span(), node.m_res_type, node.m_true->m_res_type);
             if( node.m_false )
             {
+                node.m_false->visit( *this );
                 check_types_equal(node.span(), node.m_res_type, node.m_false->m_res_type);
             }
         }
@@ -377,7 +388,12 @@ namespace {
             const auto& src_ty = node.m_value->m_res_type;
             const auto& dst_ty = node.m_res_type;
 
-            if( src_ty == dst_ty )
+            if( src_ty.m_data.is_Array() )
+            {
+                ASSERT_BUG(sp, dst_ty.m_data.is_Slice(), "");
+                ASSERT_BUG(sp, node.m_usage == ::HIR::ValueUsage::Unknown, "");
+            }
+            else if( src_ty == dst_ty )
             {
             }
             else if( src_ty.m_data.is_Borrow() && dst_ty.m_data.is_Borrow() )
@@ -760,7 +776,7 @@ namespace {
                     rv = monomorph_cb(tpl).clone();
                     return true;
                 }
-                else if( tpl.m_data.is_ErasedType() ) {
+                else if( this->expand_erased_types && tpl.m_data.is_ErasedType() ) {
                     const auto& e = tpl.m_data.as_ErasedType();
 
                     ASSERT_BUG(sp, e.m_index < fcn_ptr->m_code.m_erased_types.size(), "");
@@ -852,6 +868,9 @@ namespace {
                 }
                 check_types_equal(node.span(), node.m_res_type, *e.m_rettype);
             )
+            else if( node.m_trait_used == ::HIR::ExprNode_CallValue::TraitUsed::Unknown )
+            {
+            }
             else
             {
                 // 1. Look up the encoded trait
@@ -1077,6 +1096,15 @@ namespace {
         }
         void check_types_equal(const Span& sp, const ::HIR::TypeRef& l, const ::HIR::TypeRef& r) const
         {
+            // TODO: Recurse when an erased type is encountered
+            //if( const auto* e = l.m_data.opt_ErasedType() )
+            //{
+            //    return check_types_equal(sp, m_cur_expr->m_erased_types.at(e->m_index), r);
+            //}
+            //if( const auto* e = r.m_data.opt_ErasedType() )
+            //{
+            //    return check_types_equal(sp, l, m_cur_expr->m_erased_types.at(e->m_index));
+            //}
             //DEBUG(sp << " - " << l << " == " << r);
             if( /*l.m_data.is_Diverge() ||*/ r.m_data.is_Diverge() ) {
                 // Diverge, matches everything.
@@ -1123,6 +1151,89 @@ namespace {
             if( !found )
             {
                 ERROR(sp, E0000, "Cannot find an impl of " << trait << params << " for " << ity);
+            }
+        }
+        void check_pattern(const ::HIR::Pattern& pat, const ::HIR::TypeRef& ty) const
+        {
+            Span    sp;
+            TU_MATCH_HDRA( (pat.m_data), { )
+            TU_ARMA(Any, pe) {
+                // Don't care
+                }
+            TU_ARMA(Box, pe) {
+                // TODO: Assert that `ty` is an owned_box
+                }
+            TU_ARMA(Ref, pe) {
+                // TODO: Assert that `ty` is a &-ptr
+                }
+            TU_ARMA(Tuple, pe) {
+                // TODO: Check for a matching tuple size
+                }
+            TU_ARMA(SplitTuple, pe) {
+                // TODO: Check for a matching tuple size
+                }
+            TU_ARMA(StructValue, pe) {
+                // TODO: Check that the type matches the struct
+                }
+            TU_ARMA(StructTuple, pe) {
+                // TODO: Destructure
+                }
+            TU_ARMA(Struct, pe) {
+                // TODO: Destructure
+                }
+
+            TU_ARMA(Value, pe) {
+                this->check_pattern_value(sp, pe.val, ty);
+                }
+            TU_ARMA(Range, pe) {
+                this->check_pattern_value(sp, pe.start, ty);
+                this->check_pattern_value(sp, pe.end, ty);
+                }
+            TU_ARMA(EnumValue, e) {
+                // TODO: Check type
+                }
+            TU_ARMA(EnumTuple, e) {
+                // TODO: Destructure
+                }
+            TU_ARMA(EnumStruct, e) {
+                // TODO: Destructure
+                }
+            TU_ARMA(Slice, e) {
+                // TODO: Check that the type is a Slice or Array
+                // - Array must match size
+                }
+            TU_ARMA(SplitSlice, e) {
+                // TODO: Check that the type is a Slice or Array
+                // - Array must have compatible size
+                }
+            }
+        }
+        void check_pattern_value(const Span& sp, const ::HIR::Pattern::Value& pv, const ::HIR::TypeRef& ty) const
+        {
+            TU_MATCH_HDRA( (pv), { )
+            TU_ARMA(Integer, e) {
+                if( e.type == ::HIR::CoreType::Str ) {
+                }
+                else {
+                    check_types_equal(sp, ty, e.type);
+                }
+                }
+            TU_ARMA(Float, e) {
+                if( e.type == ::HIR::CoreType::Str ) {
+                }
+                else {
+                    check_types_equal(sp, ty, e.type);
+                }
+                }
+            TU_ARMA(String, e) {
+                check_types_equal(sp, ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str));
+                }
+            TU_ARMA(ByteString, e) {
+                check_types_equal(sp, ty, ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::TypeRef::new_slice(::HIR::CoreType::U8)));
+                }
+            TU_ARMA(Named, e) {
+                // TODO: Get type of the value and check equality
+                }
             }
         }
 
@@ -1237,6 +1348,13 @@ namespace {
             ::HIR::Visitor::visit_trait_impl(trait_path, impl);
         }
     };
+}
+
+void Typecheck_Expressions_ValidateOne(const StaticTraitResolve& resolve, const ::std::vector<::std::pair< ::HIR::Pattern, ::HIR::TypeRef>>& args, const ::HIR::TypeRef& ret_ty, const ::HIR::ExprPtr& code)
+{
+    ExprVisitor_Validate    ev(resolve, args, ret_ty);
+    ev.expand_erased_types = false; // TODO: Make this an argument, we don't want to do this too early
+    ev.visit_root( const_cast<::HIR::ExprPtr&>(code) );
 }
 
 void Typecheck_Expressions_Validate(::HIR::Crate& crate)
