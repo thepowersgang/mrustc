@@ -3870,6 +3870,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
     struct H2 {
         static bool has_ref_or_borrow(const Span& sp, const ::HIR::Pattern& pat) {
             // TODO: Turns out that this isn't valid. See libsyntax 1.29
+            // - ref `rustc-1.29.0-src/src/libsyntax/print/pprust.rs` 2911, `&Option` matched with `Some(ref foo)`
             //if( pat.m_binding.is_valid() && pat.m_binding.m_type != ::HIR::PatternBinding::Type::Move ) {
             //    return true;
             //}
@@ -3998,6 +3999,39 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 }
                 return true;
             }
+            ::HIR::TypeRef get_possible_type_val(Context& context, ::HIR::Pattern::Value& pv) const
+            {
+                TU_MATCH_HDR( (pv), {)
+                TU_ARM(pv, Integer, ve) {
+                    if( ve.type == ::HIR::CoreType::Str ) {
+                        return ::HIR::TypeRef::new_infer(context.m_ivars.new_ivar(), ::HIR::InferClass::Integer);
+                    }
+                    return ve.type;
+                    }
+                TU_ARM(pv, Float, ve) {
+                    if( ve.type == ::HIR::CoreType::Str ) {
+                        return ::HIR::TypeRef::new_infer(context.m_ivars.new_ivar(), ::HIR::InferClass::Float);
+                    }
+                    return ve.type;
+                    }
+                TU_ARM(pv, String, ve) {
+                    return ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, ::HIR::CoreType::Str);
+                    }
+                TU_ARM(pv, ByteString, ve) {
+                    // TODO: ByteString patterns can match either &[u8] or &[u8; N]
+                    //return ::HIR::TypeRef::new_borrow(
+                    //        ::HIR::BorrowType::Shared,
+                    //        ::HIR::TypeRef::new_slice(::HIR::CoreType::U8)
+                    //        );
+                    return ::HIR::TypeRef();
+                    }
+                TU_ARM(pv, Named, ve) {
+                    // TODO: Look up the path and get the type
+                    return ::HIR::TypeRef();
+                    }
+                }
+                throw "";
+            }
             const ::HIR::TypeRef& get_possible_type(Context& context, ::HIR::Pattern& pattern) const
             {
                 if( m_possible_type == ::HIR::TypeRef() )
@@ -4010,13 +4044,20 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         // No type information.
                         }
                     TU_ARM(pattern.m_data, Value, pe) {
-                        // TODO: Get type info
+                        possible_type = get_possible_type_val(context, pe.val);
                         }
                     TU_ARM(pattern.m_data, Range, pe) {
-                        // TODO: Get type info (same as Value)
+                        possible_type = get_possible_type_val(context, pe.start);
+                        if( possible_type == ::HIR::TypeRef() ) {
+                            possible_type = get_possible_type_val(context, pe.end);
+                        }
+                        else {
+                            // TODO: Check that the type from .end matches .start
+                        }
                         }
                     TU_ARM(pattern.m_data, Box, pe) {
-                        // TODO: Get type info (Box<_>)
+                        // TODO: Get type info (Box<_>) ?
+                        // - Is this possible? Shouldn't a box pattern disable ergonomics?
                         }
                     TU_ARM(pattern.m_data, Ref, pe) {
                         BUG(sp, "Match ergonomics - & pattern");
@@ -4082,20 +4123,44 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     {
                         pattern.m_binding.m_type = binding_mode;
                     }
+                    unsigned n_deref = 0;
+                    const auto* type_p = &type;
+                    ::HIR::TypeRef  tmp;
+                    const ::HIR::TypeRef* binding_type = nullptr;
                     switch(pattern.m_binding.m_type)
                     {
                     case ::HIR::PatternBinding::Type::Move:
-                        context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), type);
+                        binding_type = &type;
                         break;
                     case ::HIR::PatternBinding::Type::MutRef:
-                        context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type.clone()));
+                        // NOTE: Needs to deref and borrow to get just `&mut T` (where T isn't a &mut T)
+                        //while( TU_TEST1(type_p->m_data, Borrow, .type >= ::HIR::BorrowType::Unique) )
+                        //{
+                        //    n_deref ++;
+                        //    type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
+                        //}
+                        DEBUG(n_deref << " from " << type << " to " << *type_p);
+                        binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type_p->clone()));
                         break;
                     case ::HIR::PatternBinding::Type::Ref:
-                        context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, type.clone()));
+                        // NOTE: Needs to deref and borrow to get just `&mut T` (where T isn't a &mut T)
+                        //while( type_p->m_data.is_Borrow() )
+                        //{
+                        //    n_deref ++;
+                        //    type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
+                        //}
+                        DEBUG(n_deref << " from " << type << " to " << *type_p);
+                        binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, type_p->clone()));
                         break;
                     default:
                         TODO(sp, "Assign variable type using mode " << (int)binding_mode << " and " << type);
                     }
+                    if( n_deref > 0 ) {
+                        TODO(sp, "Handle autoderef of ref bindings in match ergonomics");
+                    }
+                    assert(binding_type);
+                    context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), *binding_type);
+                    //pattern.m_binding.n_deref = n_deref;
                 }
 
                 // For `_` patterns, there's nothing to match, so they just succeed with no derefs
@@ -4134,12 +4199,23 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     }
 
                     // If there's no dereferences done, then add a possible unsize type
-                    // TODO: If the pattern is a String or ByteString value, then permit a single deref
-                    if( n_deref == 0 )
+                    const ::HIR::TypeRef& possible_type = get_possible_type(context, pattern);
+                    if( possible_type != ::HIR::TypeRef() )
                     {
-                        const ::HIR::TypeRef& possible_type = get_possible_type(context, pattern);
-                        if( possible_type != ::HIR::TypeRef() )
+                        DEBUG("n_deref = " << n_deref << ", possible_type = " << possible_type);
+                        const ::HIR::TypeRef* possible_type_p = &possible_type;
+                        // Unwrap borrows as many times as we've already dereferenced
+                        for(size_t i = 0; i < n_deref && possible_type_p; i ++) {
+                            if( const auto* te = possible_type_p->m_data.opt_Borrow() ) {
+                                possible_type_p = &*te->inner;
+                            }
+                            else {
+                                possible_type_p = nullptr;
+                            }
+                        }
+                        if( possible_type_p )
                         {
+                            const auto& possible_type = *possible_type_p;
                             if( const auto* te = ty_p->m_data.opt_Infer() )
                             {
                                 context.possible_equate_type_unsize_to(te->index, possible_type);
@@ -4161,7 +4237,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         }
                     }
 
-                    // TODO: Visit all inner bindings and disable coercion fallbacks on them.
+                    // Visit all inner bindings and disable coercion fallbacks on them.
                     MatchErgonomicsRevisit::disable_possibilities_on_bindings(sp, context, pattern);
                     return false;
                 }
