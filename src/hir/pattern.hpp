@@ -32,19 +32,23 @@ struct PatternBinding
     ::std::string   m_name;
     unsigned int    m_slot;
 
+    unsigned m_implicit_deref_count = 0;
+
     bool is_valid() const { return m_name != ""; }
 
     PatternBinding():
         m_mutable(false),
         m_type(Type::Move),
         m_name(""),
-        m_slot(0)
+        m_slot(0),
+        m_implicit_deref_count(0)
     {}
     PatternBinding(bool mut, Type type, ::std::string name, unsigned int slot):
         m_mutable(mut),
         m_type(type),
         m_name( mv$(name) ),
-        m_slot( slot )
+        m_slot( slot ),
+        m_implicit_deref_count(0)
     {}
 };
 

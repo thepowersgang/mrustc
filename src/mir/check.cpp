@@ -686,10 +686,12 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                         // TODO: Check that the input type is Copy
                         ),
                     (Borrow,
-                        // TODO: Check return type
+                        ::HIR::TypeRef  tmp;
+                        check_types( dst_ty, ::HIR::TypeRef::new_borrow(e.type, state.get_lvalue_type(tmp, e.val).clone()) );
                         ),
                     (Cast,
-                        // TODO: Check return type
+                        // Check return type
+                        check_types( dst_ty, e.type );
                         // TODO: Check suitability of source type (COMPLEX)
                         ),
                     (BinOp,

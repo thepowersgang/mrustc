@@ -4134,33 +4134,30 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         break;
                     case ::HIR::PatternBinding::Type::MutRef:
                         // NOTE: Needs to deref and borrow to get just `&mut T` (where T isn't a &mut T)
-                        //while( TU_TEST1(type_p->m_data, Borrow, .type >= ::HIR::BorrowType::Unique) )
-                        //{
-                        //    n_deref ++;
-                        //    type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
-                        //}
+                        while( TU_TEST1(type_p->m_data, Borrow, .type >= ::HIR::BorrowType::Unique) )
+                        {
+                            n_deref ++;
+                            type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
+                        }
                         DEBUG(n_deref << " from " << type << " to " << *type_p);
                         binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type_p->clone()));
                         break;
                     case ::HIR::PatternBinding::Type::Ref:
                         // NOTE: Needs to deref and borrow to get just `&mut T` (where T isn't a &mut T)
-                        //while( type_p->m_data.is_Borrow() )
-                        //{
-                        //    n_deref ++;
-                        //    type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
-                        //}
+                        while( type_p->m_data.is_Borrow() )
+                        {
+                            n_deref ++;
+                            type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
+                        }
                         DEBUG(n_deref << " from " << type << " to " << *type_p);
                         binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, type_p->clone()));
                         break;
                     default:
                         TODO(sp, "Assign variable type using mode " << (int)binding_mode << " and " << type);
                     }
-                    if( n_deref > 0 ) {
-                        TODO(sp, "Handle autoderef of ref bindings in match ergonomics");
-                    }
                     assert(binding_type);
                     context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), *binding_type);
-                    //pattern.m_binding.n_deref = n_deref;
+                    pattern.m_binding.m_implicit_deref_count = n_deref;
                 }
 
                 // For `_` patterns, there's nothing to match, so they just succeed with no derefs

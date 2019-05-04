@@ -174,6 +174,11 @@ namespace {
                     destructure_from_ex(sp, pat, lval.clone(), 3);
                 }
 
+                for(size_t i = 0; i < pat.m_binding.m_implicit_deref_count; i ++)
+                {
+                    lval = ::MIR::LValue::make_Deref({ box$(lval) });
+                }
+
                 switch( pat.m_binding.m_type )
                 {
                 case ::HIR::PatternBinding::Type::Move:
