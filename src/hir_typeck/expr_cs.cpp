@@ -4134,21 +4134,21 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         break;
                     case ::HIR::PatternBinding::Type::MutRef:
                         // NOTE: Needs to deref and borrow to get just `&mut T` (where T isn't a &mut T)
-                        while( TU_TEST1(type_p->m_data, Borrow, .type >= ::HIR::BorrowType::Unique) )
-                        {
-                            n_deref ++;
-                            type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
-                        }
+                        //while( TU_TEST1(type_p->m_data, Borrow, .type >= ::HIR::BorrowType::Unique) )
+                        //{
+                        //    n_deref ++;
+                        //    type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
+                        //}
                         DEBUG(n_deref << " from " << type << " to " << *type_p);
                         binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type_p->clone()));
                         break;
                     case ::HIR::PatternBinding::Type::Ref:
                         // NOTE: Needs to deref and borrow to get just `&mut T` (where T isn't a &mut T)
-                        while( type_p->m_data.is_Borrow() )
-                        {
-                            n_deref ++;
-                            type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
-                        }
+                        //while( type_p->m_data.is_Borrow() )
+                        //{
+                        //    n_deref ++;
+                        //    type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
+                        //}
                         DEBUG(n_deref << " from " << type << " to " << *type_p);
                         binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, type_p->clone()));
                         break;
@@ -4350,7 +4350,22 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         rv |= this->revisit_inner(context, sub, *slice_inner, binding_mode);
                     }
                 TU_ARM(pattern.m_data, SplitSlice, pe) {
-                    TODO(sp, "Match ergonomics - split-slice pattern");
+                    const ::HIR::TypeRef*   slice_inner;
+                    TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Slice, te,
+                        slice_inner = &*te.inner;
+                    )
+                    else TU_IFLET(::HIR::TypeRef::Data, ty.m_data, Array, te,
+                        slice_inner = &*te.inner;
+                    )
+                    else {
+                        ERROR(sp, E0000, "Matching a non-array/slice with a slice pattern - " << ty);
+                    }
+                    rv = true;
+                    for(auto& sub : pe.leading)
+                        rv |= this->revisit_inner(context, sub, *slice_inner, binding_mode);
+                    // TODO: Extra bind
+                    for(auto& sub : pe.trailing)
+                        rv |= this->revisit_inner(context, sub, *slice_inner, binding_mode);
                     }
                 TU_ARM(pattern.m_data, StructValue, e) {
                     context.add_ivars_params( e.path.m_params );
@@ -4598,6 +4613,10 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                 (SplitSlice,
                     for(auto& sub : e.leading)
                         create_bindings(sp, context, sub);
+                    // TODO: extra_bind
+                    if( e.extra_bind.is_valid() ) {
+                        TODO(sp, "Handle split slice binding binding in match ergonomics");
+                    }
                     for(auto& sub : e.trailing)
                         create_bindings(sp, context, sub);
                     ),
