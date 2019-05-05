@@ -1541,10 +1541,10 @@ void Trans_Enumerate_FillFrom_MIR_Constant(EnumState& state, const ::MIR::Consta
     (StaticString, ),  // String
     (Const,
         // - Check if this constant has a value of Defer
-        Trans_Enumerate_FillFrom_Path(state, ce.p, pp);
+        Trans_Enumerate_FillFrom_Path(state, *ce.p, pp);
         ),
     (ItemAddr,
-        Trans_Enumerate_FillFrom_Path(state, ce, pp);
+        Trans_Enumerate_FillFrom_Path(state, *ce, pp);
         )
     )
 }

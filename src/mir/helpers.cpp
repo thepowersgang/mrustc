@@ -270,7 +270,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
         ),
     (Const,
         MonomorphState  p;
-        auto v = m_resolve.get_value(this->sp, e.p, p, /*signature_only=*/true);
+        auto v = m_resolve.get_value(this->sp, *e.p, p, /*signature_only=*/true);
         if( const auto* ve = v.opt_Constant() ) {
             const auto& ty = (*ve)->m_type;
             if( monomorphise_type_needed(ty) ) {
@@ -282,12 +282,12 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
                 return ty.clone();
         }
         else {
-            MIR_BUG(*this, "get_const_type - Not a constant " << e.p);
+            MIR_BUG(*this, "get_const_type - Not a constant " << *e.p);
         }
         ),
     (ItemAddr,
         MonomorphState  p;
-        auto v = m_resolve.get_value(this->sp, e, p, /*signature_only=*/true);
+        auto v = m_resolve.get_value(this->sp, *e, p, /*signature_only=*/true);
         TU_MATCHA( (v), (ve),
         (NotFound,
             MIR_BUG(*this, "get_const_type - ItemAddr points to unknown value - " << c);
@@ -325,7 +325,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ::HIR::FunctionType ft;
             ft.is_unsafe = false;
             ft.m_abi = ABI_RUST;
-            auto enum_path = e.clone();
+            auto enum_path = e->clone();
             enum_path.m_data.as_Generic().m_path.m_components.pop_back();
             ft.m_rettype = box$( ::HIR::TypeRef::new_path(mv$(enum_path), ve.e) );
             ft.m_arg_types.reserve(str_data.size());
@@ -348,7 +348,7 @@ const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, cons
             ::HIR::FunctionType ft;
             ft.is_unsafe = false;
             ft.m_abi = ABI_RUST;
-            ft.m_rettype = box$( ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e.m_data.as_Generic().m_params.clone()), &str) );
+            ft.m_rettype = box$( ::HIR::TypeRef::new_path( ::HIR::GenericPath(*ve.p, e->m_data.as_Generic().m_params.clone()), &str) );
             ft.m_arg_types.reserve(str_data.size());
             for(const auto& fld : str_data)
                 ft.m_arg_types.push_back( p.monomorph(this->sp, fld.ent) );

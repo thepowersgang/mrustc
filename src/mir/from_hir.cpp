@@ -162,6 +162,7 @@ namespace {
 
         void destructure_from_ex(const Span& sp, const ::HIR::Pattern& pat, ::MIR::LValue lval, int allow_refutable=0) // 1 : yes, 2 : disallow binding
         {
+            TRACE_FUNCTION_F(pat << ", allow_refutable=" << allow_refutable);
             if( allow_refutable != 3 && pat.m_binding.is_valid() ) {
                 if( allow_refutable == 2 ) {
                     BUG(sp, "Binding when not expected");
@@ -425,9 +426,10 @@ namespace {
                         // 2. Obtain pointer to element
                         ::HIR::BorrowType   bt = H::get_borrow_type(sp, e.extra_bind);
                         ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
-                            ::HIR::TypeRef::new_pointer( bt, inner_type.clone() ),
+                            ::HIR::TypeRef::new_borrow( bt, inner_type.clone() ),
                             ::MIR::RValue::make_Borrow({ 0, bt, ::MIR::LValue::make_Field({ box$(lval.clone()), static_cast<unsigned int>(e.leading.size()) }) })
                             );
+                        // TODO: Cast to raw pointer? Or keep as a borrow?
 
                         // Construct fat pointer
                         m_builder.push_stmt_assign( sp, m_builder.get_variable(sp, e.extra_bind.m_slot), ::MIR::RValue::make_MakeDst({ mv$(ptr_val), mv$(len_val) }) );
@@ -2185,7 +2187,7 @@ namespace {
 
                     // TODO: Ideally, the creation of the wrapper function would happen somewhere before trans?
                     auto tmp = m_builder.new_temporary( node.m_res_type );
-                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
                     m_builder.set_result( sp, mv$(tmp) );
                     return ;
                 }
@@ -2196,7 +2198,7 @@ namespace {
                     ),
                 (Constant,
                     auto tmp = m_builder.new_temporary( e.m_type );
-                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_Const({node.m_path.clone()}) );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_Const({box$(node.m_path.clone())}) );
                     m_builder.set_result( node.span(), mv$(tmp) );
                     ),
                 (Static,
@@ -2245,13 +2247,13 @@ namespace {
                         fcn_ty_data.m_arg_types.push_back( monomorphise_type_with(sp, arg.second, monomorph_cb) );
                     }
                     auto tmp = m_builder.new_temporary( ::HIR::TypeRef( mv$(fcn_ty_data) ) );
-                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
                     m_builder.set_result( sp, mv$(tmp) );
                     ),
                 (StructConstructor,
                     // TODO: Ideally, the creation of the wrapper function would happen somewhere before this?
                     auto tmp = m_builder.new_temporary( node.m_res_type );
-                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.push_stmt_assign( sp, tmp.clone(), ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
                     m_builder.set_result( sp, mv$(tmp) );
                     )
                 )
@@ -2263,13 +2265,13 @@ namespace {
                 ASSERT_BUG(sp, it != tr.m_values.end(), "Cannot find trait item for " << node.m_path);
                 TU_MATCHA( (it->second), (e),
                 (Constant,
-                    m_builder.set_result( sp, ::MIR::Constant::make_Const({node.m_path.clone()}) );
+                    m_builder.set_result( sp, ::MIR::Constant::make_Const({box$(node.m_path.clone())}) );
                     ),
                 (Static,
                     TODO(sp, "Associated statics (non-rustc) - " << node.m_path);
                     ),
                 (Function,
-                    m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                    m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
                     )
                 )
                 ),
@@ -2285,7 +2287,7 @@ namespace {
                         {
                             auto it = impl.m_methods.find(pe.item);
                             if( it != impl.m_methods.end() ) {
-                                m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(node.m_path.clone()) );
+                                m_builder.set_result( sp, ::MIR::Constant::make_ItemAddr(box$(node.m_path.clone())) );
                                 return true;
                             }
                         }
@@ -2293,7 +2295,7 @@ namespace {
                         {
                             auto it = impl.m_constants.find(pe.item);
                             if( it != impl.m_constants.end() ) {
-                                m_builder.set_result( sp, ::MIR::Constant::make_Const({node.m_path.clone()}) );
+                                m_builder.set_result( sp, ::MIR::Constant::make_Const({box$(node.m_path.clone())}) );
                                 return true;
                             }
                         }

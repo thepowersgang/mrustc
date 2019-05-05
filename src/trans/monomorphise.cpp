@@ -71,15 +71,15 @@ namespace {
             ),
         (Const,
             return ::MIR::Constant::make_Const({
-                params.monomorph(resolve, ce.p)
+                box$(params.monomorph(resolve, *ce.p))
                 });
             ),
         (ItemAddr,
-            auto p = params.monomorph(resolve, ce);
+            auto p = params.monomorph(resolve, *ce);
             // TODO: If this is a pointer to a function on a trait object, replace with the address loaded from the vtable.
             // - Requires creating a new temporary for the vtable pointer.
             // - Also requires knowing what the receiver is.
-            return ::MIR::Constant( mv$(p) );
+            return ::MIR::Constant( box$(p) );
             )
         )
         throw "";

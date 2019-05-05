@@ -795,10 +795,10 @@
                 m_out.write_string(e);
                 ),
             (Const,
-                serialise_path(e.p);
+                serialise_path(*e.p);
                 ),
             (ItemAddr,
-                serialise_path(e);
+                serialise_path(*e);
                 )
             )
         }

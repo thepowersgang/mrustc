@@ -26,7 +26,21 @@ struct LValue
     class Storage
     {
         uintptr_t   val;
+        static uintptr_t MAX_ARG = (1 << 30) - 1; // max value of 30 bits
     public:
+        Storage(const Storage&) = delete;
+        Storage& operator=(const Storage&) = delete;
+        Storage(Storage&& x)
+            :val(x.val)
+        {
+            x.val = 0;
+        }
+        Storage& operator=(Storage&& x)
+        {
+            this->~Storage();
+            this->val = x.val;
+            x.val = 0;
+        }
         ~Storage()
         {
             if( is_Static() ) {
@@ -34,32 +48,64 @@ struct LValue
                 val = 0;
             }
         }
-        bool is_Argument() const { return val != (MAX_ARG << 2) && (val & 3) == 0; }
-        bool is_Return() const { return val == (MAX_ARG << 2); }
-        bool is_Local() const { return (val & 3) == 1; }
-        bool is_Static() const { return (val & 3) == 2; }
 
+        static Storage new_Return() { return Storage { MAX_ARG << 2 }; }
+        static Storage new_Argument(unsigned idx) { assert(idx < MAX_ARG); return Storage { idx << 2 }; )
+        static Storage new_Local(unsigned idx) { assert(idx <= MAX_ARG); return Storage { (idx << 2) | 1 } };
+        static Storage new_Static(::HIR::Path p) {
+            ::HIR::Path* ptr = new ::HIR::Path(::std::move(p));
+            return Storage { static_cast<uintptr_t>(ptr) | 2; }
+        }
+
+        bool is_Return() const   { return val == (MAX_ARG << 2) /*&& (val & 3) == 0*/; }
+        bool is_Argument() const { return val != (MAX_ARG << 2) && (val & 3) == 0; }
+        bool is_Local() const    { return (val & 3) == 1; }
+        bool is_Static() const   { return (val & 3) == 2; }
+
+        // No as_Return
+        unsigned as_Argument() const { assert(is_Argument()); return val >> 2; }
+        unsigned as_Local() const { assert(is_Local()); return val >> 2; }
         const ::HIR::Path& as_Static() const { assert(is_Static()); return *reinterpret_cast<const ::HIR::Path*>(val & ~3u); }
     };
     class Wrapper
     {
         uintptr_t   val;
     public:
-        bool is_Deref() const { return (val & 3) == 0; }
+        static Wrapper new_Deref() { return Wrapper { 0 }; }
+        static Wrapepr new_Field   (unsigned idx) { return Wrapper { (idx << 2) | 1 }; }
+        static Wrapepr new_Downcast(unsigned idx) { return Wrapper { (idx << 2) | 2 }; }
+        static Wrapepr new_Index   (unsigned idx) { return Wrapper { (idx << 2) | 3 }; }
+
+        bool is_Deref   () const { return (val & 3) == 0; }
         // Stores the field index
-        bool is_Field() const { return (val & 3) == 1; }
+        bool is_Field   () const { return (val & 3) == 1; }
         // Stores the variant index
         bool is_Downcast() const { return (val & 3) == 2; }
         // Stores a Local index
-        bool is_Index() const { return (val & 3) == 3; }
+        bool is_Index   () const { return (val & 3) == 3; }
 
+        // no as_Deref()
         const unsigned as_Field() const { assert(is_Field()); return (val >> 2); }
+        const unsigned as_Downcast() const { assert(is_Downcast()); return (val >> 2); }
+        // TODO: Should this return a LValue?
         const unsigned as_Index() const { assert(is_Index()); return (val >> 2); }
     };
 
     Storage m_root;
     ::std::vector<Wrapper>  m_wrappers;
 
+    static LValue new_Return() { return LValue { Storage::new_Return(), {} }; }
+    static LValue new_Argument(unsigned idx) { return LValue { Storage::new_Argument(idx), {} }; }
+    static LValue new_Local(unsigned idx) { return LValue { Storage::new_Local(idx), {} }; }
+    static LValue new_Static(::HIR::Path p) { return LValue { Storage::new_Static(::std::move(p)), {} }; }
+
+    static LValue new_Deref(LValue lv) { lv.m_wrappers.push_back(Wrapper::new_Deref()); }
+    static LValue new_Field(LValue lv, unsigned idx)    { lv.m_wrappers.push_back(Wrapper::new_Field(idx)); }
+    static LValue new_Downcast(LValue lv, unsigned idx) { lv.m_wrappers.push_back(Wrapper::new_Downcast(idx)); }
+    static LValue new_Index(LValue lv, unsigned local_idx) { lv.m_wrappers.push_back(Wrapper::new_Index(local_idx)); }
+
+    LValue monomorphise(const MonomorphState& ms, unsigned local_offset=0);
+    //LValue monomorphise(const TransParams& ms, unsigned local_offset=0);
     LValue clone() const;
 
     class Ref
@@ -159,11 +205,10 @@ TAGGED_UNION_EX(Constant, (), Int, (
         }),
     (Bytes, ::std::vector< ::std::uint8_t>),    // Byte string
     (StaticString, ::std::string),  // String
-    // TODO: Should these ::HIR::Path structures be behind pointers?
-    // - HIR::Path is ~11 words long, without it MIR::Constant is 4 instead of 12
-    // - MIR::Param is quite common, potential large space saving.
-    (Const, struct { ::HIR::Path p; }),   // `const`
-    (ItemAddr, ::HIR::Path) // address of a value
+    // NOTE: These are behind pointers to save inline space (HIR::Path is ~11
+    // words, compared to 4 for MIR::Constant without it)
+    (Const, struct { ::std::unique_ptr<::HIR::Path> p; }),   // `const`
+    (ItemAddr, ::std::unique_ptr<::HIR::Path>) // address of a value
     ), (), (), (
         friend ::std::ostream& operator<<(::std::ostream& os, const Constant& v);
         ::Ordering ord(const Constant& b) const;

@@ -91,11 +91,14 @@ void HIR::ExprPtr::set_mir(::MIR::FunctionPointer mir)
     assert( !this->m_mir );
     m_mir = ::std::move(mir);
     // Reset the HIR tree to be a placeholder node (thus freeing the backing memory)
-    //if( node )
-    //{
-    //    auto sp = node->span();
-    //    node = ExprPtrInner(::std::unique_ptr<HIR::ExprNode>(new ::HIR::ExprNode_Tuple(sp, {})));
-    //}
+    if( false && node )
+    {
+        auto sp = node->span();
+        node = ExprPtrInner(::std::unique_ptr<HIR::ExprNode>(new ::HIR::ExprNode_Loop(
+                        sp, "",
+                        ::std::unique_ptr<HIR::ExprNode>(new ::HIR::ExprNode_Tuple(sp, {}))
+                        )));
+    }
 }
 
 

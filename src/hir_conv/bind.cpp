@@ -729,25 +729,29 @@ namespace {
                             )
                         )
                     }
+                    static void visit_constant(Visitor& upper_visitor, ::MIR::Constant& e)
+                    {
+                        TU_MATCHA( (e), (ce),
+                        (Int, ),
+                        (Uint,),
+                        (Float, ),
+                        (Bool, ),
+                        (Bytes, ),
+                        (StaticString, ),  // String
+                        (Const,
+                            upper_visitor.visit_path(*ce.p, ::HIR::Visitor::PathContext::VALUE);
+                            ),
+                        (ItemAddr,
+                            upper_visitor.visit_path(*ce, ::HIR::Visitor::PathContext::VALUE);
+                            )
+                        )
+                    }
                     static void visit_param(Visitor& upper_visitor, ::MIR::Param& p)
                     {
                         TU_MATCHA( (p), (e),
                         (LValue, H::visit_lvalue(upper_visitor, e);),
                         (Constant,
-                            TU_MATCHA( (e), (ce),
-                            (Int, ),
-                            (Uint,),
-                            (Float, ),
-                            (Bool, ),
-                            (Bytes, ),
-                            (StaticString, ),  // String
-                            (Const,
-                                upper_visitor.visit_path(ce.p, ::HIR::Visitor::PathContext::VALUE);
-                                ),
-                            (ItemAddr,
-                                upper_visitor.visit_path(ce, ::HIR::Visitor::PathContext::VALUE);
-                                )
-                            )
+                            H::visit_constant(upper_visitor, e);
                             )
                         )
                     }
@@ -765,20 +769,7 @@ namespace {
                                 H::visit_lvalue(*this, e);
                                 ),
                             (Constant,
-                                TU_MATCHA( (e), (ce),
-                                (Int, ),
-                                (Uint,),
-                                (Float, ),
-                                (Bool, ),
-                                (Bytes, ),
-                                (StaticString, ),  // String
-                                (Const,
-                                    this->visit_path(ce.p, ::HIR::Visitor::PathContext::VALUE);
-                                    ),
-                                (ItemAddr,
-                                    this->visit_path(ce, ::HIR::Visitor::PathContext::VALUE);
-                                    )
-                                )
+                                H::visit_constant(*this, e);
                                 ),
                             (SizedArray,
                                 H::visit_param(*this, e.val);

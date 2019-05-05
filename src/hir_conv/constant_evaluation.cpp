@@ -390,11 +390,11 @@ namespace HIR {
             TU_ARM(c, StaticString, e2)
                 return ::HIR::Literal(e2);
             TU_ARM(c, Const, e2) {
-                auto p = ms.monomorph(state.sp, e2.p);
+                auto p = ms.monomorph(state.sp, *e2.p);
                 // If there's any mention of generics in this path, then return Literal::Defer
                 if( visit_path_tys_with(p, [&](const auto& ty)->bool { return ty.m_data.is_Generic(); }) )
                 {
-                    DEBUG("Return Literal::Defer for constant " << e2.p << " which references a generic parameter");
+                    DEBUG("Return Literal::Defer for constant " << *e2.p << " which references a generic parameter");
                     return ::HIR::Literal::make_Defer({});
                 }
                 MonomorphState  const_ms;
@@ -417,7 +417,7 @@ namespace HIR {
                 return clone_literal( c.m_value_res );
                 }
             TU_ARM(c, ItemAddr, e2)
-                return ::HIR::Literal::make_BorrowPath( ms.monomorph(state.sp, e2) );
+                return ::HIR::Literal::make_BorrowPath( ms.monomorph(state.sp, *e2) );
             }
             throw "";
             };

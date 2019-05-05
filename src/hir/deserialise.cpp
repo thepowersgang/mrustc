@@ -532,8 +532,8 @@
                 return ::MIR::Constant::make_Bytes( mv$(bytes) );
                 }
             _(StaticString, m_in.read_string() )
-            _(Const,  { deserialise_path() } )
-            _(ItemAddr, deserialise_path() )
+            _(Const,  { box$(deserialise_path()) } )
+            _(ItemAddr, box$(deserialise_path()) )
             #undef _
             default:
                 BUG(Span(), "Bad tag for MIR::Const - " << tag);

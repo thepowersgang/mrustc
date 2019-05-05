@@ -1213,10 +1213,10 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
             (Bytes, return ::MIR::Constant(ce);),
             (StaticString, return ::MIR::Constant(ce);),
             (Const,
-                return ::MIR::Constant::make_Const({ this->monomorph(ce.p) });
+                return ::MIR::Constant::make_Const({ box$(this->monomorph(*ce.p)) });
                 ),
             (ItemAddr,
-                return ::MIR::Constant::make_ItemAddr(this->monomorph(ce));
+                return ::MIR::Constant::make_ItemAddr(box$(this->monomorph(*ce)));
                 )
             )
             throw "";

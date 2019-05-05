@@ -44,10 +44,10 @@ namespace MIR {
             os << "\"" << FmtEscaped(e) << "\"";
             ),
         (Const,
-            os << e.p;
+            os << *e.p;
             ),
         (ItemAddr,
-            os << "&" << e;
+            os << "&" << *e;
             )
         )
         return os;
@@ -82,10 +82,10 @@ namespace MIR {
             return ::ord(ae, be);
             ),
         (Const,
-            return ::ord(ae.p, be.p);
+            return ::ord(*ae.p, *be.p);
             ),
         (ItemAddr,
-            return ::ord(ae, be);
+            return ::ord(*ae, *be);
             )
         )
         throw "";
@@ -571,8 +571,8 @@ namespace MIR {
     (Bool, return ::MIR::Constant(e2); ),
     (Bytes, return ::MIR::Constant(e2); ),
     (StaticString, return ::MIR::Constant(e2); ),
-    (Const, return ::MIR::Constant::make_Const({e2.p.clone()}); ),
-    (ItemAddr, return ::MIR::Constant(e2.clone()); )
+    (Const, return ::MIR::Constant::make_Const({box$(e2.p->clone())}); ),
+    (ItemAddr, return ::MIR::Constant(box$(e2->clone())); )
     )
     throw "";
 }

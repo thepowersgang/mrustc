@@ -5743,7 +5743,7 @@ namespace {
             (Const,
                 // TODO: This should have been eliminated? ("MIR Cleanup" should have removed all inline Const references)
                 ::HIR::TypeRef  ty;
-                const auto& lit = get_literal_for_const(c.p, ty);
+                const auto& lit = get_literal_for_const(*c.p, ty);
                 if(lit.is_Integer() || lit.is_Float())
                 {
                     emit_literal(ty, lit, {});
@@ -5764,7 +5764,7 @@ namespace {
                 }
                 ),
             (ItemAddr,
-                TU_MATCHA( (c.m_data), (pe),
+                TU_MATCHA( (c->m_data), (pe),
                 (Generic,
                     if( pe.m_path.m_components.size() > 1 && m_crate.get_typeitem_by_path(sp, pe.m_path, false, true).is_Enum() )
                         ;
@@ -5781,7 +5781,7 @@ namespace {
                     }
                     ),
                 (UfcsUnknown,
-                    MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << c);
+                    MIR_BUG(*m_mir_res, "UfcsUnknown in trans " << *c);
                     ),
                 (UfcsInherent,
                     // TODO: If the target is a function, don't emit the &
@@ -5792,7 +5792,7 @@ namespace {
                     m_of << "&";
                     )
                 )
-                m_of << Trans_Mangle(c);
+                m_of << Trans_Mangle(*c);
                 )
             )
         }

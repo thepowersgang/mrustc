@@ -244,10 +244,10 @@ namespace {
                 os << "\"" << ce << "\"";
                 ),
             (Const,
-                os << ce.p;
+                os << *ce.p;
                 ),
             (ItemAddr,
-                os << "addr " << ce;
+                os << "addr " << *ce;
                 )
             )
         }

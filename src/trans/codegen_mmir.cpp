@@ -104,7 +104,7 @@ namespace
             os << " " << v.t;
             } break;
         TU_ARM(e, ItemAddr, v) {
-            os << "ADDROF " << v;
+            os << "ADDROF " << *v;
             } break;
         default:
             os << e;

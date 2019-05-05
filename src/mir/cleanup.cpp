@@ -216,7 +216,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         if( path == ::HIR::GenericPath() )
             MIR_TODO(state, "Literal of type " << ty << " - " << lit);
         DEBUG("Unknown type " << ty << ", but a path was provided - Return ItemAddr " << path);
-        return ::MIR::Constant( mv$(path) );
+        return ::MIR::Constant::make_ItemAddr( box$(path) );
         ),
     (Tuple,
         MIR_ASSERT(state, lit.is_List(), "Non-list literal for Tuple - " << lit);
@@ -378,7 +378,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
         if( const auto* pp = lit.opt_BorrowPath() )
         {
             const auto& path = *pp;
-            auto ptr_val = ::MIR::Constant::make_ItemAddr(path.clone());
+            auto ptr_val = ::MIR::Constant::make_ItemAddr(box$(path.clone()));
             // TODO: Get the metadata type (for !Sized wrapper types)
             if( te.inner->m_data.is_Slice() )
             {
@@ -397,7 +397,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
 
                 auto vtable_path = ::HIR::Path(&ty == &tmp ? mv$(tmp) : ty.clone(), tep->m_trait.m_path.clone(), "vtable#");
 
-                auto vtable_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(mv$(vtable_path)) );
+                auto vtable_val = ::MIR::Param( ::MIR::Constant::make_ItemAddr(box$(vtable_path)) );
 
                 return ::MIR::RValue::make_MakeDst({ ::MIR::Param(mv$(ptr_val)), mv$(vtable_val) });
             }
@@ -458,7 +458,7 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     (Function,
         //MIR_TODO(state, "Const function pointer " << lit << " w/ type " << ty);
         MIR_ASSERT(state, lit.is_BorrowPath(), "");
-        return ::MIR::Constant::make_ItemAddr( lit.as_BorrowPath().clone() );
+        return ::MIR::Constant::make_ItemAddr( box$( lit.as_BorrowPath().clone() ) );
         )
     )
 }
@@ -703,7 +703,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 MIR_ASSERT(state, state.m_resolve.type_is_sized(state.sp, src_ty), "Attempting to get vtable for unsized type - " << src_ty);
 
                 ::HIR::Path vtable { src_ty.clone(), trait_path.m_path.clone(), "vtable#" };
-                out_meta_val = ::MIR::Constant::make_ItemAddr(mv$(vtable));
+                out_meta_val = ::MIR::Constant::make_ItemAddr(box$(vtable));
             }
         }
         return true;
@@ -1092,18 +1092,18 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     TU_IFLET( ::MIR::Constant, e, Const, ce,
                         // 1. Find the constant
                         ::HIR::TypeRef  ty;
-                        const auto* lit_ptr = MIR_Cleanup_GetConstant(state, ce.p, ty);
+                        const auto* lit_ptr = MIR_Cleanup_GetConstant(state, *ce.p, ty);
                         if( lit_ptr && !lit_ptr->is_Defer() )
                         {
-                            DEBUG("Replace constant " << ce.p << " with " << *lit_ptr);
-                            se.src = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_ptr, mv$(ty), mv$(ce.p));
+                            DEBUG("Replace constant " << *ce.p << " with " << *lit_ptr);
+                            se.src = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_ptr, mv$(ty), mv$(*ce.p));
                             if( auto* p = se.src.opt_Constant() ) {
                                 MIR_Cleanup_Constant(state, mutator, *p);
                             }
                         }
                         else
                         {
-                            DEBUG("No replacement for constant " << ce.p);
+                            DEBUG("No replacement for constant " << *ce.p);
                         }
                     )
                 )
