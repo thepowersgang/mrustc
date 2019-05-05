@@ -812,8 +812,8 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " match ...");
 
+#if 1
             const auto& val_type = node.m_value->m_res_type;
-
             {
                 auto _ = this->push_inner_coerce_scoped(true);
                 this->context.add_ivars(node.m_value->m_res_type);
@@ -821,6 +821,15 @@ namespace {
                 // TODO: If a coercion point (and ivar for the value) is placed here, it will allow `match &string { "..." ... }`
                 node.m_value->visit( *this );
             }
+#else
+            auto val_type = this->context.m_ivars.new_ivar_tr();
+            {
+                auto _ = this->push_inner_coerce_scoped(true);
+                this->context.add_ivars(node.m_value->m_res_type);
+                node.m_value->visit( *this );
+                this->context.equate_types_coerce( node.span(), val_type, node.m_value );
+            }
+#endif
 
             for(auto& arm : node.m_arms)
             {
