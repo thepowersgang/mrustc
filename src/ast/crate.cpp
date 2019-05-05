@@ -12,6 +12,7 @@
 #include <hir/hir.hpp>  // HIR::Crate
 #include <hir/main_bindings.hpp>    // HIR_Deserialise
 #include <fstream>
+#include <dirent.h>
 
 ::std::vector<::std::string>    AST::g_crate_load_dirs = { };
 ::std::map<::std::string, ::std::string>    AST::g_crate_overrides;
@@ -121,31 +122,66 @@ void Crate::load_externs()
             ERROR(sp, E0000, "Unable to open crate '" << name << "' at path " << path);
         }
     }
-    else
+    else if( basename != "" )
     {
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
-            if( basename == "" )
-            {
-                path = p + "/lib" + name + ".hir";
-                // TODO: Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
-            }
-            else
-            {
-                path = p + "/" + basename;
-            }
+            path = p + "/" + basename;
 
             if( ::std::ifstream(path).good() ) {
                 break ;
             }
         }
         if( !::std::ifstream(path).good() ) {
-            if( basename.empty() )
-                ERROR(sp, E0000, "Unable to locate crate '" << name << "' in search directories");
-            else
-                ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename << " in search directories");
+            ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename << " in search directories");
         }
+    }
+    else
+    {
+        ::std::vector<::std::string>    paths;
+        auto name_prefix = "lib"+name+"-";
+        // Search a list of load paths for the crate
+        for(const auto& p : g_crate_load_dirs)
+        {
+
+            path = p + "/lib" + name + ".hir";
+            // TODO: Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
+            if( ::std::ifstream(path).good() ) {
+                paths.push_back(path);
+            }
+            path = "";
+
+            auto dp = opendir(p.c_str());
+            if( !dp ) {
+                continue ;
+            }
+            struct dirent *ent;
+            while( (ent = readdir(dp)) != nullptr && path == "" )
+            {
+                // AND the start is "lib"+name
+                size_t len = strlen(ent->d_name);
+                if( len <= 4 || strcmp(ent->d_name + len - 4, ".hir") != 0 )
+                    continue ;
+
+                DEBUG(ent->d_name << " vs " << name_prefix);
+                // Check if the entry ends with .hir
+                if( strncmp(name_prefix.c_str(), ent->d_name, name_prefix.size()) != 0 )
+                    continue ;
+
+                paths.push_back( p + "/" + ent->d_name );
+            }
+            closedir(dp);
+            if( paths.size() > 0 )
+                break;
+        }
+        if( paths.size() > 1 ) {
+            ERROR(sp, E0000, "Multiple options for crate '" << name << "' in search directories - " << paths);
+        }
+        if( paths.size() == 0 || !::std::ifstream(paths.front()).good() ) {
+            ERROR(sp, E0000, "Unable to locate crate '" << name << "' in search directories");
+        }
+        path = paths.front();
     }
 
     // NOTE: Creating `ExternCrate` loads the crate from the specified path
