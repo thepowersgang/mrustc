@@ -40,6 +40,7 @@ public:
      int    depth = 0;
     while( GET_TOK(tok, lex) != close || depth > 0 )
     {
+        DEBUG("tok = " << tok);
         if( tok.type() == open )
         {
             depth ++;
@@ -142,7 +143,7 @@ public:
     TokenStream& lex,
     enum eTokenType open, enum eTokenType close,
     const ::std::vector< ::std::string>& var_names,
-    ::std::map<unsigned int,bool>* var_set_ptr=nullptr
+    ::std::map<unsigned int,bool>* var_set_ptr/*=nullptr*/
     )
 {
     TRACE_FUNCTION;
@@ -310,6 +311,15 @@ void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::st
     }
 }
 
+MacroRulesArm Parse_MacroRules_MakeArm(Span pat_sp, ::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents)
+{
+    // - Convert the rule into an instruction stream
+    auto rule_sequence = macro_pattern_to_simple(pat_sp, pattern);
+    auto arm = MacroRulesArm( mv$(rule_sequence), mv$(contents) );
+    enumerate_names(pattern,  arm.m_param_names);
+    return arm;
+}
+
 /// Parse an entire macro_rules! block into a format that exec.cpp can use
 MacroRulesPtr Parse_MacroRules(TokenStream& lex)
 {
@@ -336,13 +346,7 @@ MacroRulesPtr Parse_MacroRules(TokenStream& lex)
     // Re-parse the patterns into a unified form
     for(auto& rule : rules)
     {
-        // TODO: Transform the pattern into a DFA or similar here (seekable instruction stream?)
-
-        auto rule_sequence = macro_pattern_to_simple(rule.m_pat_span, rule.m_pattern);
-        MacroRulesArm   arm = MacroRulesArm( mv$(rule_sequence), mv$(rule.m_contents) );
-        enumerate_names(rule.m_pattern,  arm.m_param_names);
-
-        rule_arms.push_back( mv$(arm) );
+        rule_arms.push_back( Parse_MacroRules_MakeArm(rule.m_pat_span, mv$(rule.m_pattern), mv$(rule.m_contents)) );
     }
 
     auto rv = new MacroRules( );

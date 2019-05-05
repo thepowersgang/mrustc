@@ -424,6 +424,29 @@ namespace
         }
         AST::Path lookup_opt(const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
             DEBUG("name=" << name <<", src_context=" << src_context);
+            // NOTE: src_context may provide a module to search
+            if( src_context.has_mod_path() )
+            {
+                DEBUG(src_context.mod_path().ents);
+                const AST::Module*  mod = &m_crate.root_module();
+                for(const auto& node : src_context.mod_path().ents)
+                {
+                    const AST::Module* next = nullptr;
+                    for(const auto& i : mod->items())
+                    {
+                        if( i.name == node ) {
+                            next = &i.data.as_Module();
+                            break;
+                        }
+                    }
+                    assert(next);
+                    mod = next;
+                }
+                ::AST::Path rv;
+                if( this->lookup_in_mod(*mod, name, mode, rv) ) {
+                    return rv;
+                }
+            }
             for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
             {
                 TU_MATCH(Ent, (*it), (e),
@@ -2012,6 +2035,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         (ExternBlock, BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
         (Impl,        BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
         (NegImpl,     BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (Macro,    BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
         (Use,    BUG(i.data.span, "Resolve_Absolute_ImplItems - Use");),
         (Module, BUG(i.data.span, "Resolve_Absolute_ImplItems - Module");),
         (Crate , BUG(i.data.span, "Resolve_Absolute_ImplItems - Crate");),
@@ -2056,6 +2080,7 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (Impl  , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (NegImpl, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (ExternBlock, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Macro , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Use   , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Module, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Crate , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
@@ -2220,6 +2245,8 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
         (MacroInv,
             ),
         (Use,
+            ),
+        (Macro,
             ),
         (ExternBlock,
             for(auto& i2 : e.items())

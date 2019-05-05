@@ -103,6 +103,7 @@ AST::Path Parse_Path(TokenStream& lex, bool is_abs, eParsePathGenericMode generi
         // TODO: TOK_INTERPOLATED_IDENT?
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto hygine = lex.getHygiene();
+        DEBUG("hygine = " << hygine);
         PUTBACK(tok, lex);
         return AST::Path(AST::Path::TagRelative(), mv$(hygine), Parse_PathNodes(lex, generic_mode));
     }

@@ -315,6 +315,9 @@ Item Item::clone() const
     (MacroInv,
         TODO(this->span, "Clone on Item::MacroInv");
         ),
+    (Macro,
+        TODO(this->span, "Clone on Item::Macro");
+        ),
     (Use,
         return AST::Item(e.clone());
         ),

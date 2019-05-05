@@ -20,6 +20,7 @@
 #include "lex.hpp"  // New file lexer
 #include <parse/interpolated_fragment.hpp>
 #include <ast/expr.hpp>
+#include <macro_rules/macro_rules.hpp>
 
 template<typename T>
 Spanned<T> get_spanned(TokenStream& lex, ::std::function<T()> f) {
@@ -1931,31 +1932,31 @@ namespace {
                 GET_TOK(tok, lex);
                 throw ParseError::Unexpected(lex, tok);
             }
+            DEBUG("name = " << name);
 
-            //::std::vector< ::std::string>   names;
-            //auto arm_pat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
-            auto args_tt = Parse_TT(lex, false);
-            if( lex.lookahead(0) != TOK_BRACE_OPEN )
+            ::std::vector< ::std::string>   names;
+            auto ps = lex.start_span();
+            GET_CHECK_TOK(tok, lex, TOK_PAREN_OPEN);
+            auto arm_pat = Parse_MacroRules_Pat(lex, TOK_PAREN_OPEN, TOK_PAREN_CLOSE, names);
+            auto pat_span = lex.end_span(ps);
+            GET_CHECK_TOK(tok, lex, TOK_BRACE_OPEN);
+            // TODO: Pass a flag that annotates all idents with the current module?
+            auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, names);
+
+            auto mr = new MacroRules( );
+            mr->m_hygiene = lex.getHygiene();
             {
-                GET_TOK(tok, lex);
-                throw ParseError::Unexpected(lex, tok);
+                Ident::ModPath  mp;
+                for(const auto& node : mod_path.nodes())
+                {
+                    mp.ents.push_back(node.name());
+                }
+                mr->m_hygiene.set_mod_path(::std::move(mp));
             }
-            //auto body = Parse_MacroRules_Cont(lex, TOK_BRACE_OPEN, TOK_BRACE_CLOSE, names);
-            auto body_tt = Parse_TT(lex, false);
+            mr->m_rules.push_back(Parse_MacroRules_MakeArm(pat_span, ::std::move(arm_pat), ::std::move(body)));
 
-            // TODO: Invoke the macro_rules parsers here
-            // - Could also do the same level of parsing when `macro_rules! foo {` is seen (i.e. parse macros at parse
-            //   time, instead of during expand).
-            // - That would simplify some of the expand logic...
-
-            // Lazy option: create a TT
-            ::std::vector<TokenTree>    out;
-            out.push_back(mv$(args_tt));
-            out.push_back(TokenTree( Token(TOK_FATARROW) ));
-            out.push_back(mv$(body_tt));
-
-            item_name = "";
-            item_data = ::AST::Item( AST::MacroInvocation(lex.end_span(ps), "macro_rules", name, TokenTree({}, mv$(out))) );
+            item_name = name;
+            item_data = ::AST::Item( MacroRulesPtr(mr) );
         }
         else
         {

@@ -1433,6 +1433,8 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, ::HIR::Publicity 
         TU_MATCH(::AST::Item, (item.data), (e),
         (None,
             ),
+        (Macro,
+            ),
         (MacroInv,
             // Valid.
             //BUG(sp, "Stray macro invocation in " << path);

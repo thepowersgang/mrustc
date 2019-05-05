@@ -1113,6 +1113,9 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             }
             dat.as_MacroInv() = mv$(mi_owned);
             }
+        TU_ARMA(Macro, e) {
+            mod.add_macro(i.is_pub, i.name, mv$(e));
+            }
         TU_ARMA(Use, e) {
             // No inner expand.
             }

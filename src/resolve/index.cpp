@@ -121,6 +121,10 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
         (NegImpl,
             ),
 
+        (Macro,
+            // TODO: Add to a macro list
+            ),
+
         (Use,
             // Skip for now
             ),

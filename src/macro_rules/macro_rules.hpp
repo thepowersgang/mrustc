@@ -181,4 +181,8 @@ public:
 extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, AST::Module& mod);
 extern MacroRulesPtr    Parse_MacroRules(TokenStream& lex);
 
+extern ::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector< ::std::string>& names);
+extern ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(TokenStream& lex, enum eTokenType open, enum eTokenType close, const ::std::vector< ::std::string>& var_names, ::std::map<unsigned int,bool>* var_set_ptr=nullptr);
+extern MacroRulesArm Parse_MacroRules_MakeArm(Span pat_sp, ::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents);
+
 #endif // MACROS_HPP_INCLUDED

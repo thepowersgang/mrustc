@@ -607,6 +607,7 @@ TAGGED_UNION_EX(Item, (), None,
     (Impl, Impl),
     (NegImpl, ImplDef),
 
+    (Macro, MacroRulesPtr),
     (Module, Module),
     (Crate, struct {
         ::std::string   name;

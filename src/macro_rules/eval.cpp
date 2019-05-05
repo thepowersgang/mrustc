@@ -502,6 +502,7 @@ InterpolatedFragment Macro_HandlePatternCap(TokenStream& lex, MacroPatEnt::Type 
 ::std::unique_ptr<TokenStream> Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, AST::Module& mod)
 {
     TRACE_FUNCTION_F("'" << name << "', " << input);
+    DEBUG("rules.m_hygiene = " << rules.m_hygiene);
 
     ParameterMappings   bound_tts;
     unsigned int    rule_index = Macro_InvokeRules_MatchPattern(sp, rules, mv$(input), mod,  bound_tts);
