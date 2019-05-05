@@ -812,24 +812,18 @@ namespace {
         {
             TRACE_FUNCTION_F(&node << " match ...");
 
-#if 1
-            const auto& val_type = node.m_value->m_res_type;
+            auto val_type = this->context.m_ivars.new_ivar_tr();
+
             {
                 auto _ = this->push_inner_coerce_scoped(true);
                 this->context.add_ivars(node.m_value->m_res_type);
 
+                node.m_value->visit( *this );
                 // TODO: If a coercion point (and ivar for the value) is placed here, it will allow `match &string { "..." ... }`
-                node.m_value->visit( *this );
+                // - But, this can break some parts of inferrence
+                this->context.equate_types( node.span(), val_type, node.m_value->m_res_type );
+                //this->context.equate_types_coerce( node.span(), val_type, node.m_value );
             }
-#else
-            auto val_type = this->context.m_ivars.new_ivar_tr();
-            {
-                auto _ = this->push_inner_coerce_scoped(true);
-                this->context.add_ivars(node.m_value->m_res_type);
-                node.m_value->visit( *this );
-                this->context.equate_types_coerce( node.span(), val_type, node.m_value );
-            }
-#endif
 
             for(auto& arm : node.m_arms)
             {
@@ -3961,7 +3955,7 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
 
     // NOTE: Even if the top-level is a binding, and even if the top-level type is fully known, match ergonomics
     // still applies.
-    if( TARGETVER_1_29 && ! H2::has_ref_or_borrow(sp, pat) ) {
+    if( TARGETVER_1_29 ) { //&& ! H2::has_ref_or_borrow(sp, pat) ) {
         // There's not a `&` or `ref` in the pattern, and we're targeting 1.29
         // - Run the match ergonomics handler
         // TODO: Default binding mode can be overridden back to "move" with `mut`
@@ -4132,8 +4126,6 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     {
                         pattern.m_binding.m_type = binding_mode;
                     }
-                    unsigned n_deref = 0;
-                    const auto* type_p = &type;
                     ::HIR::TypeRef  tmp;
                     const ::HIR::TypeRef* binding_type = nullptr;
                     switch(pattern.m_binding.m_type)
@@ -4143,36 +4135,33 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                         break;
                     case ::HIR::PatternBinding::Type::MutRef:
                         // NOTE: Needs to deref and borrow to get just `&mut T` (where T isn't a &mut T)
-                        //while( TU_TEST1(type_p->m_data, Borrow, .type >= ::HIR::BorrowType::Unique) )
-                        //{
-                        //    n_deref ++;
-                        //    type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
-                        //}
-                        DEBUG(n_deref << " from " << type << " to " << *type_p);
-                        binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type_p->clone()));
+                        binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Unique, type.clone()));
                         break;
                     case ::HIR::PatternBinding::Type::Ref:
                         // NOTE: Needs to deref and borrow to get just `&mut T` (where T isn't a &mut T)
-                        //while( type_p->m_data.is_Borrow() )
-                        //{
-                        //    n_deref ++;
-                        //    type_p = &context.m_ivars.get_type(*type_p->m_data.as_Borrow().inner);
-                        //}
-                        DEBUG(n_deref << " from " << type << " to " << *type_p);
-                        binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, type_p->clone()));
+                        binding_type = &(tmp = ::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, type.clone()));
                         break;
                     default:
                         TODO(sp, "Assign variable type using mode " << (int)binding_mode << " and " << type);
                     }
                     assert(binding_type);
                     context.equate_types(sp, context.get_var(sp, pattern.m_binding.m_slot), *binding_type);
-                    pattern.m_binding.m_implicit_deref_count = n_deref;
                 }
 
                 // For `_` patterns, there's nothing to match, so they just succeed with no derefs
                 if( pattern.m_data.is_Any() )
                 {
                     return true;
+                }
+
+                if( auto* pe = pattern.m_data.opt_Ref() )
+                {
+                    // Require a &-ptr (hard requirement), then visit sub-pattern
+                    auto inner_ty = context.m_ivars.new_ivar_tr();
+                    auto new_ty = ::HIR::TypeRef::new_borrow( pe->type, inner_ty.clone() );
+                    context.equate_types(sp, type, new_ty);
+
+                    return this->revisit_inner( context, *pe->sub, inner_ty, binding_mode );
                 }
 
                 // If the type is a borrow, then count derefs required for the borrow
@@ -4590,68 +4579,68 @@ void Context::handle_pattern(const Span& sp, ::HIR::Pattern& pat, const ::HIR::T
                     // - I'll leave the option open, MIR generation should handle cases where there's multiple borrows
                     //   or moves.
                 }
-                TU_MATCHA( (pat.m_data), (e),
-                (Any,
-                    ),
-                (Value,
-                    ),
-                (Range,
-                    ),
-                (Box,
+                TU_MATCH_HDRA( (pat.m_data), { )
+                TU_ARMA(Any, e) {
+                    }
+                TU_ARMA(Value, e) {
+                    }
+                TU_ARMA(Range, e) {
+                    }
+                TU_ARMA(Box, e) {
                     create_bindings(sp, context, *e.sub);
-                    ),
-                (Ref,
+                    }
+                TU_ARMA(Ref, e) {
                     create_bindings(sp, context, *e.sub);
-                    ),
-                (Tuple,
+                    }
+                TU_ARMA(Tuple, e) {
                     for(auto& subpat : e.sub_patterns)
                         create_bindings(sp, context, subpat);
-                    ),
-                (SplitTuple,
+                    }
+                TU_ARMA(SplitTuple, e) {
                     for(auto& subpat : e.leading) {
                         create_bindings(sp, context, subpat);
                     }
                     for(auto& subpat : e.trailing) {
                         create_bindings(sp, context, subpat);
                     }
-                    ),
-                (Slice,
+                    }
+                TU_ARMA(Slice, e) {
                     for(auto& sub : e.sub_patterns)
                         create_bindings(sp, context, sub);
-                    ),
-                (SplitSlice,
+                    }
+                TU_ARMA(SplitSlice, e) {
                     for(auto& sub : e.leading)
                         create_bindings(sp, context, sub);
-                    // TODO: extra_bind
                     if( e.extra_bind.is_valid() ) {
-                        TODO(sp, "Handle split slice binding binding in match ergonomics");
+                        const auto& pb = e.extra_bind;
+                        context.add_var( sp, pb.m_slot, pb.m_name, context.m_ivars.new_ivar_tr() );
                     }
                     for(auto& sub : e.trailing)
                         create_bindings(sp, context, sub);
-                    ),
+                    }
 
                 // - Enums/Structs
-                (StructValue,
-                    ),
-                (StructTuple,
+                TU_ARMA(StructValue, e) {
+                    }
+                TU_ARMA(StructTuple, e) {
                     for(auto& subpat : e.sub_patterns)
                         create_bindings(sp, context, subpat);
-                    ),
-                (Struct,
+                    }
+                TU_ARMA(Struct, e) {
                     for(auto& field_pat : e.sub_patterns)
                         create_bindings(sp, context, field_pat.second);
-                    ),
-                (EnumValue,
-                    ),
-                (EnumTuple,
+                    }
+                TU_ARMA(EnumValue, e) {
+                    }
+                TU_ARMA(EnumTuple, e) {
                     for(auto& subpat : e.sub_patterns)
                         create_bindings(sp, context, subpat);
-                    ),
-                (EnumStruct,
+                    }
+                TU_ARMA(EnumStruct, e) {
                     for(auto& field_pat : e.sub_patterns)
                         create_bindings(sp, context, field_pat.second);
-                    )
-                )
+                    }
+                }
             }
         };
         // - Create variables, assigning new ivars for all of them.
