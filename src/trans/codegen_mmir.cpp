@@ -648,6 +648,13 @@ namespace
             size_t  len;
             const ::HIR::Path* p;
             ::std::string   bytes;
+
+            static Reloc new_named(size_t ofs, size_t len, const ::HIR::Path* p) {
+                return Reloc { ofs, len, p, "" };
+            }
+            static Reloc new_bytes(size_t ofs, size_t len, ::std::string bytes) {
+                return Reloc { ofs, len, nullptr, ::std::move(bytes) };
+            }
         };
         void emit_str_byte(uint8_t b) {
             if( b == 0 ) {
@@ -842,7 +849,7 @@ namespace
                     const auto& s = lit.as_String();
                     putsize(0);
                     putsize(s.size());
-                    out_relocations.push_back(Reloc { base_ofs, 8, nullptr, s });
+                    out_relocations.push_back(Reloc::new_bytes(base_ofs, 8,  s));
                     break;
                 }
                 // fall
@@ -851,35 +858,41 @@ namespace
                 size_t ity_size, ity_align;
                 Target_GetSizeAndAlignOf(sp, m_resolve, ity, ity_size, ity_align);
                 bool is_unsized = (ity_size == SIZE_MAX);
-                if( lit.is_BorrowPath() )
-                {
+
+                TU_MATCH_HDRA( (lit), { )
+                TU_ARMA(BorrowPath, le) {
                     putsize(0);
-                    out_relocations.push_back(Reloc { base_ofs, 8, &lit.as_BorrowPath(), "" });
+                    out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &le));
                     if( is_unsized )
                     {
                         // TODO: Get the size of the pointed-to array
                         // OR: Find out the source item type and the target trait.
                         putsize(0);
                     }
-                    break;
-                }
-                else if( lit.is_Integer() )
-                {
-                    ASSERT_BUG(sp, lit.as_Integer() == 0, "Pointer from integer not 0");
+                    }
+                TU_ARMA(Integer, le) {
+                    ASSERT_BUG(sp, le == 0, "Pointer from integer not 0");
                     ASSERT_BUG(sp, ty.m_data.is_Pointer(), "Borrow from integer");
                     putsize(0);
                     if( is_unsized )
                     {
                         putsize(0);
                     }
-                    break;
+                    }
+                TU_ARMA(String, le) {
+                    const auto& s = lit.as_String();
+                    putsize(0);
+                    putsize(s.size());
+                    out_relocations.push_back(Reloc::new_bytes(base_ofs, 8,  s));
+                    }
+                break; default:
+                    TODO(sp, "Emit a pointer - " << ty << " from literal " << lit);
                 }
-                TODO(sp, "Pointers - " << ty << " w/ " << lit);
                 } break;
             case ::HIR::TypeRef::Data::TAG_Function:
                 ASSERT_BUG(sp, lit.is_BorrowPath(), ty << " not Literal::BorrowPath - " << lit);
                 putsize(0);
-                out_relocations.push_back(Reloc { base_ofs, 8, &lit.as_BorrowPath(), "" });
+                out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &lit.as_BorrowPath()));
                 break;
             TU_ARM(ty.m_data, Array, te) {
                 // What about byte strings?
