@@ -227,6 +227,12 @@ struct LowerHIR_ExprNode_Visitor:
                     mv$( args )
                     ) );
                 ),
+            (Static,
+                m_rv.reset( new ::HIR::ExprNode_CallValue( v.span(),
+                    ::HIR::ExprNodeP(new ::HIR::ExprNode_PathValue( v.span(), LowerHIR_Path(v.span(), v.m_path), ::HIR::ExprNode_PathValue::STATIC )),
+                    mv$(args)
+                    ) );
+                ),
             //(TypeAlias,
             //    TODO(v.span(), "CallPath -> TupleVariant TypeAlias");
             //    ),

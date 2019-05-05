@@ -9,6 +9,7 @@
 #include <hir/expr.hpp>
 #include <hir_typeck/static.hpp>
 #include <algorithm>
+#include <hir/expr_state.hpp>
 #include "main_bindings.hpp"
 
 namespace {
@@ -1357,9 +1358,75 @@ namespace {
     };
 }
 
-void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate, ::HIR::ExprPtr& exp)
+void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
 {
-    // TODO:
+    Span    sp;
+    auto& crate = const_cast<::HIR::Crate&>(crate_ro);
+    TRACE_FUNCTION;
+
+    StaticTraitResolve   resolve { crate };
+    assert(exp);
+    if(exp.m_state->m_impl_generics)   resolve.set_impl_generics(*exp.m_state->m_impl_generics);
+    if(exp.m_state->m_item_generics)   resolve.set_item_generics(*exp.m_state->m_item_generics);
+
+    const ::HIR::TypeRef*   self_type = nullptr;  // TODO: Need to be able to get this?
+
+    static int closure_count = 0;
+    out_impls_t new_trait_impls;
+    new_type_cb_t new_type_cb = [&](auto s)->::HIR::SimplePath {
+        auto name = FMT("closure#C_" << closure_count);
+        closure_count += 1;
+        auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
+        crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
+        return ::HIR::SimplePath(crate.m_crate_name, {}) + name;
+        };
+
+    {
+        ExprVisitor_Extract    ev(resolve, self_type, exp.m_bindings, new_trait_impls, new_type_cb);
+        ev.visit_root( *exp );
+    }
+
+    {
+        ExprVisitor_Fixup   fixup(crate, nullptr, [](const auto& x)->const auto&{ return x; });
+        fixup.visit_root( exp );
+    }
+
+    for(auto& impl : new_trait_impls)
+    {
+        for( auto& m : impl.second.m_methods )
+        {
+            m.second.data.m_code.m_state = ::HIR::ExprStatePtr(*exp.m_state);
+            m.second.data.m_code.m_state->stage = ::HIR::ExprState::Stage::Typecheck;
+        }
+        impl.second.m_src_module = exp.m_state->m_mod_path;
+        switch(impl.first)
+        {
+        case ::HIR::ExprNode_Closure::Class::Once:
+            crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn_once"), mv$(impl.second)) );
+            break;
+        case ::HIR::ExprNode_Closure::Class::Mut:
+            crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn_mut" ), mv$(impl.second)) );
+            break;
+        case ::HIR::ExprNode_Closure::Class::Shared:
+            crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn"     ), mv$(impl.second)) );
+            break;
+        case ::HIR::ExprNode_Closure::Class::NoCapture:
+            assert(impl.second.m_methods.size() == 1);
+            assert(impl.second.m_types.empty());
+            assert(impl.second.m_constants.empty());
+            crate.m_type_impls.push_back( ::HIR::TypeImpl {
+                mv$(impl.second.m_params),
+                mv$(impl.second.m_type),
+                make_map1(impl.second.m_methods.begin()->first, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { ::HIR::Publicity::new_global(), false,  mv$(impl.second.m_methods.begin()->second.data) }),
+                {},
+                mv$(impl.second.m_src_module)
+                } );
+            break;
+        case ::HIR::ExprNode_Closure::Class::Unknown:
+            BUG(Span(), "Encountered Unkown closure type in new impls");
+            break;
+        }
+    }
 }
 
 void HIR_Expand_Closures(::HIR::Crate& crate)
