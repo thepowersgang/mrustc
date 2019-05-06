@@ -2274,7 +2274,9 @@ namespace {
             }
             else if( item.m_linkage.name.rfind("llvm.", 0) == 0 )
             {
+                m_of << "static ";
                 emit_function_header(p, item, params);
+                // TODO: Hand off to compiler-specific intrinsics
                 m_of << " { abort(); }\n";
                 m_mir_res = nullptr;
                 return ;
