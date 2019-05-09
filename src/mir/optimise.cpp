@@ -1411,6 +1411,12 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
     return inline_happened;
 }
 
+// TODO: New pass that removes useless borrows
+// ```
+// _$1 = & _$0;
+// (*_$1).1 = 0x0;
+// ```
+
 // --------------------------------------------------------------------
 // Replaces uses of stack slots with what they were assigned with (when
 // possible)
@@ -1424,6 +1430,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     {
         auto& bb = fcn.blocks[bb_idx];
         ::std::map<unsigned,unsigned>   local_assignments;  // Local number -> statement index
+        // TODO: Keep track of what variables would invalidate a local (and compound on assignment)
         ::std::vector<unsigned> statements_to_remove;   // List of statements that have to be removed
 
         // ----- Helper closures -----
@@ -1457,6 +1464,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         case ValUsage::Write:   // Mutated? It's invalidated
                         case ValUsage::Move:    // Moved? Now invalid
                             visit_mir_lvalues(src_rvalue, [&](const auto& s_lv, auto /*s_vu*/) {
+                                //DEBUG("   " << s_lv << " ?= " << lv);
                                 if( s_lv == lv )
                                 {
                                     DEBUG(state << "> Invalidates source of Local(" << it->first << ") - " << src_rvalue);
@@ -1555,6 +1563,12 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                         }) )
                 {
                     DEBUG(state << "> Don't record, self-referrential");
+                }
+                else if( visit_mir_lvalue(stmt.as_Assign().src.as_Use(), ValUsage::Read, [&](const auto& lv, auto /*vu*/) {
+                        return lv.is_Deref();
+                        }) )
+                {
+                    DEBUG(state << "> Don't record, dereference");
                 }
                 else
                 {
