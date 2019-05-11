@@ -1,6 +1,9 @@
 #include <hir/hir.hpp>
+#include <hir/item_path.hpp>
 #include <hir/main_bindings.hpp>
 #include <macro_rules/macro_rules.hpp>
+#include <mir/mir.hpp>
+#include <mir/operations.hpp>   // MIR_Dump_Fcn
 
 int g_debug_indent_level = 0;
 
@@ -11,14 +14,37 @@ struct Args
     ::std::string   infile;
 };
 
+struct Dumper
+{
+    struct Filters {
+        struct Types {
+            bool    macros = false;
+            bool    functions = false;
+            bool    statics = false;
+            bool    types = false;
+        } types;
+        bool public_only = false;
+    } filters;
+
+    void dump_crate(const char* name, const ::HIR::Crate& crate) const;
+    void dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod) const;
+    void dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int indent=0) const;
+};
+
 int main(int argc, const char* argv[])
 {
     Args    args(argc, argv);
+    Dumper  dumper;
+
+    dumper.filters.types.functions = true;
 
     auto hir = HIR_Deserialise(args.infile, "");
-
+    dumper.dump_crate("", *hir);
+}
+void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
+{
     // Dump macros
-    for(const auto& mac : hir->m_exported_macros)
+    for(const auto& mac : crate.m_exported_macros)
     {
         ::std::cout << "macro_rules! " << mac.first << "{" << std::endl;
         for(const auto& arm : mac.second->m_rules)
@@ -53,12 +79,133 @@ int main(int argc, const char* argv[])
                     }
                 }
             }
-            ::std::cout << " ) => {" << ::std::endl;
-            // TODO...
-            ::std::cout << "    }" << ::std::endl;
+            ::std::cout << " ) => {\n";
+            // TODO: Macro expansion
+            ::std::cout << "    }\n";
+        }
+        ::std::cout << "}\n";
+        ::std::cout << ::std::endl;
+    }
+
+    this->dump_module(::HIR::ItemPath(name), ::HIR::Publicity::new_global(), crate.m_root_module);
+
+    for(const auto& i : crate.m_trait_impls)
+    {
+        auto root_ip = ::HIR::ItemPath(i.second.m_type, i.first, i.second.m_trait_args);
+        ::std::cout << "impl" << i.second.m_params.fmt_args() << " " << i.first << i.second.m_trait_args << " for " << i.second.m_type << "\n";
+        ::std::cout << "  where" << i.second.m_params.fmt_bounds() << "\n";
+        ::std::cout << "{" << ::std::endl;
+        if( this->filters.types.functions )
+        {
+            for(const auto& m : i.second.m_methods)
+            {
+                this->dump_function(root_ip + m.first.c_str(), ::HIR::Publicity::new_global(), m.second.data, 1);
+            }
         }
         ::std::cout << "}" << ::std::endl;
+    }
+
+    for(const auto& i : crate.m_type_impls)
+    {
+        auto root_ip = ::HIR::ItemPath(i.m_type);
+        ::std::cout << "impl" << i.m_params.fmt_args() << " " << i.m_type << "\n";
+        ::std::cout << "  where" << i.m_params.fmt_bounds() << "\n";
+        ::std::cout << "{" << ::std::endl;
+        if( this->filters.types.functions )
+        {
+            for(const auto& m : i.m_methods)
+            {
+                this->dump_function(root_ip + m.first.c_str(), ::HIR::Publicity::new_global(), m.second.data, 1);
+            }
+        }
+        ::std::cout << "}" << ::std::endl;
+    }
+}
+void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod) const
+{
+    if( !filters.public_only && !pub.is_global() )
+    {
+        return ;
+    }
+    for(const auto& i : mod.m_mod_items)
+    {
+        auto sub_ip = ip + i.first.c_str();
+        //::std::cout << "// " << i.second->ent.tagstr() << " " << sub_ip << "\n";
+        TU_MATCH_HDRA( (i.second->ent), {)
+        TU_ARMA(Module, e) {
+            this->dump_module(sub_ip, i.second->publicity, e);
+            }
+        TU_ARMA(Import, e) {
+            //this->dump_mod_import(sub_ip, e);
+            }
+        TU_ARMA(TypeAlias, e) {
+            //this->dump_type_alias(sub_ip, e);
+            }
+        TU_ARMA(ExternType, e) {
+            //this->dump_ext_type(sub_ip, e);
+            }
+        TU_ARMA(Enum, e) {
+            //this->dump_enum(sub_ip, e);
+            }
+        TU_ARMA(Struct, e) {
+            //this->dump_enum(sub_ip, e);
+            }
+        TU_ARMA(Union, e) {
+            //this->dump_enum(sub_ip, e);
+            }
+        TU_ARMA(Trait, e) {
+            //this->dump_enum(sub_ip, e);
+            }
+        }
+    }
+    for(const auto& i : mod.m_value_items)
+    {
+        auto sub_ip = ip + i.first.c_str();
+        //::std::cout << "// " << i.second->ent.tagstr() << " " << sub_ip << "\n";
+        TU_MATCH_HDRA( (i.second->ent), {)
+        TU_ARMA(Import, e) {
+            //this->dump_val_import(sub_ip, e);
+            }
+        TU_ARMA(Constant, e) {
+            //this->dump_constant(sub_ip, e);
+            }
+        TU_ARMA(Static, e) {
+            //this->dump_constant(sub_ip, e);
+            }
+        TU_ARMA(StructConstant, e) {
+            //this->dump_constant(sub_ip, e);
+            }
+        TU_ARMA(StructConstructor, e) {
+            //this->dump_constant(sub_ip, e);
+            }
+        TU_ARMA(Function, e) {
+            this->dump_function(sub_ip, i.second->publicity, e);
+            }
+        }
+    }
+}
+void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int nindent/*=0*/) const
+{
+    auto indent = RepeatLitStr { "   ", nindent };
+    if( !this->filters.types.functions ) {
+        return ;
+    }
+    if( !filters.public_only && !pub.is_global() ) {
+        return ;
+    }
+    ::std::cout << indent << "fn " << ip << fcn.m_params.fmt_args() << "(";
+    ::std::cout << " )";
+    if( fcn.m_code.m_mir )
+    {
+        ::std::cout << "\n";
+        ::std::cout << indent << "{\n";
+        MIR_Dump_Fcn(::std::cout, *fcn.m_code.m_mir, nindent+1);
+        ::std::cout << indent << "}\n";
         ::std::cout << ::std::endl;
+    }
+    else
+    {
+        ::std::cout << ";" << ::std::endl;
     }
 }
 

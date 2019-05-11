@@ -17,7 +17,7 @@ OBJS += hir/crate_ptr.o hir/generic_params.o hir/path.o hir/pattern.o hir/expr_p
 OBJS += hir/expr.o	# Why is this needed?
 OBJS += parse/token.o parse/tokentree.o parse/tokenstream.o
 OBJS += ast/ast.o ast/expr.o ast/path.o ast/types.o ast/pattern.o
-OBJS += mir/mir.o mir/mir_ptr.o
+OBJS += mir/mir.o mir/mir_ptr.o mir/dump.o hir/visitor.o
 OBJS += macro_rules/mod.o
 
 LINKFLAGS := -g -lpthread -lz
