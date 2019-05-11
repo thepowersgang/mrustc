@@ -6943,6 +6943,7 @@ namespace {
         None,   // No fallback, only make safe decisions
         Assume, // Picks an option, even if there's non source/destination types
         IgnoreWeakDisable,  // Ignores the weaker disable flags
+        FinalOption,
     };
     ::std::ostream& operator<<(::std::ostream& os, IvarPossFallbackType t) {
         switch(t)
@@ -6950,6 +6951,7 @@ namespace {
         case IvarPossFallbackType::None:    os << "";   break;
         case IvarPossFallbackType::Assume:  os << " weak";   break;
         case IvarPossFallbackType::IgnoreWeakDisable:  os << " unblock";   break;
+        case IvarPossFallbackType::FinalOption:  os << " final";   break;
         }
         return os;
     }
@@ -6965,10 +6967,17 @@ namespace {
             DEBUG(i << ": forced unknown");
             return false;
         }
-        if( fallback_ty != IvarPossFallbackType::IgnoreWeakDisable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
+        if( ivar_ent.force_no_to || ivar_ent.force_no_from )
         {
-            DEBUG(i << ": coercion blocked");
-            return false;
+            switch(fallback_ty)
+            {
+            case IvarPossFallbackType::IgnoreWeakDisable:
+            case IvarPossFallbackType::FinalOption:
+                break;
+            default:
+                DEBUG(i << ": coercion blocked");
+                return false;
+            }
         }
 
         ::HIR::TypeRef  ty_l_ivar;
@@ -7044,7 +7053,8 @@ namespace {
 
             ::std::vector<PossibleType> possible_tys;
             static ::HIR::TypeRef   null_placeholder;
-            if( honour_disable && ivar_ent.force_no_from )  // TODO: This can't happen, there's an early return above.
+            bool add_placeholders = (fallback_ty < IvarPossFallbackType::IgnoreWeakDisable);
+            if( add_placeholders && ivar_ent.force_no_from )  // TODO: This can't happen, there's an early return above.
             {
                 possible_tys.push_back(PossibleType { false, true, &null_placeholder });
             }
@@ -7056,7 +7066,7 @@ namespace {
             {
                 possible_tys.push_back(PossibleType { false, true, &new_ty });
             }
-            if( honour_disable && ivar_ent.force_no_to )    // TODO: This can't happen, there's an early return above.
+            if( add_placeholders && ivar_ent.force_no_to )    // TODO: This can't happen, there's an early return above.
             {
                 possible_tys.push_back(PossibleType { false, false, &null_placeholder });
             }
@@ -7126,10 +7136,17 @@ namespace {
             //}
 
             // TODO: This shouldn't just return, instead the above null placeholders should be tested
-            if( fallback_ty != IvarPossFallbackType::IgnoreWeakDisable && (ivar_ent.force_no_to || ivar_ent.force_no_from) )
+            if( ivar_ent.force_no_to || ivar_ent.force_no_from )
             {
-                DEBUG(i << ": coercion blocked");
-                return false;
+                switch(fallback_ty)
+                {
+                case IvarPossFallbackType::IgnoreWeakDisable:
+                case IvarPossFallbackType::FinalOption:
+                    break;
+                default:
+                    DEBUG(i << ": coercion blocked");
+                    return false;
+                }
             }
 
             // Filter out ivars
@@ -7138,26 +7155,31 @@ namespace {
             size_t n_src_ivars;
             size_t n_dst_ivars;
             {
-                auto new_end = ::std::remove_if(possible_tys.begin(), possible_tys.end(), [](const PossibleType& ent) {
-                        // TODO: Should this remove Unbound associated types too?
-                        return ent.ty->m_data.is_Infer();
-                        });
-                n_ivars = possible_tys.end() - new_end;
                 n_src_ivars = 0;
                 n_dst_ivars = 0;
-                for(auto it = new_end; it != possible_tys.end(); ++it)
-                {
-                    if( it->can_deref )
-                    {
-                        n_src_ivars += 1;
-                    }
-                    else
-                    {
-                        n_dst_ivars += 1;
-                    }
-                }
+                auto new_end = ::std::remove_if(possible_tys.begin(), possible_tys.end(), [&](const PossibleType& ent) {
+                        // TODO: Should this remove Unbound associated types too?
+                        if( ent.ty->m_data.is_Infer() )
+                        {
+                            if( ent.can_deref )
+                            {
+                                n_src_ivars += 1;
+                            }
+                            else
+                            {
+                                n_dst_ivars += 1;
+                            }
+                            return true;
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                        });
+                n_ivars = possible_tys.end() - new_end;
                 possible_tys.erase(new_end, possible_tys.end());
             }
+            DEBUG(n_ivars << " ivars (" << n_src_ivars << " src, " << n_dst_ivars << " dst)");
             (void)n_ivars;
 
             // === If there's no source ivars, find the least permissive source ===
@@ -7167,7 +7189,7 @@ namespace {
             // 2. Look for an option that uses that pointer type, and contains an unsized type (that isn't a trait
             //    object with markers)
             // 3. Assign to that known most-permissive option
-            // Do the oposite for the destination types (least permissive pointer, pick any Sized type)
+            // TODO: Do the oposite for the destination types (least permissive pointer, pick any Sized type)
             if( n_src_ivars == 0 || fallback_ty == IvarPossFallbackType::Assume )
             {
                 static const ::HIR::TypeRef::Data::Tag tag_ordering[] = {
@@ -7963,7 +7985,7 @@ namespace {
                 }
                 it = (remove_option ? possible_tys.erase(it) : it + 1);
             }
-            DEBUG("possible_tys = " << possible_tys);
+            DEBUG("possible_tys = " << possible_tys << " (" << n_src_ivars << " src ivars, " << n_dst_ivars << " dst ivars)");
 
             // Find a CD option that can deref to a `--` option
             for(const auto& e : possible_tys)
@@ -8012,9 +8034,17 @@ namespace {
             {
                 auto it = ::std::find_if(possible_tys.begin(), possible_tys.end(), [](const PossibleType& pt){ return !pt.can_deref; });
                 const auto& new_ty = *it->ty;
-                DEBUG("Picking " << new_ty << " as the only target [" << possible_tys << "]");
-                context.equate_types(sp, ty_l, new_ty);
-                return true;
+                if( it->is_pointer )
+                {
+                    DEBUG("Picking " << new_ty << " as the only target [" << possible_tys << "]");
+                    context.equate_types(sp, ty_l, new_ty);
+                    return true;
+                }
+                else
+                {
+                    // HACK: Work around failure in librustc
+                    DEBUG("Would pick " << new_ty << " as the only target, but it's an unsize");
+                }
             }
             // If there's multiple possiblilties, we're in fallback mode, AND there's no ivars in the list
             if( possible_tys.size() > 0 && !honour_disable && n_ivars == 0 )
@@ -8171,13 +8201,13 @@ namespace {
                 context.equate_types(sp, ty_l, *good_types.front());
                 return true;
             }
-            else if( good_types.size() > 0 && !honour_disable )
+            else if( good_types.size() > 0 && fallback_ty == IvarPossFallbackType::FinalOption )
             {
                 auto typ_is_borrow = [&](const ::HIR::TypeRef* typ) { return typ->m_data.is_Borrow(); };
                 // NOTE: We want to select from sets of primitives and generics (which can be interchangable)
                 if( ::std::all_of(good_types.begin(), good_types.end(), typ_is_borrow) == ::std::any_of(good_types.begin(), good_types.end(), typ_is_borrow) )
                 {
-                    DEBUG("Picking " << *good_types.front() << " as first of " << good_types.size() << " options");
+                    DEBUG("Picking " << *good_types.front() << " as first of " << good_types.size() << " options [" << FMT_CB(ss, for(auto e:good_types) ss << *e << ",";) << "]");
                     context.equate_types(sp, ty_l, *good_types.front());
                     return true;
                 }
@@ -8535,6 +8565,20 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
 #endif
         } // `if peek_changed` (ivar possibilities #2)
+#if 1
+        if( !context.m_ivars.peek_changed() )
+        {
+            // Check the possible equations
+            DEBUG("--- IVar possibilities (final fallback)");
+            for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
+            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            {
+                if( check_ivar_poss(context, i, context.possible_ivar_vals[i], IvarPossFallbackType::FinalOption) ) {
+                    break;
+                }
+            }
+        }
+#endif
 
 #if 1
         if( !context.m_ivars.peek_changed() )
