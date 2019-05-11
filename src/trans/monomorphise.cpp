@@ -376,7 +376,8 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
     }
 
     // Also do constants and statics (stored in where?)
-    for(auto& ent : list.m_constants)
+    // - NOTE: Done in reverse order, because consteval needs used constants to be evaluated
+    for(auto& ent : reverse(list.m_constants))
     {
         const auto& path = ent.first;
         const auto& pp = ent.second->pp;
@@ -396,6 +397,7 @@ void Trans_Monomorphise_List(const ::HIR::Crate& crate, TransList& list)
         ms.pp_impl = &pp.pp_impl;
         ms.pp_method = &pp.pp_method;
         auto new_lit = eval.evaluate_constant(path, c.m_value, ::std::move(ty), ::std::move(ms));
+        ASSERT_BUG(Span(), !new_lit.is_Defer(), "Result of evaluating " << path << " was still Defer");
         // 2. Store evaluated HIR::Literal in c.m_monomorph_cache
         c.m_monomorph_cache.insert(::std::make_pair( path.clone(), ::std::move(new_lit) ));
     }

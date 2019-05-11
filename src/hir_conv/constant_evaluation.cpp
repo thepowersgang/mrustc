@@ -414,6 +414,12 @@ namespace HIR {
 
                     //check_lit_type(item.m_value->span(), item.m_type, item.m_value_res);
                 }
+                auto it = c.m_monomorph_cache.find(*e2.p);
+                if( it != c.m_monomorph_cache.end() )
+                {
+                    MIR_ASSERT(state, !it->second.is_Defer(), "Cached literal for " << *e2.p << " is Defer");
+                    return clone_literal( it->second );
+                }
                 return clone_literal( c.m_value_res );
                 }
             TU_ARM(c, ItemAddr, e2)
