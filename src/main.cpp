@@ -399,17 +399,15 @@ int main(int argc, char *argv[])
             }
             });
 
+        /// Emit the dependency files
         if( params.emit_depfile != "" )
         {
-            ::std::ofstream of { params.emit_depfile };
-            of << params.outfile << ":";
             // - Iterate all loaded files for modules
-            struct H {
-                ::std::ofstream& of;
-                H(::std::ofstream& of): of(of) {}
+            struct PathEnumerator {
+                ::std::vector<::std::string> out;
                 void visit_module(::AST::Module& mod) {
                     if( mod.m_file_info.path != "!" && mod.m_file_info.path.back() != '/' ) {
-                        of << " " << mod.m_file_info.path;
+                        out.push_back( mod.m_file_info.path );
                     }
                     // TODO: Should we check anon modules?
                     //for(auto& amod : mod.anon_mods()) {
@@ -422,7 +420,19 @@ int main(int argc, char *argv[])
                     }
                 }
             };
-            H(of).visit_module(crate.m_root_module);
+            PathEnumerator pe;
+            pe.visit_module(crate.m_root_module);
+
+            ::std::ofstream of { params.emit_depfile };
+            // TODO: Escape spaces and colons in these paths
+            of << params.outfile << ":";
+            for(const auto& mod_path : pe.out)
+            {
+                of << " " << mod_path;
+            }
+            of << ::std::endl;
+
+            of << params.outfile << ":";
             // - Iterate all loaded crates files
             for(const auto& ec : crate.m_extern_crates)
             {
@@ -464,6 +474,13 @@ int main(int argc, char *argv[])
             });
         // Deallocate the original crate
         crate = ::AST::Crate();
+        if( params.debug.dump_hir )
+        {
+            CompilePhaseV("Dump HIR", [&]() {
+                ::std::ofstream os (FMT(params.outfile << "_2_hir.rs"));
+                HIR_Dump( os, *hir_crate );
+                });
+        }
 
         // Replace type aliases (`type`) into the actual type
         // - Also inserts defaults in trait impls
