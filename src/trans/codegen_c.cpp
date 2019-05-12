@@ -615,9 +615,12 @@ namespace {
                 emit_box_drop_glue( mv$(e.first), *e.second );
             }
 
-            // TODO: Define this function in MIR.
+            // TODO: Support dynamic libraries too
+            // - No main, but has the rest.
+            // - Well... for cdylibs that's the case, for rdylibs it's not
             if( is_executable )
             {
+                // TODO: Define this function in MIR?
                 m_of << "int main(int argc, const char* argv[]) {\n";
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");
                 if( c_start_path == ::HIR::SimplePath() )
@@ -789,7 +792,7 @@ namespace {
                     args.push_back("-g");
                 }
                 args.push_back("-o");
-                args.push_back(m_outfile_path.c_str());
+                args.push_back(m_outfile_path  .c_str());
                 args.push_back(m_outfile_path_c.c_str());
                 if( is_executable )
                 {
@@ -5302,6 +5305,7 @@ namespace {
                         MIR_BUG(*m_mir_res, "Constant with Defer literal and no cached monomorphisation - " << path);
                         // TODO: Can do the consteval here?
                     }
+                    MIR_ASSERT(*m_mir_res, !it->second.is_Defer(), "get_literal_for_const - Cached literal was Defer - " << path);
                     return it->second;
                 }
                 return hir_const.m_value_res;
@@ -5349,7 +5353,7 @@ namespace {
 
         void assign_from_literal(::std::function<void()> emit_dst, const ::HIR::TypeRef& ty, const ::HIR::Literal& lit)
         {
-            //TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
+            TRACE_FUNCTION_F("ty=" << ty << ", lit=" << lit);
             Span    sp;
             ::HIR::TypeRef  tmp;
             auto monomorph_with = [&](const ::HIR::PathParams& pp, const ::HIR::TypeRef& ty)->const ::HIR::TypeRef& {
