@@ -190,6 +190,14 @@ struct PackageTarget
         Bench,
         Example,
     };
+    enum class CrateType
+    {
+        dylib,
+        rlib,
+        staticlib,
+        cdylib,
+        proc_macro,
+    };
 
     Type    m_type;
     ::std::string   m_name;
@@ -202,6 +210,7 @@ struct PackageTarget
     bool    m_is_proc_macro = false;
     bool    m_is_own_harness = false;
 
+    ::std::vector<CrateType>    m_crate_types;
     ::std::vector<::std::string>    m_required_features;
 
     PackageTarget(Type ty):

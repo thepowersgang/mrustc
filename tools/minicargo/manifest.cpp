@@ -434,7 +434,26 @@ namespace
         }
         else if( key == "crate-type" )
         {
-            // TODO: Support crate types
+            //assert_kv_size(kv, base_idx + 1);
+            //assert_type(kv, base_idx + 1);
+            assert(kv.path.size() == base_idx + 1);
+            if( !target.m_crate_types.empty() ) {
+                // TODO: Error, multiple instances
+            }
+            for(const auto& sv : kv.value.m_sub_values)
+            {
+                const auto& s = sv.as_string();
+                if(s == "rlib") {
+                    target.m_crate_types.push_back(PackageTarget::CrateType::rlib);
+                }
+                else if(s == "dylib") {
+                    target.m_crate_types.push_back(PackageTarget::CrateType::dylib);
+                }
+                // TODO: Other crate types
+                else {
+                    throw ::std::runtime_error(format("Unknown crate type - ", s));
+                }
+            }
         }
         else if( key == "required-features" )
         {

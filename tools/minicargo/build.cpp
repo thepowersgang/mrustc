@@ -24,6 +24,7 @@ extern int _putenv_s(const char*, const char*);
 #include <vector>
 #include <algorithm>
 #include <sstream>  // stringstream
+#include <fstream>  // ifstream
 #include <cstdlib>  // setenv
 #ifndef DISABLE_MULTITHREAD
 # include <thread>
@@ -51,8 +52,10 @@ extern int _putenv_s(const char*, const char*);
 
 #ifdef _WIN32
 # define EXESUF ".exe"
+# define DLLSUF ".dll"
 #else
 # define EXESUF ""
+# define DLLSUF ".so"
 #endif
 #include <target_detect.h>	// tools/common/target_detect.h
 #define HOST_TARGET	DEFAULT_TARGET_NAME
@@ -612,12 +615,15 @@ Builder::Builder(BuildOptions opts, size_t total_targets):
         if(crate_type) {
             *crate_type = target.m_is_proc_macro ? "proc-macro" : "rlib";
         }
+        // TODO: Support dylibs (e.g. if target.m_crate_types is just dylib,
+        // emit a dylib)
         outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");
         break;
     case PackageTarget::Type::Bin:
         if(crate_type)
             *crate_type = "bin";
         outfile /= ::format(target.m_name, EXESUF);
+        break;
         break;
     default:
         throw ::std::runtime_error("Unknown target type being built");
@@ -627,11 +633,115 @@ Builder::Builder(BuildOptions opts, size_t total_targets):
     return outfile;
 }
 
+namespace {
+    ::std::map< ::std::string, ::std::vector<helpers::path> > load_depfile(const helpers::path& depfile_path)
+    {
+        ::std::map< ::std::string, ::std::vector<helpers::path> >   rv;
+        ::std::ifstream ifp(depfile_path);
+        if( ifp.good() )
+        {
+            // Load space-separated (backslash-escaped) paths
+            struct Lexer {
+                ::std::ifstream ifp;
+                char    m_c;
+
+                Lexer(::std::ifstream ifp)
+                    :ifp(::std::move(ifp))
+                    ,m_c(0)
+                {
+                    nextc();
+                }
+
+                bool nextc() {
+                    int v = ifp.get();
+                    if( v == EOF ) {
+                        m_c = '\0';
+                        return false;
+                    }
+                    else {
+                        m_c = (char)v;
+                        return true;
+                    }
+                }
+                ::std::string get_token() {
+                    auto t = get_token_int();
+                    DEBUG("get_token '" << t << "'");
+                    return t;
+                }
+                ::std::string get_token_int() {
+                    if( ifp.eof() )
+                        return "";
+                    while( m_c == ' ' )
+                    {
+                        if( !nextc() )
+                            return "";
+                    }
+                    if( m_c == '\n' ) {
+                        nextc();
+                        return "\n";
+                    }
+                    if( m_c == '\t' ) {
+                        nextc();
+                        return "\t";
+                    }
+                    ::std::string   rv;
+                    do {
+                        if( m_c == '\\' )
+                        {
+                            nextc();
+                            if( m_c == ' ' ) {
+                                rv += m_c;
+                            }
+                            else if( m_c == ':' ) {
+                                rv += m_c;
+                            }
+                            // HACK: Only spaces are escaped this way?
+                            else {
+                                rv += '\\';
+                                rv += m_c;
+                            }
+                        }
+                        else
+                        {
+                            rv += m_c;
+                        }
+                    } while( nextc() && m_c != ' ' && m_c != ':' && m_c != '\n' );
+                    return rv;
+                }
+            }   lexer(::std::move(ifp));
+
+            // Look for <string> ":" [<string>]* "\n"
+            do {
+                auto t = lexer.get_token();
+                if( t == "" )
+                    break;
+                if( t == "\n" )
+                    continue ;
+
+                auto v = rv.insert(::std::make_pair(t, ::std::vector<helpers::path>()));
+                auto& list = v.first->second;
+                auto target = t;
+                t = lexer.get_token();
+                assert(t == ":");
+
+                do {
+                    t = lexer.get_token();
+                    if( t == "\n" || t == "" )
+                        break ;
+                    list.push_back(t);
+                } while(1);
+            } while(1);
+        }
+        return rv;
+    }
+}
+
 bool Builder::build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const
 {
     const char* crate_type;
     ::std::string   crate_suffix;
     auto outfile = this->get_crate_path(manifest, target, is_for_host,  &crate_type, &crate_suffix);
+    auto depfile = outfile + ".d";
 
     size_t this_target_idx = (index != ~0u ? m_targets_built++ : ~0u);
 
@@ -655,10 +765,30 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         DEBUG("Building " << outfile << " - Older than mrustc ( " << ts_result << " < " << Timestamp::for_file(m_compiler_path) << ")");
     }
     else {
-        // TODO: Check dependencies. (from depfile)
-        // Don't rebuild (no need to)
-        DEBUG("Not building " << outfile << " - not out of date");
-        return true;
+        // Check dependencies. (from depfile)
+        auto depfile_ents = load_depfile(depfile);
+        auto it = depfile_ents.find(outfile);
+        bool has_new_file = false;
+        if( it != depfile_ents.end() )
+        {
+            for(const auto& f : it->second)
+            {
+                auto dep_ts = Timestamp::for_file(f);
+                if( ts_result < dep_ts )
+                {
+                    has_new_file = true;
+                    DEBUG("Rebuilding " << outfile << ", older than " << f);
+                    break;
+                }
+            }
+        }
+
+        if( !has_new_file )
+        {
+            // Don't rebuild (no need to)
+            DEBUG("Not building " << outfile << " - not out of date");
+            return true;
+        }
     }
 
     for(const auto& cmd : manifest.build_script_output().pre_build_commands)
@@ -682,8 +812,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     }
     StringList  args;
     args.push_back(::helpers::path(manifest.manifest_path()).parent() / ::helpers::path(target.m_path));
+    args.push_back("-o"); args.push_back(outfile);
     args.push_back("--crate-name"); args.push_back(target.m_name.c_str());
     args.push_back("--crate-type"); args.push_back(crate_type);
+    args.push_back("-C"); args.push_back(format("emit-depfile=",depfile));
     if( !crate_suffix.empty() ) {
         args.push_back("--crate-tag"); args.push_back(crate_suffix.c_str() + 1);
     }
@@ -709,7 +841,6 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("-C"); args.push_back("codegen-type=monomir");
     }
 
-    args.push_back("-o"); args.push_back(outfile);
     args.push_back("-L"); args.push_back(this->get_output_dir(is_for_host).str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
         args.push_back("-L"); args.push_back(dir.second.c_str());
