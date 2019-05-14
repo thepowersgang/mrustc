@@ -402,6 +402,19 @@ struct BasicBlock
 };
 
 
+struct EnumCache;   // Defined in trans/enumerate.cpp
+class EnumCachePtr
+{
+    const EnumCache*  p;
+public:
+    EnumCachePtr(const EnumCache* p=nullptr): p(p) {}
+    ~EnumCachePtr();
+    EnumCachePtr(EnumCachePtr&& x): p(x.p) { x.p = nullptr; }
+    EnumCachePtr& operator=(EnumCachePtr&& x) { this->~EnumCachePtr(); p = x.p; x.p = nullptr; return *this; }
+    operator bool() { return p; }
+    const EnumCache& operator*() const { return *p; }
+    const EnumCache* operator->() const { return p; }
+};
 class Function
 {
 public:
@@ -410,6 +423,9 @@ public:
     ::std::vector<bool> drop_flags;
 
     ::std::vector<BasicBlock>   blocks;
+
+    // Cache filled/used by enumerate
+    mutable EnumCachePtr trans_enum_state;
 };
 
 };

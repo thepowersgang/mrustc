@@ -3921,7 +3921,9 @@ void MIR_OptimiseCrate_Inlining(const ::HIR::Crate& crate, TransList& list)
             else if( hir_fcn.m_code )
             {
                 auto& mir = hir_fcn.m_code.get_mir_or_error_mut(Span());
-                did_inline_on_pass |= MIR_OptimiseInline(resolve, ip, mir, hir_fcn.m_args, hir_fcn.m_return, list);
+                bool did_opt = MIR_OptimiseInline(resolve, ip, mir, hir_fcn.m_args, hir_fcn.m_return, list);
+                mir.trans_enum_state = ::MIR::EnumCachePtr();   // Clear MIR enum cache
+                did_inline_on_pass |= did_opt;
             }
             else
             {
