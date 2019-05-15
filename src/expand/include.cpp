@@ -12,6 +12,7 @@
 #include <parse/ttstream.hpp>
 #include <parse/lex.hpp>    // Lexer (new files)
 #include <ast/expr.hpp>
+#include <ast/crate.hpp>
 
 namespace {
 
@@ -75,6 +76,7 @@ class CIncludeExpander:
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+        crate.m_extra_files.push_back(file_path);
 
         try {
             return box$( Lexer(file_path) );
@@ -101,6 +103,7 @@ class CIncludeBytesExpander:
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+        crate.m_extra_files.push_back(file_path);
 
         ::std::ifstream is(file_path);
         if( !is.good() ) {
@@ -130,6 +133,7 @@ class CIncludeStrExpander:
         GET_CHECK_TOK(tok, lex, TOK_EOF);
 
         ::std::string file_path = get_path_relative_to(mod.m_file_info.path, mv$(path));
+        crate.m_extra_files.push_back(file_path);
 
         ::std::ifstream is(file_path);
         if( !is.good() ) {
