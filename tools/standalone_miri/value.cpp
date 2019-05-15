@@ -13,6 +13,38 @@
 #include <algorithm>
 #include "debug.hpp"
 
+FfiLayout FfiLayout::new_const_bytes(size_t s)
+{
+    return FfiLayout {
+        { Range {s, true, false} }
+        };
+}
+bool FfiLayout::is_valid_read(size_t o, size_t s) const
+{
+    for(const auto& r : ranges)
+    {
+        if( o < r.len ) {
+            if( !r.is_valid )
+                return false;
+            if( o + s <= r.len )
+            {
+                s = 0;
+                break;
+            }
+            s -= (r.len - o);
+            o = 0;
+        }
+        else {
+            o -= r.len;
+        }
+    }
+    if( s > 0 )
+    {
+        return false;
+    }
+    return true;
+}
+
 AllocationHandle Allocation::new_alloc(size_t size)
 {
     Allocation* rv = new Allocation();

@@ -30,36 +30,15 @@ struct FfiLayout
     };
     ::std::vector<Range>    ranges;
 
+    static FfiLayout new_const_bytes(size_t s);
+
     size_t get_size() const {
         size_t rv = 0;
         for(const auto& r : ranges)
             rv += r.len;
         return rv;
     }
-    bool is_valid_read(size_t o, size_t s) {
-        for(const auto& r : ranges)
-        {
-            if( o < r.len ) {
-                if( !r.is_valid )
-                    return false;
-                if( o + s <= r.len )
-                {
-                    s = 0;
-                    break;
-                }
-                s -= (r.len - o);
-                o = 0;
-            }
-            else {
-                o -= r.len;
-            }
-        }
-        if( s > 0 )
-        {
-            return false;
-        }
-        return true;
-    }
+    bool is_valid_read(size_t o, size_t s) const;
 };
 struct FFIPointer
 {
@@ -76,7 +55,7 @@ struct FFIPointer
     ::std::shared_ptr<FfiLayout>    layout;
 
     static FFIPointer new_const_bytes(const void* s, size_t size) {
-        return FFIPointer { const_cast<void*>(s), "", ::std::shared_ptr<FfiLayout>() };
+        return FFIPointer { const_cast<void*>(s), "", ::std::make_shared<FfiLayout>(FfiLayout::new_const_bytes(size)) };
     };
 
     size_t get_size() const {
@@ -268,6 +247,7 @@ class Allocation:
     // TODO: Read-only flag?
     bool is_freed = false;
 public:
+    virtual ~Allocation() {}
     static AllocationHandle new_alloc(size_t size);
 
     const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->data.data()); }

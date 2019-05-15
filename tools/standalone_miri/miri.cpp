@@ -1553,7 +1553,9 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
         }
 
         // - No guard page needed
-        if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } } )
+        if( path == ::HIR::SimplePath { "std",  {"sys", "imp", "thread", "guard", "init" } }
+         ||  path == ::HIR::SimplePath { "std",  {"sys", "unix", "thread", "guard", "init" } }
+         )
         {
             ret = Value::with_size(16, false);
             ret.write_u64(0, 0);
@@ -1599,7 +1601,7 @@ extern "C" {
 #endif
 bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
-    if( link_name == "__rust_allocate" )
+    if( link_name == "__rust_allocate" || link_name == "__rust_alloc" )
     {
         auto size = args.at(0).read_usize(0);
         auto align = args.at(1).read_usize(0);
@@ -1609,7 +1611,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         // TODO: Use the alignment when making an allocation?
         rv = Value::new_pointer(rty, 0, RelocationPtr::new_alloc(Allocation::new_alloc(size)));
     }
-    else if( link_name == "__rust_reallocate" )
+    else if( link_name == "__rust_reallocate" || link_name == "__rust_realloc" )
     {
         LOG_ASSERT(args.at(0).allocation, "__rust_reallocate first argument doesn't have an allocation");
         auto alloc_ptr = args.at(0).get_relocation(0);
@@ -1757,6 +1759,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         rv = Value::new_usize(val);
     }
+    else if( link_name == "pthread_self" )
+    {
+        rv = Value::new_i32(0);
+    }
     else if( link_name == "pthread_mutex_init" || link_name == "pthread_mutex_lock" || link_name == "pthread_mutex_unlock" || link_name == "pthread_mutex_destroy" )
     {
         rv = Value::new_i32(0);
@@ -1770,6 +1776,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         rv = Value::new_i32(0);
     }
     else if( link_name == "pthread_condattr_init" || link_name == "pthread_condattr_destroy" || link_name == "pthread_condattr_setclock" )
+    {
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_attr_init" || link_name == "pthread_attr_destroy" || link_name == "pthread_getattr_np" )
     {
         rv = Value::new_i32(0);
     }
@@ -1819,6 +1829,14 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         LOG_DEBUG("Call `signal` - Ignoring and returning SIG_IGN");
         rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, 1);
+    }
+    else if( link_name == "sigaction" )
+    {
+        rv = Value::new_i32(-1);
+    }
+    else if( link_name == "sigaltstack" )   // POSIX: Set alternate signal stack
+    {
+        rv = Value::new_i32(-1);
     }
     // - `void *memchr(const void *s, int c, size_t n);`
     else if( link_name == "memchr" )
@@ -2177,6 +2195,18 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
         lhs.get().subtract( rhs.get() );
+        // TODO: Overflowing part
+
+        rv = Value(ty);
+        lhs.get().write_to_value(rv, 0);
+    }
+    else if( name == "overflowing_add" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+        lhs.get().add( rhs.get() );
 
         rv = Value(ty);
         lhs.get().write_to_value(rv, 0);
