@@ -379,7 +379,7 @@ bool Parser::parse_one()
             else if( lex.next() == "::" || lex.next() == '<' )
             {
                 auto path = p.parse_path();
-                lv = ::MIR::LValue( ::std::move(path) );
+                lv = ::MIR::LValue( ::std::make_unique<HIR::Path>(::std::move(path)) );
             }
             else {
                 LOG_ERROR(lex << "Unexpected token in LValue - " << lex.next());
@@ -464,7 +464,7 @@ bool Parser::parse_one()
             else if( p.lex.consume_if("ADDROF") ) {
                 auto path = p.parse_path();
 
-                return ::MIR::Constant::make_ItemAddr({ ::std::move(path) });
+                return ::MIR::Constant::make_ItemAddr({ ::std::make_unique<HIR::Path>(::std::move(path)) });
             }
             else {
                 LOG_BUG(p.lex << "BUG? " << p.lex.next());

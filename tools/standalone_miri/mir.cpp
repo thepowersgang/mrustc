@@ -62,10 +62,10 @@ namespace MIR {
             os << "\"" << e << "\"";
             ),
         (Const,
-            os << e.p;
+            os << *e.p;
             ),
         (ItemAddr,
-            os << "&" << e;
+            os << "&" << *e;
             )
         )
         return os;
@@ -83,7 +83,7 @@ namespace MIR {
             os << "Local(" << e << ")";
             ),
         (Static,
-            os << "Static(" << e << ")";
+            os << "Static(" << *e << ")";
             ),
         (Field,
             os << "Field(" << e.field_index << ", " << *e.val << ")";
@@ -295,6 +295,11 @@ namespace MIR {
             )
         )
         return os;
+    }
+
+    EnumCachePtr::~EnumCachePtr()
+    {
+        assert(!this->p);
     }
 }
 

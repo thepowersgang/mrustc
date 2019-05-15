@@ -74,11 +74,11 @@ int main(int argc, const char* argv[])
     // Create argc/argv based on input arguments
     auto argv_alloc = Allocation::new_alloc((1 + opts.args.size()) * POINTER_SIZE);
     argv_alloc->write_usize(0 * POINTER_SIZE, 0);
-    argv_alloc->relocations.push_back({ 0 * POINTER_SIZE, RelocationPtr::new_ffi(FFIPointer { "", (void*)(opts.infile.c_str()), opts.infile.size() + 1 }) });
+    argv_alloc->relocations.push_back({ 0 * POINTER_SIZE, RelocationPtr::new_ffi(FFIPointer::new_const_bytes(opts.infile.c_str(), opts.infile.size() + 1)) });
     for(size_t i = 0; i < opts.args.size(); i ++)
     {
         argv_alloc->write_usize((1 + i) * POINTER_SIZE, 0);
-        argv_alloc->relocations.push_back({ (1 + i) * POINTER_SIZE, RelocationPtr::new_ffi({ "", (void*)(opts.args[0]), ::std::strlen(opts.args[0]) + 1 }) });
+        argv_alloc->relocations.push_back({ (1 + i) * POINTER_SIZE, RelocationPtr::new_ffi(FFIPointer::new_const_bytes(opts.args[0], ::std::strlen(opts.args[0]) + 1)) });
     }
     
     // Construct argc/argv values

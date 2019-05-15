@@ -21,11 +21,67 @@ class Allocation;
 struct Value;
 struct ValueRef;
 
+struct FfiLayout
+{
+    struct Range {
+        size_t  len;
+        bool    is_valid;
+        bool    is_writable;
+    };
+    ::std::vector<Range>    ranges;
+
+    size_t get_size() const {
+        size_t rv = 0;
+        for(const auto& r : ranges)
+            rv += r.len;
+        return rv;
+    }
+    bool is_valid_read(size_t o, size_t s) {
+        for(const auto& r : ranges)
+        {
+            if( o < r.len ) {
+                if( !r.is_valid )
+                    return false;
+                if( o + s <= r.len )
+                {
+                    s = 0;
+                    break;
+                }
+                s -= (r.len - o);
+                o = 0;
+            }
+            else {
+                o -= r.len;
+            }
+        }
+        if( s > 0 )
+        {
+            return false;
+        }
+        return true;
+    }
+};
 struct FFIPointer
 {
-    const char* source_function;
+    // FFI pointers require the following:
+    // - A tag indicating where they're valid/from
+    // - A data format (e.g. size of allocation, internal data format)
+    //   - If the data format is unspecified (null) then it's a void pointer
+    // - An actual pointer
+
+    // Pointer value, returned by the FFI
     void*   ptr_value;
-    size_t  size;
+    // Tag name, used for validty checking by FFI hooks
+    const char* tag_name;
+    ::std::shared_ptr<FfiLayout>    layout;
+
+    static FFIPointer new_const_bytes(const void* s, size_t size) {
+        return FFIPointer { const_cast<void*>(s), "", ::std::shared_ptr<FfiLayout>() };
+    };
+
+    size_t get_size() const {
+        return (layout ? layout->get_size() : 0);
+    }
 };
 
 class AllocationHandle
@@ -83,7 +139,7 @@ public:
     RelocationPtr(const RelocationPtr& x);
     ~RelocationPtr();
     static RelocationPtr new_alloc(AllocationHandle h);
-    static RelocationPtr new_fcn(::HIR::Path p);
+    static RelocationPtr new_fcn(::HIR::Path p);    // TODO: What if it's a FFI function? Could be encoded in here.
     static RelocationPtr new_string(const ::std::string* s);    // NOTE: The string must have a stable pointer
     static RelocationPtr new_ffi(FFIPointer info);
 
@@ -331,9 +387,9 @@ struct ValueRef:
                 assert(ofs+size <= m_alloc.str().size());
                 break;
             case RelocationPtr::Ty::FfiPointer:
-                assert(ofs < m_alloc.ffi().size);
-                assert(size <= m_alloc.ffi().size);
-                assert(ofs+size <= m_alloc.ffi().size);
+                assert(ofs < m_alloc.ffi().get_size());
+                assert(size <= m_alloc.ffi().get_size());
+                assert(ofs+size <= m_alloc.ffi().get_size());
                 break;
             default:
                 throw "TODO";

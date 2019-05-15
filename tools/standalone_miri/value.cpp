@@ -167,7 +167,7 @@ size_t RelocationPtr::get_size() const
             os << "\"" << x.str() << "\"";
             break;
         case RelocationPtr::Ty::FfiPointer:
-            os << "FFI " << x.ffi().source_function << " " << x.ffi().ptr_value;
+            os << "FFI " << x.ffi().tag_name << " " << x.ffi().ptr_value;
             break;
         }
     }
@@ -237,7 +237,7 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
             //if( req_valid )
             //    LOG_FATAL("Can't request valid data from a FFI pointer");
             // TODO: Have an idea of mutability and available size from FFI
-            out_size = f.size - ofs;
+            out_size = f.get_size() - ofs;
             out_is_mut = false;
             return reinterpret_cast<char*>(reloc.ffi().ptr_value) + ofs;
             }

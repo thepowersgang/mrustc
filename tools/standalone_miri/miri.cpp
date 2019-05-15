@@ -273,7 +273,7 @@ struct MirHelpers
             return ValueRef(this->frame.args.at(e.idx));
             } break;
         TU_ARM(lv, Static, e) {
-            /*const*/ auto& s = this->thread.m_modtree.get_static(e);
+            /*const*/ auto& s = this->thread.m_modtree.get_static(*e);
             ty = s.ty;
             return ValueRef(s.val);
             } break;
@@ -482,15 +482,15 @@ struct MirHelpers
         // --> Accessor
         TU_ARM(c, ItemAddr, ce) {
             // Create a value with a special backing allocation of zero size that references the specified item.
-            if( /*const auto* fn =*/ this->thread.m_modtree.get_function_opt(ce) ) {
+            if( /*const auto* fn =*/ this->thread.m_modtree.get_function_opt(*ce) ) {
                 ty = ::HIR::TypeRef(RawType::Function);
-                return Value::new_fnptr(ce);
+                return Value::new_fnptr(*ce);
             }
-            if( const auto* s = this->thread.m_modtree.get_static_opt(ce) ) {
+            if( const auto* s = this->thread.m_modtree.get_static_opt(*ce) ) {
                 ty = s->ty.wrapped(TypeWrapper::Ty::Borrow, 0);
                 return Value::new_pointer(ty, 0, RelocationPtr::new_alloc(s->val.allocation));
             }
-            LOG_ERROR("Constant::ItemAddr - " << ce << " - not found");
+            LOG_ERROR("Constant::ItemAddr - " << *ce << " - not found");
             } break;
         }
         throw "";
@@ -1031,19 +1031,20 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_ASSERT(ty_r.get_wrapper() == nullptr, "Bitwise operator with non-primitive - " << ty_r);
                     size_t max_bits = ty_r.get_size() * 8;
                     uint8_t shift;
-                    auto check_cast = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
+                    auto check_cast_u = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
+                    auto check_cast_s = [&](auto v){ LOG_ASSERT(v <= static_cast<int64_t>(max_bits), "Shift out of range - " << v); return static_cast<uint8_t>(v); };
                     switch(ty_r.inner_type)
                     {
-                    case RawType::U64:  shift = check_cast(v_r.read_u64(0));    break;
-                    case RawType::U32:  shift = check_cast(v_r.read_u32(0));    break;
-                    case RawType::U16:  shift = check_cast(v_r.read_u16(0));    break;
-                    case RawType::U8 :  shift = check_cast(v_r.read_u8 (0));    break;
-                    case RawType::I64:  shift = check_cast(v_r.read_i64(0));    break;
-                    case RawType::I32:  shift = check_cast(v_r.read_i32(0));    break;
-                    case RawType::I16:  shift = check_cast(v_r.read_i16(0));    break;
-                    case RawType::I8 :  shift = check_cast(v_r.read_i8 (0));    break;
-                    case RawType::USize:  shift = check_cast(v_r.read_usize(0));    break;
-                    case RawType::ISize:  shift = check_cast(v_r.read_isize(0));    break;
+                    case RawType::U64:  shift = check_cast_u(v_r.read_u64(0));    break;
+                    case RawType::U32:  shift = check_cast_u(v_r.read_u32(0));    break;
+                    case RawType::U16:  shift = check_cast_u(v_r.read_u16(0));    break;
+                    case RawType::U8 :  shift = check_cast_u(v_r.read_u8 (0));    break;
+                    case RawType::I64:  shift = check_cast_s(v_r.read_i64(0));    break;
+                    case RawType::I32:  shift = check_cast_s(v_r.read_i32(0));    break;
+                    case RawType::I16:  shift = check_cast_s(v_r.read_i16(0));    break;
+                    case RawType::I8 :  shift = check_cast_s(v_r.read_i8 (0));    break;
+                    case RawType::USize:  shift = check_cast_u(v_r.read_usize(0));    break;
+                    case RawType::ISize:  shift = check_cast_s(v_r.read_isize(0));    break;
                     default:
                         LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
                     }
@@ -2213,9 +2214,8 @@ bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, con
             LOG_FATAL("Attempt to copy* a function");
             break;
         case RelocationPtr::Ty::FfiPointer:
-            LOG_ASSERT(src_ofs <= src_alloc.ffi().size, "");
-            LOG_ASSERT(byte_count <= src_alloc.ffi().size, "");
-            LOG_ASSERT(src_ofs + byte_count <= src_alloc.ffi().size, "");
+	    LOG_ASSERT(src_alloc.ffi().layout, "");
+	    LOG_ASSERT(src_alloc.ffi().layout->is_valid_read(src_ofs, byte_count), "");
             dst_alloc.alloc().write_bytes(dst_ofs, reinterpret_cast<const char*>(src_alloc.ffi().ptr_value) + src_ofs, byte_count);
             break;
         }
