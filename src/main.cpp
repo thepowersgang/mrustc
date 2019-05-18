@@ -1046,6 +1046,9 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 if( strcmp(type_str, "rlib") == 0 ) {
                     this->crate_type = ::AST::Crate::Type::RustLib;
                 }
+                else if( strcmp(type_str, "dylib") == 0 ) {
+                    this->crate_type = ::AST::Crate::Type::RustDylib;
+                }
                 else if( strcmp(type_str, "bin") == 0 ) {
                     this->crate_type = ::AST::Crate::Type::Executable;
                 }
