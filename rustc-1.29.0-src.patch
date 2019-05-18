@@ -23,3 +23,18 @@
 +        let rv = unsafe { ::intrinsics::mrustc_slice_len(self) };
 +        rv
      }
+--- src/librustc_driver/Cargo.toml
++++ src/librustc_driver/Cargo.toml
+@@ -39,1 +39,2 @@
+ syntax_pos = { path = "../libsyntax_pos" }
++rustc_codegen_llvm = { path = "../librustc_codegen_llvm" }
+--- src/librustc_driver/lib.rs
++++ src/librustc_driver/lib.rs
+@@ -63,2 +63,3 @@
+ extern crate syntax_pos;
++extern crate rustc_codegen_llvm;
+ 
+@@ -259,2 +260,3 @@
+         let backend = match &codegen_name[..] {
++            "llvm" => rustc_codegen_llvm::__rustc_codegen_backend,
+             "metadata_only" => {
