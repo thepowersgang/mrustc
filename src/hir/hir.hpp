@@ -43,6 +43,7 @@ class ItemPath;
 
 class Publicity
 {
+    static ::std::shared_ptr<::HIR::SimplePath> none_path;
     ::std::shared_ptr<::HIR::SimplePath>    vis_path;
 
     Publicity(::std::shared_ptr<::HIR::SimplePath> p)
@@ -55,7 +56,6 @@ public:
         return Publicity({});
     }
     static Publicity new_none() {
-        static ::std::shared_ptr<::HIR::SimplePath> none_path = ::std::make_shared<HIR::SimplePath>();
         return Publicity(none_path);
     }
     static Publicity new_priv(::HIR::SimplePath p) {
@@ -65,40 +65,9 @@ public:
     bool is_global() const {
         return !vis_path;
     }
-    bool is_visible(const ::HIR::SimplePath& p) const {
-        // No path = global public
-        if( !vis_path )
-            return true;
-        // Empty simple path = full private
-        if( *vis_path == ::HIR::SimplePath() ) {
-            return false;
-        }
-        // Crate names must match
-        if(p.m_crate_name != vis_path->m_crate_name)
-            return false;
-        // `p` must be a child of vis_path
-        if(p.m_components.size() < vis_path->m_components.size())
-            return false;
-        for(size_t i = 0; i < vis_path->m_components.size(); i ++)
-        {
-            if(p.m_components[i] != vis_path->m_components[i])
-                return false;
-        }
-        return true;
-    }
+    bool is_visible(const ::HIR::SimplePath& p) const;
 
-    friend ::std::ostream& operator<<(::std::ostream& os, const Publicity& x) {
-        if( !x.vis_path ) {
-            os << "pub";
-        }
-        else if( *x.vis_path == ::HIR::SimplePath() ) {
-            os << "priv";
-        }
-        else {
-            os << "pub(" << *x.vis_path << ")";
-        }
-        return os;
-    }
+    friend ::std::ostream& operator<<(::std::ostream& os, const Publicity& x);
 };
 
 template<typename Ent>

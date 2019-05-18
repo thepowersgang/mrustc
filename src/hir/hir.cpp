@@ -17,6 +17,20 @@
 #include <mir/main_bindings.hpp>
 
 namespace HIR {
+    ::std::ostream& operator<<(::std::ostream& os, const Publicity& x)
+    {
+        if( !x.vis_path ) {
+            os << "pub";
+        }
+        else if( *x.vis_path == *Publicity::none_path ) {
+            os << "priv";
+        }
+        else {
+            os << "pub(" << *x.vis_path << ")";
+        }
+        return os;
+    }
+
     ::std::ostream& operator<<(::std::ostream& os, const ::HIR::Literal& v)
     {
         TU_MATCH(::HIR::Literal, (v), (e),
@@ -108,6 +122,31 @@ namespace HIR {
         os << ")";
         return os;
     }
+}
+
+::std::shared_ptr<::HIR::SimplePath> HIR::Publicity::none_path = ::std::make_shared<HIR::SimplePath>(::HIR::SimplePath{"#", {}});
+
+bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const
+{
+    // No path = global public
+    if( !vis_path )
+        return true;
+    // Empty simple path = full private
+    if( *vis_path == *none_path ) {
+        return false;
+    }
+    // Crate names must match
+    if(p.m_crate_name != vis_path->m_crate_name)
+        return false;
+    // `p` must be a child of vis_path
+    if(p.m_components.size() < vis_path->m_components.size())
+        return false;
+    for(size_t i = 0; i < vis_path->m_components.size(); i ++)
+    {
+        if(p.m_components[i] != vis_path->m_components[i])
+            return false;
+    }
+    return true;
 }
 
 size_t HIR::Enum::find_variant(const ::std::string& name) const

@@ -1042,7 +1042,7 @@ void RustPrinter::handle_struct(const AST::Struct& s)
     (Tuple,
         m_os << "(";
         for( const auto& i : e.ents )
-            m_os << i.m_type << ", ";
+            m_os << (i.m_is_public ? "pub " : "") << i.m_type << ", ";
         m_os << ")\n";
         print_bounds(s.params());
         m_os << indent() << ";\n";
