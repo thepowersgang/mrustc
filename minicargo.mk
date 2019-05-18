@@ -16,7 +16,7 @@ PARLEVEL ?= 1
 MINICARGO_FLAGS ?=
 
 ifneq ($(MMIR),)
-  OUTDIR_SUF := -mmir
+  OUTDIR_SUF := $(OUTDIR_SUF)-mmir
   MINICARGO_FLAGS += -Z emit-mmir
 endif
 ifneq ($(PARLEVEL),1)
@@ -27,6 +27,10 @@ OUTDIR := output$(OUTDIR_SUF)/
 
 MRUSTC := bin/mrustc
 MINICARGO := tools/bin/minicargo
+RUSTC_OUT_BIN := rustc
+ifeq ($(RUSTC_VERSION),1.29.0)
+  RUSTC_OUT_BIN := rustc_binary
+endif
 ifeq ($(RUSTC_CHANNEL),nightly)
 	RUSTCSRC := rustc-nightly-src/
 else
@@ -88,7 +92,8 @@ RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
 	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/rustc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
-	cp $(OUTDIR)rustc-build/rustc $(OUTDIR)
+#	$(RUSTC_ENV_VARS) $(MINICARGO) $(RUSTCSRC)src/librustc_codegen_llvm --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)rustc-build -L $(OUTDIR) $(MINICARGO_FLAGS)
+	cp $(OUTDIR)rustc-build/$(RUSTC_OUT_BIN) $@
 $(OUTDIR)cargo: $(MRUSTC) LIBS
 	mkdir -p $(OUTDIR)cargo-build
 	$(MINICARGO) $(RUSTCSRC)src/tools/cargo --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR)cargo-build -L $(OUTDIR) $(MINICARGO_FLAGS)
