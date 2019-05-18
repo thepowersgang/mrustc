@@ -612,18 +612,34 @@ Builder::Builder(BuildOptions opts, size_t total_targets):
     switch(target.m_type)
     {
     case PackageTarget::Type::Lib:
-        if(crate_type) {
-            *crate_type = target.m_is_proc_macro ? "proc-macro" : "rlib";
+        switch( target.m_crate_types.size() > 0
+                ? target.m_crate_types.front()
+                : (target.m_is_proc_macro
+                    ? PackageTarget::CrateType::proc_macro
+                    : PackageTarget::CrateType::rlib
+                  )
+              )
+        {
+        case PackageTarget::CrateType::proc_macro:
+            if(crate_type)  *crate_type = "proc-macro";
+            outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");    // TODO: .rlib instead
+            break;
+        case PackageTarget::CrateType::dylib:
+            //if(crate_type)  *crate_type = "dylib";
+            //outfile /= ::format("lib", target.m_name, crate_suffix, DLLSUF);
+            //break;
+        case PackageTarget::CrateType::rlib:
+            if(crate_type)  *crate_type = "rlib";
+            outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");    // TODO: .rlib instead
+            break;
+        default:
+            throw "";
         }
-        // TODO: Support dylibs (e.g. if target.m_crate_types is just dylib,
-        // emit a dylib)
-        outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");
         break;
     case PackageTarget::Type::Bin:
         if(crate_type)
             *crate_type = "bin";
         outfile /= ::format(target.m_name, EXESUF);
-        break;
         break;
     default:
         throw ::std::runtime_error("Unknown target type being built");
