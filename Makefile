@@ -283,7 +283,7 @@ output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/t
 #
 # TEST: Rust standard library and the "hello, world" run-pass test
 #
-test: output$(OUTDIR_SUF)/libstd.hir output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt $(BIN)
+test: RUSTCSRC output$(OUTDIR_SUF)/libstd.hir output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt $(BIN)
 
 #
 # TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
