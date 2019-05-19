@@ -51,7 +51,7 @@ void Resolve_Use(::AST::Crate& crate)
         // How can this happen?
         DEBUG("Relative " << path);
         // EVIL HACK: If the current module is an anon module, refer to the parent
-        if( base_path.nodes().size() > 0 && base_path.nodes().back().name()[0] == '#' ) {
+        if( base_path.nodes().size() > 0 && base_path.nodes().back().name().c_str()[0] == '#' ) {
             AST::Path   np("", {});
             for( unsigned int i = 0; i < base_path.nodes().size() - 1; i ++ )
                 np.nodes().push_back( base_path.nodes()[i] );
@@ -65,7 +65,7 @@ void Resolve_Use(::AST::Crate& crate)
     (Self,
         DEBUG("Self " << path);
         // EVIL HACK: If the current module is an anon module, refer to the parent
-        if( base_path.nodes().size() > 0 && base_path.nodes().back().name()[0] == '#' ) {
+        if( base_path.nodes().size() > 0 && base_path.nodes().back().name().c_str()[0] == '#' ) {
             AST::Path   np("", {});
             for( unsigned int i = 0; i < base_path.nodes().size() - 1; i ++ )
                 np.nodes().push_back( base_path.nodes()[i] );
@@ -86,7 +86,7 @@ void Resolve_Use(::AST::Crate& crate)
         // TODO: Do this in a cleaner manner.
         unsigned int n_anon = 0;
         // Skip any anon modules in the way (i.e. if the current module is an anon, go to the parent)
-        while( base_path.nodes().size() > n_anon && base_path.nodes()[ base_path.nodes().size()-1-n_anon ].name()[0] == '#' )
+        while( base_path.nodes().size() > n_anon && base_path.nodes()[ base_path.nodes().size()-1-n_anon ].name().c_str()[0] == '#' )
             n_anon ++;
         for( unsigned int i = 0; i < base_path.nodes().size() - e.count - n_anon; i ++ )
             np.nodes().push_back( base_path.nodes()[i] );
@@ -252,13 +252,13 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
 ::AST::Path::Bindings Resolve_Use_GetBinding_Mod(
         const Span& span,
         const ::AST::Crate& crate, const ::AST::Path& source_mod_path, const ::AST::Module& mod,
-        const ::std::string& des_item_name,
+        const RcString& des_item_name,
         ::std::span< const ::AST::Module* > parent_modules
     )
 {
     ::AST::Path::Bindings   rv;
     // If the desired item is an anon module (starts with #) then parse and index
-    if( des_item_name.size() > 0 && des_item_name[0] == '#' ) {
+    if( des_item_name.size() > 0 && des_item_name.c_str()[0] == '#' ) {
         unsigned int idx = 0;
         if( ::std::sscanf(des_item_name.c_str(), "#%u", &idx) != 1 ) {
             BUG(span, "Invalid anon path segment '" << des_item_name << "'");
@@ -282,6 +282,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                 ),
             (MacroInv,
                 BUG(span, "Hit MacroInv in use resolution");
+                ),
+            (Macro,
+                //rv.macro = ::AST::PathBinding_Macro::make_MacroRules({nullptr, e.get()});
                 ),
             (Use,
                 continue; // Skip for now
@@ -479,7 +482,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
         return rv;
     }
 
-    if( mod.path().nodes().size() > 0 && mod.path().nodes().back().name()[0] == '#' ) {
+    if( mod.path().nodes().size() > 0 && mod.path().nodes().back().name().c_str()[0] == '#' ) {
         assert( parent_modules.size() > 0 );
         return Resolve_Use_GetBinding_Mod(span, crate, source_mod_path, *parent_modules.back(), des_item_name, parent_modules.subspan(0, parent_modules.size()-1));
     }
@@ -754,8 +757,8 @@ namespace {
     if( path.m_class.is_Absolute() && path.m_class.as_Absolute().crate != "" ) {
         const auto& path_abs = path.m_class.as_Absolute();
 
-        ASSERT_BUG(span, crate.m_extern_crates.count(path_abs.crate), "Crate '" << path_abs.crate << "' not loaded");
-        return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate ), 0);
+        ASSERT_BUG(span, crate.m_extern_crates.count(path_abs.crate.c_str()), "Crate '" << path_abs.crate << "' not loaded");
+        return Resolve_Use_GetBinding__ext(span, crate, path,  crate.m_extern_crates.at( path_abs.crate.c_str() ), 0);
     }
 
     ::AST::Path::Bindings   rv;

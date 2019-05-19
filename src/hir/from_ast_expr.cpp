@@ -332,16 +332,16 @@ struct LowerHIR_ExprNode_Visitor:
             break;
         }
 
-        // TODO: Iterate the constructed loop and determine if there are any `break` statements pointing to it
+        // Iterate the constructed loop and determine if there are any `break` statements pointing to it
         {
             struct LoopVisitor:
                 public ::HIR::ExprVisitorDef
             {
-                const ::std::string& top_label;
+                const RcString& top_label;
                 bool    top_is_broken;
-                ::std::vector< const ::std::string*>   name_stack;
+                ::std::vector< const RcString*>   name_stack;
 
-                LoopVisitor(const ::std::string& top_label):
+                LoopVisitor(const RcString& top_label):
                     top_label(top_label),
                     top_is_broken(false),
                     name_stack()

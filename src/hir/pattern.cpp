@@ -154,8 +154,9 @@ namespace {
             rv.push_back( pat.clone() );
         return rv;
     }
-    ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> > clone_pat_fields(const ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> >& pats) {
-        ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> >    rv;
+    typedef ::std::vector< ::std::pair< RcString, ::HIR::Pattern> > pat_fields_t;
+    pat_fields_t clone_pat_fields(const pat_fields_t& pats) {
+        pat_fields_t    rv;
         rv.reserve( pats.size() );
         for(const auto& field : pats)
             rv.push_back( ::std::make_pair(field.first, field.second.clone()) );

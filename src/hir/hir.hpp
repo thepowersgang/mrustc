@@ -192,7 +192,7 @@ struct TypeAlias
 };
 
 typedef ::std::vector< VisEnt<::HIR::TypeRef> > t_tuple_fields;
-typedef ::std::vector< ::std::pair< ::std::string, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
+typedef ::std::vector< ::std::pair< RcString, VisEnt<::HIR::TypeRef> > >   t_struct_fields;
 
 /// Cache of the state of various language traits on an enum/struct
 struct TraitMarkings
@@ -258,7 +258,7 @@ class Enum
 {
 public:
     struct DataVariant {
-        ::std::string   name;
+        RcString   name;
         bool is_struct; // Indicates that the variant does not show up in the value namespace
         ::HIR::TypeRef  type;
     };
@@ -269,7 +269,7 @@ public:
         Usize, U8, U16, U32, U64,
     };
     struct ValueVariant {
-        ::std::string   name;
+        RcString   name;
         ::HIR::ExprPtr  expr;
         // TODO: Signed.
         uint64_t val;
@@ -290,7 +290,7 @@ public:
     size_t num_variants() const {
         return (m_data.is_Data() ? m_data.as_Data().size() : m_data.as_Value().variants.size());
     }
-    size_t find_variant(const ::std::string& ) const;
+    size_t find_variant(const RcString& ) const;
 
     /// Returns true if this enum is a C-like enum (has values only)
     bool is_value() const;
@@ -343,7 +343,7 @@ public:
 struct AssociatedType
 {
     bool    is_sized;
-    ::std::string   m_lifetime_bound;
+    LifetimeRef m_lifetime_bound;
     ::std::vector< ::HIR::TraitPath>    m_trait_bounds;
     ::HIR::TypeRef  m_default;
 };
@@ -356,23 +356,25 @@ class Trait
 {
 public:
     GenericParams   m_params;
-    ::std::string   m_lifetime;
+    LifetimeRef m_lifetime;
     ::std::vector< ::HIR::TraitPath >  m_parent_traits;
 
     bool    m_is_marker;    // aka OIBIT
 
-    ::std::unordered_map< ::std::string, AssociatedType >   m_types;
-    ::std::unordered_map< ::std::string, TraitValueItem >   m_values;
+    ::std::unordered_map< RcString, AssociatedType >   m_types;
+    ::std::unordered_map< RcString, TraitValueItem >   m_values;
 
     // Indexes into the vtable for each present method and value
-    ::std::unordered_multimap< ::std::string, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
+    ::std::unordered_multimap< RcString, ::std::pair<unsigned int,::HIR::GenericPath> > m_value_indexes;
     // Indexes in the vtable parameter list for each associated type
-    ::std::unordered_map< ::std::string, unsigned int > m_type_indexes;
+    ::std::unordered_map< RcString, unsigned int > m_type_indexes;
 
     // Flattend set of parent traits (monomorphised and associated types fixed)
     ::std::vector< ::HIR::TraitPath >  m_all_parent_traits;
+    // VTable path
+    ::HIR::SimplePath   m_vtable_path;
 
-    Trait( GenericParams gps, ::std::string lifetime, ::std::vector< ::HIR::TraitPath> parents):
+    Trait( GenericParams gps, LifetimeRef lifetime, ::std::vector< ::HIR::TraitPath> parents):
         m_params( mv$(gps) ),
         m_lifetime( mv$(lifetime) ),
         m_parent_traits( mv$(parents) ),
@@ -387,11 +389,11 @@ public:
     ::std::vector< ::HIR::SimplePath>   m_traits;
 
     // Contains all values and functions (including type constructors)
-    ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
+    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
     // Contains types, traits, and modules
-    ::std::unordered_map< ::std::string, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
+    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
 
-    ::std::vector< ::std::pair<::std::string, Static> >  m_inline_statics;
+    ::std::vector< ::std::pair<RcString, Static> >  m_inline_statics;
 
     Module() {}
     Module(const Module&) = delete;
@@ -436,8 +438,8 @@ public:
     ::HIR::GenericParams    m_params;
     ::HIR::TypeRef  m_type;
 
-    ::std::map< ::std::string, VisImplEnt< ::HIR::Function> >   m_methods;
-    ::std::map< ::std::string, VisImplEnt< ::HIR::Constant> >   m_constants;
+    ::std::map< RcString, VisImplEnt< ::HIR::Function> >   m_methods;
+    ::std::map< RcString, VisImplEnt< ::HIR::Constant> >   m_constants;
 
     ::HIR::SimplePath   m_src_module;
 
@@ -460,11 +462,11 @@ public:
     ::HIR::PathParams   m_trait_args;
     ::HIR::TypeRef  m_type;
 
-    ::std::map< ::std::string, ImplEnt< ::HIR::Function> > m_methods;
-    ::std::map< ::std::string, ImplEnt< ::HIR::Constant> > m_constants;
-    ::std::map< ::std::string, ImplEnt< ::HIR::Static> > m_statics;
+    ::std::map< RcString, ImplEnt< ::HIR::Function> > m_methods;
+    ::std::map< RcString, ImplEnt< ::HIR::Constant> > m_constants;
+    ::std::map< RcString, ImplEnt< ::HIR::Static> > m_statics;
 
-    ::std::map< ::std::string, ImplEnt< ::HIR::TypeRef> > m_types;
+    ::std::map< RcString, ImplEnt< ::HIR::TypeRef> > m_types;
 
     ::HIR::SimplePath   m_src_module;
 
@@ -512,7 +514,7 @@ class ProcMacro
 {
 public:
     // Name of the macro
-    ::std::string   name;
+    RcString   name;
     // Path to the handler
     ::HIR::SimplePath   path;
     // A list of attributes to hand to the handler
@@ -521,7 +523,7 @@ public:
 class Crate
 {
 public:
-    ::std::string   m_crate_name;
+    RcString   m_crate_name;
 
     Module  m_root_module;
 
@@ -532,7 +534,7 @@ public:
     ::std::multimap< ::HIR::SimplePath, ::HIR::MarkerImpl > m_marker_impls;
 
     /// Macros exported by this crate
-    ::std::unordered_map< ::std::string, ::MacroRulesPtr >  m_exported_macros;
+    ::std::unordered_map< RcString, ::MacroRulesPtr >  m_exported_macros;
     /// Procedural macros presented
     ::std::vector< ::HIR::ProcMacro>    m_proc_macros;
 
@@ -540,7 +542,7 @@ public:
     ::std::unordered_map< ::std::string, ::HIR::SimplePath> m_lang_items;
 
     /// Referenced crates
-    ::std::unordered_map< ::std::string, ExternCrate>  m_ext_crates;
+    ::std::unordered_map< RcString, ExternCrate>  m_ext_crates;
     /// Referenced system libraries
     ::std::vector<ExternLibrary>    m_ext_libs;
     /// Extra paths for the linker
@@ -548,7 +550,7 @@ public:
 
     /// Method called to populate runtime state after deserialisation
     /// See hir/crate_post_load.cpp
-    void post_load_update(const ::std::string& loaded_name);
+    void post_load_update(const RcString& loaded_name);
 
     const ::HIR::SimplePath& get_lang_item_path(const Span& sp, const char* name) const;
     const ::HIR::SimplePath& get_lang_item_path_opt(const char* name) const;

@@ -27,7 +27,10 @@ class TokenStream;
 class ExpandProcMacro
 {
 public:
-    virtual ::std::unique_ptr<TokenStream>  expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) = 0;
+    virtual ::std::unique_ptr<TokenStream>  expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) = 0;
+    virtual ::std::unique_ptr<TokenStream>  expand_ident(const Span& sp, const AST::Crate& crate, const RcString& ident, const TokenTree& tt, AST::Module& mod) {
+        ERROR(sp, E0000, "macro doesn't take an identifier");
+    }
 };
 
 struct MacroDef;

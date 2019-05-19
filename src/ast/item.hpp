@@ -15,7 +15,7 @@ namespace AST {
 template <typename T>
 struct Named
 {
-    ::std::string   name;
+    RcString   name;
     T   data;
     bool    is_pub;
 
@@ -25,7 +25,7 @@ struct Named
     Named(Named&&) = default;
     Named(const Named&) = default;
     Named& operator=(Named&&) = default;
-    Named(::std::string name, T data, bool is_pub):
+    Named(RcString name, T data, bool is_pub):
         name( ::std::move(name) ),
         data( ::std::move(data) ),
         is_pub( is_pub )

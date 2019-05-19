@@ -19,7 +19,6 @@ namespace {
         if( const auto* tep = unsized_ty.m_data.opt_TraitObject() )
         {
             const auto& trait_path = tep->m_trait;
-            const auto& trait = *tep->m_trait.m_trait_ptr;
 
             if( trait_path.m_path.m_path == ::HIR::SimplePath() )
             {
@@ -27,8 +26,10 @@ namespace {
             }
             else
             {
-                auto vtable_ty_spath = trait_path.m_path.m_path;
-                vtable_ty_spath.m_components.back() += "#vtable";
+                const auto& trait = *tep->m_trait.m_trait_ptr;
+
+                const auto& vtable_ty_spath = trait.m_vtable_path;
+                MIR_ASSERT(state, vtable_ty_spath != ::HIR::SimplePath(), "Trait with no vtable - " << trait_path);
                 const auto& vtable_ref = state.m_resolve.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
                 // Copy the param set from the trait in the trait object
                 ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();

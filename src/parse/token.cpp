@@ -52,6 +52,11 @@ Token::Token(enum eTokenType type):
     m_type(type)
 {
 }
+Token::Token(enum eTokenType type, RcString str):
+    m_type(type),
+    m_data(Data::make_IString(mv$(str)))
+{
+}
 Token::Token(enum eTokenType type, ::std::string str):
     m_type(type),
     m_data(Data::make_String(mv$(str)))
@@ -163,6 +168,7 @@ Token::Token(const Token& t):
     assert( t.m_data.tag() != Data::TAGDEAD );
     TU_MATCH(Data, (t.m_data), (e),
     (None,  ),
+    (IString,   m_data = Data::make_IString(e); ),
     (String,    m_data = Data::make_String(e); ),
     (Integer,   m_data = Data::make_Integer(e);),
     (Float, m_data = Data::make_Float(e);),
@@ -177,6 +183,9 @@ Token Token::clone() const
     assert( m_data.tag() != Data::TAGDEAD );
     TU_MATCH(Data, (m_data), (e),
     (None,
+        ),
+    (IString,
+        rv.m_data = Data::make_IString(e);
         ),
     (String,
         rv.m_data = Data::make_String(e);
@@ -333,8 +342,8 @@ struct EscapedString {
     case TOK_INTERPOLATED_IDENT: return "/*:ident*/";
     case TOK_INTERPOLATED_VIS: return "/*:vis*/";
     // Value tokens
-    case TOK_IDENT:     return m_data.as_String();
-    case TOK_LIFETIME:  return "'" + m_data.as_String();
+    case TOK_IDENT:     return m_data.as_IString().c_str();
+    case TOK_LIFETIME:  return FMT("'" << m_data.as_IString().c_str());
     case TOK_INTEGER:
         if( m_data.as_Integer().m_datatype == CORETYPE_ANY ) {
             return FMT(m_data.as_Integer().m_intval);

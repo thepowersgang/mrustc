@@ -53,7 +53,7 @@ struct Context
 
     struct Binding
     {
-        ::std::string   name;
+        RcString    name;
         ::HIR::TypeRef  ty;
         //unsigned int ivar;
     };
@@ -79,7 +79,7 @@ struct Context
         ::HIR::SimplePath   trait;
         ::HIR::PathParams   params;
         ::HIR::TypeRef  impl_ty;
-        ::std::string   name;   // if "", no type is used (and left is ignored) - Just does trait selection
+        RcString    name;   // if "", no type is used (and left is ignored) - Just does trait selection
 
         // HACK: operators are special - the result when both types are primitives is ALWAYS the lefthand side
         bool    is_operator;
@@ -252,7 +252,7 @@ struct Context
     void handle_pattern_direct_inner(const Span& sp, ::HIR::Pattern& pat, const ::HIR::TypeRef& type);
     void add_binding_inner(const Span& sp, const ::HIR::PatternBinding& pb, ::HIR::TypeRef type);
 
-    void add_var(const Span& sp, unsigned int index, const ::std::string& name, ::HIR::TypeRef type);
+    void add_var(const Span& sp, unsigned int index, const RcString& name, ::HIR::TypeRef type);
     const ::HIR::TypeRef& get_var(const Span& sp, unsigned int idx) const;
 
     // - Add a revisit entry
@@ -304,7 +304,7 @@ namespace {
                     ::HIR::GenericPath  type_trait_path;
                     ASSERT_BUG(sp, be.trait.m_trait_ptr, "Trait pointer not set in " << be.trait.m_path);
                     // TODO: Store the source trait for this bound in the the bound list?
-                    if( !context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path) )
+                    if( !context.m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first.c_str(),  type_trait_path) )
                         BUG(sp, "Couldn't find associated type " << assoc.first << " in trait " << real_trait);
 
                     auto other_ty = monomorphise_type_with(sp, assoc.second, monomorph_cb, true);
@@ -1480,7 +1480,7 @@ namespace {
             }
 
             // - Search in-scope trait list for traits that provide a method of this name
-            const ::std::string& method_name = node.m_method;
+            const RcString& method_name = node.m_method;
             ::HIR::t_trait_list    possible_traits;
             unsigned int max_num_params = 0;
             for(const auto& trait_ref : ::reverse(m_traits))
@@ -2772,7 +2772,7 @@ namespace {
             // - If running in a mode after stablise (before defaults), fall
             // back to trait if the inherent is still ambigious.
             ::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
-            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method,  possible_methods);
+            unsigned int deref_count = this->context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, ty, node.m_method.c_str(),  possible_methods);
         try_again:
             if( deref_count != ~0u )
             {
@@ -3003,6 +3003,7 @@ namespace {
             const auto* current_ty = &node.m_value->m_res_type;
             ::std::vector< ::HIR::TypeRef>  deref_res_types;
 
+            // TODO: autoderef_find_field?
             do {
                 const auto& ty = this->context.m_ivars.get_type(*current_ty);
                 if( ty.m_data.is_Infer() ) {
@@ -3013,7 +3014,7 @@ namespace {
                     DEBUG("Hit unbound path, returning early");
                     return ;
                 }
-                if( this->context.m_resolve.find_field(node.span(), ty, field_name, out_type) ) {
+                if( this->context.m_resolve.find_field(node.span(), ty, field_name.c_str(), out_type) ) {
                     this->context.equate_types(node.span(), node.m_res_type, out_type);
                     break;
                 }
@@ -5439,7 +5440,7 @@ void Context::possible_equate_type_disable_strong(const Span& sp, unsigned int i
     ent.force_disable = true;
 }
 
-void Context::add_var(const Span& sp, unsigned int index, const ::std::string& name, ::HIR::TypeRef type) {
+void Context::add_var(const Span& sp, unsigned int index, const RcString& name, ::HIR::TypeRef type) {
     DEBUG("(" << index << " " << name << " : " << type << ")");
     assert(index != ~0u);
     if( m_bindings.size() <= index )
@@ -6923,7 +6924,7 @@ namespace {
 
                 DEBUG("Check <" << t << ">::" << node.m_method);
                 ::std::vector<::std::pair<TraitResolution::AutoderefBorrow, ::HIR::Path>> possible_methods;
-                unsigned int deref_count = context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, t, node.m_method,  possible_methods);
+                unsigned int deref_count = context.m_resolve.autoderef_find_method(node.span(), node.m_traits, node.m_trait_param_ivars, t, node.m_method.c_str(),  possible_methods);
                 DEBUG("> deref_count = " << deref_count << ", " << possible_methods);
                 if( !t.m_data.is_Infer() && possible_methods.empty() )
                 {

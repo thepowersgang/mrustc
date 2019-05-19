@@ -49,13 +49,13 @@ public:
         {
             if( attr.items()[i].name() == "attributes") {
                 for(const auto& si : attr.items()[i].items()) {
-                    attributes.push_back( si.name() );
+                    attributes.push_back( si.name().c_str() );
                 }
             }
         }
 
         // TODO: Store attributes for later use.
-        crate.m_proc_macros.push_back(AST::ProcMacroDef { FMT("derive#" << trait_name), path, mv$(attributes) });
+        crate.m_proc_macros.push_back(AST::ProcMacroDef { RcString::new_interned(FMT("derive#" << trait_name)), path, mv$(attributes) });
     }
 };
 
@@ -100,7 +100,7 @@ void Expand_ProcMacro(::AST::Crate& crate)
     {
         ::AST::ExprNode_StructLiteral::t_values   desc_vals;
         // `name: "foo",`
-        desc_vals.push_back({ {}, "name", NEWNODE(_String,  desc.name) });
+        desc_vals.push_back({ {}, "name", NEWNODE(_String,  desc.name.c_str()) });
         // `handler`: ::foo
         desc_vals.push_back({ {}, "handler", NEWNODE(_NamedValue, AST::Path(desc.path)) });
 
@@ -211,7 +211,7 @@ public:
     void send_float(eCoreType ct, double v);
     //void send_fragment();
 
-    bool attr_is_used(const ::std::string& n) const {
+    bool attr_is_used(const RcString& n) const {
         return ::std::find(m_proc_macro_desc.attributes.begin(), m_proc_macro_desc.attributes.end(), n) != m_proc_macro_desc.attributes.end();
     }
 
@@ -229,7 +229,7 @@ private:
     uint64_t recv_v128u();
 };
 
-ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, const ::std::vector<::std::string>& mac_path)
+ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path)
 {
     // 1. Locate macro in HIR list
     const auto& crate_name = mac_path.front();
@@ -745,7 +745,7 @@ namespace {
         }
     };
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<::std::string>& mac_path, const ::std::string& item_name, const ::AST::Struct& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const ::std::string& item_name, const ::AST::Struct& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
@@ -757,7 +757,7 @@ namespace {
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<::std::string>& mac_path, const ::std::string& item_name, const ::AST::Enum& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const ::std::string& item_name, const ::AST::Enum& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
@@ -769,7 +769,7 @@ namespace {
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<::std::string>& mac_path, const ::std::string& item_name, const ::AST::Union& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const ::std::string& item_name, const ::AST::Union& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);

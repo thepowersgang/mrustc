@@ -15,14 +15,12 @@
 class CExpander_assert:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         Token   tok;
 
         auto lex = TTStream(sp, tt);
         lex.parse_state().module = &mod;
-        if( ident != "" )
-            ERROR(sp, E0000, "format_args! doesn't take an ident");
 
         // assertion condition
         auto n = Parse_Expr0(lex);
@@ -39,7 +37,7 @@ class CExpander_assert:
             toks.push_back( Token(InterpolatedFragment(InterpolatedFragment::EXPR, n.release())) );
             toks.push_back( Token(TOK_BRACE_OPEN) );
             // User-provided message
-            toks.push_back( Token(TOK_IDENT, "panic") );
+            toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic")) );
             toks.push_back( Token(TOK_EXCLAM) );
             toks.push_back( Token(TOK_PAREN_OPEN) );
             while(lex.lookahead(0) != TOK_EOF )
@@ -63,7 +61,7 @@ class CExpander_assert:
 
             toks.push_back( Token(TOK_BRACE_OPEN) );
             // Auto-generated message
-            toks.push_back( Token(TOK_IDENT, "panic") );
+            toks.push_back( Token(TOK_IDENT, RcString::new_interned("panic")) );
             toks.push_back( Token(TOK_EXCLAM) );
             toks.push_back( Token(TOK_PAREN_OPEN) );
             toks.push_back( Token(TOK_STRING, ss.str()) );

@@ -56,7 +56,7 @@ void ExpandDecorator::unexpected(const Span& sp, const AST::Attribute& mi, const
 void Expand_Attr(const Span& sp, const ::AST::Attribute& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
     for( auto& d : g_decorators ) {
-        if( d.first == a.name() ) {
+        if( a.name() == d.first ) {
             DEBUG("#[" << d.first << "] " << (int)d.second->stage() << "-" << (int)stage);
             if( d.second->stage() == stage ) {
                 f(sp, *d.second, a);
@@ -94,7 +94,7 @@ void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& c
 
 ::std::unique_ptr<TokenStream> Expand_Macro_Inner(
     const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
-    Span mi_span, const ::std::string& name, const ::std::string& input_ident, TokenTree& input_tt
+    Span mi_span, const RcString& name, const RcString& input_ident, TokenTree& input_tt
     )
 {
     if( name == "" ) {
@@ -105,7 +105,10 @@ void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& c
     {
         if( name == m.first )
         {
-            auto e = m.second->expand(mi_span, crate, input_ident, input_tt, mod);
+            auto e = input_ident == ""
+                ? m.second->expand(mi_span, crate, input_tt, mod)
+                : m.second->expand_ident(mi_span, crate, input_ident, input_tt, mod)
+                ;
             return e;
         }
     }
@@ -152,7 +155,7 @@ void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& c
 }
 ::std::unique_ptr<TokenStream> Expand_Macro(
     const ::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Module& mod,
-    Span mi_span, const ::std::string& name, const ::std::string& input_ident, TokenTree& input_tt
+    Span mi_span, const RcString& name, const RcString& input_ident, TokenTree& input_tt
     )
 {
     auto rv = Expand_Macro_Inner(crate, modstack, mod, mi_span, name, input_ident, input_tt);
@@ -348,7 +351,7 @@ struct CExpandExpr:
     ::std::unique_ptr<::AST::ExprNode> replacement;
 
     // Stack of `try { ... }` blocks (the string is the loop label for the desugaring)
-    ::std::vector< ::std::string>   m_try_stack;
+    ::std::vector<RcString>   m_try_stack;
     unsigned m_try_index = 0;
 
     AST::ExprNode_Block*    current_block = nullptr;
@@ -559,7 +562,7 @@ struct CExpandExpr:
         // }
         // ```
         // NOTE: MIR lowering and HIR typecheck need to know to skip these (OR resolve should handle naming all loop blocks)
-        m_try_stack.push_back(FMT("#try" << m_try_index++));
+        m_try_stack.push_back(RcString::new_interned(FMT("#try" << m_try_index++)));
         this->visit_nodelete(node, node.m_inner);
         auto loop_name = mv$(m_try_stack.back());
         m_try_stack.pop_back();
@@ -858,7 +861,7 @@ struct CExpandExpr:
                 nullptr,
                 ::AST::ExprNodeP(new ::AST::ExprNode_Flow(
                     (m_try_stack.empty() ? ::AST::ExprNode_Flow::RETURN : ::AST::ExprNode_Flow::BREAK),   // NOTE: uses `break 'tryblock` instead of return if in a try block.
-                    (m_try_stack.empty() ? "" : m_try_stack.back()),
+                    (m_try_stack.empty() ? RcString("") : m_try_stack.back()),
                     ::AST::ExprNodeP(new ::AST::ExprNode_CallPath(
                         ::AST::Path(path_Try_from_error),
                         ::make_vec1(
@@ -1415,7 +1418,7 @@ void Expand(::AST::Crate& crate)
     for( auto& a : crate.m_attrs.m_items )
     {
         for( auto& d : g_decorators ) {
-            if( d.first == a.name() && d.second->stage() == AttrStage::Pre ) {
+            if( a.name() == d.first && d.second->stage() == AttrStage::Pre ) {
                 //d.second->handle(a, crate, ::AST::Path(), crate.m_root_module, crate.m_root_module);
             }
         }

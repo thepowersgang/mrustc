@@ -89,10 +89,10 @@ void Expand_TestHarness(::AST::Crate& crate)
         auto desc_expr = NEWNODE(_StructLiteral,  ::AST::Path("test", { ::AST::PathNode("TestDesc")}), nullptr, mv$(desc_vals));
 
         ::AST::ExprNode_StructLiteral::t_values   descandfn_vals;
-        descandfn_vals.push_back({ {}, ::std::string("desc"), mv$(desc_expr) });
+        descandfn_vals.push_back({ {}, RcString::new_interned("desc"), mv$(desc_expr) });
 
         auto test_type_var_name  = test.is_benchmark ? "StaticBenchFn" : "StaticTestFn";
-        descandfn_vals.push_back({ {}, ::std::string("testfn"), NEWNODE(_CallPath,
+        descandfn_vals.push_back({ {}, RcString::new_interned("testfn"), NEWNODE(_CallPath,
                         ::AST::Path("test", { ::AST::PathNode(test_type_var_name) }),
                         ::make_vec1( NEWNODE(_NamedValue, AST::Path(test.path)) )
                         ) });

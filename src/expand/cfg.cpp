@@ -60,7 +60,7 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
     }
     else if( mi.has_string() ) {
         // Equaliy
-        auto its = g_cfg_values.equal_range(mi.name());
+        auto its = g_cfg_values.equal_range(mi.name().c_str());
         for(auto it = its.first; it != its.second; ++it)
         {
             DEBUG(""<<mi.name()<<": '"<<it->second<<"' == '"<<mi.string()<<"'");
@@ -70,7 +70,7 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
         if( its.first != its.second )
             return false;
 
-        auto it2 = g_cfg_value_fcns.find(mi.name());
+        auto it2 = g_cfg_value_fcns.find(mi.name().c_str());
         if(it2 != g_cfg_value_fcns.end() )
         {
             DEBUG(""<<mi.name()<<": ('"<<mi.string()<<"')?");
@@ -82,7 +82,7 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
     }
     else {
         // Flag
-        auto it = g_cfg_flags.find(mi.name());
+        auto it = g_cfg_flags.find(mi.name().c_str());
         return (it != g_cfg_flags.end());
     }
     BUG(sp, "Fell off the end of check_cfg");
@@ -91,12 +91,8 @@ bool check_cfg(const Span& sp, const ::AST::Attribute& mi) {
 class CCfgExpander:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const ::AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        if( ident != "" ) {
-            ERROR(sp, E0000, "cfg! doesn't take an identifier");
-        }
-
         auto lex = TTStream(sp, tt);
         auto attrs = Parse_MetaItem(lex);
         DEBUG("cfg!() - " << attrs);

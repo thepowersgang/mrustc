@@ -97,7 +97,7 @@ bool StaticTraitResolve::find_impl(
     auto cb_ident = [](const ::HIR::TypeRef&ty)->const ::HIR::TypeRef& { return ty; };
 
     static ::HIR::PathParams    null_params;
-    static ::std::map< ::std::string, ::HIR::TypeRef>    null_assoc;
+    static ::std::map<RcString, ::HIR::TypeRef>    null_assoc;
 
     if( !dont_handoff_to_specialised ) {
         if( trait_path == m_lang_Copy ) {
@@ -159,7 +159,7 @@ bool StaticTraitResolve::find_impl(
             {
                 trait_params = &null_params;
             }
-            ::std::map< ::std::string, ::HIR::TypeRef>  assoc;
+            ::std::map< RcString, ::HIR::TypeRef>  assoc;
             assoc.insert( ::std::make_pair("Output", e.m_rettype->clone()) );
             return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
         }
@@ -200,7 +200,7 @@ bool StaticTraitResolve::find_impl(
             case ::HIR::ExprNode_Closure::Class::Shared:
                 break;
             }
-            ::std::map< ::std::string, ::HIR::TypeRef>  assoc;
+            ::std::map< RcString, ::HIR::TypeRef>  assoc;
             assoc.insert( ::std::make_pair("Output", e->m_rettype->clone()) );
             return found_cb( ImplRef(type.clone(), trait_params->clone(), mv$(assoc)), false );
         }
@@ -223,7 +223,7 @@ bool StaticTraitResolve::find_impl(
             if( trait_path == mt.m_path ) {
                 if( !trait_params || mt.m_params == *trait_params )
                 {
-                    static ::std::map< ::std::string, ::HIR::TypeRef>  types;
+                    static ::std::map< RcString, ::HIR::TypeRef>  types;
                     return found_cb( ImplRef(&type, &mt.m_params, &types), false );
                 }
             }
@@ -235,7 +235,7 @@ bool StaticTraitResolve::find_impl(
         bool is_supertrait = trait_params && this->find_named_trait_in_trait(sp, trait_path,*trait_params, *e.m_trait.m_trait_ptr, e.m_trait.m_path.m_path,e.m_trait.m_path.m_params, type,
             [&](const auto& i_params, const auto& i_assoc) {
                 // Invoke callback with a proper ImplRef
-                ::std::map< ::std::string, ::HIR::TypeRef> assoc_clone;
+                ::std::map< RcString, ::HIR::TypeRef> assoc_clone;
                 for(const auto& e : i_assoc)
                     assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
                 // HACK! Just add all the associated type bounds (only inserted if not already present)
@@ -265,7 +265,7 @@ bool StaticTraitResolve::find_impl(
             bool is_supertrait = trait_params && this->find_named_trait_in_trait(sp, trait_path,*trait_params, *trait.m_trait_ptr, trait.m_path.m_path,trait.m_path.m_params, type,
                 [&](const auto& i_params, const auto& i_assoc) {
                     // Invoke callback with a proper ImplRef
-                    ::std::map< ::std::string, ::HIR::TypeRef> assoc_clone;
+                    ::std::map< RcString, ::HIR::TypeRef> assoc_clone;
                     for(const auto& e : i_assoc)
                         assoc_clone.insert( ::std::make_pair(e.first, e.second.clone()) );
                     // HACK! Just add all the associated type bounds (only inserted if not already present)
@@ -312,7 +312,7 @@ bool StaticTraitResolve::find_impl(
                     {
                         if( &b_params_mono == &params_mono_o || ::std::any_of(bound.m_type_bounds.begin(), bound.m_type_bounds.end(), [&](const auto& x){ return monomorphise_type_needed(x.second); }) )
                         {
-                            ::std::map< ::std::string, ::HIR::TypeRef>  atys;
+                            ::std::map< RcString, ::HIR::TypeRef>  atys;
                             if( ! bound.m_type_bounds.empty() )
                             {
                                 for(const auto& tb : bound.m_type_bounds)
@@ -722,7 +722,7 @@ bool StaticTraitResolve::find_impl__check_crate_raw(
                     const ::HIR::TypeRef& exp = assoc_bound.second;
 
                     ::HIR::GenericPath  aty_src_trait;
-                    trait_contains_type(sp, b_tp_mono.m_path, *e.trait.m_trait_ptr, aty_name, aty_src_trait);
+                    trait_contains_type(sp, b_tp_mono.m_path, *e.trait.m_trait_ptr, aty_name.c_str(), aty_src_trait);
 
                     bool rv = false;
                     if( b_ty_mono.m_data.is_Generic() && (b_ty_mono.m_data.as_Generic().binding >> 8) == 2 ) {
@@ -1241,7 +1241,7 @@ bool StaticTraitResolve::expand_associated_types__UfcsKnown(const Span& sp, ::HI
 
     // - Search for the actual trait containing this associated type
     ::HIR::GenericPath  trait_path;
-    if( !this->trait_contains_type(sp, e2.trait, this->m_crate.get_trait_by_path(sp, e2.trait.m_path), e2.item, trait_path) )
+    if( !this->trait_contains_type(sp, e2.trait, this->m_crate.get_trait_by_path(sp, e2.trait.m_path), e2.item.c_str(), trait_path) )
         BUG(sp, "Cannot find associated type " << e2.item << " anywhere in trait " << e2.trait);
     //e2.trait = mv$(trait_path);
 
@@ -1382,7 +1382,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
         const ::HIR::SimplePath& des, const ::HIR::PathParams& des_params,
         const ::HIR::Trait& trait_ptr, const ::HIR::SimplePath& trait_path, const ::HIR::PathParams& pp,
         const ::HIR::TypeRef& target_type,
-        ::std::function<void(const ::HIR::PathParams&, ::std::map< ::std::string, ::HIR::TypeRef>)> callback
+        ::std::function<void(const ::HIR::PathParams&, ::std::map<RcString, ::HIR::TypeRef>)> callback
     ) const
 {
     TRACE_FUNCTION_F(des << des_params << " from " << trait_path << pp);
@@ -1423,7 +1423,7 @@ bool StaticTraitResolve::find_named_trait_in_trait(const Span& sp,
 
     return false;
 }
-bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const ::std::string& name,  ::HIR::GenericPath& out_path) const
+bool StaticTraitResolve::trait_contains_type(const Span& sp, const ::HIR::GenericPath& trait_path, const ::HIR::Trait& trait_ptr, const char* name,  ::HIR::GenericPath& out_path) const
 {
     TRACE_FUNCTION_FR("name="<<name << ", trait=" << trait_path, out_path);
     auto it = trait_ptr.m_types.find(name);

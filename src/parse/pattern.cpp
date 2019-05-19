@@ -46,7 +46,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     if( tok.type() == TOK_IDENT && lex.lookahead(0) == TOK_EXCLAM )
     {
         lex.getToken();
-        return AST::Pattern( AST::Pattern::TagMacro(), lex.end_span(ps), box$(Parse_MacroInvocation(ps, tok.str(), lex)));
+        return AST::Pattern( AST::Pattern::TagMacro(), lex.end_span(ps), box$(Parse_MacroInvocation(ps, tok.istr(), lex)));
     }
     if( tok.type() == TOK_INTERPOLATED_PATTERN )
     {
@@ -87,7 +87,7 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
     if( expect_bind )
     {
         CHECK_TOK(tok, TOK_IDENT);
-        auto bind_name = Ident(lex.getHygiene(), mv$(tok.str()));
+        auto bind_name = lex.get_ident(mv$(tok));
         // If there's no '@' after it, it's a name binding only (_ pattern)
         if( GET_TOK(tok, lex) != TOK_AT )
         {
@@ -117,12 +117,12 @@ AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable)
             break;
         // Known binding `ident @`
         case TOK_AT:
-            binding = AST::PatternBinding( Ident(lex.getHygiene(), mv$(tok.str())), bind_type/*MOVE*/, is_mut/*false*/ );
+            binding = AST::PatternBinding( lex.get_ident(mv$(tok)), bind_type/*MOVE*/, is_mut/*false*/ );
             GET_TOK(tok, lex);  // '@'
             GET_TOK(tok, lex);  // Match lex.putback() below
             break;
         default: {  // Maybe bind
-            Ident   name = Ident(lex.getHygiene(), mv$(tok.str()));
+            auto name = lex.get_ident(mv$(tok));
             // if the pattern can be refuted (i.e this could be an enum variant), return MaybeBind
             if( is_refutable ) {
                 assert(bind_type == ::AST::PatternBinding::Type::MOVE);
@@ -459,7 +459,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path,
     }
 
     bool is_exhaustive = true;
-    ::std::vector< ::std::pair< ::std::string, AST::Pattern> >  subpats;
+    ::std::vector< ::std::pair< RcString, AST::Pattern> >  subpats;
     do {
         GET_TOK(tok, lex);
         DEBUG("tok = " << tok);
@@ -500,7 +500,7 @@ AST::Pattern Parse_PatternStruct(TokenStream& lex, ProtoSpan ps, AST::Path path,
 
         CHECK_TOK(tok, TOK_IDENT);
         auto field_ident = lex.get_ident(mv$(tok));
-        ::std::string field_name;
+        RcString field_name;
         GET_TOK(tok, lex);
 
         AST::Pattern    pat;

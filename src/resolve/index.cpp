@@ -32,7 +32,7 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
     }
     throw "";
 }
-::std::unordered_map< ::std::string, ::AST::Module::IndexEnt >& get_mod_index(::AST::Module& mod, IndexName location) {
+::std::unordered_map< RcString, ::AST::Module::IndexEnt >& get_mod_index(::AST::Module& mod, IndexName location) {
     switch(location)
     {
     case IndexName::Namespace:
@@ -57,7 +57,7 @@ namespace {
     }
 }   // namespace
 
-void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
+void _add_item(const Span& sp, AST::Module& mod, IndexName location, const RcString& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
     ASSERT_BUG(sp, ir.m_bindings.has_binding(), "");
     auto& list = get_mod_index(mod, location);
@@ -90,12 +90,12 @@ void _add_item(const Span& sp, AST::Module& mod, IndexName location, const ::std
         assert(rec.second);
     }
 }
-void _add_item_type(const Span& sp, AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
+void _add_item_type(const Span& sp, AST::Module& mod, const RcString& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
     _add_item(sp, mod, IndexName::Namespace, name, is_pub, ::AST::Path(ir), error_on_collision);
     _add_item(sp, mod, IndexName::Type, name, is_pub, mv$(ir), error_on_collision);
 }
-void _add_item_value(const Span& sp, AST::Module& mod, const ::std::string& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
+void _add_item_value(const Span& sp, AST::Module& mod, const RcString& name, bool is_pub, ::AST::Path ir, bool error_on_collision=true)
 {
     _add_item(sp, mod, IndexName::Value, name, is_pub, mv$(ir), error_on_collision);
 }
@@ -237,7 +237,7 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
                 DEBUG(i_data.name << " - Not a macro");
                 }
             TU_ARMA(MacroRules, e) {
-                ::std::vector<::std::string>    path;
+                ::std::vector<RcString>    path;
                 path.push_back( i_data.path.m_class.as_Absolute().crate );
                 for(const auto& node : i_data.path.m_class.as_Absolute().nodes )
                     path.push_back( node.name() );

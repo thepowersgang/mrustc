@@ -328,9 +328,9 @@ namespace
                         const auto& te = t.m_data.as_TraitObject();
                         //auto vtp = t.m_data.as_TraitObject().m_trait.m_path;
 
-                        auto vtable_gp = te.m_trait.m_path.clone();
-                        vtable_gp.m_path.m_components.back() += "#vtable";
                         const auto& trait = resolve.m_crate.get_trait_by_path(sp, te.m_trait.m_path.m_path);
+                        auto vtable_gp = ::HIR::GenericPath(trait.m_vtable_path);
+                        vtable_gp.m_params = te.m_trait.m_path.m_params.clone();
                         vtable_gp.m_params.m_types.resize( vtable_gp.m_params.m_types.size() + trait.m_type_indexes.size() );
                         for(const auto& ty : trait.m_type_indexes) {
                             auto aty = te.m_trait.m_type_bounds.at(ty.first).clone();
@@ -948,8 +948,7 @@ namespace
 
             ::HIR::TypeRef  vtable_ty;
             {
-                auto vtable_sp = trait_path.m_path;
-                vtable_sp.m_components.back() += "#vtable";
+                const auto& vtable_sp = trait.m_vtable_path;
                 auto vtable_params = trait_path.m_params.clone();
                 for(const auto& ty : trait.m_type_indexes) {
                     auto aty = ::HIR::TypeRef( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ) );

@@ -83,9 +83,9 @@ TypeRef Parse_Type_Int(TokenStream& lex, bool allow_trait_list)
         {
             lex.getToken();
             // TODO: path macros
-            return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, mv$(tok.str()), lex));
+            return TypeRef(TypeRef::TagMacro(), Parse_MacroInvocation(ps, tok.istr(), lex));
         }
-        if( TARGETVER_1_29 && tok.str() == "dyn" )
+        if( TARGETVER_1_29 && tok.istr() == "dyn" )
         {
             if( lex.lookahead(0) == TOK_PAREN_OPEN ) {
                 GET_TOK(tok, lex);
@@ -283,16 +283,17 @@ TypeRef Parse_Type_Path(TokenStream& lex, ::AST::HigherRankedBounds hrbs, bool a
 
     auto ps = lex.start_span();
 
+    auto path = Parse_Path(lex, PATH_GENERIC_TYPE);
     if( hrbs.empty() && !allow_trait_list )
     {
-        return TypeRef(TypeRef::TagPath(), lex.end_span(ps), Parse_Path(lex, PATH_GENERIC_TYPE));
+        return TypeRef(TypeRef::TagPath(), lex.end_span(ps), mv$(path));
     }
     else
     {
         ::std::vector<Type_TraitPath>   traits;
         ::std::vector<AST::LifetimeRef> lifetimes;
 
-        traits.push_back(Type_TraitPath { mv$(hrbs), Parse_Path(lex, PATH_GENERIC_TYPE) });
+        traits.push_back(Type_TraitPath { mv$(hrbs), mv$(path) });
 
         if( allow_trait_list )
         {

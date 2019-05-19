@@ -133,11 +133,11 @@ struct ExprNode_Return:
 struct ExprNode_Loop:
     public ExprNode
 {
-    ::std::string   m_label;
+    RcString    m_label;
     ::HIR::ExprNodeP    m_code;
     bool    m_diverges = false;
 
-    ExprNode_Loop(Span sp, ::std::string label, ::HIR::ExprNodeP code):
+    ExprNode_Loop(Span sp, RcString label, ::HIR::ExprNodeP code):
         //ExprNode(mv$(sp), ::HIR::TypeRef::new_unit()),
         ExprNode(mv$(sp), ::HIR::TypeRef()),
         m_label( mv$(label) ),
@@ -149,11 +149,11 @@ struct ExprNode_Loop:
 struct ExprNode_LoopControl:
     public ExprNode
 {
-    ::std::string   m_label;
+    RcString   m_label;
     bool    m_continue;
     ::HIR::ExprNodeP    m_value;
 
-    ExprNode_LoopControl(Span sp, ::std::string label, bool cont, ::HIR::ExprNodeP value={}):
+    ExprNode_LoopControl(Span sp, RcString label, bool cont, ::HIR::ExprNodeP value={}):
         ExprNode(mv$(sp), ::HIR::TypeRef::new_diverge()),
         m_label( mv$(label) ),
         m_continue( cont ),
@@ -539,7 +539,7 @@ struct ExprNode_CallMethod:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    ::std::string   m_method;
+    RcString   m_method;
     ::HIR::PathParams  m_params;
     ::std::vector< ::HIR::ExprNodeP>    m_args;
 
@@ -553,7 +553,7 @@ struct ExprNode_CallMethod:
     // - A pool of ivars to use for searching for trait impls
     ::std::vector<unsigned int> m_trait_param_ivars;
 
-    ExprNode_CallMethod(Span sp, ::HIR::ExprNodeP val, ::std::string method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
+    ExprNode_CallMethod(Span sp, ::HIR::ExprNodeP val, RcString method_name, ::HIR::PathParams params, ::std::vector< ::HIR::ExprNodeP> args):
         ExprNode( mv$(sp) ),
         m_value( mv$(val) ),
         m_method( mv$(method_name) ),
@@ -570,9 +570,9 @@ struct ExprNode_Field:
     public ExprNode
 {
     ::HIR::ExprNodeP    m_value;
-    ::std::string   m_field;
+    RcString   m_field;
 
-    ExprNode_Field(Span sp, ::HIR::ExprNodeP val, ::std::string field):
+    ExprNode_Field(Span sp, ::HIR::ExprNodeP val, RcString field):
         ExprNode(mv$(sp)),
         m_value( mv$(val) ),
         m_field( mv$(field) )
@@ -677,10 +677,10 @@ struct ExprNode_PathValue:
 struct ExprNode_Variable:
     public ExprNode
 {
-    ::std::string   m_name;
+    RcString   m_name;
     unsigned int    m_slot;
 
-    ExprNode_Variable(Span sp, ::std::string name, unsigned int slot):
+    ExprNode_Variable(Span sp, RcString name, unsigned int slot):
         ExprNode(mv$(sp)),
         m_name( mv$(name) ),
         m_slot( slot )
@@ -692,7 +692,7 @@ struct ExprNode_Variable:
 struct ExprNode_StructLiteral:
     public ExprNode
 {
-    typedef ::std::vector< ::std::pair< ::std::string, ExprNodeP > > t_values;
+    typedef ::std::vector< ::std::pair< RcString, ExprNodeP > > t_values;
 
     ::HIR::Path m_path;
     bool    m_is_struct;
@@ -719,12 +719,12 @@ struct ExprNode_UnionLiteral:
     public ExprNode
 {
     ::HIR::GenericPath  m_path;
-    ::std::string   m_variant_name;
+    RcString   m_variant_name;
     ::HIR::ExprNodeP    m_value;
 
     unsigned int    m_variant_index = ~0;
 
-    ExprNode_UnionLiteral(Span sp, ::HIR::GenericPath path, ::std::string name, ::HIR::ExprNodeP value):
+    ExprNode_UnionLiteral(Span sp, ::HIR::GenericPath path, RcString name, ::HIR::ExprNodeP value):
         ExprNode( mv$(sp) ),
         m_path( mv$(path) ),
         m_variant_name( mv$(name) ),

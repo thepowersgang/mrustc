@@ -75,8 +75,7 @@ namespace {
     {
         const auto& trait = *te.m_trait.m_trait_ptr;
 
-        auto vtable_ty_spath = te.m_trait.m_path.m_path;
-        vtable_ty_spath.m_components.back() += "#vtable";
+        const auto& vtable_ty_spath = trait.m_vtable_path;
         const auto& vtable_ref = resolve.m_crate.get_struct_by_path(sp, vtable_ty_spath);
         // Copy the param set from the trait in the trait object
         ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
@@ -676,8 +675,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
             const auto& trait = *de.m_trait.m_trait_ptr;
 
             // Obtain vtable type `::"path"::to::Trait#vtable`
-            auto vtable_ty_spath = trait_path.m_path.m_path;
-            vtable_ty_spath.m_components.back() += "#vtable";
+            const auto& vtable_ty_spath = trait.m_vtable_path;
             const auto& vtable_ref = state.m_crate.get_struct_by_path(state.sp, vtable_ty_spath);
             // Copy the param set from the trait in the trait object
             ::HIR::PathParams   vtable_params = trait_path.m_path.m_params.clone();

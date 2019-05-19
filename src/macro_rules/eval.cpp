@@ -405,7 +405,7 @@ class MacroExpander:
 {
     const RcString  m_macro_filename;
 
-    const ::std::string m_crate_name;
+    const RcString  m_crate_name;
     ::std::shared_ptr<Span> m_invocation_span;
 
     ParameterMappings m_mappings;
@@ -418,7 +418,7 @@ class MacroExpander:
 public:
     MacroExpander(const MacroExpander& x) = delete;
 
-    MacroExpander(const ::std::string& macro_name, const Span& sp, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, ::std::string crate_name):
+    MacroExpander(const ::std::string& macro_name, const Span& sp, const Ident::Hygiene& parent_hygiene, const ::std::vector<MacroExpansionEnt>& contents, ParameterMappings mappings, RcString crate_name):
         m_macro_filename( FMT("Macro:" << macro_name) ),
         m_crate_name( mv$(crate_name) ),
         m_invocation_span( new Span(sp) ),
@@ -841,7 +841,7 @@ namespace
         case TOK_SQUARE_OPEN:
             return consume_tt(lex);
         case TOK_IDENT:
-            if( TARGETVER_1_29 && lex.next_tok().str() == "dyn" )
+            if( TARGETVER_1_29 && lex.next_tok().istr() == "dyn" )
                 lex.consume();
         case TOK_RWORD_SUPER:
         case TOK_RWORD_SELF:
@@ -1345,7 +1345,7 @@ namespace
             return true;
         // Macro invocation
         // TODO: What about `union!` as a macro? Needs to be handled below
-        if( (lex.next() == TOK_IDENT && lex.next_tok().str() != "union")
+        if( (lex.next() == TOK_IDENT && lex.next_tok().istr() != "union")
          || lex.next() == TOK_RWORD_SELF
          || lex.next() == TOK_RWORD_SUPER
          || lex.next() == TOK_DOUBLE_COLON
@@ -1481,7 +1481,7 @@ namespace
                 return false;
             return consume_tt(lex);
         case TOK_IDENT:
-            if( lex.next_tok().str() == "union" )
+            if( lex.next_tok().istr() == "union" )
             {
                 lex.consume();
                 if( lex.next() == TOK_EXCLAM )
@@ -1506,7 +1506,7 @@ namespace
                     return consume_tt(lex);
                 }
             }
-            else if( lex.next_tok().str() == "auto" )
+            else if( lex.next_tok().istr() == "auto" )
             {
                 lex.consume();
                 if( lex.consume_if(TOK_RWORD_TRAIT) )
@@ -1960,7 +1960,7 @@ Token MacroExpander::realGetToken()
                     DEBUG("Crate name hack");
                     if( m_crate_name != "" )
                     {
-                        m_next_token = Token(TOK_STRING, m_crate_name);
+                        m_next_token = Token(TOK_STRING, ::std::string(m_crate_name.c_str()));
                         return Token(TOK_DOUBLE_COLON);
                     }
                     break;

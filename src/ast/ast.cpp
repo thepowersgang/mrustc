@@ -107,16 +107,16 @@ Function Function::clone() const
     return rv;
 }
 
-void Trait::add_type(::std::string name, AttributeList attrs, TypeRef type) {
+void Trait::add_type(RcString name, AttributeList attrs, TypeRef type) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Type({TypeAlias(GenericParams(), mv$(type))}), true) );
     m_items.back().data.attrs = mv$(attrs);
 }
-void Trait::add_function(::std::string name, AttributeList attrs, Function fcn) {
+void Trait::add_function(RcString name, AttributeList attrs, Function fcn) {
     DEBUG("trait fn " << name);
     m_items.push_back( Named<Item>(mv$(name), Item::make_Function({mv$(fcn)}), true) );
     m_items.back().data.attrs = mv$(attrs);
 }
-void Trait::add_static(::std::string name, AttributeList attrs, Static v) {
+void Trait::add_static(RcString name, AttributeList attrs, Static v) {
     m_items.push_back( Named<Item>(mv$(name), Item::make_Static({mv$(v)}), true) );
     m_items.back().data.attrs = mv$(attrs);
 }
@@ -126,7 +126,7 @@ void Trait::set_is_marker() {
 bool Trait::is_marker() const {
     return m_is_marker;
 }
-bool Trait::has_named_item(const ::std::string& name, bool& out_is_fcn) const
+bool Trait::has_named_item(const RcString& name, bool& out_is_fcn) const
 {
     for( const auto& i : m_items )
     {
@@ -208,16 +208,16 @@ Union Union::clone() const
     return os << "impl<" << impl.m_params << "> " << impl.m_trait.ent << " for " << impl.m_type << "";
 }
 
-void Impl::add_function(bool is_public, bool is_specialisable, ::std::string name, Function fcn)
+void Impl::add_function(bool is_public, bool is_specialisable, RcString name, Function fcn)
 {
     DEBUG("impl fn " << name);
     m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Function(mv$(fcn)) ) } );
 }
-void Impl::add_type(bool is_public, bool is_specialisable, ::std::string name, TypeRef type)
+void Impl::add_type(bool is_public, bool is_specialisable, RcString name, TypeRef type)
 {
     m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Type(TypeAlias(GenericParams(), mv$(type))) ) } );
 }
-void Impl::add_static(bool is_public, bool is_specialisable, ::std::string name, Static v)
+void Impl::add_static(bool is_public, bool is_specialisable, RcString name, Static v)
 {
     m_items.push_back( ImplItem { is_public, is_specialisable, mv$(name), box$( Item::make_Static(mv$(v)) ) } );
 }
@@ -225,7 +225,7 @@ void Impl::add_macro_invocation(MacroInvocation item) {
     m_items.push_back( ImplItem { false, false, "", box$( Item::make_MacroInv(mv$(item)) ) } );
 }
 
-bool Impl::has_named_item(const ::std::string& name) const
+bool Impl::has_named_item(const RcString& name) const
 {
     for( const auto& it : this->items() )
     {
@@ -271,7 +271,7 @@ ExternBlock ExternBlock::clone() const
 }
 
 ::std::shared_ptr<AST::Module> Module::add_anon() {
-    auto rv = ::std::shared_ptr<AST::Module>( new Module(m_my_path + FMT("#" << m_anon_modules.size())) );
+    auto rv = ::std::shared_ptr<AST::Module>( new Module(m_my_path + RcString::new_interned(FMT("#" << m_anon_modules.size()))) );
     DEBUG("New anon " << rv->m_my_path);
     rv->m_file_info = m_file_info;
 
@@ -289,20 +289,20 @@ void Module::add_item( Named<Item> named_item ) {
         DEBUG(m_my_path << "::" << i.name << " = " << i.data.tag_str() << ", attrs = " << i.data.attrs);
     }
 }
-void Module::add_item(bool is_pub, ::std::string name, Item it, AttributeList attrs) {
+void Module::add_item(bool is_pub, RcString name, Item it, AttributeList attrs) {
     it.attrs = mv$(attrs);
     add_item( Named<Item>( mv$(name), mv$(it), is_pub ) );
 }
-void Module::add_ext_crate(bool is_public, ::std::string ext_name, ::std::string imp_name, AttributeList attrs) {
+void Module::add_ext_crate(bool is_public, RcString ext_name, RcString imp_name, AttributeList attrs) {
     this->add_item( is_public, imp_name, Item::make_Crate({mv$(ext_name)}), mv$(attrs) );
 }
 void Module::add_macro_invocation(MacroInvocation item) {
     this->add_item( false, "", Item( mv$(item) ), ::AST::AttributeList {} );
 }
-void Module::add_macro(bool is_exported, ::std::string name, MacroRulesPtr macro) {
+void Module::add_macro(bool is_exported, RcString name, MacroRulesPtr macro) {
     m_macros.push_back( Named<MacroRulesPtr>( mv$(name), mv$(macro), is_exported ) );
 }
-void Module::add_macro_import(::std::string name, const MacroRules& mr) {
+void Module::add_macro_import(RcString name, const MacroRules& mr) {
     m_macro_import_res.push_back( Named<const MacroRules*>( mv$(name), &mr, false ) );
 }
 

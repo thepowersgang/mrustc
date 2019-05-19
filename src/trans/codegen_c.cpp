@@ -2187,8 +2187,7 @@ namespace {
             }
 
             {
-                auto vtable_sp = trait_path.m_path;
-                vtable_sp.m_components.back() += "#vtable";
+                const auto& vtable_sp = trait.m_vtable_path;
                 auto vtable_params = trait_path.m_params.clone();
                 for(const auto& ty : trait.m_type_indexes) {
                     auto aty = ::HIR::TypeRef( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ) );
@@ -4055,7 +4054,7 @@ namespace {
             }
         }
 
-        void emit_intrinsic_call(const ::std::string& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
+        void emit_intrinsic_call(const RcString& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
         {
             const auto& mir_res = *m_mir_res;
             enum class Ordering 
@@ -4088,7 +4087,7 @@ namespace {
                 }
                 throw "";
             };
-            auto get_atomic_ordering = [&](const ::std::string& name, size_t prefix_len)->Ordering {
+            auto get_atomic_ordering = [&](const RcString& name, size_t prefix_len)->Ordering {
                     if( name.size() < prefix_len )
                     {
                         return Ordering::SeqCst;
@@ -5024,7 +5023,7 @@ namespace {
                   || name == "atomic_min" || name.compare(0, 7+3+1, "atomic_min_") == 0 ) {
                 auto ordering = get_atomic_ordering(name, 7+3+1);
                 const auto& ty = params.m_types.at(0);
-                const char* op = (name[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
+                const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ", __mrustc_op_" << op << get_prim_size(ty);
                     m_of << ")";
@@ -5033,7 +5032,7 @@ namespace {
                   || name == "atomic_umin" || name.compare(0, 7+4+1, "atomic_umin_") == 0 ) {
                 auto ordering = get_atomic_ordering(name, 7+4+1);
                 const auto& ty = params.m_types.at(0);
-                const char* op = (name[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
+                const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
                     emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ", __mrustc_op_" << op << get_prim_size(ty);
                     m_of << ")";

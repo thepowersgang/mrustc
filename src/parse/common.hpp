@@ -46,7 +46,7 @@ extern ::AST::HigherRankedBounds Parse_HRB_Opt(TokenStream& lex);
 extern AST::AttributeList  Parse_ItemAttrs(TokenStream& lex);
 extern void Parse_ParentAttrs(TokenStream& lex, AST::AttributeList& out);
 extern AST::Attribute   Parse_MetaItem(TokenStream& lex);
-extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, ::std::string name, TokenStream& lex);
+extern ::AST::MacroInvocation Parse_MacroInvocation(ProtoSpan ps, RcString name, TokenStream& lex);
 extern TypeRef     Parse_Type(TokenStream& lex, bool allow_trait_list = true);
 extern AST::Pattern Parse_Pattern(TokenStream& lex, bool is_refutable);
 

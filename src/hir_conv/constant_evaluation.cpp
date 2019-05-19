@@ -40,7 +40,7 @@ namespace {
 
         virtual ::HIR::Path new_static(::HIR::TypeRef type, ::HIR::Literal value) override
         {
-            auto name = FMT(name_prefix << next_item_idx);
+            auto name = RcString::new_interned(FMT(name_prefix << next_item_idx));
             next_item_idx ++;
             DEBUG("mod_path = " << mod_path);
             auto rv = mod_path.get_simple_path() + name.c_str();

@@ -21,6 +21,15 @@
         {}
 
         template<typename V>
+        void serialise_strmap(const ::std::map<RcString,V>& map)
+        {
+            m_out.write_count(map.size());
+            for(const auto& v : map) {
+                m_out.write_string(v.first);
+                serialise(v.second);
+            }
+        }
+        template<typename V>
         void serialise_strmap(const ::std::map< ::std::string,V>& map)
         {
             m_out.write_count(map.size());
@@ -30,7 +39,27 @@
             }
         }
         template<typename V>
+        void serialise_strmap(const ::std::unordered_map<RcString,V>& map)
+        {
+            m_out.write_count(map.size());
+            for(const auto& v : map) {
+                DEBUG("- " << v.first);
+                m_out.write_string(v.first);
+                serialise(v.second);
+            }
+        }
+        template<typename V>
         void serialise_strmap(const ::std::unordered_map< ::std::string,V>& map)
+        {
+            m_out.write_count(map.size());
+            for(const auto& v : map) {
+                DEBUG("- " << v.first);
+                m_out.write_string(v.first);
+                serialise(v.second);
+            }
+        }
+        template<typename V>
+        void serialise_strmap(const ::std::unordered_multimap<RcString,V>& map)
         {
             m_out.write_count(map.size());
             for(const auto& v : map) {
@@ -73,6 +102,11 @@
             serialise(e.second);
         }
         template<typename T>
+        void serialise(const ::std::pair< RcString, T>& e) {
+            m_out.write_string(e.first);
+            serialise(e.second);
+        }
+        template<typename T>
         void serialise(const ::std::pair<unsigned int, T>& e) {
             m_out.write_count(e.first);
             serialise(e.second);
@@ -86,6 +120,10 @@
         void serialise(uint64_t v) { m_out.write_u64c(v); };
         void serialise(int64_t v) { m_out.write_i64c(v); };
 
+        void serialise(const ::HIR::LifetimeDef& ld)
+        {
+            m_out.write_string(ld.m_name);
+        }
         void serialise(const ::HIR::LifetimeRef& lr)
         {
             m_out.write_count(lr.binding);
@@ -392,6 +430,9 @@
         void serialise(const ::std::string& v) {
             m_out.write_string(v);
         }
+        void serialise(const RcString& v) {
+            m_out.write_string(v);
+        }
 
         void serialise(const ::MacroRulesPtr& mac)
         {
@@ -486,6 +527,9 @@
             TU_ARM(td, None, _e) {
                 } break;
             TU_ARM(td, String, e) {
+                m_out.write_string(e);
+                } break;
+            TU_ARM(td, IString, e) {
                 m_out.write_string(e);
                 } break;
             TU_ARM(td, Integer, e) {
@@ -1041,6 +1085,7 @@
             serialise_strmap( item.m_value_indexes );
             serialise_strmap( item.m_type_indexes );
             serialise_vec( item.m_all_parent_traits );
+            serialise( item.m_vtable_path );
         }
         void serialise(const ::HIR::TraitValueItem& tvi)
         {
@@ -1063,7 +1108,7 @@
         void serialise(const ::HIR::AssociatedType& at)
         {
             m_out.write_bool(at.is_sized);
-            //m_out.write_string(at.m_lifetime_bound);  // TODO: better type for lifetime
+            serialise(at.m_lifetime_bound);
             serialise_vec(at.m_trait_bounds);
             serialise_type(at.m_default);
         }
@@ -1072,8 +1117,10 @@
 
 void HIR_Serialise(const ::std::string& filename, const ::HIR::Crate& crate)
 {
-    ::HIR::serialise::Writer    out { filename };
+    ::HIR::serialise::Writer    out;
     HirSerialiser  s { out };
+    s.serialise_crate(crate);
+    out.open(filename);
     s.serialise_crate(crate);
 }
 

@@ -41,7 +41,7 @@ namespace
     template<typename Val>
     struct Named
     {
-        ::std::string   name;
+        RcString    name;
         Val value;
     };
     template<typename Val>
@@ -300,7 +300,7 @@ namespace
             }
             return "";
         }
-        AST::Path lookup(const Span& sp, const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
+        AST::Path lookup(const Span& sp, const RcString& name, const Ident::Hygiene& src_context, LookupMode mode) const {
             auto rv = this->lookup_opt(name, src_context, mode);
             if( !rv.is_valid() ) {
                 switch(mode)
@@ -314,7 +314,7 @@ namespace
             }
             return rv;
         }
-        static bool lookup_in_mod(const ::AST::Module& mod, const ::std::string& name, LookupMode mode,  ::AST::Path& path) {
+        static bool lookup_in_mod(const ::AST::Module& mod, const RcString& name, LookupMode mode,  ::AST::Path& path) {
             switch(mode)
             {
             case LookupMode::Namespace:
@@ -422,7 +422,7 @@ namespace
             }
             return false;
         }
-        AST::Path lookup_opt(const ::std::string& name, const Ident::Hygiene& src_context, LookupMode mode) const {
+        AST::Path lookup_opt(const RcString& name, const Ident::Hygiene& src_context, LookupMode mode) const {
             DEBUG("name=" << name <<", src_context=" << src_context);
             // NOTE: src_context may provide a module to search
             if( src_context.has_mod_path() )
@@ -513,7 +513,7 @@ namespace
             case LookupMode::Namespace:
             case LookupMode::Type: {
                 // Look up primitive types
-                auto ct = coretype_fromstring(name);
+                auto ct = coretype_fromstring(name.c_str());
                 if( ct != CORETYPE_INVAL )
                 {
                     return ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
@@ -538,7 +538,7 @@ namespace
             return AST::Path();
         }
 
-        unsigned int lookup_local(const Span& sp, const ::std::string name, LookupMode mode) {
+        unsigned int lookup_local(const Span& sp, const RcString name, LookupMode mode) {
             for(auto it = m_name_context.rbegin(); it != m_name_context.rend(); ++ it)
             {
                 TU_MATCH(Ent, (*it), (e),
@@ -732,7 +732,7 @@ void Resolve_Absolute_Path_BindUFCS(Context& context, const Span& sp, Context::L
 }
 
 namespace {
-    AST::Path split_into_crate(const Span& sp, AST::Path path, unsigned int start, const ::std::string& crate_name)
+    AST::Path split_into_crate(const Span& sp, AST::Path path, unsigned int start, const RcString& crate_name)
     {
         auto& nodes = path.nodes();
         AST::Path   np = AST::Path(crate_name, {});
@@ -1146,7 +1146,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
     {
         auto& n = path_abs.nodes[i];
 
-        if( n.name()[0] == '#' ) {
+        if( n.name().c_str()[0] == '#' ) {
             if( ! n.args().is_empty() ) {
                 ERROR(sp, E0000, "Type parameters were not expected here");
             }
@@ -1157,7 +1157,7 @@ void Resolve_Absolute_Path_BindAbsolute(Context& context, const Span& sp, Contex
 
             char c;
             unsigned int idx;
-            ::std::stringstream ss( n.name() );
+            ::std::stringstream ss( n.name().c_str() );
             ss >> c;
             ss >> idx;
             assert( idx < mod->anon_mods().size() );
@@ -1367,7 +1367,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
             // HACK: If this is a primitive name, and resolved to a module.
             // - If the next component isn't found in the located module
             //  > Instead use the type name.
-            if( ! p.m_class.is_Local() && coretype_fromstring(e.nodes[0].name()) != CORETYPE_INVAL ) {
+            if( ! p.m_class.is_Local() && coretype_fromstring(e.nodes[0].name().c_str()) != CORETYPE_INVAL ) {
                 if( const auto* pep = p.m_bindings.type.opt_Module() ) {
                     const auto& pe = *pep;
                     bool found = false;
@@ -1421,7 +1421,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
                     }
                     if( !found )
                     {
-                        auto ct = coretype_fromstring(e.nodes[0].name());
+                        auto ct = coretype_fromstring(e.nodes[0].name().c_str());
                         p = ::AST::Path( ::AST::Path::TagUfcs(), TypeRef(Span("-",0,0,0,0), ct), ::AST::Path(), ::std::vector< ::AST::PathNode>() );
                     }
 
@@ -1467,7 +1467,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         const auto& mp_nodes = context.m_mod.path().nodes();
         // Ignore any leading anon modules
         unsigned int start_len = mp_nodes.size();
-        while( start_len > 0 && mp_nodes[start_len-1].name()[0] == '#' )
+        while( start_len > 0 && mp_nodes[start_len-1].name().c_str()[0] == '#' )
             start_len --;
 
         // - Create a new path
@@ -1491,7 +1491,7 @@ void Resolve_Absolute_Path(/*const*/ Context& context, const Span& sp, Context::
         assert( e.count >= 1 );
         // TODO: The first super should ignore any anon modules.
         unsigned int start_len = e.count > mp_nodes.size() ? 0 : mp_nodes.size() - e.count;
-        while( start_len > 0 && mp_nodes[start_len-1].name()[0] == '#' )
+        while( start_len > 0 && mp_nodes[start_len-1].name().c_str()[0] == '#' )
             start_len --;
 
         // - Create a new path

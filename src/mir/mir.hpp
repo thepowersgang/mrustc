@@ -311,7 +311,7 @@ TAGGED_UNION(CallTarget, Intrinsic,
     (Value, LValue),
     (Path,  ::HIR::Path),
     (Intrinsic, struct {
-        ::std::string   name;
+        RcString   name;
         ::HIR::PathParams   params;
         })
     );
@@ -419,7 +419,7 @@ class Function
 {
 public:
     ::std::vector< ::HIR::TypeRef>  locals;
-    //::std::vector< ::std::string>   local_names;
+    //::std::vector< RcString>   local_names;
     ::std::vector<bool> drop_flags;
 
     ::std::vector<BasicBlock>   blocks;

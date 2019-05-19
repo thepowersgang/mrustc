@@ -536,7 +536,7 @@ Token Lexer::getTokenInt()
                                 str += ch;
                             }
                         }
-                        return Token(TOK_BYTESTRING, str);
+                        return Token(TOK_BYTESTRING, mv$(str));
                     }
                     // Byte constant
                     else if( ch == '\'' ) {
@@ -608,7 +608,7 @@ Token Lexer::getTokenInt()
                     m_next_tokens.push_back(TOK_SQUARE_CLOSE);
                     m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
                     m_next_tokens.push_back(TOK_EQUAL);
-                    m_next_tokens.push_back(Token(TOK_IDENT, "doc"));
+                    m_next_tokens.push_back(Token(TOK_IDENT, RcString::new_interned("doc")));
                     m_next_tokens.push_back(TOK_SQUARE_OPEN);
                     if(is_pdoc)
                         m_next_tokens.push_back(TOK_EXCLAM);
@@ -671,7 +671,7 @@ Token Lexer::getTokenInt()
                     m_next_tokens.push_back(TOK_SQUARE_CLOSE);
                     m_next_tokens.push_back(Token(TOK_STRING, mv$(str)));
                     m_next_tokens.push_back(TOK_EQUAL);
-                    m_next_tokens.push_back(Token(TOK_IDENT, "doc"));
+                    m_next_tokens.push_back(Token(TOK_IDENT, RcString::new_interned("doc")));
                     m_next_tokens.push_back(TOK_SQUARE_OPEN);
                     if(is_pdoc)
                         m_next_tokens.push_back(TOK_EXCLAM);
@@ -704,7 +704,7 @@ Token Lexer::getTokenInt()
                             ch = this->getc();
                         }
                         this->ungetc();
-                        return Token(TOK_LIFETIME, str);
+                        return Token(TOK_LIFETIME, RcString::new_interned(str));
                     }
                     else {
                         throw ParseError::Todo("Lex Fail - Expected ' after character constant");
@@ -728,7 +728,7 @@ Token Lexer::getTokenInt()
                         str += ch;
                     }
                 }
-                return Token(TOK_STRING, str);
+                return Token(TOK_STRING, mv$(str));
                 }
             default:
                 assert(!"bugcheck");
@@ -806,7 +806,7 @@ Token Lexer::getTokenInt_RawString(bool is_byte)
             }
         }
     }
-    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, val);
+    return Token(is_byte ? TOK_BYTESTRING : TOK_STRING, mv$(val));
 }
 Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
 {
@@ -826,7 +826,7 @@ Token Lexer::getTokenInt_Identifier(Codepoint leader, Codepoint leader2)
         if( str < RWORDS[i].chars ) break;
         if( str == RWORDS[i].chars )    return Token((enum eTokenType)RWORDS[i].type);
     }
-    return Token(TOK_IDENT, mv$(str));
+    return Token(TOK_IDENT, RcString::new_interned(str));
 }
 
 // Takes the VERY lazy way of reading the float into a string then passing to strtod

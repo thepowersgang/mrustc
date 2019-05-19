@@ -64,7 +64,7 @@ void Crate::load_externs()
             TU_IFLET(AST::Item, it.data, Crate, c,
                 if( check_item_cfg(it.data.attrs) )
                 {
-                    c.name = load_extern_crate( it.data.span, c.name );
+                    c.name = load_extern_crate( it.data.span, c.name.c_str() );
                 }
             )
         }
@@ -109,12 +109,12 @@ void Crate::load_externs()
 }
 // TODO: Handle disambiguating crates with the same name (e.g. libc in std and crates.io libc)
 // - Crates recorded in rlibs should specify a hash/tag that's passed in to this function.
-::std::string Crate::load_extern_crate(Span sp, const ::std::string& name, const ::std::string& basename/*=""*/)
+RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::string& basename/*=""*/)
 {
     DEBUG("Loading crate '" << name << "'");
 
     ::std::string   path;
-    auto it = g_crate_overrides.find(name);
+    auto it = g_crate_overrides.find(name.c_str());
     if(basename == "" && it != g_crate_overrides.end())
     {
         path = it->second;
@@ -140,18 +140,19 @@ void Crate::load_externs()
     else
     {
         ::std::vector<::std::string>    paths;
-        auto name_prefix = "lib"+name+"-";
+        auto direct_filename = FMT("lib" << name.c_str() << ".hir");
+        auto name_prefix = FMT("lib" << name.c_str() << "-");
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
 
-            path = p + "/lib" + name + ".hir";
-            // TODO: Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
+            path = p + "/" + direct_filename;
             if( ::std::ifstream(path).good() ) {
                 paths.push_back(path);
             }
             path = "";
 
+            // Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
             auto dp = opendir(p.c_str());
             if( !dp ) {
                 continue ;
@@ -187,7 +188,7 @@ void Crate::load_externs()
     // NOTE: Creating `ExternCrate` loads the crate from the specified path
     auto ec = ExternCrate { name, path };
     auto real_name = ec.m_hir->m_crate_name;
-    assert(!real_name.empty());
+    assert(real_name != "");
     auto res = m_extern_crates.insert(::std::make_pair( real_name, mv$(ec) ));
     if( !res.second ) {
         // Crate already loaded?
@@ -214,26 +215,26 @@ void Crate::load_externs()
     return real_name;
 }
 
-ExternCrate::ExternCrate(const ::std::string& name, const ::std::string& path):
+ExternCrate::ExternCrate(const RcString& name, const ::std::string& path):
     m_name(name),
     m_short_name(name),
     m_filename(path)
 {
     TRACE_FUNCTION_F("name=" << name << ", path='" << path << "'");
-    m_hir = HIR_Deserialise(path, name);
+    m_hir = HIR_Deserialise(path);
 
     m_hir->post_load_update(name);
     m_name = m_hir->m_crate_name;
 }
 
-void ExternCrate::with_all_macros(::std::function<void(const ::std::string& , const MacroRules&)> cb) const
+void ExternCrate::with_all_macros(::std::function<void(const RcString& , const MacroRules&)> cb) const
 {
     for(const auto& m : m_hir->m_exported_macros)
     {
         cb(m.first, *m.second);
     }
 }
-const MacroRules* ExternCrate::find_macro_rules(const ::std::string& name) const
+const MacroRules* ExternCrate::find_macro_rules(const RcString& name) const
 {
     auto i = m_hir->m_exported_macros.find(name);
     if(i != m_hir->m_exported_macros.end())

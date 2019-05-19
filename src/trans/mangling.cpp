@@ -22,17 +22,26 @@
 #include <hir/path.hpp>
 
 namespace {
-    ::std::string   escape_str(const ::std::string& s) {
+    ::std::string   escape_str(const char* s, size_t len) {
         ::std::string   output;
-        output.reserve(s.size() + 1);
-        for(auto v : s)
+        output.reserve(len + 1);
+        for(auto vp = s; vp != s + len; vp ++)
+        {
+            auto v= *vp;
             if( v == '#' )
                 output += "$H";
             else if( v == '-' )
                 output += "_";
             else
                 output += v;
+        }
         return output;
+    }
+    ::std::string   escape_str(const RcString& s) {
+        return escape_str(s.c_str(), s.size());
+    }
+    ::std::string   escape_str(const ::std::string& s) {
+        return escape_str(s.c_str(), s.size());
     }
     ::FmtLambda emit_params(const ::HIR::PathParams& params)
     {

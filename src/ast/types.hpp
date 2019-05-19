@@ -73,6 +73,7 @@ namespace AST {
         bool is_infer() const { return m_binding == BINDING_INFER; }
 
         const Ident& name() const { return m_name; }
+        uint16_t binding() const { return m_binding; }
         Ordering ord(const LifetimeRef& x) const { return ::ord(m_name.name, x.m_name.name); }
         bool operator==(const LifetimeRef& x) const { return ord(x) == OrdEqual; }
         bool operator!=(const LifetimeRef& x) const { return ord(x) != OrdEqual; }
@@ -97,7 +98,7 @@ public:
 
 struct TypeArgRef
 {
-    ::std::string   name;
+    RcString   name;
     unsigned int    level;
     const AST::GenericParams*  params;
 };
@@ -165,7 +166,7 @@ TAGGED_UNION(TypeData, None,
         ::std::shared_ptr<AST::ExprNode> size;
         }),
     (Generic, struct {
-        ::std::string name;
+        RcString name;
         unsigned int index;
         }),
     (Path, struct {
@@ -276,11 +277,11 @@ public:
     {}
 
     struct TagArg {};
-    TypeRef(TagArg, Span sp, ::std::string name, unsigned int binding = ~0u):
+    TypeRef(TagArg, Span sp, RcString name, unsigned int binding = ~0u):
         m_span( mv$(sp) ),
         m_data(TypeData::make_Generic({ name, binding }))
     {}
-    TypeRef(Span sp, ::std::string name, unsigned int binding = ~0u):
+    TypeRef(Span sp, RcString name, unsigned int binding = ~0u):
         TypeRef(TagArg(), mv$(sp), mv$(name), binding)
     {}
 
@@ -314,7 +315,7 @@ public:
     AST::Path& path() { return m_data.as_Path().path; }
 
     bool is_type_param() const { return m_data.is_Generic(); }
-    const ::std::string& type_param() const { return m_data.as_Generic().name; }
+    const RcString& type_param() const { return m_data.as_Generic().name; }
 
     bool is_reference() const { return m_data.is_Borrow(); }
     bool is_pointer() const { return m_data.is_Pointer(); }

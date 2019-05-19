@@ -147,7 +147,7 @@ namespace {
                 {
                     m_replacement = NEWNODE(node.m_res_type.clone(), Field, node.span(),
                         get_self(node.span()),
-                        FMT(binding_it - m_captures.begin())
+                        RcString::new_interned(FMT(binding_it - m_captures.begin()))
                         );
                     if( binding_it->second != ::HIR::ValueUsage::Move ) {
                         auto bt = (binding_it->second == ::HIR::ValueUsage::Mutate ? ::HIR::BorrowType::Unique : ::HIR::BorrowType::Shared);
@@ -355,7 +355,7 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), {}, mv$(closure_type),
                 make_map1(
-                    ::std::string("call_free"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                    RcString::new_interned("call_free"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::Free,
                         ABI_RUST, false, false,
@@ -385,7 +385,7 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
-                    ::std::string("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                    RcString::new_interned("call_once"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::Value,
                         ABI_RUST, false, false,
@@ -404,7 +404,7 @@ namespace {
                 {},
                 {},
                 make_map1(
-                    ::std::string("Output"), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { false, mv$(ret_ty) }
+                    RcString::new_interned("Output"), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> { false, mv$(ret_ty) }
                     ),
                 ::HIR::SimplePath()
                 };
@@ -423,7 +423,7 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
-                    ::std::string("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                    RcString::new_interned("call_mut"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::BorrowUnique,
                         ABI_RUST, false, false,
@@ -459,7 +459,7 @@ namespace {
             return ::HIR::TraitImpl {
                 mv$(params), mv$(trait_params), mv$(closure_type),
                 make_map1(
-                    ::std::string("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
+                    RcString::new_interned("call"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::HIR::Function {
                         false, ::HIR::Linkage {},
                         ::HIR::Function::Receiver::BorrowShared,
                         ABI_RUST, false, false,
@@ -801,11 +801,11 @@ namespace {
                         for(size_t i = 0; i < args_tup_inner.size(); i ++)
                         {
                             const auto& ty = args_tup_inner[i];
-                            dispatch_args.push_back( NEWNODE(ty.clone(), Field, sp,  NEWNODE(args_ty.clone(), Variable, sp, "arg", 1), FMT(i)) );
+                            dispatch_args.push_back( NEWNODE(ty.clone(), Field, sp,  NEWNODE(args_ty.clone(), Variable, sp, RcString::new_interned("arg"), 1), RcString::new_interned(FMT(i))) );
                             dispatch_node_args_cache.push_back( ty.clone() );
                         }
                         dispatch_node_args_cache.push_back( ret_type.clone() );
-                        auto path = ::HIR::Path(closure_type.clone(), "call_free");
+                        auto path = ::HIR::Path(closure_type.clone(), RcString::new_interned("call_free"));
                         path.m_data.as_UfcsInherent().impl_params = closure_type.m_data.as_Path().path.m_data.as_Generic().m_params.clone();
                         HIR::ExprNodeP  dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
                                 mv$(path),
@@ -814,7 +814,7 @@ namespace {
                         dynamic_cast<::HIR::ExprNode_CallPath&>(*dispatch_node).m_cache.m_arg_types = mv$(dispatch_node_args_cache);
 
                         auto args_arg = ::std::make_pair(
-                            ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, "args", 1}, {} },
+                            ::HIR::Pattern { {false, ::HIR::PatternBinding::Type::Move, RcString::new_interned("args"), 1}, {} },
                             args_ty.clone()
                             );
                         HIR::TraitImpl fcn;
@@ -863,9 +863,9 @@ namespace {
                 // - FnOnce
                 {
                     auto dispatch_node = NEWNODE(ret_type.clone(), CallPath, sp,
-                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), "call"),
+                        ::HIR::Path(closure_type.clone(), ::HIR::GenericPath(lang_Fn, trait_params.clone()), RcString::new_interned("call")),
                         make_vec2(
-                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Variable, sp, "self", 0)),
+                            NEWNODE(method_self_ty.clone(), Borrow, sp, ::HIR::BorrowType::Shared, NEWNODE(closure_type.clone(), Variable, sp, RcString::new_interned("self"), 0)),
                             NEWNODE(args_ty.clone(), Variable, sp, "arg", 1)
                             )
                         );
@@ -1181,7 +1181,7 @@ namespace {
             ::HIR::SimplePath   root_mod_path(crate.m_crate_name,{});
             m_cur_mod_path = &root_mod_path;
             m_new_type = [&](auto s)->auto {
-                auto name = FMT("closure#I_" << closure_count);
+                auto name = RcString::new_interned(FMT("closure#I_" << closure_count));
                 closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
                 crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
@@ -1374,7 +1374,7 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
     static int closure_count = 0;
     out_impls_t new_trait_impls;
     new_type_cb_t new_type_cb = [&](auto s)->::HIR::SimplePath {
-        auto name = FMT("closure#C_" << closure_count);
+        auto name = RcString::new_interned(FMT("closure#C_" << closure_count));
         closure_count += 1;
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
         crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );

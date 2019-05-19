@@ -149,7 +149,7 @@ bool HIR::Publicity::is_visible(const ::HIR::SimplePath& p) const
     return true;
 }
 
-size_t HIR::Enum::find_variant(const ::std::string& name) const
+size_t HIR::Enum::find_variant(const RcString& name) const
 {
     if( m_data.is_Value() )
     {

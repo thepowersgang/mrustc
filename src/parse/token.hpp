@@ -64,6 +64,7 @@ class Token
 
     TAGGED_UNION(Data, None,
     (None, struct {}),
+    (IString, RcString),
     (String, ::std::string),
     (Integer, struct {
         enum eCoreType  m_datatype;
@@ -108,6 +109,7 @@ public:
 
     Token(enum eTokenType type);
     Token(enum eTokenType type, ::std::string str);
+    Token(enum eTokenType type, RcString str);
     Token(uint64_t val, enum eCoreType datatype);
     Token(double val, enum eCoreType datatype);
     Token(const InterpolatedFragment& );
@@ -115,6 +117,7 @@ public:
     Token(TagTakeIP, InterpolatedFragment );
 
     enum eTokenType type() const { return m_type; }
+    const RcString& istr() const { return m_data.as_IString(); }
     ::std::string& str() { return m_data.as_String(); }
     const ::std::string& str() const { return m_data.as_String(); }
     enum eCoreType  datatype() const { TU_MATCH_DEF(Data, (m_data), (e), (assert(!"Getting datatype of invalid token type");), (Integer, return e.m_datatype;), (Float, return e.m_datatype;)) throw ""; }
@@ -135,6 +138,7 @@ public:
             return false;
         TU_MATCH(Data, (m_data, r.m_data), (e, re),
         (None, return true;),
+        (IString, return e == re; ),
         (String, return e == re; ),
         (Integer, return e.m_datatype == re.m_datatype && e.m_intval == re.m_intval;),
         (Float, return e.m_datatype == re.m_datatype && e.m_floatval == re.m_floatval;),

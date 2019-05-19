@@ -9,13 +9,13 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <rc_string.hpp>
 
 struct Ident
 {
     struct ModPath
     {
-        //::std::vector<RcString> ents;
-        ::std::vector<::std::string> ents;
+        ::std::vector<RcString> ents;
     };
     class Hygiene
     {
@@ -77,17 +77,17 @@ struct Ident
     };
 
     Hygiene hygiene;
-    ::std::string   name;
+    RcString   name;
 
     Ident(const char* name):
         hygiene(),
         name(name)
     { }
-    Ident(::std::string name):
+    Ident(RcString name):
         hygiene(),
         name(::std::move(name))
     { }
-    Ident(Hygiene hygiene, ::std::string name):
+    Ident(Hygiene hygiene, RcString name):
         hygiene(::std::move(hygiene)), name(::std::move(name))
     { }
 
@@ -96,7 +96,7 @@ struct Ident
     Ident& operator=(Ident&& x) = default;
     Ident& operator=(const Ident& x) = default;
 
-    ::std::string into_string() {
+    RcString into_string() {
         return ::std::move(name);
     }
 

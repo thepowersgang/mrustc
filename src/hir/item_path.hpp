@@ -54,12 +54,12 @@ public:
         }
         else if( parent ) {
             assert(name);
-            return parent->get_simple_path() + name;
+            return parent->get_simple_path() + RcString::new_interned(name);
         }
         else {
             assert(!name);
             assert(crate_name);
-            return ::HIR::SimplePath(crate_name);
+            return ::HIR::SimplePath(RcString::new_interned(crate_name));
         }
     }
     ::HIR::Path get_full_path() const {
@@ -76,11 +76,11 @@ public:
         else if( parent->trait ) {
             assert(parent->ty);
             assert(parent->trait_params);
-            return ::HIR::Path( parent->ty->clone(), ::HIR::GenericPath(parent->trait->clone(), parent->trait_params->clone()), ::std::string(name) );
+            return ::HIR::Path( parent->ty->clone(), ::HIR::GenericPath(parent->trait->clone(), parent->trait_params->clone()), RcString::new_interned(name) );
         }
         else {
             assert(parent->ty);
-            return ::HIR::Path( parent->ty->clone(), ::std::string(name) );
+            return ::HIR::Path( parent->ty->clone(), RcString::new_interned(name) );
         }
     }
     const char* get_name() const {
@@ -93,6 +93,9 @@ public:
         return *this;
     }
     ItemPath operator+(const ::std::string& name) const {
+        return ItemPath(*this, name.c_str());
+    }
+    ItemPath operator+(const RcString& name) const {
         return ItemPath(*this, name.c_str());
     }
 

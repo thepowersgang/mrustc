@@ -88,6 +88,7 @@ struct LifetimeRef
     static const uint32_t UNKNOWN = 0;
     static const uint32_t STATIC = 0xFFFF;
 
+    //RcString  name;
     // Values below 2^16 are parameters/static, values above are per-function region IDs allocated during region inferrence.
     uint32_t  binding = UNKNOWN;
 
@@ -97,6 +98,9 @@ struct LifetimeRef
         return rv;
     }
 
+    Ordering ord(const LifetimeRef& x) const {
+        return ::ord(binding, x.binding);
+    }
     bool operator==(const LifetimeRef& x) const {
         return binding == x.binding;
     }
@@ -191,7 +195,7 @@ public:
         TypePathBinding binding;
         }),
     (Generic, struct {
-        ::std::string   name;
+        RcString    name;
         // 0xFFFF = Self, 0-255 = Type/Trait, 256-511 = Method, 512-767 = Placeholder
         unsigned int    binding;
 
@@ -254,7 +258,7 @@ public:
     TypeRef(::std::vector< ::HIR::TypeRef> sts):
         m_data( Data::make_Tuple(mv$(sts)) )
     {}
-    TypeRef(::std::string name, unsigned int slot):
+    TypeRef(RcString name, unsigned int slot):
         m_data( Data::make_Generic({ mv$(name), slot }) )
     {}
     TypeRef(::HIR::TypeRef::Data x):

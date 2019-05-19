@@ -41,7 +41,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const MacroExpansionEnt& x
 /// Matching pattern entry
 struct MacroPatEnt
 {
-    ::std::string   name;
+    RcString    name;
     unsigned int    name_index = 0;
     // TODO: Include a point span for the token?
     Token   tok;
@@ -77,7 +77,7 @@ struct MacroPatEnt
     {
     }
 
-    MacroPatEnt(::std::string name, unsigned int name_index, Type type):
+    MacroPatEnt(RcString name, unsigned int name_index, Type type):
         name( mv$(name) ),
         name_index( name_index ),
         tok(),
@@ -134,7 +134,7 @@ extern::std::ostream& operator<<(::std::ostream& os, const SimplePatEnt& x);
 struct MacroRulesArm
 {
     /// Names for the parameters
-    ::std::vector< ::std::string>   m_param_names;
+    ::std::vector<RcString>   m_param_names;
 
     /// Patterns
     ::std::vector<SimplePatEnt> m_pattern;
@@ -164,7 +164,7 @@ public:
 
     /// Crate that defined this macro
     /// - Populated on deserialise if not already set
-    ::std::string   m_source_crate;
+    RcString   m_source_crate;
 
     Ident::Hygiene  m_hygiene;
 
@@ -181,8 +181,8 @@ public:
 extern ::std::unique_ptr<TokenStream>   Macro_InvokeRules(const char *name, const MacroRules& rules, const Span& sp, TokenTree input, AST::Module& mod);
 extern MacroRulesPtr    Parse_MacroRules(TokenStream& lex);
 
-extern ::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector< ::std::string>& names);
-extern ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(TokenStream& lex, enum eTokenType open, enum eTokenType close, const ::std::vector< ::std::string>& var_names, ::std::map<unsigned int,bool>* var_set_ptr=nullptr);
+extern ::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector<RcString>& names);
+extern ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(TokenStream& lex, enum eTokenType open, enum eTokenType close, const ::std::vector<RcString>& var_names, ::std::map<unsigned int,bool>* var_set_ptr=nullptr);
 extern MacroRulesArm Parse_MacroRules_MakeArm(Span pat_sp, ::std::vector<MacroPatEnt> pattern, ::std::vector<MacroExpansionEnt> contents);
 
 #endif // MACROS_HPP_INCLUDED

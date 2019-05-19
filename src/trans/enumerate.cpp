@@ -592,8 +592,7 @@ namespace {
                     const auto& trait = *te.m_trait.m_trait_ptr;
 
                     ASSERT_BUG(Span(), ! te.m_trait.m_path.m_path.m_components.empty(), "TODO: Data trait is empty, what can be done?");
-                    auto vtable_ty_spath = te.m_trait.m_path.m_path;
-                    vtable_ty_spath.m_components.back() += "#vtable";
+                    const auto& vtable_ty_spath = trait.m_vtable_path;
                     const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_ty_spath);
                     // Copy the param set from the trait in the trait object
                     ::HIR::PathParams   vtable_params = te.m_trait.m_path.m_params.clone();
@@ -1039,8 +1038,7 @@ void Trans_Enumerate_Types(EnumState& state)
             const auto& gpath = ent.first.m_data.as_UfcsKnown().trait;
             const auto& trait = state.crate.get_trait_by_path(sp, gpath.m_path);
 
-            auto vtable_ty_spath = gpath.m_path;
-            vtable_ty_spath.m_components.back() += "#vtable";
+            const auto& vtable_ty_spath = trait.m_vtable_path;
             const auto& vtable_ref = state.crate.get_struct_by_path(sp, vtable_ty_spath);
             // Copy the param set from the trait in the trait object
             ::HIR::PathParams   vtable_params = gpath.m_params.clone();
@@ -1775,7 +1773,7 @@ namespace {
             TU_IFLET( ::HIR::ValueItem, vi.second->ent, Function, i,
                 if( i.m_code.m_mir && i.m_linkage.name != "" && i.m_linkage.name == name )
                 {
-                    out_path = (mod_path + vi.first.c_str()).get_simple_path();
+                    out_path = (mod_path + vi.first).get_simple_path();
                     return &i;
                 }
             )
@@ -1784,7 +1782,7 @@ namespace {
         for(const auto& ti : mod.m_mod_items)
         {
             TU_IFLET( ::HIR::TypeItem, ti.second->ent, Module, i,
-                if( auto rv = find_function_by_link_name(i, mod_path + ti.first.c_str(), name,  out_path) )
+                if( auto rv = find_function_by_link_name(i, mod_path + ti.first, name,  out_path) )
                     return rv;
             )
         }

@@ -127,15 +127,15 @@ TAGGED_UNION_EX(PathBinding_Macro, (), Unbound, (
         }),
     (ProcMacroDerive, struct {
         const ExternCrate* crate_;
-        ::std::string   mac_name;
+        RcString mac_name;
         }),
     (ProcMacroAttribute, struct {
         const ExternCrate* crate_;
-        ::std::string   mac_name;
+        RcString mac_name;
         }),
     (ProcMacro, struct {
         const ExternCrate* crate_;
-        ::std::string   mac_name;
+        RcString mac_name;
         }),
     (MacroRules, struct {
         const ExternCrate* crate_;  // Can be NULL
@@ -157,12 +157,12 @@ struct PathParams
 {
     ::std::vector< LifetimeRef >  m_lifetimes;
     ::std::vector< TypeRef >    m_types;
-    ::std::vector< ::std::pair< ::std::string, TypeRef> >   m_assoc;
+    ::std::vector< ::std::pair< RcString, TypeRef> >   m_assoc;
 
     PathParams(PathParams&& x) = default;
     PathParams(const PathParams& x);
     PathParams() {}
-    PathParams(::std::vector<LifetimeRef> lfts, ::std::vector<TypeRef> tys, ::std::vector<::std::pair<::std::string,TypeRef>> a):
+    PathParams(::std::vector<LifetimeRef> lfts, ::std::vector<TypeRef> tys, ::std::vector<::std::pair<RcString,TypeRef>> a):
         m_lifetimes(mv$(lfts)),
         m_types(mv$(tys)),
         m_assoc(mv$(a))
@@ -182,12 +182,12 @@ struct PathParams
 
 class PathNode
 {
-    ::std::string   m_name;
+    RcString    m_name;
     PathParams  m_params;
 public:
     PathNode() {}
-    PathNode(::std::string name, PathParams args = {});
-    const ::std::string& name() const { return m_name; }
+    PathNode(RcString name, PathParams args = {});
+    const RcString& name() const { return m_name; }
 
     const ::AST::PathParams& args() const { return m_params; }
           ::AST::PathParams& args()       { return m_params; }
@@ -205,7 +205,7 @@ public:
     TAGGED_UNION(Class, Invalid,
         (Invalid, struct {}),
         (Local, struct {   // Variable / Type param (resolved)
-            ::std::string name;
+            RcString name;
             } ),
         (Relative, struct {    // General relative
             Ident::Hygiene hygiene;
@@ -219,7 +219,7 @@ public:
             ::std::vector<PathNode> nodes;
             } ),
         (Absolute, struct {    // Absolute
-            ::std::string   crate;
+            RcString    crate;
             ::std::vector<PathNode> nodes;
             } ),
         (UFCS, struct {    // Type-relative
@@ -267,7 +267,7 @@ public:
     Path& operator=(const AST::Path&) = delete;
 
     // ABSOLUTE
-    Path(::std::string crate, ::std::vector<PathNode> nodes):
+    Path(RcString crate, ::std::vector<PathNode> nodes):
         m_class( Class::make_Absolute({ mv$(crate), mv$(nodes)}) )
     {}
 
@@ -278,10 +278,10 @@ public:
 
     // VARIABLE
     struct TagLocal {};
-    Path(TagLocal, ::std::string name):
+    Path(TagLocal, RcString name):
         m_class( Class::make_Local({ mv$(name) }) )
     {}
-    Path(::std::string name):
+    Path(RcString name):
         m_class( Class::make_Local({ mv$(name) }) )
     {}
 
@@ -301,14 +301,6 @@ public:
         m_class( Class::make_Super({ count, mv$(nodes) }) )
     {}
 
-    //void set_crate(::std::string crate) {
-    //    if( m_crate == "" ) {
-    //        m_crate = crate;
-    //        DEBUG("crate set to " << m_crate);
-    //    }
-    //}
-
-
     Class::Tag class_tag() const {
         return m_class.tag();
     }
@@ -318,7 +310,7 @@ public:
         tmp.nodes().push_back( mv$(pn) );
         return tmp;
     }
-    Path operator+(const ::std::string& s) const {
+    Path operator+(const RcString& s) const {
         Path tmp = Path(*this);
         tmp.append(PathNode(s, {}));
         return tmp;
@@ -370,7 +362,6 @@ public:
         )
         throw ::std::runtime_error("Path::nodes() fell off");
     }
-    //const ::std::string& crate() const { return m_crate; }
 
     bool is_parent_of(const Path& x) const;
 
@@ -407,7 +398,7 @@ private:
 
     void check_param_counts(const GenericParams& params, bool expect_params, PathNode& node);
 public:
-    void bind_enum_var(const Enum& ent, const ::std::string& name);
+    void bind_enum_var(const Enum& ent, const RcString& name);
     void bind_function(const Function& ent) {
         m_bindings.value = PathBinding_Value::make_Function({&ent});
     }

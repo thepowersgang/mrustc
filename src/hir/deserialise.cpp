@@ -22,13 +22,14 @@
 
     class HirDeserialiser
     {
-        ::std::string m_crate_name;
+        RcString m_crate_name;
         ::HIR::serialise::Reader&   m_in;
     public:
         HirDeserialiser(::HIR::serialise::Reader& in):
             m_in(in)
         {}
 
+        RcString read_istring() { return m_in.read_istring(); }
         ::std::string read_string() { return m_in.read_string(); }
         bool read_bool() { return m_in.read_bool(); }
         size_t deserialise_count() { return m_in.read_count(); }
@@ -78,6 +79,51 @@
             return rv;
         }
 
+        template<typename V>
+        ::std::map< RcString,V> deserialise_istrmap()
+        {
+            TRACE_FUNCTION_F("<" << typeid(V).name() << ">");
+            size_t n = m_in.read_count();
+            ::std::map< RcString, V>   rv;
+            //rv.reserve(n);
+            for(size_t i = 0; i < n; i ++)
+            {
+                auto s = m_in.read_istring();
+                rv.insert( ::std::make_pair( mv$(s), D<V>::des(*this) ) );
+            }
+            return rv;
+        }
+        template<typename V>
+        ::std::unordered_map< RcString,V> deserialise_istrumap()
+        {
+            TRACE_FUNCTION_F("<" << typeid(V).name() << ">");
+            size_t n = m_in.read_count();
+            ::std::unordered_map<RcString, V>   rv;
+            //rv.reserve(n);
+            for(size_t i = 0; i < n; i ++)
+            {
+                auto s = m_in.read_istring();
+                DEBUG("- " << s);
+                rv.insert( ::std::make_pair( mv$(s), D<V>::des(*this) ) );
+            }
+            return rv;
+        }
+        template<typename V>
+        ::std::unordered_multimap<RcString,V> deserialise_istrummap()
+        {
+            TRACE_FUNCTION_F("<" << typeid(V).name() << ">");
+            size_t n = m_in.read_count();
+            ::std::unordered_multimap<RcString, V>   rv;
+            //rv.reserve(n);
+            for(size_t i = 0; i < n; i ++)
+            {
+                auto s = m_in.read_istring();
+                DEBUG("- " << s);
+                rv.insert( ::std::make_pair( mv$(s), D<V>::des(*this) ) );
+            }
+            return rv;
+        }
+
         template<typename T>
         ::std::vector<T> deserialise_vec()
         {
@@ -117,6 +163,7 @@
         }
 
 
+        ::HIR::LifetimeDef deserialise_lifetimedef();
         ::HIR::LifetimeRef deserialise_lifetimeref();
         ::HIR::TypeRef deserialise_type();
         ::HIR::SimplePath deserialise_simplepath();
@@ -137,7 +184,7 @@
         {
             ::HIR::ProcMacro    pm;
             TRACE_FUNCTION_FR("", "ProcMacro { " << pm.name << ", " << pm.path << ", [" << pm.attributes << "]}");
-            pm.name = m_in.read_string();
+            pm.name = m_in.read_istring();
             pm.path = deserialise_simplepath();
             pm.attributes = deserialise_vec< ::std::string>();
             DEBUG("pm = ProcMacro { " << pm.name << ", " << pm.path << ", [" << pm.attributes << "]}");
@@ -155,7 +202,7 @@
             size_t method_count = m_in.read_count();
             for(size_t i = 0; i < method_count; i ++)
             {
-                auto name = m_in.read_string();
+                auto name = m_in.read_istring();
                 rv.m_methods.insert( ::std::make_pair( mv$(name), ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> {
                     deserialise_pub(), m_in.read_bool(), deserialise_function()
                     } ) );
@@ -163,7 +210,7 @@
             size_t const_count = m_in.read_count();
             for(size_t i = 0; i < const_count; i ++)
             {
-                auto name = m_in.read_string();
+                auto name = m_in.read_istring();
                 rv.m_constants.insert( ::std::make_pair( mv$(name), ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> {
                     deserialise_pub(), m_in.read_bool(), deserialise_constant()
                     } ) );
@@ -184,7 +231,7 @@
             size_t method_count = m_in.read_count();
             for(size_t i = 0; i < method_count; i ++)
             {
-                auto name = m_in.read_string();
+                auto name = m_in.read_istring();
                 auto is_spec = m_in.read_bool();
                 rv.m_methods.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> {
                     is_spec, deserialise_function()
@@ -193,7 +240,7 @@
             size_t const_count = m_in.read_count();
             for(size_t i = 0; i < const_count; i ++)
             {
-                auto name = m_in.read_string();
+                auto name = m_in.read_istring();
                 auto is_spec = m_in.read_bool();
                 rv.m_constants.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> {
                     is_spec, deserialise_constant()
@@ -202,7 +249,7 @@
             size_t static_count = m_in.read_count();
             for(size_t i = 0; i < static_count; i ++)
             {
-                auto name = m_in.read_string();
+                auto name = m_in.read_istring();
                 auto is_spec = m_in.read_bool();
                 rv.m_statics.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::Static> {
                     is_spec, deserialise_static()
@@ -211,7 +258,7 @@
             size_t type_count = m_in.read_count();
             for(size_t i = 0; i < type_count; i ++)
             {
-                auto name = m_in.read_string();
+                auto name = m_in.read_istring();
                 auto is_spec = m_in.read_bool();
                 rv.m_types.insert( ::std::make_pair( mv$(name), ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> {
                     is_spec, deserialise_type()
@@ -240,10 +287,10 @@
             // NOTE: This is set after loading.
             //rv.m_exported = true;
             rv.m_rules = deserialise_vec_c< ::MacroRulesArm>( [&](){ return deserialise_macrorulesarm(); });
-            rv.m_source_crate = m_in.read_string();
+            rv.m_source_crate = m_in.read_istring();
             if(rv.m_source_crate == "")
             {
-                assert(!m_crate_name.empty());
+                assert(m_crate_name != "");
                 rv.m_source_crate = m_crate_name;
             }
             return rv;
@@ -288,7 +335,7 @@
             }
         }
         ::MacroPatEnt deserialise_macropatent() {
-            auto s = m_in.read_string();
+            auto s = m_in.read_istring();
             auto n = static_cast<unsigned int>(m_in.read_count());
             auto type = static_cast< ::MacroPatEnt::Type>(m_in.read_tag());
             ::MacroPatEnt   rv { mv$(s), mv$(n), mv$(type) };
@@ -320,7 +367,7 @@
         }
         ::MacroRulesArm deserialise_macrorulesarm() {
             ::MacroRulesArm rv;
-            rv.m_param_names = deserialise_vec< ::std::string>();
+            rv.m_param_names = deserialise_vec<RcString>();
             rv.m_pattern = deserialise_vec_c< ::SimplePatEnt>( [&](){ return deserialise_simplepatent(); } );
             rv.m_contents = deserialise_vec_c< ::MacroExpansionEnt>( [&](){ return deserialise_macroexpansionent(); } );
             return rv;
@@ -366,6 +413,8 @@
                 return ::Token::Data::make_None({});
             case ::Token::Data::TAG_String:
                 return ::Token::Data::make_String( m_in.read_string() );
+            case ::Token::Data::TAG_IString:
+                return ::Token::Data::make_IString( m_in.read_istring() );
             case ::Token::Data::TAG_Integer: {
                 auto dty = static_cast<eCoreType>(m_in.read_tag());
                 return ::Token::Data::make_Integer({ dty, m_in.read_u64c() });
@@ -723,7 +772,7 @@
         {
             return ::HIR::AssociatedType {
                 m_in.read_bool(),
-                "", // TODO: Better lifetime type
+                deserialise_lifetimeref(),
                 deserialise_vec< ::HIR::TraitPath>(),
                 deserialise_type()
                 };
@@ -736,6 +785,9 @@
     template<>
     DEF_D( ::std::string,
         return d.read_string(); );
+    template<>
+    DEF_D( RcString,
+        return d.read_istring(); );
     template<>
     DEF_D( bool,
         return d.read_bool(); );
@@ -754,6 +806,8 @@
     DEF_D( ::HIR::VisEnt<T>,
         return d.deserialise_visent<T>(); )
 
+    template<> DEF_D( ::HIR::LifetimeDef, return d.deserialise_lifetimedef(); )
+    template<> DEF_D( ::HIR::LifetimeRef, return d.deserialise_lifetimeref(); )
     template<> DEF_D( ::HIR::TypeRef, return d.deserialise_type(); )
     template<> DEF_D( ::HIR::SimplePath, return d.deserialise_simplepath(); )
     template<> DEF_D( ::HIR::GenericPath, return d.deserialise_genericpath(); )
@@ -784,6 +838,12 @@
 
     template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
 
+    ::HIR::LifetimeDef HirDeserialiser::deserialise_lifetimedef()
+    {
+        ::HIR::LifetimeDef  rv;
+        rv.m_name = m_in.read_istring();
+        return rv;
+    }
     ::HIR::LifetimeRef HirDeserialiser::deserialise_lifetimeref()
     {
         ::HIR::LifetimeRef  rv;
@@ -808,7 +868,7 @@
             {}
             })
         _(Generic, {
-            m_in.read_string(),
+            m_in.read_istring(),
             m_in.read_u16()
             })
         _(TraitObject, {
@@ -859,11 +919,11 @@
     {
         TRACE_FUNCTION;
         // HACK! If the read crate name is empty, replace it with the name we're loaded with
-        auto crate_name = m_in.read_string();
-        auto components = deserialise_vec< ::std::string>();
+        auto crate_name = m_in.read_istring();
+        auto components = deserialise_vec< RcString>();
         if( crate_name == "" && components.size() > 0)
         {
-            assert(!m_crate_name.empty());
+            assert(m_crate_name != "");
             crate_name = m_crate_name;
         }
         return ::HIR::SimplePath {
@@ -889,7 +949,7 @@
     ::HIR::TraitPath HirDeserialiser::deserialise_traitpath()
     {
         auto gpath = deserialise_genericpath();
-        auto tys = deserialise_strmap< ::HIR::TypeRef>();
+        auto tys = deserialise_istrmap< ::HIR::TypeRef>();
         return ::HIR::TraitPath { mv$(gpath), {}, mv$(tys) };
     }
     ::HIR::Path HirDeserialiser::deserialise_path()
@@ -904,7 +964,7 @@
             DEBUG("Inherent");
             return ::HIR::Path( ::HIR::Path::Data::Data_UfcsInherent {
                 box$( deserialise_type() ),
-                m_in.read_string(),
+                m_in.read_istring(),
                 deserialise_pathparams(),
                 deserialise_pathparams()
                 } );
@@ -913,7 +973,7 @@
             return ::HIR::Path( ::HIR::Path::Data::Data_UfcsKnown {
                 box$( deserialise_type() ),
                 deserialise_genericpath(),
-                m_in.read_string(),
+                m_in.read_istring(),
                 deserialise_pathparams()
                 } );
         default:
@@ -926,7 +986,7 @@
         TRACE_FUNCTION;
         ::HIR::GenericParams    params;
         params.m_types = deserialise_vec< ::HIR::TypeParamDef>();
-        params.m_lifetimes = deserialise_vec< ::std::string>();
+        params.m_lifetimes = deserialise_vec< ::HIR::LifetimeDef>();
         params.m_bounds = deserialise_vec< ::HIR::GenericBound>();
         DEBUG("params = " << params.fmt_args() << ", " << params.fmt_bounds());
         return params;
@@ -934,7 +994,7 @@
     ::HIR::TypeParamDef HirDeserialiser::deserialise_typaramdef()
     {
         auto rv = ::HIR::TypeParamDef {
-            m_in.read_string(),
+            m_in.read_istring(),
             deserialise_type(),
             m_in.read_bool()
             };
@@ -991,7 +1051,7 @@
     }
     ::HIR::Enum::DataVariant HirDeserialiser::deserialise_enumdatavariant()
     {
-        auto name = m_in.read_string();
+        auto name = m_in.read_istring();
         DEBUG("Enum::DataVariant " << name);
         return ::HIR::Enum::DataVariant {
             mv$(name),
@@ -1001,7 +1061,7 @@
     }
     ::HIR::Enum::ValueVariant HirDeserialiser::deserialise_enumvaluevariant()
     {
-        auto name = m_in.read_string();
+        auto name = m_in.read_istring();
         DEBUG("Enum::ValueVariant " << name);
         return ::HIR::Enum::ValueVariant {
             mv$(name),
@@ -1014,7 +1074,7 @@
         TRACE_FUNCTION;
         auto params = deserialise_genericparams();
         auto repr = static_cast< ::HIR::Union::Repr>( m_in.read_tag() );
-        auto variants = deserialise_vec< ::std::pair< ::std::string, ::HIR::VisEnt< ::HIR::TypeRef> > >();
+        auto variants = deserialise_vec< ::std::pair< RcString, ::HIR::VisEnt< ::HIR::TypeRef> > >();
         auto markings = deserialise_markings();
 
         return ::HIR::Union {
@@ -1041,7 +1101,7 @@
             break;
         case ::HIR::Struct::Data::TAG_Named:
             DEBUG("Named");
-            data = ::HIR::Struct::Data( deserialise_vec< ::std::pair< ::std::string, ::HIR::VisEnt< ::HIR::TypeRef> > >() );
+            data = ::HIR::Struct::Data( deserialise_vec< ::std::pair< RcString, ::HIR::VisEnt< ::HIR::TypeRef> > >() );
             break;
         default:
             BUG(Span(), "Bad tag for HIR::Struct::Data - " << tag);
@@ -1061,15 +1121,16 @@
 
         ::HIR::Trait rv {
             deserialise_genericparams(),
-            "",  // TODO: Better type for lifetime
+            ::HIR::LifetimeRef(),  // TODO: Better type for lifetime
             {}
             };
         rv.m_is_marker = m_in.read_bool();
-        rv.m_types = deserialise_strumap< ::HIR::AssociatedType>();
-        rv.m_values = deserialise_strumap< ::HIR::TraitValueItem>();
-        rv.m_value_indexes = deserialise_strummap< ::std::pair<unsigned int, ::HIR::GenericPath> >();
-        rv.m_type_indexes = deserialise_strumap< unsigned int>();
+        rv.m_types = deserialise_istrumap< ::HIR::AssociatedType>();
+        rv.m_values = deserialise_istrumap< ::HIR::TraitValueItem>();
+        rv.m_value_indexes = deserialise_istrummap< ::std::pair<unsigned int, ::HIR::GenericPath> >();
+        rv.m_type_indexes = deserialise_istrumap< unsigned int>();
         rv.m_all_parent_traits = deserialise_vec< ::HIR::TraitPath>();
+        rv.m_vtable_path = deserialise_simplepath();
         return rv;
     }
 
@@ -1225,7 +1286,7 @@
         _(Value, deserialise_mir_lvalue() )
         _(Path, deserialise_path() )
         _(Intrinsic, {
-            m_in.read_string(),
+            m_in.read_istring(),
             deserialise_pathparams()
             })
         #undef _
@@ -1241,8 +1302,8 @@
         ::HIR::Module   rv;
 
         // m_traits doesn't need to be serialised
-        rv.m_value_items = deserialise_strumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::ValueItem> > >();
-        rv.m_mod_items = deserialise_strumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::TypeItem> > >();
+        rv.m_value_items = deserialise_istrumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::ValueItem> > >();
+        rv.m_mod_items = deserialise_istrumap< ::std::unique_ptr< ::HIR::VisEnt< ::HIR::TypeItem> > >();
 
         return rv;
     }
@@ -1256,8 +1317,8 @@
     {
         ::HIR::Crate    rv;
 
-        this->m_crate_name = m_in.read_string();
-        assert(!this->m_crate_name.empty() && "Empty crate name loaded from metadata");
+        this->m_crate_name = m_in.read_istring();
+        assert(this->m_crate_name != "" && "Empty crate name loaded from metadata");
         rv.m_crate_name = this->m_crate_name;
         rv.m_root_module = deserialise_module();
 
@@ -1280,14 +1341,14 @@
             }
         }
 
-        rv.m_exported_macros = deserialise_strumap< ::MacroRulesPtr>();
+        rv.m_exported_macros = deserialise_istrumap< ::MacroRulesPtr>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();
 
         {
             size_t n = m_in.read_count();
             for(size_t i = 0; i < n; i ++)
             {
-                auto ext_crate_name = m_in.read_string();
+                auto ext_crate_name = m_in.read_istring();
                 auto ext_crate_file = m_in.read_string();
                 auto ext_crate = ::HIR::ExternCrate {};
                 ext_crate.m_basename = ext_crate_file;
@@ -1304,7 +1365,7 @@
     }
 //}
 
-::HIR::CratePtr HIR_Deserialise(const ::std::string& filename, const ::std::string& loaded_name)
+::HIR::CratePtr HIR_Deserialise(const ::std::string& filename)
 {
     try
     {

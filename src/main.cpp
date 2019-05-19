@@ -351,9 +351,9 @@ int main(int argc, char *argv[])
             if( crate.m_crate_type == ::AST::Crate::Type::Executable || params.test_harness || crate.m_crate_type == ::AST::Crate::Type::ProcMacro )
             {
                 bool allocator_crate_loaded = false;
-                ::std::string   alloc_crate_name;
+                RcString    alloc_crate_name;
                 bool panic_runtime_loaded = false;
-                ::std::string   panic_crate_name;
+                RcString    panic_crate_name;
                 bool panic_runtime_needed = false;
                 for(const auto& ec : crate.m_extern_crates)
                 {

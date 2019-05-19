@@ -825,6 +825,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
             static Span sp;
             for(const auto& tb : id.m_params.m_bounds)
             {
+                DEBUG(tb);
                 if(tb.is_TraitBound())
                 {
                     ::HIR::TypeRef  tmp_ty;
@@ -851,7 +852,7 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                         }
                     }
                     else if( TU_TEST1(ty.m_data, Path, .binding.is_Opaque()) ) {
-                        TODO(Span(), "Check bound " << ty << " : " << trait << " in source bounds or trait bounds");
+                        TODO(sp, "Check bound " << ty << " : " << trait << " in source bounds or trait bounds");
                     }
                     else {
                         // Search the crate for an impl
@@ -889,9 +890,14 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
                                 // 4. Check ATY bounds on the trait path
                                 for(const auto& atyb : trait.m_type_bounds)
                                 {
-                                    const auto& aty = ti.m_types.at(atyb.first);
-                                    if( !aty.data.match_test_generics(sp, atyb.second, cb_ident, cb_match) )
-                                        return false;
+                                    if( ti.m_types.count(atyb.first) == 0 ) {
+                                       DEBUG("Associated type '" << atyb.first << "' not in trait impl, assuming good");
+                                    }
+                                    else {
+                                        const auto& aty = ti.m_types.at(atyb.first);
+                                        if( !aty.data.match_test_generics(sp, atyb.second, cb_ident, cb_match) )
+                                            return false;
+                                    }
                                 }
                                 // All those pass? It's good.
                                 return true;

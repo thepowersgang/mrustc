@@ -36,7 +36,7 @@ public:
     void handle_enum(const AST::Enum& s);
     void handle_trait(const AST::Trait& s);
 
-    void handle_function(bool is_pub, const ::std::string& name, const AST::Function& f);
+    void handle_function(bool is_pub, const RcString& name, const AST::Function& f);
 
     virtual bool is_const() const override { return true; }
     virtual void visit(AST::ExprNode_Block& n) override {
@@ -1133,7 +1133,7 @@ void RustPrinter::handle_trait(const AST::Trait& s)
     m_os << "\n";
 }
 
-void RustPrinter::handle_function(bool is_pub, const ::std::string& name, const AST::Function& f)
+void RustPrinter::handle_function(bool is_pub, const RcString& name, const AST::Function& f)
 {
     m_os << indent();
     m_os << (is_pub ? "pub " : "");

@@ -30,7 +30,7 @@ public:
 };
 
 /// Parse the pattern of a macro_rules! arm
-::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector< ::std::string>& names)
+::std::vector<MacroPatEnt> Parse_MacroRules_Pat(TokenStream& lex, enum eTokenType open, enum eTokenType close,  ::std::vector<RcString>& names)
 {
     TRACE_FUNCTION;
     Token tok;
@@ -60,10 +60,10 @@ public:
             // TODO: Allow any reserved word
             case TOK_RWORD_PUB ... TOK_RWORD_UNSIZED:
             case TOK_IDENT: {
-                ::std::string   name = tok.type() == TOK_IDENT ? mv$(tok.str()) : FMT(tok);
+                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(FMT(tok));
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
                 GET_CHECK_TOK(tok, lex, TOK_IDENT);
-                ::std::string   type = mv$(tok.str());
+                RcString type = tok.istr();
 
                 unsigned int idx = ::std::find( names.begin(), names.end(), name ) - names.begin();
                 if( idx == names.size() )
@@ -142,7 +142,7 @@ public:
 ::std::vector<MacroExpansionEnt> Parse_MacroRules_Cont(
     TokenStream& lex,
     enum eTokenType open, enum eTokenType close,
-    const ::std::vector< ::std::string>& var_names,
+    const ::std::vector<RcString>& var_names,
     ::std::map<unsigned int,bool>* var_set_ptr/*=nullptr*/
     )
 {
@@ -221,7 +221,7 @@ public:
             else if( tok.type() == TOK_IDENT || tok.type() >= TOK_RWORD_PUB )
             {
                 // Look up the named parameter in the list of param names for this arm
-                auto name = tok.type() == TOK_IDENT ? tok.str() : FMT(tok);
+                auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(FMT(tok));
                 unsigned int idx = ::std::find(var_names.begin(), var_names.end(), name) - var_names.begin();
                 if( idx == var_names.size() ) {
                     // TODO: `error-chain`'s quick_error macro has an arm which refers to an undefined metavar.
@@ -269,7 +269,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
         throw ParseError::Unexpected(lex, tok);
     }
     // - Pattern entries
-    ::std::vector< ::std::string>   names;
+    ::std::vector<RcString>   names;
     {
         auto ps = lex.start_span();
         rule.m_pattern = Parse_MacroRules_Pat(lex, tok.type(), close,  names);
@@ -294,7 +294,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
 }
 
 // TODO: Also count the number of times each variable is used?
-void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector< ::std::string>& names)
+void enumerate_names(const ::std::vector<MacroPatEnt>& pats, ::std::vector<RcString>& names)
 {
     for( const auto& pat : pats )
     {

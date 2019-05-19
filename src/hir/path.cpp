@@ -8,7 +8,7 @@
 #include <hir/path.hpp>
 #include <hir/type.hpp>
 
-::HIR::SimplePath HIR::SimplePath::operator+(const ::std::string& s) const
+::HIR::SimplePath HIR::SimplePath::operator+(const RcString& s) const
 {
     ::HIR::SimplePath ret(m_crate_name);
     ret.m_components = m_components;
@@ -193,11 +193,11 @@ bool ::HIR::TraitPath::operator==(const ::HIR::TraitPath& x) const
     m_data( ::HIR::Path::Data::make_Generic(::HIR::GenericPath(mv$(sp))) )
 {
 }
-::HIR::Path::Path(TypeRef ty, ::std::string item, PathParams item_params):
+::HIR::Path::Path(TypeRef ty, RcString item, PathParams item_params):
     m_data(Data::make_UfcsInherent({ box$(ty), mv$(item), mv$(item_params) }))
 {
 }
-::HIR::Path::Path(TypeRef ty, GenericPath trait, ::std::string item, PathParams item_params):
+::HIR::Path::Path(TypeRef ty, GenericPath trait, RcString item, PathParams item_params):
     m_data( Data::make_UfcsKnown({ box$(mv$(ty)), mv$(trait), mv$(item), mv$(item_params) }) )
 {
 }

@@ -23,15 +23,18 @@
 ::HIR::TraitPath LowerHIR_TraitPath(const Span& sp, const ::AST::Path& path);
 
 ::HIR::SimplePath path_Sized;
-::std::string   g_core_crate;
-::std::string   g_crate_name;
+RcString    g_core_crate;
+RcString    g_crate_name;
 ::HIR::Crate*   g_crate_ptr = nullptr;
 const ::AST::Crate* g_ast_crate_ptr;
 
 // --------------------------------------------------------------------
-::std::string LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
+HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
 {
-    return r.name().name;
+    return HIR::LifetimeRef {
+        // TODO: names?
+        r.binding()
+        };
 }
 
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp, bool* self_is_sized)
@@ -48,7 +51,7 @@ const ::AST::Crate* g_ast_crate_ptr;
     if( gp.lft_params().size() > 0 )
     {
         for(const auto& lft_def : gp.lft_params())
-            rv.m_lifetimes.push_back( lft_def.name().name );
+            rv.m_lifetimes.push_back( HIR::LifetimeDef { lft_def.name().name } );
     }
     if( gp.bounds().size() > 0 )
     {
@@ -316,7 +319,7 @@ const ::AST::Crate* g_ast_crate_ptr;
         }
         }
     TU_ARMA(Struct, e) {
-        ::std::vector< ::std::pair< ::std::string, ::HIR::Pattern> > sub_patterns;
+        ::std::vector< ::std::pair< RcString, ::HIR::Pattern> > sub_patterns;
         for(const auto& sp : e.sub_patterns)
             sub_patterns.push_back( ::std::make_pair(sp.first, LowerHIR_Pattern(sp.second)) );
 
@@ -968,7 +971,7 @@ namespace {
     return rv;
 }
 
-::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(::std::string, ::HIR::Struct)> push_struct)
+::HIR::Enum LowerHIR_Enum(::HIR::ItemPath path, const ::AST::Enum& ent, const ::AST::AttributeList& attrs, ::std::function<void(RcString, ::HIR::Struct)> push_struct)
 {
     // 1. Figure out what sort of enum this is (value or data)
     bool has_value = false;
@@ -1081,7 +1084,7 @@ namespace {
                     throw "";
                 }
 
-                auto ty_name = FMT(path.name << "#" << var.m_name);
+                auto ty_name = RcString::new_interned(FMT(path.name << "#" << var.m_name));
                 push_struct(
                     ty_name,
                     ::HIR::Struct {
@@ -1156,14 +1159,14 @@ namespace {
     bool trait_reqires_sized = false;
     auto params = LowerHIR_GenericParams(f.params(), &trait_reqires_sized);
 
-    ::std::string   lifetime;
+    ::HIR::LifetimeRef  lifetime;
     ::std::vector< ::HIR::TraitPath>    supertraits;
     for(const auto& st : f.supertraits()) {
         if( st.ent.path.is_valid() ) {
             supertraits.push_back( LowerHIR_TraitPath(st.sp, st.ent.path) );
         }
         else {
-            lifetime = "static";
+            lifetime = ::HIR::LifetimeRef::new_static();
         }
     }
     ::HIR::Trait    rv {
@@ -1201,7 +1204,7 @@ namespace {
         (Type,
             bool is_sized = true;
             ::std::vector< ::HIR::TraitPath>    trait_bounds;
-            ::std::string   lifetime_bound;
+            ::HIR::LifetimeRef  lifetime_bound;
             auto gps = LowerHIR_GenericParams(i.params(), &is_sized);
 
             for(auto& b : gps.m_bounds)
@@ -1385,10 +1388,10 @@ namespace {
         };
 }
 
-void _add_mod_ns_item(::HIR::Module& mod, ::std::string name, ::HIR::Publicity is_pub,  ::HIR::TypeItem ti) {
+void _add_mod_ns_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub,  ::HIR::TypeItem ti) {
     mod.m_mod_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::TypeItem> { is_pub, mv$(ti) }) ) );
 }
-void _add_mod_val_item(::HIR::Module& mod, ::std::string name, ::HIR::Publicity is_pub,  ::HIR::ValueItem ti) {
+void _add_mod_val_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub,  ::HIR::ValueItem ti) {
     mod.m_value_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::ValueItem> { is_pub, mv$(ti) }) ) );
 }
 
@@ -1418,7 +1421,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, ::HIR::Publicity 
         if( submod_ptr )
         {
             auto& submod = *submod_ptr;
-            ::std::string name = FMT("#" << i);
+            auto name = RcString::new_interned(FMT("#" << i));
             auto item_path = ::HIR::ItemPath(path, name.c_str());
             auto ti = ::HIR::TypeItem::make_Module( LowerHIR_Module(submod, item_path, mod.m_traits) );
             _add_mod_ns_item( mod,  mv$(name), get_pub(false), mv$(ti) );
@@ -1534,7 +1537,7 @@ void _add_mod_val_item(::HIR::Module& mod, ::std::string name, ::HIR::Publicity 
                 // If there's no code, demangle the name (TODO: By ABI) and set linkage.
                 if( linkage.name == "" && ! e.value().is_valid() )
                 {
-                    linkage.name = item.name;
+                    linkage.name = item.name.c_str();
                 }
 
                 _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  ::HIR::ValueItem::make_Static(::HIR::Static {
@@ -1633,9 +1636,9 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 ::HIR::ItemPath    path(type, trait_name, trait_args);
                 DEBUG(path);
 
-                ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> > methods;
-                ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> > constants;
-                ::std::map< ::std::string, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> > types;
+                ::std::map< RcString, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> > methods;
+                ::std::map< RcString, ::HIR::TraitImpl::ImplEnt< ::HIR::Constant> > constants;
+                ::std::map< RcString, ::HIR::TraitImpl::ImplEnt< ::HIR::TypeRef> > types;
 
                 for(const auto& item : impl.items())
                 {
@@ -1711,8 +1714,8 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
             auto priv_path = ::HIR::Publicity::new_priv( LowerHIR_SimplePath(Span(), ast_mod.path()) ); // TODO: Does this need to consume anon modules?
             auto get_pub = [&](bool is_pub){ return is_pub ? ::HIR::Publicity::new_global() : priv_path; };
 
-            ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> > methods;
-            ::std::map< ::std::string, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> > constants;
+            ::std::map< RcString, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> > methods;
+            ::std::map< RcString, ::HIR::TypeImpl::VisImplEnt< ::HIR::Constant> > constants;
 
             for(const auto& item : impl.items())
             {
@@ -1809,18 +1812,20 @@ public:
 
     if(crate.m_crate_type != ::AST::Crate::Type::Executable)
     {
-        rv.m_crate_name = crate.m_crate_name;
         if(crate.m_crate_name_suffix != "")
         {
-            rv.m_crate_name += "-";
-            rv.m_crate_name += crate.m_crate_name_suffix;
+            rv.m_crate_name = RcString::new_interned(FMT(crate.m_crate_name + "-" + crate.m_crate_name_suffix));
+        }
+        else
+        {
+            rv.m_crate_name = RcString::new_interned(crate.m_crate_name);
         }
     }
 
     g_crate_ptr = &rv;
     g_ast_crate_ptr = &crate;
     g_crate_name = rv.m_crate_name;
-    g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? rv.m_crate_name : "core");
+    g_core_crate = (crate.m_load_std == ::AST::Crate::LOAD_NONE ? rv.m_crate_name : RcString::new_interned("core"));
     auto& macros = rv.m_exported_macros;
 
     // - Extract exported macros
@@ -1896,7 +1901,7 @@ public:
         for(const auto& ent : crate.m_proc_macros)
         {
             // Register under an invalid simplepath
-            rv.m_proc_macros.push_back( ::HIR::ProcMacro { ent.name, ::HIR::SimplePath("", { ent.name}), ent.attributes } );
+            rv.m_proc_macros.push_back( ::HIR::ProcMacro { ent.name, ::HIR::SimplePath(RcString(""), { ent.name }), ent.attributes } );
         }
     }
     else

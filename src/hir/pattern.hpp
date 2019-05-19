@@ -29,7 +29,7 @@ struct PatternBinding
 
     bool    m_mutable;
     Type    m_type;
-    ::std::string   m_name;
+    RcString    m_name;
     unsigned int    m_slot;
 
     unsigned m_implicit_deref_count = 0;
@@ -43,7 +43,7 @@ struct PatternBinding
         m_slot(0),
         m_implicit_deref_count(0)
     {}
-    PatternBinding(bool mut, Type type, ::std::string name, unsigned int slot):
+    PatternBinding(bool mut, Type type, RcString name, unsigned int slot):
         m_mutable(mut),
         m_type(type),
         m_name( mv$(name) ),
@@ -104,7 +104,7 @@ struct Pattern
         (Struct,    struct {
             GenericPath path;
             const Struct*   binding;
-            ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns;
+            ::std::vector< ::std::pair<RcString, Pattern> > sub_patterns;
             bool is_exhaustive;
 
             bool is_wildcard() const {
@@ -129,7 +129,7 @@ struct Pattern
             GenericPath path;
             const Enum* binding_ptr;
             unsigned binding_idx;
-            ::std::vector< ::std::pair< ::std::string, Pattern> > sub_patterns;
+            ::std::vector< ::std::pair<RcString, Pattern> > sub_patterns;
             bool is_exhaustive;
             } ),
         (Slice,     struct {

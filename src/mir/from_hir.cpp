@@ -51,7 +51,7 @@ namespace {
 
         struct LoopDesc {
             ScopeHandle scope;
-            ::std::string   label;
+            RcString   label;
             unsigned int    cur;
             unsigned int    next;
             ::MIR::LValue   res_value;
@@ -679,7 +679,7 @@ namespace {
                 target_block = &*it;
             }
             else {
-                if( target_block->label != "" && target_block->label[0] == '#' ) {
+                if( target_block->label != "" && target_block->label.c_str()[0] == '#' ) {
                     TODO(node.span(), "Break within try block, want to break parent loop instead");
                 }
             }
@@ -1952,7 +1952,7 @@ namespace {
                 {
                     m_builder.end_block(::MIR::Terminator::make_Call({
                         next_block, panic_block,
-                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ "platform:"+gpath.m_path.m_components.back(), gpath.m_params.clone() }),
+                        res.clone(), ::MIR::CallTarget::make_Intrinsic({ RcString(FMT("platform:" << gpath.m_path.m_components.back())), gpath.m_params.clone() }),
                         mv$(values)
                         }));
                 }
@@ -2054,8 +2054,8 @@ namespace {
             const auto& val_ty = node.m_value->m_res_type;
 
             unsigned int idx;
-            if( '0' <= node.m_field[0] && node.m_field[0] <= '9' ) {
-                ::std::stringstream(node.m_field) >> idx;
+            if( ::std::isdigit(node.m_field.c_str()[0]) ) {
+                ::std::stringstream(node.m_field.c_str()) >> idx;
                 m_builder.set_result( node.span(), ::MIR::LValue::make_Field({ box$(val), idx }) );
             }
             else if( const auto* bep = val_ty.m_data.as_Path().binding.opt_Struct() ) {

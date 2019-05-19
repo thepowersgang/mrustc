@@ -199,7 +199,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     // Impl
     ::HIR::TraitImpl    impl;
     impl.m_type = mv$(ty);
-    impl.m_methods.insert(::std::make_pair( ::std::string("clone"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::std::move(fcn) } ));
+    impl.m_methods.insert(::std::make_pair( RcString::new_interned("clone"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::std::move(fcn) } ));
 
     // Add impl to the crate
     state.crate.m_trait_impls.insert(::std::make_pair( state.lang_Clone, ::std::move(impl) ));

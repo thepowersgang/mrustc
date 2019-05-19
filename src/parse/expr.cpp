@@ -32,8 +32,8 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon);
 ExprNodeP Parse_Stmt_Let(TokenStream& lex);
 ExprNodeP Parse_Expr0(TokenStream& lex);
 ExprNodeP Parse_IfStmt(TokenStream& lex);
-ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime);
-ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime);
+ExprNodeP Parse_WhileStmt(TokenStream& lex, RcString lifetime);
+ExprNodeP Parse_ForStmt(TokenStream& lex, RcString lifetime);
 ExprNodeP Parse_Expr_Match(TokenStream& lex);
 ExprNodeP Parse_Expr1(TokenStream& lex);
 ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path tok);
@@ -108,7 +108,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
     GET_TOK(tok, lex);
 
     // `union Ident` - contextual keyword
-    if( tok.type() == TOK_IDENT && tok.str() == "union" && lex.lookahead(0) == TOK_IDENT ) {
+    if( tok.type() == TOK_IDENT && tok.istr() == "union" && lex.lookahead(0) == TOK_IDENT ) {
         PUTBACK(tok, lex);
         if( !local_mod ) {
             local_mod = lex.parse_state().get_current_mod().add_anon();
@@ -117,7 +117,7 @@ ExprNodeP Parse_ExprBlockLine_WithItems(TokenStream& lex, ::std::shared_ptr<AST:
         return ExprNodeP();
     }
 
-    if( tok.type() == TOK_IDENT && tok.str() == "macro_rules" && lex.lookahead(0) == TOK_EXCLAM )
+    if( tok.type() == TOK_IDENT && tok.istr() == "macro_rules" && lex.lookahead(0) == TOK_EXCLAM )
     {
         // Special case - create a local module if macro_rules! is seen
         // - Allows correct scoping of defined macros
@@ -191,7 +191,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
     if( GET_TOK(tok, lex) == TOK_LIFETIME )
     {
         // Lifetimes can only precede loops... and blocks?
-        ::std::string lifetime = tok.str();
+        auto lifetime = tok.istr();
         GET_CHECK_TOK(tok, lex, TOK_COLON);
 
         switch( GET_TOK(tok, lex) )
@@ -291,7 +291,7 @@ ExprNodeP Parse_ExprBlockLine(TokenStream& lex, bool *add_silence)
                 // If a braced macro invocation is the first part of a statement, don't expect a semicolon
                 if( lex.lookahead(1) == TOK_BRACE_OPEN || (lex.lookahead(1) == TOK_IDENT && lex.lookahead(2) == TOK_BRACE_OPEN) ) {
                     lex.getToken();
-                    return Parse_ExprMacro(lex, tok.str());
+                    return Parse_ExprMacro(lex, tok.istr());
                 }
             }
         // Fall through to the statement code
@@ -323,7 +323,7 @@ ExprNodeP Parse_ExprBlockLine_Stmt(TokenStream& lex, bool& has_semicolon)
 }
 
 /// While loop (either as a statement, or as part of an expression)
-ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)
+ExprNodeP Parse_WhileStmt(TokenStream& lex, RcString lifetime)
 {
     Token   tok;
 
@@ -349,12 +349,12 @@ ExprNodeP Parse_WhileStmt(TokenStream& lex, ::std::string lifetime)
     }
 }
 /// For loop (either as a statement, or as part of an expression)
-ExprNodeP Parse_ForStmt(TokenStream& lex, ::std::string lifetime)
+ExprNodeP Parse_ForStmt(TokenStream& lex, RcString lifetime)
 {
     Token   tok;
 
     // Irrefutable pattern
-    AST::Pattern    pat = Parse_Pattern(lex, false);
+    auto pat = Parse_Pattern(lex, false);
     GET_CHECK_TOK(tok, lex, TOK_RWORD_IN);
     ExprNodeP val;
     {
@@ -524,10 +524,10 @@ ExprNodeP Parse_Stmt(TokenStream& lex)
         case TOK_RWORD_BREAK:    type = AST::ExprNode_Flow::BREAK;    break;
         default:    throw ParseError::BugCheck(/*lex,*/ "continue/break");
         }
-        ::std::string   lifetime;
+        RcString lifetime;
         if( GET_TOK(tok, lex) == TOK_LIFETIME )
         {
-            lifetime = tok.str();
+            lifetime = tok.istr();  // TODO: Hygine?
             GET_TOK(tok, lex);
         }
         ExprNodeP   val;
@@ -948,26 +948,26 @@ ExprNodeP Parse_ExprFC(TokenStream& lex)
             switch(GET_TOK(tok, lex))
             {
             case TOK_IDENT: {
-                AST::PathNode   path( mv$(tok.str()) , {});
+                AST::PathNode   pn( tok.istr() , {});
                 switch( GET_TOK(tok, lex) )
                 {
                 case TOK_PAREN_OPEN:
                     PUTBACK(tok, lex);
-                    val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), ::std::move(path), Parse_ParenList(lex) );
+                    val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), ::std::move(pn), Parse_ParenList(lex) );
                     break;
                 case TOK_DOUBLE_COLON:
                     GET_CHECK_TOK(tok, lex, TOK_LT);
-                    path.args() = Parse_Path_GenericList(lex);
-                    val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), ::std::move(path), Parse_ParenList(lex) );
+                    pn.args() = Parse_Path_GenericList(lex);
+                    val = NEWNODE( AST::ExprNode_CallMethod, ::std::move(val), ::std::move(pn), Parse_ParenList(lex) );
                     break;
                 default:
-                    val = NEWNODE( AST::ExprNode_Field, ::std::move(val), ::std::string(path.name()) );
+                    val = NEWNODE( AST::ExprNode_Field, ::std::move(val), pn.name() );
                     PUTBACK(tok, lex);
                     break;
                 }
                 break; }
             case TOK_INTEGER:
-                val = NEWNODE( AST::ExprNode_Field, ::std::move(val), FMT(tok.intval()) );
+                val = NEWNODE( AST::ExprNode_Field, ::std::move(val), RcString::new_interned(FMT(tok.intval())) );
                 break;
             default:
                 throw ParseError::Unexpected(lex, mv$(tok));
@@ -1033,7 +1033,7 @@ ExprNodeP Parse_ExprVal_StructLiteral(TokenStream& lex, AST::Path path)
         }
         CHECK_TOK(tok, TOK_IDENT);
         auto h = lex.getHygiene();
-        auto name = mv$(tok.str());
+        auto name = tok.istr();
 
         ExprNodeP   val;
         if( lex.lookahead(0) != TOK_COLON )
@@ -1142,7 +1142,7 @@ ExprNodeP Parse_ExprVal(TokenStream& lex)
         if( TARGETVER_1_29 )
         {
             // `do catch` - stabilised later as `try`
-            if( GET_TOK(tok, lex) == TOK_IDENT && tok.str() == "catch" )
+            if( GET_TOK(tok, lex) == TOK_IDENT && tok.istr() == "catch" )
             {
                 return Parse_Expr_Try(lex);
             }
@@ -1320,10 +1320,10 @@ ExprNodeP Parse_ExprMacro(TokenStream& lex, AST::Path path)
     }
 
     Token   tok;
-    ::std::string name = path.m_class.is_Local() ? path.m_class.as_Local().name : path.nodes()[0].name();
-    ::std::string ident;
+    auto name = path.m_class.is_Local() ? path.m_class.as_Local().name : path.nodes()[0].name();
+    RcString ident;
     if( GET_TOK(tok, lex) == TOK_IDENT ) {
-        ident = mv$(tok.str());
+        ident = tok.istr();
     }
     else {
         PUTBACK(tok, lex);

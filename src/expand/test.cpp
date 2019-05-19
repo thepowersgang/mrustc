@@ -25,7 +25,7 @@ class CTestHandler:
             for(const auto& node : path.nodes())
             {
                 td.name += "::";
-                td.name += node.name();
+                td.name += node.name().c_str();
             }
             td.path = ::AST::Path(path);
 

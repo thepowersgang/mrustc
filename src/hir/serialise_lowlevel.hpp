@@ -9,8 +9,10 @@
 
 #include <vector>
 #include <string>
+#include <map>
 #include <stddef.h>
 #include <assert.h>
+#include <rc_string.hpp>
 
 namespace HIR {
 namespace serialise {
@@ -21,12 +23,14 @@ class ReaderInner;
 class Writer
 {
     WriterInner*    m_inner;
+    ::std::map<RcString, unsigned>  m_istring_cache;
 public:
-    Writer(const ::std::string& path);
+    Writer();
     Writer(const Writer&) = delete;
     Writer(Writer&&) = delete;
     ~Writer();
 
+    void open(const ::std::string& filename);
     void write(const void* data, size_t count);
 
     void write_u8(uint8_t v) {
@@ -114,16 +118,20 @@ public:
             write_u16( static_cast<uint16_t>(c) );
         }
     }
-    void write_string(const ::std::string& v) {
-        if(v.size() < 128) {
-            write_u8( static_cast<uint8_t>(v.size()) );
+    void write_string(const RcString& v);
+    void write_string(size_t len, const char* s) {
+        if(len < 128) {
+            write_u8( static_cast<uint8_t>(len) );
         }
         else {
-            assert(v.size() < (1u<<(16+7)));
-            write_u8( static_cast<uint8_t>(128 + (v.size() >> 16)) );
-            write_u16( static_cast<uint16_t>(v.size() & 0xFFFF) );
+            assert(len < (1u<<(16+7)));
+            write_u8( static_cast<uint8_t>(128 + (len >> 16)) );
+            write_u16( static_cast<uint16_t>(len & 0xFFFF) );
         }
-        this->write(v.data(), v.size());
+        this->write(s, len);
+    }
+    void write_string(const ::std::string& v) {
+        write_string(v.size(), v.c_str());
     }
     void write_bool(bool v) {
         write_u8(v ? 0xFF : 0x00);
@@ -148,6 +156,7 @@ class Reader
     ReaderInner*    m_inner;
     ReadBuffer  m_buffer;
     size_t  m_pos;
+    ::std::vector<RcString> m_strings;
 public:
     Reader(const ::std::string& path);
     Reader(const Writer&) = delete;
@@ -250,6 +259,10 @@ public:
         else /*if( v == 0xFF )*/ {
             return ~0u;
         }
+    }
+    RcString read_istring() {
+        size_t idx = read_count();
+        return m_strings.at(idx);
     }
     ::std::string read_string() {
         size_t len = read_u8();

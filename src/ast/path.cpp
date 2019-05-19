@@ -148,7 +148,7 @@ Ordering PathParams::ord(const PathParams& x) const
 }
 
 // --- AST::PathNode
-PathNode::PathNode(::std::string name, PathParams args):
+PathNode::PathNode(RcString name, PathParams args):
     m_name( mv$(name) ),
     m_params( mv$(args) )
 {
@@ -256,7 +256,7 @@ void Path::bind_variable(unsigned int slot)
 {
     m_bindings.value = PathBinding_Value::make_Variable({slot});
 }
-void Path::bind_enum_var(const Enum& ent, const ::std::string& name)
+void Path::bind_enum_var(const Enum& ent, const RcString& name)
 {
     auto it = ::std::find_if(ent.variants().begin(), ent.variants().end(), [&](const auto& x) { return x.m_name == name; });
     if( it == ent.variants().end() )

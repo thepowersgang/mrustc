@@ -832,7 +832,7 @@ namespace {
                     // TODO: Either - Don't include the above impl bound, or change the below trait to the one that has that type
                     for( const auto& assoc : be.trait.m_type_bounds ) {
                         ::HIR::GenericPath  type_trait_path;
-                        bool has_ty = m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first,  type_trait_path);
+                        bool has_ty = m_resolve.trait_contains_type(sp, real_trait, *be.trait.m_trait_ptr, assoc.first.c_str(),  type_trait_path);
                         ASSERT_BUG(sp, has_ty, "Type " << assoc.first << " not found in chain of " << real_trait);
 
                         auto other_ty = monomorphise_type_with(sp, assoc.second, cache.m_monomorph_cb, true);
@@ -934,7 +934,7 @@ namespace {
             const auto& sp = node.span();
             const auto& str_ty = node.m_value->m_res_type;
 
-            bool is_index = ( '0' <= node.m_field[0] && node.m_field[0] <= '9' );
+            bool is_index = ( '0' <= node.m_field.c_str()[0] && node.m_field.c_str()[0] <= '9' );
             if( str_ty.m_data.is_Tuple() )
             {
                 ASSERT_BUG(sp, is_index, "Non-index _Field on tuple");

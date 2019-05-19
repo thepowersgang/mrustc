@@ -23,16 +23,16 @@ namespace {
 class CExpanderFile:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
-        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, get_top_span(sp).filename.c_str()))) );
+        return box$( TTStreamO(sp, TokenTree(Token(TOK_STRING, ::std::string(get_top_span(sp).filename.c_str())))) );
     }
 };
 
 class CExpanderLine:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp).start_line, CORETYPE_U32))) );
     }
@@ -41,7 +41,7 @@ class CExpanderLine:
 class CExpanderColumn:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp).start_ofs, CORETYPE_U32))) );
     }
@@ -49,7 +49,7 @@ class CExpanderColumn:
 class CExpanderUnstableColumn:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         return box$( TTStreamO(sp, TokenTree(Token((uint64_t)get_top_span(sp).start_ofs, CORETYPE_U32))) );
     }
@@ -58,13 +58,13 @@ class CExpanderUnstableColumn:
 class CExpanderModulePath:
     public ExpandProcMacro
 {
-    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const ::std::string& ident, const TokenTree& tt, AST::Module& mod) override
+    ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         ::std::string   path_str;
         for(const auto& comp : mod.path().nodes()) {
             if( &comp != &mod.path().nodes().front() )
                 path_str += "::";
-            path_str += comp.name();
+            path_str += comp.name().c_str();
         }
         return box$( TTStreamO(sp, TokenTree( Token(TOK_STRING, mv$(path_str)) )) );
     }
