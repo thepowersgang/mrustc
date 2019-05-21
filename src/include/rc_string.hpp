@@ -85,7 +85,12 @@ public:
         return *(c_str() + size() - 1);
     }
 
-    Ordering ord(const RcString& s) const;
+    Ordering ord(const char* s, size_t l) const;
+    Ordering ord(const RcString& s) const {
+        if( m_ptr == s.m_ptr )
+            return OrdEqual;
+        return ord(s.c_str(), s.size());
+    }
     bool operator==(const RcString& s) const {
         if(s.size() != this->size())
             return false;
@@ -99,13 +104,16 @@ public:
     bool operator<(const RcString& s) const { return this->ord(s) == OrdLess; }
     bool operator>(const RcString& s) const { return this->ord(s) == OrdGreater; }
 
-    Ordering ord(const std::string& s) const;
+    Ordering ord(const std::string& s) const { return ord(s.data(), s.size()); }
     bool operator==(const std::string& s) const { return this->ord(s) == OrdEqual; }
     bool operator!=(const std::string& s) const { return this->ord(s) != OrdEqual; }
     bool operator<(const std::string& s) const { return this->ord(s) == OrdLess; }
     bool operator>(const std::string& s) const { return this->ord(s) == OrdGreater; }
-    bool operator==(const char* s) const;
-    bool operator!=(const char* s) const { return !(*this == s); }
+
+    Ordering ord(const char* s) const;
+    bool operator==(const char* s) const { return this->ord(s) == OrdEqual; }
+    bool operator!=(const char* s) const { return this->ord(s) != OrdEqual; }
+
     friend ::std::ostream& operator<<(::std::ostream& os, const RcString& x);
 
     friend bool operator==(const char* a, const RcString& b) {
