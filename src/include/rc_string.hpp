@@ -29,7 +29,7 @@ public:
     }
 
     static RcString new_interned(const ::std::string& s);
-    //static new_interned(const char* s);
+    static RcString new_interned(const char* s);
 
     RcString(const RcString& x):
         m_ptr(x.m_ptr)

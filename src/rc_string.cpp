@@ -91,6 +91,22 @@ RcString RcString::new_interned(const ::std::string& s)
     return *it;
 #else
     // TODO: interning flag, so comparisons can just be a pointer comparison
+    // - Only want to set this flag on the cached instance
+    return *RcString_interned_strings.insert(RcString(s)).first;
+#endif
+}
+RcString RcString::new_interned(const char* s)
+{
+#if 0
+    auto it = RcString_interned_strings.find(s);
+    if( it == RcString_interned_strings.end() )
+    {
+        it = RcString_interned_strings.insert(RcString(s)).first;
+    }
+    return *it;
+#else
+    // TODO: interning flag, so comparisons can just be a pointer comparison
+    // - Only want to set this flag on the cached instance
     return *RcString_interned_strings.insert(RcString(s)).first;
 #endif
 }
