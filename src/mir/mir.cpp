@@ -95,28 +95,28 @@ namespace MIR {
     {
         TU_MATCHA( (x), (e),
         (Return,
-            os << "Return";
+            os << "retval";
             ),
         (Argument,
-            os << "Argument(" << e.idx << ")";
+            os << "a" << e.idx;
             ),
         (Local,
-            os << "Local(" << e << ")";
+            os << "_" << e;
             ),
         (Static,
-            os << "Static(" << *e << ")";
+            os << "(" << *e << ")";
             ),
         (Field,
-            os << "Field(" << e.field_index << ", " << *e.val << ")";
+            os << *e.val << "." << e.field_index;
             ),
         (Deref,
-            os << "Deref(" << *e.val << ")";
+            os << *e.val << "*";
             ),
         (Index,
-            os << "Index(" << *e.val << ", " << *e.idx << ")";
+            os << *e.val << "[" << *e.idx << "]";
             ),
         (Downcast,
-            os << "Downcast(" << e.variant_index << ", " << *e.val << ")";
+            os << *e.val << "#" << e.variant_index;
             )
         )
         return os;
