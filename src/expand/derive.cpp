@@ -1800,7 +1800,7 @@ public:
             (Struct,
                 ::std::vector< ::std::pair<RcString, AST::Pattern> > pats_a;
                 auto nodes = make_refpat_a(sp, pats_a, e.m_fields, [&](size_t idx, auto a){
-                    return NEWNODE(CallPath, this->get_trait_path_Encoder() + RcString::new_interned("emit_enum_variant_arg"),
+                    return NEWNODE(CallPath, this->get_trait_path_Encoder() + RcString::new_interned("emit_enum_struct_variant_field"),
                         vec$(
                             s_ent->clone(),
                             NEWNODE(String, e.m_fields[idx].m_name.c_str()),
