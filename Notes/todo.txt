@@ -27,19 +27,12 @@ TODO:
 - Cache specialisation tree
 - Dependency files from mrustc
   - Partally done, not complete
-- Replace all std::string-s with RcString (saves memory)
-  - Also use a string interning pool to de-duplicate identical strings (which
-    will be common)
-  - Copies of strings are relatively common (path copies)
 - Delete HIR after MIR generation
 - Use a more space-efficient (and readable) MIR LValue debug output
   - e.g. `_0**.1#2` for Downcast(2, Field(1, Deref(Deref(Local(0)))))
   - Will simplify reading of debug, and reduce the size of required debug
     output
   - Trailing dereference might be confusing with multiply operator?
-- Cache referenced items for each function in `Trans Enumerate`
-  - Should reduce the impact of large generic functions being walked every
-    time they're used with a new type set.
 
 
 ## Optimisations
