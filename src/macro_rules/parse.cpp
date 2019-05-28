@@ -254,6 +254,7 @@ MacroRule Parse_MacroRules_Var(TokenStream& lex)
     {
     case TOK_BRACE_OPEN:    close = TOK_BRACE_CLOSE;    break;
     case TOK_PAREN_OPEN:    close = TOK_PAREN_CLOSE;    break;
+    case TOK_SQUARE_OPEN:   close = TOK_SQUARE_CLOSE;   break;
     default:
         throw ParseError::Unexpected(lex, tok);
     }
