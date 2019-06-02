@@ -176,40 +176,7 @@ namespace {
             #undef FMT
         }
         void fmt_val(::std::ostream& os, const ::MIR::LValue& lval) {
-            TU_MATCHA( (lval), (e),
-            (Return,
-                os << "RETURN";
-                ),
-            (Argument,
-                os << "arg$" << e.idx;
-                ),
-            (Local,
-                os << "_$" << e;
-                ),
-            (Static,
-                os << *e;
-                ),
-            (Field,
-                os << "(";
-                fmt_val(os, *e.val);
-                os << ")." << e.field_index;
-                ),
-            (Deref,
-                os << "*";
-                fmt_val(os, *e.val);
-                ),
-            (Index,
-                os << "(";
-                fmt_val(os, *e.val);
-                os << ")[";
-                fmt_val(os, *e.idx);
-                os << "]";
-                ),
-            (Downcast,
-                fmt_val(os, *e.val);
-                os << " as variant" << e.variant_index;
-                )
-            )
+            os << lval;
         }
         void fmt_val(::std::ostream& os, const ::MIR::Constant& e) {
             TU_MATCHA( (e), (ce),

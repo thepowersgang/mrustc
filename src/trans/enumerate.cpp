@@ -11,6 +11,7 @@
 #include "trans_list.hpp"
 #include <hir/hir.hpp>
 #include <mir/mir.hpp>
+#include <mir/helpers.hpp>
 #include <hir_typeck/common.hpp>    // monomorph
 #include <hir_typeck/static.hpp>    // StaticTraitResolve
 #include <hir/item_path.hpp>
@@ -659,8 +660,9 @@ void Trans_Enumerate_Types(EnumState& state)
         // Visit all functions that haven't been type-visited yet
         for(unsigned int i = 0; i < state.fcns_to_type_visit.size(); i++)
         {
-            auto p = state.fcns_to_type_visit[i];
-            TRACE_FUNCTION_F("Function " << ::std::find_if(state.rv.m_functions.begin(), state.rv.m_functions.end(), [&](const auto&x){ return x.second.get() == p; })->first);
+            auto* p = state.fcns_to_type_visit[i];
+            auto& fcn_path = ::std::find_if(state.rv.m_functions.begin(), state.rv.m_functions.end(), [&](const auto&x){ return x.second.get() == p; })->first;
+            TRACE_FUNCTION_F("Function " << fcn_path);
             assert(p->ptr);
             const auto& fcn = *p->ptr;
             const auto& pp = p->pp;
@@ -701,290 +703,170 @@ void Trans_Enumerate_Types(EnumState& state)
                 for(const auto& ty : mir.locals)
                     tv.visit_type(monomorph(ty));
 
-                // TODO: Find all LValue::Deref instances and get the result type
+                // Find all LValue::Deref instances and get the result type
+                ::MIR::TypeResolve::args_t    empty_args;
+                ::HIR::TypeRef    empty_ty;
+                ::MIR::TypeResolve  mir_res(sp, tv.m_resolve, FMT_CB(fcn_path), /*ret_ty=*/empty_ty, empty_args, mir);
                 for(const auto& block : mir.blocks)
                 {
-                    struct H {
-                        static const ::HIR::TypeRef& visit_lvalue(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::LValue& lv, ::HIR::TypeRef* tmp_ty_ptr = nullptr) {
-                            static ::HIR::TypeRef   blank;
-                            TRACE_FUNCTION_F(lv << (tmp_ty_ptr ? " [type]" : ""));
+                    struct MirVisitor
+                        //:public ::MIR::Visitor
+                    {
+                        TypeVisitor&    tv;
+                        const Trans_Params& pp;
+                        const ::HIR::Function&  fcn;
+                        const ::MIR::TypeResolve& mir_res;
+
+                        MirVisitor(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::TypeResolve& mir_res)
+                            :tv(tv)
+                            ,pp(pp)
+                            ,fcn(fcn)
+                            ,mir_res(mir_res)
+                        {
+                        }
+
+                        void visit_lvalue(const ::MIR::LValue& lv)  //override
+                        {
+                            TRACE_FUNCTION_F(lv);
+                            if( ::std::none_of(lv.m_wrappers.begin(), lv.m_wrappers.end(), [](const auto& w){ return w.is_Deref(); }) )
+                            {
+                                return ;
+                            }
+                            ::HIR::TypeRef  tmp;
                             auto monomorph_outer = [&](const auto& tpl)->const auto& {
-                                assert(tmp_ty_ptr);
                                 if( monomorphise_type_needed(tpl) ) {
-                                    return *tmp_ty_ptr = pp.monomorph(tv.m_resolve, tpl);
+                                    return tmp = pp.monomorph(tv.m_resolve, tpl);
                                 }
                                 else {
                                     return tpl;
                                 }
                                 };
+                            const ::HIR::TypeRef*   ty_p = nullptr;;
                             // Recurse, if Deref get the type and add it to the visitor
-                            TU_MATCHA( (lv), (e),
+                            TU_MATCHA( (lv.m_root), (e),
                             (Return,
-                                if( tmp_ty_ptr ) {
-                                    TODO(Span(), "Get return type for MIR type enumeration");
-                                }
+                                MIR_TODO(mir_res, "Get return type for MIR type enumeration");
                                 ),
                             (Argument,
-                                if( tmp_ty_ptr ) {
-                                    return monomorph_outer(fcn.m_args[e.idx].second);
-                                }
+                                ty_p = &monomorph_outer(fcn.m_args[e].second);
                                 ),
                             (Local,
-                                if( tmp_ty_ptr ) {
-                                    return monomorph_outer(fcn.m_code.m_mir->locals[e]);
-                                }
+                                ty_p = &monomorph_outer(fcn.m_code.m_mir->locals[e]);
                                 ),
                             (Static,
-                                if( tmp_ty_ptr ) {
-                                    const auto& path = *e;
-                                    TU_MATCHA( (path.m_data), (pe),
-                                    (Generic,
-                                        ASSERT_BUG(Span(), pe.m_params.m_types.empty(), "Path params on static - " << path);
-                                        const auto& s = tv.m_resolve.m_crate.get_static_by_path(Span(), pe.m_path);
-                                        return s.m_type;
-                                        ),
-                                    (UfcsKnown,
-                                        TODO(Span(), "LValue::Static - UfcsKnown - " << path);
-                                        ),
-                                    (UfcsUnknown,
-                                        BUG(Span(), "Encountered UfcsUnknown in LValue::Static - " << path);
-                                        ),
-                                    (UfcsInherent,
-                                        TODO(Span(), "LValue::Static - UfcsInherent - " << path);
-                                        )
-                                    )
-                                }
-                                ),
-                            (Field,
-                                const auto& ity = visit_lvalue(tv,pp,fcn,  *e.val, tmp_ty_ptr);
-                                if( tmp_ty_ptr )
-                                {
-                                    TU_MATCH_DEF(::HIR::TypeRef::Data, (ity.m_data), (te),
-                                    (
-                                        BUG(Span(), "Field access of unexpected type - " << ity);
-                                        ),
-                                    (Tuple,
-                                        return te[e.field_index];
-                                        ),
-                                    (Array,
-                                        return *te.inner;
-                                        ),
-                                    (Slice,
-                                        return *te.inner;
-                                        ),
-                                    (Path,
-                                        ASSERT_BUG(Span(), te.binding.is_Struct(), "Field on non-Struct - " << ity);
-                                        const auto& str = *te.binding.as_Struct();
-                                        auto monomorph = [&](const auto& ty)->const auto& {
-                                            if( monomorphise_type_needed(ty) ) {
-                                                *tmp_ty_ptr = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, ty);
-                                                tv.m_resolve.expand_associated_types(sp, *tmp_ty_ptr);
-                                                return *tmp_ty_ptr;
-                                            }
-                                            else {
-                                                return ty;
-                                            }
-                                            };
-                                        TU_MATCHA( (str.m_data), (se),
-                                        (Unit,
-                                            BUG(Span(), "Field on unit-like struct - " << ity);
-                                            ),
-                                        (Tuple,
-                                            ASSERT_BUG(Span(), e.field_index < se.size(), "Field index out of range in struct " << te.path);
-                                            return monomorph(se.at(e.field_index).ent);
-                                            ),
-                                        (Named,
-                                            ASSERT_BUG(Span(), e.field_index < se.size(), "Field index out of range in struct " << te.path);
-                                            return monomorph(se.at(e.field_index).second.ent);
-                                            )
-                                        )
-                                        )
-                                    )
-                                }
-                                ),
-                            (Deref,
-                                ::HIR::TypeRef  tmp;
-                                if( !tmp_ty_ptr )   tmp_ty_ptr = &tmp;
-
-                                const auto& ity = visit_lvalue(tv,pp,fcn,  *e.val, tmp_ty_ptr);
-                                TU_MATCH_DEF(::HIR::TypeRef::Data, (ity.m_data), (te),
-                                (
-                                    BUG(Span(), "Deref of unexpected type - " << ity);
+                                // TODO: Monomorphise the path then hand to MIR::TypeResolve?
+                                const auto& path = e;
+                                TU_MATCHA( (path.m_data), (pe),
+                                (Generic,
+                                    MIR_ASSERT(mir_res, pe.m_params.m_types.empty(), "Path params on static - " << path);
+                                    const auto& s = tv.m_resolve.m_crate.get_static_by_path(mir_res.sp, pe.m_path);
+                                    ty_p = &s.m_type;
                                     ),
-                                (Path,
-                                    if( const auto* inner_ptr = tv.m_resolve.is_type_owned_box(ity) )
-                                    {
-                                        DEBUG("- Add type " << ity);
-                                        tv.visit_type(*inner_ptr);
-                                        return *inner_ptr;
-                                    }
-                                    else {
-                                        BUG(Span(), "Deref on unexpected type - " << ity);
-                                    }
+                                (UfcsKnown,
+                                    MIR_TODO(mir_res, "LValue::Static - UfcsKnown - " << path);
                                     ),
-                                (Borrow,
-                                    DEBUG("- Add type " << ity);
-                                    tv.visit_type(*te.inner);
-                                    return *te.inner;
+                                (UfcsUnknown,
+                                    MIR_BUG(mir_res, "Encountered UfcsUnknown in LValue::Static - " << path);
                                     ),
-                                (Pointer,
-                                    DEBUG("- Add type " << ity);
-                                    tv.visit_type(*te.inner);
-                                    return *te.inner;
+                                (UfcsInherent,
+                                    MIR_TODO(mir_res, "LValue::Static - UfcsInherent - " << path);
                                     )
                                 )
-                                ),
-                            (Index,
-                                visit_lvalue(tv,pp,fcn,  *e.idx, tmp_ty_ptr);
-                                const auto& ity = visit_lvalue(tv,pp,fcn,  *e.val, tmp_ty_ptr);
-                                if( tmp_ty_ptr )
-                                {
-                                    TU_MATCH_DEF(::HIR::TypeRef::Data, (ity.m_data), (te),
-                                    (
-                                        BUG(Span(), "Index of unexpected type - " << ity);
-                                        ),
-                                    (Array,
-                                        return *te.inner;
-                                        ),
-                                    (Slice,
-                                        return *te.inner;
-                                        )
-                                    )
-                                }
-                                ),
-                            (Downcast,
-                                const auto& ity = visit_lvalue(tv,pp,fcn,  *e.val, tmp_ty_ptr);
-                                if( tmp_ty_ptr )
-                                {
-                                    TU_MATCH_DEF( ::HIR::TypeRef::Data, (ity.m_data), (te),
-                                    (
-                                        BUG(Span(), "Downcast on unexpected type - " << ity);
-                                        ),
-                                    (Path,
-                                        if( te.binding.is_Enum() )
-                                        {
-                                            const auto& enm = *te.binding.as_Enum();
-                                            auto monomorph = [&](const auto& ty)->auto {
-                                                ::HIR::TypeRef rv = monomorphise_type(pp.sp, enm.m_params, te.path.m_data.as_Generic().m_params, ty);
-                                                tv.m_resolve.expand_associated_types(sp, rv);
-                                                return rv;
-                                                };
-                                            ASSERT_BUG(Span(), enm.m_data.is_Data(), "");
-                                            const auto& variants = enm.m_data.as_Data();
-                                            ASSERT_BUG(Span(), e.variant_index < variants.size(), "Variant index out of range");
-                                            const auto& raw_ty = variants[e.variant_index].type;
-                                            if( monomorphise_type_needed(raw_ty) ) {
-                                                return *tmp_ty_ptr = monomorph(raw_ty);
-                                            }
-                                            else {
-                                                return raw_ty;
-                                            }
-                                        }
-                                        else
-                                        {
-                                            const auto& unm = *te.binding.as_Union();
-                                            ASSERT_BUG(Span(), e.variant_index < unm.m_variants.size(), "Variant index out of range");
-                                            const auto& variant = unm.m_variants[e.variant_index];
-                                            const auto& var_ty = variant.second.ent;
-
-                                            if( monomorphise_type_needed(var_ty) ) {
-                                                *tmp_ty_ptr = monomorphise_type(pp.sp, unm.m_params, te.path.m_data.as_Generic().m_params, variant.second.ent);
-                                                tv.m_resolve.expand_associated_types(pp.sp, *tmp_ty_ptr);
-                                                return *tmp_ty_ptr;
-                                            }
-                                            else {
-                                                return var_ty;
-                                            }
-                                        }
-                                        )
-                                    )
-                                }
                                 )
                             )
-                            return blank;
+                            assert(ty_p);
+                            for(const auto& w : lv.m_wrappers)
+                            {
+                                ty_p = &mir_res.get_unwrapped_type(tmp, w, *ty_p);
+                                if( w.is_Deref() )
+                                {
+                                   tv.visit_type(*ty_p);
+                                }
+                            }
                         }
 
-                        static void visit_const(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::Constant& p)
+                        void visit_const(const ::MIR::Constant& p)
                         {
                         }
 
-                        static void visit_param(TypeVisitor& tv, const Trans_Params& pp, const ::HIR::Function& fcn, const ::MIR::Param& p)
+                        void visit_param(const ::MIR::Param& p)
                         {
                             TU_MATCHA( (p), (e),
                             (LValue,
-                                H::visit_lvalue(tv, pp, fcn, e);
+                                this->visit_lvalue(e);
                                 ),
                             (Constant,
-                                H::visit_const(tv, pp, fcn, e);
+                                this->visit_const(e);
                                 )
                             )
                         }
                     };
+                    MirVisitor  mir_visit(tv, pp, fcn, mir_res);
                     for(const auto& stmt : block.statements)
                     {
                         TU_MATCHA( (stmt), (se),
                         (Drop,
-                            H::visit_lvalue(tv,pp,fcn, se.slot);
+                            mir_visit.visit_lvalue(se.slot);
                             ),
                         (SetDropFlag,
                             ),
                         (Asm,
                             for(const auto& v : se.outputs)
-                                H::visit_lvalue(tv,pp,fcn, v.second);
+                                mir_visit.visit_lvalue(v.second);
                             for(const auto& v : se.inputs)
-                                H::visit_lvalue(tv,pp,fcn, v.second);
+                                mir_visit.visit_lvalue(v.second);
                             ),
                         (ScopeEnd,
                             ),
                         (Assign,
-                            H::visit_lvalue(tv,pp,fcn, se.dst);
+                            mir_visit.visit_lvalue(se.dst);
                             TU_MATCHA( (se.src), (re),
                             (Use,
-                                H::visit_lvalue(tv,pp,fcn, re);
+                                mir_visit.visit_lvalue(re);
                                 ),
                             (Constant,
-                                H::visit_const(tv,pp,fcn, re);
+                                mir_visit.visit_const(re);
                                 ),
                             (SizedArray,
-                                H::visit_param(tv,pp,fcn, re.val);
+                                mir_visit.visit_param(re.val);
                                 ),
                             (Borrow,
-                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                mir_visit.visit_lvalue(re.val);
                                 ),
                             (Cast,
-                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                mir_visit.visit_lvalue(re.val);
                                 ),
                             (BinOp,
-                                H::visit_param(tv,pp,fcn, re.val_l);
-                                H::visit_param(tv,pp,fcn, re.val_l);
+                                mir_visit.visit_param(re.val_l);
+                                mir_visit.visit_param(re.val_r);
                                 ),
                             (UniOp,
-                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                mir_visit.visit_lvalue(re.val);
                                 ),
                             (DstMeta,
-                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                mir_visit.visit_lvalue(re.val);
                                 ),
                             (DstPtr,
-                                H::visit_lvalue(tv,pp,fcn, re.val);
+                                mir_visit.visit_lvalue(re.val);
                                 ),
                             (MakeDst,
-                                H::visit_param(tv,pp,fcn, re.ptr_val);
-                                H::visit_param(tv,pp,fcn, re.meta_val);
+                                mir_visit.visit_param(re.ptr_val);
+                                mir_visit.visit_param(re.meta_val);
                                 ),
                             (Tuple,
                                 for(const auto& v : re.vals)
-                                    H::visit_param(tv,pp,fcn, v);
+                                    mir_visit.visit_param(v);
                                 ),
                             (Array,
                                 for(const auto& v : re.vals)
-                                    H::visit_param(tv,pp,fcn, v);
+                                    mir_visit.visit_param(v);
                                 ),
                             (Variant,
-                                H::visit_param(tv,pp,fcn, re.val);
+                                mir_visit.visit_param(re.val);
                                 ),
                             (Struct,
                                 for(const auto& v : re.vals)
-                                    H::visit_param(tv,pp,fcn, v);
+                                    mir_visit.visit_param(v);
                                 )
                             )
                             )
@@ -997,25 +879,31 @@ void Trans_Enumerate_Types(EnumState& state)
                     (Goto, ),
                     (Panic, ),
                     (If,
-                        H::visit_lvalue(tv,pp,fcn, te.cond);
+                        mir_visit.visit_lvalue(te.cond);
                         ),
                     (Switch,
-                        H::visit_lvalue(tv,pp,fcn, te.val);
+                        mir_visit.visit_lvalue(te.val);
                         ),
                     (SwitchValue,
-                        H::visit_lvalue(tv,pp,fcn, te.val);
+                        mir_visit.visit_lvalue(te.val);
                         ),
                     (Call,
-                        if( te.fcn.is_Value() )
-                            H::visit_lvalue(tv,pp,fcn, te.fcn.as_Value());
-                        else if( te.fcn.is_Intrinsic() )
+                        if(const auto* e = te.fcn.opt_Value() )
                         {
-                            for(const auto& ty : te.fcn.as_Intrinsic().params.m_types)
+                            mir_visit.visit_lvalue(*e);
+                        }
+                        else if(const auto* e = te.fcn.opt_Intrinsic())
+                        {
+                            for(const auto& ty : e->params.m_types)
                                 tv.visit_type(monomorph(ty));
                         }
-                        H::visit_lvalue(tv,pp,fcn, te.ret_val);
+                        else
+                        {
+                            // Paths don't need visiting?
+                        }
+                        mir_visit.visit_lvalue(te.ret_val);
                         for(const auto& arg : te.args)
-                            H::visit_param(tv,pp,fcn, arg);
+                            mir_visit.visit_param(arg);
                         )
                     )
                 }
@@ -1550,30 +1438,10 @@ void Trans_Enumerate_FillFrom_Path(EnumState& state, const ::HIR::Path& path, co
 
 void Trans_Enumerate_FillFrom_MIR_LValue(MIR::EnumCache& state, const ::MIR::LValue& lv)
 {
-    TU_MATCHA( (lv), (e),
-    (Return,
-        ),
-    (Argument,
-        ),
-    (Local,
-        ),
-    (Static,
-        state.insert_path(*e);
-        ),
-    (Field,
-        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val);
-        ),
-    (Deref,
-        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val);
-        ),
-    (Index,
-        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val);
-        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.idx);
-        ),
-    (Downcast,
-        Trans_Enumerate_FillFrom_MIR_LValue(state, *e.val);
-        )
-    )
+    if( lv.m_root.is_Static() )
+    {
+        state.insert_path(lv.m_root.as_Static());
+    }
 }
 void Trans_Enumerate_FillFrom_MIR_Constant(MIR::EnumCache& state, const ::MIR::Constant& c)
 {

@@ -446,68 +446,54 @@ namespace
         }
         const State& get_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv) const
         {
-            TU_MATCHA( (lv), (e),
+            const State* state_p = nullptr;
+            TU_MATCHA( (lv.m_root), (e),
             (Return,
-                return return_value;
+                state_p = &return_value;
                 ),
             (Argument,
-                return args.at(e.idx);
+                state_p = &args.at(e);
                 ),
             (Local,
-                return locals.at(e);
+                state_p = &locals.at(e);
                 ),
             (Static,
                 static State    state_of_static(true);
                 return state_of_static;
-                ),
-            (Field,
-                const auto& vs = get_lvalue_state(mir_res, *e.val);
-                if( vs.is_composite() )
-                {
-                    const auto& states = this->get_composite(mir_res, vs);
-                    MIR_ASSERT(mir_res, e.field_index < states.size(), "Field index out of range");
-                    return states[e.field_index];
-                }
-                else
-                {
-                    return vs;
-                }
-                ),
-            (Deref,
-                const auto& vs = get_lvalue_state(mir_res, *e.val);
-                if( vs.is_composite() )
-                {
-                    MIR_TODO(mir_res, "Deref with composite state");
-                }
-                else
-                {
-                    return vs;
-                }
-                ),
-            (Index,
-                const auto& vs_v = get_lvalue_state(mir_res, *e.val);
-                const auto& vs_i = get_lvalue_state(mir_res, *e.idx);
-                MIR_ASSERT(mir_res, !vs_v.is_composite(), "");
-                MIR_ASSERT(mir_res, !vs_i.is_composite(), "");
-                //return State(vs_v.is_valid() && vs_i.is_valid());
-                MIR_ASSERT(mir_res, vs_i.is_valid(), "Indexing with an invalidated value");
-                return vs_v;
-                ),
-            (Downcast,
-                const auto& vs_v = get_lvalue_state(mir_res, *e.val);
-                if( vs_v.is_composite() )
-                {
-                    const auto& states = this->get_composite(mir_res, vs_v);
-                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size - " << StateFmt(*this, vs_v));
-                    return states[0];
-                }
-                else
-                {
-                    return vs_v;
-                }
                 )
             )
-            throw "";
+
+            for(const auto& w : lv.m_wrappers)
+            {
+                if( state_p->is_composite() ) {
+                    break;
+                }
+                const auto& vs = *state_p;
+                state_p = nullptr;
+
+                TU_MATCHA( (w), (e),
+                (Field,
+                    const auto& states = this->get_composite(mir_res, vs);
+                    MIR_ASSERT(mir_res, e < states.size(), "Field index out of range");
+                    state_p = &states[e];
+                    ),
+                (Deref,
+                    MIR_TODO(mir_res, "Deref with composite state");
+                    ),
+                (Index,
+                    const auto& vs_i = get_lvalue_state(mir_res, ::MIR::LValue::new_Local(e));
+                    MIR_ASSERT(mir_res, vs_i.is_valid(), "Indexing with an invalidated value");
+                    MIR_BUG(mir_res, "Indexing a composite state");
+                    ),
+                (Downcast,
+                    const auto& states = this->get_composite(mir_res, vs);
+                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size - " << StateFmt(*this, vs));
+                    state_p = &states[0];
+                    )
+                )
+                assert(state_p);
+            }
+            return *state_p;
         }
 
         void clear_state(const ::MIR::TypeResolve& mir_res, State& s) {
@@ -522,42 +508,47 @@ namespace
         void set_lvalue_state(const ::MIR::TypeResolve& mir_res, const ::MIR::LValue& lv, State new_vs)
         {
             TRACE_FUNCTION_F(lv << " = " << StateFmt(*this, new_vs) << " (from " << StateFmt(*this, get_lvalue_state(mir_res, lv)) << ")");
-            TU_MATCHA( (lv), (e),
+            State* state_p = nullptr;
+            TU_MATCHA( (lv.m_root), (e),
             (Return,
-                this->clear_state(mir_res, return_value);
-                return_value = mv$(new_vs);
+                state_p = &return_value;
                 ),
             (Argument,
-                auto& slot = args.at(e.idx);
-                this->clear_state(mir_res, slot);
-                slot = mv$(new_vs);
+                state_p = &args.at(e);
                 ),
             (Local,
-                auto& slot = locals.at(e);
-                this->clear_state(mir_res, slot);
-                slot = mv$(new_vs);
+                state_p = &locals.at(e);
                 ),
             (Static,
-                // Ignore.
-                ),
-            (Field,
-                const auto& cur_vs = get_lvalue_state(mir_res, *e.val);
+                return ;
+                )
+            )
+
+            for(const auto& w : lv.m_wrappers)
+            {
+                auto& cur_vs = *state_p;
+
+                // If this is not a composite, and it matches the new state
                 if( !cur_vs.is_composite() && cur_vs == new_vs )
                 {
-                    // Not a composite, and no state change
+                    // Early return
+                    return;
                 }
-                else
-                {
-                    ::std::vector<State>* states_p;
+
+                state_p = nullptr;
+                TU_MATCHA( (w), (e),
+                (Field,
+                    // Current isn't a composite, we need to change that
                     if( !cur_vs.is_composite() )
                     {
                         ::HIR::TypeRef    tmp;
-                        const auto& ty = mir_res.get_lvalue_type(tmp, *e.val);
+                        const auto& ty = mir_res.get_lvalue_type(tmp, lv, /*wrapper_skip_count=*/(&lv.m_wrappers.back() - &w));
                         unsigned int n_fields = 0;
                         if( const auto* e = ty.m_data.opt_Tuple() )
                         {
                             n_fields = e->size();
                         }
+                        // TODO: Fixed-size arrays
                         else if( ty.m_data.is_Path() && ty.m_data.as_Path().binding.is_Struct() )
                         {
                             const auto& e = ty.m_data.as_Path().binding.as_Struct();
@@ -573,94 +564,59 @@ namespace
                                 )
                             )
                         }
-                        else {
+                        else
+                        {
                             MIR_BUG(mir_res, "Unknown type being accessed with Field - " << ty);
                         }
 
-                        auto new_cur_vs = this->allocate_composite(n_fields, cur_vs);
-                        set_lvalue_state(mir_res, *e.val, State(new_cur_vs));
-                        states_p = &this->get_composite(mir_res, new_cur_vs);
-                    }
-                    else
-                    {
-                        states_p = &this->get_composite(mir_res, cur_vs);
+                        cur_vs = State(this->allocate_composite(n_fields, cur_vs));
                     }
                     // Get composite state and assign into it
-                    auto& states = *states_p;
-                    MIR_ASSERT(mir_res, e.field_index < states.size(), "Field index out of range");
-                    this->clear_state(mir_res, states[e.field_index]);
-                    states[e.field_index] = mv$(new_vs);
-                }
-                ),
-            (Deref,
-                const auto& cur_vs = get_lvalue_state(mir_res, *e.val);
-                if( !cur_vs.is_composite() && cur_vs == new_vs )
-                {
-                    // Not a composite, and no state change
-                }
-                else
-                {
-                    ::std::vector<State>* states_p;
+                    auto& states = this->get_composite(mir_res, cur_vs);
+                    MIR_ASSERT(mir_res, e< states.size(), "Field index out of range");
+                    state_p = &states[e];
+                    ),
+                (Deref,
                     if( !cur_vs.is_composite() )
                     {
+                        // TODO: Should this check if the type is Box?
                         //::HIR::TypeRef    tmp;
                         //const auto& ty = mir_res.get_lvalue_type(tmp, *e.val);
-                        // TODO: Should this check if the type is Box?
 
-                        auto new_cur_vs = this->allocate_composite(2, cur_vs);
-                        set_lvalue_state(mir_res, *e.val, State(new_cur_vs));
-                        states_p = &this->get_composite(mir_res, new_cur_vs);
-                    }
-                    else
-                    {
-                        states_p = &this->get_composite(mir_res, cur_vs);
+                        cur_vs = State(this->allocate_composite(2, cur_vs));
                     }
                     // Get composite state and assign into it
-                    auto& states = *states_p;
+                    auto& states = this->get_composite(mir_res, cur_vs);
                     MIR_ASSERT(mir_res, states.size() == 2, "Deref with invalid state list size");
-                    this->clear_state(mir_res, states[1]);
-                    states[1] = mv$(new_vs);
-                }
-                ),
-            (Index,
-                const auto& vs_v = get_lvalue_state(mir_res, *e.val);
-                const auto& vs_i = get_lvalue_state(mir_res, *e.idx);
-                MIR_ASSERT(mir_res, !vs_v.is_composite(), "");
-                MIR_ASSERT(mir_res, !vs_i.is_composite(), "");
+                    state_p = &states[1];
+                    ),
+                (Index,
+                    const auto& vs_i = get_lvalue_state(mir_res, ::MIR::LValue::new_Local(e));
+                    MIR_ASSERT(mir_res, !cur_vs.is_composite(), "");
+                    MIR_ASSERT(mir_res, !vs_i.is_composite(), "");
 
-                MIR_ASSERT(mir_res, vs_v.is_valid(), "Indexing an invalid value");
-                MIR_ASSERT(mir_res, vs_i.is_valid(), "Indexing with an invalid index");
+                    MIR_ASSERT(mir_res, cur_vs.is_valid(), "Indexing an invalid value");
+                    MIR_ASSERT(mir_res, vs_i.is_valid(), "Indexing with an invalid index");
 
-                // NOTE: Ignore
-                ),
-            (Downcast,
-                const auto& cur_vs = get_lvalue_state(mir_res, *e.val);
-                if( !cur_vs.is_composite() && cur_vs == new_vs )
-                {
-                    // Not a composite, and no state change
-                }
-                else
-                {
-                    ::std::vector<State>* states_p;
+                    // NOTE: Ignore
+                    return ;
+                    ),
+                (Downcast,
                     if( !cur_vs.is_composite() )
                     {
-                        auto new_cur_vs = this->allocate_composite(1, cur_vs);
-                        set_lvalue_state(mir_res, *e.val, State(new_cur_vs));
-                        states_p = &this->get_composite(mir_res, new_cur_vs);
+                        cur_vs = State(this->allocate_composite(1, cur_vs));
                     }
-                    else
-                    {
-                        states_p = &this->get_composite(mir_res, cur_vs);
-                    }
-
                     // Get composite state and assign into it
-                    auto& states = *states_p;
-                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size - " << *e.val << " - " << this->fmt_state(mir_res, *e.val));
+                    auto& states = this->get_composite(mir_res, cur_vs);
+                    MIR_ASSERT(mir_res, states.size() == 1, "Downcast on composite of invalid size - " << lv << " - " << StateFmt(*this, cur_vs));
                     this->clear_state(mir_res, states[0]);
                     states[0] = mv$(new_vs);
-                }
+                    )
                 )
-            )
+                assert(state_p);
+            }
+            this->clear_state(mir_res, *state_p);
+            *state_p = mv$(new_vs);
         }
     };
 
@@ -939,7 +895,7 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
         (Incomplete,
             ),
         (Return,
-            state.ensure_lvalue_valid(mir_res, ::MIR::LValue::make_Return({}));
+            state.ensure_lvalue_valid(mir_res, ::MIR::LValue::new_Return());
             if( ENABLE_LEAK_DETECTOR )
             {
                 auto ensure_dropped = [&](const State& s, const ::MIR::LValue& lv) {
@@ -955,10 +911,10 @@ void MIR_Validate_FullValState(::MIR::TypeResolve& mir_res, const ::MIR::Functio
                     }
                     };
                 for(unsigned i = 0; i < state.locals.size(); i ++ ) {
-                    ensure_dropped(state.locals[i], ::MIR::LValue::make_Local(i));
+                    ensure_dropped(state.locals[i], ::MIR::LValue::new_Local(i));
                 }
                 for(unsigned i = 0; i < state.args.size(); i ++ ) {
-                    ensure_dropped(state.args[i], ::MIR::LValue::make_Argument({i}));
+                    ensure_dropped(state.args[i], ::MIR::LValue::new_Argument(i));
                 }
             }
             ),

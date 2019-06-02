@@ -1,0 +1,65 @@
+Problem statement:
+- MIR LValues are very common, and suffer from excessive indirection when
+  dereferences and field accesses are present
+- Many MIR analysis passes care most about the inner values
+- Pointer chasing ruins cache locality
+
+Solution: Replace the tagged union tree with a flatteded structure
+
+Quirk: Indexing takes two LValues to produce one BUT one of those is of a
+lesser class, so doesn't need to be treated the same.
+
+
+
+Structure proposal:
+----
+A LValue is made up of:
+- A root value (referencing a local, argument, static, or the return value)
+- And a list of wrappers (dereference, field, downcast, index)
+
+Root values are encoded as a packed pointer/value and tag, with the tag stored in the low 2 bits of the pointer
+- This allows a 32-bit pointer to a word to be stored, using the alignment bits as tag
+- Arguments and locals are encoded with the argument/local index in the "data" bits
+- Return value is encoded as argument `-1` (all 1 bits in data)
+- Statics are encoded as a pointer to a `::HIR::Path`
+  - This adds a new pointer access and allocation vs the existing LValue structure
+  - HIR::Path already has a bunch of pointers in it, may not hurt that much (and may help by keeping the normal size
+    of the LValue down)
+
+Wrappers are stored as a vector of words, packed in a similar way to root values
+- Dereference is stored just as an entry (could pack multiple derefs into one, but that would make handling more
+  difficult)
+- Field/Downcast is stored with the field/variant index in the "data" bits
+- Indexing is stored as a pointer to a LValue
+  - ALTERNATIVE: Could require that indexing always uses a local, and just store the local index
+    - This would vastly reduce complexity in handling the Index wrapper, BUT would add a new statement in some cases
+    - A quick scan of the MMIR output of libstd crates, shows that the vast majority of indexing cases are with a local
+      directly.
+    - Doing so would simplify monomorph/clone/serialise (no need to clone the wrapper list, just copy it).
+    - Would also improve comparison times
+
+
+
+Usecase comparisons
+------
+(Using 32-bit architecture)
+
+NOTES:
+- Existing `LValue` structure is 3 words long (1 tag, plus 2 pointers for largest variant)
+  - WRONG. It's actually far larger due to the ::HIR::Path embedded in it (estimate at least 8 pointers, very likely
+    more). That should be fixed given the number of LValue-s that exist
+  - Fixed now, had a slight improvement in compile times (and memory usage?)
+- New structure is 4 words long (root value, plus len/cap/ptr for vector)
+
+- Field access via `&self`
+  - Old: Field(Deref(Argument(0)), 0)
+    - 12 + 12 + 12 = 36 bytes w/ 2 pointers
+  - New: LValue( Argument(0), { Deref, Field(0) } )
+    - 16 + 8 = 24 bytes w/ 1 pointer
+
+- Array stored in `&self` (common in librand)
+  - `(*arg0).2[var16].0`
+  - Old: Field( Index(Field(Deref(Argument(0)), 2), Local(16)), 0 )
+     - 12 * 5 + 12 = 72 bytes 2/ 5 pointers
+  - New: LValue( Argument(0), { Deref, Field(2), Index(16), Field(0) } )
+     - 16 + 16 = 32 bytes w/ 1 pointer

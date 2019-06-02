@@ -293,61 +293,66 @@ namespace HIR {
 
             ::HIR::Literal& get_lval(const ::MIR::LValue& lv)
             {
-                TU_MATCHA( (lv), (e),
+                ::HIR::Literal* lit_ptr;
+                TRACE_FUNCTION_FR(lv, *lit_ptr);
+                TU_MATCHA( (lv.m_root), (e),
                 (Return,
-                    return retval;
+                    lit_ptr = &retval;
                     ),
                 (Local,
-                    if( e >= locals.size() )
-                        MIR_BUG(state, "Local index out of range - " << e << " >= " << locals.size());
-                    return locals[e];
+                    MIR_ASSERT(state, e < locals.size(), "Local index out of range - " << e << " >= " << locals.size());
+                    lit_ptr = &locals[e];
                     ),
                 (Argument,
-                    if( e.idx >= args.size() )
-                        MIR_BUG(state, "Local index out of range - " << e.idx << " >= " << args.size());
-                    return args[e.idx];
+                    MIR_ASSERT(state, e < args.size(), "Argument index out of range - " << e << " >= " << args.size());
+                    lit_ptr = &args[e];
                     ),
                 (Static,
-                    MIR_TODO(state, "LValue::Static - " << *e);
-                    ),
-                (Field,
-                    auto& val = get_lval(*e.val);
-                    MIR_ASSERT(state, val.is_List(), "LValue::Field on non-list literal - " << val.tag_str() << " - " << lv);
-                    auto& vals = val.as_List();
-                    MIR_ASSERT(state, e.field_index < vals.size(), "LValue::Field index out of range");
-                    return vals[ e.field_index ];
-                    ),
-                (Deref,
-                    auto& val = get_lval(*e.val);
-                    TU_MATCH_DEF( ::HIR::Literal, (val), (ve),
-                    (
-                        MIR_TODO(state, "LValue::Deref - " << lv << " { " << val << " }");
-                        ),
-                    (BorrowData,
-                        return *ve;
-                        ),
-                    (String,
-                        // Just clone the string (hack)
-                        // - TODO: Create a list?
-                        return val;
-                        )
-                    )
-                    ),
-                (Index,
-                    auto& val = get_lval(*e.val);
-                    MIR_ASSERT(state, val.is_List(), "LValue::Index on non-list literal - " << val.tag_str() << " - " << lv);
-                    auto& idx = get_lval(*e.idx);
-                    MIR_ASSERT(state, idx.is_Integer(), "LValue::Index with non-integer index literal - " << idx.tag_str() << " - " << lv);
-                    auto& vals = val.as_List();
-                    auto idx_v = static_cast<size_t>( idx.as_Integer() );
-                    MIR_ASSERT(state, idx_v < vals.size(), "LValue::Index index out of range");
-                    return vals[ idx_v ];
-                    ),
-                (Downcast,
-                    MIR_TODO(state, "LValue::Downcast - " << lv);
+                    MIR_TODO(state, "LValue::Static - " << e);
                     )
                 )
-                throw "";
+
+                for(const auto& w : lv.m_wrappers)
+                {
+                    auto& val = *lit_ptr;
+                    TU_MATCH_HDRA( (w), {)
+                    TU_ARMA(Field, e) {
+                        MIR_ASSERT(state, val.is_List(), "LValue::Field on non-list literal - " << val.tag_str() << " - " << lv);
+                        auto& vals = val.as_List();
+                        MIR_ASSERT(state, e < vals.size(), "LValue::Field index out of range");
+                        lit_ptr = &vals[ e ];
+                        }
+                    TU_ARMA(Deref, e) {
+                        TU_MATCH_DEF( ::HIR::Literal, (val), (ve),
+                        (
+                            MIR_TODO(state, "LValue::Deref - " << lv << " { " << val << " }");
+                            ),
+                        (BorrowData,
+                            lit_ptr = &*ve;
+                            ),
+                        (String,
+                            // Just clone the string (hack)
+                            // - TODO: Create a list?
+                            lit_ptr = &val;
+                            )
+                        )
+                        }
+                    TU_ARMA(Index, e) {
+                        MIR_ASSERT(state, val.is_List(), "LValue::Index on non-list literal - " << val.tag_str() << " - " << lv);
+                        MIR_ASSERT(state, e < locals.size(), "LValue::Index index local out of range");
+                        auto& idx = locals[e];
+                        MIR_ASSERT(state, idx.is_Integer(), "LValue::Index with non-integer index literal - " << idx.tag_str() << " - " << lv);
+                        auto& vals = val.as_List();
+                        auto idx_v = static_cast<size_t>( idx.as_Integer() );
+                        MIR_ASSERT(state, idx_v < vals.size(), "LValue::Index index out of range");
+                        lit_ptr = &vals[ idx_v ];
+                        }
+                    TU_ARMA(Downcast, e) {
+                        MIR_TODO(state, "LValue::Downcast - " << lv);
+                        }
+                    }
+                }
+                return *lit_ptr;
             }
             ::HIR::Literal read_lval(const ::MIR::LValue& lv)
             {
@@ -481,17 +486,14 @@ namespace HIR {
                         MIR_BUG(state, "Only shared borrows are allowed in constants");
                     }
 
-                    if( e.type != ::HIR::BorrowType::Shared ) {
-                        MIR_BUG(state, "Only shared borrows are allowed in constants");
+                    if( !e.val.m_wrappers.empty() && e.val.m_wrappers.back().is_Deref() ) {
+                        //if( p->val->is_Deref() )
+                        //    MIR_TODO(state, "Undo nested deref coercion - " << *p->val);
+                        val = local_state.read_lval(e.val.clone_unwrapped());
                     }
-                    if( const auto* p = e.val.opt_Deref() ) {
-                        if( p->val->is_Deref() )
-                            MIR_TODO(state, "Undo nested deref coercion - " << *p->val);
-                        val = local_state.read_lval(*p->val);
-                    }
-                    else if( const auto* p = e.val.opt_Static() ) {
+                    else if( e.val.m_wrappers.empty() && e.val.m_root.is_Static() ){
                         // Borrow of a static, emit BorrowPath with the same path
-                        val = ::HIR::Literal::make_BorrowPath( (*p)->clone() );
+                        val = ::HIR::Literal::make_BorrowPath( e.val.m_root.as_Static().clone() );
                     }
                     else {
                         auto inner_val = local_state.read_lval(e.val);

@@ -33,7 +33,7 @@ struct MirMutator
 
     ::MIR::LValue new_temporary(::HIR::TypeRef ty)
     {
-        auto rv = ::MIR::LValue::make_Local( static_cast<unsigned int>(m_fcn.locals.size()) );
+        auto rv = ::MIR::LValue::new_Local( static_cast<unsigned int>(m_fcn.locals.size()) );
         m_fcn.locals.push_back( mv$(ty) );
         return rv;
     }
@@ -493,12 +493,13 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
     // Allocate a temporary for the vtable pointer itself
     auto vtable_lv = mutator.new_temporary( mv$(vtable_ty) );
     // - Load the vtable and store it
-    auto ptr_lv = ::MIR::LValue::make_Deref({ box$(receiver_lvp.clone()) });
+    auto ptr_lv = ::MIR::LValue::new_Deref( receiver_lvp.clone() );
     MIR_Cleanup_LValue(state, mutator,  ptr_lv);
-    auto vtable_rval = ::MIR::RValue::make_DstMeta({ mv$(*ptr_lv.as_Deref().val) });
+    ptr_lv.m_wrappers.pop_back();
+    auto vtable_rval = ::MIR::RValue::make_DstMeta({ mv$(ptr_lv) });
     mutator.push_statement( ::MIR::Statement::make_Assign({ vtable_lv.clone(), mv$(vtable_rval) }) );
 
-    auto fcn_lval = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(vtable_lv) })), vtable_idx });
+    auto fcn_lval = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref( mv$(vtable_lv) ), vtable_idx );
 
     ::HIR::TypeRef  tmp;
     const auto& ty = state.get_lvalue_type(tmp, fcn_lval);
@@ -526,23 +527,23 @@ const ::HIR::Literal* MIR_Cleanup_GetConstant(const MIR::TypeResolve& state, con
                         ),
                     (Tuple,
                         for(unsigned int i = 0; i < se.size(); i ++ ) {
-                            auto val = (i == se.size() - 1 ? mv$(lv) : lv.clone());
+                            auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
                             if( i == str.m_struct_markings.coerce_unsized_index ) {
-                                vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].ent), ::MIR::LValue::make_Field({ box$(val), i }) ) );
+                                vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].ent), mv$(val)) );
                             }
                             else {
-                                vals.push_back( ::MIR::LValue::make_Field({ box$(val), i }) );
+                                vals.push_back( mv$(val) );
                             }
                         }
                         ),
                     (Named,
                         for(unsigned int i = 0; i < se.size(); i ++ ) {
-                            auto val = (i == se.size() - 1 ? mv$(lv) : lv.clone());
+                            auto val = ::MIR::LValue::new_Field( (i == se.size() - 1 ? mv$(lv) : lv.clone()), i );
                             if( i == str.m_struct_markings.coerce_unsized_index ) {
-                                vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].second.ent), ::MIR::LValue::make_Field({ box$(val), i }) ) );
+                                vals.push_back( H::get_unit_ptr(state, mutator, monomorph(se[i].second.ent), mv$(val) ) );
                             }
                             else {
-                                vals.push_back( ::MIR::LValue::make_Field({ box$(val), i }) );
+                                vals.push_back( mv$(val) );
                             }
                         }
                         )
@@ -777,7 +778,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                     auto ty_d = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_d, false);
                     auto ty_s = monomorphise_type_with(state.sp, se[i].ent, monomorph_cb_s, false);
 
-                    auto new_rval = MIR_Cleanup_CoerceUnsized(state, mutator, ty_d, ty_s,  ::MIR::LValue::make_Field({ box$(value.clone()), i }));
+                    auto new_rval = MIR_Cleanup_CoerceUnsized(state, mutator, ty_d, ty_s,  ::MIR::LValue::new_Field(value.clone(), i));
                     auto new_lval = mutator.in_temporary( mv$(ty_d), mv$(new_rval) );
 
                     ents.push_back( mv$(new_lval) );
@@ -793,7 +794,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 }
                 else
                 {
-                    ents.push_back( ::MIR::LValue::make_Field({ box$(value.clone()), i}) );
+                    ents.push_back( ::MIR::LValue::new_Field(value.clone(), i) );
                 }
             }
             ),
@@ -806,7 +807,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                     auto ty_d = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_d, false);
                     auto ty_s = monomorphise_type_with(state.sp, se[i].second.ent, monomorph_cb_s, false);
 
-                    auto new_rval = MIR_Cleanup_CoerceUnsized(state, mutator, ty_d, ty_s,  ::MIR::LValue::make_Field({ box$(value.clone()), i }));
+                    auto new_rval = MIR_Cleanup_CoerceUnsized(state, mutator, ty_d, ty_s,  ::MIR::LValue::new_Field(value.clone(), i));
                     auto new_lval = mutator.new_temporary( mv$(ty_d) );
                     mutator.push_statement( ::MIR::Statement::make_Assign({ new_lval.clone(), mv$(new_rval) }) );
 
@@ -823,7 +824,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
                 }
                 else
                 {
-                    ents.push_back( ::MIR::LValue::make_Field({ box$(value.clone()), i}) );
+                    ents.push_back( ::MIR::LValue::new_Field(value.clone(), i) );
                 }
             }
             )
@@ -865,7 +866,7 @@ bool MIR_Cleanup_Unsize_GetMetadata(const ::MIR::TypeResolve& state, MirMutator&
 
 void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::MIR::LValue& lval)
 {
-    TU_MATCHA( (lval), (le),
+    TU_MATCHA( (lval.m_root), (le),
     (Return,
         ),
     (Argument,
@@ -873,30 +874,22 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
     (Local,
         ),
     (Static,
-        ),
-    (Field,
-        MIR_Cleanup_LValue(state, mutator,  *le.val);
-        ),
-    (Deref,
-        MIR_Cleanup_LValue(state, mutator,  *le.val);
-        ),
-    (Index,
-        MIR_Cleanup_LValue(state, mutator,  *le.val);
-        MIR_Cleanup_LValue(state, mutator,  *le.idx);
-        ),
-    (Downcast,
-        MIR_Cleanup_LValue(state, mutator,  *le.val);
         )
     )
 
-    // If this is a deref of Box, unpack and deref the inner pointer
-    if( lval.is_Deref() )
+    for(size_t i = 0; i < lval.m_wrappers.size(); i ++)
     {
-        auto& le = lval.as_Deref();
+        if( !lval.m_wrappers[i].is_Deref() ) {
+            continue ;
+        }
+
+        // If this is a deref of Box, unpack and deref the inner pointer
         ::HIR::TypeRef  tmp;
-        const auto& ty = state.get_lvalue_type(tmp, *le.val);
+        const auto& ty = state.get_lvalue_type(tmp, lval, lval.m_wrappers.size() - i);
         if( state.m_resolve.is_type_owned_box(ty) )
         {
+            unsigned num_injected_fld_zeros = 0;
+
             // Handle Box by extracting it to its pointer.
             // - Locate (or remember) which field in Box is the pointer, and replace the inner by that field
             // > Dumb idea, assume it's always the first field. Keep accessing until located.
@@ -924,11 +917,16 @@ void MIR_Cleanup_LValue(const ::MIR::TypeResolve& state, MirMutator& mutator, ::
                 tmp = monomorphise_type(state.sp, str.m_params, te.path.m_data.as_Generic().m_params, *ty_tpl);
                 typ = &tmp;
 
-                auto new_lval = ::MIR::LValue::make_Field({ mv$(le.val), 0 });
-                le.val = box$(new_lval);
+                num_injected_fld_zeros ++;
             }
             MIR_ASSERT(state, typ->m_data.is_Pointer(), "First non-path field in Box wasn't a pointer - " << *typ);
             // We have reached the pointer. Good.
+
+            // Inject all of the field zero accesses (before the deref)
+            while(num_injected_fld_zeros--)
+            {
+                lval.m_wrappers.insert( lval.m_wrappers.begin() + i, ::MIR::LValue::Wrapper::new_Field(0) );
+            }
         }
     }
 }
@@ -1030,9 +1028,9 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     ),
                 (DstMeta,
                     // HACK: Ensure that the box Deref conversion fires here.
-                    auto v = ::MIR::LValue::make_Deref({ box$(re.val) });
-                    MIR_Cleanup_LValue(state, mutator,  v);
-                    re.val = mv$( *v.as_Deref().val );
+                    re.val.m_wrappers.push_back( ::MIR::LValue::Wrapper::new_Deref() );
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    re.val.m_wrappers.pop_back();
 
                     // If the type is an array (due to a monomorpised generic?) then replace.
                     ::HIR::TypeRef  tmp;
@@ -1053,9 +1051,9 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                     ),
                 (DstPtr,
                     // HACK: Ensure that the box Deref conversion fires here.
-                    auto v = ::MIR::LValue::make_Deref({ box$(re.val) });
-                    MIR_Cleanup_LValue(state, mutator,  v);
-                    re.val = mv$( *v.as_Deref().val );
+                    re.val.m_wrappers.push_back( ::MIR::LValue::Wrapper::new_Deref() );
+                    MIR_Cleanup_LValue(state, mutator,  re.val);
+                    re.val.m_wrappers.pop_back();
                     ),
                 (MakeDst,
                     MIR_Cleanup_Param(state, mutator,  re.ptr_val);
@@ -1218,13 +1216,13 @@ void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path,
                         e.args.reserve( fcn_ty.m_arg_types.size() );
                         for(unsigned int i = 0; i < fcn_ty.m_arg_types.size(); i ++)
                         {
-                            e.args.push_back( ::MIR::LValue::make_Field({ box$(args_lvalue.clone()), i }) );
+                            e.args.push_back( ::MIR::LValue::new_Field(args_lvalue.clone(), i) );
                         }
                         // If the trait is Fn/FnMut, dereference the input value.
                         if( pe.trait.m_path == resolve.m_lang_FnOnce )
                             e.fcn = mv$(fcn_lvalue);
                         else
-                            e.fcn = ::MIR::LValue::make_Deref({ box$(fcn_lvalue) });
+                            e.fcn = ::MIR::LValue::new_Deref( mv$(fcn_lvalue) );
                     }
                 }
             )

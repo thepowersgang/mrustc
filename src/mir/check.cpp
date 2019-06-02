@@ -116,6 +116,11 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         {
         }
 
+        explicit ValStates(const ValStates& v) = default;
+        ValStates(ValStates&& v) = default;
+        ValStates& operator=(const ValStates& v) = delete;
+        ValStates& operator=(ValStates&& v) = default;
+
         void fmt(::std::ostream& os) {
             os << "ValStates { ";
             switch(ret_state)
@@ -159,12 +164,13 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
             return locals.empty() && args.empty();
         }
 
+        // NOTE: Moves if this state is empty
         bool merge(unsigned bb_idx, ValStates& other)
         {
             DEBUG("bb" << bb_idx << " this=" << FMT_CB(ss,this->fmt(ss);) << ", other=" << FMT_CB(ss,other.fmt(ss);));
             if( this->empty() )
             {
-                *this = other;
+                *this = ValStates(other);
                 return true;
             }
             else if( *this == other )
@@ -183,34 +189,38 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
 
         void mark_validity(const ::MIR::TypeResolve& state, const ::MIR::LValue& lv, bool is_valid)
         {
-            TU_MATCH_DEF( ::MIR::LValue, (lv), (e),
-            (
-                ),
+            if( !lv.m_wrappers.empty())
+            {
+                return ;
+            }
+            TU_MATCHA( (lv.m_root), (e),
             (Return,
                 ret_state = is_valid ? State::Valid : State::Invalid;
                 ),
             (Argument,
-                MIR_ASSERT(state, e.idx < this->args.size(), "Argument index out of range");
-                DEBUG("arg$" << e.idx << " = " << (is_valid ? "Valid" : "Invalid"));
-                this->args[e.idx] = is_valid ? State::Valid : State::Invalid;
+                MIR_ASSERT(state, e < this->args.size(), "Argument index out of range " << lv);
+                DEBUG("arg$" << e << " = " << (is_valid ? "Valid" : "Invalid"));
+                this->args[e] = is_valid ? State::Valid : State::Invalid;
                 ),
             (Local,
-                MIR_ASSERT(state, e < this->locals.size(), "Local index out of range");
+                MIR_ASSERT(state, e < this->locals.size(), "Local index out of range - " << lv);
                 DEBUG("_" << e << " = " << (is_valid ? "Valid" : "Invalid"));
                 this->locals[e] = is_valid ? State::Valid : State::Invalid;
+                ),
+            (Static,
                 )
             )
         }
         void ensure_valid(const ::MIR::TypeResolve& state, const ::MIR::LValue& lv)
         {
-            TU_MATCH( ::MIR::LValue, (lv), (e),
+            TU_MATCHA( (lv.m_root), (e),
             (Return,
                 if( this->ret_state != State::Valid )
                     MIR_BUG(state, "Use of non-valid lvalue - " << lv);
                 ),
             (Argument,
-                MIR_ASSERT(state, e.idx < this->args.size(), "Arg index out of range");
-                if( this->args[e.idx] != State::Valid )
+                MIR_ASSERT(state, e < this->args.size(), "Arg index out of range");
+                if( this->args[e] != State::Valid )
                     MIR_BUG(state, "Use of non-valid lvalue - " << lv);
                 ),
             (Local,
@@ -219,27 +229,22 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                     MIR_BUG(state, "Use of non-valid lvalue - " << lv);
                 ),
             (Static,
-                ),
-            (Field,
-                ensure_valid(state, *e.val);
-                ),
-            (Deref,
-                ensure_valid(state, *e.val);
-                ),
-            (Index,
-                ensure_valid(state, *e.val);
-                ensure_valid(state, *e.idx);
-                ),
-            (Downcast,
-                ensure_valid(state, *e.val);
                 )
             )
+
+            for(const auto& w : lv.m_wrappers)
+            {
+                if( w.is_Index() )
+                {
+                    if( this->locals[w.as_Index()] != State::Valid )
+                        MIR_BUG(state, "Use of non-valid lvalue - " << ::MIR::LValue::new_Local(w.as_Index()));
+                }
+            }
         }
         void move_val(const ::MIR::TypeResolve& state, const ::MIR::LValue& lv)
         {
             ensure_valid(state, lv);
-            ::HIR::TypeRef  tmp;
-            if( ! state.m_resolve.type_is_copy( state.sp, state.get_lvalue_type(tmp, lv) ) )
+            if( ! state.lvalue_is_copy(lv) )
             {
                 mark_validity(state, lv, false);
             }
@@ -284,20 +289,29 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         ::std::vector<unsigned int> path;
         ValStates   state;
     };
+    // TODO: Remove this? The path is useful, but the cloned states are really expensive
+    // - Option: Keep the paths, but only ever use the pre-set entry state?
     ::std::vector<ToVisit> to_visit_blocks;
 
     // TODO: Check that all used locals are also set (anywhere at all)
 
-    auto add_to_visit = [&](unsigned int idx, ::std::vector<unsigned int> src_path, auto vs) {
+    auto add_to_visit = [&](unsigned int idx, ::std::vector<unsigned int> src_path, ValStates& vs, bool can_move) {
         for(const auto& b : to_visit_blocks)
             if( b.bb == idx && b.state == vs)
                 return ;
         if( block_start_states.at(idx) == vs )
             return ;
         src_path.push_back(idx);
-        to_visit_blocks.push_back( ToVisit { idx, mv$(src_path), mv$(vs) } );
+        // TODO: Update the target block, and only visit if we've induced a change
+        to_visit_blocks.push_back( ToVisit { idx, mv$(src_path), (can_move ? mv$(vs) : ValStates(vs)) } );
         };
-    add_to_visit( 0, {}, ValStates { state.m_args.size(), fcn.locals.size() } );
+    auto add_to_visit_move = [&](unsigned int idx, ::std::vector<unsigned int> src_path, ValStates vs) {
+        add_to_visit(idx, mv$(src_path), vs, true);
+        };
+    auto add_to_visit_copy = [&](unsigned int idx, ::std::vector<unsigned int> src_path, ValStates& vs) {
+        add_to_visit(idx, mv$(src_path), vs, false);
+        };
+    add_to_visit_move( 0, {}, ValStates { state.m_args.size(), fcn.locals.size() } );
     while( to_visit_blocks.size() > 0 )
     {
         auto block = to_visit_blocks.back().bb;
@@ -311,7 +325,8 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         if( ! block_start_states.at(block).merge(block, val_state) ) {
             continue ;
         }
-        DEBUG("BB" << block << " via [" << path << "]");
+        ASSERT_BUG(Span(), val_state.locals.size() == fcn.locals.size(), "");
+        DEBUG("BB" << block << " via [" << path << "] " << FMT_CB(ss,val_state.fmt(ss);));
 
         // 2. Using the newly merged state, iterate statements checking the usage and updating state.
         const auto& bb = fcn.blocks[block];
@@ -411,13 +426,13 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
         // 3. Pass new state on to destination blocks
         state.set_cur_stmt_term(block);
         DEBUG(state << bb.terminator);
-        TU_MATCH(::MIR::Terminator, (bb.terminator), (e),
-        (Incomplete,
+        TU_MATCH_HDRA( (bb.terminator), { )
+        TU_ARMA(Incomplete, e) {
             // Should be impossible here.
-            ),
-        (Return,
+            }
+        TU_ARMA(Return, e) {
             // Check if the return value has been set
-            val_state.ensure_valid( state, ::MIR::LValue::make_Return({}) );
+            val_state.ensure_valid( state, ::MIR::LValue::new_Return() );
             // Ensure that no other non-Copy values are valid
             for(unsigned int i = 0; i < val_state.locals.size(); i ++)
             {
@@ -432,51 +447,51 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                     // TODO: Error, becuase this has just been leaked
                 }
             }
-            ),
-        (Diverge,
+            }
+        TU_ARMA(Diverge, e) {
             // TODO: Ensure that cleanup has been performed.
-            ),
-        (Goto,
+            }
+        TU_ARMA(Goto, e) {
             // Push block with the new state
-            add_to_visit( e, mv$(path), mv$(val_state) );
-            ),
-        (Panic,
+            add_to_visit_move( e, mv$(path), mv$(val_state) );
+            }
+        TU_ARMA(Panic, e) {
             // What should be done here?
-            ),
-        (If,
+            }
+        TU_ARMA(If, e) {
             // Push blocks
             val_state.ensure_valid( state, e.cond );
-            add_to_visit( e.bb0, path, val_state );
-            add_to_visit( e.bb1, mv$(path), mv$(val_state) );
-            ),
-        (Switch,
+            add_to_visit_copy( e.bb0, path, val_state );
+            add_to_visit_move( e.bb1, mv$(path), mv$(val_state) );
+            }
+        TU_ARMA(Switch, e) {
             val_state.ensure_valid( state, e.val );
             for(const auto& tgt : e.targets)
             {
-                add_to_visit( tgt, path, val_state );
+                add_to_visit( tgt, path, val_state, (&tgt == &e.targets.back()) );
             }
-            ),
-        (SwitchValue,
+            }
+        TU_ARMA(SwitchValue, e) {
             val_state.ensure_valid( state, e.val );
             for(const auto& tgt : e.targets)
             {
-                add_to_visit( tgt, path, val_state );
+                add_to_visit_copy( tgt, path, val_state );
             }
-            add_to_visit( e.def_target, path, val_state );
-            ),
-        (Call,
+            add_to_visit_move( e.def_target, path, mv$(val_state) );
+            }
+        TU_ARMA(Call, e) {
             if( e.fcn.is_Value() )
                 val_state.ensure_valid( state, e.fcn.as_Value() );
             for(const auto& arg : e.args)
                 val_state.move_val( state, arg );
             // Push blocks (with return valid only in one)
-            add_to_visit(e.panic_block, path, val_state);
+            add_to_visit_copy(e.panic_block, path, val_state);
 
             // TODO: If the function returns !, don't follow the ret_block
             val_state.mark_validity( state, e.ret_val, true );
-            add_to_visit(e.ret_block, mv$(path), mv$(val_state));
-            )
-        )
+            add_to_visit_move(e.ret_block, mv$(path), mv$(val_state));
+            }
+        }
     }
 }
 
@@ -838,33 +853,33 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
 
             state.set_cur_stmt_term(bb_idx);
             DEBUG(state << bb.terminator);
-            TU_MATCH(::MIR::Terminator, (bb.terminator), (e),
-            (Incomplete,
-                ),
-            (Return,
+            TU_MATCH_HDRA( (bb.terminator), {)
+            TU_ARMA(Incomplete, e) {
+                }
+            TU_ARMA(Return, e) {
                 // TODO: Check if the function can return (i.e. if its return type isn't an empty type)
-                ),
-            (Diverge,
-                ),
-            (Goto,
-                ),
-            (Panic,
-                ),
-            (If,
+                }
+            TU_ARMA(Diverge, e) {
+                }
+            TU_ARMA(Goto, e) {
+                }
+            TU_ARMA(Panic, e) {
+                }
+            TU_ARMA(If, e) {
                 // Check that condition lvalue is a bool
                 ::HIR::TypeRef  tmp;
                 const auto& ty = state.get_lvalue_type(tmp, e.cond);
                 if( ty != ::HIR::CoreType::Bool ) {
                     MIR_BUG(state, "Type mismatch in `If` - expected bool, got " << ty);
                 }
-                ),
-            (Switch,
+                }
+            TU_ARMA(Switch, e) {
                 // Check that the condition is an enum
-                ),
-            (SwitchValue,
+                }
+            TU_ARMA(SwitchValue, e) {
                 // Check that the condition's type matches the values
-                ),
-            (Call,
+                }
+            TU_ARMA(Call, e) {
                 if( e.fcn.is_Value() )
                 {
                     ::HIR::TypeRef  tmp;
@@ -875,8 +890,8 @@ void MIR_Validate(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path
                     }
                 }
                 // Typecheck arguments and return value
-                )
-            )
+                }
+            }
         }
     }
 

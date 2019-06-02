@@ -31,47 +31,44 @@ namespace
 
     ::std::ostream& operator<<(::std::ostream& os, const Fmt<::MIR::LValue>& x)
     {
-        auto fmt_lhs = [](::std::ostream& os, const ::MIR::LValue& lv) {
-            if( lv.is_Deref() ) {
-                os << "(" << fmt(lv) << ")";
-            }
-            else {
-                os << fmt(lv);
-            }
-            };
-        switch(x.e.tag())
-        {
-        case ::MIR::LValue::TAGDEAD:    throw "";
-        TU_ARM(x.e, Return, _e) (void)_e;
+        TU_MATCHA( (x.e.m_root), (e),
+        (Return,
             os << "RETURN";
-            break;
-        TU_ARM(x.e, Local, e)
+            ),
+        (Local,
             os << "var" << e;
-            break;
-        TU_ARM(x.e, Argument, e)
-            os << "arg" << e.idx;
-            break;
-        TU_ARM(x.e, Static, e)
-            os << *e;
-            break;
-        TU_ARM(x.e, Deref, e)
-            os << "*" << fmt(*e.val);
-            break;
-        TU_ARM(x.e, Field, e) {
-            fmt_lhs(os, *e.val);
-            // Avoid `0.` existing in the output
-            if( e.val->is_Field() || e.val->is_Downcast() )
-                os << " ";
-            os << "." << e.field_index;
-            } break;
-        TU_ARM(x.e, Index, e) {
-            fmt_lhs(os, *e.val);
-            os << "[" << fmt(*e.idx) << "]";
-            } break;
-        TU_ARM(x.e, Downcast, e) {
-            fmt_lhs(os, *e.val);
-            os << "@" << e.variant_index;
-            } break;
+            ),
+        (Argument,
+            os << "arg" << e;
+            ),
+        (Static,
+            os << e;
+            )
+        )
+        bool was_num = false;
+        for(const auto& w : x.e.m_wrappers)
+        {
+            bool prev_was_num = was_num; was_num = false;
+            switch(w.tag())
+            {
+            TU_ARM(w, Deref, e)
+                os << "*";
+                break;
+            TU_ARM(w, Field, field_index) {
+                // Add a space to prevent accidental float literals
+                if( prev_was_num )
+                    os << " ";
+                os << "." << field_index;
+                was_num = true;
+                } break;
+            TU_ARM(w, Index, e) {
+                os << "[var" << fmt(::MIR::LValue::new_Local(e)) << "]";
+                } break;
+            TU_ARM(w, Downcast, variant_index) {
+                os << "@" << variant_index;
+                was_num = true;
+                } break;
+            }
         }
         return os;
     }
@@ -225,14 +222,14 @@ namespace
 
                         m_of << "\t0: {\n";
 
-                        auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
-                        auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                        auto self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
+                        auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
                         for(const auto& e : repr->fields)
                         {
                             if( m_resolve.type_needs_drop_glue(sp, e.ty) ) {
                                 m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                             }
-                            fld_lv.as_Field().field_index += 1;
+                            fld_lv.inc_Field();
                         }
                         m_of << "\t\t""RETURN\n";
                         m_of << "\t}\n";
@@ -388,13 +385,13 @@ namespace
                     //ASSERT_BUG(sp, !item.m_markings.has_drop_impl, "Box shouldn't have a Drop impl");
 
                     // TODO: This is very specific to the structure of the official liballoc's Box.
-                    auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
-                    auto fld_p_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
-                    fld_p_lv = ::MIR::LValue::make_Field({ box$(fld_p_lv), 0 });
-                    fld_p_lv = ::MIR::LValue::make_Field({ box$(fld_p_lv), 0 });
+                    auto self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
+                    auto fld_p_lv = ::MIR::LValue::new_Field( mv$(self), 0 );
+                    fld_p_lv = ::MIR::LValue::new_Field( mv$(fld_p_lv), 0 );
+                    fld_p_lv = ::MIR::LValue::new_Field( mv$(fld_p_lv), 0 );
 
                     if( m_resolve.type_needs_drop_glue(sp, *ity) ) {
-                        auto fld_lv = ::MIR::LValue::make_Deref({ box$(fld_p_lv.clone()) });
+                        auto fld_lv = ::MIR::LValue::new_Deref( fld_p_lv.clone() );
                         m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                     }
 
@@ -424,14 +421,14 @@ namespace
                         m_of << "\t2: {\n";
                     }
 
-                    auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({0})) });
-                    auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                    auto self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) );
+                    auto fld_lv = ::MIR::LValue::new_Field( mv$(self), 0 );
                     for(const auto& e : repr->fields)
                     {
                         if( m_resolve.type_needs_drop_glue(sp, e.ty) ) {
                             m_of << "\t\t""DROP " << fmt(fld_lv) << ";\n";
                         }
-                        fld_lv.as_Field().field_index += 1;
+                        fld_lv.inc_Field();
                     }
                 }
                 m_of << "\t\t""RETURN\n";
@@ -606,18 +603,18 @@ namespace
             {
                 m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
             }
-            auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+            auto self = ::MIR::LValue::new_Deref( ::MIR::LValue::new_Return() );
 
             if( nonzero_path.size() > 0 )
             {
                 // TODO: Fat pointers?
                 m_of << "\tif( (*rv)._1"; emit_nonzero_path(nonzero_path); m_of << " ) {\n";
-                emit_destructor_call( ::MIR::LValue::make_Field({ box$(self), 1 }), monomorph(item.m_data.as_Data()[1].type), false, 2 );
+                emit_destructor_call( ::MIR::LValue::new_Field( box$(self), 1 ), monomorph(item.m_data.as_Data()[1].type), false, 2 );
                 m_of << "\t}\n";
             }
             else if( const auto* e = item.m_data.opt_Data() )
             {
-                auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
+                auto var_lv =::MIR::LValue::new_Downcast( mv$(self), 0 );
 
                 m_of << "\tswitch(rv->TAG) {\n";
                 for(unsigned int var_idx = 0; var_idx < e->size(); var_idx ++)

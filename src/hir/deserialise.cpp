@@ -464,32 +464,15 @@
             rv = deserialise_mir_lvalue_();
             return rv;
         }
+        ::MIR::LValue::Wrapper deserialise_mir_lvalue_wrapper()
+        {
+            return ::MIR::LValue::Wrapper::from_inner(m_in.read_count());
+        }
         ::MIR::LValue deserialise_mir_lvalue_()
         {
-            switch(auto tag = m_in.read_tag())
-            {
-            #define _(x, ...)    case ::MIR::LValue::TAG_##x: return ::MIR::LValue::make_##x( __VA_ARGS__ );
-            _(Return, {})
-            _(Argument, { static_cast<unsigned int>(m_in.read_count()) } )
-            _(Local,   static_cast<unsigned int>(m_in.read_count()) )
-            _(Static,  box$(deserialise_path()) )
-            _(Field, {
-                box$( deserialise_mir_lvalue() ),
-                static_cast<unsigned int>(m_in.read_count())
-                } )
-            _(Deref, { box$( deserialise_mir_lvalue() ) })
-            _(Index, {
-                box$( deserialise_mir_lvalue() ),
-                box$( deserialise_mir_lvalue() )
-                } )
-            _(Downcast, {
-                box$( deserialise_mir_lvalue() ),
-                static_cast<unsigned int>(m_in.read_count())
-                } )
-            #undef _
-            default:
-                BUG(Span(), "Bad tag for MIR::LValue - " << tag);
-            }
+            auto root_v = m_in.read_count();
+            auto root = (root_v == 3 ? ::MIR::LValue::Storage::new_Static(deserialise_path()) : ::MIR::LValue::Storage::from_inner(root_v));
+            return ::MIR::LValue( mv$(root), deserialise_vec<::MIR::LValue::Wrapper>() );
         }
         ::MIR::RValue deserialise_mir_rvalue()
         {
@@ -827,6 +810,7 @@
     template<> DEF_D( ::HIR::TraitValueItem, return d.deserialise_traitvalueitem(); )
 
     template<> DEF_D( ::MIR::Param, return d.deserialise_mir_param(); )
+    template<> DEF_D( ::MIR::LValue::Wrapper, return d.deserialise_mir_lvalue_wrapper(); )
     template<> DEF_D( ::MIR::LValue, return d.deserialise_mir_lvalue(); )
     template<> DEF_D( ::MIR::Statement, return d.deserialise_mir_statement(); )
     template<> DEF_D( ::MIR::BasicBlock, return d.deserialise_mir_basicblock(); )

@@ -12,9 +12,12 @@
 #include <mir/mir.hpp>
 #include <algorithm>    // ::std::find
 
-void ::MIR::TypeResolve::fmt_pos(::std::ostream& os) const
+void ::MIR::TypeResolve::fmt_pos(::std::ostream& os, bool include_path/*=false*/) const
 {
-    os << this->m_path << " BB" << this->bb_idx << "/";
+    if( include_path ) {
+        os << this->m_path << " ";
+    }
+    os << "BB" << this->bb_idx << "/";
     if( this->stmt_idx == STMT_TERM ) {
         os << "TERM";
     }
@@ -27,7 +30,7 @@ void ::MIR::TypeResolve::print_msg(const char* tag, ::std::function<void(::std::
 {
     auto& os = ::std::cerr;
     os << "MIR " << tag << ": ";
-    fmt_pos(os);
+    fmt_pos(os, true);
     cb(os);
     os << ::std::endl;
     abort();
@@ -67,25 +70,39 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_static_type(::HIR::TypeRef& tmp, c
     )
     throw "";
 }
-const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val) const
+const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, const ::MIR::LValue& val, unsigned wrapper_skip_count/*=0*/) const
 {
-    TU_MATCH(::MIR::LValue, (val), (e),
+    const ::HIR::TypeRef* rv = nullptr;
+    TU_MATCHA( (val.m_root), (e),
     (Return,
-        return m_ret_type;
+        rv = &m_ret_type;
         ),
     (Argument,
-        MIR_ASSERT(*this, e.idx < m_args.size(), "Argument " << val << " out of range (" << m_args.size() << ")");
-        return m_args.at(e.idx).second;
+        MIR_ASSERT(*this, e < m_args.size(), "Argument " << val << " out of range (" << m_args.size() << ")");
+        rv = &m_args.at(e).second;
         ),
     (Local,
         MIR_ASSERT(*this, e < m_fcn.locals.size(), "Local " << val << " out of range (" << m_fcn.locals.size() << ")");
-        return m_fcn.locals.at(e);
+        rv = &m_fcn.locals.at(e);
         ),
     (Static,
-        return get_static_type(tmp,  *e);
-        ),
-    (Field,
-        const auto& ty = this->get_lvalue_type(tmp, *e.val);
+        rv = &get_static_type(tmp,  e);
+        )
+    )
+    assert(wrapper_skip_count <= val.m_wrappers.size());
+    const auto* stop_wrapper = &val.m_wrappers[ val.m_wrappers.size() - wrapper_skip_count ];
+    for(const auto& w : val.m_wrappers)
+    {
+        if( &w == stop_wrapper )
+            break;
+        rv = &this->get_unwrapped_type(tmp, w, *rv);
+    }
+    return *rv;
+}
+const ::HIR::TypeRef& ::MIR::TypeResolve::get_unwrapped_type(::HIR::TypeRef& tmp, const ::MIR::LValue::Wrapper& w, const ::HIR::TypeRef& ty) const
+{
+    TU_MATCH_HDRA( (w), {)
+    TU_ARMA(Field, field_index) {
         TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
         (
             MIR_BUG(*this, "Field access on unexpected type - " << ty);
@@ -98,14 +115,14 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
             return *te.inner;
             ),
         (Tuple,
-            MIR_ASSERT(*this, e.field_index < te.size(), "Field index out of range in tuple " << e.field_index << " >= " << te.size());
-            return te[e.field_index];
+            MIR_ASSERT(*this, field_index < te.size(), "Field index out of range in tuple " << field_index << " >= " << te.size());
+            return te[field_index];
             ),
         (Path,
             if( const auto* tep = te.binding.opt_Struct() )
             {
                 const auto& str = **tep;
-                auto monomorph = [&](const auto& ty)->const auto& {
+                auto maybe_monomorph = [&](const auto& ty)->const auto& {
                     if( monomorphise_type_needed(ty) ) {
                         tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, ty);
                         m_resolve.expand_associated_types(sp, tmp);
@@ -120,12 +137,12 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
                     MIR_BUG(*this, "Field on unit-like struct - " << ty);
                     ),
                 (Tuple,
-                    MIR_ASSERT(*this, e.field_index < se.size(), "Field index out of range in tuple-struct " << te.path);
-                    return monomorph(se[e.field_index].ent);
+                    MIR_ASSERT(*this, field_index < se.size(), "Field index out of range in tuple-struct " << te.path);
+                    return maybe_monomorph(se[field_index].ent);
                     ),
                 (Named,
-                    MIR_ASSERT(*this, e.field_index < se.size(), "Field index out of range in struct " << te.path);
-                    return monomorph(se[e.field_index].second.ent);
+                    MIR_ASSERT(*this, field_index < se.size(), "Field index out of range in struct " << te.path);
+                    return maybe_monomorph(se[field_index].second.ent);
                     )
                 )
             }
@@ -142,8 +159,8 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
                         return t;
                     }
                     };
-                MIR_ASSERT(*this, e.field_index < unm.m_variants.size(), "Field index out of range for union");
-                return maybe_monomorph(unm.m_variants.at(e.field_index).second.ent);
+                MIR_ASSERT(*this, field_index < unm.m_variants.size(), "Field index out of range for union");
+                return maybe_monomorph(unm.m_variants.at(field_index).second.ent);
             }
             else
             {
@@ -151,9 +168,8 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
             }
             )
         )
-        ),
-    (Deref,
-        const auto& ty = this->get_lvalue_type(tmp, *e.val);
+        }
+    TU_ARMA(Deref, _e) {
         TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
         (
             MIR_BUG(*this, "Deref on unexpected type - " << ty);
@@ -174,9 +190,8 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
             return *te.inner;
             )
         )
-        ),
-    (Index,
-        const auto& ty = this->get_lvalue_type(tmp, *e.val);
+        }
+    TU_ARMA(Index, index_local) {
         TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
         (
             MIR_BUG(*this, "Index on unexpected type - " << ty);
@@ -188,9 +203,8 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
             return *te.inner;
             )
         )
-        ),
-    (Downcast,
-        const auto& ty = this->get_lvalue_type(tmp, *e.val);
+        }
+    TU_ARMA(Downcast, variant_index) {
         TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
         (
             MIR_BUG(*this, "Downcast on unexpected type - " << ty);
@@ -202,8 +216,8 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
                 const auto& enm = *te.binding.as_Enum();
                 MIR_ASSERT(*this, enm.m_data.is_Data(), "Downcast on non-data enum - " << ty);
                 const auto& variants = enm.m_data.as_Data();
-                MIR_ASSERT(*this, e.variant_index < variants.size(), "Variant index out of range for " << ty);
-                const auto& variant = variants[e.variant_index];
+                MIR_ASSERT(*this, variant_index < variants.size(), "Variant index out of range for " << ty);
+                const auto& variant = variants[variant_index];
 
                 const auto& var_ty = variant.type;
                 if( monomorphise_type_needed(var_ty) ) {
@@ -218,12 +232,13 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
             else
             {
                 const auto& unm = *te.binding.as_Union();
-                MIR_ASSERT(*this, e.variant_index < unm.m_variants.size(), "Variant index out of range");
-                const auto& variant = unm.m_variants[e.variant_index];
+                MIR_ASSERT(*this, variant_index < unm.m_variants.size(), "Variant index out of range");
+                const auto& variant = unm.m_variants[variant_index];
                 const auto& var_ty = variant.second.ent;
 
+                //return m_resolve.maybe_monomorph(sp, tmp, unm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
                 if( monomorphise_type_needed(var_ty) ) {
-                    tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, variant.second.ent);
+                    tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, var_ty);
                     m_resolve.expand_associated_types(sp, tmp);
                     return tmp;
                 }
@@ -233,8 +248,8 @@ const ::HIR::TypeRef& ::MIR::TypeResolve::get_lvalue_type(::HIR::TypeRef& tmp, c
             }
             )
         )
-        )
-    )
+        }
+    }
     throw "";
 }
 const ::HIR::TypeRef& MIR::TypeResolve::get_param_type(::HIR::TypeRef& tmp, const ::MIR::Param& val) const
@@ -383,6 +398,15 @@ namespace visit {
     {
         if( cb(lv, u) )
             return true;
+#if 1
+        for(const auto& w : lv.m_wrappers)
+        {
+            if( w.is_Index() )
+            {
+                cb(LValue::new_Local(w.as_Index()), ValUsage::Read);
+            }
+        }
+#else
         TU_MATCHA( (lv), (e),
         (Return,
             ),
@@ -408,6 +432,7 @@ namespace visit {
             return visit_mir_lvalue(*e.val, u, cb);
             )
         )
+#endif
         return false;
     }
 
@@ -625,31 +650,14 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
     {
         auto assigned_lvalue = [&](size_t bb_idx, size_t stmt_idx, const ::MIR::LValue& lv) {
                 // NOTE: Fills the first statement after running, just to ensure that any assigned value has _a_ lifetime
-                if( const auto* de = lv.opt_Local() )
+                if( lv.m_root.is_Local() )
                 {
-                    if( !mask || mask->at(*de) )
+                    auto de = lv.m_root.as_Local();
+                    if( !mask || mask->at(de) )
                     {
-                        MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[*de]);
-                        slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
+                        MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[de]);
+                        slot_lifetimes[de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
                     }
-                }
-                else
-                {
-                    // Not a direct assignment of a slot. But check if a slot is mutated as part of this.
-                    ::MIR::visit::visit_mir_lvalue(lv, ValUsage::Write, [&](const auto& ilv, ValUsage vu) {
-                        if( const auto* de = ilv.opt_Local() )
-                        {
-                            if( vu == ValUsage::Write )
-                            {
-                                if( !mask || mask->at(*de) )
-                                {
-                                    MIR_Helper_GetLifetimes_DetermineValueLifetime(state, fcn, bb_idx, stmt_idx,  lv, block_offsets, slot_lifetimes[*de]);
-                                    slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx, stmt_idx);
-                                }
-                            }
-                        }
-                        return false;
-                        });
                 }
             };
 
@@ -673,11 +681,12 @@ void MIR_Helper_GetLifetimes_DetermineValueLifetime(::MIR::TypeResolve& state, c
             else if( const auto* se = stmt.opt_Drop() )
             {
                 // HACK: Mark values as valid wherever there's a drop (prevents confusion by simple validator)
-                if( const auto* de = se->slot.opt_Local() )
+                if( se->slot.m_wrappers.empty() && se->slot.m_root.is_Local() )
                 {
-                    if( !mask || mask->at(*de) )
+                    auto de = se->slot.m_root.as_Local();
+                    if( !mask || mask->at(de) )
                     {
-                        slot_lifetimes[*de].fill(block_offsets, bb_idx, stmt_idx,stmt_idx);
+                        slot_lifetimes[de].fill(block_offsets, bb_idx, stmt_idx,stmt_idx);
                     }
                 }
             }

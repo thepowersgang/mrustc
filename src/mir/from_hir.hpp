@@ -188,13 +188,10 @@ public:
 
     // - Values
     ::MIR::LValue get_variable(const Span& sp, unsigned idx) const {
-        // DIASBLED: State tracking doesn't support arguments in loops/splits
-#if 1
         auto it = m_var_arg_mappings.find(idx);
         if(it != m_var_arg_mappings.end())
-            return ::MIR::LValue::make_Argument({ it->second });
-#endif
-        return ::MIR::LValue::make_Local( idx );
+            return ::MIR::LValue::new_Argument(it->second);
+        return ::MIR::LValue::new_Local(idx);
     }
     ::MIR::LValue new_temporary(const ::HIR::TypeRef& ty);
     ::MIR::LValue lvalue_or_temp(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::RValue val);
@@ -224,7 +221,7 @@ public:
 
     // - Statements
     // Push an assignment. NOTE: This also marks the rvalue as moved
-    void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val);
+    void push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool drop_destination=true);
     // Push a drop (likely only used by scope cleanup)
     void push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int drop_flag=~0u);
     // Push a shallow drop (for Box)
@@ -296,7 +293,7 @@ private:
     const VarState& get_slot_state(const Span& sp, unsigned int idx, SlotType type, unsigned int skip_count=0) const;
     VarState& get_slot_state_mut(const Span& sp, unsigned int idx, SlotType type);
 
-    const VarState& get_val_state(const Span& sp, const ::MIR::LValue& lv, unsigned int skip_count=0);
+    VarState* get_val_state_mut_p(const Span& sp, const ::MIR::LValue& lv);
     VarState& get_val_state_mut(const Span& sp, const ::MIR::LValue& lv);
 
     void terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_loop);
@@ -306,11 +303,11 @@ private:
     void complete_scope(ScopeDef& sd);
 
 public:
-    void with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb) const;
+    void with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb, const ::MIR::LValue::Wrapper* stop_wrapper=nullptr) const;
     bool lvalue_is_copy(const Span& sp, const ::MIR::LValue& lv) const;
 
     // Obtain the base fat poiner for a dst reference. Errors if it wasn't via a fat pointer
-    const ::MIR::LValue& get_ptr_to_dst(const Span& sp, const ::MIR::LValue& lv) const;
+    ::MIR::LValue get_ptr_to_dst(const Span& sp, const ::MIR::LValue& lv) const;
 };
 
 class MirConverter:

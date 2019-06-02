@@ -15,38 +15,14 @@
 namespace {
     ::MIR::LValue monomorph_LValue(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::LValue& tpl)
     {
-        TU_MATCHA( (tpl), (e),
-        (Return, return e; ),
-        (Argument,  return e; ),
-        (Local,  return e; ),
-        (Static,
-            return box$(params.monomorph(resolve, *e));
-            ),
-        (Field,
-            return ::MIR::LValue::make_Field({
-                box$(monomorph_LValue(resolve, params, *e.val)),
-                e.field_index
-                });
-            ),
-        (Deref,
-            return ::MIR::LValue::make_Deref({
-                box$(monomorph_LValue(resolve, params, *e.val))
-                });
-            ),
-        (Index,
-            return ::MIR::LValue::make_Index({
-                box$(monomorph_LValue(resolve, params, *e.val)),
-                box$(monomorph_LValue(resolve, params, *e.idx))
-                });
-            ),
-        (Downcast,
-            return ::MIR::LValue::make_Downcast({
-                box$(monomorph_LValue(resolve, params, *e.val)),
-                e.variant_index
-                });
-            )
-        )
-        throw "";
+        if( tpl.m_root.is_Static() )
+        {
+            return ::MIR::LValue( ::MIR::LValue::Storage::new_Static(params.monomorph(resolve, tpl.m_root.as_Static())), tpl.m_wrappers );
+        }
+        else
+        {
+            return tpl.clone();
+        }
     }
     ::MIR::Constant monomorph_Constant(const ::StaticTraitResolve& resolve, const Trans_Params& params, const ::MIR::Constant& tpl)
     {

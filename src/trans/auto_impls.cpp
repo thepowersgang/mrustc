@@ -55,9 +55,9 @@ namespace {
         {
             const auto& lang_Clone = state.resolve.m_crate.get_lang_item_path(sp, "clone");
             // Allocate to locals (one for the `&T`, the other for the cloned `T`)
-            auto borrow_lv = ::MIR::LValue::make_Local( mir_fcn.locals.size() );
+            auto borrow_lv = ::MIR::LValue::new_Local( mir_fcn.locals.size() );
             mir_fcn.locals.push_back(::HIR::TypeRef::new_borrow(::HIR::BorrowType::Shared, subty.clone()));
-            auto res_lv = ::MIR::LValue::make_Local( mir_fcn.locals.size() );
+            auto res_lv = ::MIR::LValue::new_Local( mir_fcn.locals.size() );
             mir_fcn.locals.push_back(subty.clone());
 
             // Call `<T as Clone>::clone`, passing a borrow of the field
@@ -97,8 +97,8 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     {
         ::MIR::BasicBlock   bb;
         bb.statements.push_back(::MIR::Statement::make_Assign({
-            ::MIR::LValue::make_Return({}),
-            ::MIR::RValue::make_Use( ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) }) )
+            ::MIR::LValue::new_Return(),
+            ::MIR::RValue::make_Use( ::MIR::LValue::new_Deref( ::MIR::LValue::new_Argument(0) ) )
             }));
         bb.terminator = ::MIR::Terminator::make_Return({});
         mir_fcn.blocks.push_back(::std::move( bb ));
@@ -121,13 +121,13 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
                 {
                     ::HIR::TypeRef  tmp;
                     const auto& ty_m = monomorphise_type_needed(fld.ent) ? (tmp = p.monomorph(state.resolve, fld.ent)) : fld.ent;
-                    auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), static_cast<unsigned>(values.size()) });
+                    auto fld_lvalue = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref(::MIR::LValue::new_Argument(0)), static_cast<unsigned>(values.size()) );
                     values.push_back( clone_field(state, sp, mir_fcn, ty_m, mv$(fld_lvalue)) );
                 }
                 // Construct the result value
                 ::MIR::BasicBlock   bb;
                 bb.statements.push_back(::MIR::Statement::make_Assign({
-                    ::MIR::LValue::make_Return({}),
+                    ::MIR::LValue::new_Return(),
                     ::MIR::RValue::make_Struct({ gp.clone(), mv$(values) })
                     }));
                 bb.terminator = ::MIR::Terminator::make_Return({});
@@ -142,13 +142,13 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
             ::std::vector< ::MIR::Param>   values; values.reserve(te.size_val);
             for(size_t i = 0; i < te.size_val; i ++)
             {
-                auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), static_cast<unsigned>(i) });
+                auto fld_lvalue = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref(::MIR::LValue::new_Argument(0)), static_cast<unsigned>(values.size()) );
                 values.push_back( clone_field(state, sp, mir_fcn, *te.inner, mv$(fld_lvalue)) );
             }
             // Construct the result
             ::MIR::BasicBlock   bb;
             bb.statements.push_back(::MIR::Statement::make_Assign({
-                ::MIR::LValue::make_Return({}),
+                ::MIR::LValue::new_Return(),
                 ::MIR::RValue::make_Array({ mv$(values) })
                 }));
             bb.terminator = ::MIR::Terminator::make_Return({});
@@ -161,14 +161,14 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
             // For each field of the tuple, create a clone (either using Copy if posible, or calling Clone::clone)
             for(const auto& subty : te)
             {
-                auto fld_lvalue = ::MIR::LValue::make_Field({ box$(::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Argument({ 0 })) })), static_cast<unsigned>(values.size()) });
+                auto fld_lvalue = ::MIR::LValue::new_Field( ::MIR::LValue::new_Deref(::MIR::LValue::new_Argument(0)), static_cast<unsigned>(values.size()) );
                 values.push_back( clone_field(state, sp, mir_fcn, subty, mv$(fld_lvalue)) );
             }
 
             // Construct the result tuple
             ::MIR::BasicBlock   bb;
             bb.statements.push_back(::MIR::Statement::make_Assign({
-                ::MIR::LValue::make_Return({}),
+                ::MIR::LValue::new_Return(),
                 ::MIR::RValue::make_Tuple({ mv$(values) })
                 }));
             bb.terminator = ::MIR::Terminator::make_Return({});

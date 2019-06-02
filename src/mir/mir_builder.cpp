@@ -68,7 +68,7 @@ MirBuilder::~MirBuilder()
         {
             if( has_result() )
             {
-                push_stmt_assign( sp, ::MIR::LValue::make_Return({}), get_result(sp) );
+                push_stmt_assign( sp, ::MIR::LValue::new_Return(), get_result(sp) );
             }
 
             terminate_scope_early(sp, fcn_scope());
@@ -176,7 +176,7 @@ void MirBuilder::define_variable(unsigned int idx)
     auto& tmp_scope = top_scope->data.as_Owning();
     assert(tmp_scope.is_temporary);
     tmp_scope.slots.push_back( rv );
-    return ::MIR::LValue::make_Local(rv);
+    return ::MIR::LValue::new_Local(rv);
 }
 ::MIR::LValue MirBuilder::lvalue_or_temp(const Span& sp, const ::HIR::TypeRef& ty, ::MIR::RValue val)
 {
@@ -258,12 +258,10 @@ void MirBuilder::set_result(const Span& sp, ::MIR::RValue val)
     m_result_valid = true;
 }
 
-void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val)
+void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RValue val, bool drop_destination/*=true*/)
 {
     DEBUG(dst << " = " << val);
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    ASSERT_BUG(sp, dst.tag() != ::MIR::LValue::TAGDEAD, "");
-    ASSERT_BUG(sp, val.tag() != ::MIR::RValue::TAGDEAD, "");
 
     auto moved_param = [&](const ::MIR::Param& p) {
         if(const auto* e = p.opt_LValue()) {
@@ -344,13 +342,15 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
     )
 
     // Drop target if populated
-    mark_value_assigned(sp, dst);
+    if( drop_destination )
+    {
+        mark_value_assigned(sp, dst);
+    }
     this->push_stmt( sp, ::MIR::Statement::make_Assign({ mv$(dst), mv$(val) }) );
 }
 void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int flag/*=~0u*/)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
 
     if( lvalue_is_copy(sp, val) ) {
         // Don't emit a drop for Copy values
@@ -362,7 +362,6 @@ void MirBuilder::push_stmt_drop(const Span& sp, ::MIR::LValue val, unsigned int 
 void MirBuilder::push_stmt_drop_shallow(const Span& sp, ::MIR::LValue val, unsigned int flag/*=~0u*/)
 {
     ASSERT_BUG(sp, m_block_active, "Pushing statement with no active block");
-    ASSERT_BUG(sp, val.tag() != ::MIR::LValue::TAGDEAD, "");
 
     // TODO: Ensure that the type is a Box?
 
@@ -400,22 +399,12 @@ void MirBuilder::push_stmt(const Span& sp, ::MIR::Statement stmt)
 
 void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
 {
-    VarState*   state_p = nullptr;
-    // TODO: Tracking of complex asignment states (e.g. assignment of a field)
-    TU_MATCH_DEF(::MIR::LValue, (dst), (e),
-    (
-        ),
-    (Return,
-        // Don't drop.
-        // No state tracking for the return value
-        ),
-    (Argument,
-        state_p = &get_slot_state_mut(sp, e.idx, SlotType::Argument);
-        ),
-    (Local,
-        state_p = &get_slot_state_mut(sp, e, SlotType::Local);
-        )
-    )
+    if( dst.m_root.is_Return() )
+    {
+        ASSERT_BUG(sp, dst.m_wrappers.empty(), "Assignment to a component of the return value should be impossible.");
+        return ;
+    }
+    VarState*   state_p = get_val_state_mut_p(sp, dst);;
 
     if( state_p )
     {
@@ -425,42 +414,28 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
         drop_value_from_state(sp, *state_p, dst.clone());
         *state_p = VarState::make_Valid({});
     }
-    // TODO: What about assigning into non-tracked locations? Should still cause a drop
+    else
+    {
+        // Assigning into non-tracked locations still causes a drop
+        drop_value_from_state(sp, VarState::make_Valid({}), dst.clone());
+    }
 }
 
 void MirBuilder::raise_temporaries(const Span& sp, const ::MIR::LValue& val, const ScopeHandle& scope, bool to_above/*=false*/)
 {
     TRACE_FUNCTION_F(val);
-    TU_MATCH_DEF(::MIR::LValue, (val), (e),
-    (
+    for(const auto& w : val.m_wrappers)
+    {
+        if( w.is_Index() ) {
+            // Raise index temporary
+            raise_temporaries(sp, ::MIR::LValue::new_Local(w.as_Index()), scope, to_above);
+        }
+    }
+    if( !val.m_root.is_Local() ) {
         // No raising of these source values?
         return ;
-        ),
-    // TODO: This may not be correct, because it can change the drop points and ordering
-    // HACK: Working around cases where values are dropped while the result is not yet used.
-    (Index,
-        raise_temporaries(sp, *e.val, scope, to_above);
-        raise_temporaries(sp, *e.idx, scope, to_above);
-        return ;
-        ),
-    (Deref,
-        raise_temporaries(sp, *e.val, scope, to_above);
-        return ;
-        ),
-    (Field,
-        raise_temporaries(sp, *e.val, scope, to_above);
-        return ;
-        ),
-    (Downcast,
-        raise_temporaries(sp, *e.val, scope, to_above);
-        return ;
-        ),
-    // Actual value types
-    (Local,
-        )
-    )
-    ASSERT_BUG(sp, val.is_Local(), "Hit value raising code with non-variable value - " << val);
-    const auto idx = val.as_Local();
+    }
+    const auto idx = val.m_root.as_Local();
     bool is_temp = (idx >= m_first_temp_idx);
     /*
     if( !is_temp ) {
@@ -833,13 +808,12 @@ void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle
     }
     auto& src_scope_def = m_scopes.at(source.idx);
 
-#if 1
     ASSERT_BUG(sp, src_scope_def.data.is_Owning(), "Rasising scopes can only be done on temporaries (source)");
     ASSERT_BUG(sp, src_scope_def.data.as_Owning().is_temporary, "Rasising scopes can only be done on temporaries (source)");
     auto& src_list = src_scope_def.data.as_Owning().slots;
     for(auto idx : src_list)
     {
-        DEBUG("> Raising " << ::MIR::LValue::make_Local(idx));
+        DEBUG("> Raising " << ::MIR::LValue::new_Local(idx));
         assert(idx >= m_first_temp_idx);
     }
 
@@ -910,13 +884,6 @@ void MirBuilder::raise_all(const Span& sp, ScopeHandle source, const ScopeHandle
     // Move all defined variables from one to the other
     auto& tgt_list = tgt_scope_def.data.as_Owning().slots;
     tgt_list.insert( tgt_list.end(), src_list.begin(), src_list.end() );
-#else
-    auto list = src_scope_def.data.as_Temporaries().temporaries;
-    for(auto idx : list)
-    {
-        this->raise_temporaries(sp, ::MIR::LValue::make_Temporary({ idx }), target);
-    }
-#endif
 
     // Scope completed
     m_scope_stack.pop_back();
@@ -979,7 +946,7 @@ void MirBuilder::terminate_scope_early(const Span& sp, const ScopeHandle& scope,
         for(size_t i = 0; i < m_arg_states.size(); i ++)
         {
             const auto& state = get_slot_state(sp, i, SlotType::Argument);
-            this->drop_value_from_state(sp, state, ::MIR::LValue::make_Argument({ static_cast<unsigned>(i) }));
+            this->drop_value_from_state(sp, state, ::MIR::LValue::new_Argument(static_cast<unsigned>(i)));
         }
     }
 }
@@ -1060,7 +1027,7 @@ namespace
                         });
                 if( is_box )
                 {
-                    merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, *nse.inner_state);
+                    merge_state(sp, builder, ::MIR::LValue::new_Deref(lv.clone()), *ose.inner_state, *nse.inner_state);
                 }
                 else
                 {
@@ -1086,13 +1053,13 @@ namespace
                 if( is_enum ) {
                     for(size_t i = 0; i < ose.inner_states.size(); i ++)
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }), ose.inner_states[i], nse.inner_states[i]);
+                        merge_state(sp, builder, ::MIR::LValue::new_Downcast(lv.clone(), static_cast<unsigned int>(i)), ose.inner_states[i], nse.inner_states[i]);
                     }
                 }
                 else {
                     for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Field({ box$(lv.clone()), i }), ose.inner_states[i], nse.inner_states[i]);
+                        merge_state(sp, builder, ::MIR::LValue::new_Field(lv.clone(), i), ose.inner_states[i], nse.inner_states[i]);
                     }
                 }
                 } return;
@@ -1168,7 +1135,7 @@ namespace
                         });
 
                 if( is_box ) {
-                    merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, *nse.inner_state);
+                    merge_state(sp, builder, ::MIR::LValue::new_Deref(lv.clone()), *ose.inner_state, *nse.inner_state);
                 }
                 else {
                     BUG(sp, "MovedOut on non-Box");
@@ -1192,19 +1159,19 @@ namespace
                 }
                 auto& ose = old_state.as_Partial();
                 if( is_enum ) {
-                    auto ilv = ::MIR::LValue::make_Downcast({ box$(lv.clone()), 0 });
+                    auto ilv = ::MIR::LValue::new_Downcast(lv.clone(), 0);
                     for(size_t i = 0; i < ose.inner_states.size(); i ++)
                     {
                         merge_state(sp, builder, ilv, ose.inner_states[i], nse.inner_states[i]);
-                        ilv.as_Downcast().variant_index ++;
+                        ilv.inc_Downcast();
                     }
                 }
                 else {
-                    auto ilv = ::MIR::LValue::make_Field({ box$(lv.clone()), 0 });
+                    auto ilv = ::MIR::LValue::new_Field(lv.clone(), 0);
                     for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
                     {
                         merge_state(sp, builder, ilv, ose.inner_states[i], nse.inner_states[i]);
-                        ilv.as_Field().field_index ++;
+                        ilv.inc_Field();
                     }
                 }
                 } return;
@@ -1268,13 +1235,13 @@ namespace
                 if( is_enum ) {
                     for(size_t i = 0; i < ose.inner_states.size(); i ++)
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }), ose.inner_states[i], nse.inner_states[i]);
+                        merge_state(sp, builder, ::MIR::LValue::new_Downcast(lv.clone(), static_cast<unsigned int>(i)), ose.inner_states[i], nse.inner_states[i]);
                     }
                 }
                 else {
                     for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Field({ box$(lv.clone()), i }), ose.inner_states[i], nse.inner_states[i]);
+                        merge_state(sp, builder, ::MIR::LValue::new_Field(lv.clone(), i), ose.inner_states[i], nse.inner_states[i]);
                     }
                 }
                 return; }
@@ -1309,7 +1276,7 @@ namespace
                     builder.push_stmt_set_dropflag_val(sp, ose.outer_flag, is_valid);
                 }
 
-                merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, new_state);
+                merge_state(sp, builder, ::MIR::LValue::new_Deref(lv.clone()), *ose.inner_state, new_state);
                 return ; }
             case VarState::TAG_Optional: {
                 const auto& nse = new_state.as_Optional();
@@ -1334,7 +1301,7 @@ namespace
                     builder.push_stmt_set_dropflag_other(sp, ose.outer_flag, nse);
                     builder.push_stmt_set_dropflag_default(sp, nse);
                 }
-                merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, new_state);
+                merge_state(sp, builder, ::MIR::LValue::new_Deref(lv.clone()), *ose.inner_state, new_state);
                 return; }
             case VarState::TAG_MovedOut: {
                 const auto& nse = new_state.as_MovedOut();
@@ -1342,7 +1309,7 @@ namespace
                 {
                     TODO(sp, "Handle mismatched flags in MovedOut");
                 }
-                merge_state(sp, builder, ::MIR::LValue::make_Deref({ box$(lv.clone()) }), *ose.inner_state, *nse.inner_state);
+                merge_state(sp, builder, ::MIR::LValue::new_Deref(lv.clone()), *ose.inner_state, *nse.inner_state);
                 return; }
             case VarState::TAG_Partial:
                 BUG(sp, "MovedOut->Partial not valid");
@@ -1366,13 +1333,13 @@ namespace
                 if( is_enum ) {
                     for(size_t i = 0; i < ose.inner_states.size(); i ++)
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }), ose.inner_states[i], new_state);
+                        merge_state(sp, builder, ::MIR::LValue::new_Downcast(lv.clone(), static_cast<unsigned int>(i)), ose.inner_states[i], new_state);
                     }
                 }
                 else {
                     for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Field({ box$(lv.clone()), i }), ose.inner_states[i], new_state);
+                        merge_state(sp, builder, ::MIR::LValue::new_Field(lv.clone(), i), ose.inner_states[i], new_state);
                     }
                 }
                 return ;
@@ -1384,13 +1351,13 @@ namespace
                 if( is_enum ) {
                     for(size_t i = 0; i < ose.inner_states.size(); i ++)
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }), ose.inner_states[i], nse.inner_states[i]);
+                        merge_state(sp, builder, ::MIR::LValue::new_Downcast(lv.clone(), static_cast<unsigned int>(i)), ose.inner_states[i], nse.inner_states[i]);
                     }
                 }
                 else {
                     for(unsigned int i = 0; i < ose.inner_states.size(); i ++ )
                     {
-                        merge_state(sp, builder, ::MIR::LValue::make_Field({ box$(lv.clone()), i }), ose.inner_states[i], nse.inner_states[i]);
+                        merge_state(sp, builder, ::MIR::LValue::new_Field(lv.clone(), i), ose.inner_states[i], nse.inner_states[i]);
                     }
                 }
                 } return ;
@@ -1419,8 +1386,8 @@ void MirBuilder::terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_l
                 merge_state(sp, *this, val_cb(idx), old_state,  get_slot_state(sp, idx, type));
             }
             };
-        merge_list(sd_loop.changed_slots, sd_loop.exit_state.states, ::MIR::LValue::make_Local, SlotType::Local);
-        merge_list(sd_loop.changed_args, sd_loop.exit_state.arg_states, [](auto v){ return ::MIR::LValue::make_Argument({v}); }, SlotType::Argument);
+        merge_list(sd_loop.changed_slots, sd_loop.exit_state.states, ::MIR::LValue::new_Local, SlotType::Local);
+        merge_list(sd_loop.changed_args, sd_loop.exit_state.arg_states, [](auto v){ return ::MIR::LValue::new_Argument(v); }, SlotType::Argument);
     }
     else
     {
@@ -1475,7 +1442,7 @@ void MirBuilder::end_split_arm(const Span& sp, const ScopeHandle& handle, bool r
                     auto it = states.find(idx);
                     const auto& src_state = (it != states.end() ? it->second : get_slot_state(sp, idx, type, 1));
 
-                    auto lv = (type == SlotType::Local ? ::MIR::LValue::make_Local(idx) : ::MIR::LValue::make_Argument({idx}));
+                    auto lv = (type == SlotType::Local ? ::MIR::LValue::new_Local(idx) : ::MIR::LValue::new_Argument(idx));
                     merge_state(sp, *this, mv$(lv), out_state, src_state);
                 }
                 };
@@ -1565,7 +1532,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 auto& vs = builder.get_slot_state_mut(sp, ent.first, SlotType::Local);
                 if( vs != ent.second )
                 {
-                    DEBUG(::MIR::LValue::make_Local(ent.first) << " " << vs << " => " << ent.second);
+                    DEBUG(::MIR::LValue::new_Local(ent.first) << " " << vs << " => " << ent.second);
                     vs = ::std::move(ent.second);
                 }
             }
@@ -1574,7 +1541,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
                 auto& vs = builder.get_slot_state_mut(sp, ent.first, SlotType::Argument);
                 if( vs != ent.second )
                 {
-                    DEBUG(::MIR::LValue::make_Argument({ent.first}) << " " << vs << " => " << ent.second);
+                    DEBUG(::MIR::LValue::new_Argument(ent.first) << " " << vs << " => " << ent.second);
                     vs = ::std::move(ent.second);
                 }
             }
@@ -1612,7 +1579,7 @@ void MirBuilder::complete_scope(ScopeDef& sd)
         for(auto& ent : e->changed_slots)
         {
             auto& vs = this->get_slot_state_mut(sd.span, ent.first, SlotType::Local);
-            auto lv = ::MIR::LValue::make_Local(ent.first);
+            auto lv = ::MIR::LValue::new_Local(ent.first);
             DEBUG(lv << " " << vs << " => " << ent.second);
             if( vs != ent.second )
             {
@@ -1630,97 +1597,96 @@ void MirBuilder::complete_scope(ScopeDef& sd)
     }
 }
 
-void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb) const
+void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::function<void(const ::HIR::TypeRef&)> cb, const ::MIR::LValue::Wrapper* stop_wrapper/*=nullptr*/) const
 {
-    TU_MATCH(::MIR::LValue, (val), (e),
+    ::HIR::TypeRef  tmp;
+    const ::HIR::TypeRef*   ty_p = nullptr;
+    TU_MATCHA( (val.m_root), (e),
     (Return,
         TODO(sp, "Return");
         ),
     (Argument,
-        cb( m_args.at(e.idx).second );
+        ty_p = &m_args.at(e).second;
         ),
     (Local,
-        cb( m_output.locals.at(e) );
+        ty_p = &m_output.locals.at(e);
         ),
     (Static,
-        TU_MATCHA( (e->m_data), (pe),
+        TU_MATCHA( (e.m_data), (pe),
         (Generic,
             ASSERT_BUG(sp, pe.m_params.m_types.empty(), "Path params on static");
             const auto& s = m_resolve.m_crate.get_static_by_path(sp, pe.m_path);
-            cb( s.m_type );
+            ty_p = &s.m_type;
             ),
         (UfcsKnown,
-            TODO(sp, "Static - UfcsKnown - " << *e);
+            TODO(sp, "Static - UfcsKnown - " << e);
             ),
         (UfcsUnknown,
-            BUG(sp, "Encountered UfcsUnknown in Static - " << *e);
+            BUG(sp, "Encountered UfcsUnknown in Static - " << e);
             ),
         (UfcsInherent,
-            TODO(sp, "Static - UfcsInherent - " << *e);
+            TODO(sp, "Static - UfcsInherent - " << e);
             )
         )
-        ),
-    (Field,
-        with_val_type(sp, *e.val, [&](const auto& ty){
+        )
+    )
+    assert(ty_p);
+    for(const auto& w : val.m_wrappers)
+    {
+        if( &w == stop_wrapper )
+        {
+            stop_wrapper = nullptr; // Reset so the below bugcheck can work
+            break;
+        }
+        const auto& ty = *ty_p;
+        ty_p = nullptr;
+        auto maybe_monomorph = [&](const ::HIR::GenericParams& params_def, const ::HIR::Path& p, const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
+            if( monomorphise_type_needed(t) ) {
+                tmp = monomorphise_type(sp, params_def, p.m_data.as_Generic().m_params, t);
+                m_resolve.expand_associated_types(sp, tmp);
+                return tmp;
+            }
+            else {
+                return t;
+            }
+            };
+        TU_MATCH_HDRA( (w), {)
+        TU_ARMA(Field, field_index) {
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
                 BUG(sp, "Field access on unexpected type - " << ty);
                 ),
             (Array,
-                cb( *te.inner );
+                ty_p = &*te.inner;
                 ),
             (Slice,
-                cb( *te.inner );
+                ty_p = &*te.inner;
                 ),
             (Path,
-                ::HIR::TypeRef  tmp;
                 if( const auto* tep = te.binding.opt_Struct() )
                 {
                     const auto& str = **tep;
-                    auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
-                        if( monomorphise_type_needed(t) ) {
-                            tmp = monomorphise_type(sp, str.m_params, te.path.m_data.as_Generic().m_params, t);
-                            m_resolve.expand_associated_types(sp, tmp);
-                            return tmp;
-                        }
-                        else {
-                            return t;
-                        }
-                        };
                     TU_MATCHA( (str.m_data), (se),
                     (Unit,
                         BUG(sp, "Field on unit-like struct - " << ty);
                         ),
                     (Tuple,
-                        ASSERT_BUG(sp, e.field_index < se.size(),
-                            "Field index out of range in tuple-struct " << ty << " - " << e.field_index << " > " << se.size());
-                        const auto& fld = se[e.field_index];
-                        cb( maybe_monomorph(fld.ent) );
+                        ASSERT_BUG(sp, field_index < se.size(),
+                            "Field index out of range in tuple-struct " << ty << " - " << field_index << " > " << se.size());
+                        const auto& fld = se[field_index];
+                        ty_p = &maybe_monomorph(str.m_params, te.path, fld.ent);
                         ),
                     (Named,
-                        ASSERT_BUG(sp, e.field_index < se.size(),
-                            "Field index out of range in struct " << ty << " - " << e.field_index << " > " << se.size());
-                        const auto& fld = se[e.field_index].second;
-                        cb( maybe_monomorph(fld.ent) );
+                        ASSERT_BUG(sp, field_index < se.size(),
+                            "Field index out of range in struct " << ty << " - " << field_index << " > " << se.size());
+                        const auto& fld = se[field_index].second;
+                        ty_p = &maybe_monomorph(str.m_params, te.path, fld.ent);
                         )
                     )
                 }
-                else if( const auto* tep = te.binding.opt_Union() )
+                else if( /*const auto* tep =*/ te.binding.opt_Union() )
                 {
                     BUG(sp, "Field access on a union isn't valid, use Downcast instead - " << ty);
-                    const auto& unm = **tep;
-                    auto maybe_monomorph = [&](const ::HIR::TypeRef& t)->const ::HIR::TypeRef& {
-                        if( monomorphise_type_needed(t) ) {
-                            tmp = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, t);
-                            m_resolve.expand_associated_types(sp, tmp);
-                            return tmp;
-                        }
-                        else {
-                            return t;
-                        }
-                        };
-                    ASSERT_BUG(sp, e.field_index < unm.m_variants.size(), "Field index out of range for union");
-                    cb( maybe_monomorph(unm.m_variants.at(e.field_index).second.ent) );
                 }
                 else
                 {
@@ -1728,14 +1694,12 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 }
                 ),
             (Tuple,
-                ASSERT_BUG(sp, e.field_index < te.size(), "Field index out of range in tuple " << e.field_index << " >= " << te.size());
-                cb( te[e.field_index] );
+                ASSERT_BUG(sp, field_index < te.size(), "Field index out of range in tuple " << field_index << " >= " << te.size());
+                ty_p = &te[field_index];
                 )
             )
-            });
-        ),
-    (Deref,
-        with_val_type(sp, *e.val, [&](const auto& ty){
+            }
+        TU_ARMA(Deref, _e) {
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
                 BUG(sp, "Deref on unexpected type - " << ty);
@@ -1743,38 +1707,34 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
             (Path,
                 if( const auto* inner_ptr = this->is_type_owned_box(ty) )
                 {
-                    cb( *inner_ptr );
+                    ty_p = &*inner_ptr;
                 }
                 else {
                     BUG(sp, "Deref on unexpected type - " << ty);
                 }
                 ),
             (Pointer,
-                cb(*te.inner);
+                ty_p = &*te.inner;
                 ),
             (Borrow,
-                cb(*te.inner);
+                ty_p = &*te.inner;
                 )
             )
-            });
-        ),
-    (Index,
-        with_val_type(sp, *e.val, [&](const auto& ty){
+            }
+        TU_ARMA(Index, _index_val) {
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
                 BUG(sp, "Index on unexpected type - " << ty);
                 ),
             (Slice,
-                cb(*te.inner);
+                ty_p = &*te.inner;
                 ),
             (Array,
-                cb(*te.inner);
+                ty_p = &*te.inner;
                 )
             )
-            });
-        ),
-    (Downcast,
-        with_val_type(sp, *e.val, [&](const auto& ty){
+            }
+        TU_ARMA(Downcast, variant_index) {
             TU_MATCH_DEF( ::HIR::TypeRef::Data, (ty.m_data), (te),
             (
                 BUG(sp, "Downcast on unexpected type - " << ty);
@@ -1785,33 +1745,19 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                     const auto& enm = **pbe;
                     ASSERT_BUG(sp, enm.m_data.is_Data(), "Downcast on non-data enum");
                     const auto& variants = enm.m_data.as_Data();
-                    ASSERT_BUG(sp, e.variant_index < variants.size(), "Variant index out of range");
-                    const auto& variant = variants[e.variant_index];
+                    ASSERT_BUG(sp, variant_index < variants.size(), "Variant index out of range");
+                    const auto& variant = variants[variant_index];
 
-                    if( monomorphise_type_needed(variant.type) ) {
-                        auto tmp = monomorphise_type(sp, enm.m_params, te.path.m_data.as_Generic().m_params, variant.type);
-                        m_resolve.expand_associated_types(sp, tmp);
-                        cb(tmp);
-                    }
-                    else {
-                        cb(variant.type);
-                    }
+                    ty_p = &maybe_monomorph(enm.m_params, te.path, variant.type);
                 }
                 else if( const auto* pbe = te.binding.opt_Union() )
                 {
                     const auto& unm = **pbe;
-                    ASSERT_BUG(sp, e.variant_index < unm.m_variants.size(), "Variant index out of range");
-                    const auto& variant = unm.m_variants.at(e.variant_index);
+                    ASSERT_BUG(sp, variant_index < unm.m_variants.size(), "Variant index out of range");
+                    const auto& variant = unm.m_variants.at(variant_index);
                     const auto& fld = variant.second;
 
-                    if( monomorphise_type_needed(fld.ent) ) {
-                        auto sty = monomorphise_type(sp, unm.m_params, te.path.m_data.as_Generic().m_params, fld.ent);
-                        m_resolve.expand_associated_types(sp, sty);
-                        cb(sty);
-                    }
-                    else {
-                        cb(fld.ent);
-                    }
+                    ty_p = &maybe_monomorph(unm.m_params, te.path, fld.ent);
                 }
                 else
                 {
@@ -1819,9 +1765,12 @@ void MirBuilder::with_val_type(const Span& sp, const ::MIR::LValue& val, ::std::
                 }
                 )
             )
-            });
-        )
-    )
+            }
+        }
+        assert(ty_p);
+    }
+    ASSERT_BUG(sp, !stop_wrapper, "A stop wrapper was passed, but not found");
+    cb(*ty_p);
 }
 
 bool MirBuilder::lvalue_is_copy(const Span& sp, const ::MIR::LValue& val) const
@@ -1998,165 +1947,177 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotT
     }
 }
 
-const VarState& MirBuilder::get_val_state(const Span& sp, const ::MIR::LValue& lv, unsigned int skip_count)
+VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& lv)
 {
-    TODO(sp, "");
+    TRACE_FUNCTION_F(lv);
+    VarState*   vs;
+    TU_MATCHA( (lv.m_root), (e),
+    (Return,
+        BUG(sp, "Move of return value");
+        vs = &get_slot_state_mut(sp, ~0u, SlotType::Local);
+        ),
+    (Argument,
+        vs = &get_slot_state_mut(sp, e, SlotType::Argument);
+        ),
+    (Local,
+        vs = &get_slot_state_mut(sp, e, SlotType::Local);
+        ),
+    (Static,
+        return nullptr;
+        //BUG(sp, "Attempting to mutate state of a static");
+        )
+    )
+
+    for(const auto& w : lv.m_wrappers)
+    {
+        auto& ivs = *vs;
+        vs = nullptr;
+        TU_MATCH_HDRA( (w), { )
+        TU_ARMA(Field, field_index) {
+            VarState    tpl;
+            TU_MATCHA( (ivs), (ivse),
+            (Invalid,
+                //BUG(sp, "Mutating inner state of an invalidated composite - " << lv);
+                tpl = VarState::make_Valid({});
+                ),
+            (MovedOut,
+                BUG(sp, "Field on value with MovedOut state - " << lv);
+                ),
+            (Partial,
+                ),
+            (Optional,
+                tpl = ivs.clone();
+                ),
+            (Valid,
+                tpl = VarState::make_Valid({});
+                )
+            )
+            if( !ivs.is_Partial() )
+            {
+                size_t n_flds = 0;
+                with_val_type(sp, lv, [&](const auto& ty) {
+                    DEBUG("ty = " << ty);
+                    if(const auto* e = ty.m_data.opt_Path()) {
+                        ASSERT_BUG(sp, e->binding.is_Struct(), "");
+                        const auto& str = *e->binding.as_Struct();
+                        TU_MATCHA( (str.m_data), (se),
+                        (Unit,
+                            BUG(sp, "Field access of unit-like struct");
+                            ),
+                        (Tuple,
+                            n_flds = se.size();
+                            ),
+                        (Named,
+                            n_flds = se.size();
+                            )
+                        )
+                    }
+                    else if(const auto* e = ty.m_data.opt_Tuple()) {
+                        n_flds = e->size();
+                    }
+                    else if(const auto* e = ty.m_data.opt_Array()) {
+                        n_flds = e->size_val;
+                    }
+                    else {
+                        TODO(sp, "Determine field count for " << ty);
+                    }
+                    }, &w);
+                ::std::vector<VarState> inner_vs; inner_vs.reserve(n_flds);
+                for(size_t i = 0; i < n_flds; i++)
+                    inner_vs.push_back( tpl.clone() );
+                ivs = VarState::make_Partial({ mv$(inner_vs) });
+            }
+            vs = &ivs.as_Partial().inner_states.at(field_index);
+            }
+        TU_ARMA(Deref, _e) {
+            // HACK: If the dereferenced type is a Box ("owned_box") then hack in move and shallow drop
+            bool is_box = false;
+            if( this->m_lang_Box )
+            {
+                with_val_type(sp, lv, [&](const auto& ty){
+                    DEBUG("ty = " << ty);
+                    is_box = this->is_type_owned_box(ty);
+                    }, &w);
+            }
+
+
+            if( is_box )
+            {
+                if( ! ivs.is_MovedOut() )
+                {
+                    ::std::vector<VarState> inner;
+                    inner.push_back(VarState::make_Valid({}));
+                    unsigned int drop_flag = (ivs.is_Optional() ? ivs.as_Optional() : ~0u);
+                    ivs = VarState::make_MovedOut({ box$(VarState::make_Valid({})), drop_flag });
+                }
+                vs = &*ivs.as_MovedOut().inner_state;
+            }
+            else
+            {
+                return nullptr;
+            }
+            }
+        TU_ARMA(Index, e) {
+            return nullptr;
+            }
+        TU_ARMA(Downcast, variant_index) {
+            if( !ivs.is_Partial() )
+            {
+                ASSERT_BUG(sp, !ivs.is_MovedOut(), "Downcast of a MovedOut value");
+
+                size_t var_count = 0;
+                with_val_type(sp, lv, [&](const auto& ty){
+                    DEBUG("ty = " << ty);
+                    ASSERT_BUG(sp, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
+                    const auto& pb = ty.m_data.as_Path().binding;
+                    // TODO: What about unions?
+                    // - Iirc, you can't move out of them so they will never have state mutated
+                    if( pb.is_Enum() )
+                    {
+                        const auto& enm = *pb.as_Enum();
+                        var_count = enm.num_variants();
+                    }
+                    else if( const auto* pbe = pb.opt_Union() )
+                    {
+                        const auto& unm = **pbe;
+                        var_count = unm.m_variants.size();
+                    }
+                    else
+                    {
+                        BUG(sp, "Downcast on non-Enum/Union - " << ty);
+                    }
+                    }, &w);
+
+                ::std::vector<VarState> inner;
+                for(size_t i = 0; i < var_count; i ++)
+                {
+                    inner.push_back( VarState::make_Invalid(InvalidType::Uninit) );
+                }
+                inner[variant_index] = mv$(ivs);
+                ivs = VarState::make_Partial({ mv$(inner) });
+            }
+
+            vs = &ivs.as_Partial().inner_states.at(variant_index);
+            }
+        }
+        assert(vs);
+    }
+    return vs;
 }
 VarState& MirBuilder::get_val_state_mut(const Span& sp, const ::MIR::LValue& lv)
 {
-    TRACE_FUNCTION_F(lv);
-    TU_MATCHA( (lv), (e),
-    (Return,
-        BUG(sp, "Move of return value");
-        return get_slot_state_mut(sp, ~0u, SlotType::Local);
-        ),
-    (Argument,
-        return get_slot_state_mut(sp, e.idx, SlotType::Argument);
-        ),
-    (Local,
-        return get_slot_state_mut(sp, e, SlotType::Local);
-        ),
-    (Static,
-        BUG(sp, "Attempting to mutate state of a static");
-        ),
-    (Field,
-        auto& ivs = get_val_state_mut(sp, *e.val);
-        VarState    tpl;
-        TU_MATCHA( (ivs), (ivse),
-        (Invalid,
-            //BUG(sp, "Mutating inner state of an invalidated composite - " << lv);
-            tpl = VarState::make_Valid({});
-            ),
-        (MovedOut,
-            BUG(sp, "Field on value with MovedOut state - " << lv);
-            ),
-        (Partial,
-            ),
-        (Optional,
-            tpl = ivs.clone();
-            ),
-        (Valid,
-            tpl = VarState::make_Valid({});
-            )
-        )
-        if( !ivs.is_Partial() )
-        {
-            size_t n_flds = 0;
-            with_val_type(sp, *e.val, [&](const auto& ty) {
-                DEBUG("ty = " << ty);
-                if(const auto* e = ty.m_data.opt_Path()) {
-                    ASSERT_BUG(sp, e->binding.is_Struct(), "");
-                    const auto& str = *e->binding.as_Struct();
-                    TU_MATCHA( (str.m_data), (se),
-                    (Unit,
-                        BUG(sp, "Field access of unit-like struct");
-                        ),
-                    (Tuple,
-                        n_flds = se.size();
-                        ),
-                    (Named,
-                        n_flds = se.size();
-                        )
-                    )
-                }
-                else if(const auto* e = ty.m_data.opt_Tuple()) {
-                    n_flds = e->size();
-                }
-                else if(const auto* e = ty.m_data.opt_Array()) {
-                    n_flds = e->size_val;
-                }
-                else {
-                    TODO(sp, "Determine field count for " << ty);
-                }
-                });
-            ::std::vector<VarState> inner_vs; inner_vs.reserve(n_flds);
-            for(size_t i = 0; i < n_flds; i++)
-                inner_vs.push_back( tpl.clone() );
-            ivs = VarState::make_Partial({ mv$(inner_vs) });
-        }
-        return ivs.as_Partial().inner_states.at(e.field_index);
-        ),
-    (Deref,
-        // HACK: If the dereferenced type is a Box ("owned_box") then hack in move and shallow drop
-        bool is_box = false;
-        if( this->m_lang_Box )
-        {
-            with_val_type(sp, *e.val, [&](const auto& ty){
-                DEBUG("ty = " << ty);
-                is_box = this->is_type_owned_box(ty);
-                });
-        }
-
-
-        if( is_box )
-        {
-            auto& ivs = get_val_state_mut(sp, *e.val);
-            if( ! ivs.is_MovedOut() )
-            {
-                ::std::vector<VarState> inner;
-                inner.push_back(VarState::make_Valid({}));
-                unsigned int drop_flag = (ivs.is_Optional() ? ivs.as_Optional() : ~0u);
-                ivs = VarState::make_MovedOut({ box$(VarState::make_Valid({})), drop_flag });
-            }
-            return *ivs.as_MovedOut().inner_state;
-        }
-        else
-        {
-            BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv << " : " << FMT_CB(ss, this->with_val_type(sp, lv, [&](const auto& ty){ss<<ty;});) );
-        }
-        ),
-    (Index,
-        BUG(sp, "Move out of index with non-Copy values - Partial move?");
-        ),
-    (Downcast,
-        // TODO: What if the inner is Copy? What if the inner is a hidden pointer?
-        auto& ivs = get_val_state_mut(sp, *e.val);
-        //static VarState ivs; ivs = VarState::make_Valid({});
-
-        if( !ivs.is_Partial() )
-        {
-            ASSERT_BUG(sp, !ivs.is_MovedOut(), "Downcast of a MovedOut value");
-
-            size_t var_count = 0;
-            with_val_type(sp, *e.val, [&](const auto& ty){
-                DEBUG("ty = " << ty);
-                ASSERT_BUG(sp, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
-                const auto& pb = ty.m_data.as_Path().binding;
-                // TODO: What about unions?
-                // - Iirc, you can't move out of them so they will never have state mutated
-                if( pb.is_Enum() )
-                {
-                    const auto& enm = *pb.as_Enum();
-                    var_count = enm.num_variants();
-                }
-                else if( const auto* pbe = pb.opt_Union() )
-                {
-                    const auto& unm = **pbe;
-                    var_count = unm.m_variants.size();
-                }
-                else
-                {
-                    BUG(sp, "Downcast on non-Enum/Union - " << ty);
-                }
-                });
-
-            ::std::vector<VarState> inner;
-            for(size_t i = 0; i < var_count; i ++)
-            {
-                inner.push_back( VarState::make_Invalid(InvalidType::Uninit) );
-            }
-            inner[e.variant_index] = mv$(ivs);
-            ivs = VarState::make_Partial({ mv$(inner) });
-        }
-
-        return ivs.as_Partial().inner_states.at(e.variant_index);
-        )
-    )
-    BUG(sp, "Fell off send of get_val_state_mut");
+    auto rv_p = this->get_val_state_mut_p(sp, lv);
+    if( !rv_p )
+    {
+        //BUG(sp, "Move out of index with non-Copy values - Partial move?");
+        BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv << " : " << FMT_CB(ss, this->with_val_type(sp, lv, [&](const auto& ty){ss<<ty;});) );
+    }
+    return *rv_p;
 }
 
 void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR::LValue lv)
 {
+    TRACE_FUNCTION_F(lv << " " << vs);
     TU_MATCHA( (vs), (vse),
     (Invalid,
         ),
@@ -2170,7 +2131,7 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
             });
         if( is_box )
         {
-            drop_value_from_state(sp, *vse.inner_state, ::MIR::LValue::make_Deref({ box$(lv.clone()) }));
+            drop_value_from_state(sp, *vse.inner_state, ::MIR::LValue::new_Deref(lv.clone()));
             push_stmt_drop_shallow(sp, mv$(lv), vse.outer_flag);
         }
         else
@@ -2190,7 +2151,7 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
             DEBUG("TODO: Switch based on enum value");
             //for(size_t i = 0; i < vse.inner_states.size(); i ++)
             //{
-            //    drop_value_from_state(sp, vse.inner_states[i], ::MIR::LValue::make_Downcast({ box$(lv.clone()), static_cast<unsigned int>(i) }));
+            //    drop_value_from_state(sp, vse.inner_states[i], ::MIR::LValue::new_Downcast(lv.clone(), static_cast<unsigned int>(i)));
             //}
         }
         else if( is_union )
@@ -2201,7 +2162,7 @@ void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR
         {
             for(size_t i = 0; i < vse.inner_states.size(); i ++)
             {
-                drop_value_from_state(sp, vse.inner_states[i], ::MIR::LValue::make_Field({ box$(lv.clone()), static_cast<unsigned int>(i) }));
+                drop_value_from_state(sp, vse.inner_states[i], ::MIR::LValue::new_Field(lv.clone(), static_cast<unsigned int>(i)));
             }
         }
         ),
@@ -2219,7 +2180,7 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
         {
             const auto& vs = get_slot_state(sd.span, idx, SlotType::Local);
             DEBUG("slot" << idx << " - " << vs);
-            drop_value_from_state( sd.span, vs, ::MIR::LValue::make_Local(idx) );
+            drop_value_from_state( sd.span, vs, ::MIR::LValue::new_Local(idx) );
         }
         ),
     (Split,
@@ -2243,18 +2204,18 @@ void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
     }
 }
 
-const ::MIR::LValue& MirBuilder::get_ptr_to_dst(const Span& sp, const ::MIR::LValue& lv) const
+::MIR::LValue MirBuilder::get_ptr_to_dst(const Span& sp, const ::MIR::LValue& lv) const
 {
     // Undo field accesses
-    const auto* lvp = &lv;
-    while(lvp->is_Field())
-        lvp = &*lvp->as_Field().val;
+    size_t count = 0;
+    while( count < lv.m_wrappers.size() && lv.m_wrappers[ lv.m_wrappers.size()-1 - count ].is_Field() )
+        count ++;
 
     // TODO: Enum variants?
 
-    ASSERT_BUG(sp, lvp->is_Deref(), "Access of an unsized field without a dereference - " << lv);
+    ASSERT_BUG(sp, count < lv.m_wrappers.size() && lv.m_wrappers[ lv.m_wrappers.size()-1 - count ].is_Deref(), "Access of an unsized field without a dereference - " << lv);
 
-    return *lvp->as_Deref().val;
+    return lv.clone_unwrapped(count+1);
 }
 
 // --------------------------------------------------------------------

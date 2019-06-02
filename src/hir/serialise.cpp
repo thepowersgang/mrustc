@@ -722,35 +722,18 @@
         void serialise(const ::MIR::LValue& lv)
         {
             TRACE_FUNCTION_F("LValue = "<<lv);
-            m_out.write_tag( static_cast<int>(lv.tag()) );
-            TU_MATCHA( (lv), (e),
-            (Return,
-                ),
-            (Argument,
-                m_out.write_count(e.idx);
-                ),
-            (Local,
-                m_out.write_count(e);
-                ),
-            (Static,
-                serialise_path(*e);
-                ),
-            (Field,
-                serialise(e.val);
-                m_out.write_count(e.field_index);
-                ),
-            (Deref,
-                serialise(e.val);
-                ),
-            (Index,
-                serialise(e.val);
-                serialise(e.idx);
-                ),
-            (Downcast,
-                serialise(e.val);
-                m_out.write_count(e.variant_index);
-                )
-            )
+            if( lv.m_root.is_Static() ) {
+                m_out.write_count(3);
+                serialise_path(lv.m_root.as_Static());
+            }
+            else {
+                m_out.write_count( lv.m_root.get_inner() );
+            }
+            serialise_vec(lv.m_wrappers);
+        }
+        void serialise(const ::MIR::LValue::Wrapper& w)
+        {
+            m_out.write_count(w.get_inner());
         }
         void serialise(const ::MIR::RValue& val)
         {

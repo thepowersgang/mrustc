@@ -177,7 +177,7 @@ namespace {
 
                 for(size_t i = 0; i < pat.m_binding.m_implicit_deref_count; i ++)
                 {
-                    lval = ::MIR::LValue::make_Deref({ box$(lval) });
+                    lval = ::MIR::LValue::new_Deref(mv$(lval));
                 }
 
                 switch( pat.m_binding.m_type )
@@ -215,35 +215,35 @@ namespace {
 
             for(size_t i = 0; i < pat.m_implicit_deref_count; i ++)
             {
-                lval = ::MIR::LValue::make_Deref({ box$( mv$(lval) ) });
+                lval = ::MIR::LValue::new_Deref(mv$(lval));
             }
 
             TU_MATCH_HDRA( (pat.m_data), {)
             TU_ARMA(Any, e) {
                 }
             TU_ARMA(Box, e) {
-                destructure_from_ex(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }), allow_refutable);
+                destructure_from_ex(sp, *e.sub, ::MIR::LValue::new_Deref(mv$(lval)), allow_refutable);
                 }
             TU_ARMA(Ref, e) {
-                destructure_from_ex(sp, *e.sub, ::MIR::LValue::make_Deref({ box$( mv$(lval) ) }), allow_refutable);
+                destructure_from_ex(sp, *e.sub, ::MIR::LValue::new_Deref(mv$(lval)), allow_refutable);
                 }
             TU_ARMA(Tuple, e) {
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
+                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable);
                 }
                 }
             TU_ARMA(SplitTuple, e) {
                 assert(e.total_size >= e.leading.size() + e.trailing.size());
                 for(unsigned int i = 0; i < e.leading.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
+                    destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable);
                 }
                 // TODO: Is there a binding in the middle?
                 unsigned int ofs = e.total_size - e.trailing.size();
                 for(unsigned int i = 0; i < e.trailing.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), ofs+i}), allow_refutable);
+                    destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), ofs+i), allow_refutable);
                 }
                 }
             TU_ARMA(StructValue, e) {
@@ -252,7 +252,7 @@ namespace {
             TU_ARMA(StructTuple, e) {
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval.clone() ), i}), allow_refutable);
+                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable);
                 }
                 }
             TU_ARMA(Struct, e) {
@@ -264,7 +264,7 @@ namespace {
                     for(const auto& fld_pat : e.sub_patterns)
                     {
                         unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
-                        destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval.clone() ), idx}), allow_refutable);
+                        destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::new_Field(lval.clone(), idx), allow_refutable);
                     }
                 }
                 }
@@ -302,10 +302,10 @@ namespace {
                         ERROR(sp, E0000, "Variant " << variants[i].name << " not handled");
                     }
                 }
-                auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
+                auto lval_var = ::MIR::LValue::new_Downcast(mv$(lval), e.binding_idx);
                 for(unsigned int i = 0; i < e.sub_patterns.size(); i ++ )
                 {
-                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::make_Field({ box$( lval_var.clone() ), i}), allow_refutable);
+                    destructure_from_ex(sp, e.sub_patterns[i], ::MIR::LValue::new_Field(lval_var.clone(), i), allow_refutable);
                 }
                 }
             TU_ARMA(EnumStruct, e) {
@@ -316,11 +316,11 @@ namespace {
                 const auto& str = *var.type.m_data.as_Path().binding.as_Struct();
                 ASSERT_BUG(sp, str.m_data.is_Named(), "Struct pattern on non-Named struct - " << e.path);
                 const auto& fields = str.m_data.as_Named();
-                auto lval_var = ::MIR::LValue::make_Downcast({ box$(mv$(lval)), e.binding_idx });
+                auto lval_var = ::MIR::LValue::new_Downcast(mv$(lval), e.binding_idx);
                 for(const auto& fld_pat : e.sub_patterns)
                 {
                     unsigned idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto&x){ return x.first == fld_pat.first; } ) - fields.begin();
-                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::make_Field({ box$( lval_var.clone() ), idx}), allow_refutable);
+                    destructure_from_ex(sp, fld_pat.second, ::MIR::LValue::new_Field(lval_var.clone(), idx), allow_refutable);
                 }
                 }
             TU_ARMA(Slice, e) {
@@ -335,7 +335,7 @@ namespace {
                     for(unsigned int i = 0; i < e.sub_patterns.size(); i ++)
                     {
                         const auto& subpat = e.sub_patterns[i];
-                        destructure_from_ex(sp, subpat, ::MIR::LValue::make_Field({ box$(lval.clone()), i }), allow_refutable );
+                        destructure_from_ex(sp, subpat, ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable );
                     }
                 }
                 else
@@ -346,7 +346,7 @@ namespace {
                     for(unsigned int i = 0; i < e.sub_patterns.size(); i ++)
                     {
                         const auto& subpat = e.sub_patterns[i];
-                        destructure_from_ex(sp, subpat, ::MIR::LValue::make_Field({ box$(lval.clone()), i }), allow_refutable );
+                        destructure_from_ex(sp, subpat, ::MIR::LValue::new_Field(lval.clone(), i), allow_refutable );
                     }
                 }
                 }
@@ -374,7 +374,7 @@ namespace {
                     for(unsigned int i = 0; i < e.leading.size(); i ++)
                     {
                         unsigned int idx = 0 + i;
-                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$(lval.clone()), idx }), allow_refutable );
+                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), idx), allow_refutable );
                     }
                     if( e.extra_bind.is_valid() )
                     {
@@ -383,7 +383,7 @@ namespace {
                     for(unsigned int i = 0; i < e.trailing.size(); i ++)
                     {
                         unsigned int idx = array_size - e.trailing.size() + i;
-                        destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Field({ box$(lval.clone()), idx }), allow_refutable );
+                        destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Field(lval.clone(), idx), allow_refutable );
                     }
                 }
                 else
@@ -409,13 +409,13 @@ namespace {
                     ::MIR::LValue   len_lval;
                     if( e.extra_bind.is_valid() || e.trailing.size() > 0 )
                     {
-                        len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval).clone() }));
+                        len_lval = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(sp, lval) }));
                     }
 
                     for(unsigned int i = 0; i < e.leading.size(); i ++)
                     {
                         unsigned int idx = i;
-                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::make_Field({ box$(lval.clone()), idx }), allow_refutable );
+                        destructure_from_ex(sp, e.leading[i], ::MIR::LValue::new_Field(lval.clone(), idx), allow_refutable );
                     }
                     if( e.extra_bind.is_valid() )
                     {
@@ -427,7 +427,7 @@ namespace {
                         ::HIR::BorrowType   bt = H::get_borrow_type(sp, e.extra_bind);
                         ::MIR::LValue ptr_val = m_builder.lvalue_or_temp(sp,
                             ::HIR::TypeRef::new_borrow( bt, inner_type.clone() ),
-                            ::MIR::RValue::make_Borrow({ 0, bt, ::MIR::LValue::make_Field({ box$(lval.clone()), static_cast<unsigned int>(e.leading.size()) }) })
+                            ::MIR::RValue::make_Borrow({ 0, bt, ::MIR::LValue::new_Field( lval.clone(), static_cast<unsigned int>(e.leading.size()) ) })
                             );
                         // TODO: Cast to raw pointer? Or keep as a borrow?
 
@@ -442,7 +442,7 @@ namespace {
                             auto sub_val = ::MIR::Param(::MIR::Constant::make_Uint({ e.trailing.size() - i, ::HIR::CoreType::Usize }));
                             ::MIR::LValue ofs_val = m_builder.lvalue_or_temp(sp, ::HIR::CoreType::Usize, ::MIR::RValue::make_BinOp({ len_lval.clone(), ::MIR::eBinOp::SUB, mv$(sub_val) }) );
                             // Recurse with the indexed value
-                            destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::make_Index({ box$(lval.clone()), box$(ofs_val) }), allow_refutable);
+                            destructure_from_ex(sp, e.trailing[i], ::MIR::LValue::new_Index( lval.clone(), ofs_val.m_root.as_Local() ), allow_refutable);
                         }
                     }
                 }
@@ -574,7 +574,7 @@ namespace {
             TRACE_FUNCTION_F("_Return");
             this->visit_node_ptr(node.m_value);
 
-            m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Return({}),  m_builder.get_result(node.span()) );
+            m_builder.push_stmt_assign( node.span(), ::MIR::LValue::new_Return(),  m_builder.get_result(node.span()) );
             m_builder.terminate_scope_early( node.span(), m_builder.fcn_scope() );
             m_builder.end_block( ::MIR::Terminator::make_Return({}) );
         }
@@ -1474,7 +1474,7 @@ namespace {
                 limit_val = ::MIR::Constant::make_Uint({ e.size_val, ::HIR::CoreType::Usize });
                 ),
             (Slice,
-                limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value).clone() });
+                limit_val = ::MIR::RValue::make_DstMeta({ m_builder.get_ptr_to_dst(node.m_value->span(), value) });
                 )
             )
 
@@ -1508,7 +1508,13 @@ namespace {
                 m_builder.set_cur_block( arm_continue );
             }
 
-            m_builder.set_result( node.span(), ::MIR::LValue::make_Index({ box$(value), box$(index) }) );
+            if( !index.is_Local())
+            {
+                auto local_idx = m_builder.new_temporary(::HIR::CoreType::Usize);
+                m_builder.push_stmt_assign(node.span(), local_idx.clone(), mv$(index));
+                index = mv$(local_idx);
+            }
+            m_builder.set_result( node.span(), ::MIR::LValue::new_Index( mv$(value), index.m_root.as_Local() ) );
         }
 
         void visit(::HIR::ExprNode_Deref& node) override
@@ -1591,7 +1597,7 @@ namespace {
                 }
             }
 
-            m_builder.set_result( node.span(), ::MIR::LValue::make_Deref({ box$(val) }) );
+            m_builder.set_result( node.span(), ::MIR::LValue::new_Deref( mv$(val) ) );
         }
 
         void visit(::HIR::ExprNode_Emplace& node) override
@@ -1702,7 +1708,7 @@ namespace {
             // 3. Get the value and assign it into `place_raw`
             node.m_value->visit(*this);
             auto val = m_builder.get_result(node.span());
-            m_builder.push_stmt_assign( node.span(), ::MIR::LValue::make_Deref({ box$(place_raw.clone()) }), mv$(val) );
+            m_builder.push_stmt_assign( node.span(), ::MIR::LValue::new_Deref(place_raw.clone()), mv$(val), /*drop_destination=*/false );
 
             // 3. Return a call to `finalize`
             ::HIR::Path  finalize_path(::HIR::GenericPath {});
@@ -1806,9 +1812,7 @@ namespace {
             auto place = m_builder.new_temporary( place_type );
             m_builder.push_stmt_assign(node.span(), place.clone(), ::MIR::RValue::make_Cast({ mv$(place_raw), place_type.clone() }));
             // 3. Do a non-dropping write into the target location (i.e. just a MIR assignment)
-            // TODO: This should indicate that the destination shouldn't be dropped, but since drops don't happen on
-            //       reassign currently, that's not yet an issue.
-            m_builder.push_stmt_assign(node.span(), ::MIR::LValue::make_Deref({box$(place.clone())}), mv$(val));
+            m_builder.push_stmt_assign(node.span(), ::MIR::LValue::new_Deref(place.clone()), mv$(val), /*drop_destination=*/false);
             // 4. Convert the pointer into an `owned_box`
             auto res_type = ::HIR::TypeRef::new_path(::HIR::GenericPath(lang_owned_box, mv$(trait_params_data)), &m_builder.crate().get_struct_by_path(node.span(), lang_owned_box));
             auto res = m_builder.new_temporary(res_type);
@@ -2056,20 +2060,20 @@ namespace {
             unsigned int idx;
             if( ::std::isdigit(node.m_field.c_str()[0]) ) {
                 ::std::stringstream(node.m_field.c_str()) >> idx;
-                m_builder.set_result( node.span(), ::MIR::LValue::make_Field({ box$(val), idx }) );
+                m_builder.set_result( node.span(), ::MIR::LValue::new_Field( mv$(val), idx ) );
             }
             else if( const auto* bep = val_ty.m_data.as_Path().binding.opt_Struct() ) {
                 const auto& str = **bep;
                 const auto& fields = str.m_data.as_Named();
                 idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
-                m_builder.set_result( node.span(), ::MIR::LValue::make_Field({ box$(val), idx }) );
+                m_builder.set_result( node.span(), ::MIR::LValue::new_Field( mv$(val), idx ) );
             }
             else if( const auto* bep = val_ty.m_data.as_Path().binding.opt_Union() ) {
                 const auto& unm = **bep;
                 const auto& fields = unm.m_variants;
                 idx = ::std::find_if( fields.begin(), fields.end(), [&](const auto& x){ return x.first == node.m_field; } ) - fields.begin();
 
-                m_builder.set_result( node.span(), ::MIR::LValue::make_Downcast({ box$(val), idx }) );
+                m_builder.set_result( node.span(), ::MIR::LValue::new_Downcast( mv$(val), idx ) );
             }
             else {
                 BUG(node.span(), "Field access on non-union/struct - " << val_ty);
@@ -2202,7 +2206,7 @@ namespace {
                     m_builder.set_result( node.span(), mv$(tmp) );
                     ),
                 (Static,
-                    m_builder.set_result( node.span(), ::MIR::LValue::make_Static(box$(node.m_path.clone())) );
+                    m_builder.set_result( node.span(), ::MIR::LValue::new_Static(node.m_path.clone()) );
                     ),
                 (StructConstant,
                     // TODO: Why is this still a PathValue?
@@ -2321,7 +2325,7 @@ namespace {
             ASSERT_BUG(sp, str.m_data.is_Named(), "");
             const ::HIR::t_struct_fields& fields = str.m_data.as_Named();
 
-            ::MIR::LValue   base_val;
+            auto base_val = ::MIR::LValue::new_Return();
             if( node.m_base_value )
             {
                 DEBUG("_StructLiteral - base");
@@ -2362,7 +2366,7 @@ namespace {
                     if( !node.m_base_value) {
                         ERROR(node.span(), E0000, "Field '" << fields[i].first << "' not specified");
                     }
-                    values[i] = ::MIR::LValue::make_Field({ box$( base_val.clone() ), i });
+                    values[i] = ::MIR::LValue::new_Field( base_val.clone(), i );
                 }
                 else {
                     // Partial move support will handle dropping the rest?
@@ -2545,7 +2549,7 @@ namespace {
             else
             {
                 ev.define_vars_from(ptr->span(), arg.first);
-                ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::make_Argument({i}));
+                ev.destructure_from(ptr->span(), arg.first, ::MIR::LValue::new_Argument(i));
             }
             i ++;
         }

@@ -704,30 +704,9 @@ namespace {
                 struct H {
                     static void visit_lvalue(Visitor& upper_visitor, ::MIR::LValue& lv)
                     {
-                        TU_MATCHA( (lv), (e),
-                        (Return,
-                            ),
-                        (Local,
-                            ),
-                        (Argument,
-                            ),
-                        (Static,
-                            upper_visitor.visit_path(*e, ::HIR::Visitor::PathContext::VALUE);
-                            ),
-                        (Field,
-                            H::visit_lvalue(upper_visitor, *e.val);
-                            ),
-                        (Deref,
-                            H::visit_lvalue(upper_visitor, *e.val);
-                            ),
-                        (Index,
-                            H::visit_lvalue(upper_visitor, *e.val);
-                            H::visit_lvalue(upper_visitor, *e.idx);
-                            ),
-                        (Downcast,
-                            H::visit_lvalue(upper_visitor, *e.val);
-                            )
-                        )
+                        if( lv.m_root.is_Static() ) {
+                            upper_visitor.visit_path(lv.m_root.as_Static(), ::HIR::Visitor::PathContext::VALUE);
+                        }
                     }
                     static void visit_constant(Visitor& upper_visitor, ::MIR::Constant& e)
                     {

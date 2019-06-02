@@ -28,7 +28,6 @@
 #define TU_CASE(mod, class, var,  name,src, ...)    TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(src,mod,var,name) __VA_ARGS__)
 #define TU_CASE2(mod, class, var,  n1,s1, n2,s2, ...)   TU_CASE_BODY(mod,class,var, TU_CASE_ITEM(s1,mod,var,n1) TU_CASE_ITEM(s2,mod,var,n2) __VA_ARGS__)
 
-
 // Argument iteration
 #define TU_DISP0(n)
 #define TU_DISP1(n, _1)   n _1
@@ -105,7 +104,7 @@
 */    TU_MATCH_ARMS(CLASS, VAR, NAME, __VA_ARGS__)/*
 */    default: {TU_EXP DEF;} break;/*
 */}
-#define TU_MATCH_BIND1(TAG, VAR, NAME)  /*MATCH_BIND*/ auto& NAME = (VAR).as_##TAG(); (void)&NAME;
+#define TU_MATCH_BIND1(TAG, VAR, NAME)  /*MATCH_BIND*/ decltype((VAR).as_##TAG()) NAME = (VAR).as_##TAG(); (void)&NAME;
 #define TU_MATCH_BIND2_(TAG, v1,v2, n1,n2)   TU_MATCH_BIND1(TAG, v1, n1) TU_MATCH_BIND1(TAG, v2, n2)
 #define TU_MATCH_BIND2(...) TU_EXP1( TU_MATCH_BIND2_(__VA_ARGS__) )    // << Exists to cause expansion of the vars
 #define TU_MATCH_ARM(CLASS, VAR, NAME, TAG, ...)  case CLASS::TAG_##TAG: {/*
@@ -119,12 +118,12 @@
 #define TU_MATCH_HDR(VARS, brace)  TU_MATCH_HDR_(::std::remove_reference<decltype(TU_FIRST VARS)>::type, VARS, brace)
 #define TU_MATCH_HDR_(CLASS, VARS, brace)  switch( (TU_FIRST VARS).tag() ) brace case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");
 // Evil hack: two for loops, the inner stops the outer after it's done.
-#define TU_ARM(VAR, TAG, NAME)  break; case ::std::remove_reference<decltype(VAR)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(auto& NAME = (VAR).as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
+#define TU_ARM(VAR, TAG, NAME)  break; case ::std::remove_reference<decltype(VAR)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(decltype((VAR).as_##TAG()) NAME = (VAR).as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
 
 #define TU_MATCH_HDRA(VARS, brace)  TU_MATCH_HDRA_(::std::remove_reference<decltype(TU_FIRST VARS)>::type, VARS, brace)
 #define TU_MATCH_HDRA_(CLASS, VARS, brace)  auto& tu_match_hdr2_v = (TU_FIRST VARS); switch( tu_match_hdr2_v.tag() ) brace case CLASS::TAGDEAD: assert(!"ERROR: destructed tagged union used");
 // Evil hack: two for loops, the inner stops the outer after it's done.
-#define TU_ARMA(TAG, NAME)  break; case ::std::remove_reference<decltype(tu_match_hdr2_v)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(auto& NAME = tu_match_hdr2_v.as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
+#define TU_ARMA(TAG, NAME)  break; case ::std::remove_reference<decltype(tu_match_hdr2_v)>::type::TAG_##TAG: for(bool tu_lc = true; tu_lc; tu_lc=false) for(decltype(tu_match_hdr2_v.as_##TAG()) NAME = tu_match_hdr2_v.as_##TAG(); (void)NAME, tu_lc; tu_lc=false)
 
 //#define TU_TEST(VAL, ...)    (VAL.is_##TAG() && VAL.as_##TAG() TEST)
 #define TU_TEST1(VAL, TAG1, TEST)    (VAL.is_##TAG1() && VAL.as_##TAG1() TEST)

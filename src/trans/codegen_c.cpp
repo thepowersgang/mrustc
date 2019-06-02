@@ -945,7 +945,7 @@ namespace {
             {
                 auto inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, inner_type.clone() );
                 m_of << indent; emit_ctype(inner_ptr, FMT_CB(ss, ss << "i"; )); m_of << " = "; emit_lvalue(slot); m_of << "._0._0._0;\n";
-                emit_destructor_call( ::MIR::LValue::make_Local(~0u), inner_type, true, indent_level );
+                emit_destructor_call( ::MIR::LValue::new_Local(::MIR::LValue::Storage::MAX_ARG), inner_type, true, indent_level );
             }
             // TODO: This is specific to the official liballoc's owned_box
             ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { inner_type.clone() } };
@@ -976,7 +976,7 @@ namespace {
             m_mir_res = &mir_res;
             m_of << "static void " << Trans_Mangle(drop_glue_path) << "(struct s_" << Trans_Mangle(p) << "* rv) {\n";
 
-            emit_box_drop(1, *ity, ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) }), /*run_destructor=*/true);
+            emit_box_drop(1, *ity, ::MIR::LValue::new_Deref(::MIR::LValue::new_Return()), /*run_destructor=*/true);
 
             m_of << "}\n";
             m_mir_res = nullptr;
@@ -1122,13 +1122,13 @@ namespace {
                 m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(ty); m_of << "* rv) {\n";
                 if( m_resolve.type_needs_drop_glue(sp, ty) )
                 {
-                    auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-                    auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                    auto self = ::MIR::LValue::new_Deref(::MIR::LValue::new_Return());
+                    auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
                     for(const auto& ity : te)
                     {
                         // TODO: What if it's a ZST?
                         emit_destructor_call(fld_lv, ity, /*unsized_valid=*/false, 1);
-                        fld_lv.as_Field().field_index ++;
+                        fld_lv.inc_Field();
                     }
                 }
                 m_of << "}\n";
@@ -1329,13 +1329,12 @@ namespace {
                     m_of << "\t" << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "(rv);\n";
                 }
 
-                auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
-                auto fld_lv = ::MIR::LValue::make_Field({ box$(self), 0 });
+                auto self = ::MIR::LValue::new_Deref(::MIR::LValue::new_Return());
+                auto fld_lv = ::MIR::LValue::new_Field(mv$(self), 0);
                 for(size_t i = 0; i < repr->fields.size(); i++)
                 {
-                    fld_lv.as_Field().field_index = i;
-
                     emit_destructor_call(fld_lv, repr->fields[i].ty, /*unsized_valid=*/true, /*indent=*/1);
+                    fld_lv.inc_Field();
                 }
             }
             m_of << "}\n";
@@ -1573,14 +1572,14 @@ namespace {
                 {
                     m_of << "\t" << Trans_Mangle(drop_impl_path) << "(rv);\n";
                 }
-                auto self = ::MIR::LValue::make_Deref({ box$(::MIR::LValue::make_Return({})) });
+                auto self = ::MIR::LValue::new_Deref(::MIR::LValue::new_Return());
 
                 if( const auto* e = repr->variants.opt_NonZero() )
                 {
                     unsigned idx = 1 - e->zero_variant;
                     // TODO: Fat pointers?
                     m_of << "\tif( (*rv)"; emit_enum_path(repr, e->field); m_of << " != 0 ) {\n";
-                    emit_destructor_call( ::MIR::LValue::make_Downcast({ box$(self), idx }), repr->fields[idx].ty, false, 2 );
+                    emit_destructor_call( ::MIR::LValue::new_Downcast(mv$(self), idx), repr->fields[idx].ty, false, 2 );
                     m_of << "\t}\n";
                 }
                 else if( repr->fields.size() <= 1 )
@@ -1590,15 +1589,15 @@ namespace {
                 }
                 else if( const auto* e = repr->variants.opt_Values() )
                 {
-                    auto var_lv =::MIR::LValue::make_Downcast({ box$(self), 0 });
+                    auto var_lv =::MIR::LValue::new_Downcast(mv$(self), 0);
 
                     m_of << "\tswitch(rv->TAG) {\n";
                     for(unsigned int var_idx = 0; var_idx < e->values.size(); var_idx ++)
                     {
-                        var_lv.as_Downcast().variant_index = var_idx;
                         m_of << "\tcase " << e->values[var_idx] << ":\n";
                         emit_destructor_call(var_lv, repr->fields[var_idx].ty, /*unsized_valid=*/false, /*indent=*/2);
                         m_of << "\t\tbreak;\n";
+                        var_lv.inc_Downcast();
                     }
                     m_of << "\t}\n";
                 }
@@ -2874,8 +2873,8 @@ namespace {
                     break;
                 }
 
-                TU_MATCHA( (e.src), (ve),
-                (Use,
+                TU_MATCH_HDRA( (e.src), {)
+                TU_ARMA(Use, ve) {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, ve);
                     if( ty == ::HIR::TypeRef::new_diverge() ) {
@@ -2892,13 +2891,13 @@ namespace {
                     emit_lvalue(e.dst);
                     m_of << " = ";
                     emit_lvalue(ve);
-                    ),
-                (Constant,
+                    }
+                TU_ARMA(Constant, ve) {
                     emit_lvalue(e.dst);
                     m_of << " = ";
                     emit_constant(ve, &e.dst);
-                    ),
-                (SizedArray,
+                    }
+                TU_ARMA(SizedArray, ve) {
                     if( ve.count == 0 ) {
                     }
                     else if( ve.count == 1 ) {
@@ -2917,34 +2916,35 @@ namespace {
                         m_of << "for(unsigned int i = 0; i < " << ve.count << "; i ++)\n";
                         m_of << indent << "\t"; emit_lvalue(e.dst); m_of << ".DATA[i] = "; emit_param(ve.val);
                     }
-                    ),
-                (Borrow,
+                    }
+                TU_ARMA(Borrow, ve) {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, ve.val);
                     bool special = false;
                     // If the inner value was a deref, just copy the pointer verbatim
-                    TU_IFLET(::MIR::LValue, ve.val, Deref, le,
+                    if( ve.val.is_Deref() )
+                    {
                         emit_lvalue(e.dst);
                         m_of << " = ";
-                        emit_lvalue(*le.val);
+                        emit_lvalue( ::MIR::LValue::CRef(ve.val).inner_ref() );
                         special = true;
-                    )
+                    }
                     // Magic for taking a &-ptr to unsized field of a struct.
                     // - Needs to get metadata from bottom-level pointer.
-                    else TU_IFLET(::MIR::LValue, ve.val, Field, le,
+                    else if( ve.val.is_Field() ) {
                         if( metadata_type(ty) != MetadataType::None ) {
-                            const ::MIR::LValue* base_val = &*le.val;
-                            while(base_val->is_Field())
-                                base_val = &*base_val->as_Field().val;
-                            MIR_ASSERT(mir_res, base_val->is_Deref(), "DST access must be via a deref");
-                            const ::MIR::LValue& base_ptr = *base_val->as_Deref().val;
+                            auto base_val = ::MIR::LValue::CRef(ve.val).inner_ref();
+                            while(base_val.is_Field())
+                                base_val.try_unwrap();
+                            MIR_ASSERT(mir_res, base_val.is_Deref(), "DST access must be via a deref");
+                            const auto base_ptr = base_val.inner_ref();
 
                             // Construct the new DST
                             emit_lvalue(e.dst); m_of << ".META = "; emit_lvalue(base_ptr); m_of << ".META;\n" << indent;
                             emit_lvalue(e.dst); m_of << ".PTR = &"; emit_lvalue(ve.val);
                             special = true;
                         }
-                    )
+                    }
                     else {
                     }
 
@@ -2953,50 +2953,55 @@ namespace {
                     if( !special && m_options.disallow_empty_structs && ve.val.is_Field() && this->type_is_bad_zst(ty) )
                     {
                         // Work backwards to the first non-ZST field
-                        const auto* val_fp = &ve.val.as_Field();
-                        while( val_fp->val->is_Field() )
+                        auto val_fp = ::MIR::LValue::CRef(ve.val);
+                        assert(val_fp.is_Field());
+                        while( val_fp.inner_ref().is_Field() )
                         {
                             ::HIR::TypeRef  tmp;
-                            const auto& ty = mir_res.get_lvalue_type(tmp, *val_fp->val);
+                            const auto& ty = mir_res.get_lvalue_type(tmp, val_fp.inner_ref());
                             if( !this->type_is_bad_zst(ty) )
                                 break;
+                            val_fp.try_unwrap();
                         }
+                        assert(val_fp.is_Field());
                         // Here, we have `val_fp` be a LValue::Field that refers to a ZST, but the inner of the field points to a non-ZST or a local
 
                         emit_lvalue(e.dst);
                         m_of << " = ";
 
                         // If the index is zero, then the best option is to borrow the source
-                        if( val_fp->val->is_Downcast() )
+                        auto field_inner = val_fp.inner_ref();
+                        if( field_inner.is_Downcast() )
                         {
-                            m_of << "(void*)& "; emit_lvalue(*val_fp->val->as_Downcast().val);
+                            m_of << "(void*)& "; emit_lvalue(field_inner.inner_ref());
                         }
-                        else if( val_fp->field_index == 0 )
+                        else if( val_fp.as_Field() == 0 )
                         {
-                            m_of << "(void*)& "; emit_lvalue(*val_fp->val);
+                            m_of << "(void*)& "; emit_lvalue(field_inner);
                         }
                         else
                         {
                             ::HIR::TypeRef  tmp;
-                            auto tmp_lv = ::MIR::LValue::make_Field({ box$(val_fp->val->clone()), val_fp->field_index - 1 });
+                            auto tmp_lv = ::MIR::LValue::new_Field( field_inner.clone(), val_fp.as_Field() - 1 );
                             bool use_parent = false;
                             for(;;)
                             {
                                 const auto& ty = mir_res.get_lvalue_type(tmp, tmp_lv);
                                 if( !this->type_is_bad_zst(ty) )
                                     break;
-                                if( tmp_lv.as_Field().field_index == 0 )
+                                auto idx = tmp_lv.as_Field();
+                                if( idx == 0 )
                                 {
                                     use_parent = true;
                                     break;
                                 }
-                                tmp_lv.as_Field().field_index -= 1;
+                                tmp_lv.m_wrappers.back() = ::MIR::LValue::Wrapper::new_Field(idx - 1);
                             }
 
                             // Reached index zero, with still ZST
                             if( use_parent )
                             {
-                                m_of << "(void*)& "; emit_lvalue(*val_fp->val);
+                                m_of << "(void*)& "; emit_lvalue(field_inner);
                             }
                             // Use the address after the previous item
                             else
@@ -3013,11 +3018,11 @@ namespace {
                         m_of << " = ";
                         m_of << "& "; emit_lvalue(ve.val);
                     }
-                    ),
-                (Cast,
+                    }
+                TU_ARMA(Cast, ve) {
                     emit_rvalue_cast(mir_res, e.dst, ve);
-                    ),
-                (BinOp,
+                    }
+                TU_ARMA(BinOp, ve) {
                     emit_lvalue(e.dst);
                     m_of << " = ";
                     ::HIR::TypeRef  tmp, tmp_r;
@@ -3168,8 +3173,8 @@ namespace {
                     {
                         m_of << ".lo";
                     }
-                    ),
-                (UniOp,
+                    }
+                TU_ARMA(UniOp, ve) {
                     ::HIR::TypeRef  tmp;
                     const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
 
@@ -3204,24 +3209,24 @@ namespace {
                         break;
                     }
                     emit_lvalue(ve.val);
-                    ),
-                (DstMeta,
+                    }
+                TU_ARMA(DstMeta, ve) {
                     emit_lvalue(e.dst);
                     m_of << " = ";
                     emit_lvalue(ve.val);
                     m_of << ".META";
-                    ),
-                (DstPtr,
+                    }
+                TU_ARMA(DstPtr, ve) {
                     emit_lvalue(e.dst);
                     m_of << " = ";
                     emit_lvalue(ve.val);
                     m_of << ".PTR";
-                    ),
-                (MakeDst,
+                    }
+                TU_ARMA(MakeDst, ve) {
                     emit_lvalue(e.dst);  m_of << ".PTR = ";  emit_param(ve.ptr_val);  m_of << ";\n" << indent;
                     emit_lvalue(e.dst);  m_of << ".META = "; emit_param(ve.meta_val);
-                    ),
-                (Tuple,
+                    }
+                TU_ARMA(Tuple, ve) {
                     bool has_emitted = false;
                     for(unsigned int j = 0; j < ve.vals.size(); j ++)
                     {
@@ -3245,15 +3250,15 @@ namespace {
                         m_of << "._" << j << " = ";
                         emit_param(ve.vals[j]);
                     }
-                    ),
-                (Array,
+                    }
+                TU_ARMA(Array, ve) {
                     for(unsigned int j = 0; j < ve.vals.size(); j ++) {
                         if( j != 0 )    m_of << ";\n" << indent;
                         emit_lvalue(e.dst); m_of << ".DATA[" << j << "] = ";
                         emit_param(ve.vals[j]);
                     }
-                    ),
-                (Variant,
+                    }
+                TU_ARMA(Variant, ve) {
                     const auto& tyi = m_crate.get_typeitem_by_path(sp, ve.path.m_path);
                     if( tyi.is_Union() )
                     {
@@ -3310,8 +3315,8 @@ namespace {
                     {
                         BUG(mir_res.sp, "Unexpected type in Variant");
                     }
-                    ),
-                (Struct,
+                    }
+                TU_ARMA(Struct, ve) {
                     if( ve.vals.empty() )
                     {
                         if( m_options.disallow_empty_structs )
@@ -3349,8 +3354,8 @@ namespace {
                             emit_param(ve.vals[j]);
                         }
                     }
-                    )
-                )
+                    }
+                }
                 m_of << ";";
                 m_of << "\t// " << e.dst << " = " << e.src;
                 m_of << "\n";
@@ -4432,7 +4437,7 @@ namespace {
                 // Nothing needs to be done, this just stops the destructor from running.
             }
             else if( name == "drop_in_place" ) {
-                emit_destructor_call( ::MIR::LValue::make_Deref({ box$(e.args.at(0).as_LValue().clone()) }), params.m_types.at(0), true, 1 /* TODO: get from caller */ );
+                emit_destructor_call( ::MIR::LValue::new_Deref(e.args.at(0).as_LValue().clone()), params.m_types.at(0), true, /*indent_level=*/1 /* TODO: get from caller */ );
             }
             else if( name == "needs_drop" ) {
                 // Returns `true` if the actual type given as `T` requires drop glue;
@@ -5186,7 +5191,7 @@ namespace {
                 if( te.type == ::HIR::BorrowType::Owned )
                 {
                     // Call drop glue on inner.
-                    emit_destructor_call( ::MIR::LValue::make_Deref({ box$(slot.clone()) }), *te.inner, true, indent_level );
+                    emit_destructor_call( ::MIR::LValue::new_Deref(slot.clone()), *te.inner, true, indent_level );
                 }
                 ),
             (Path,
@@ -5201,10 +5206,7 @@ namespace {
                     if( this->type_is_bad_zst(ty) && (slot.is_Field() || slot.is_Downcast()) )
                     {
                         m_of << indent << Trans_Mangle(p) << "((void*)&";
-                        if( slot.is_Field() )
-                            emit_lvalue(*slot.as_Field().val);
-                        else
-                            emit_lvalue(*slot.as_Downcast().val);
+                        emit_lvalue(::MIR::LValue::CRef(slot).inner_ref());
                         m_of << ");\n";
                     }
                     else
@@ -5219,7 +5221,7 @@ namespace {
                     m_of << indent << Trans_Mangle(p) << "( " << make_fcn << "(";
                     if( slot.is_Deref() )
                     {
-                        emit_lvalue(*slot.as_Deref().val);
+                        emit_lvalue( ::MIR::LValue::CRef(slot).inner_ref() );
                         m_of << ".PTR";
                     }
                     else
@@ -5227,10 +5229,10 @@ namespace {
                         m_of << "&"; emit_lvalue(slot);
                     }
                     m_of << ", ";
-                    const auto* lvp = &slot;
-                    while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
-                    MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
-                    emit_lvalue(*lvp->as_Deref().val); m_of << ".META";
+                    auto lvr = ::MIR::LValue::CRef(slot);
+                    while(lvr.is_Field())   lvr.try_unwrap();
+                    MIR_ASSERT(*m_mir_res, lvr.is_Deref(), "Access to unized type without a deref - " << lvr << " (part of " << slot << ")");
+                    emit_lvalue(lvr.inner_ref()); m_of << ".META";
                     m_of << ") );\n";
                     break;
                 }
@@ -5240,7 +5242,7 @@ namespace {
                 if( te.size_val > 0 )
                 {
                     m_of << indent << "for(unsigned i = 0; i < " << te.size_val << "; i++) {\n";
-                    emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Local(~0u)) }), *te.inner, false, indent_level+1);
+                    emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), *te.inner, false, indent_level+1);
                     m_of << "\n" << indent << "}";
                 }
                 ),
@@ -5248,24 +5250,24 @@ namespace {
                 // Emit destructors for all entries
                 if( te.size() > 0 )
                 {
-                    ::MIR::LValue   lv = ::MIR::LValue::make_Field({ box$(slot.clone()), 0 });
+                    ::MIR::LValue   lv = ::MIR::LValue::new_Field(slot.clone(), 0);
                     for(unsigned int i = 0; i < te.size(); i ++)
                     {
-                        lv.as_Field().field_index = i;
                         emit_destructor_call(lv, te[i], unsized_valid && (i == te.size()-1), indent_level);
+                        lv.inc_Field();
                     }
                 }
                 ),
             (TraitObject,
                 MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping TraitObject without a pointer");
                 // Call destructor in vtable
-                const auto* lvp = &slot;
-                while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
-                MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
-                m_of << indent << "((VTABLE_HDR*)"; emit_lvalue(*lvp->as_Deref().val); m_of << ".META)->drop(";
-                if( const auto* ve = slot.opt_Deref() )
+                auto lvr = ::MIR::LValue::CRef(slot);
+                while(lvr.is_Field())   lvr.try_unwrap();
+                MIR_ASSERT(*m_mir_res, lvr.is_Deref(), "Access to unized type without a deref - " << lvr << " (part of " << slot << ")");
+                m_of << indent << "((VTABLE_HDR*)"; emit_lvalue(lvr.inner_ref()); m_of << ".META)->drop(";
+                if( slot.is_Deref() )
                 {
-                    emit_lvalue(*ve->val); m_of << ".PTR";
+                    emit_lvalue(::MIR::LValue::CRef(slot).inner_ref()); m_of << ".PTR";
                 }
                 else
                 {
@@ -5275,12 +5277,12 @@ namespace {
                 ),
             (Slice,
                 MIR_ASSERT(*m_mir_res, unsized_valid, "Dropping Slice without a pointer");
-                const auto* lvp = &slot;
-                while(const auto* le = lvp->opt_Field())  lvp = &*le->val;
-                MIR_ASSERT(*m_mir_res, lvp->is_Deref(), "Access to unized type without a deref - " << *lvp << " (part of " << slot << ")");
+                auto lvr = ::MIR::LValue::CRef(slot);
+                while(lvr.is_Field())   lvr.try_unwrap();
+                MIR_ASSERT(*m_mir_res, lvr.is_Deref(), "Access to unized type without a deref - " << lvr << " (part of " << slot << ")");
                 // Call destructor on all entries
-                m_of << indent << "for(unsigned i = 0; i < "; emit_lvalue(*lvp->as_Deref().val); m_of << ".META; i++) {\n";
-                emit_destructor_call(::MIR::LValue::make_Index({ box$(slot.clone()), box$(::MIR::LValue::make_Local(~0u)) }), *te.inner, false, indent_level+1);
+                m_of << indent << "for(unsigned i = 0; i < "; emit_lvalue(lvr.inner_ref()); m_of << ".META; i++) {\n";
+                emit_destructor_call(::MIR::LValue::new_Index(slot.clone(), ::MIR::LValue::Storage::MAX_ARG), *te.inner, false, indent_level+1);
                 m_of << "\n" << indent << "}";
                 )
             )
@@ -5525,116 +5527,125 @@ namespace {
             )
         }
 
-        void emit_lvalue(const ::MIR::LValue& val) {
-            TU_MATCHA( (val), (e),
-            (Return,
+        void emit_lvalue(const ::MIR::LValue::CRef& val)
+        {
+            TU_MATCH_HDRA( (val), {)
+            TU_ARMA(Return, _e) {
                 m_of << "rv";
-                ),
-            (Argument,
-                m_of << "arg" << e.idx;
-                ),
-            (Local,
-                if( e == ~0u )
+                }
+            TU_ARMA(Argument, e) {
+                m_of << "arg" << e;
+                }
+            TU_ARMA(Local, e) {
+                if( e == ::MIR::LValue::Storage::MAX_ARG )
                     m_of << "i";
                 else
                     m_of << "var" << e;
-                ),
-            (Static,
-                m_of << Trans_Mangle(*e);
-                ),
-            (Field,
+                }
+            TU_ARMA(Static, e) {
+                m_of << Trans_Mangle(e);
+                }
+            TU_ARMA(Field, field_index) {
                 ::HIR::TypeRef  tmp;
-                const auto& ty = m_mir_res->get_lvalue_type(tmp, *e.val);
-                if( ty.m_data.is_Slice() ) {
-                    if( e.val->is_Deref() )
+                auto inner = val.inner_ref();
+                const auto& ty = m_mir_res->get_lvalue_type(tmp, inner);
+                if( ty.m_data.is_Slice() )
+                {
+                    if( inner.is_Deref() )
                     {
                         m_of << "(("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
-                        emit_lvalue(*e.val->as_Deref().val);
+                        emit_lvalue(inner.inner_ref());
                         m_of << ".PTR)";
                     }
                     else
                     {
-                        emit_lvalue(*e.val);
+                        emit_lvalue(inner);
                     }
-                    m_of << "[" << e.field_index << "]";
+                    m_of << "[" << field_index << "]";
                 }
                 else if( ty.m_data.is_Array() ) {
-                    emit_lvalue(*e.val);
-                    m_of << ".DATA[" << e.field_index << "]";
+                    emit_lvalue(inner);
+                    m_of << ".DATA[" << field_index << "]";
                 }
-                else if( e.val->is_Deref() ) {
+                else if( inner.is_Deref() ) {
                     auto dst_type = metadata_type(ty);
                     if( dst_type != MetadataType::None )
                     {
-                        m_of << "(("; emit_ctype(ty); m_of << "*)"; emit_lvalue(*e.val->as_Deref().val); m_of << ".PTR)->_" << e.field_index;
+                        m_of << "(("; emit_ctype(ty); m_of << "*)"; emit_lvalue(inner.inner_ref()); m_of << ".PTR)->_" << field_index;
                     }
                     else
                     {
-                        emit_lvalue(*e.val->as_Deref().val);
-                        m_of << "->_" << e.field_index;
+                        emit_lvalue(inner.inner_ref());
+                        m_of << "->_" << field_index;
                     }
                 }
                 else {
-                    emit_lvalue(*e.val);
-                    m_of << "._" << e.field_index;
+                    emit_lvalue(inner);
+                    m_of << "._" << field_index;
                 }
-                ),
-            (Deref,
-                // TODO: If the type is unsized, then this pointer is a fat pointer, so we need to cast the data pointer.
+                }
+            TU_ARMA(Deref, _e) {
+                auto inner = val.inner_ref();
                 ::HIR::TypeRef  tmp;
                 const auto& ty = m_mir_res->get_lvalue_type(tmp, val);
                 auto dst_type = metadata_type(ty);
+                // If the type is unsized, then this pointer is a fat pointer, so we need to cast the data pointer.
                 if( dst_type != MetadataType::None )
                 {
                     m_of << "(*("; emit_ctype(ty); m_of << "*)";
-                    emit_lvalue(*e.val);
+                    emit_lvalue(inner);
                     m_of << ".PTR)";
                 }
                 else
                 {
                     m_of << "(*";
-                    emit_lvalue(*e.val);
+                    emit_lvalue(inner);
                     m_of << ")";
                 }
-                ),
-            (Index,
+                }
+            TU_ARMA(Index, index_local) {
+                auto inner = val.inner_ref();
                 ::HIR::TypeRef  tmp;
-                const auto& ty = m_mir_res->get_lvalue_type(tmp, *e.val);
+                const auto& ty = m_mir_res->get_lvalue_type(tmp, inner);
                 m_of << "(";
                 if( ty.m_data.is_Slice() ) {
-                    if( e.val->is_Deref() )
+                    if( inner.is_Deref() )
                     {
                         m_of << "("; emit_ctype(*ty.m_data.as_Slice().inner); m_of << "*)";
-                        emit_lvalue(*e.val->as_Deref().val);
+                        emit_lvalue(inner.inner_ref());
                         m_of << ".PTR";
                     }
                     else {
-                        emit_lvalue(*e.val);
+                        emit_lvalue(inner);
                     }
                 }
                 else if( ty.m_data.is_Array() ) {
-                    emit_lvalue(*e.val);
+                    emit_lvalue(inner);
                     m_of << ".DATA";
                 }
                 else {
-                    emit_lvalue(*e.val);
+                    emit_lvalue(inner);
                 }
                 m_of << ")[";
-                emit_lvalue(*e.idx);
+                emit_lvalue(::MIR::LValue::new_Local(index_local));
                 m_of << "]";
-                ),
-            (Downcast,
+                }
+            TU_ARMA(Downcast, variant_index) {
+                auto inner = val.inner_ref();
                 ::HIR::TypeRef  tmp;
-                const auto& ty = m_mir_res->get_lvalue_type(tmp, *e.val);
-                emit_lvalue(*e.val);
+                const auto& ty = m_mir_res->get_lvalue_type(tmp, inner);
+                emit_lvalue(inner);
                 MIR_ASSERT(*m_mir_res, ty.m_data.is_Path(), "Downcast on non-Path type - " << ty);
                 if( ty.m_data.as_Path().binding.is_Enum() )
                 {
                     m_of << ".DATA";
                 }
-                m_of << ".var_" << e.variant_index;
-                )
-            )
+                m_of << ".var_" << variant_index;
+                }
+            }
+        }
+        void emit_lvalue(const ::MIR::LValue& val) {
+            emit_lvalue( ::MIR::LValue::CRef(val) );
         }
         void emit_constant(const ::MIR::Constant& ve, const ::MIR::LValue* dst_ptr=nullptr)
         {
