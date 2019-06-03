@@ -38,7 +38,7 @@ int main(int argc, const char* argv[])
 
     dumper.filters.types.functions = true;
 
-    auto hir = HIR_Deserialise(args.infile, "");
+    auto hir = HIR_Deserialise(args.infile);
     dumper.dump_crate("", *hir);
 }
 void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
@@ -99,7 +99,7 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
         {
             for(const auto& m : i.second.m_methods)
             {
-                this->dump_function(root_ip + m.first.c_str(), ::HIR::Publicity::new_global(), m.second.data, 1);
+                this->dump_function(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
             }
         }
         ::std::cout << "}" << ::std::endl;
@@ -115,7 +115,7 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
         {
             for(const auto& m : i.m_methods)
             {
-                this->dump_function(root_ip + m.first.c_str(), ::HIR::Publicity::new_global(), m.second.data, 1);
+                this->dump_function(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
             }
         }
         ::std::cout << "}" << ::std::endl;
@@ -129,7 +129,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
     }
     for(const auto& i : mod.m_mod_items)
     {
-        auto sub_ip = ip + i.first.c_str();
+        auto sub_ip = ip + i.first;
         //::std::cout << "// " << i.second->ent.tagstr() << " " << sub_ip << "\n";
         TU_MATCH_HDRA( (i.second->ent), {)
         TU_ARMA(Module, e) {
@@ -160,7 +160,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
     }
     for(const auto& i : mod.m_value_items)
     {
-        auto sub_ip = ip + i.first.c_str();
+        auto sub_ip = ip + i.first;
         //::std::cout << "// " << i.second->ent.tagstr() << " " << sub_ip << "\n";
         TU_MATCH_HDRA( (i.second->ent), {)
         TU_ARMA(Import, e) {
@@ -272,4 +272,9 @@ Args::Args(int argc, const char* const argv[])
     }
     os << ::std::dec;
     return os;
+}
+
+MIR::EnumCachePtr::~EnumCachePtr()
+{
+    assert(!this->p);
 }
