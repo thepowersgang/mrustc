@@ -46,6 +46,48 @@ namespace {
         return rv;
     }
 
+    void push_new_impls(const Span& sp, ::HIR::Crate& crate, out_impls_t new_trait_impls)
+    {
+        for(auto& impl : new_trait_impls)
+        {
+            switch(impl.first)
+            {
+            case ::HIR::ExprNode_Closure::Class::Once:
+                crate.m_trait_impls[crate.get_lang_item_path(sp, "fn_once")].push_back( mv$(impl.second) );
+                break;
+            case ::HIR::ExprNode_Closure::Class::Mut:
+                crate.m_trait_impls[crate.get_lang_item_path(sp, "fn_mut" )].push_back( mv$(impl.second) );
+                break;
+            case ::HIR::ExprNode_Closure::Class::Shared:
+                crate.m_trait_impls[crate.get_lang_item_path(sp, "fn"     )].push_back( mv$(impl.second) );
+                break;
+            case ::HIR::ExprNode_Closure::Class::NoCapture: {
+                assert(impl.second.m_methods.size() == 1);
+                assert(impl.second.m_types.empty());
+                assert(impl.second.m_constants.empty());
+                // NOTE: This should always have a name
+                const auto& path = impl.second.m_type.m_data.as_Path().path.m_data.as_Generic().m_path;
+                DEBUG("Adding type impl " << path);
+                auto list_it = crate.m_named_type_impls.insert( ::std::make_pair(path, ::std::vector<::HIR::TypeImpl>()) ).first;
+                list_it->second.push_back( ::HIR::TypeImpl {
+                    mv$(impl.second.m_params),
+                    mv$(impl.second.m_type),
+                    make_map1(
+                        impl.second.m_methods.begin()->first,
+                        ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { ::HIR::Publicity::new_global(), false,  mv$(impl.second.m_methods.begin()->second.data) }
+                        ),
+                    {},
+                    mv$(impl.second.m_src_module)
+                    } );
+                } break;
+            case ::HIR::ExprNode_Closure::Class::Unknown:
+                BUG(Span(), "Encountered Unkown closure type in new impls");
+                break;
+            }
+        }
+        new_trait_impls.resize(0);
+    }
+
     /// Mutate the contents of a closure to update captures, variables, and types
     class ExprVisitor_Mutate:
         public ::HIR::ExprVisitorDef
@@ -1190,37 +1232,8 @@ namespace {
 
             ::HIR::Visitor::visit_crate(crate);
 
-            for(auto& impl : m_new_trait_impls)
-            {
-                switch(impl.first)
-                {
-                case ::HIR::ExprNode_Closure::Class::Once:
-                    crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn_once"), mv$(impl.second)) );
-                    break;
-                case ::HIR::ExprNode_Closure::Class::Mut:
-                    crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn_mut" ), mv$(impl.second)) );
-                    break;
-                case ::HIR::ExprNode_Closure::Class::Shared:
-                    crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn"     ), mv$(impl.second)) );
-                    break;
-                case ::HIR::ExprNode_Closure::Class::NoCapture:
-                    assert(impl.second.m_methods.size() == 1);
-                    assert(impl.second.m_types.empty());
-                    assert(impl.second.m_constants.empty());
-                    crate.m_type_impls.push_back( ::HIR::TypeImpl {
-                        mv$(impl.second.m_params),
-                        mv$(impl.second.m_type),
-                        make_map1(impl.second.m_methods.begin()->first, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { ::HIR::Publicity::new_global(), false,  mv$(impl.second.m_methods.begin()->second.data) }),
-                        {},
-                        mv$(impl.second.m_src_module)
-                        } );
-                    break;
-                case ::HIR::ExprNode_Closure::Class::Unknown:
-                    BUG(Span(), "Encountered Unkown closure type in new impls");
-                    break;
-                }
-            }
-            m_new_trait_impls.resize(0);
+            push_new_impls(sp, crate, mv$(m_new_trait_impls));
+            m_new_trait_impls.clear();
         }
 
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
@@ -1399,34 +1412,8 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
             m.second.data.m_code.m_state->stage = ::HIR::ExprState::Stage::Typecheck;
         }
         impl.second.m_src_module = exp.m_state->m_mod_path;
-        switch(impl.first)
-        {
-        case ::HIR::ExprNode_Closure::Class::Once:
-            crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn_once"), mv$(impl.second)) );
-            break;
-        case ::HIR::ExprNode_Closure::Class::Mut:
-            crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn_mut" ), mv$(impl.second)) );
-            break;
-        case ::HIR::ExprNode_Closure::Class::Shared:
-            crate.m_trait_impls.insert( ::std::make_pair(crate.get_lang_item_path(sp, "fn"     ), mv$(impl.second)) );
-            break;
-        case ::HIR::ExprNode_Closure::Class::NoCapture:
-            assert(impl.second.m_methods.size() == 1);
-            assert(impl.second.m_types.empty());
-            assert(impl.second.m_constants.empty());
-            crate.m_type_impls.push_back( ::HIR::TypeImpl {
-                mv$(impl.second.m_params),
-                mv$(impl.second.m_type),
-                make_map1(impl.second.m_methods.begin()->first, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> { ::HIR::Publicity::new_global(), false,  mv$(impl.second.m_methods.begin()->second.data) }),
-                {},
-                mv$(impl.second.m_src_module)
-                } );
-            break;
-        case ::HIR::ExprNode_Closure::Class::Unknown:
-            BUG(Span(), "Encountered Unkown closure type in new impls");
-            break;
-        }
     }
+    push_new_impls(sp, crate, mv$(new_trait_impls));
 }
 
 void HIR_Expand_Closures(::HIR::Crate& crate)

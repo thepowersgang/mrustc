@@ -49,12 +49,14 @@ struct CachedFunction {
 };
 struct TransList_Function
 {
+    const ::HIR::Path*  path;   // Pointer into the list (std::map pointers are stable)
     const ::HIR::Function*  ptr;
     Trans_Params    pp;
     // If `pp.has_types` is true, the below is valid
     CachedFunction  monomorphised;
 
-    TransList_Function():
+    TransList_Function(const ::HIR::Path& path):
+        path(&path),
         ptr(nullptr)
     {}
 };

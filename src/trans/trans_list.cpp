@@ -15,7 +15,7 @@ TransList_Function* TransList::add_function(::HIR::Path p)
     {
         DEBUG("Function " << rv.first->first);
         assert( !rv.first->second );
-        rv.first->second.reset( new TransList_Function {} );
+        rv.first->second.reset( new TransList_Function(rv.first->first) );
         return &*rv.first->second;
     }
     else

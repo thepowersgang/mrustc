@@ -15,9 +15,9 @@
 #include <mir/main_bindings.hpp>
 
 namespace {
-    bool matches_genericpath(const ::HIR::GenericParams& params, const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic);
+    bool matches_genericpath(const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic);
 
-    bool matches_type_int(const ::HIR::GenericParams& params, const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
+    bool matches_type_int(const ::HIR::TypeRef& left,  const ::HIR::TypeRef& right_in, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
         assert(! left.m_data.is_Infer() );
         const auto& right = (right_in.m_data.is_Infer() || (right_in.m_data.is_Generic() && expand_generic) ? ty_res(right_in) : right_in);
@@ -97,7 +97,7 @@ namespace {
                 return false;
                 ),
             (Generic,
-                return matches_genericpath(params, ple, pre, ty_res, expand_generic);
+                return matches_genericpath( ple, pre, ty_res, expand_generic);
                 )
             )
             ),
@@ -105,7 +105,7 @@ namespace {
             throw "";
             ),
         (TraitObject,
-            if( !matches_genericpath(params, le.m_trait.m_path, re.m_trait.m_path, ty_res, expand_generic) )
+            if( !matches_genericpath(le.m_trait.m_path, re.m_trait.m_path, ty_res, expand_generic) )
                 return false;
             if( le.m_markers.size() != re.m_markers.size() )
                 return false;
@@ -113,7 +113,7 @@ namespace {
             {
                 const auto& lm = le.m_markers[i];
                 const auto& rm = re.m_markers[i];
-                if( !matches_genericpath(params, lm, rm, ty_res, expand_generic) )
+                if( !matches_genericpath(lm, rm, ty_res, expand_generic) )
                     return false;
             }
             return true;
@@ -122,32 +122,32 @@ namespace {
             throw "Unexpected ErasedType in matches_type_int";
             ),
         (Array,
-            if( ! matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic) )
+            if( ! matches_type_int(*le.inner, *re.inner, ty_res, expand_generic) )
                 return false;
             if( le.size_val != re.size_val )
                 return false;
             return true;
             ),
         (Slice,
-            return matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic);
+            return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
             ),
         (Tuple,
             if( le.size() != re.size() )
                 return false;
             for( unsigned int i = 0; i < le.size(); i ++ )
-                if( !matches_type_int(params, le[i], re[i], ty_res, expand_generic) )
+                if( !matches_type_int(le[i], re[i], ty_res, expand_generic) )
                     return false;
             return true;
             ),
         (Borrow,
             if( le.type != re.type )
                 return false;
-            return matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic);
+            return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
             ),
         (Pointer,
             if( le.type != re.type )
                 return false;
-            return matches_type_int(params, *le.inner, *re.inner, ty_res, expand_generic);
+            return matches_type_int(*le.inner, *re.inner, ty_res, expand_generic);
             ),
         (Function,
             if( le.is_unsafe != re.is_unsafe )
@@ -157,9 +157,9 @@ namespace {
             if( le.m_arg_types.size() != re.m_arg_types.size() )
                 return false;
             for( unsigned int i = 0; i < le.m_arg_types.size(); i ++ )
-                if( !matches_type_int(params, le.m_arg_types[i], re.m_arg_types[i], ty_res, expand_generic) )
+                if( !matches_type_int(le.m_arg_types[i], re.m_arg_types[i], ty_res, expand_generic) )
                     return false;
-            return matches_type_int(params, *le.m_rettype, *re.m_rettype, ty_res, expand_generic);
+            return matches_type_int(*le.m_rettype, *re.m_rettype, ty_res, expand_generic);
             ),
         (Closure,
             return le.node == re.node;
@@ -167,7 +167,7 @@ namespace {
         )
         return false;
     }
-    bool matches_genericpath(const ::HIR::GenericParams& params, const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
+    bool matches_genericpath(const ::HIR::GenericPath& left, const ::HIR::GenericPath& right, ::HIR::t_cb_resolve_type ty_res, bool expand_generic)
     {
         if( left.m_path.m_crate_name != right.m_path.m_crate_name )
             return false;
@@ -188,30 +188,13 @@ namespace {
             }
             for( unsigned int i = 0; i < right.m_params.m_types.size(); i ++ )
             {
-                if( ! matches_type_int(params, left.m_params.m_types[i], right.m_params.m_types[i], ty_res, expand_generic) )
+                if( ! matches_type_int(left.m_params.m_types[i], right.m_params.m_types[i], ty_res, expand_generic) )
                     return false;
             }
         }
         return true;
     }
 }
-
-//::HIR::TypeRef HIR::Function::make_ty(const Span& sp, const ::HIR::PathParams& params) const
-//{
-//    // TODO: Obtain function type for this function (i.e. a type that is specifically for this function)
-//    auto fcn_ty_data = ::HIR::FunctionType {
-//        m_is_unsafe,
-//        m_abi,
-//        box$( monomorphise_type(sp, m_params, params,  m_return) ),
-//        {}
-//        };
-//    fcn_ty_data.m_arg_types.reserve( m_args.size() );
-//    for(const auto& arg : m_args)
-//    {
-//        fcn_ty_data.m_arg_types.push_back( monomorphise_type(sp, m_params, params,  arg.second) );
-//    }
-//    return ::HIR::TypeRef( mv$(fcn_ty_data) );
-//}
 
 namespace {
     bool is_unbounded_infer(const ::HIR::TypeRef& type) {
@@ -234,21 +217,21 @@ bool ::HIR::TraitImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_reso
     if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
         return false;
     }
-    return matches_type_int(m_params, m_type, type, ty_res, true);
+    return matches_type_int(m_type, type, ty_res, true);
 }
 bool ::HIR::TypeImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
     if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
         return false;
     }
-    return matches_type_int(m_params, m_type, type, ty_res, true);
+    return matches_type_int(m_type, type, ty_res, true);
 }
 bool ::HIR::MarkerImpl::matches_type(const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res) const
 {
     if( is_unbounded_infer(type) || TU_TEST1(type.m_data, Path, .binding.is_Unbound()) ) {
         return false;
     }
-    return matches_type_int(m_params, m_type, type, ty_res, true);
+    return matches_type_int(m_type, type, ty_res, true);
 }
 
 namespace {
@@ -954,13 +937,15 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
 
 bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const
 {
-    auto its = this->m_trait_impls.equal_range( trait );
-    for( auto it = its.first; it != its.second; ++ it )
+    auto it = this->m_trait_impls.find( trait );
+    if( it != this->m_trait_impls.end() )
     {
-        const auto& impl = it->second;
-        if( impl.matches_type(type, ty_res) ) {
-            if( callback(impl) ) {
-                return true;
+        for(const auto& impl : it->second)
+        {
+            if( impl.matches_type(type, ty_res) ) {
+                if( callback(impl) ) {
+                    return true;
+                }
             }
         }
     }
@@ -974,13 +959,15 @@ bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR:
 }
 bool ::HIR::Crate::find_auto_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::MarkerImpl&)> callback) const
 {
-    auto its = this->m_marker_impls.equal_range( trait );
-    for( auto it = its.first; it != its.second; ++ it )
+    auto it = this->m_marker_impls.find( trait );
+    if( it != this->m_marker_impls.end() )
     {
-        const auto& impl = it->second;
-        if( impl.matches_type(type, ty_res) ) {
-            if( callback(impl) ) {
-                return true;
+        for(const auto& impl : it->second)
+        {
+            if( impl.matches_type(type, ty_res) ) {
+                if( callback(impl) ) {
+                    return true;
+                }
             }
         }
     }
@@ -992,21 +979,90 @@ bool ::HIR::Crate::find_auto_trait_impls(const ::HIR::SimplePath& trait, const :
     }
     return false;
 }
-bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const
+namespace
 {
-    // TODO: Restrict which crate is searched based on the type.
-    for( const auto& impl : this->m_type_impls )
+    bool find_type_impls_list(const ::std::vector<HIR::TypeImpl>& impl_list, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback)
     {
-        if( impl.matches_type(type, ty_res) ) {
-            if( callback(impl) ) {
-                return true;
+        for(const auto& impl : impl_list)
+        {
+            if( impl.matches_type(type, ty_res) )
+            {
+                if( callback(impl) )
+                {
+                    return true;
+                }
             }
         }
+        return false;
+    }
+    bool find_type_impls_int(const ::HIR::Crate& crate, const ::HIR::SimplePath* sort_path, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback)
+    {
+        // 1. Find named impls (associated with named types)
+        if( sort_path )
+        {
+            // TODO: This fails if the type is marked as #[fundamental]
+            //if( sort_path->m_crate_name != crate.m_crate_name ) {
+            //    return false;
+            //}
+
+            auto impl_list_it = crate.m_named_type_impls.find(*sort_path);
+            if( impl_list_it != crate.m_named_type_impls.end() )
+            {
+                if( find_type_impls_list(impl_list_it->second, type, ty_res, callback) )
+                    return true;
+            }
+        }
+        // - If this type has no associated path, look in the primitives list
+        else
+        {
+            if( find_type_impls_list(crate.m_primitive_type_impls, type, ty_res, callback) )
+                return true;
+        }
+
+        // 2. Search fully generic list?
+        if( find_type_impls_list(crate.m_generic_type_impls, type, ty_res, callback) )
+            return true;
+
+        return false;
+    }
+}
+bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const
+{
+    const ::HIR::SimplePath*    path = nullptr;
+    // - Generic paths get sorted
+    if( TU_TEST1(type.m_data, Path, .path.m_data.is_Generic()) )
+    {
+        path = &type.m_data.as_Path().path.m_data.as_Generic().m_path;
+    }
+    // - So do trait objects
+    else if( type.m_data.is_TraitObject() )
+    {
+        path = &type.m_data.as_TraitObject().m_trait.m_path.m_path;
+    }
+    else
+    {
+        // Keep as nullptr, will search primitive list
+    }
+
+    if( path )
+    {
+        DEBUG(type << ", path=" << *path);
+    }
+    else
+    {
+        DEBUG(type << ", no path");
+    }
+
+    // > Current crate
+    if( find_type_impls_int(*this, path, type, ty_res, callback) )
+    {
+        return true;
     }
     for( const auto& ec : this->m_ext_crates )
     {
         //DEBUG("- " << ec.first);
-        if( ec.second.m_data->find_type_impls(type, ty_res, callback) ) {
+        if( find_type_impls_int(*ec.second.m_data, path, type, ty_res, callback) )
+        {
             return true;
         }
     }

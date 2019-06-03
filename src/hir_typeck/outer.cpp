@@ -506,26 +506,25 @@ namespace {
             )
             else {
                 // 1. Search for applicable inherent methods (COMES FIRST!)
-                for( const auto& impl : this->crate.m_type_impls )
-                {
-                    if( !impl.matches_type(*e.type) ) {
-                        continue ;
-                    }
+                if( this->crate.find_type_impls(*e.type, [](const auto& ty)->const auto&{return ty;}, [&](const auto& impl) {
                     DEBUG("- matched inherent impl " << *e.type);
                     // Search for item in this block
                     switch( pc )
                     {
                     case ::HIR::Visitor::PathContext::VALUE:
                         if( impl.m_methods.find(e.item) == impl.m_methods.end() ) {
-                            continue ;
+                            return false;
                         }
                         // Found it, just keep going (don't care about details here)
                         break;
                     case ::HIR::Visitor::PathContext::TRAIT:
                     case ::HIR::Visitor::PathContext::TYPE:
-                        continue ;
+                        return false;
                     }
 
+                    return true;
+                    }) )
+                {
                     auto new_data = ::HIR::Path::Data::make_UfcsInherent({ mv$(e.type), mv$(e.item), mv$(e.params)} );
                     p.m_data = mv$(new_data);
                     DEBUG("- Resolved, replace with " << p);

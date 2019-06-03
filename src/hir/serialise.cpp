@@ -39,6 +39,16 @@
             }
         }
         template<typename V>
+        void serialise_pathmap(const ::std::map< ::HIR::SimplePath,V>& map)
+        {
+            m_out.write_count(map.size());
+            for(const auto& v : map) {
+                DEBUG("- " << v.first);
+                serialise(v.first);
+                serialise(v.second);
+            }
+        }
+        template<typename V>
         void serialise_strmap(const ::std::unordered_map<RcString,V>& map)
         {
             m_out.write_count(map.size());
@@ -85,6 +95,11 @@
             m_out.write_count(vec.size());
             for(const auto& i : vec)
                 serialise(i);
+        }
+        template<typename T>
+        void serialise(const ::std::vector<T>& vec)
+        {
+            serialise_vec(vec);
         }
         template<typename T>
         void serialise(const ::HIR::VisEnt<T>& e)
@@ -299,20 +314,13 @@
             m_out.write_string(crate.m_crate_name);
             serialise_module(crate.m_root_module);
 
-            m_out.write_count(crate.m_type_impls.size());
-            for(const auto& impl : crate.m_type_impls) {
-                serialise_typeimpl(impl);
-            }
-            m_out.write_count(crate.m_trait_impls.size());
-            for(const auto& tr_impl : crate.m_trait_impls) {
-                serialise_simplepath(tr_impl.first);
-                serialise_traitimpl(tr_impl.second);
-            }
-            m_out.write_count(crate.m_marker_impls.size());
-            for(const auto& tr_impl : crate.m_marker_impls) {
-                serialise_simplepath(tr_impl.first);
-                serialise_markerimpl(tr_impl.second);
-            }
+            //std::map<HIR::SimplePath,std::vector<TypeImpl>>
+            serialise_pathmap(crate.m_named_type_impls);
+            serialise_vec(crate.m_primitive_type_impls);
+            serialise_vec(crate.m_generic_type_impls);
+
+            serialise_pathmap(crate.m_trait_impls);
+            serialise_pathmap(crate.m_marker_impls);
 
             serialise_strmap(crate.m_exported_macros);
             {
@@ -373,6 +381,10 @@
             }
             // m_src_module doesn't matter after typeck
         }
+        void serialise(const ::HIR::TypeImpl& impl)
+        {
+            serialise_typeimpl(impl);
+        }
         void serialise_traitimpl(const ::HIR::TraitImpl& impl)
         {
             TRACE_FUNCTION_F("impl" << impl.m_params.fmt_args() << " ?" << impl.m_trait_args << " for " << impl.m_type);
@@ -410,12 +422,20 @@
             }
             // m_src_module doesn't matter after typeck
         }
+        void serialise(const ::HIR::TraitImpl& impl)
+        {
+            serialise_traitimpl(impl);
+        }
         void serialise_markerimpl(const ::HIR::MarkerImpl& impl)
         {
             serialise_generics(impl.m_params);
             serialise_pathparams(impl.m_trait_args);
             m_out.write_bool(impl.is_positive);
             serialise_type(impl.m_type);
+        }
+        void serialise(const ::HIR::MarkerImpl& impl)
+        {
+            serialise_markerimpl(impl);
         }
 
         void serialise(const ::HIR::TypeRef& ty) {

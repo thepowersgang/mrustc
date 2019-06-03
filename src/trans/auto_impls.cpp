@@ -202,7 +202,7 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     impl.m_methods.insert(::std::make_pair( RcString::new_interned("clone"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::std::move(fcn) } ));
 
     // Add impl to the crate
-    state.crate.m_trait_impls.insert(::std::make_pair( state.lang_Clone, ::std::move(impl) ));
+    state.crate.m_trait_impls[state.lang_Clone].push_back( ::std::move(impl) );
 }
 
 void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
@@ -227,18 +227,19 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
         Trans_AutoImpl_Clone(state, mv$(ty));
     }
 
-    const auto impl_range = crate.m_trait_impls.equal_range( state.lang_Clone );
+    auto impl_list_it = crate.m_trait_impls.find(state.lang_Clone);
     for(const auto& ty : state.done_list)
     {
+        assert(impl_list_it != crate.m_trait_impls.end());
         // TODO: Find a way of turning a set into a vector so items can be erased.
 
         auto p = ::HIR::Path(ty.clone(), ::HIR::GenericPath(state.lang_Clone), "clone");
         //DEBUG("add_function(" << p << ")");
         auto e = trans_list.add_function(::std::move(p));
 
-        auto it = ::std::find_if( impl_range.first, impl_range.second, [&](const auto& i){ return i.second.m_type == ty; });
-        assert( it->second.m_methods.size() == 1 );
-        e->ptr = &it->second.m_methods.begin()->second.data;
+        auto it = ::std::find_if( impl_list_it->second.begin(), impl_list_it->second.end(), [&](const auto& i){ return i.m_type == ty; });
+        assert( it->m_methods.size() == 1 );
+        e->ptr = &it->m_methods.begin()->second.data;
     }
 }
 

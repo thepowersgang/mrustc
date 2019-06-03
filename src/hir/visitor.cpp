@@ -16,17 +16,34 @@ void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
 {
     this->visit_module(::HIR::ItemPath(crate.m_crate_name), crate.m_root_module );
 
-    for( auto& ty_impl : crate.m_type_impls )
+    for( auto& ty_impl_group : crate.m_named_type_impls )
+    {
+        for( auto& ty_impl : ty_impl_group.second )
+        {
+            this->visit_type_impl(ty_impl);
+        }
+    }
+    for( auto& ty_impl : crate.m_primitive_type_impls )
     {
         this->visit_type_impl(ty_impl);
     }
-    for( auto& impl : crate.m_trait_impls )
+    for( auto& ty_impl : crate.m_generic_type_impls )
     {
-        this->visit_trait_impl(impl.first, impl.second);
+        this->visit_type_impl(ty_impl);
     }
-    for( auto& impl : crate.m_marker_impls )
+    for( auto& impl_group : crate.m_trait_impls )
     {
-        this->visit_marker_impl(impl.first, impl.second);
+        for( auto& impl : impl_group.second )
+        {
+            this->visit_trait_impl(impl_group.first, impl);
+        }
+    }
+    for( auto& impl_group : crate.m_marker_impls )
+    {
+        for( auto& impl : impl_group.second )
+        {
+            this->visit_marker_impl(impl_group.first, impl);
+        }
     }
 }
 

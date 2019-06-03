@@ -123,6 +123,20 @@
             }
             return rv;
         }
+        template<typename V>
+        ::std::map< ::HIR::SimplePath,V> deserialise_pathmap()
+        {
+            TRACE_FUNCTION_F("<" << typeid(V).name() << ">");
+            size_t n = m_in.read_count();
+            ::std::map< ::HIR::SimplePath, V>   rv;
+            //rv.reserve(n);
+            for(size_t i = 0; i < n; i ++)
+            {
+                auto s = deserialise_simplepath();
+                rv.insert( ::std::make_pair( mv$(s), D<V>::des(*this) ) );
+            }
+            return rv;
+        }
 
         template<typename T>
         ::std::vector<T> deserialise_vec()
@@ -779,6 +793,9 @@
     DEF_D( ::std::unique_ptr<T>,
         return d.deserialise_ptr<T>(); )
 
+    template<typename T>
+    DEF_D( ::std::vector<T>,
+        return d.deserialise_vec<T>(); )
     template<typename T, typename U>
     struct D< ::std::pair<T,U> > { static ::std::pair<T,U> des(HirDeserialiser& d) {
         auto a = D<T>::des(d);
@@ -817,6 +834,8 @@
 
     template<> DEF_D( ::HIR::ProcMacro, return d.deserialise_procmacro(); )
     template<> DEF_D( ::HIR::TypeImpl, return d.deserialise_typeimpl(); )
+    template<> DEF_D( ::HIR::TraitImpl, return d.deserialise_traitimpl(); )
+    template<> DEF_D( ::HIR::MarkerImpl, return d.deserialise_markerimpl(); )
     template<> DEF_D( ::MacroRulesPtr, return d.deserialise_macrorulesptr(); )
     template<> DEF_D( unsigned int, return static_cast<unsigned int>(d.deserialise_count()); )
 
@@ -1306,24 +1325,12 @@
         rv.m_crate_name = this->m_crate_name;
         rv.m_root_module = deserialise_module();
 
-        rv.m_type_impls = deserialise_vec< ::HIR::TypeImpl>();
+        rv.m_named_type_impls = deserialise_pathmap< ::std::vector<::HIR::TypeImpl>>();
+        rv.m_primitive_type_impls = deserialise_vec< ::HIR::TypeImpl>();
+        rv.m_generic_type_impls = deserialise_vec< ::HIR::TypeImpl>();
 
-        {
-            size_t n = m_in.read_count();
-            for(size_t i = 0; i < n; i ++)
-            {
-                auto p = deserialise_simplepath();
-                rv.m_trait_impls.insert( ::std::make_pair( mv$(p), deserialise_traitimpl() ) );
-            }
-        }
-        {
-            size_t n = m_in.read_count();
-            for(size_t i = 0; i < n; i ++)
-            {
-                auto p = deserialise_simplepath();
-                rv.m_marker_impls.insert( ::std::make_pair( mv$(p), deserialise_markerimpl() ) );
-            }
-        }
+        rv.m_trait_impls = deserialise_pathmap< ::std::vector<::HIR::TraitImpl>>();
+        rv.m_marker_impls = deserialise_pathmap< ::std::vector<::HIR::MarkerImpl>>();
 
         rv.m_exported_macros = deserialise_istrumap< ::MacroRulesPtr>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();

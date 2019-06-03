@@ -527,11 +527,17 @@ public:
 
     Module  m_root_module;
 
-    /// Impl blocks on just a type
-    ::std::vector< ::HIR::TypeImpl > m_type_impls;
+    /// Impl blocks on just a type, split into three groups
+    // - Named type (sorted on the path)
+    // - Primitive types
+    // - Unsorted (generics, and everything before outer type resolution)
+    ::std::map<::HIR::SimplePath, ::std::vector<::HIR::TypeImpl>> m_named_type_impls;
+    ::std::vector< ::HIR::TypeImpl> m_primitive_type_impls;
+    ::std::vector< ::HIR::TypeImpl> m_generic_type_impls;
+
     /// Impl blocks
-    ::std::multimap< ::HIR::SimplePath, ::HIR::TraitImpl > m_trait_impls;
-    ::std::multimap< ::HIR::SimplePath, ::HIR::MarkerImpl > m_marker_impls;
+    ::std::map< ::HIR::SimplePath, ::std::vector<::HIR::TraitImpl> > m_trait_impls;
+    ::std::map< ::HIR::SimplePath, ::std::vector<::HIR::MarkerImpl> > m_marker_impls;
 
     /// Macros exported by this crate
     ::std::unordered_map< RcString, ::MacroRulesPtr >  m_exported_macros;
