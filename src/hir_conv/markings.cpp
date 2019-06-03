@@ -20,6 +20,7 @@ class Visitor:
     const ::HIR::Crate& m_crate;
     const ::HIR::SimplePath&    m_lang_Unsize;
     const ::HIR::SimplePath&    m_lang_CoerceUnsized;
+    const ::HIR::SimplePath&    m_lang_Copy;
     const ::HIR::SimplePath&    m_lang_Deref;
     const ::HIR::SimplePath&    m_lang_Drop;
     const ::HIR::SimplePath&    m_lang_PhantomData;
@@ -28,6 +29,7 @@ public:
         m_crate(crate),
         m_lang_Unsize( crate.get_lang_item_path_opt("unsize") ),
         m_lang_CoerceUnsized( crate.get_lang_item_path_opt("coerce_unsized") ),
+        m_lang_Copy( crate.get_lang_item_path_opt("copy") ),
         m_lang_Deref( crate.get_lang_item_path_opt("deref") ),
         m_lang_Drop( crate.get_lang_item_path_opt("drop") ),
         m_lang_PhantomData( crate.get_lang_item_path_opt("phantom_data") )
@@ -329,15 +331,7 @@ public:
         if( impl.m_type.m_data.is_Path() )
         {
             const auto& te = impl.m_type.m_data.as_Path();
-            const ::HIR::TraitMarkings* markings_ptr = nullptr;
-            TU_MATCHA( (te.binding), (tpb),
-            (Unbound, ),
-            (Opaque, ),
-            (ExternType, markings_ptr = &tpb->m_markings; ),
-            (Struct, markings_ptr = &tpb->m_markings; ),
-            (Union , markings_ptr = &tpb->m_markings; ),
-            (Enum  , markings_ptr = &tpb->m_markings; )
-            )
+            const ::HIR::TraitMarkings* markings_ptr = te.binding.get_trait_markings();
             if( markings_ptr )
             {
                 ::HIR::TraitMarkings& markings = *const_cast<::HIR::TraitMarkings*>(markings_ptr);
@@ -434,6 +428,10 @@ public:
                 else if( trait_path == m_lang_Deref ) {
                     DEBUG("Type " << impl.m_type << " can Deref");
                     markings.has_a_deref = true;
+                }
+                else if( trait_path == m_lang_Copy ) {
+                    DEBUG("Type " << impl.m_type << " has a Copy impl");
+                    markings.is_copy = true;
                 }
                 // TODO: Marker traits (with conditions)
                 else {

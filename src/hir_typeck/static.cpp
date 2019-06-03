@@ -1469,6 +1469,13 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         return rv;
         ),
     (Path,
+        const auto* markings = e.binding.get_trait_markings();
+        if( markings && ! markings->is_copy )
+        {
+            return false;
+        }
+        // TODO: Also have a marking that indicates that the type is unconditionally Copy
+
         {
             auto it = m_copy_cache.find(ty);
             if( it != m_copy_cache.end() )

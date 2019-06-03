@@ -2480,24 +2480,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         TU_IFLET( ::HIR::TypeRef::Data, (type.m_data), Path, e,
             if( e.path.m_data.is_Generic() && e.path.m_data.as_Generic().m_params.m_types.size() == 0 )
             {
-                TU_MATCH( ::HIR::TypeRef::TypePathBinding, (e.binding), (tpb),
-                (Unbound,
-                    ),
-                (Opaque,
-                    ),
-                (ExternType,
-                    markings = &tpb->m_markings;
-                    ),
-                (Struct,
-                    markings = &tpb->m_markings;
-                    ),
-                (Union,
-                    markings = &tpb->m_markings;
-                    ),
-                (Enum,
-                    markings = &tpb->m_markings;
-                    )
-                )
+                markings = e.binding.get_trait_markings();
             }
         )
 

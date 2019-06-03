@@ -804,6 +804,19 @@ bool HIR::TypeRef::TypePathBinding::operator==(const HIR::TypeRef::TypePathBindi
     throw "";
 }
 
+const ::HIR::TraitMarkings* HIR::TypeRef::TypePathBinding::get_trait_markings() const
+{
+    const ::HIR::TraitMarkings* markings_ptr = nullptr;
+    TU_MATCHA( (*this), (tpb),
+    (Unbound,   ),
+    (Opaque,   ),
+    (ExternType, markings_ptr = &tpb->m_markings; ),
+    (Struct, markings_ptr = &tpb->m_markings; ),
+    (Union,  markings_ptr = &tpb->m_markings; ),
+    (Enum,   markings_ptr = &tpb->m_markings; )
+    )
+    return markings_ptr;
+}
 
 ::HIR::TypeRef HIR::TypeRef::clone() const
 {

@@ -19,6 +19,7 @@
 
 namespace HIR {
 
+class TraitMarkings;
 class ExternType;
 class Struct;
 class Union;
@@ -163,6 +164,8 @@ public:
     (Enum, const ::HIR::Enum*)
     ), (), (), (
         TypePathBinding clone() const;
+
+        const TraitMarkings* get_trait_markings() const;
 
         bool operator==(const TypePathBinding& x) const;
         bool operator!=(const TypePathBinding& x) const { return !(*this == x); }
