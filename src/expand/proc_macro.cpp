@@ -1018,11 +1018,11 @@ Token ProcMacroInv::realGetToken_() {
         auto t = Lex_FindReservedWord(val);
         if( t != TOK_NULL )
             return t;
-        return Token(TOK_IDENT, mv$(val));
+        return Token(TOK_IDENT, RcString::new_interned(val));
         }
     case TokenClass::Lifetime: {
         auto val = this->recv_bytes();
-        return Token(TOK_LIFETIME, mv$(val));
+        return Token(TOK_LIFETIME, RcString::new_interned(val));
         }
     case TokenClass::String: {
         auto val = this->recv_bytes();
