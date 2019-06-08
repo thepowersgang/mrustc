@@ -15,7 +15,13 @@ ifeq ($(OS),Windows_NT)
 endif
 EXESUF ?=
 CXX ?= g++
-V ?= @
+V ?=
+GPROF ?=
+ifeq ($(V),)
+  V := @
+else
+  V :=
+endif
 
 TAIL_COUNT ?= 10
 
@@ -65,6 +71,13 @@ else
 endif
 
 OBJDIR = .obj/
+
+ifneq ($(GPROF),)
+  OBJDIR := .obj-gprof/
+  CXXFLAGS += -pg -no-pie
+  LINKFLAGS += -pg -no-pie
+  EXESUF := -gprof$(EXESUF)
+endif
 
 BIN := bin/mrustc$(EXESUF)
 
@@ -146,7 +159,7 @@ RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(RUSTC_VERSION) RUSTC_CHANNEL=$(RUSTC_SRC_TY) OUTDIR_SUF=$(OUTDIR_SUF)
 
 
-output$(OUTDIR_SUF)/libstd.hir: $(BIN)
+output$(OUTDIR_SUF)/libstd.hir: $(RUSTC_SRC_DL) $(BIN)
 	$(MAKE_MINICARGO) $@
 output$(OUTDIR_SUF)/libtest.hir output$(OUTDIR_SUF)/libpanic_unwind.hir output$(OUTDIR_SUF)/libproc_macro.hir: output$(OUTDIR_SUF)/libstd.hir
 	$(MAKE_MINICARGO) $@
@@ -192,14 +205,14 @@ $(RUSTC_SRC_DL): rust-nightly-date rustc-nightly-src.tar.gz rustc-nightly-src.pa
 	cat rust-nightly-date > $(RUSTC_SRC_DL)
 else
 # NAMED (Stable or beta)
-RUSTC_SRC_TARBALL := rustc-$(shell cat $(RUSTC_SRC_DES))-src.tar.gz
+RUSTC_SRC_TARBALL := rustc-$(RUSTC_VERSION)-src.tar.gz
 $(RUSTC_SRC_TARBALL): $(RUSTC_SRC_DES)
 	@echo [CURL] $@
 	@rm -f $@
 	@curl -sS https://static.rust-lang.org/dist/$@ -o $@
-$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(shell cat $(RUSTC_SRC_DES))-src.patch
+$(RUSTC_SRC_DL): $(RUSTC_SRC_TARBALL) rustc-$(RUSTC_VERSION)-src.patch
 	tar -xf $(RUSTC_SRC_TARBALL)
-	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(shell cat $(RUSTC_SRC_DES))-src.patch;
+	cd $(RUSTCSRC) && patch -p0 < ../rustc-$(RUSTC_VERSION)-src.patch;
 	cat $(RUSTC_SRC_DES) > $(RUSTC_SRC_DL)
 endif
 
