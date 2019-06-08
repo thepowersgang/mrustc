@@ -2848,6 +2848,7 @@ namespace {
                 }
                 if( e.flag_idx != ~0u )
                     m_of << indent << "}\n";
+                m_of << indent << "// ^ " << stmt << "\n";
                 break; }
             case ::MIR::Statement::TAG_Asm:
                 switch(m_compiler)
