@@ -289,7 +289,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         ),
     (Cast,
         // TODO: Does this actually move?
-        if( e.type.m_data.is_Borrow() )
+        //if( !e.type.m_data.is_Borrow() )
         {
             this->moved_lvalue(sp, e.val);
         }
