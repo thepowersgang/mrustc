@@ -293,8 +293,7 @@ private:
     const VarState& get_slot_state(const Span& sp, unsigned int idx, SlotType type, unsigned int skip_count=0) const;
     VarState& get_slot_state_mut(const Span& sp, unsigned int idx, SlotType type);
 
-    VarState* get_val_state_mut_p(const Span& sp, const ::MIR::LValue& lv);
-    VarState& get_val_state_mut(const Span& sp, const ::MIR::LValue& lv);
+    VarState* get_val_state_mut_p(const Span& sp, const ::MIR::LValue& lv, bool expect_valid=false);
 
     void terminate_loop_early(const Span& sp, ScopeType::Data_Loop& sd_loop);
 

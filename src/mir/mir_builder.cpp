@@ -288,11 +288,7 @@ void MirBuilder::push_stmt_assign(const Span& sp, ::MIR::LValue dst, ::MIR::RVal
         }
         ),
     (Cast,
-        // TODO: Does this actually move?
-        //if( !e.type.m_data.is_Borrow() )
-        {
-            this->moved_lvalue(sp, e.val);
-        }
+        this->moved_lvalue(sp, e.val);
         ),
     (BinOp,
         switch(e.op)
@@ -404,7 +400,7 @@ void MirBuilder::mark_value_assigned(const Span& sp, const ::MIR::LValue& dst)
         ASSERT_BUG(sp, dst.m_wrappers.empty(), "Assignment to a component of the return value should be impossible.");
         return ;
     }
-    VarState*   state_p = get_val_state_mut_p(sp, dst);;
+    VarState*   state_p = get_val_state_mut_p(sp, dst, /*expect_valid=*/true);
 
     if( state_p )
     {
@@ -1947,7 +1943,7 @@ VarState& MirBuilder::get_slot_state_mut(const Span& sp, unsigned int idx, SlotT
     }
 }
 
-VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& lv)
+VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& lv, bool expect_valid/*=false*/)
 {
     TRACE_FUNCTION_F(lv);
     VarState*   vs;
@@ -1967,6 +1963,11 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
         //BUG(sp, "Attempting to mutate state of a static");
         )
     )
+
+    if( expect_valid && vs->is_Valid() )
+    {
+        return nullptr;
+    }
 
     for(const auto& w : lv.m_wrappers)
     {
@@ -2104,17 +2105,6 @@ VarState* MirBuilder::get_val_state_mut_p(const Span& sp, const ::MIR::LValue& l
     }
     return vs;
 }
-VarState& MirBuilder::get_val_state_mut(const Span& sp, const ::MIR::LValue& lv)
-{
-    auto rv_p = this->get_val_state_mut_p(sp, lv);
-    if( !rv_p )
-    {
-        //BUG(sp, "Move out of index with non-Copy values - Partial move?");
-        BUG(sp, "Move out of deref with non-Copy values - &move? - " << lv << " : " << FMT_CB(ss, this->with_val_type(sp, lv, [&](const auto& ty){ss<<ty;});) );
-    }
-    return *rv_p;
-}
-
 void MirBuilder::drop_value_from_state(const Span& sp, const VarState& vs, ::MIR::LValue lv)
 {
     TRACE_FUNCTION_F(lv << " " << vs);
@@ -2198,7 +2188,11 @@ void MirBuilder::drop_scope_values(const ScopeDef& sd)
 void MirBuilder::moved_lvalue(const Span& sp, const ::MIR::LValue& lv)
 {
     if( !lvalue_is_copy(sp, lv) ) {
-        auto& vs = get_val_state_mut(sp, lv);
+        auto* vs_p = get_val_state_mut_p(sp, lv);
+        if( !vs_p ) {
+            ERROR(sp, E0000, "Attempting to move out of invalid slot - " << lv);
+        }
+        auto& vs = *vs_p;
         // TODO: If the current state is Optional, set the drop flag to 0
         vs = VarState::make_Invalid(InvalidType::Moved);
     }
