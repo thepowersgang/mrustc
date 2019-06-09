@@ -1109,6 +1109,11 @@ namespace
                 lex.consume();
                 break;
 
+            // Possibly a left-open (or full-open) range literal
+            case TOK_DOUBLE_DOT:
+            case TOK_DOUBLE_DOT_EQUAL:
+            case TOK_TRIPLE_DOT:
+                break;
 
             case TOK_RWORD_UNSAFE:
                 lex.consume();
@@ -1264,10 +1269,27 @@ namespace
             case TOK_EXCLAM_EQUAL:
             case TOK_DOUBLE_AMP:
             case TOK_DOUBLE_PIPE:
-            case TOK_DOUBLE_DOT:
             case TOK_DOUBLE_DOT_EQUAL:
             case TOK_TRIPLE_DOT:
                 lex.consume();
+                break;
+            case TOK_DOUBLE_DOT:
+                lex.consume();
+                DEBUG("TOK_DOUBLE_DOT => " << lex.next());
+                switch(lex.next())
+                {
+                case TOK_EOF:
+                    return true;
+                case TOK_COMMA:
+                case TOK_SEMICOLON:
+                case TOK_BRACE_CLOSE:
+                case TOK_PAREN_CLOSE:
+                case TOK_SQUARE_CLOSE:
+                   cont = false;
+                   break;
+                default:
+                    break;
+                }
                 break;
             case TOK_EQUAL:
             case TOK_PLUS_EQUAL:
