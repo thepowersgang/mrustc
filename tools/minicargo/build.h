@@ -20,7 +20,15 @@ struct BuildOptions
     ::helpers::path build_script_overrides;
     ::std::vector<::helpers::path>  lib_search_dirs;
     bool emit_mmir = false;
-    const char* target_name = nullptr;	// if null, host is used
+    const char* target_name = nullptr;  // if null, host is used
+    enum class Mode {
+        /// Build the binary/library
+        Normal,
+        /// Build tests
+        Test,
+        /// Build examples
+        Examples,
+    } mode = Mode::Normal;
 };
 
 class BuildList

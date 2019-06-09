@@ -75,7 +75,7 @@ void Repository::load_vendored(const ::helpers::path& path)
             }
         }
 
-        //DEBUG("Package '" << name << "' v" << ver);
+        DEBUG("Vendored package '" << name << "' v" << ver);
         if(name == "")
             continue ;
 
@@ -91,6 +91,7 @@ void Repository::load_vendored(const ::helpers::path& path)
     } while( FindNextFile(find_handle, &find_data) );
     FindClose(find_handle);
     #endif
+    DEBUG("Loaded " << m_cache.size() << " vendored packages");
 }
 
 ::std::shared_ptr<PackageManifest> Repository::from_path(::helpers::path in_path)

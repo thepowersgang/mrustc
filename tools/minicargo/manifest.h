@@ -264,6 +264,7 @@ class PackageManifest
 
     ::std::vector<PackageRef>   m_dependencies;
     ::std::vector<PackageRef>   m_build_dependencies;
+    ::std::vector<PackageRef>   m_dev_dependencies;
 
     ::std::vector<PackageTarget>    m_targets;
 
@@ -282,14 +283,17 @@ public:
     bool has_library() const;
     const PackageTarget& get_library() const;
 
-    bool foreach_binaries(::std::function<bool(const PackageTarget&)> cb) const {
+    bool foreach_ty(PackageTarget::Type ty, ::std::function<bool(const PackageTarget&)> cb) const {
         for(const auto& t : m_targets ) {
-            if( t.m_type == PackageTarget::Type::Bin ) {
+            if( t.m_type == ty ) {
                 if( !cb(t) )
                     return false;
             }
         }
         return true;
+    }
+    bool foreach_binaries(::std::function<bool(const PackageTarget&)> cb) const {
+        return foreach_ty(PackageTarget::Type::Bin, cb);
     }
 
     const ::helpers::path directory() const {
@@ -313,12 +317,15 @@ public:
     const ::std::vector<PackageRef>& build_dependencies() const {
         return m_build_dependencies;
     }
+    const ::std::vector<PackageRef>& dev_dependencies() const {
+        return m_dev_dependencies;
+    }
     const ::std::vector<::std::string>& active_features() const {
         return m_active_features;
     }
 
     void set_features(const ::std::vector<::std::string>& features, bool enable_default);
-    void load_dependencies(Repository& repo, bool include_build);
+    void load_dependencies(Repository& repo, bool include_build, bool include_dev=false);
 
     void load_build_script(const ::std::string& path);
 };

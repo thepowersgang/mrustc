@@ -179,41 +179,27 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
 
             target_edit_from_kv(*it, key_val, 2);
         }
-        else if( section == "dependencies" )
+        else if( section == "dependencies" || section == "build-dependencies" || section == "dev-dependencies" )
         {
+            ::std::vector<PackageRef>& dep_list =
+                section == "dependencies" ? rv.m_dependencies :
+                section == "build-dependencies" ? rv.m_build_dependencies :
+                /*section == "dev-dependencies" ? */ rv.m_dev_dependencies /*:
+                throw ""*/
+                ;
             assert(key_val.path.size() > 1);
 
             const auto& depname = key_val.path[1];
 
             // Find/create dependency descriptor
-            auto it = ::std::find_if(rv.m_dependencies.begin(), rv.m_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
-            bool was_added = (it == rv.m_dependencies.end());
+            auto it = ::std::find_if(dep_list.begin(), dep_list.end(), [&](const auto& x) { return x.m_name == depname; });
+            bool was_added = (it == dep_list.end());
             if( was_added )
             {
-                it = rv.m_dependencies.insert(it, PackageRef{ depname });
+                it = dep_list.insert(it, PackageRef{ depname });
             }
 
             it->fill_from_kv(was_added, key_val, 2);
-        }
-        else if( section == "build-dependencies" )
-        {
-            assert(key_val.path.size() > 1);
-
-            const auto& depname = key_val.path[1];
-
-            // Find/create dependency descriptor
-            auto it = ::std::find_if(rv.m_build_dependencies.begin(), rv.m_build_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
-            bool was_added = (it == rv.m_build_dependencies.end());
-            if(was_added)
-            {
-                it = rv.m_build_dependencies.insert(it, PackageRef{ depname });
-            }
-
-            it->fill_from_kv(was_added, key_val, 2);
-        }
-        else if( section == "dev-dependencies" )
-        {
-            // TODO: Developemnt (test/bench) deps
         }
         else if( section == "patch" )
         {
@@ -321,6 +307,16 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Lib });
         }
     }
+    // - If there's no binary section, but src/main.rs exists, add one
+    if( ! ::std::any_of(rv.m_targets.begin(), rv.m_targets.end(), [](const auto& x){ return x.m_type == PackageTarget::Type::Bin; }) )
+    {
+        // No library, add one pointing to lib.rs
+        if( ::std::ifstream(package_dir / "src" / "main.rs").good() )
+        {
+            DEBUG("- Implicit library");
+            rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Bin });
+        }
+    }
 
     // Default target names
     for(auto& tgt : rv.m_targets)
@@ -341,6 +337,12 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                     tgt.m_path = ::helpers::path("src") / "bin" / tgt.m_name.c_str() + ".rs";
                 }
                 break;
+            case PackageTarget::Type::Test:
+            case PackageTarget::Type::Bench:
+                // no defaults
+                break;
+            case PackageTarget::Type::Example:
+                TODO("Default/implicit path for examples");
             }
         }
         if(tgt.m_name == "")
@@ -350,6 +352,8 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                 tgt.m_name += (c == '-' ? '_' : c);
         }
     }
+
+    // TODO: if there's a lib target, add a test target using the same path
 
     for(const auto& dep : rv.m_dependencies)
     {
@@ -640,12 +644,19 @@ void PackageManifest::set_features(const ::std::vector<::std::string>& features,
                 it2->m_optional_enabled = true;
             }
         }
+        {
+            auto it2 = ::std::find_if(m_dev_dependencies.begin(), m_dev_dependencies.end(), [&](const auto& x){ return x.m_name == featname; });
+            if(it2 != m_dev_dependencies.end())
+            {
+                it2->m_optional_enabled = true;
+            }
+        }
     }
 
     // Return true if any features were activated
     //return start < m_active_features.size();
 }
-void PackageManifest::load_dependencies(Repository& repo, bool include_build)
+void PackageManifest::load_dependencies(Repository& repo, bool include_build, bool include_dev)
 {
     TRACE_FUNCTION_F(m_name);
     DEBUG("Loading depencencies for " << m_name);
@@ -661,16 +672,30 @@ void PackageManifest::load_dependencies(Repository& repo, bool include_build)
         dep.load_manifest(repo, base_path, include_build);
     }
 
-    // TODO: Only enable if build script overrides aren't enabled.
+    // Load build deps if there's a build script AND build scripts are enabled
     if( m_build_script != "" && include_build )
     {
+        DEBUG("- Build dependencies");
         for(auto& dep : m_build_dependencies)
         {
             if( dep.m_optional && !dep.m_optional_enabled )
             {
                 continue ;
             }
-            dep.load_manifest(repo, base_path, true);
+            dep.load_manifest(repo, base_path, include_build);
+        }
+    }
+    // Load dev dependencies if the caller has indicated they should be
+    if( include_dev )
+    {
+        DEBUG("- Dev dependencies");
+        for(auto& dep : m_dev_dependencies)
+        {
+            if( dep.m_optional && !dep.m_optional_enabled )
+            {
+                continue ;
+            }
+            dep.load_manifest(repo, base_path, include_build);
         }
     }
 }

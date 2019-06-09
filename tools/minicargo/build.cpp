@@ -63,13 +63,13 @@ extern int _putenv_s(const char*, const char*);
 /// Class abstracting access to the compiler
 class Builder
 {
-    BuildOptions    m_opts;
+    const BuildOptions& m_opts;
     ::helpers::path m_compiler_path;
     size_t m_total_targets;
     mutable size_t m_targets_built;
 
 public:
-    Builder(BuildOptions opts, size_t total_targets);
+    Builder(const BuildOptions& opts, size_t total_targets);
 
     bool build_target(const PackageManifest& manifest, const PackageTarget& target, bool is_for_host, size_t index) const;
     bool build_library(const PackageManifest& manifest, bool is_for_host, size_t index) const;
@@ -218,6 +218,18 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
     {
         b.m_list.push_back({ &manifest, !cross_compiling, 0 });
     }
+    if( opts.mode != BuildOptions::Mode::Normal)
+    {
+        for(const auto& dep : manifest.dev_dependencies())
+        {
+            if( dep.is_disabled() )
+            {
+                continue ;
+            }
+            DEBUG(manifest.name() << ": Dependency " << dep.name());
+            b.add_package(dep.get_package(), 1, !opts.build_script_overrides.is_valid(), !cross_compiling);
+        }
+    }
 
     // TODO: Add the binaries too?
     // - They need slightly different treatment.
@@ -261,7 +273,7 @@ BuildList::BuildList(const PackageManifest& manifest, const BuildOptions& opts):
 bool BuildList::build(BuildOptions opts, unsigned num_jobs)
 {
     bool include_build = !opts.build_script_overrides.is_valid();
-    Builder builder { ::std::move(opts), m_list.size() };
+    Builder builder { opts, m_list.size() };
 
     // Pre-count how many dependencies are remaining for each package
     struct BuildState
@@ -533,14 +545,24 @@ bool BuildList::build(BuildOptions opts, unsigned num_jobs)
     }
 
     // Now that all libraries are done, build the binaries (if present)
-    return this->m_root_manifest.foreach_binaries([&](const auto& bin_target) {
-        return builder.build_target(this->m_root_manifest, bin_target, /*is_for_host=*/false, ~0u);
-        });
+    switch(opts.mode)
+    {
+    case BuildOptions::Mode::Normal:
+        return this->m_root_manifest.foreach_binaries([&](const auto& bin_target) {
+            return builder.build_target(this->m_root_manifest, bin_target, /*is_for_host=*/false, ~0u);
+            });
+    case BuildOptions::Mode::Test:
+        // TODO: What about unit tests?
+        return this->m_root_manifest.foreach_ty(PackageTarget::Type::Test, [&](const auto& test_target) {
+            return builder.build_target(this->m_root_manifest, test_target, /*is_for_host=*/true, ~0u);
+            });
+    }
+    throw "unreachable";
 }
 
 
-Builder::Builder(BuildOptions opts, size_t total_targets):
-    m_opts(::std::move(opts)),
+Builder::Builder(const BuildOptions& opts, size_t total_targets):
+    m_opts(opts),
     m_total_targets(total_targets),
     m_targets_built(0)
 {
@@ -640,6 +662,11 @@ Builder::Builder(BuildOptions opts, size_t total_targets):
         if(crate_type)
             *crate_type = "bin";
         outfile /= ::format(target.m_name, EXESUF);
+        break;
+    case PackageTarget::Type::Test:
+        if(crate_type)
+            *crate_type = "bin";
+        outfile /= ::format(target.m_name, "-test", EXESUF);
         break;
     default:
         throw ::std::runtime_error("Unknown target type being built");
@@ -810,6 +837,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
     for(const auto& cmd : manifest.build_script_output().pre_build_commands)
     {
         // TODO: Run commands specified by build script (override)
+        TODO("Run command `" << cmd << "` from build script override");
     }
 
     {
@@ -881,6 +909,10 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
         args.push_back("--extern");
         args.push_back(::format(m.get_library().m_name, "=", path));
+    }
+    if( target.m_type == PackageTarget::Type::Test /*|| building_unit_tests */)
+    {
+        args.push_back("--test");
     }
     for(const auto& dep : manifest.dependencies())
     {

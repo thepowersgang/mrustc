@@ -41,6 +41,10 @@ void Debug_EnablePhase(const char* phase_name)
     {
         gmDisabledDebug.erase(it);
     }
+    else
+    {
+        ::std::cerr << "Unknown debug phase: " << phase_name << ::std::endl;
+    }
 }
 void Debug_Print(::std::function<void(::std::ostream& os)> cb)
 {

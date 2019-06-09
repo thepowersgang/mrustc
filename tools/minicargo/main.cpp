@@ -44,6 +44,9 @@ struct ProgramOptions
     // Pause for user input before quitting (useful for MSVC debugging)
     bool pause_before_quit = false;
 
+    /// Build and run tests?
+    bool test = false;
+
     int parse(int argc, const char* argv[]);
     void usage() const;
     void help() const;
@@ -100,7 +103,7 @@ int main(int argc, const char* argv[])
 
         // 2. Load all dependencies
         Debug_SetPhase("Load Dependencies");
-        m.load_dependencies(repo, !bs_override_dir.is_valid());
+        m.load_dependencies(repo, !bs_override_dir.is_valid(), /*include_dev=*/opts.test);
 
         // 3. Build dependency tree and build program.
         BuildOptions    build_opts;
@@ -111,6 +114,11 @@ int main(int argc, const char* argv[])
         build_opts.target_name = opts.target;
         for(const auto* d : opts.lib_search_dirs)
             build_opts.lib_search_dirs.push_back( ::helpers::path(d) );
+        // Indicate desire to build tests (or examples) instead of the primary target
+        build_opts.mode =
+            opts.test ? BuildOptions::Mode::Test :
+            BuildOptions::Mode::Normal
+            ;
         Debug_SetPhase("Enumerate Build");
         auto build_list = BuildList(m, build_opts);
         Debug_SetPhase("Run Build");
@@ -253,6 +261,9 @@ int ProgramOptions::parse(int argc, const char* argv[])
             }
             else if( ::std::strcmp(arg, "--pause") == 0 ) {
                 this->pause_before_quit = true;
+            }
+            else if( ::std::strcmp(arg, "--test") == 0 ) {
+                this->test = true;
             }
             else {
                 ::std::cerr << "Unknown flag " << arg << ::std::endl;
