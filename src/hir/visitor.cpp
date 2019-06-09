@@ -12,38 +12,39 @@
 {
 }
 
+namespace {
+    template<typename T>
+    void visit_impls(::HIR::Crate::ImplGroup<T>& g, ::std::function<void(T&)> cb) {
+        for( auto& impl_group : g.named )
+        {
+            for( auto& impl : impl_group.second )
+            {
+                cb(impl);
+            }
+        }
+        for( auto& impl : g.non_named )
+        {
+            cb(impl);
+        }
+        for( auto& impl : g.generic )
+        {
+            cb(impl);
+        }
+    }
+}
+
 void ::HIR::Visitor::visit_crate(::HIR::Crate& crate)
 {
     this->visit_module(::HIR::ItemPath(crate.m_crate_name), crate.m_root_module );
 
-    for( auto& ty_impl_group : crate.m_named_type_impls )
-    {
-        for( auto& ty_impl : ty_impl_group.second )
-        {
-            this->visit_type_impl(ty_impl);
-        }
-    }
-    for( auto& ty_impl : crate.m_primitive_type_impls )
-    {
-        this->visit_type_impl(ty_impl);
-    }
-    for( auto& ty_impl : crate.m_generic_type_impls )
-    {
-        this->visit_type_impl(ty_impl);
-    }
+    visit_impls<::HIR::TypeImpl>(crate.m_type_impls, [&](::HIR::TypeImpl& ty_impl){ this->visit_type_impl(ty_impl); });
     for( auto& impl_group : crate.m_trait_impls )
     {
-        for( auto& impl : impl_group.second )
-        {
-            this->visit_trait_impl(impl_group.first, impl);
-        }
+        visit_impls<::HIR::TraitImpl>(impl_group.second, [&](::HIR::TraitImpl& ty_impl){ this->visit_trait_impl(impl_group.first, ty_impl); });
     }
     for( auto& impl_group : crate.m_marker_impls )
     {
-        for( auto& impl : impl_group.second )
-        {
-            this->visit_marker_impl(impl_group.first, impl);
-        }
+        visit_impls<::HIR::MarkerImpl>(impl_group.second, [&](::HIR::MarkerImpl& ty_impl){ this->visit_marker_impl(impl_group.first, ty_impl); });
     }
 }
 

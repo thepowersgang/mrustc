@@ -328,6 +328,24 @@ public:
 
     // Compares this type with another, using `resolve_placeholder` to get replacements for generics/infers in `x`
     Compare compare_with_placeholders(const Span& sp, const ::HIR::TypeRef& x, t_cb_resolve_type resolve_placeholder) const;
+
+    const ::HIR::SimplePath* get_sort_path() const {
+        // - Generic paths get sorted
+        if( TU_TEST1(this->m_data, Path, .path.m_data.is_Generic()) )
+        {
+            return &this->m_data.as_Path().path.m_data.as_Generic().m_path;
+        }
+        // - So do trait objects
+        else if( this->m_data.is_TraitObject() )
+        {
+            return &this->m_data.as_TraitObject().m_trait.m_path.m_path;
+        }
+        else
+        {
+            // Keep as nullptr, will search primitive list
+            return nullptr;
+        }
+    }
 };
 
 extern ::std::ostream& operator<<(::std::ostream& os, const ::HIR::TypeRef& ty);

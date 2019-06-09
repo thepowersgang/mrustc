@@ -527,17 +527,46 @@ public:
 
     Module  m_root_module;
 
+    template<typename T>
+    struct ImplGroup
+    {
+        ::std::map<::HIR::SimplePath, ::std::vector<T>> named;
+        ::std::vector<T> non_named; // TODO: use a map of HIR::TypeRef::Data::Tag
+        ::std::vector<T> generic;
+
+        const ::std::vector<T>* get_list_for_type(const ::HIR::TypeRef& ty) const {
+            static ::std::vector<T> empty;
+            if( const auto* p = ty.get_sort_path() ) {
+                auto it = named.find(*p);
+                if( it != named.end() )
+                    return &it->second;
+                else
+                    return nullptr;
+            }
+            else {
+                // TODO: Sort these by type tag, use the `Primitive` group if `ty` is Infer
+                return &non_named;
+            }
+        }
+        ::std::vector<T>& get_list_for_type_mut(const ::HIR::TypeRef& ty) {
+            if( const auto* p = ty.get_sort_path() ) {
+                return named[*p];
+            }
+            else {
+                // TODO: Ivars match with core types
+                return non_named;
+            }
+        }
+    };
     /// Impl blocks on just a type, split into three groups
     // - Named type (sorted on the path)
     // - Primitive types
     // - Unsorted (generics, and everything before outer type resolution)
-    ::std::map<::HIR::SimplePath, ::std::vector<::HIR::TypeImpl>> m_named_type_impls;
-    ::std::vector< ::HIR::TypeImpl> m_primitive_type_impls;
-    ::std::vector< ::HIR::TypeImpl> m_generic_type_impls;
+    ImplGroup<::HIR::TypeImpl>  m_type_impls;
 
     /// Impl blocks
-    ::std::map< ::HIR::SimplePath, ::std::vector<::HIR::TraitImpl> > m_trait_impls;
-    ::std::map< ::HIR::SimplePath, ::std::vector<::HIR::MarkerImpl> > m_marker_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::TraitImpl> > m_trait_impls;
+    ::std::map< ::HIR::SimplePath, ImplGroup<::HIR::MarkerImpl> > m_marker_impls;
 
     /// Macros exported by this crate
     ::std::unordered_map< RcString, ::MacroRulesPtr >  m_exported_macros;

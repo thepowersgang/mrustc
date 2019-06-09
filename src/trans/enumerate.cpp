@@ -165,6 +165,78 @@ namespace {
             }
         }
     }
+
+    void Trans_Enumerate_Public_TraitImpl(EnumState& state, StaticTraitResolve& resolve, const ::HIR::SimplePath& trait_path, /*const*/ ::HIR::TraitImpl& impl)
+    {
+        static Span sp;
+        const auto& impl_ty = impl.m_type;
+        TRACE_FUNCTION_F("Impl " << trait_path << impl.m_trait_args << " for " << impl_ty);
+        if( impl.m_params.m_types.size() == 0 )
+        {
+            auto cb_monomorph = monomorphise_type_get_cb(sp, &impl_ty, &impl.m_trait_args, nullptr);
+
+            // Emit each method/static (in the trait itself)
+            const auto& trait = resolve.m_crate.get_trait_by_path(sp, trait_path);
+            for(const auto& vi : trait.m_values)
+            {
+                TRACE_FUNCTION_F("Item " << vi.first << " : " << vi.second.tag_str());
+                // Constant, no codegen
+                if( vi.second.is_Constant() )
+                    ;
+                // Generic method, no codegen
+                else if( vi.second.is_Function() && vi.second.as_Function().m_params.m_types.size() > 0 )
+                    ;
+                // VTable, magic
+                else if( vi.first == "vtable#" )
+                    ;
+                else
+                {
+                    // Check bounds before queueing for codegen
+                    if( vi.second.is_Function() )
+                    {
+                        bool rv = true;
+                        for(const auto& b : vi.second.as_Function().m_params.m_bounds)
+                        {
+                            if( !b.is_TraitBound() )    continue;
+                            const auto& be = b.as_TraitBound();
+
+                            auto b_ty_mono = monomorphise_type_with(sp, be.type, cb_monomorph); resolve.expand_associated_types(sp, b_ty_mono);
+                            auto b_tp_mono = monomorphise_traitpath_with(sp, be.trait, cb_monomorph, false);
+                            for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
+                                resolve.expand_associated_types(sp, ty);
+                            }
+                            for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
+                                resolve.expand_associated_types(sp, assoc_bound.second);
+                            }
+
+                            rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
+                                return true;
+                                });
+                            if( !rv )
+                                break;
+                        }
+                        if( !rv )
+                            continue ;
+                    }
+                    auto path = ::HIR::Path(impl_ty.clone(), ::HIR::GenericPath(trait_path, impl.m_trait_args.clone()), vi.first);
+                    Trans_Enumerate_FillFrom_PathMono(state, mv$(path));
+                    //state.enum_fcn(mv$(path), fcn.second.data, {});
+                }
+            }
+            for(auto& m : impl.m_methods)
+            {
+                if( m.second.data.m_params.m_types.size() > 0 )
+                    m.second.data.m_save_code = true;
+            }
+        }
+        else
+        {
+            for(auto& m : impl.m_methods)
+            {
+                m.second.data.m_save_code = true;
+            }
+        }
+    }
 }
 
 /// Enumerate trans items for all public non-generic items (library crate)
@@ -180,75 +252,20 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
     for(auto& impl_group : crate.m_trait_impls)
     {
         const auto& trait_path = impl_group.first;
-        for(auto& impl : impl_group.second)
+        for(auto& impl_list : impl_group.second.named)
         {
-            const auto& impl_ty = impl.m_type;
-            TRACE_FUNCTION_F("Impl " << trait_path << impl.m_trait_args << " for " << impl_ty);
-            if( impl.m_params.m_types.size() == 0 )
+            for(auto& impl : impl_list.second)
             {
-                auto cb_monomorph = monomorphise_type_get_cb(sp, &impl_ty, &impl.m_trait_args, nullptr);
-
-                // Emit each method/static (in the trait itself)
-                const auto& trait = crate.get_trait_by_path(sp, trait_path);
-                for(const auto& vi : trait.m_values)
-                {
-                    TRACE_FUNCTION_F("Item " << vi.first << " : " << vi.second.tag_str());
-                    // Constant, no codegen
-                    if( vi.second.is_Constant() )
-                        ;
-                    // Generic method, no codegen
-                    else if( vi.second.is_Function() && vi.second.as_Function().m_params.m_types.size() > 0 )
-                        ;
-                    // VTable, magic
-                    else if( vi.first == "vtable#" )
-                        ;
-                    else
-                    {
-                        // Check bounds before queueing for codegen
-                        if( vi.second.is_Function() )
-                        {
-                            bool rv = true;
-                            for(const auto& b : vi.second.as_Function().m_params.m_bounds)
-                            {
-                                if( !b.is_TraitBound() )    continue;
-                                const auto& be = b.as_TraitBound();
-
-                                auto b_ty_mono = monomorphise_type_with(sp, be.type, cb_monomorph); resolve.expand_associated_types(sp, b_ty_mono);
-                                auto b_tp_mono = monomorphise_traitpath_with(sp, be.trait, cb_monomorph, false);
-                                for(auto& ty : b_tp_mono.m_path.m_params.m_types) {
-                                    resolve.expand_associated_types(sp, ty);
-                                }
-                                for(auto& assoc_bound : b_tp_mono.m_type_bounds) {
-                                    resolve.expand_associated_types(sp, assoc_bound.second);
-                                }
-
-                                rv = resolve.find_impl(sp, b_tp_mono.m_path.m_path, b_tp_mono.m_path.m_params, b_ty_mono, [&](const auto& impl, bool) {
-                                    return true;
-                                    });
-                                if( !rv )
-                                    break;
-                            }
-                            if( !rv )
-                                continue ;
-                        }
-                        auto path = ::HIR::Path(impl_ty.clone(), ::HIR::GenericPath(trait_path, impl.m_trait_args.clone()), vi.first);
-                        Trans_Enumerate_FillFrom_PathMono(state, mv$(path));
-                        //state.enum_fcn(mv$(path), fcn.second.data, {});
-                    }
-                }
-                for(auto& m : impl.m_methods)
-                {
-                    if( m.second.data.m_params.m_types.size() > 0 )
-                        m.second.data.m_save_code = true;
-                }
+                Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, impl);
             }
-            else
-            {
-                for(auto& m : impl.m_methods)
-                {
-                    m.second.data.m_save_code = true;
-                }
-            }
+        }
+        for(auto& impl : impl_group.second.non_named)
+        {
+            Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, impl);
+        }
+        for(auto& impl : impl_group.second.generic)
+        {
+            Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, impl);
         }
     }
     struct H1
@@ -281,18 +298,18 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
             }
         }
     };
-    for(auto& impl_grp : crate.m_named_type_impls)
+    for(auto& impl_grp : crate.m_type_impls.named)
     {
         for(auto& impl : impl_grp.second)
         {
             H1::enumerate_type_impl(state, impl);
         }
     }
-    for(auto& impl : crate.m_primitive_type_impls)
+    for(auto& impl : crate.m_type_impls.non_named)
     {
         H1::enumerate_type_impl(state, impl);
     }
-    for(auto& impl : crate.m_generic_type_impls)
+    for(auto& impl : crate.m_type_impls.generic)
     {
         H1::enumerate_type_impl(state, impl);
     }

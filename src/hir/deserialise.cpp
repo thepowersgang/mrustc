@@ -839,6 +839,14 @@
     template<> DEF_D( ::MacroRulesPtr, return d.deserialise_macrorulesptr(); )
     template<> DEF_D( unsigned int, return static_cast<unsigned int>(d.deserialise_count()); )
 
+    template<typename T>
+    DEF_D( ::HIR::Crate::ImplGroup<T>,
+        ::HIR::Crate::ImplGroup<T>  rv;
+        rv.named = d.deserialise_pathmap< ::std::vector<T>>();
+        rv.non_named = d.deserialise_vec<T>();
+        rv.generic = d.deserialise_vec<T>();
+        return rv;
+        )
     template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
 
     ::HIR::LifetimeDef HirDeserialiser::deserialise_lifetimedef()
@@ -1325,12 +1333,9 @@
         rv.m_crate_name = this->m_crate_name;
         rv.m_root_module = deserialise_module();
 
-        rv.m_named_type_impls = deserialise_pathmap< ::std::vector<::HIR::TypeImpl>>();
-        rv.m_primitive_type_impls = deserialise_vec< ::HIR::TypeImpl>();
-        rv.m_generic_type_impls = deserialise_vec< ::HIR::TypeImpl>();
-
-        rv.m_trait_impls = deserialise_pathmap< ::std::vector<::HIR::TraitImpl>>();
-        rv.m_marker_impls = deserialise_pathmap< ::std::vector<::HIR::MarkerImpl>>();
+        rv.m_type_impls = D< ::HIR::Crate::ImplGroup<::HIR::TypeImpl> >::des(*this);
+        rv.m_trait_impls = deserialise_pathmap< ::HIR::Crate::ImplGroup<::HIR::TraitImpl>>();
+        rv.m_marker_impls = deserialise_pathmap< ::HIR::Crate::ImplGroup<::HIR::MarkerImpl>>();
 
         rv.m_exported_macros = deserialise_istrumap< ::MacroRulesPtr>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();

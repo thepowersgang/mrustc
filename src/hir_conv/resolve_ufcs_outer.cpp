@@ -339,50 +339,46 @@ namespace {
 
 }
 
+namespace {
+    template<typename T>
+    void sort_impl_group(::HIR::Crate::ImplGroup<T>& ig)
+    {
+        auto new_end = ::std::remove_if(ig.generic.begin(), ig.generic.end(), [&ig](T& ty_impl) {
+            const auto& type = ty_impl.m_type;  // Using field accesses in templates feels so dirty
+            const ::HIR::SimplePath*    path = type.get_sort_path();
+
+            if( path )
+            {
+                ig.named[*path].push_back(mv$(ty_impl));
+            }
+            else if( type.m_data.is_Path() || type.m_data.is_Generic() )
+            {
+                return false;
+            }
+            else
+            {
+                ig.non_named.push_back(mv$(ty_impl));
+            }
+            return true;
+            });
+        ig.generic.erase(new_end, ig.generic.end());
+    }
+}
+
 void ConvertHIR_ResolveUFCS_Outer(::HIR::Crate& crate)
 {
     Visitor exp { crate };
     exp.visit_crate( crate );
 
     // Sort impls!
-    auto new_end = ::std::remove_if(crate.m_generic_type_impls.begin(), crate.m_generic_type_impls.end(), [&crate](::HIR::TypeImpl& ty_impl) {
-        const auto& type = ty_impl.m_type;
-        const ::HIR::SimplePath*    path = nullptr;
-        // - Generic paths get sorted
-        if( TU_TEST1(type.m_data, Path, .path.m_data.is_Generic()) )
-        {
-            path = &type.m_data.as_Path().path.m_data.as_Generic().m_path;
-        }
-        // - So do trait objects
-        else if( type.m_data.is_TraitObject() )
-        {
-            path = &type.m_data.as_TraitObject().m_trait.m_path.m_path;
-        }
-        else
-        {
-            // Keep as nullptr, will search primitive list
-        }
-
-        if( path )
-        {
-            auto it = crate.m_named_type_impls.find(*path);
-            if( it == crate.m_named_type_impls.end() )
-            {
-                it = crate.m_named_type_impls.insert( ::std::make_pair(*path, ::std::vector<::HIR::TypeImpl>()) ).first;
-            }
-            it->second.push_back(mv$(ty_impl));
-        }
-        else if( type.m_data.is_Path() || type.m_data.is_Generic() )
-        {
-            return false;
-        }
-        else
-        {
-            crate.m_primitive_type_impls.push_back(mv$(ty_impl));
-        }
-        return true;
-        });
-    crate.m_generic_type_impls.erase(new_end, crate.m_generic_type_impls.end());
-
-    DEBUG("Impl counts: " << crate.m_named_type_impls.size() << " path groups, " << crate.m_primitive_type_impls.size() << " primitive, " << crate.m_generic_type_impls.size() << " ungrouped");
+    sort_impl_group(crate.m_type_impls);
+    DEBUG("Type impl counts: " << crate.m_type_impls.named.size() << " path groups, " << crate.m_type_impls.non_named.size() << " primitive, " << crate.m_type_impls.generic.size() << " ungrouped");
+    for(auto& impl_group : crate.m_trait_impls)
+    {
+        sort_impl_group(impl_group.second);
+    }
+    for(auto& impl_group : crate.m_marker_impls)
+    {
+        sort_impl_group(impl_group.second);
+    }
 }

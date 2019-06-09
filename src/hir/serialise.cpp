@@ -308,17 +308,20 @@
             serialise(pm.path);
             serialise_vec(pm.attributes);
         }
+        template<typename T>
+        void serialise(const ::HIR::Crate::ImplGroup<T>& ig)
+        {
+            serialise_pathmap(ig.named);
+            serialise_vec(ig.non_named);
+            serialise_vec(ig.generic);
+        }
 
         void serialise_crate(const ::HIR::Crate& crate)
         {
             m_out.write_string(crate.m_crate_name);
             serialise_module(crate.m_root_module);
 
-            //std::map<HIR::SimplePath,std::vector<TypeImpl>>
-            serialise_pathmap(crate.m_named_type_impls);
-            serialise_vec(crate.m_primitive_type_impls);
-            serialise_vec(crate.m_generic_type_impls);
-
+            serialise(crate.m_type_impls);
             serialise_pathmap(crate.m_trait_impls);
             serialise_pathmap(crate.m_marker_impls);
 

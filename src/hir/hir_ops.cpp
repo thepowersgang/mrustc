@@ -935,53 +935,10 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
     }
 }
 
-bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const
-{
-    auto it = this->m_trait_impls.find( trait );
-    if( it != this->m_trait_impls.end() )
-    {
-        for(const auto& impl : it->second)
-        {
-            if( impl.matches_type(type, ty_res) ) {
-                if( callback(impl) ) {
-                    return true;
-                }
-            }
-        }
-    }
-    for( const auto& ec : this->m_ext_crates )
-    {
-        if( ec.second.m_data->find_trait_impls(trait, type, ty_res, callback) ) {
-            return true;
-        }
-    }
-    return false;
-}
-bool ::HIR::Crate::find_auto_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::MarkerImpl&)> callback) const
-{
-    auto it = this->m_marker_impls.find( trait );
-    if( it != this->m_marker_impls.end() )
-    {
-        for(const auto& impl : it->second)
-        {
-            if( impl.matches_type(type, ty_res) ) {
-                if( callback(impl) ) {
-                    return true;
-                }
-            }
-        }
-    }
-    for( const auto& ec : this->m_ext_crates )
-    {
-        if( ec.second.m_data->find_auto_trait_impls(trait, type, ty_res, callback) ) {
-            return true;
-        }
-    }
-    return false;
-}
 namespace
 {
-    bool find_type_impls_list(const ::std::vector<HIR::TypeImpl>& impl_list, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback)
+    template<typename ImplType>
+    bool find_impls_list(const ::std::vector<ImplType>& impl_list, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ImplType&)> callback)
     {
         for(const auto& impl : impl_list)
         {
@@ -995,32 +952,101 @@ namespace
         }
         return false;
     }
-    bool find_type_impls_int(const ::HIR::Crate& crate, const ::HIR::SimplePath* sort_path, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback)
+}
+namespace
+{
+    bool find_trait_impls_int(
+            const ::HIR::Crate& crate, const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,
+            ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback
+            )
     {
-        // 1. Find named impls (associated with named types)
-        if( sort_path )
+        auto it = crate.m_trait_impls.find( trait );
+        if( it != crate.m_trait_impls.end() )
         {
-            // TODO: This fails if the type is marked as #[fundamental]
-            //if( sort_path->m_crate_name != crate.m_crate_name ) {
-            //    return false;
-            //}
-
-            auto impl_list_it = crate.m_named_type_impls.find(*sort_path);
-            if( impl_list_it != crate.m_named_type_impls.end() )
+            // 1. Find named impls (associated with named types)
+            if( const auto* impl_list = it->second.get_list_for_type(type) )
             {
-                if( find_type_impls_list(impl_list_it->second, type, ty_res, callback) )
+                if( find_impls_list(*impl_list, type, ty_res, callback) )
                     return true;
             }
+
+            // 2. Search fully generic list.
+            if( find_impls_list(it->second.generic, type, ty_res, callback) )
+                return true;
         }
-        // - If this type has no associated path, look in the primitives list
-        else
+
+        return false;
+    }
+}
+
+bool ::HIR::Crate::find_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TraitImpl&)> callback) const
+{
+    if( find_trait_impls_int(*this, trait, type, ty_res, callback) )
+    {
+        return true;
+    }
+    for( const auto& ec : this->m_ext_crates )
+    {
+        if( find_trait_impls_int(*ec.second.m_data, trait, type, ty_res, callback) )
         {
-            if( find_type_impls_list(crate.m_primitive_type_impls, type, ty_res, callback) )
+            return true;
+        }
+    }
+    return false;
+}
+namespace
+{
+    bool find_auto_trait_impls_int(
+            const ::HIR::Crate& crate, const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type,
+            ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::MarkerImpl&)> callback
+            )
+    {
+        auto it = crate.m_marker_impls.find( trait );
+        if( it != crate.m_marker_impls.end() )
+        {
+            // 1. Find named impls (associated with named types)
+            if( const auto* impl_list = it->second.get_list_for_type(type) )
+            {
+                if( find_impls_list(*impl_list, type, ty_res, callback) )
+                    return true;
+            }
+
+            // 2. Search fully generic list.
+            if( find_impls_list(it->second.generic, type, ty_res, callback) )
+                return true;
+        }
+
+        return false;
+    }
+}
+bool ::HIR::Crate::find_auto_trait_impls(const ::HIR::SimplePath& trait, const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::MarkerImpl&)> callback) const
+{
+    if( find_auto_trait_impls_int(*this, trait, type, ty_res, callback) )
+    {
+        return true;
+    }
+    for( const auto& ec : this->m_ext_crates )
+    {
+        if( find_auto_trait_impls_int(*ec.second.m_data, trait, type, ty_res, callback) )
+        {
+            return true;
+        }
+    }
+    return false;
+}
+namespace
+{
+    bool find_type_impls_int(const ::HIR::Crate& crate, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback)
+    {
+        // 1. Find named impls (associated with named types)
+        if( const auto* impl_list = crate.m_type_impls.get_list_for_type(type) )
+        {
+            if( find_impls_list(*impl_list, type, ty_res, callback) )
                 return true;
         }
 
         // 2. Search fully generic list?
-        if( find_type_impls_list(crate.m_generic_type_impls, type, ty_res, callback) )
+        if( find_impls_list(crate.m_type_impls.generic, type, ty_res, callback) )
             return true;
 
         return false;
@@ -1028,40 +1054,15 @@ namespace
 }
 bool ::HIR::Crate::find_type_impls(const ::HIR::TypeRef& type, t_cb_resolve_type ty_res, ::std::function<bool(const ::HIR::TypeImpl&)> callback) const
 {
-    const ::HIR::SimplePath*    path = nullptr;
-    // - Generic paths get sorted
-    if( TU_TEST1(type.m_data, Path, .path.m_data.is_Generic()) )
-    {
-        path = &type.m_data.as_Path().path.m_data.as_Generic().m_path;
-    }
-    // - So do trait objects
-    else if( type.m_data.is_TraitObject() )
-    {
-        path = &type.m_data.as_TraitObject().m_trait.m_path.m_path;
-    }
-    else
-    {
-        // Keep as nullptr, will search primitive list
-    }
-
-    if( path )
-    {
-        DEBUG(type << ", path=" << *path);
-    }
-    else
-    {
-        DEBUG(type << ", no path");
-    }
-
     // > Current crate
-    if( find_type_impls_int(*this, path, type, ty_res, callback) )
+    if( find_type_impls_int(*this, type, ty_res, callback) )
     {
         return true;
     }
     for( const auto& ec : this->m_ext_crates )
     {
         //DEBUG("- " << ec.first);
-        if( find_type_impls_int(*ec.second.m_data, path, type, ty_res, callback) )
+        if( find_type_impls_int(*ec.second.m_data, type, ty_res, callback) )
         {
             return true;
         }
