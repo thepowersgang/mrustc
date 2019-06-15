@@ -337,9 +337,32 @@ namespace {
         }
         void visit(::HIR::ExprNode_CallMethod& node) override
         {
+            {
+                assert(node.m_cache.m_fcn);
+                ::HIR::ValueUsage   vu = ::HIR::ValueUsage::Borrow;
+                switch(node.m_cache.m_fcn->m_receiver)
+                {
+                case ::HIR::Function::Receiver::Free:
+                    BUG(node.span(), "_CallMethod resolved to free function");
+                case ::HIR::Function::Receiver::Value:
+                case ::HIR::Function::Receiver::Box:
+                case ::HIR::Function::Receiver::Custom:
+                case ::HIR::Function::Receiver::BorrowOwned:
+                    vu = ::HIR::ValueUsage::Move;
+                    break;
+                case ::HIR::Function::Receiver::BorrowUnique:
+                    vu = ::HIR::ValueUsage::Mutate;
+                    break;
+                case ::HIR::Function::Receiver::BorrowShared:
+                    vu = ::HIR::ValueUsage::Borrow;
+                    break;
+                //case ::HIR::Function::Receiver::PointerMut:
+                //case ::HIR::Function::Receiver::PointerConst:
+                }
+                auto _ = push_usage( vu );
+                this->visit_node_ptr(node.m_value);
+            }
             auto _ = push_usage( ::HIR::ValueUsage::Move );
-
-            this->visit_node_ptr(node.m_value);
             for( auto& val : node.m_args )
                 this->visit_node_ptr(val);
         }
