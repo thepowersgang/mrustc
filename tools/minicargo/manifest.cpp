@@ -353,7 +353,18 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         }
     }
 
-    // TODO: if there's a lib target, add a test target using the same path
+    // If there's a lib target, add a test target using the same path
+    {
+        auto it = ::std::find_if(rv.m_targets.begin(), rv.m_targets.end(), [&](const auto& t) { return t.m_type == PackageTarget::Type::Lib; });
+        if( it != rv.m_targets.end() )
+        {
+            auto path = it->m_path;
+            auto name = it->m_name + "-test";
+            rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Test });
+            rv.m_targets.back().m_name = name;
+            rv.m_targets.back().m_path = path;
+        }
+    }
 
     for(const auto& dep : rv.m_dependencies)
     {

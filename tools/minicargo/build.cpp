@@ -666,7 +666,7 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
     case PackageTarget::Type::Test:
         if(crate_type)
             *crate_type = "bin";
-        outfile /= ::format(target.m_name, "-test", EXESUF);
+        outfile /= ::format(target.m_name, EXESUF);
         break;
     default:
         throw ::std::runtime_error("Unknown target type being built");
