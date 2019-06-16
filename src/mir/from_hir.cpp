@@ -451,6 +451,11 @@ namespace {
         }
 
         // -- ExprVisitor
+        void visit_node_ptr(::HIR::ExprNodeP& node_p) override
+        {
+            DEBUG(node_p.get());
+            ::HIR::ExprVisitor::visit_node_ptr(node_p);
+        }
         void visit(::HIR::ExprNode_Block& node) override
         {
             TRACE_FUNCTION_F("_Block");
