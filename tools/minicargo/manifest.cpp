@@ -130,6 +130,16 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                 }
                 rv.m_links = key_val.value.as_string();
             }
+            else if( key == "autotests" )
+            {
+                // TODO: Fix the outer makefile so it doesn't need `foo-test`
+                // to be created.
+                //rv.m_create_auto_test = key_val.value.as_bool();
+            }
+            else if( key == "autobenches" )
+            {
+                //rv.m_create_auto_bench = key_val.value.as_bool();
+            }
             else
             {
                 // Unknown value in `package`
@@ -380,7 +390,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         // Explicitly disabled `[package] build = false`
         rv.m_build_script = "";
     }
-    else if( rv.m_build_script != "" )
+    else if( rv.m_build_script == "" )
     {
         // Not set, check for a "build.rs" file
         if( ::std::ifstream( package_dir / "build.rs").good() )

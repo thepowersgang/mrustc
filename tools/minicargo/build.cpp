@@ -708,7 +708,7 @@ namespace {
                 }
                 ::std::string get_token() {
                     auto t = get_token_int();
-                    DEBUG("get_token '" << t << "'");
+                    //DEBUG("get_token '" << t << "'");
                     return t;
                 }
                 ::std::string get_token_int() {
@@ -885,6 +885,11 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("-C"); args.push_back("codegen-type=monomir");
     }
 
+    for(const auto& d : m_opts.lib_search_dirs)
+    {
+        args.push_back("-L");
+        args.push_back(d.str().c_str());
+    }
     args.push_back("-L"); args.push_back(this->get_output_dir(is_for_host).str());
     for(const auto& dir : manifest.build_script_output().rustc_link_search) {
         args.push_back("-L"); args.push_back(dir.second.c_str());
@@ -910,7 +915,7 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         args.push_back("--extern");
         args.push_back(::format(m.get_library().m_name, "=", path));
     }
-    if( target.m_type == PackageTarget::Type::Test /*|| building_unit_tests */)
+    if( target.m_type == PackageTarget::Type::Test )
     {
         args.push_back("--test");
     }
@@ -924,10 +929,18 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
             args.push_back(::format(m.get_library().m_name, "=", path));
         }
     }
-    for(const auto& d : m_opts.lib_search_dirs)
+    if( target.m_type == PackageTarget::Type::Test )
     {
-        args.push_back("-L");
-        args.push_back(d.str().c_str());
+        for(const auto& dep : manifest.dev_dependencies())
+        {
+            if( ! dep.is_disabled() )
+            {
+                const auto& m = dep.get_package();
+                auto path = this->get_crate_path(m, m.get_library(), is_for_host, nullptr, nullptr);
+                args.push_back("--extern");
+                args.push_back(::format(m.get_library().m_name, "=", path));
+            }
+        }
     }
 
     // TODO: Environment variables (rustc_env)
