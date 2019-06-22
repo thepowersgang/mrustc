@@ -5,6 +5,8 @@
  * hir/serialise.cpp
  * - HIR (De)Serialisation for crate metadata
  */
+// TODO: Have an environment variable that controls if debug is enabled here.
+#define DEBUG_EXTRA_ENABLE && false
 //#define DISABLE_DEBUG   //  Disable debug for this function - too hot
 #include "hir.hpp"
 #include "main_bindings.hpp"
