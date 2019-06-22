@@ -16,8 +16,8 @@ public:
     ::HIR::SimplePath   m_mod_path;
     const ::HIR::Module&    m_module;
 
-    ::HIR::GenericParams*   m_impl_generics;
-    ::HIR::GenericParams*   m_item_generics;
+    const ::HIR::GenericParams*   m_impl_generics;
+    const ::HIR::GenericParams*   m_item_generics;
 
     ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   m_traits;
 

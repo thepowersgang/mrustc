@@ -1074,6 +1074,8 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
 {
     if( !ep )
     {
+        // No HIR, so has to just have MIR - from a extern crate most likely
+        assert(ep.m_mir);
         return &*ep.m_mir;
     }
     else
@@ -1096,6 +1098,7 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
                 //Debug_SetStagePre("HIR Typecheck");
                 // - Can store that on the Expr, OR get it from the item path
                 typeck::ModuleState ms { const_cast<::HIR::Crate&>(*this) };
+                //ms.prepare_from_path( ip );   // <- Ideally would use this, but it's a lot of code for one usage
                 ms.m_impl_generics = ep.m_state->m_impl_generics;
                 ms.m_item_generics = ep.m_state->m_item_generics;
                 ms.m_traits = ep.m_state->m_traits;

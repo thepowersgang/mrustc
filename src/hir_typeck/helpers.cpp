@@ -947,9 +947,17 @@ void TraitResolution::prep_indexes()
         this->m_type_equalities.insert(::std::make_pair( mv$(long_ty), mv$(short_ty) ));
         };
 
+    DEBUG("m_impl_params = " << m_impl_params << ", m_item_params = " << m_item_params);
+    if( m_impl_params ) {
+        DEBUG("- impl" << m_impl_params->fmt_args() << " " << m_impl_params->fmt_bounds());
+    }
+    if( m_item_params ) {
+        DEBUG("- fn ..." << m_item_params->fmt_args() << " " << m_item_params->fmt_bounds());
+    }
     // Obtain type equality bounds.
     // TODO: Also flatten the bounds list into known trait bounds?
     this->iterate_bounds([&](const auto& b)->bool {
+        DEBUG("[prep_indexes] " << b);
         if(const auto* bep = b.opt_TraitBound())
         {
             const auto& be = *bep;

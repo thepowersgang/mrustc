@@ -19,6 +19,83 @@ void Typecheck_Code(const typeck::ModuleState& ms, t_args& args, const ::HIR::Ty
     }
 }
 
+namespace typeck {
+    void ModuleState::prepare_from_path(const ::HIR::ItemPath& ip)
+    {
+        static Span sp;
+        ASSERT_BUG(sp, ip.parent, "prepare_from_path with too-short path - " << ip);
+        struct H {
+            static const ::HIR::Module& get_mod_for_ip(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip)
+            {
+                if( ip.parent )
+                {
+                    const auto& mod = H::get_mod_for_ip(crate, *ip.parent);
+                    return mod.m_mod_items.at(ip.name)->ent.as_Module();
+                }
+                else
+                {
+                    assert(ip.crate_name);
+                    return (ip.crate_name[0] ? crate.m_ext_crates.at(ip.crate_name).m_data->m_root_module : crate.m_root_module);
+                }
+            }
+            static void add_traits_from_mod(ModuleState& ms, const ::HIR::Module& mod)
+            {
+                // In-scope traits.
+                ms.m_traits.clear();
+                for(const auto& tp : mod.m_traits)
+                {
+                    const auto& trait = ms.m_crate.get_trait_by_path(sp, tp);
+                    ms.m_traits.push_back(::std::make_pair( &tp, &trait ));
+                }
+            }
+        };
+        if( ip.parent->trait && ip.parent->ty )
+        {
+            // Trait impl
+            TODO(sp, "prepare_from_path - Trait impl " << ip);
+        }
+        else if( ip.parent->trait )
+        {
+            // Trait definition
+            //const auto& trait_mod = H::get_mod_for_ip(m_crate, *ip.parent->trait->parent);
+            //const auto& trait = trait_mod.m_mod_items.at(ip.parent->trait->name).ent.as_Trait();
+            const auto& trait = m_crate.get_trait_by_path(sp, *ip.parent->trait);
+            const auto& item = trait.m_values.at(ip.name);
+            TU_MATCH_HDRA( (item), { )
+            TU_ARMA(Function, e) {
+                m_item_generics = &e.m_params;
+                }
+            }
+        }
+        else if( ip.parent->ty )
+        {
+            // Inherent impl
+            TODO(sp, "prepare_from_path - Type impl " << ip);
+        }
+        else
+        {
+            // Namespace path
+            const auto& mod = H::get_mod_for_ip(m_crate, *ip.parent);
+            H::add_traits_from_mod(*this, mod);
+            const auto& item = mod.m_value_items.at(ip.name)->ent;
+            m_impl_generics = nullptr;
+            TU_MATCH_HDRA( (item), { )
+            TU_ARMA(Constant, e) {
+                m_item_generics = &e.m_params;
+                }
+            TU_ARMA(Static, e) {
+                //m_item_generics = &e.m_params;
+                }
+            TU_ARMA(Function, e) {
+                m_item_generics = &e.m_params;
+                }
+            TU_ARMA(StructConstant, _e) BUG(sp, ip << " is StructConstant");
+            TU_ARMA(StructConstructor, _e) BUG(sp, ip << " is StructConstructor");
+            }
+        }
+    }
+} // namespace typeck
+
 namespace {
 
 

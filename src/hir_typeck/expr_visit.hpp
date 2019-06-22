@@ -12,8 +12,8 @@ namespace typeck {
     {
         const ::HIR::Crate& m_crate;
 
-        ::HIR::GenericParams*   m_impl_generics;
-        ::HIR::GenericParams*   m_item_generics;
+        const ::HIR::GenericParams*   m_impl_generics;
+        const ::HIR::GenericParams*   m_item_generics;
 
         ::std::vector< ::std::pair< const ::HIR::SimplePath*, const ::HIR::Trait* > >   m_traits;
         ::std::vector<HIR::SimplePath>  m_mod_paths;
@@ -35,16 +35,18 @@ namespace typeck {
                 ptr = nullptr;
             }
         };
-        NullOnDrop< ::HIR::GenericParams> set_impl_generics(::HIR::GenericParams& gps) {
+        NullOnDrop<const ::HIR::GenericParams> set_impl_generics(::HIR::GenericParams& gps) {
             assert( !m_impl_generics );
             m_impl_generics = &gps;
-            return NullOnDrop< ::HIR::GenericParams>(m_impl_generics);
+            return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);
         }
-        NullOnDrop< ::HIR::GenericParams> set_item_generics(::HIR::GenericParams& gps) {
+        NullOnDrop<const ::HIR::GenericParams> set_item_generics(::HIR::GenericParams& gps) {
             assert( !m_item_generics );
             m_item_generics = &gps;
-            return NullOnDrop< ::HIR::GenericParams>(m_item_generics);
+            return NullOnDrop<const ::HIR::GenericParams>(m_item_generics);
         }
+
+        void prepare_from_path(const ::HIR::ItemPath& ip);
 
         void push_traits(::HIR::ItemPath p, const ::HIR::Module& mod) {
             auto sp = Span();
