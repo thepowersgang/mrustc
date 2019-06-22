@@ -713,10 +713,14 @@ namespace {
                     }
 
                     // TODO: Bind `panic_impl` lang item to the item tagged with `panic_implementation`
+                    m_of << "uint32_t panic_impl(uintptr_t payload) {";
+                    const auto& panic_impl_path = m_crate.get_lang_item_path(Span(), "mrustc-panic_implementation");
+                    m_of << "extern uint32_t " << Trans_Mangle(panic_impl_path) << "(uintptr_t payload);";
+                    m_of << "return " << Trans_Mangle(panic_impl_path) << "(payload);";
+                    m_of << "}\n";
                     // TODO: Bind `oom` lang item to the item tagged with `alloc_error_handler`
                     // - Can do this in enumerate/auto_impls instead, for better iteraction with enum
                     // XXX: HACK HACK HACK - This only works with libcore/libstd's current layout
-                    m_of << "uint32_t panic_impl(uintptr_t payload) { extern uint32_t __rust_start_panic(uintptr_t payload); return __rust_start_panic(payload); }\n";
                     m_of << "struct s__ZN4core5alloc6Layout_A { uintptr_t a, b; };\n";
                     m_of << "void oom_impl(struct s__ZN4core5alloc6Layout_A l) { extern void _ZN3std5alloc8rust_oom(struct s__ZN4core5alloc6Layout_A l); _ZN3std5alloc8rust_oom(l); }\n";
                 }
@@ -4475,7 +4479,7 @@ namespace {
                 {
                 case Compiler::Gcc:
                     m_of << "{ ";
-                    m_of << " jmp_buf jmpbuf; mrustc_panic_target = &jmpbuf;";
+                    m_of << " jmp_buf jmpbuf, *old = mrustc_panic_target; mrustc_panic_target = &jmpbuf;";
                     m_of << " if(setjmp(jmpbuf)) {";
                     // NOTE: gcc unwind has a pointer as its `local_ptr` parameter
                     m_of << " *(void**)("; emit_param(e.args.at(2)); m_of << ") = mrustc_panic_value;";
@@ -4493,7 +4497,8 @@ namespace {
                 case Compiler::Gcc:
                     m_of << ";";
                     m_of << " }";
-                    m_of << " mrustc_panic_target = NULL;";
+                    m_of << " if(mrustc_panic_target != &jmpbuf) { abort(); }";
+                    m_of << " mrustc_panic_target = old;";
                     m_of << " }";
                     break;
                 default:

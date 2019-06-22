@@ -51,6 +51,7 @@ enum eItemType
     ITEM_ENUM,
     ITEM_UNION,
     ITEM_FN,
+    ITEM_EXTERN_FN,
     ITEM_STATIC,
 };
 

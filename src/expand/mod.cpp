@@ -55,13 +55,21 @@ void ExpandDecorator::unexpected(const Span& sp, const AST::Attribute& mi, const
 
 void Expand_Attr(const Span& sp, const ::AST::Attribute& a, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
+    bool found = false;
     for( auto& d : g_decorators ) {
         if( a.name() == d.first ) {
             DEBUG("#[" << d.first << "] " << (int)d.second->stage() << "-" << (int)stage);
             if( d.second->stage() == stage ) {
                 f(sp, *d.second, a);
+                // TODO: Early return?
+                // TODO: Annotate the attribute as having been handled
             }
+            found = true;
         }
+    }
+    if( !found ) {
+        // TODO: Create no-op handlers for a whole heap of attributes
+        //WARNING(sp, W0000, "Unknown attribute " << a.name());
     }
 }
 void Expand_Attrs(/*const */::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)

@@ -99,12 +99,16 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
     // Statics
     else if( name == "msvc_try_filter" ) { }
 
+    // Extern functions
+    else if( name == "panic_impl" ) {
+    }
+    else if( name == "oom" ) {
+    }
+
     // Functions
     else if( name == "panic" ) { }
     else if( name == "panic_bounds_check" ) { }
-    else if( name == "panic_fmt" ) {
-
-    }
+    else if( name == "panic_fmt" ) { }
     else if( name == "str_eq" ) { }
     else if( name == "drop_in_place" ) { }
     else if( name == "align_offset" ) { }
@@ -148,6 +152,12 @@ void handle_lang_item(const Span& sp, AST::Crate& crate, const AST::Path& path, 
         ERROR(sp, E0000, "Unknown language item '" << name << "'");
     }
 
+    if( type == AST::ITEM_EXTERN_FN )
+    {
+        // TODO: This should force a specific link name instead
+        return ;
+    }
+
     auto rv = crate.m_lang_items.insert( ::std::make_pair( name, ::AST::Path(path) ) );
     if( !rv.second ) {
         const auto& other_path = rv.first->second;
@@ -177,7 +187,7 @@ public:
                 handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_FN);
             }
             else {
-                //handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_EXTERN_FN);
+                handle_lang_item(sp, crate, path, attr.string(), AST::ITEM_EXTERN_FN);
             }
             ),
         (Static,
@@ -280,9 +290,30 @@ public:
     }
 };
 
+class Decorator_PanicImplementation:
+    public ExpandDecorator
+{
+public:
+    AttrStage stage() const override { return AttrStage::Post; }
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    {
+        TU_IFLET(::AST::Item, i, Function, e,
+            auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), ::AST::Path(path) ));
+            if( !rv.second )
+            {
+                const auto& other_path = rv.first->second;
+                ERROR(sp, E0000, "Duplicate definition of #[panic_implementation] - " << other_path << " and " << path);
+            }
+        )
+        else {
+            ERROR(sp, E0000, "#[panic_implementation] on non-function " << path);
+        }
+    }
+};
 
 STATIC_DECORATOR("lang", Decorator_LangItem)
 STATIC_DECORATOR("main", Decorator_Main);
 STATIC_DECORATOR("start", Decorator_Start);
+STATIC_DECORATOR("panic_implementation", Decorator_PanicImplementation);
 
 
