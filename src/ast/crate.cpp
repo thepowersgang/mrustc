@@ -111,7 +111,7 @@ void Crate::load_externs()
 // - Crates recorded in rlibs should specify a hash/tag that's passed in to this function.
 RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::string& basename/*=""*/)
 {
-    DEBUG("Loading crate '" << name << "'");
+    TRACE_FUNCTION_F("Loading crate '" << name << "' (basename='" << basename << "')");
 
     ::std::string   path;
     auto it = g_crate_overrides.find(name.c_str());
@@ -121,9 +121,13 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
         if( !::std::ifstream(path).good() ) {
             ERROR(sp, E0000, "Unable to open crate '" << name << "' at path " << path);
         }
+        DEBUG("path = " << path << " (--extern)");
     }
     else if( basename != "" )
     {
+#if 1
+        path = basename;
+#else
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
@@ -133,9 +137,11 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
                 break ;
             }
         }
+#endif
         if( !::std::ifstream(path).good() ) {
             ERROR(sp, E0000, "Unable to locate crate '" << name << "' with filename " << basename << " in search directories");
         }
+        DEBUG("path = " << path << " (basename)");
     }
     else
     {
@@ -183,6 +189,7 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
             ERROR(sp, E0000, "Unable to locate crate '" << name << "' in search directories");
         }
         path = paths.front();
+        DEBUG("path = " << path << " (search)");
     }
 
     // NOTE: Creating `ExternCrate` loads the crate from the specified path

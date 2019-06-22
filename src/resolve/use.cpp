@@ -541,11 +541,12 @@ namespace {
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const ::HIR::Module& hmodr, unsigned int start)
 {
     ::AST::Path::Bindings   rv;
-    TRACE_FUNCTION_F(path);
+    TRACE_FUNCTION_F(path << " offset " << start);
     const auto& nodes = path.nodes();
     const ::HIR::Module* hmod = &hmodr;
     for(unsigned int i = start; i < nodes.size() - 1; i ++)
     {
+        DEBUG("m_mod_items = {" << FMT_CB(ss, for(const auto& e : hmod->m_mod_items) ss << e.first << ", ";) << "}");
         auto it = hmod->m_mod_items.find(nodes[i].name());
         if( it == hmod->m_mod_items.end() ) {
             // BZZT!
@@ -735,6 +736,7 @@ namespace {
 }
 ::AST::Path::Bindings Resolve_Use_GetBinding__ext(const Span& span, const ::AST::Crate& crate, const ::AST::Path& path,  const AST::ExternCrate& ec, unsigned int start)
 {
+    DEBUG("Crate " << ec.m_name);
     auto rv = Resolve_Use_GetBinding__ext(span, crate, path, ec.m_hir->m_root_module, start);
     if( start + 1 == path.nodes().size() )
     {
