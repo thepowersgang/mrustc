@@ -20,7 +20,9 @@ public:
     const char* crate_name = nullptr;
     const ::HIR::Path*  wrapped = nullptr;
 
+    ItemPath(const char* crate): crate_name(crate) {}
     ItemPath(const ::std::string& crate): crate_name(crate.c_str()) {}
+    ItemPath(const RcString& crate): crate_name(crate.c_str()) {}
     ItemPath(const ItemPath& p, const char* n):
         parent(&p),
         name(n)
@@ -141,7 +143,7 @@ public:
             os << "<* as " << *x.trait << ">";
         }
         else if( x.crate_name ) {
-            os << "\"" << x.crate_name << "\"";
+            os << "::\"" << x.crate_name << "\"";
         }
         return os;
     }
