@@ -256,16 +256,16 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
         {
             for(auto& impl : impl_list.second)
             {
-                Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, impl);
+                Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, *impl);
             }
         }
         for(auto& impl : impl_group.second.non_named)
         {
-            Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, impl);
+            Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, *impl);
         }
         for(auto& impl : impl_group.second.generic)
         {
-            Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, impl);
+            Trans_Enumerate_Public_TraitImpl(state, resolve, trait_path, *impl);
         }
     }
     struct H1
@@ -302,16 +302,16 @@ TransList Trans_Enumerate_Public(::HIR::Crate& crate)
     {
         for(auto& impl : impl_grp.second)
         {
-            H1::enumerate_type_impl(state, impl);
+            H1::enumerate_type_impl(state, *impl);
         }
     }
     for(auto& impl : crate.m_type_impls.non_named)
     {
-        H1::enumerate_type_impl(state, impl);
+        H1::enumerate_type_impl(state, *impl);
     }
     for(auto& impl : crate.m_type_impls.generic)
     {
-        H1::enumerate_type_impl(state, impl);
+        H1::enumerate_type_impl(state, *impl);
     }
 
     auto rv = Trans_Enumerate_CommonPost(state);

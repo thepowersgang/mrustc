@@ -343,8 +343,8 @@ namespace {
     template<typename T>
     void sort_impl_group(::HIR::Crate::ImplGroup<T>& ig)
     {
-        auto new_end = ::std::remove_if(ig.generic.begin(), ig.generic.end(), [&ig](T& ty_impl) {
-            const auto& type = ty_impl.m_type;  // Using field accesses in templates feels so dirty
+        auto new_end = ::std::remove_if(ig.generic.begin(), ig.generic.end(), [&ig](::std::unique_ptr<T>& ty_impl) {
+            const auto& type = ty_impl->m_type;  // Using field accesses in templates feels so dirty
             const ::HIR::SimplePath*    path = type.get_sort_path();
 
             if( path )

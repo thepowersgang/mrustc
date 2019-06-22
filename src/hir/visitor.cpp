@@ -19,16 +19,16 @@ namespace {
         {
             for( auto& impl : impl_group.second )
             {
-                cb(impl);
+                cb(*impl);
             }
         }
         for( auto& impl : g.non_named )
         {
-            cb(impl);
+            cb(*impl);
         }
         for( auto& impl : g.generic )
         {
-            cb(impl);
+            cb(*impl);
         }
     }
 }

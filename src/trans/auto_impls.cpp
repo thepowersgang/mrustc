@@ -202,7 +202,8 @@ void Trans_AutoImpl_Clone(State& state, ::HIR::TypeRef ty)
     impl.m_methods.insert(::std::make_pair( RcString::new_interned("clone"), ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { false, ::std::move(fcn) } ));
 
     // Add impl to the crate
-    state.crate.m_trait_impls[state.lang_Clone].get_list_for_type_mut(impl.m_type).push_back( ::std::move(impl) );
+    auto& list = state.crate.m_trait_impls[state.lang_Clone].get_list_for_type_mut(impl.m_type);
+    list.push_back( box$(impl) );
 }
 
 void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
@@ -238,10 +239,10 @@ void Trans_AutoImpls(::HIR::Crate& crate, TransList& trans_list)
         auto e = trans_list.add_function(::std::move(p));
 
         const auto* impl_list = impl_list_it->second.get_list_for_type(ty);
-        assert(impl_list);
-        auto it = ::std::find_if( impl_list->begin(), impl_list->end(), [&](const auto& i){ return i.m_type == ty; });
-        assert( it->m_methods.size() == 1 );
-        e->ptr = &it->m_methods.begin()->second.data;
+        ASSERT_BUG(Span(), impl_list, "No impl list of Clone for " << ty);
+        auto& impl = **::std::find_if( impl_list->begin(), impl_list->end(), [&](const auto& i){ return i->m_type == ty; });
+        assert( impl.m_methods.size() == 1 );
+        e->ptr = &impl.m_methods.begin()->second.data;
     }
 }
 

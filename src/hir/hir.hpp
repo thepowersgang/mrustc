@@ -530,12 +530,13 @@ public:
     template<typename T>
     struct ImplGroup
     {
-        ::std::map<::HIR::SimplePath, ::std::vector<T>> named;
-        ::std::vector<T> non_named; // TODO: use a map of HIR::TypeRef::Data::Tag
-        ::std::vector<T> generic;
+        typedef ::std::vector<::std::unique_ptr<T>> list_t;
+        ::std::map<::HIR::SimplePath, list_t>   named;
+        list_t  non_named; // TODO: use a map of HIR::TypeRef::Data::Tag
+        list_t  generic;
 
-        const ::std::vector<T>* get_list_for_type(const ::HIR::TypeRef& ty) const {
-            static ::std::vector<T> empty;
+        const list_t* get_list_for_type(const ::HIR::TypeRef& ty) const {
+            static list_t empty;
             if( const auto* p = ty.get_sort_path() ) {
                 auto it = named.find(*p);
                 if( it != named.end() )
@@ -548,7 +549,7 @@ public:
                 return &non_named;
             }
         }
-        ::std::vector<T>& get_list_for_type_mut(const ::HIR::TypeRef& ty) {
+        list_t& get_list_for_type_mut(const ::HIR::TypeRef& ty) {
             if( const auto* p = ty.get_sort_path() ) {
                 return named[*p];
             }

@@ -50,7 +50,7 @@ namespace {
     {
         for(auto& impl : new_trait_impls)
         {
-            ::std::vector<::HIR::TraitImpl>* trait_impl_list;
+            ::HIR::Crate::ImplGroup<::HIR::TraitImpl>::list_t* trait_impl_list;
             switch(impl.first)
             {
             case ::HIR::ExprNode_Closure::Class::Once:
@@ -61,7 +61,7 @@ namespace {
                 if(0)
             case ::HIR::ExprNode_Closure::Class::Shared:
                 trait_impl_list = &crate.m_trait_impls[crate.get_lang_item_path(sp, "fn"     )].get_list_for_type_mut(impl.second.m_type);
-                trait_impl_list->push_back( mv$(impl.second) );
+                trait_impl_list->push_back( box$(impl.second) );
                 break;
             case ::HIR::ExprNode_Closure::Class::NoCapture: {
                 assert(impl.second.m_methods.size() == 1);
@@ -70,8 +70,8 @@ namespace {
                 // NOTE: This should always have a name
                 const auto& path = impl.second.m_type.m_data.as_Path().path.m_data.as_Generic().m_path;
                 DEBUG("Adding type impl " << path);
-                auto list_it = crate.m_type_impls.named.insert( ::std::make_pair(path, ::std::vector<::HIR::TypeImpl>()) ).first;
-                list_it->second.push_back( ::HIR::TypeImpl {
+                auto* list_it = &crate.m_type_impls.named[path];
+                list_it->push_back(box$(::HIR::TypeImpl {
                     mv$(impl.second.m_params),
                     mv$(impl.second.m_type),
                     make_map1(
@@ -80,7 +80,7 @@ namespace {
                         ),
                     {},
                     mv$(impl.second.m_src_module)
-                    } );
+                    }));
                 } break;
             case ::HIR::ExprNode_Closure::Class::Unknown:
                 BUG(Span(), "Encountered Unkown closure type in new impls");

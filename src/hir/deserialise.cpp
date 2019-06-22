@@ -842,9 +842,9 @@
     template<typename T>
     DEF_D( ::HIR::Crate::ImplGroup<T>,
         ::HIR::Crate::ImplGroup<T>  rv;
-        rv.named = d.deserialise_pathmap< ::std::vector<T>>();
-        rv.non_named = d.deserialise_vec<T>();
-        rv.generic = d.deserialise_vec<T>();
+        rv.named = d.deserialise_pathmap< ::std::vector<::std::unique_ptr<T> > >();
+        rv.non_named = d.deserialise_vec< ::std::unique_ptr<T> >();
+        rv.generic = d.deserialise_vec< ::std::unique_ptr<T> >();
         return rv;
         )
     template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )

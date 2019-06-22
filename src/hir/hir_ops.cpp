@@ -938,13 +938,13 @@ bool ::HIR::TraitImpl::overlaps_with(const Crate& crate, const ::HIR::TraitImpl&
 namespace
 {
     template<typename ImplType>
-    bool find_impls_list(const ::std::vector<ImplType>& impl_list, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ImplType&)> callback)
+    bool find_impls_list(const typename ::HIR::Crate::ImplGroup<ImplType>::list_t& impl_list, const ::HIR::TypeRef& type, ::HIR::t_cb_resolve_type ty_res, ::std::function<bool(const ImplType&)> callback)
     {
         for(const auto& impl : impl_list)
         {
-            if( impl.matches_type(type, ty_res) )
+            if( impl->matches_type(type, ty_res) )
             {
-                if( callback(impl) )
+                if( callback(*impl) )
                 {
                     return true;
                 }
