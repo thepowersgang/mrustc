@@ -982,6 +982,17 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             {
                 pos ++;
                 v.patch = H::parse_i(s, pos);
+
+                if( pos < s.size() && s[pos] == '-' )
+                {
+                    // Save tag (sequence of dot-seprated alpha-numeric identifiers)
+                    auto tag_start = pos+1;
+                    do {
+                        // Could check the format, but meh.
+                        pos ++;
+                    } while(pos < s.size() && !isblank(s[pos]) && s[pos] != ',' );
+                    //v.tag = ::std::string(s.c_str() + tag_start, s.c_str() + pos);
+                }
             }
             else
             {
@@ -1005,7 +1016,7 @@ PackageVersionSpec PackageVersionSpec::from_string(const ::std::string& s)
             break ;
     } while(pos < s.size() && s[pos++] == ',');
     if( pos != s.size() )
-        throw ::std::runtime_error(::format( "Bad version string, pos=", pos ));
+        throw ::std::runtime_error(::format( "Bad version string '", s, "', pos=", pos ));
     return rv;
 }
 bool PackageVersionSpec::accepts(const PackageVersion& v) const
