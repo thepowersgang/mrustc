@@ -18,17 +18,20 @@ struct Dumper
 {
     struct Filters {
         struct Types {
-            bool    macros = false;
-            bool    functions = false;
-            bool    statics = false;
-            bool    types = false;
+            bool    macros = true;
+            bool    functions = true;
+            bool    statics = true;
+            bool    types = true;
+            bool    traits = true;
         } types;
         bool public_only = false;
+        bool no_body = false;
     } filters;
 
     void dump_crate(const char* name, const ::HIR::Crate& crate) const;
     void dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod) const;
     void dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Function& fcn, int indent=0) const;
+    void dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int indent=0) const;
 };
 
 int main(int argc, const char* argv[])
@@ -40,6 +43,27 @@ int main(int argc, const char* argv[])
 
     auto hir = HIR_Deserialise(args.infile);
     dumper.dump_crate("", *hir);
+}
+namespace {
+    template<typename T, typename Fcn>
+    void dump_impl_group(const ::HIR::Crate::ImplGroup<T>& ig, Fcn cb)
+    {
+        for(const auto& named_il : ig.named)
+        {
+            for(const auto& impl : named_il.second)
+            {
+                cb(*impl);
+            }
+        }
+        for(const auto& impl : ig.non_named)
+        {
+            cb(*impl);
+        }
+        for(const auto& impl : ig.generic)
+        {
+            cb(*impl);
+        }
+    }
 }
 void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
 {
@@ -91,22 +115,23 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
 
     for(const auto& i : crate.m_trait_impls)
     {
-        auto root_ip = ::HIR::ItemPath(i.second.m_type, i.first, i.second.m_trait_args);
-        ::std::cout << "impl" << i.second.m_params.fmt_args() << " " << i.first << i.second.m_trait_args << " for " << i.second.m_type << "\n";
-        ::std::cout << "  where" << i.second.m_params.fmt_bounds() << "\n";
-        ::std::cout << "{" << ::std::endl;
-        if( this->filters.types.functions )
-        {
-            for(const auto& m : i.second.m_methods)
+        dump_impl_group(i.second, [&](const ::HIR::TraitImpl& ti) {
+            auto root_ip = ::HIR::ItemPath(ti.m_type, i.first, ti.m_trait_args);
+            ::std::cout << "impl" << ti.m_params.fmt_args() << " " << i.first << ti.m_trait_args << " for " << ti.m_type << "\n";
+            ::std::cout << "  where" << ti.m_params.fmt_bounds() << "\n";
+            ::std::cout << "{" << ::std::endl;
+            if( this->filters.types.functions )
             {
-                this->dump_function(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
+                for(const auto& m : ti.m_methods)
+                {
+                    this->dump_function(root_ip + m.first, ::HIR::Publicity::new_global(), m.second.data, 1);
+                }
             }
-        }
-        ::std::cout << "}" << ::std::endl;
+            ::std::cout << "}" << ::std::endl;
+        });
     }
 
-    for(const auto& i : crate.m_type_impls)
-    {
+    dump_impl_group(crate.m_type_impls, [&](const auto& i) {
         auto root_ip = ::HIR::ItemPath(i.m_type);
         ::std::cout << "impl" << i.m_params.fmt_args() << " " << i.m_type << "\n";
         ::std::cout << "  where" << i.m_params.fmt_bounds() << "\n";
@@ -119,7 +144,7 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
             }
         }
         ::std::cout << "}" << ::std::endl;
-    }
+    });
 }
 void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod) const
 {
@@ -127,6 +152,7 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
     {
         return ;
     }
+    ::std::cout << "// mod " << ip << ::std::endl;
     for(const auto& i : mod.m_mod_items)
     {
         auto sub_ip = ip + i.first;
@@ -151,10 +177,10 @@ void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const 
             //this->dump_enum(sub_ip, e);
             }
         TU_ARMA(Union, e) {
-            //this->dump_enum(sub_ip, e);
+            //this->dump_trait(sub_ip, e);
             }
         TU_ARMA(Trait, e) {
-            //this->dump_enum(sub_ip, e);
+            this->dump_trait(sub_ip, i.second->publicity, e);
             }
         }
     }
@@ -199,7 +225,12 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
     {
         ::std::cout << "\n";
         ::std::cout << indent << "{\n";
-        MIR_Dump_Fcn(::std::cout, *fcn.m_code.m_mir, nindent+1);
+        if( filters.no_body ) {
+            ::std::cout << indent << "...\n";
+        }
+        else {
+            MIR_Dump_Fcn(::std::cout, *fcn.m_code.m_mir, nindent+1);
+        }
         ::std::cout << indent << "}\n";
         ::std::cout << ::std::endl;
     }
@@ -207,6 +238,22 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
     {
         ::std::cout << ";" << ::std::endl;
     }
+}
+void Dumper::dump_trait(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Trait& trait, int nindent/*=0*/) const
+{
+    auto indent = RepeatLitStr { "   ", nindent };
+    if( !this->filters.types.functions ) {
+        return ;
+    }
+    if( !filters.public_only && !pub.is_global() ) {
+        return ;
+    }
+    ::std::cout << indent << "trait " << ip << trait.m_params.fmt_args() << "\n";
+    ::std::cout << indent << "{\n";
+    auto indent2 = RepeatLitStr { "   ", nindent+1 };
+    // ...
+    ::std::cout << indent << "}\n";
+    ::std::cout << ::std::endl;
 }
 
 bool debug_enabled()
