@@ -607,7 +607,7 @@ namespace {
 
         ~CodeGenerator_C() {}
 
-        void finalise(bool is_executable, const TransOptions& opt) override
+        void finalise(const TransOptions& opt, CodegenOutput out_ty, const ::std::string& hir_file) override
         {
             // Emit box drop glue after everything else to avoid definition ordering issues
             for(auto& e : m_box_glue_todo)
@@ -615,10 +615,12 @@ namespace {
                 emit_box_drop_glue( mv$(e.first), *e.second );
             }
 
+            const bool create_shims = (out_ty == CodegenOutput::Executable);
+
             // TODO: Support dynamic libraries too
             // - No main, but has the rest.
             // - Well... for cdylibs that's the case, for rdylibs it's not
-            if( is_executable )
+            if( out_ty == CodegenOutput::Executable )
             {
                 // TODO: Define this function in MIR?
                 m_of << "int main(int argc, const char* argv[]) {\n";
@@ -634,7 +636,11 @@ namespace {
                     m_of << "\treturn " << Trans_Mangle(::HIR::GenericPath(c_start_path)) << "(argc, argv);\n";
                 }
                 m_of << "}\n";
+            }
 
+            // Auto-generated code/items for the "root" rust binary (cdylib or executable)
+            if( create_shims )
+            {
                 if( m_compiler == Compiler::Gcc )
                 {
                     m_of
@@ -643,7 +649,7 @@ namespace {
                         ;
                 }
 
-                // Allocator shims
+                // Allocator/panic shims
                 if( TARGETVER_1_29 )
                 {
                     const char* alloc_prefix = "__rdl_";
@@ -796,10 +802,23 @@ namespace {
                     args.push_back("-g");
                 }
                 args.push_back("-o");
-                args.push_back(m_outfile_path  .c_str());
-                args.push_back(m_outfile_path_c.c_str());
-                if( is_executable )
+                switch(out_ty)
                 {
+                case CodegenOutput::DynamicLibrary:
+                case CodegenOutput::Executable:
+                case CodegenOutput::Object:
+                    args.push_back(m_outfile_path  .c_str());
+                    break;
+                case CodegenOutput::StaticLibrary:
+                    args.push_back(m_outfile_path+".o");
+                    break;
+                }
+                args.push_back(m_outfile_path_c.c_str());
+                switch(out_ty)
+                {
+                case CodegenOutput::DynamicLibrary:
+                    args.push_back("-shared");
+                case CodegenOutput::Executable:
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
                         args.push_back(crate.second.m_path + ".o");
@@ -827,10 +846,12 @@ namespace {
                     {
                         args.push_back( a.c_str() );
                     }
-                }
-                else
-                {
+                    // TODO: Include the HIR file as a magic object?
+                    break;
+                case CodegenOutput::StaticLibrary:
+                case CodegenOutput::Object:
                     args.push_back("-c");
+                    break;
                 }
                 break;
             case Compiler::Msvc:
@@ -857,13 +878,25 @@ namespace {
                     args.push_back("/DEBUG");
                     args.push_back("/Zi");
                 }
-                if(is_executable)
+                switch(out_ty)
                 {
+                case CodegenOutput::Executable:
+                case CodegenOutput::DynamicLibrary:
+                    switch(out_ty)
+                    {
+                    case CodegenOutput::Executable:
+                        args.push_back("/link");
+                        break;
+                    case CodegenOutput::DynamicLibrary:
+                        args.push_back("/LD");
+                        break;
+                    }
+
                     args.push_back(FMT("/Fe" << m_outfile_path));
 
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        args.push_back(crate.second.m_path + ".o");
+                        args.push_back(crate.second.m_path + ".obj");
                     }
                     // Crate-specified libraries
                     for(const auto& lib : m_crate.m_ext_libs) {
@@ -883,18 +916,20 @@ namespace {
                     }
                     args.push_back("kernel32.lib"); // Needed for Interlocked*
 
-                    args.push_back("/link");
-
                     // Command-line specified linker search directories
                     for(const auto& path : link_dirs )
                     {
                         args.push_back(FMT("/LIBPATH:" << path));
                     }
-                }
-                else
-                {
+                    break;
+                case CodegenOutput::StaticLibrary:
+                    args.push_back("/c");
+                    args.push_back(FMT("/Fo" << m_outfile_path << ".obj"));
+                    break;
+                case CodegenOutput::Object:
                     args.push_back("/c");
                     args.push_back(FMT("/Fo" << m_outfile_path));
+                    break;
                 }
                 break;
             }
@@ -937,6 +972,16 @@ namespace {
                 {
                     ::std::cerr << "C Compiler failed to execute - error code " << ec << ::std::endl;
                     exit(1);
+                }
+            }
+
+            // HACK! Static libraries aren't implemented properly yet, just touch the output file
+            if( out_ty == CodegenOutput::StaticLibrary )
+            {
+                ::std::ofstream of( m_outfile_path );
+                if( !of.good() )
+                {
+                    // TODO: Error?
                 }
             }
         }

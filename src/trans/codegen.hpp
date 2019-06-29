@@ -27,7 +27,7 @@ class CodeGenerator
 {
 public:
     virtual ~CodeGenerator() {}
-    virtual void finalise(bool is_executable, const TransOptions& opt) {}
+    virtual void finalise(const TransOptions& opt, CodegenOutput out_ty, const ::std::string& hir_file) {}
 
     // Called on all types directly mentioned (e.g. variables, arguments, and fields)
     // - Inner-most types are visited first.

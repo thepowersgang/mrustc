@@ -1367,7 +1367,7 @@
 {
     try
     {
-        ::HIR::serialise::Reader    in{ filename };
+        ::HIR::serialise::Reader    in{ filename + ".hir" };    // HACK!
         HirDeserialiser  s { in };
 
         ::HIR::Crate    rv = s.deserialise_crate();

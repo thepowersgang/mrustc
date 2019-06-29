@@ -43,7 +43,7 @@ LLVM_TARGETS ?= X86;ARM;AArch64#;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVP
 OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUFFIX)/
 
 .PHONY: bin/mrustc tools/bin/minicargo
-.PHONY: $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(OUTDIR)libpanic_unwind.hir $(OUTDIR)libproc_macro.hir
+.PHONY: $(OUTDIR)libstd.rlib $(OUTDIR)libtest.rlib $(OUTDIR)libpanic_unwind.rlib $(OUTDIR)libproc_macro.rlib
 .PHONY: $(OUTDIR)rustc $(OUTDIR)cargo
 
 .PHONY: all LIBS
@@ -51,7 +51,7 @@ OVERRIDE_DIR := script-overrides/$(RUSTC_CHANNEL)-$(RUSTC_VERSION)$(OVERRIDE_SUF
 
 all: $(OUTDIR)rustc
 
-LIBS: $(OUTDIR)libstd.hir $(OUTDIR)libtest.hir $(OUTDIR)libpanic_unwind.hir $(OUTDIR)libproc_macro.hir
+LIBS: $(OUTDIR)libstd.rlib $(OUTDIR)libtest.rlib $(OUTDIR)libpanic_unwind.rlib $(OUTDIR)libproc_macro.rlib
 
 $(MRUSTC):
 	$(MAKE) -f Makefile all
@@ -64,20 +64,20 @@ $(MINICARGO):
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
-$(OUTDIR)libstd.hir: $(MRUSTC) $(MINICARGO)
+$(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO)
 	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
-$(OUTDIR)libpanic_unwind.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
+$(OUTDIR)libpanic_unwind.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
-$(OUTDIR)libtest.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir $(OUTDIR)libpanic_unwind.hir
+$(OUTDIR)libtest.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
-$(OUTDIR)libgetopts.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
+$(OUTDIR)libgetopts.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 # MRustC custom version of libproc_macro
-$(OUTDIR)libproc_macro.hir: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.hir
+$(OUTDIR)libproc_macro.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) lib/libproc_macro --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
 	@test -e $@
 
@@ -119,15 +119,36 @@ $(RUSTCSRC)build/Makefile: $(RUSTCSRC)src/llvm/CMakeLists.txt
 #
 # Developement-only targets
 #
-$(OUTDIR)rustc-build/librustdoc.hir: $(MRUSTC) LIBS
+$(OUTDIR)liballoc.rlib: $(MRUSTC) $(MINICARGO)
+	$(MINICARGO) $(RUSTCSRC)src/liballoc --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
+$(OUTDIR)rustc-build/librustdoc.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/librustdoc --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
-#$(OUTDIR)cargo-build/libserde-1_0_6.hir: $(MRUSTC) LIBS
+#$(OUTDIR)cargo-build/libserde-1_0_6.rlib: $(MRUSTC) LIBS
 #	$(MINICARGO) $(RUSTCSRC)src/vendor/serde --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
-$(OUTDIR)cargo-build/libgit2-0_6_6.hir: $(MRUSTC) LIBS
+$(OUTDIR)cargo-build/libgit2-0_6_6.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/vendor/git2 --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) --features ssh,https,curl,openssl-sys,openssl-probe $(MINICARGO_FLAGS)
-$(OUTDIR)cargo-build/libserde_json-1_0_2.hir: $(MRUSTC) LIBS
+$(OUTDIR)cargo-build/libserde_json-1_0_2.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/vendor/serde_json --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
-$(OUTDIR)cargo-build/libcurl-0_4_6.hir: $(MRUSTC) LIBS
+$(OUTDIR)cargo-build/libcurl-0_4_6.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/vendor/curl --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
-$(OUTDIR)cargo-build/libterm-0_4_5.hir: $(MRUSTC) LIBS
+$(OUTDIR)cargo-build/libterm-0_4_5.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/vendor/term --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
+
+#
+# Testing
+#
+.PHONY: rust_tests-libs
+
+LIB_TESTS := alloc std
+#LIB_TESTS += rustc_data_structures
+rust_tests-libs: $(patsubst %,$(OUTDIR)stdtest/%-test_out.txt, $(LIB_TESTS))
+
+RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test := --test-threads 1
+RUNTIME_ARGS_$(OUTdIR)stdtest/std-test := --test-threads 1
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Requires destructors
+
+$(OUTDIR)stdtest/%-test: $(RUSTCSRC)src/lib%/lib.rs LIBS
+	$(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
+$(OUTDIR)%_out.txt: $(OUTDIR)%
+	@echo "--- [$<]"
+	$V./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)

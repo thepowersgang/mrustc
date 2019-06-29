@@ -156,9 +156,9 @@ namespace
             }
         }
 
-        void finalise(bool is_executable, const TransOptions& opt) override
+        void finalise(const TransOptions& opt, CodegenOutput out_ty, const ::std::string& hir_file) override
         {
-            if( is_executable )
+            if( out_ty == CodegenOutput::Executable )
             {
                 m_of << "fn ::main#(isize, *const *const i8): isize {\n";
                 auto c_start_path = m_resolve.m_crate.get_lang_item_path_opt("mrustc-start");

@@ -159,19 +159,19 @@ RUSTC_SRC_DL := $(RUSTCSRC)/dl-version
 MAKE_MINICARGO = $(MAKE) -f minicargo.mk RUSTC_VERSION=$(RUSTC_VERSION) RUSTC_CHANNEL=$(RUSTC_SRC_TY) OUTDIR_SUF=$(OUTDIR_SUF)
 
 
-output$(OUTDIR_SUF)/libstd.hir: $(RUSTC_SRC_DL) $(BIN)
+output$(OUTDIR_SUF)/libstd.rlib: $(RUSTC_SRC_DL) $(BIN)
 	$(MAKE_MINICARGO) $@
-output$(OUTDIR_SUF)/libtest.hir output$(OUTDIR_SUF)/libpanic_unwind.hir output$(OUTDIR_SUF)/libproc_macro.hir: output$(OUTDIR_SUF)/libstd.hir
+output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib output$(OUTDIR_SUF)/libproc_macro.rlib: output$(OUTDIR_SUF)/libstd.rlib
 	$(MAKE_MINICARGO) $@
-output$(OUTDIR_SUF)/rustc output$(OUTDIR_SUF)/cargo: output$(OUTDIR_SUF)/libtest.hir
+output$(OUTDIR_SUF)/rustc output$(OUTDIR_SUF)/cargo: output$(OUTDIR_SUF)/libtest.rlib
 	$(MAKE_MINICARGO) $@
 
-TEST_DEPS := output$(OUTDIR_SUF)/libstd.hir output$(OUTDIR_SUF)/libtest.hir output$(OUTDIR_SUF)/libpanic_unwind.hir
+TEST_DEPS := output$(OUTDIR_SUF)/libstd.rlib output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib
 ifeq ($(RUSTC_VERSION),1.19.0)
 TEST_DEPS += output$(OUTDIR_SUF)/librust_test_helpers.a
 endif
 
-fcn_extcrate = $(patsubst %,output$(OUTDIR_SUF)/lib%.hir,$(1))
+fcn_extcrate = $(patsubst %,output$(OUTDIR_SUF)/lib%.rlib,$(1))
 
 fn_getdeps = \
   $(shell cat $1 \

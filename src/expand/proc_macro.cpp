@@ -259,7 +259,8 @@ ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, con
     }
 
     // 2. Get executable and macro name
-    ::std::string   proc_macro_exe_name = (ext_crate.m_filename + "-plugin");
+    // TODO: Windows will have .exe?
+    ::std::string   proc_macro_exe_name = ext_crate.m_filename;
 
     // 3. Create ProcMacroInv
     return ProcMacroInv(sp, proc_macro_exe_name.c_str(), *pmp);
@@ -820,7 +821,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
     int rv = posix_spawn(&this->child_pid, executable, &file_actions, nullptr, argv, environ);
     if( rv != 0 )
     {
-        BUG(sp, "Error in posix_spawn - " << rv);
+        BUG(sp, "Error in posix_spawn - " << rv << " - can't start `" << executable << "`");
     }
 
     posix_spawn_file_actions_destroy(&file_actions);

@@ -146,7 +146,7 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
     else
     {
         ::std::vector<::std::string>    paths;
-        auto direct_filename = FMT("lib" << name.c_str() << ".hir");
+        auto direct_filename = FMT("lib" << name.c_str() << ".rlib");
         auto name_prefix = FMT("lib" << name.c_str() << "-");
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
@@ -158,7 +158,7 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
             }
             path = "";
 
-            // Search for `p+"/lib"+name+"-*.hir" (which would match e.g. libnum-0.11.hir)
+            // Search for `p+"/lib"+name+"-*.rlib" (which would match e.g. libnum-0.11.rlib)
             auto dp = opendir(p.c_str());
             if( !dp ) {
                 continue ;
@@ -168,11 +168,11 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
             {
                 // AND the start is "lib"+name
                 size_t len = strlen(ent->d_name);
-                if( len <= 4 || strcmp(ent->d_name + len - 4, ".hir") != 0 )
+                if( len <= 5 || strcmp(ent->d_name + len - 5, ".rlib") != 0 )
                     continue ;
 
                 DEBUG(ent->d_name << " vs " << name_prefix);
-                // Check if the entry ends with .hir
+                // Check if the entry ends with .rlib
                 if( strncmp(name_prefix.c_str(), ent->d_name, name_prefix.size()) != 0 )
                     continue ;
 

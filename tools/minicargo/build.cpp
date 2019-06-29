@@ -644,7 +644,7 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
         {
         case PackageTarget::CrateType::proc_macro:
             if(crate_type)  *crate_type = "proc-macro";
-            outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");    // TODO: .rlib instead
+            outfile /= ::format("lib", target.m_name, crate_suffix, "-plugin" EXESUF);
             break;
         case PackageTarget::CrateType::dylib:
             //if(crate_type)  *crate_type = "dylib";
@@ -652,7 +652,7 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
             //break;
         case PackageTarget::CrateType::rlib:
             if(crate_type)  *crate_type = "rlib";
-            outfile /= ::format("lib", target.m_name, crate_suffix, ".hir");    // TODO: .rlib instead
+            outfile /= ::format("lib", target.m_name, crate_suffix, ".rlib");
             break;
         default:
             throw "";
