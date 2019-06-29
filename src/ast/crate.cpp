@@ -146,13 +146,19 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
     else
     {
         ::std::vector<::std::string>    paths;
-        auto direct_filename = FMT("lib" << name.c_str() << ".rlib");
+#define RLIB_SUFFIX ".rlib"
+#define RDYLIB_SUFFIX ".so"
+        auto direct_filename = FMT("lib" << name.c_str() << RLIB_SUFFIX);
+        auto direct_filename_so = FMT("lib" << name.c_str() << RDYLIB_SUFFIX);
         auto name_prefix = FMT("lib" << name.c_str() << "-");
         // Search a list of load paths for the crate
         for(const auto& p : g_crate_load_dirs)
         {
-
             path = p + "/" + direct_filename;
+            if( ::std::ifstream(path).good() ) {
+                paths.push_back(path);
+            }
+            path = p + "/" + direct_filename_so;
             if( ::std::ifstream(path).good() ) {
                 paths.push_back(path);
             }
@@ -168,8 +174,16 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
             {
                 // AND the start is "lib"+name
                 size_t len = strlen(ent->d_name);
-                if( len <= 5 || strcmp(ent->d_name + len - 5, ".rlib") != 0 )
+                if( len > (sizeof(RLIB_SUFFIX)-1) && strcmp(ent->d_name + len - (sizeof(RLIB_SUFFIX)-1), RLIB_SUFFIX) == 0 )
+                {
+                }
+                else if( len > (sizeof(RDYLIB_SUFFIX)-1) && strcmp(ent->d_name + len - (sizeof(RDYLIB_SUFFIX)-1), RDYLIB_SUFFIX) == 0 )
+                {
+                }
+                else
+                {
                     continue ;
+                }
 
                 DEBUG(ent->d_name << " vs " << name_prefix);
                 // Check if the entry ends with .rlib
@@ -202,7 +216,8 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
     }
     auto& ext_crate = res.first->second;
     // Move the external list out (doesn't need to be kept in the nested crate)
-    auto crate_ext_list = mv$( ext_crate.m_hir->m_ext_crates );
+    //auto crate_ext_list = mv$( ext_crate.m_hir->m_ext_crates );
+    const auto& crate_ext_list = ext_crate.m_hir->m_ext_crates;
 
     // Load referenced crates
     for( const auto& ext : crate_ext_list )

@@ -801,6 +801,7 @@ namespace {
                 {
                     args.push_back("-g");
                 }
+                args.push_back("-fPIC");
                 args.push_back("-o");
                 switch(out_ty)
                 {
@@ -821,7 +822,33 @@ namespace {
                 case CodegenOutput::Executable:
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        args.push_back(crate.second.m_path + ".o");
+                        bool is_dylib = (crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") != 0);
+                        //::std::cout << crate.first << " references " << FMT_CB(ss, for(const auto& sc : crate.second.m_data->m_ext_crates) ss << sc.second.m_path << ",";) << ::std::endl;
+                        // TODO: if this crate is included in a dylib crate, ignore it
+                        bool is_in_dylib = false;
+                        for( const auto& crate2 : m_crate.m_ext_crates )
+                        {
+                            bool is_dylib = (crate2.second.m_path.compare(crate2.second.m_path.size() - 5, 5, ".rlib") != 0);
+                            if( is_dylib )
+                            {
+                                for(const auto& subcrate : crate2.second.m_data->m_ext_crates)
+                                {
+                                    if( subcrate.second.m_path == crate.second.m_path ) {
+                                        is_in_dylib = true;
+                                    }
+                                }
+                            }
+                            if( is_in_dylib )
+                                break;
+                        }
+                        if( is_in_dylib ) {
+                        }
+                        else if( crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") == 0 ) {
+                            args.push_back(crate.second.m_path + ".o");
+                        }
+                        else {
+                            args.push_back(crate.second.m_path);
+                        }
                     }
                     for(const auto& path : link_dirs )
                     {

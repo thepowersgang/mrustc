@@ -712,7 +712,11 @@ int main(int argc, char *argv[])
             break;
         case ::AST::Crate::Type::RustDylib:
             // Save a loadable HIR dump
-            CompilePhaseV("HIR Serialise", [&]() { HIR_Serialise(params.outfile + ".hir", *hir_crate); });
+            CompilePhaseV("HIR Serialise", [&]() {
+                //auto saved_ext_crates = ::std::move(hir_crate->m_ext_crates);
+                HIR_Serialise(params.outfile + ".hir", *hir_crate);
+                //hir_crate->m_ext_crates = ::std::move(saved_ext_crates);
+                });
             // Generate a .so
             CompilePhaseV("Trans Codegen", [&]() { Trans_Codegen(params.outfile, CodegenOutput::DynamicLibrary, trans_opt, *hir_crate, items, params.outfile + ".hir"); });
             break;

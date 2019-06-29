@@ -1350,6 +1350,7 @@
                 auto ext_crate_file = m_in.read_string();
                 auto ext_crate = ::HIR::ExternCrate {};
                 ext_crate.m_basename = ext_crate_file;
+                ext_crate.m_path = ext_crate_file;
                 rv.m_ext_crates.insert( ::std::make_pair( mv$(ext_crate_name), mv$(ext_crate) ) );
             }
         }
