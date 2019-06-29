@@ -15,9 +15,9 @@ ifeq ($(OS),Windows_NT)
 endif
 EXESUF ?=
 CXX ?= g++
-V ?=
+V ?= !
 GPROF ?=
-ifeq ($(V),)
+ifeq ($(V),!)
   V := @
 else
   V :=
@@ -250,36 +250,15 @@ output$(OUTDIR_SUF)/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
 # libstd tests
 # 
 .PHONY: rust_tests-libs
+rust_tests-libs: $(TEST_DEPS)
+	make -f minicargo.mk $@
 
-LIB_TESTS := collections #std
-#LIB_TESTS += rustc_data_structures
-rust_tests-libs: $(patsubst %,output$(OUTDIR_SUF)/lib%-test_out.txt, $(LIB_TESTS))
 
-RUNTIME_ARGS_output$(OUTDIR_SUF)/libcollections-test := --test-threads 1
-RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test := --test-threads 1
-RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::collections::hash::map::test_map::test_index_nonexistent
-RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::collections::hash::map::test_map::test_drops
-RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::collections::hash::map::test_map::test_placement_drop
-RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::collections::hash::map::test_map::test_placement_panic
-RUNTIME_ARGS_output$(OUTDIR_SUF)/libstd-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Unbounded execution
-
-output$(OUTDIR_SUF)/lib%-test: $(RUSTCSRC)src/lib%/lib.rs $(TEST_DEPS)
-	@echo "--- [MRUSTC] --test -o $@"
-	@mkdir -p output$(OUTDIR_SUF)/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
-output$(OUTDIR_SUF)/lib%-test: $(RUSTCSRC)src/lib%/src/lib.rs $(TEST_DEPS)
-	@echo "--- [MRUSTC] $@"
-	@mkdir -p output$(OUTDIR_SUF)/
-	@rm -f $@
-	$(DBG) $(ENV_$@) $(BIN) --test $< -o $@ $(RUST_FLAGS) $(ARGS_$@) $(PIPECMD)
-#	# HACK: Work around gdb returning success even if the program crashed
-	@test -e $@
-output$(OUTDIR_SUF)/%_out.txt: output$(OUTDIR_SUF)/%
-	@echo "--- [$<]"
-	$V./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
+.PHONY: test
+#
+# TEST: Rust standard library and the "hello, world" run-pass test
+#
+test: output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt
 
 # "hello, world" test - Invoked by the `make test` target
 output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs $(TEST_DEPS)
@@ -289,31 +268,6 @@ output$(OUTDIR_SUF)/rust/test_run-pass_hello: $(RUST_TESTS_DIR)run-pass/hello.rs
 output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt: output$(OUTDIR_SUF)/rust/test_run-pass_hello
 	@echo "--- [$<]"
 	@./$< | tee $@
-
-
-
-.PHONY: test test_rustos
-#
-# TEST: Rust standard library and the "hello, world" run-pass test
-#
-test: RUSTCSRC output$(OUTDIR_SUF)/libstd.hir output$(OUTDIR_SUF)/rust/test_run-pass_hello_out.txt $(BIN)
-
-#
-# TEST: Attempt to compile rust_os (Tifflin) from ../rust_os
-#
-test_rustos: $(addprefix output$(OUTDIR_SUF)/rust_os/,libkernel.hir)
-
-RUSTOS_ENV := RUST_VERSION="mrustc 0.1"
-RUSTOS_ENV += TK_GITSPEC="unknown"
-RUSTOS_ENV += TK_VERSION="0.1"
-RUSTOS_ENV += TK_BUILD="mrustc:0"
-
-output$(OUTDIR_SUF)/rust_os/libkernel.hir: ../rust_os/Kernel/Core/main.rs output$(OUTDIR_SUF)/libcore.hir output$(OUTDIR_SUF)/libstack_dst.hir $(BIN)
-	@mkdir -p $(dir $@)
-	export $(RUSTOS_ENV) ; $(DBG) $(BIN) $(RUST_FLAGS) $< -o $@ --cfg arch=amd64 $(PIPECMD)
-output$(OUTDIR_SUF)/libstack_dst.hir: ../rust_os/externals/crates.io/stack_dst/src/lib.rs $(BIN)
-	@mkdir -p $(dir $@)
-	$(DBG) $(BIN) $(RUST_FLAGS) $< -o $@ --cfg feature=no_std $(PIPECMD)
 
 
 # -------------------------------
