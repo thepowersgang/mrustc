@@ -2042,10 +2042,19 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
             return false;
         }
 
+        auto it = m_drop_cache.find(ty);
+        if( it != m_drop_cache.end() )
+        {
+            return it->second;
+        }
+
         auto pp = ::HIR::PathParams();
         bool has_direct_drop = this->find_impl(sp, m_lang_Drop, &pp, ty, [&](auto , bool){ return true; }, true);
         if( has_direct_drop )
+        {
+            m_drop_cache.insert(::std::make_pair(ty.clone(), true));
             return true;
+        }
 
         ::HIR::TypeRef  tmp_ty;
         const auto& pe = e.path.m_data.as_Generic();
@@ -2060,6 +2069,7 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
                 return tpl;
             }
             };
+        bool needs_drop_glue = false;
         TU_MATCHA( (e.binding), (pbe),
         (Unbound,
             BUG(sp, "Unbound path");
@@ -2076,18 +2086,23 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
                 for(const auto& e : se)
                 {
                     if( type_needs_drop_glue(sp, monomorph(e.ent)) )
-                        return true;
+                    {
+                        needs_drop_glue = true;
+                        break;
+                    }
                 }
                 ),
             (Named,
                 for(const auto& e : se)
                 {
                     if( type_needs_drop_glue(sp, monomorph(e.second.ent)) )
-                        return true;
+                    {
+                        needs_drop_glue = true;
+                        break;
+                    }
                 }
                 )
             )
-            return false;
             ),
         (Enum,
             if(const auto* e = pbe->m_data.opt_Data())
@@ -2095,20 +2110,24 @@ bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeR
                 for(const auto& var : *e)
                 {
                     if( type_needs_drop_glue(sp, monomorph(var.type)) )
-                        return true;
+                    {
+                        needs_drop_glue = true;
+                        break;
+                    }
                 }
             }
-            return false;
             ),
         (Union,
             // Unions don't have drop glue unless they impl Drop
-            return false;
+            needs_drop_glue = false;
             ),
         (ExternType,
             // Extern types don't have drop glue
-            return false;
+            needs_drop_glue = false;
             )
         )
+        m_drop_cache.insert(::std::make_pair(ty.clone(), needs_drop_glue));
+        return needs_drop_glue;
         ),
     (Diverge,
         return false;
