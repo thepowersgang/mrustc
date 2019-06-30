@@ -55,31 +55,31 @@ LIBS: $(OUTDIR)libstd.rlib $(OUTDIR)libtest.rlib $(OUTDIR)libpanic_unwind.rlib $
 
 $(MRUSTC):
 	$(MAKE) -f Makefile all
-	@test -e $@
+	test -e $@
 
 $(MINICARGO):
 	$(MAKE) -C tools/minicargo/
-	@test -e $@
+	test -e $@
 
 # Standard library crates
 # - libstd, libpanic_unwind, libtest and libgetopts
 # - libproc_macro (mrustc)
 $(OUTDIR)libstd.rlib: $(MRUSTC) $(MINICARGO)
 	$(MINICARGO) $(RUSTCSRC)src/libstd --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
+	test -e $@
 $(OUTDIR)libpanic_unwind.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libpanic_unwind --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
+	test -e $@
 $(OUTDIR)libtest.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib $(OUTDIR)libpanic_unwind.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libtest --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
+	test -e $@
 $(OUTDIR)libgetopts.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) $(RUSTCSRC)src/libgetopts --script-overrides $(OVERRIDE_DIR) --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
+	test -e $@
 # MRustC custom version of libproc_macro
 $(OUTDIR)libproc_macro.rlib: $(MRUSTC) $(MINICARGO) $(OUTDIR)libstd.rlib
 	$(MINICARGO) lib/libproc_macro --output-dir $(OUTDIR) $(MINICARGO_FLAGS)
-	@test -e $@
+	test -e $@
 
 RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 RUSTC_ENV_VARS += LLVM_CONFIG=$(abspath $(LLVM_CONFIG))
@@ -88,6 +88,7 @@ RUSTC_ENV_VARS += CFG_RELEASE_CHANNEL=$(RUSTC_CHANNEL)
 RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-$(RUSTC_CHANNEL)-mrustc
 RUSTC_ENV_VARS += CFG_PREFIX=mrustc
 RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
+RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath output)
 
 $(OUTDIR)rustc: $(MRUSTC) $(MINICARGO) LIBS $(LLVM_CONFIG)
 	mkdir -p $(OUTDIR)rustc-build
@@ -140,15 +141,39 @@ $(OUTDIR)cargo-build/libterm-0_4_5.rlib: $(MRUSTC) LIBS
 .PHONY: rust_tests-libs
 
 LIB_TESTS := alloc std
-#LIB_TESTS += rustc_data_structures
-rust_tests-libs: $(patsubst %,$(OUTDIR)stdtest/%-test_out.txt, $(LIB_TESTS))
+LIB_TESTS += rustc_data_structures
+rust_tests-libs: $(patsubst %,$(OUTDIR)stdtest/%-test_out.txt, $(LIB_TESTS)) $(OUTDIR)stdtest/collectionstests_out.txt
+.PRECIOUS: $(OUTDIR)stdtest/alloc-test
+.PRECIOUS: $(OUTDIR)stdtest/std-test
+.PRECIOUS: $(OUTDIR)stdtest/rustc_data_structures-test
 
 RUNTIME_ARGS_$(OUTDIR)stdtest/alloc-test := --test-threads 1
 RUNTIME_ARGS_$(OUTdIR)stdtest/std-test := --test-threads 1
-RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::io::stdio::tests::panic_doesnt_poison	# Requires destructors
+# VVV Requires panic destructors (unwinding panics)
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::io::stdio::tests::panic_doesnt_poison
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_arc_condvar_poison
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_mutex_arc_poison
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::once::tests::poison_bad
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::once::tests::wait_for_force_to_finish
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_rw_arc_no_poison_rw
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_rw_arc_poison_wr
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_rw_arc_poison_ww
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sys_common::remutex::tests::poison_works
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::thread::local::tests::dtors_in_dtors_in_dtors
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::thread::local::tests::smoke_dtor
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_get_mut_poison
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_into_inner_poison
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_mutex_arc_access_in_unwind
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_get_mut_poison
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_into_inner_poison
+RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_rw_arc_access_in_unwind
+RUNTIME_ARGS_$(OUTDIR)stdtest/rust_data_structures-test := --test-threads 1
 
 $(OUTDIR)stdtest/%-test: $(RUSTCSRC)src/lib%/lib.rs LIBS
 	$(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
+$(OUTDIR)stdtest/collectionstests: $(OUTDIR)stdtest/alloc-test
+	test -e $@
+$(OUTDIR)collectionstest_out.txt: $(OUTDIR)%
 $(OUTDIR)%_out.txt: $(OUTDIR)%
 	@echo "--- [$<]"
-	$V./$< $(RUNTIME_ARGS_$<) > $@ || (tail -n 1 $@; mv $@ $@_fail; false)
+	$V./$< $(RUNTIME_ARGS_$<) > $@ 2>&1 || (tail -n 1 $@; mv $@ $@_fail; false)
