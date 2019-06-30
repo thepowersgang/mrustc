@@ -40,7 +40,7 @@ class CTestHandler:
 class CTestHandler_SP:
     public ExpandDecorator
 {
-    AttrStage   stage() const override { return AttrStage::Pre; }
+    AttrStage   stage() const override { return AttrStage::Post; }
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         if( ! i.is_Function() ) {
@@ -49,6 +49,7 @@ class CTestHandler_SP:
 
         if( crate.m_test_harness )
         {
+            // TODO: If this test doesn't yet exist, create it (but as disabled)?
             for(auto& td : crate.m_tests)
             {
                 if( td.path != path )
@@ -73,11 +74,11 @@ class CTestHandler_SP:
 class CTestHandler_Ignore:
     public ExpandDecorator
 {
-    AttrStage   stage() const override { return AttrStage::Pre; }
+    AttrStage   stage() const override { return AttrStage::Post; }
 
     void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
         if( ! i.is_Function() ) {
-            ERROR(sp, E0000, "#[should_panic] can only be put on functions - found on " << i.tag_str());
+            ERROR(sp, E0000, "#[ignore] can only be put on functions - found on " << i.tag_str());
         }
 
         if( crate.m_test_harness )
