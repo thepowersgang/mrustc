@@ -822,12 +822,11 @@ namespace {
                 case CodegenOutput::Executable:
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        bool is_dylib = (crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") != 0);
-                        //::std::cout << crate.first << " references " << FMT_CB(ss, for(const auto& sc : crate.second.m_data->m_ext_crates) ss << sc.second.m_path << ",";) << ::std::endl;
-                        // TODO: if this crate is included in a dylib crate, ignore it
+                        // TODO: If this crate is included in a dylib crate, ignore it
                         bool is_in_dylib = false;
                         for( const auto& crate2 : m_crate.m_ext_crates )
                         {
+                            // TODO: Better rule than this
                             bool is_dylib = (crate2.second.m_path.compare(crate2.second.m_path.size() - 5, 5, ".rlib") != 0);
                             if( is_dylib )
                             {
@@ -2298,8 +2297,13 @@ namespace {
             {
                 m_of << "\t""(void*)" << Trans_Mangle(::HIR::Path(type.clone(), "#drop_glue")) << ",\n";
             }
-            m_of << "\t""sizeof("; emit_ctype(type); m_of << "),\n";
-            m_of << "\t""ALIGNOF("; emit_ctype(type); m_of << "),\n";
+
+            {
+                size_t  size, align;
+                // NOTE: Uses the Size+Align version because that doesn't panic on unsized
+                MIR_ASSERT(*m_mir_res, Target_GetSizeAndAlignOf(sp, m_resolve, type, size, align), "Unexpected generic? " << type);
+                m_of << "\t" << size << ", " << align << ",\n";
+            }
 
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
@@ -4334,9 +4338,11 @@ namespace {
                 }
                 };
             if( name == "size_of" ) {
+                // TODO: Target_GetSizeOf
                 emit_lvalue(e.ret_val); m_of << " = sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
             }
             else if( name == "min_align_of" ) {
+                // TODO: Target_GetAlignOf
                 //emit_lvalue(e.ret_val); m_of << " = alignof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                 emit_lvalue(e.ret_val); m_of << " = ALIGNOF("; emit_ctype(params.m_types.at(0)); m_of << ")";
             }
@@ -4346,6 +4352,7 @@ namespace {
                 //TODO: Get the unsized type and use that in place of MetadataType
                 auto inner_ty = get_inner_unsized_type(ty);
                 if( inner_ty == ::HIR::TypeRef() ) {
+                    // TODO: Target_GetSizeOf
                     m_of << "sizeof("; emit_ctype(ty); m_of << ")";
                 }
                 else if( const auto* te = inner_ty.m_data.opt_Slice() ) {
