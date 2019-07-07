@@ -357,6 +357,18 @@ void MIR_Validate_ValState(::MIR::TypeResolve& state, const ::MIR::Function& fcn
                     val_state.mark_validity( state, v.second, true );
                 break;
             case ::MIR::Statement::TAG_Assign:
+                // Destination must be valid
+                for(const auto& w : stmt.as_Assign().dst.m_wrappers)
+                {
+                    if( w.is_Deref() ) {
+                        // TODO: Check validity of the rest of the wrappers.
+                    }
+                    if( w.is_Index() )
+                    {
+                        if( val_state.locals[w.as_Index()] != ValStates::State::Valid )
+                            MIR_BUG(state, "Use of non-valid lvalue - " << ::MIR::LValue::new_Local(w.as_Index()));
+                    }
+                }
                 // Check source (and invalidate sources)
                 TU_MATCH( ::MIR::RValue, (stmt.as_Assign().src), (se),
                 (Use,

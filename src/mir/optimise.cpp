@@ -2347,11 +2347,47 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                                 // TU_ARMav(Int, (le, re)) {
                                 TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
-                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v + re.v) });
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v + re.v), le.t });
                                     }
                                 TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
                                     MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::ADD - " << val_l << " + " << val_r);
-                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v + re.v) });
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v + re.v), le.t });
+                                    }
+                                }}
+                                break;
+                            case ::MIR::eBinOp::SUB:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::SUB - " << val_l << " + " << val_r);
+                                //{TU_MATCH_HDRA( (val_l, val_r), {)
+                                {TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " + " << val_r);
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v - re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::SUB - " << val_l << " + " << val_r);
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v - re.v), le.t });
+                                    }
+                                }}
+                                break;
+                            case ::MIR::eBinOp::MOD:
+                                MIR_ASSERT(state, val_l.tag() == val_r.tag(), "Mismatched types for eBinOp::MOD - " << val_l << " + " << val_r);
+                                //{TU_MATCH_HDRA( (val_l, val_r), {)
+                                {TU_MATCH_HDRA( (val_l), {)
+                                default:
+                                    break;
+                                // TU_ARMav(Int, (le, re)) {
+                                TU_ARMA(Int, le) { const auto& re = val_r.as_Int();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MOD - " << val_l << " + " << val_r);
+                                    MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
+                                    new_value = ::MIR::Constant::make_Int({ H::truncate_s(le.t, le.v % re.v), le.t });
+                                    }
+                                TU_ARMA(Uint, le) { const auto& re = val_r.as_Uint();
+                                    MIR_ASSERT(state, le.t == re.t, "Mismatched types for eBinOp::MOD - " << val_l << " + " << val_r);
+                                    MIR_ASSERT(state, re.v != 0, "Const eval error: Constant division by zero");
+                                    new_value = ::MIR::Constant::make_Uint({ H::truncate_u(le.t, le.v % re.v), le.t });
                                     }
                                 }}
                                 break;
@@ -3250,7 +3286,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 const ::MIR::LValue* new_dst = nullptr;
                 auto& blk2 = fcn.blocks.at(e.ret_block);
                 for(const auto& stmt : blk2.statements)
-                { 
+                {
                     // Find `RValue::Use( this_lvalue )`
                     if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val ) {
                         new_dst = &stmt.as_Assign().dst;
@@ -3263,16 +3299,27 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                 {
                     auto lvalue_impacts_dst = [&](const ::MIR::LValue& lv)->bool {
                         // Returns true if the two lvalues share a common root
-                        // TODO: Could restrict based on the presence of
-                        // deref/field accesses?
+                        // TODO: Could restrict based on the presence of deref/field accesses?
+                        // If `lv` is a local AND matches the index in `new_dst`, check for indexing
+                        if( lv.is_Local() )
+                        {
+                            for(const auto& w : new_dst->m_wrappers)
+                            {
+                                if( w.is_Index() && w.as_Index() == lv.as_Local() )
+                                {
+                                    return true;
+                                }
+                            }
+                        }
                         return lv.m_root == new_dst->m_root;
                         };
                     for(auto it = blk2.statements.begin(); it != blk2.statements.end(); ++ it)
                     {
+                        state.set_cur_stmt(&blk2 - &fcn.blocks.front(), it - blk2.statements.begin());
                         const auto& stmt = *it;
                         if( stmt.is_Assign() && stmt.as_Assign().src.is_Use() && stmt.as_Assign().src.as_Use() == e.ret_val )
                         {
-                            DEBUG("- Replace function return " << e.ret_val << " with " << *new_dst);
+                            DEBUG(state << "- Replace function return " << e.ret_val << " with " << *new_dst);
                             e.ret_val = new_dst->clone();
                             // TODO: Invalidate the entry, instead of deleting?
                             it = blk2.statements.erase(it);
