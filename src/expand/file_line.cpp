@@ -8,6 +8,7 @@
 #include <synext.hpp>
 #include "../parse/common.hpp"
 #include "../parse/ttstream.hpp"
+#include <ast/crate.hpp>
 
 namespace {
     const Span& get_top_span(const Span& sp) {
@@ -61,8 +62,9 @@ class CExpanderModulePath:
     ::std::unique_ptr<TokenStream> expand(const Span& sp, const AST::Crate& crate, const TokenTree& tt, AST::Module& mod) override
     {
         ::std::string   path_str;
+        path_str += crate.m_crate_name;
         for(const auto& comp : mod.path().nodes()) {
-            if( &comp != &mod.path().nodes().front() )
+            if( !path_str.empty() )
                 path_str += "::";
             path_str += comp.name().c_str();
         }
