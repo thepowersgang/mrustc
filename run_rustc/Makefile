@@ -1,7 +1,7 @@
 # Makefile that builds libstd using the mrustc-built rustc
 
 RUSTC := ../output/rustc
-RUST_SRC := ../rustc-1.19.0-src/src/
+RUST_SRC ?= ../rustc-1.29.0-src/src/
 
 PREFIX := prefix/
 BINDIR := $(PREFIX)bin/
@@ -10,7 +10,8 @@ LIBDIR := $(PREFIX)lib/rustlib/x86_64-unknown-linux-gnu/lib/
 V ?= @
 
 
-all: $(BINDIR)rustc $(BINDIR)cargo $(LIBDIR)libstd.rlib $(BINDIR)hello_world
+all: $(BINDIR)rustc $(LIBDIR)libstd.rlib $(BINDIR)hello_world
+all: $(BINDIR)cargo
 
 RUSTFLAGS_liblibc := --cfg stdbuild
 RUSTFLAGS_libstd := -l dl -l rt -l pthread

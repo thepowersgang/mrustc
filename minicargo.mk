@@ -167,7 +167,7 @@ RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::mutex::tests::test_mute
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_get_mut_poison
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_into_inner_poison
 RUNTIME_ARGS_$(OUTDIR)stdtest/std-test += --skip ::sync::rwlock::tests::test_rw_arc_access_in_unwind
-RUNTIME_ARGS_$(OUTDIR)stdtest/rust_data_structures-test := --test-threads 1
+RUNTIME_ARGS_$(OUTDIR)stdtest/rustc_data_structures-test := --test-threads 1
 
 $(OUTDIR)stdtest/%-test: $(RUSTCSRC)src/lib%/lib.rs LIBS
 	$(MINICARGO) --test $(RUSTCSRC)src/lib$* --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR)
