@@ -11,6 +11,14 @@
 #include "common.hpp"
 #include "impl_ref.hpp"
 
+enum class MetadataType {
+    Unknown,    // Unknown still
+    None,   // Sized pointer
+    Zero,   // No metadata, but still unsized
+    Slice,  // usize metadata
+    TraitObject,    // VTable pointer metadata
+};
+
 class StaticTraitResolve
 {
 public:
@@ -203,6 +211,8 @@ public:
     bool type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool type_is_impossible(const Span& sp, const ::HIR::TypeRef& ty) const;
     bool can_unsize(const Span& sp, const ::HIR::TypeRef& dst, const ::HIR::TypeRef& src) const;
+
+    MetadataType metadata_type(const Span& sp, const ::HIR::TypeRef& ty, bool err_on_unknown=false) const;
 
     /// Returns `true` if the passed type either implements Drop, or contains a type that implements Drop
     bool type_needs_drop_glue(const Span& sp, const ::HIR::TypeRef& ty) const;

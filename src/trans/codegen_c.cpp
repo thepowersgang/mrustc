@@ -162,11 +162,6 @@ namespace {
     class CodeGenerator_C:
         public CodeGenerator
     {
-        enum class MetadataType {
-            None,
-            Slice,
-            TraitObject,
-        };
         enum class Mode {
             //FullStd,
             Gcc,    // Use GCC/Clang extensions
@@ -916,6 +911,8 @@ namespace {
                     case CodegenOutput::DynamicLibrary:
                         args.push_back("/LD");
                         break;
+                    default:
+                        throw "bug";
                     }
 
                     args.push_back(FMT("/Fe" << m_outfile_path));
@@ -4338,13 +4335,14 @@ namespace {
                 }
                 };
             if( name == "size_of" ) {
-                // TODO: Target_GetSizeOf
-                emit_lvalue(e.ret_val); m_of << " = sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
+                size_t size = 0;
+                MIR_ASSERT(mir_res, Target_GetSizeOf(sp, m_resolve, params.m_types.at(0), size), "Can't get size of " << params.m_types.at(0));
+                emit_lvalue(e.ret_val); m_of << " = " << size;
             }
-            else if( name == "min_align_of" ) {
-                // TODO: Target_GetAlignOf
-                //emit_lvalue(e.ret_val); m_of << " = alignof("; emit_ctype(params.m_types.at(0)); m_of << ")";
-                emit_lvalue(e.ret_val); m_of << " = ALIGNOF("; emit_ctype(params.m_types.at(0)); m_of << ")";
+            else if( name == "min_align_of" || name == "align_of" ) {
+                size_t align = 0;
+                MIR_ASSERT(mir_res, Target_GetAlignOf(sp, m_resolve, params.m_types.at(0), align), "Can't get alignment of " << params.m_types.at(0));
+                emit_lvalue(e.ret_val); m_of << " = " << align;
             }
             else if( name == "size_of_val" ) {
                 emit_lvalue(e.ret_val); m_of << " = ";
@@ -4473,7 +4471,9 @@ namespace {
                         emit_lvalue(e.ret_val); m_of << ".META = ";
                         switch(dst_meta)
                         {
+                        case MetadataType::Unknown: assert(!"Impossible");
                         case MetadataType::None: assert(!"Impossible");
+                        case MetadataType::Zero: assert(!"Impossible");
                         case MetadataType::Slice:   m_of << "(size_t)"; break;
                         case MetadataType::TraitObject: m_of << "(const void*)"; break;
                         }
@@ -5286,8 +5286,10 @@ namespace {
                 const char* make_fcn = nullptr;
                 switch( metadata_type(ty) )
                 {
+                case MetadataType::Unknown:
+                    MIR_BUG(*m_mir_res, ty << " unknown metadata");
                 case MetadataType::None:
-
+                case MetadataType::Zero:
                     if( this->type_is_bad_zst(ty) && (slot.is_Field() || slot.is_Downcast()) )
                     {
                         m_of << indent << Trans_Mangle(p) << "((void*)&";
@@ -5575,7 +5577,10 @@ namespace {
                     const auto& ity = *ty.m_data.as_Borrow().inner;
                     switch( metadata_type(ity) )
                     {
+                    case MetadataType::Unknown:
+                        MIR_BUG(*m_mir_res, ity << " - Unknown meta");
                     case MetadataType::None:
+                    case MetadataType::Zero:
                         emit_dst(); m_of << " = &" << Trans_Mangle(e);
                         break;
                     case MetadataType::Slice:
@@ -6071,61 +6076,9 @@ namespace {
                 return ::HIR::TypeRef();
             }
         }
-        // TODO: Move this to a more common location
-        MetadataType metadata_type(const ::HIR::TypeRef& ty) const
-        {
-            if( ty == ::HIR::CoreType::Str || ty.m_data.is_Slice() ) {
-                return MetadataType::Slice;
-            }
-            else if( ty.m_data.is_TraitObject() ) {
-                return MetadataType::TraitObject;
-            }
-            else if( ty.m_data.is_Path() )
-            {
-                TU_MATCH_DEF( ::HIR::TypeRef::TypePathBinding, (ty.m_data.as_Path().binding), (tpb),
-                (
-                    MIR_BUG(*m_mir_res, "Unbound/opaque path in trans - " << ty);
-                    ),
-                (Struct,
-                    switch( tpb->m_struct_markings.dst_type )
-                    {
-                    case ::HIR::StructMarkings::DstType::None:
-                        return MetadataType::None;
-                    case ::HIR::StructMarkings::DstType::Possible: {
-                        // TODO: How to figure out? Lazy way is to check the monomorpised type of the last field (structs only)
-                        const auto& path = ty.m_data.as_Path().path.m_data.as_Generic();
-                        const auto& str = *ty.m_data.as_Path().binding.as_Struct();
-                        auto monomorph = [&](const auto& tpl) {
-                            auto rv = monomorphise_type(sp, str.m_params, path.m_params, tpl);
-                            m_resolve.expand_associated_types(sp, rv);
-                            return rv;
-                            };
-                        TU_MATCHA( (str.m_data), (se),
-                        (Unit,  MIR_BUG(*m_mir_res, "Unit-like struct with DstType::Possible"); ),
-                        (Tuple, return metadata_type( monomorph(se.back().ent) ); ),
-                        (Named, return metadata_type( monomorph(se.back().second.ent) ); )
-                        )
-                        //MIR_TODO(*m_mir_res, "Determine DST type when ::Possible - " << ty);
-                        return MetadataType::None;
-                        }
-                    case ::HIR::StructMarkings::DstType::Slice:
-                        return MetadataType::Slice;
-                    case ::HIR::StructMarkings::DstType::TraitObject:
-                        return MetadataType::TraitObject;
-                    }
-                    ),
-                (Union,
-                    return MetadataType::None;
-                    ),
-                (Enum,
-                    return MetadataType::None;
-                    )
-                )
-                throw "";
-            }
-            else {
-                return MetadataType::None;
-            }
+
+        MetadataType metadata_type(const ::HIR::TypeRef& ty) const {
+            return m_resolve.metadata_type(m_mir_res ? m_mir_res->sp : sp, ty);
         }
 
         void emit_ctype_ptr(const ::HIR::TypeRef& inner_ty, ::FmtLambda inner) {
@@ -6134,9 +6087,12 @@ namespace {
             //}
             //else
             {
-                switch( metadata_type(inner_ty) )
+                switch( this->metadata_type(inner_ty) )
                 {
+                case MetadataType::Unknown:
+                    BUG(sp, inner_ty << " unknown metadata type");
                 case MetadataType::None:
+                case MetadataType::Zero:
                     emit_ctype(inner_ty, FMT_CB(ss, ss << "*" << inner;));
                     break;
                 case MetadataType::Slice:
@@ -6151,7 +6107,7 @@ namespace {
 
         bool is_dst(const ::HIR::TypeRef& ty) const
         {
-            return metadata_type(ty) != MetadataType::None;
+            return this->metadata_type(ty) != MetadataType::None;
         }
     };
     Span CodeGenerator_C::sp;

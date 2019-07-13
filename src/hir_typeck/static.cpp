@@ -1647,107 +1647,13 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
 
 bool StaticTraitResolve::type_is_sized(const Span& sp, const ::HIR::TypeRef& ty) const
 {
-    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
-    (Generic,
-        if( e.binding == 0xFFFF ) {
-            // TODO: Self: Sized?
-            return true;
-        }
-        else if( (e.binding >> 8) == 0 ) {
-            auto idx = e.binding & 0xFF;
-            assert( m_impl_generics );
-            assert( idx < m_impl_generics->m_types.size() );
-            return m_impl_generics->m_types[idx].m_is_sized;
-        }
-        else if( (e.binding >> 8) == 1 ) {
-            auto idx = e.binding & 0xFF;
-            assert( m_item_generics );
-            assert( idx < m_item_generics->m_types.size() );
-            return m_item_generics->m_types[idx].m_is_sized;
-        }
-        else {
-            BUG(sp, "");
-        }
-        ),
-    (Path,
-        TU_MATCHA( (e.binding), (pbe),
-        (Unbound,
-            ),
-        (Opaque,
-            //auto pp = ::HIR::PathParams();
-            //return this->find_impl(sp, m_lang_Sized, &pp, ty, [&](auto , bool){ return true; }, true);
-            // TODO: This can only be with UfcsKnown, so check if the trait specifies ?Sized
-            return true;
-            ),
-        (Struct,
-            // TODO: Destructure?
-            switch( pbe->m_struct_markings.dst_type )
-            {
-            case ::HIR::StructMarkings::DstType::None:
-                return true;
-            case ::HIR::StructMarkings::DstType::Possible:
-                return type_is_sized( sp, e.path.m_data.as_Generic().m_params.m_types.at(pbe->m_struct_markings.unsized_param) );
-            case ::HIR::StructMarkings::DstType::Slice:
-            case ::HIR::StructMarkings::DstType::TraitObject:
-                return false;
-            }
-            ),
-        (ExternType,
-            // Extern types aren't Sized
-            return false;
-            ),
-        (Enum,
-            ),
-        (Union,
-            )
-        )
+    switch( this->metadata_type(sp, ty) )
+    {
+    case MetadataType::None:
         return true;
-        ),
-    (Diverge,
-        // The ! type is kinda Sized ...
-        return true;
-        ),
-    (Closure,
-        return true;
-        ),
-    (Infer,
-        // Shouldn't be hit
+    default:
         return false;
-        ),
-    (Borrow,
-        return true;
-        ),
-    (Pointer,
-        return true;
-        ),
-    (Function,
-        return true;
-        ),
-    (Primitive,
-        // All primitives (except the unsized `str`) are Sized
-        return e != ::HIR::CoreType::Str;
-        ),
-    (Array,
-        return true;
-        ),
-    (Slice,
-        return false;
-        ),
-    (TraitObject,
-        return false;
-        ),
-    (ErasedType,
-        // NOTE: All erased types are implicitly Sized
-        return true;
-        ),
-    (Tuple,
-        for(const auto& ty : e)
-            if( !type_is_sized(sp, ty) )
-                return false;
-        return true;
-        )
-    )
-    throw "";
+    }
 }
 bool StaticTraitResolve::type_is_impossible(const Span& sp, const ::HIR::TypeRef& ty) const
 {
@@ -2018,7 +1924,133 @@ bool StaticTraitResolve::can_unsize(const Span& sp, const ::HIR::TypeRef& dst_ty
 
     DEBUG("Can't unsize, no rules matched");
     return false;
+}
 
+MetadataType StaticTraitResolve::metadata_type(const Span& sp, const ::HIR::TypeRef& ty, bool err_on_unknown/*=false*/) const
+{
+    TU_MATCH(::HIR::TypeRef::Data, (ty.m_data), (e),
+    (Generic,
+        if( e.binding == 0xFFFF ) {
+            // TODO: Self: Sized?
+            return MetadataType::None;
+        }
+        else if( (e.binding >> 8) == 0 ) {
+            auto idx = e.binding & 0xFF;
+            assert( m_impl_generics );
+            assert( idx < m_impl_generics->m_types.size() );
+            if( m_impl_generics->m_types[idx].m_is_sized ) {
+                return MetadataType::None;
+            }
+            else {
+                return MetadataType::Unknown;
+            }
+        }
+        else if( (e.binding >> 8) == 1 ) {
+            auto idx = e.binding & 0xFF;
+            assert( m_item_generics );
+            assert( idx < m_item_generics->m_types.size() );
+            if( m_item_generics->m_types[idx].m_is_sized ) {
+                return MetadataType::None;
+            }
+            else {
+                return MetadataType::Unknown;
+            }
+        }
+        else {
+            BUG(sp, "Unknown generic binding on " << ty);
+        }
+        ),
+    (Path,
+        TU_MATCHA( (e.binding), (pbe),
+        (Unbound,
+            // TODO: Should this return something else?
+            return MetadataType::Unknown;
+            ),
+        (Opaque,
+            //auto pp = ::HIR::PathParams();
+            //return this->find_impl(sp, m_lang_Sized, &pp, ty, [&](auto , bool){ return true; }, true);
+            // TODO: This can only be with UfcsKnown, so check if the trait specifies ?Sized
+            //return MetadataType::Unknown;
+            return MetadataType::None;
+            ),
+        (Struct,
+            // TODO: Destructure?
+            switch( pbe->m_struct_markings.dst_type )
+            {
+            case ::HIR::StructMarkings::DstType::None:
+                return MetadataType::None;
+            case ::HIR::StructMarkings::DstType::Possible:
+                return this->metadata_type( sp, e.path.m_data.as_Generic().m_params.m_types.at(pbe->m_struct_markings.unsized_param) );
+            case ::HIR::StructMarkings::DstType::Slice:
+                return MetadataType::Slice;
+            case ::HIR::StructMarkings::DstType::TraitObject:
+                return MetadataType::TraitObject;
+            }
+            ),
+        (ExternType,
+            // Extern types aren't Sized, but have no metadata
+            return MetadataType::Zero;
+            ),
+        (Enum,
+            ),
+        (Union,
+            )
+        )
+        return MetadataType::None;
+        ),
+    (Diverge,
+        // The ! type is kinda Sized ...
+        return MetadataType::None;
+        ),
+    (Closure,
+        return MetadataType::None;
+        ),
+    (Infer,
+        // Shouldn't be hit
+        BUG(sp, "Found ivar? " << ty);
+        ),
+    (Borrow,
+        return MetadataType::None;
+        ),
+    (Pointer,
+        return MetadataType::None;
+        ),
+    (Function,
+        return MetadataType::None;
+        ),
+    (Primitive,
+        // All primitives (except the unsized `str`) are Sized
+        if( e == ::HIR::CoreType::Str )
+        {
+            return MetadataType::Slice;
+        }
+        else
+        {
+            return MetadataType::None;
+        }
+        ),
+    (Array,
+        return MetadataType::None;
+        ),
+    (Slice,
+        return MetadataType::Slice;
+        ),
+    (TraitObject,
+        return MetadataType::TraitObject;
+        ),
+    (ErasedType,
+        // NOTE: All erased types are implicitly Sized
+        return MetadataType::None;
+        ),
+    (Tuple,
+        // TODO: Unsized tuples? are they a thing?
+        //for(const auto& ty : e)
+        //    if( !type_is_sized(sp, ty) )
+        //        return false;
+        return MetadataType::None;
+        )
+    )
+    throw "bug";
 }
 
 bool StaticTraitResolve::type_needs_drop_glue(const Span& sp, const ::HIR::TypeRef& ty) const

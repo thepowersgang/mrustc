@@ -659,26 +659,39 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         // - Alignment is machine native
         out_align = g_target.m_arch.m_pointer_bits / 8;
         // - Size depends on Sized-nes of the parameter
-        if( resolve.type_is_sized(sp, *te.inner) )
-        {
-            out_size = g_target.m_arch.m_pointer_bits / 8;
-            return true;
-        }
         // TODO: Handle different types of Unsized (ones with different pointer sizes)
-        out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
+        switch(resolve.metadata_type(sp, *te.inner))
+        {
+        case MetadataType::Unknown:
+            return false;
+        case MetadataType::None:
+        case MetadataType::Zero:
+            out_size = g_target.m_arch.m_pointer_bits / 8;
+            break;
+        case MetadataType::Slice:
+        case MetadataType::TraitObject:
+            out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
+            break;
+        }
         return true;
         ),
     (Pointer,
         // - Alignment is machine native
         out_align = g_target.m_arch.m_pointer_bits / 8;
         // - Size depends on Sized-nes of the parameter
-        if( resolve.type_is_sized(sp, *te.inner) )
+        switch(resolve.metadata_type(sp, *te.inner))
         {
+        case MetadataType::Unknown:
+            return false;
+        case MetadataType::None:
+        case MetadataType::Zero:
             out_size = g_target.m_arch.m_pointer_bits / 8;
-            return true;
+            break;
+        case MetadataType::Slice:
+        case MetadataType::TraitObject:
+            out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
+            break;
         }
-        // TODO: Handle different types of Unsized (ones with different pointer sizes)
-        out_size = g_target.m_arch.m_pointer_bits / 8 * 2;
         return true;
         ),
     (Function,
