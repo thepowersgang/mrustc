@@ -235,6 +235,7 @@ int main(int argc, char *argv[])
             });
         crate.m_test_harness = params.test_harness;
         crate.m_crate_name_suffix = params.crate_name_suffix;
+        //crate.m_crate_name = params.crate_name;
 
         if( params.last_stage == ProgramParams::STAGE_PARSE ) {
             return 0;
@@ -425,7 +426,7 @@ int main(int argc, char *argv[])
 
             ::std::ofstream of { params.emit_depfile };
             // TODO: Escape spaces and colons in these paths
-            of << params.outfile << ":";
+            of << params.outfile << ": " << params.infile;
             for(const auto& mod_path : pe.out)
             {
                 of << " " << mod_path;
