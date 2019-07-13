@@ -19,10 +19,10 @@
 -            Repr { rust: self }.raw.len
 -        }
 +        #[cfg(not(rust_compiler="mrustc"))]
-+        let rv = unsafe { Repr { rust: self }.raw.len };
++        const fn len_inner<T>(s: &[T]) -> usize { unsafe { Repr { rust: s }.raw.len } };
 +        #[cfg(rust_compiler="mrustc")]
-+        let rv = unsafe { ::intrinsics::mrustc_slice_len(self) };
-+        rv
++        const fn len_inner<T>(s: &[T]) -> usize { unsafe { ::intrinsics::mrustc_slice_len(s) } }
++        len_inner(self)
      }
 # Static-link rustc_codegen_llvm because mrustc doesn't have dylib support
 --- src/librustc_driver/Cargo.toml
