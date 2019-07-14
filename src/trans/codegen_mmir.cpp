@@ -31,6 +31,12 @@ namespace
 
     ::std::ostream& operator<<(::std::ostream& os, const Fmt<::MIR::LValue>& x)
     {
+        for(const auto& w : ::reverse(x.e.m_wrappers))
+        {
+            if( w.is_Deref() ) {
+                os << "(*";
+            }
+        }
         TU_MATCHA( (x.e.m_root), (e),
         (Return,
             os << "RETURN";
@@ -52,7 +58,7 @@ namespace
             switch(w.tag())
             {
             TU_ARM(w, Deref, e)
-                os << "*";
+                os << ")";
                 break;
             TU_ARM(w, Field, field_index) {
                 // Add a space to prevent accidental float literals
@@ -62,7 +68,7 @@ namespace
                 was_num = true;
                 } break;
             TU_ARM(w, Index, e) {
-                os << "[var" << fmt(::MIR::LValue::new_Local(e)) << "]";
+                os << "[" << fmt(::MIR::LValue::new_Local(e)) << "]";
                 } break;
             TU_ARM(w, Downcast, variant_index) {
                 os << "@" << variant_index;
@@ -147,12 +153,12 @@ namespace
         CodeGenerator_MonoMir(const ::HIR::Crate& crate, const ::std::string& outfile):
             m_crate(crate),
             m_resolve(crate),
-            m_outfile_path(outfile + ".mir"),
-            m_of(m_outfile_path)
+            m_outfile_path(outfile),
+            m_of(m_outfile_path + ".mir")
         {
             for( const auto& crate : m_crate.m_ext_crates )
             {
-                m_of << "crate \"" << FmtEscaped(crate.second.m_path) << ".o.mir\";\n";
+                m_of << "crate \"" << FmtEscaped(crate.second.m_path) << ".mir\";\n";
             }
         }
 
@@ -183,6 +189,15 @@ namespace
 
             m_of.flush();
             m_of.close();
+
+            // HACK! Create the output file, but keep it empty
+            {
+                ::std::ofstream of( m_outfile_path );
+                if( !of.good() )
+                {
+                    // TODO: Error?
+                }
+            }
         }
 
 
@@ -1108,8 +1123,8 @@ namespace
                             case ::MIR::eBinOp::SUB_OV: m_of << "-^";   break;
                             case ::MIR::eBinOp::MUL:    m_of << "*";    break;
                             case ::MIR::eBinOp::MUL_OV: m_of << "*^";   break;
-                            case ::MIR::eBinOp::DIV:    m_of << "*";    break;
-                            case ::MIR::eBinOp::DIV_OV: m_of << "*^";   break;
+                            case ::MIR::eBinOp::DIV:    m_of << "/";    break;
+                            case ::MIR::eBinOp::DIV_OV: m_of << "/^";   break;
                             case ::MIR::eBinOp::MOD:    m_of << "%";    break;
                             case ::MIR::eBinOp::BIT_OR: m_of << "|";    break;
                             case ::MIR::eBinOp::BIT_AND:m_of << "&";    break;

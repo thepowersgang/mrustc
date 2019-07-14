@@ -249,7 +249,7 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
         if( w->type == TypeWrapper::Ty::Slice )
         {
             // TODO
-            throw "TODO";
+            LOG_TODO("Field on slice - " << *this << " #" << idx);
         }
         else if( w->type == TypeWrapper::Ty::Array )
         {
@@ -260,7 +260,7 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
         }
         else
         {
-            throw "ERROR";
+            LOG_ERROR("Field on unknown wrapper type - " << *this << " #" << idx);
         }
     }
     else
@@ -273,8 +273,7 @@ HIR::TypeRef HIR::TypeRef::get_field(size_t idx, size_t& ofs) const
         }
         else
         {
-            ::std::cerr << *this << " doesn't have fields" << ::std::endl;
-            throw "ERROR";
+            LOG_ERROR(*this << " doesn't have fields");
         }
     }
 }

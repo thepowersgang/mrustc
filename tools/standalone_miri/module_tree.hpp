@@ -11,6 +11,7 @@
 #include <map>
 #include <set>
 
+#include "../../src/include/rc_string.hpp"
 #include "../../src/mir/mir.hpp"
 #include "hir_sim.hpp"
 #include "value.hpp"

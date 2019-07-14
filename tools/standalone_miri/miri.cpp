@@ -254,137 +254,141 @@ struct MirHelpers
     {
     }
 
-    ValueRef get_value_and_type(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
+    ValueRef get_value_and_type_root(const ::MIR::LValue::Storage& lv_root, ::HIR::TypeRef& ty)
     {
-        switch(lv.tag())
+        switch(lv_root.tag())
         {
-        case ::MIR::LValue::TAGDEAD:    throw "";
+        case ::MIR::LValue::Storage::TAGDEAD:    throw "";
         // --> Slots
-        TU_ARM(lv, Return, _e) {
+        TU_ARM(lv_root, Return, _e) {
             ty = this->frame.fcn.ret_ty;
             return ValueRef(this->frame.ret);
             } break;
-        TU_ARM(lv, Local, e) {
+        TU_ARM(lv_root, Local, e) {
             ty = this->frame.fcn.m_mir.locals.at(e);
             return ValueRef(this->frame.locals.at(e));
             } break;
-        TU_ARM(lv, Argument, e) {
-            ty = this->frame.fcn.args.at(e.idx);
-            return ValueRef(this->frame.args.at(e.idx));
+        TU_ARM(lv_root, Argument, e) {
+            ty = this->frame.fcn.args.at(e);
+            return ValueRef(this->frame.args.at(e));
             } break;
-        TU_ARM(lv, Static, e) {
-            /*const*/ auto& s = this->thread.m_modtree.get_static(*e);
+        TU_ARM(lv_root, Static, e) {
+            /*const*/ auto& s = this->thread.m_modtree.get_static(e);
             ty = s.ty;
             return ValueRef(s.val);
             } break;
-        // --> Modifiers
-        TU_ARM(lv, Index, e) {
-            auto idx = get_value_ref(*e.idx).read_usize(0);
-            ::HIR::TypeRef  array_ty;
-            auto base_val = get_value_and_type(*e.val, array_ty);
-            const auto* wrapper = array_ty.get_wrapper();
-            if( !wrapper )
-            {
-                LOG_ERROR("Indexing non-array/slice - " << array_ty);
-            }
-            else if( wrapper->type == TypeWrapper::Ty::Array )
-            {
-                ty = array_ty.get_inner();
-                base_val.m_offset += ty.get_size() * idx;
-                return base_val;
-            }
-            else if( wrapper->type == TypeWrapper::Ty::Slice )
-            {
-                LOG_TODO("Slice index");
-            }
-            else
-            {
-                LOG_ERROR("Indexing non-array/slice - " << array_ty);
-                throw "ERROR";
-            }
-            } break;
-        TU_ARM(lv, Field, e) {
-            ::HIR::TypeRef  composite_ty;
-            auto base_val = get_value_and_type(*e.val, composite_ty);
-            // TODO: if there's metadata present in the base, but the inner doesn't have metadata, clear the metadata
-            size_t inner_ofs;
-            ty = composite_ty.get_field(e.field_index, inner_ofs);
-            LOG_DEBUG("Field - " << composite_ty << "#" << e.field_index << " = @" << inner_ofs << " " << ty);
-            base_val.m_offset += inner_ofs;
-            if( ty.get_meta_type() == HIR::TypeRef(RawType::Unreachable) )
-            {
-                LOG_ASSERT(base_val.m_size >= ty.get_size(), "Field didn't fit in the value - " << ty.get_size() << " required, but " << base_val.m_size << " avail");
-                base_val.m_size = ty.get_size();
-            }
-            return base_val;
-            }
-        TU_ARM(lv, Downcast, e) {
-            ::HIR::TypeRef  composite_ty;
-            auto base_val = get_value_and_type(*e.val, composite_ty);
-            LOG_DEBUG("Downcast - " << composite_ty);
-
-            size_t inner_ofs;
-            ty = composite_ty.get_field(e.variant_index, inner_ofs);
-            base_val.m_offset += inner_ofs;
-            return base_val;
-            }
-        TU_ARM(lv, Deref, e) {
-            ::HIR::TypeRef  ptr_ty;
-            auto val = get_value_and_type(*e.val, ptr_ty);
-            ty = ptr_ty.get_inner();
-            LOG_DEBUG("val = " << val << ", (inner) ty=" << ty);
-
-            LOG_ASSERT(val.m_size >= POINTER_SIZE, "Deref of a value that doesn't fit a pointer - " << ty);
-            size_t ofs = val.read_usize(0);
-
-            // There MUST be a relocation at this point with a valid allocation.
-            auto alloc = val.get_relocation(val.m_offset);
-            LOG_TRACE("Deref " << alloc << " + " << ofs << " to give value of type " << ty);
-            // NOTE: No alloc can happen when dereferencing a zero-sized pointer
-            if( alloc.is_alloc() )
-            {
-                LOG_DEBUG("> " << lv << " alloc=" << alloc.alloc());
-            }
-            size_t size;
-
-            const auto meta_ty = ty.get_meta_type();
-            ::std::shared_ptr<Value>    meta_val;
-            // If the type has metadata, store it.
-            if( meta_ty != RawType::Unreachable )
-            {
-                auto meta_size = meta_ty.get_size();
-                LOG_ASSERT(val.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
-                meta_val = ::std::make_shared<Value>( val.read_value(POINTER_SIZE, meta_size) );
-
-                size_t    slice_inner_size;
-                if( ty.has_slice_meta(slice_inner_size) ) {
-                    size = (ty.get_wrapper() == nullptr ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
-                }
-                //else if( ty == RawType::TraitObject) {
-                //    // NOTE: Getting the size from the allocation is semi-valid, as you can't sub-slice trait objects
-                //    size = alloc.get_size() - ofs;
-                //}
-                else {
-                    LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
-                    size = alloc.get_size() - ofs;
-                }
-            }
-            else
-            {
-                LOG_ASSERT(val.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << val.m_size << ") - " << val << ": " << ptr_ty);
-                size = ty.get_size();
-                if( !alloc ) {
-                    LOG_ERROR("Deref of a value with no relocation - " << val);
-                }
-            }
-
-            LOG_DEBUG("alloc=" << alloc << ", ofs=" << ofs << ", size=" << size);
-            auto rv = ValueRef(::std::move(alloc), ofs, size);
-            rv.m_metadata = ::std::move(meta_val);
-            return rv;
-            } break;
         }
         throw "";
+    }
+    ValueRef get_value_and_type(const ::MIR::LValue& lv, ::HIR::TypeRef& ty)
+    {
+        auto vr = get_value_and_type_root(lv.m_root, ty);
+        for(const auto& w : lv.m_wrappers)
+        {
+            switch(w.tag())
+            {
+            case ::MIR::LValue::Wrapper::TAGDEAD:    throw "";
+            // --> Modifiers
+            TU_ARM(w, Index, idx_var) {
+                auto idx = this->frame.locals.at(idx_var).read_usize(0);
+                const auto* wrapper = ty.get_wrapper();
+                if( !wrapper )
+                {
+                    LOG_ERROR("Indexing non-array/slice - " << ty);
+                    throw "ERROR";
+                }
+                else if( wrapper->type == TypeWrapper::Ty::Array )
+                {
+                    ty = ty.get_inner();
+                    vr.m_offset += ty.get_size() * idx;
+                }
+                else if( wrapper->type == TypeWrapper::Ty::Slice )
+                {
+                    LOG_TODO("Slice index");
+                }
+                else
+                {
+                    LOG_ERROR("Indexing non-array/slice - " << ty);
+                    throw "ERROR";
+                }
+                } break;
+            TU_ARM(w, Field, fld_idx) {
+                // TODO: if there's metadata present in the base, but the inner doesn't have metadata, clear the metadata
+                size_t inner_ofs;
+                auto inner_ty = ty.get_field(fld_idx, inner_ofs);
+                LOG_DEBUG("Field - " << ty << "#" << fld_idx << " = @" << inner_ofs << " " << inner_ty);
+                vr.m_offset += inner_ofs;
+                if( inner_ty.get_meta_type() == HIR::TypeRef(RawType::Unreachable) )
+                {
+                    LOG_ASSERT(vr.m_size >= inner_ty.get_size(), "Field didn't fit in the value - " << inner_ty.get_size() << " required, but " << vr.m_size << " available");
+                    vr.m_size = inner_ty.get_size();
+                }
+                ty = ::std::move(inner_ty);
+                }
+            TU_ARM(w, Downcast, variant_index) {
+                auto composite_ty = ::std::move(ty);
+                LOG_DEBUG("Downcast - " << composite_ty);
+
+                size_t inner_ofs;
+                ty = composite_ty.get_field(variant_index, inner_ofs);
+                vr.m_offset += inner_ofs;
+                }
+            TU_ARM(w, Deref, _) {
+                auto ptr_ty = ::std::move(ty);
+                ty = ptr_ty.get_inner();
+                LOG_DEBUG("val = " << vr << ", (inner) ty=" << ty);
+
+                LOG_ASSERT(vr.m_size >= POINTER_SIZE, "Deref of a value that doesn't fit a pointer - " << ty);
+                size_t ofs = vr.read_usize(0);
+
+                // There MUST be a relocation at this point with a valid allocation.
+                auto alloc = vr.get_relocation(vr.m_offset);
+                LOG_TRACE("Deref " << alloc << " + " << ofs << " to give value of type " << ty);
+                // NOTE: No alloc can happen when dereferencing a zero-sized pointer
+                if( alloc.is_alloc() )
+                {
+                    LOG_DEBUG("> " << lv << " alloc=" << alloc.alloc());
+                }
+                size_t size;
+
+                const auto meta_ty = ty.get_meta_type();
+                ::std::shared_ptr<Value>    meta_val;
+                // If the type has metadata, store it.
+                if( meta_ty != RawType::Unreachable )
+                {
+                    auto meta_size = meta_ty.get_size();
+                    LOG_ASSERT(vr.m_size == POINTER_SIZE + meta_size, "Deref of " << ty << ", but pointer isn't correct size");
+                    meta_val = ::std::make_shared<Value>( vr.read_value(POINTER_SIZE, meta_size) );
+
+                    size_t    slice_inner_size;
+                    if( ty.has_slice_meta(slice_inner_size) ) {
+                        size = (ty.get_wrapper() == nullptr ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
+                    }
+                    //else if( ty == RawType::TraitObject) {
+                    //    // NOTE: Getting the size from the allocation is semi-valid, as you can't sub-slice trait objects
+                    //    size = alloc.get_size() - ofs;
+                    //}
+                    else {
+                        LOG_DEBUG("> Meta " << *meta_val << ", size = " << alloc.get_size() << " - " << ofs);
+                        size = alloc.get_size() - ofs;
+                    }
+                }
+                else
+                {
+                    LOG_ASSERT(vr.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << vr << ") - " << vr << ": " << ptr_ty);
+                    size = ty.get_size();
+                    if( !alloc ) {
+                        LOG_ERROR("Deref of a value with no relocation - " << vr);
+                    }
+                }
+
+                LOG_DEBUG("alloc=" << alloc << ", ofs=" << ofs << ", size=" << size);
+                vr = ValueRef(::std::move(alloc), ofs, size);
+                vr.m_metadata = ::std::move(meta_val);
+                } break;
+            }
+        }
+        return vr;
     }
     ValueRef get_value_ref(const ::MIR::LValue& lv)
     {
@@ -1907,7 +1911,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     return true;
 }
 
-bool InterpreterThread::call_intrinsic(Value& rv, const ::std::string& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
+bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::HIR::PathParams& ty_params, ::std::vector<Value> args)
 {
     TRACE_FUNCTION_R(name, rv);
     for(const auto& a : args)

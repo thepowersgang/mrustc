@@ -332,9 +332,6 @@ bool Parser::parse_one()
 
     struct H
     {
-        static ::std::unique_ptr<::MIR::LValue> make_lvp(::MIR::LValue&& lv) {
-            return ::std::unique_ptr<::MIR::LValue>(new ::MIR::LValue(::std::move(lv)));
-        }
         //
         // Parse a LValue
         //
@@ -357,7 +354,7 @@ bool Parser::parse_one()
                 if( name.substr(0,3) == "arg" ) {
                     try {
                         auto idx = static_cast<unsigned>( ::std::stol(name.substr(3)) );
-                        lv = ::MIR::LValue::make_Argument({ idx });
+                        lv = ::MIR::LValue::new_Argument( idx );
                     }
                     catch(const ::std::exception& e) {
                         LOG_ERROR(lex << "Invalid argument name - " << name << " - " << e.what());
@@ -365,7 +362,7 @@ bool Parser::parse_one()
                 }
                 // Hard-coded "RETURN" lvalue
                 else if( name == "RETURN" ) {
-                    lv = ::MIR::LValue::make_Return({});
+                    lv = ::MIR::LValue::new_Return();
                 }
                 // Otherwise, look up variable names
                 else {
@@ -373,13 +370,13 @@ bool Parser::parse_one()
                     if( it == var_names.end() ) {
                         LOG_ERROR(lex << "Cannot find variable named '" << name << "'");
                     }
-                    lv = ::MIR::LValue::make_Local(static_cast<unsigned>(it - var_names.begin()));
+                    lv = ::MIR::LValue::new_Local(static_cast<unsigned>(it - var_names.begin()));
                 }
             }
             else if( lex.next() == "::" || lex.next() == '<' )
             {
                 auto path = p.parse_path();
-                lv = ::MIR::LValue( ::std::make_unique<HIR::Path>(::std::move(path)) );
+                lv = ::MIR::LValue::new_Static( ::std::move(path) );
             }
             else {
                 LOG_ERROR(lex << "Unexpected token in LValue - " << lex.next());
@@ -390,19 +387,19 @@ bool Parser::parse_one()
                 {
                     lex.check(TokenClass::Integer);
                     auto idx = static_cast<unsigned>( lex.consume().integer() );
-                    lv = ::MIR::LValue::make_Downcast({ make_lvp(::std::move(lv)), idx });
+                    lv = ::MIR::LValue::new_Downcast(::std::move(lv), idx);
                 }
                 else if( lex.consume_if('.') )
                 {
                     lex.check(TokenClass::Integer);
                     auto idx = static_cast<unsigned>( lex.consume().integer() );
-                    lv = ::MIR::LValue::make_Field({ make_lvp(::std::move(lv)), idx });
+                    lv = ::MIR::LValue::new_Field( ::std::move(lv), idx );
                 }
                 else if( lex.next() == '[' )
                 {
                     lex.consume();
                     auto idx_lv = parse_lvalue(p, var_names);
-                    lv = ::MIR::LValue::make_Index({ make_lvp(::std::move(lv)), make_lvp(::std::move(idx_lv)) });
+                    lv = ::MIR::LValue::new_Index(::std::move(lv), idx_lv.as_Local());
                     lex.check_consume(']');
                 }
                 else
@@ -412,7 +409,7 @@ bool Parser::parse_one()
             }
             while(deref --)
             {
-                lv = ::MIR::LValue::make_Deref({ make_lvp(::std::move(lv)) });
+                lv = ::MIR::LValue::new_Deref( ::std::move(lv) );
             }
             return lv;
         }
@@ -936,7 +933,7 @@ bool Parser::parse_one()
                 lex.check_consume(')');
             }
             else if( lex.next() == TokenClass::String ) {
-                auto name = ::std::move(lex.consume().strval);
+                auto name = RcString::new_interned(lex.consume().strval);
                 auto params = parse_pathparams();
                 ct = ::MIR::CallTarget::make_Intrinsic({ ::std::move(name), ::std::move(params) });
             }

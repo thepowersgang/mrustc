@@ -9,18 +9,23 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include "../../src/include/rc_string.hpp"
 
 const size_t POINTER_SIZE = 8;
 
+#define __ORD(fld)  do { auto o = ::ord(this->fld, x.fld); if( o != OrdEqual )  return o; } while(0)
+#define __ORD_C(ty, fld)  do { auto o = ::ord((ty)this->fld, (ty)x.fld); if( o != OrdEqual )  return o; } while(0)
 #define __NE(fld)  if(this->fld != x.fld) return true
 #define __LT(fld)  if(this->fld != x.fld) return this->fld < x.fld
 
+#if 0
 enum Ordering
 {
     OrdLess,
     OrdEqual,
     OrdGreater,
 };
+#endif
 
 struct DataType;
 
@@ -56,18 +61,19 @@ struct TypeWrapper
     } type;
     size_t  size;
 
+    Ordering ord(const TypeWrapper& x) const {
+        __ORD_C(int, type);
+        __ORD(size);
+        return OrdEqual;
+    }
     bool operator==(const TypeWrapper& x) const {
-        return !(*this != x);
+        return this->ord(x) == OrdEqual;
     }
     bool operator!=(const TypeWrapper& x) const {
-        __NE(type);
-        __NE(size);
-        return false;
+        return this->ord(x) != OrdEqual;
     }
     bool operator<(const TypeWrapper& x) const {
-        __LT(type);
-        __LT(size);
-        return false;
+        return this->ord(x) == OrdLess;
     }
 };
 
@@ -166,20 +172,20 @@ namespace HIR {
         bool operator!=(const RawType& x) const {
             return !(*this == x);
         }
+        Ordering ord(const TypeRef& x) const {
+            __ORD(wrappers);
+            __ORD_C(int, inner_type);
+            __ORD_C(uintptr_t, composite_type);
+            return OrdEqual;
+        }
         bool operator==(const TypeRef& x) const {
-            return !(*this != x);
+            return this->ord(x) == OrdEqual;
         }
         bool operator!=(const TypeRef& x) const {
-            __NE(wrappers);
-            __NE(inner_type);
-            __NE(composite_type);
-            return false;
+            return this->ord(x) != OrdEqual;
         }
         bool operator<(const TypeRef& x) const {
-            __LT(wrappers);
-            __LT(inner_type);
-            __LT(composite_type);
-            return false;
+            return this->ord(x) == OrdLess;
         }
 
         friend ::std::ostream& operator<<(::std::ostream& os, const TypeRef& x);
@@ -189,18 +195,19 @@ namespace HIR {
     {
         ::std::string   crate_name;
         ::std::vector<::std::string>    ents;
+        Ordering ord(const SimplePath& x) const {
+            __ORD(crate_name);
+            __ORD(ents);
+            return OrdEqual;
+        }
         bool operator==(const SimplePath& x) const {
-            return !(*this != x);
+            return this->ord(x) == OrdEqual;
         }
         bool operator!=(const SimplePath& x) const {
-            __NE(crate_name);
-            __NE(ents);
-            return false;
+            return this->ord(x) != OrdEqual;
         }
         bool operator<(const SimplePath& x) const {
-            __LT(crate_name);
-            __LT(ents);
-            return false;
+            return this->ord(x) == OrdLess;
         }
         friend ::std::ostream& operator<<(::std::ostream& os, const SimplePath& x);
     };
@@ -221,18 +228,19 @@ namespace HIR {
             m_simplepath(sp)
         {
         }
+        Ordering ord(const GenericPath& x) const {
+            __ORD(m_simplepath);
+            __ORD(m_params.tys);
+            return OrdEqual;
+        }
         bool operator==(const GenericPath& x) const {
-            return !(*this != x);
+            return this->ord(x) == OrdEqual;
         }
         bool operator!=(const GenericPath& x) const {
-            __NE(m_simplepath);
-            __NE(m_params.tys);
-            return false;
+            return this->ord(x) != OrdEqual;
         }
         bool operator<(const GenericPath& x) const {
-            __LT(m_simplepath);
-            __LT(m_params.tys);
-            return false;
+            return this->ord(x) == OrdLess;
         }
 
         friend ::std::ostream& operator<<(::std::ostream& os, const GenericPath& x);
@@ -263,22 +271,21 @@ namespace HIR {
         {
         }
 
+        Ordering ord(const Path& x) const {
+            __ORD(m_type);
+            __ORD(m_trait);
+            __ORD(m_name);
+            __ORD(m_params.tys);
+            return OrdEqual;
+        }
         bool operator==(const Path& x) const {
-            return !(*this != x);
+            return this->ord(x) == OrdEqual;
         }
         bool operator!=(const Path& x) const {
-            __NE(m_type);
-            __NE(m_trait);
-            __NE(m_name);
-            __NE(m_params.tys);
-            return false;
+            return this->ord(x) != OrdEqual;
         }
         bool operator<(const Path& x) const {
-            __LT(m_type);
-            __LT(m_trait);
-            __LT(m_name);
-            __LT(m_params.tys);
-            return false;
+            return this->ord(x) == OrdLess;
         }
 
         friend ::std::ostream& operator<<(::std::ostream& os, const Path& x);

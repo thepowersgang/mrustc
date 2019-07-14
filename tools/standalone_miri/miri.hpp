@@ -77,7 +77,7 @@ private:
     // Returns true if the call was resolved instantly
     bool call_extern(Value& ret_val, const ::std::string& name, const ::std::string& abi, ::std::vector<Value> args);
     // Returns true if the call was resolved instantly
-    bool call_intrinsic(Value& ret_val, const ::std::string& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
+    bool call_intrinsic(Value& ret_val, const RcString& name, const ::HIR::PathParams& pp, ::std::vector<Value> args);
 
     // Returns true if the call was resolved instantly
     bool drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow=false);
