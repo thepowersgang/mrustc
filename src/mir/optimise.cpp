@@ -2488,6 +2488,7 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                             TU_MATCHA( (val), (ve),
                             (Uint,
                                 auto val = ve.v;
+                                replace = true;
                                 switch(ve.t)
                                 {
                                 case ::HIR::CoreType::U8:   val = (~val) & 0xFF;  break;
@@ -2498,17 +2499,17 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
                                     val = ~val;
                                     break;
                                 case ::HIR::CoreType::U128:
-                                    val = ~val;
+                                    replace = false;
                                     break;
                                 case ::HIR::CoreType::Char:
                                     MIR_BUG(state, "Invalid use of ! on char");
                                     break;
                                 default:
                                     // Invalid type for Uint literal
+                                    replace = false;
                                     break;
                                 }
                                 new_value = ::MIR::Constant::make_Uint({ val, ve.t });
-                                replace = true;
                                 ),
                             (Int,
                                 // Is ! valid on Int?
