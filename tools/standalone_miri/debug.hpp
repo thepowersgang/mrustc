@@ -21,17 +21,26 @@ enum class DebugLevel {
     Bug,
 };
 
-class DebugSink
+class DebugSink//:
+    //public ::std::ostream
 {
     static unsigned s_indent;
     static ::std::unique_ptr<std::ofstream> s_out_file;
     ::std::ostream& m_inner;
-    DebugSink(::std::ostream& inner);
+    bool m_stderr_too;
+    DebugSink(::std::ostream& inner, bool stderr_too);
 public:
     ~DebugSink();
 
     template<typename T>
-    ::std::ostream& operator<<(const T& v) { return m_inner << v; }
+    DebugSink& operator<<(const T& v) {
+        if( m_stderr_too )
+        {
+            ::std::cerr << v;
+        }
+        m_inner << v;
+        return *this;
+    }
 
     static void set_output_file(const ::std::string& s);
     static bool enabled(const char* fcn_name);
