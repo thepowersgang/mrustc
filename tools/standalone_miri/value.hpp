@@ -303,6 +303,11 @@ struct Value:
     Value();
     Value(::HIR::TypeRef ty);
 
+    //Value(const Value&) = delete;
+    //Value(Value&&) = default;
+    //Value& operator=(const Value&) = delete;
+    //Value& operator=(Value&&) = default;
+
     static Value with_size(size_t size, bool have_allocation);
     static Value new_fnptr(const ::HIR::Path& fn_path);
     static Value new_ffiptr(FFIPointer ffi);

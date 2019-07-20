@@ -1459,6 +1459,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 if( !this->call_path(rv, *fcn_p, ::std::move(sub_args)) )
                 {
                     // Early return, don't want to update stmt_idx yet
+                    LOG_DEBUG("- Non-immediate return, do not advance yet");
                     return false;
                 }
             }
@@ -1534,6 +1535,7 @@ InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Val
     bb_idx(0),
     stmt_idx(0)
 {
+    LOG_DEBUG("- Initializing " << fcn.m_mir.locals.size() << " locals");
     this->locals.reserve( fcn.m_mir.locals.size() );
     for(const auto& ty : fcn.m_mir.locals)
     {

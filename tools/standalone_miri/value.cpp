@@ -13,6 +13,12 @@
 #include <algorithm>
 #include "debug.hpp"
 
+::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
+{
+    os << "A(" << static_cast<const void*>(x) << " " << x->tag() << ")";
+    return os;
+}
+
 FfiLayout FfiLayout::new_const_bytes(size_t s)
 {
     return FfiLayout {
@@ -53,6 +59,7 @@ AllocationHandle Allocation::new_alloc(size_t size, ::std::string tag)
     rv->data.resize( (size + 8-1) / 8 );    // QWORDS
     rv->mask.resize( (size + 8-1) / 8 );    // bitmap bytes
     //LOG_DEBUG(rv << " ALLOC");
+    LOG_DEBUG(rv);
     return AllocationHandle(rv);
 }
 AllocationHandle::AllocationHandle(const AllocationHandle& x):
@@ -318,11 +325,6 @@ void Allocation::check_bytes_valid(size_t ofs, size_t size) const
             throw "ERROR";
         }
     }
-}
-::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
-{
-    os << static_cast<const void*>(x) << " A(" << x->tag() << ")";
-    return os;
 }
 void Allocation::mark_bytes_valid(size_t ofs, size_t size)
 {
@@ -868,7 +870,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
         case RelocationPtr::Ty::Allocation: {
             const auto& alloc = alloc_ptr.alloc();
 
-            os << "A(" << alloc.tag() << ")@" << v.m_offset << "+" << v.m_size << " ";
+            os << &alloc << "@" << v.m_offset << "+" << v.m_size << " ";
 
             auto flags = os.flags();
             os << ::std::hex;
@@ -923,7 +925,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
     {
         const auto& alloc = *v.m_value->allocation;
 
-        os << "A(" << alloc.tag() << ")@" << v.m_offset << "+" << v.m_size << " ";
+        os << &alloc << "@" << v.m_offset << "+" << v.m_size << " ";
 
         auto flags = os.flags();
         os << ::std::hex;
