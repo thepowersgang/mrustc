@@ -84,17 +84,6 @@ public:
 
     /// \brief State manipulation
     /// \{
-    template<typename T>
-    class NullOnDrop {
-        T*& ptr;
-    public:
-        NullOnDrop(T*& ptr):
-            ptr(ptr)
-        {}
-        ~NullOnDrop() {
-            ptr = nullptr;
-        }
-    };
     NullOnDrop<const ::HIR::GenericParams> set_impl_generics(const ::HIR::GenericParams& gps) {
         set_impl_generics_raw(gps);
         return NullOnDrop<const ::HIR::GenericParams>(m_impl_generics);

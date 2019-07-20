@@ -412,5 +412,17 @@ RunIterable<T> runs(const ::std::vector<T>& x) {
     return RunIterable<T>(x);
 }
 
+template<typename T>
+class NullOnDrop {
+    T*& ptr;
+public:
+    NullOnDrop(T*& ptr):
+        ptr(ptr)
+    {}
+    ~NullOnDrop() {
+        ptr = nullptr;
+    }
+};
+
 
 #endif
