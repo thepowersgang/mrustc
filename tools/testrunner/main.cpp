@@ -37,6 +37,9 @@ struct Options
     const char* input_glob = nullptr;
     ::std::vector<::std::string>    test_list;
 
+    bool    debug_enabled;
+    ::std::vector<::std::string>    lib_dirs;
+
     int debug_level = 0;
 
     const char* exceptions_file = nullptr;
@@ -96,18 +99,25 @@ struct Timestamp
 
 bool run_executable(const ::helpers::path& file, const ::std::vector<const char*>& args, const ::helpers::path& outfile, unsigned timeout_seconds);
 
-bool run_compiler(const ::helpers::path& source_file, const ::helpers::path& output, const ::std::vector<::std::string>& extra_flags, ::helpers::path libdir={}, bool is_dep=false)
+bool run_compiler(const Options& opts, const ::helpers::path& source_file, const ::helpers::path& output, const ::std::vector<::std::string>& extra_flags, ::helpers::path libdir={}, bool is_dep=false)
 {
     ::std::vector<const char*>  args;
     args.push_back("mrustc");
 
     // Force optimised and debuggable
     args.push_back("-O");
-    // TODO: Only turn debug on when requested by the caller
-    //args.push_back("-g");
 
-    args.push_back("-L");
-    args.push_back("output");
+    // Only turn debug on when requested by the caller
+    if( opts.debug_enabled )
+    {
+        args.push_back("-g");
+    }
+
+    for(const auto& d : opts.lib_dirs)
+    {
+        args.push_back("-L");
+        args.push_back(d.c_str());
+    }
     if(libdir.is_valid())
     {
         args.push_back("-L");
@@ -353,7 +363,7 @@ int main(int argc, const char* argv[])
                     mkdir(depdir.str().c_str(), 0755);
 #endif
                     auto infile = input_path / "auxiliary" / file;
-                    if( !run_compiler(infile, depdir, {}, depdir, true) )
+                    if( !run_compiler(opts, infile, depdir, {}, depdir, true) )
                     {
                         DEBUG("COMPILE FAIL " << infile << " (dep of " << test.m_name << ")");
                         n_cfail ++;
@@ -376,7 +386,7 @@ int main(int argc, const char* argv[])
                 }
 
                 auto compile_logfile = outdir / test.m_name + "-build.log";
-                if( !run_compiler(test.m_path, outfile, test.m_extra_flags, depdir) )
+                if( !run_compiler(opts, test.m_path, outfile, test.m_extra_flags, depdir) )
                 {
                     DEBUG("COMPILE FAIL " << test.m_name << ", log in " << compile_logfile);
                     n_cfail ++;
@@ -467,6 +477,16 @@ int Options::parse(int argc, const char* argv[])
                 break;
             case 'v':
                 this->debug_level += 1;
+                break;
+            case 'g':
+                this->debug_enabled = true;
+                break;
+            case 'L':
+                if( i+1 == argc ) {
+                    this->usage_short();
+                    return 1;
+                }
+                this->lib_dirs.push_back( argv[++i] );
                 break;
 
             default:
