@@ -222,7 +222,7 @@ endif
 local_tests:
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/local_tests
-	./tools/bin/testrunner -o output$(OUTDIR_SUF)/local_tests samples/test
+	./tools/bin/testrunner -o output$(OUTDIR_SUF)/local_tests -L output samples/test
 
 # 
 # RUSTC TESTS
@@ -238,7 +238,8 @@ RUST_TESTS: RUST_TESTS_run-pass
 RUST_TESTS_run-pass:
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/rust_tests/run-pass
-	./tools/bin/testrunner -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
+	make -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
+	./tools/bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
 output$(OUTDIR_SUF)/librust_test_helpers.a: output$(OUTDIR_SUF)/rust_test_helpers.o
 	@mkdir -p $(dir $@)
 	ar cur $@ $<
