@@ -310,8 +310,14 @@ namespace {
         for(const auto& w : lv.m_wrappers)
         {
             if(w.is_Index())
+            {
                 if( cb(::MIR::LValue::new_Local(w.as_Index()), ValUsage::Read) )
                     return true;
+            }
+            else if(w.is_Deref())
+            {
+                //u = ValUsage::Read;
+            }
         }
         return cb(lv, u);
     }
@@ -477,8 +483,9 @@ namespace {
         return visit_mir_lvalues_mut(const_cast<::MIR::Statement&>(stmt), [&](auto& lv, auto im){ return cb(lv, im); });
     }
 
-    void visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
+    bool visit_mir_lvalues_mut(::MIR::Terminator& term, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
     {
+        bool rv = false;
         TU_MATCHA( (term), (e),
         (Incomplete,
             ),
@@ -491,27 +498,28 @@ namespace {
         (Panic,
             ),
         (If,
-            visit_mir_lvalue_raw_mut(e.cond, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.cond, ValUsage::Read, cb);
             ),
         (Switch,
-            visit_mir_lvalue_raw_mut(e.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.val, ValUsage::Read, cb);
             ),
         (SwitchValue,
-            visit_mir_lvalue_raw_mut(e.val, ValUsage::Read, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.val, ValUsage::Read, cb);
             ),
         (Call,
             if( e.fcn.is_Value() ) {
-                visit_mir_lvalue_raw_mut(e.fcn.as_Value(), ValUsage::Read, cb);
+                rv |= visit_mir_lvalue_raw_mut(e.fcn.as_Value(), ValUsage::Read, cb);
             }
             for(auto& v : e.args)
-                visit_mir_lvalue_mut(v, ValUsage::Move, cb);
-            visit_mir_lvalue_raw_mut(e.ret_val, ValUsage::Write, cb);
+                rv |= visit_mir_lvalue_mut(v, ValUsage::Move, cb);
+            rv |= visit_mir_lvalue_raw_mut(e.ret_val, ValUsage::Write, cb);
             )
         )
+        return rv;
     }
-    void visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
+    bool visit_mir_lvalues(const ::MIR::Terminator& term, ::std::function<bool(const ::MIR::LValue& , ValUsage)> cb)
     {
-        visit_mir_lvalues_mut(const_cast<::MIR::Terminator&>(term), [&](auto& lv, auto im){ return cb(lv, im); });
+        return visit_mir_lvalues_mut(const_cast<::MIR::Terminator&>(term), [&](auto& lv, auto im){ return cb(lv, im); });
     }
 
     void visit_mir_lvalues_mut(::MIR::TypeResolve& state, ::MIR::Function& fcn, ::std::function<bool(::MIR::LValue& , ValUsage)> cb)
@@ -1427,6 +1435,325 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
 // (*_$1).1 = 0x0;
 // ```
 
+namespace {
+    struct StmtRef {
+        unsigned    bb_idx;
+        unsigned    stmt_idx;
+        StmtRef(): bb_idx(0), stmt_idx(0) {}
+        StmtRef(unsigned b, unsigned s): bb_idx(b), stmt_idx(s) {}
+    };
+    ::std::ostream& operator<<(::std::ostream& os, const StmtRef& x) {
+        return os << "BB" << x.bb_idx << "/" << x.stmt_idx;
+    }
+
+    // Iterates the path between two positions, NOT visiting entry specified by `end`
+    bool iter_path(
+            const ::MIR::Function& fcn, const StmtRef& start, const StmtRef& end,
+            ::std::function<bool(StmtRef, const ::MIR::Statement&)> cb_stmt,
+            ::std::function<bool(StmtRef, const ::MIR::Terminator&)> cb_term
+            )
+    {
+        assert(start.bb_idx == end.bb_idx); // TODO: Support chaining.
+        assert(start.stmt_idx <= end.stmt_idx);
+
+        size_t bb_idx = start.bb_idx;
+        for(auto ref = start; ref.stmt_idx < end.stmt_idx; ref.stmt_idx ++)
+        {
+            const auto& bb = fcn.blocks.at(bb_idx);
+            if( ref.stmt_idx < bb.statements.size() )
+            {
+                if( cb_stmt(ref, bb.statements.at(ref.stmt_idx)) )
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                if( cb_term(ref, bb.terminator) )
+                {
+                    return true;
+                }
+                break;
+            }
+        }
+        return false;
+    }
+
+    ::std::function<bool(const ::MIR::LValue& , ValUsage)> check_invalidates_lvalue_cb(const ::MIR::LValue& val)
+    {
+        bool has_index = ::std::any_of(val.m_wrappers.begin(), val.m_wrappers.end(), [&](const auto& w){ return w.is_Index(); });
+        // Value is invalidated if it's used with ValUsage::Write or ValUsage::Borrow
+        // - Same applies to any component of the lvalue
+        return [&val,has_index](const ::MIR::LValue& lv, ValUsage vu) {
+            switch(vu)
+            {
+            case ValUsage::Move:    // A move can invalidate
+                // - Ideally this would check if it DOES invalidate
+            case ValUsage::Write:
+            case ValUsage::Borrow:
+                // (Possibly) mutating use, check if it impacts the root or one of the indexes
+                if( lv.m_root == val.m_root ) {
+                    return true;
+                }
+                if( has_index && lv.m_root.is_Local() )
+                {
+                    for(const auto& w : val.m_wrappers)
+                    {
+                        if( w.is_Index() )
+                        {
+                            if( w.as_Index() == lv.m_root.as_Local() )
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                break;
+            case ValUsage::Read:
+                break;
+            }
+            return false;
+            };
+    }
+    bool check_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& val)
+    {
+        return visit_mir_lvalues(stmt, check_invalidates_lvalue_cb(val));
+    }
+    bool check_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& val)
+    {
+        return visit_mir_lvalues(term, check_invalidates_lvalue_cb(val));
+    }
+}
+
+bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+    TRACE_FUNCTION_FR("", changed);
+
+    // TODO: New algorithm
+    // Find all single-use/single-write locals
+    // - IF the usage is a RValue::Use, AND the usage destination is not invalidated between set/use
+    //  - Replace initialisation destination with usage destination (delete usage statement)
+    // - IF the source a Use/Constant, AND is not invalidated between set/use
+    //  - Replace usage with the original source
+    struct LocalUsage {
+        unsigned    n_write;
+        unsigned    n_read;
+        unsigned    n_borrow;
+        StmtRef set_loc;
+        StmtRef use_loc;
+        LocalUsage():
+            n_write(0),
+            n_read(0),
+            n_borrow(0)
+        {
+        }
+    };
+    auto usage_info = ::std::vector<LocalUsage>(fcn.locals.size());
+    for(const auto& bb : fcn.blocks)
+    {
+        StmtRef cur_loc;
+        auto visit_cb = [&](const ::MIR::LValue& lv, auto vu) {
+            if( !lv.m_wrappers.empty() ) {
+                vu = ValUsage::Read;
+            }
+            for(const auto& w : lv.m_wrappers)
+            {
+                if(w.is_Index())
+                {
+                    auto& slot = usage_info[w.as_Index()];
+                    slot.n_read += 1;
+                    slot.use_loc = cur_loc;
+                    //DEBUG(lv << " index use");
+                }
+            }
+            if( lv.m_root.is_Local() )
+            {
+                auto& slot = usage_info[lv.m_root.as_Local()];
+                switch(vu)
+                {
+                case ValUsage::Write:
+                    slot.n_write += 1;
+                    slot.set_loc = cur_loc;
+                    //DEBUG(lv << " set");
+                    break;
+                case ValUsage::Move:
+                    slot.n_read += 1;
+                    slot.use_loc = cur_loc;
+                    //DEBUG(lv << " use");
+                    break;
+                case ValUsage::Read:
+                case ValUsage::Borrow:
+                    slot.n_borrow += 1;
+                    //DEBUG(lv << " borrow");
+                    break;
+                }
+            }
+            return false;
+            };
+        for(const auto& stmt : bb.statements)
+        {
+            cur_loc = StmtRef(&bb - &fcn.blocks.front(), &stmt - &bb.statements.front());
+            //DEBUG(cur_loc << ":" << stmt);
+            visit_mir_lvalues(stmt, visit_cb);
+        }
+        cur_loc = StmtRef(&bb - &fcn.blocks.front(), bb.statements.size());
+        //DEBUG(cur_loc << ":" << bb.terminator);
+        visit_mir_lvalues(bb.terminator, visit_cb);
+    }
+
+    for(size_t var_idx = 0; var_idx < fcn.locals.size(); var_idx ++)
+    {
+        const auto& slot = usage_info[var_idx];
+        auto this_var = ::MIR::LValue::new_Local(var_idx);
+        //ASSERT_BUG(Span(), slot.n_write > 0, "Variable " << var_idx << " not written?");
+        if( slot.n_write == 1 && slot.n_read == 1 && slot.n_borrow == 0 )
+        {
+            // Single-use variable, now check how we can eliminate it
+            DEBUG("Single-use: _" << var_idx << " - Set " << slot.set_loc << ", Use " << slot.use_loc);
+
+            auto& use_bb = fcn.blocks[slot.use_loc.bb_idx];
+            auto& set_bb = fcn.blocks[slot.set_loc.bb_idx];
+            // If usage is direct assignment of the original value.
+            // - In this case, we can move the usage upwards
+            if( slot.use_loc.stmt_idx < use_bb.statements.size() && TU_TEST2(use_bb.statements[slot.use_loc.stmt_idx], Assign, .src, Use, == this_var) )
+            {
+                // Move the usage up to original assignment (if destination isn't invalidated)
+                const auto& dst = use_bb.statements[slot.use_loc.stmt_idx].as_Assign().dst;
+
+                // - Iterate the path(s) between the two statements to check if the destination would be invalidated
+                //  > The iterate function doesn't (yet) support following BB chains, so assume invalidated if over a jump.
+                bool invalidated = (slot.set_loc.bb_idx != slot.use_loc.bb_idx) || iter_path(fcn, slot.set_loc, slot.use_loc,
+                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, dst); },
+                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst); }
+                        );
+                if( !invalidated )
+                {
+                    // destination not dependent on any statements between the two, move.
+                    if( slot.set_loc.stmt_idx < set_bb.statements.size() )
+                    {
+                        auto& set_stmt = set_bb.statements[slot.set_loc.stmt_idx];
+                        TU_MATCH_HDRA( (set_stmt), {)
+                        TU_ARMA(Assign, se) {
+                            MIR_ASSERT(state, se.dst == ::MIR::LValue::new_Local(var_idx), "");
+                            DEBUG("Move destination " << dst << " from " << use_bb.statements[slot.use_loc.stmt_idx] << " to " << set_stmt);
+                            se.dst = dst.clone();
+                            use_bb.statements[slot.use_loc.stmt_idx] = ::MIR::Statement();
+                            }
+                        TU_ARMA(Asm, se) {
+                            // Initialised from an ASM statement, find the variable in the output parameters
+                            }
+                            break;
+                        default:
+                            MIR_BUG(state, "Impossibility: Value set in " << set_stmt);
+                        }
+                    }
+                    else
+                    {
+                        auto& set_term = set_bb.terminator;
+                        MIR_ASSERT(state, set_term.is_Call(), "Impossibility: Value set using non-call");
+                        // TODO: Update call destination.
+                        MIR_TODO(state, "Update call destination when moving assignment up");
+                    }
+                }
+                else
+                {
+                    DEBUG("Destination invalidated");
+                }
+                continue ;
+            }
+            // Can't move up, can we move down?
+            // - If the source is an Assign(Use) then we can move down
+            if( slot.set_loc.stmt_idx < set_bb.statements.size() && TU_TEST1(set_bb.statements[slot.set_loc.stmt_idx], Assign, .src.is_Use()) )
+            {
+                auto& set_stmt = set_bb.statements[slot.set_loc.stmt_idx];
+                const auto& src = set_stmt.as_Assign().src.as_Use();
+
+                // Check if the source of initial assignment is invalidated in the meantime.
+                bool invalidated = (slot.set_loc.bb_idx != slot.use_loc.bb_idx) || iter_path(fcn, slot.set_loc, slot.use_loc,
+                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src); },
+                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src); }
+                        );
+                if( !invalidated )
+                {
+                    // Update the usage site and replace.
+                    auto replace_cb = [&](::MIR::LValue& slot, ValUsage vu)->bool {
+                        if( slot.m_root == this_var.m_root )
+                        {
+                            if( src.m_wrappers.empty() ) {
+                                slot.m_root = src.m_root.clone();
+                            }
+                            else if( slot.m_wrappers.empty() ) {
+                                slot = src.clone();
+                            }
+                            else {
+                                MIR_TODO(state, "Replace inner of " << slot << " with " << src);
+                            }
+                            return true;
+                        }
+                        return false;
+                        };
+                    if( slot.use_loc.stmt_idx < use_bb.statements.size() )
+                    {
+                        auto& use_stmt = use_bb.statements[slot.use_loc.stmt_idx];
+                        DEBUG("Replace " << this_var << " with " << src << " in " << use_stmt);
+                        bool found = visit_mir_lvalues_mut(use_stmt, replace_cb);
+                        if( !found )
+                        {
+                            DEBUG("Can't find use of " << this_var << " in " << use_stmt);
+                        }
+                        else
+                        {
+                            set_stmt = ::MIR::Statement();
+                        }
+                    }
+                    else
+                    {
+                        auto& use_term = use_bb.terminator;
+                        DEBUG("Replace " << this_var << " with " << src << " in " << use_term);
+                        bool found = visit_mir_lvalues_mut(use_term, replace_cb);
+                        if( !found )
+                        {
+                            DEBUG("Can't find use of " << this_var << " in " << use_term);
+                        }
+                        else
+                        {
+                            set_stmt = ::MIR::Statement();
+                        }
+                    }
+                }
+                else
+                {
+                    DEBUG("Source invalidated");
+                }
+                continue;
+            }
+
+            // TODO: If the source is a Borrow and the use is a Deref, then propagate forwards
+
+            DEBUG("Can't replace:");
+            if( slot.set_loc.stmt_idx < set_bb.statements.size() )
+            {
+                DEBUG("Set: " << set_bb.statements[slot.set_loc.stmt_idx]);
+            }
+            else
+            {
+                DEBUG("Set: " << set_bb.terminator);
+            }
+            if( slot.use_loc.stmt_idx < use_bb.statements.size() )
+            {
+                DEBUG("Use: " << use_bb.statements[slot.use_loc.stmt_idx]);
+            }
+            else
+            {
+                DEBUG("Use: " << use_bb.terminator);
+            }
+        }
+    }
+
+    return changed;
+}
+
 // --------------------------------------------------------------------
 // Replaces uses of stack slots with what they were assigned with (when
 // possible)
@@ -1436,6 +1763,10 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     bool changed = false;
     TRACE_FUNCTION_FR("", changed);
 
+    changed |= MIR_Optimise_DeTemporary_SingleSetAndUse(state, fcn);
+
+
+    // OLD ALGORITHM.
     for(unsigned int bb_idx = 0; bb_idx < fcn.blocks.size(); bb_idx ++)
     {
         auto& bb = fcn.blocks[bb_idx];
@@ -3801,6 +4132,14 @@ bool MIR_Optimise_GarbageCollect(::MIR::TypeResolve& state, ::MIR::Function& fcn
             {
                 auto stmt_idx = &stmt - &it->statements.front();
                 state.set_cur_stmt(i, stmt_idx);
+
+                if( stmt == ::MIR::Statement() )
+                {
+                    DEBUG(state << "Remove " << stmt << " - Pure default");
+                    to_remove_statements[stmt_idx] = true;
+                    continue ;
+                }
+
                 if( auto* se = stmt.opt_Drop() )
                 {
                     // If the drop flag was unset, either remove the drop or remove the drop flag reference

@@ -18,6 +18,19 @@ If a recorded local is used via field access, record the field and location
 At the end of the block, remove original tuple assignment and propagate the values to destinations.
 
 
+Simple De-Temporary
+===================
+
+Purpose: Remove single-use temporaries
+`_1 = ...; _2 = _1` -> `_2 = ...`
+
+Algorithm
+---------
+
+- Locate locals that are only every read/written once
+- If the use is an assignment AND the destination isn't invalidated between the first assign and second
+ - Replace the original assignment with the second destination
+
 
 De-Temporary (version 1)
 ========================
