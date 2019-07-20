@@ -647,10 +647,13 @@ Builder::Builder(const BuildOptions& opts, size_t total_targets):
             outfile /= ::format("lib", target.m_name, crate_suffix, "-plugin" EXESUF);
             break;
         case PackageTarget::CrateType::dylib:
-            // TODO: Enable this once mrustc can set rpath or absolute paths
-            //if(crate_type)  *crate_type = "dylib";
-            //outfile /= ::format("lib", target.m_name, crate_suffix, DLLSUF);
-            //break;
+            if( getenv("MINICARGO_DYLIB") )
+            {
+                // TODO: Enable this once mrustc can set rpath or absolute paths
+                if(crate_type)  *crate_type = "dylib";
+                outfile /= ::format("lib", target.m_name, crate_suffix, DLLSUF);
+                break;
+            }
         case PackageTarget::CrateType::rlib:
             if(crate_type)  *crate_type = "rlib";
             outfile /= ::format("lib", target.m_name, crate_suffix, ".rlib");
