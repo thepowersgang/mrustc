@@ -19,7 +19,7 @@ namespace {
 
 namespace {
 
-    typedef ::std::function< ::HIR::SimplePath(::HIR::Struct )>   new_type_cb_t;
+    typedef ::std::function< ::HIR::SimplePath(const char* suffix, ::HIR::Struct )>   new_type_cb_t;
     typedef ::std::vector< ::std::pair< ::HIR::ExprNode_Closure::Class, ::HIR::TraitImpl> > out_impls_t;
 
     template<typename K, typename V>
@@ -554,17 +554,19 @@ namespace {
 
         // Outputs
         out_impls_t&    m_out_impls;
+        const char* m_new_type_suffix;
         const new_type_cb_t&    m_new_type;
 
         /// Stack of active closures
         ::std::vector<ClosureScope> m_closure_stack;
 
     public:
-        ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::HIR::TypeRef* self_type, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls, const new_type_cb_t& new_type):
+        ExprVisitor_Extract(const StaticTraitResolve& resolve, const ::HIR::TypeRef* self_type, ::std::vector< ::HIR::TypeRef>& var_types, out_impls_t& out_impls, const char* nt_suffix, const new_type_cb_t& new_type):
             m_resolve(resolve),
             m_self_type(self_type),
             m_variable_types(var_types),
             m_out_impls( out_impls ),
+            m_new_type_suffix(nt_suffix),
             m_new_type( new_type )
         {
         }
@@ -768,6 +770,7 @@ namespace {
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty_mono) } );
             }
             auto closure_struct_path = m_new_type(
+                m_new_type_suffix,
                 ::HIR::Struct {
                     params.clone(),
                     ::HIR::Struct::Repr::Rust,
@@ -1224,7 +1227,7 @@ namespace {
             unsigned int closure_count = 0;
             ::HIR::SimplePath   root_mod_path(crate.m_crate_name,{});
             m_cur_mod_path = &root_mod_path;
-            m_new_type = [&](auto s)->auto {
+            m_new_type = [&](const char* suffix, auto s)->auto {
                 auto name = RcString::new_interned(FMT("closure#I_" << closure_count));
                 closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
@@ -1246,8 +1249,9 @@ namespace {
 
             unsigned int closure_count = 0;
             auto saved_nt = mv$(m_new_type);
-            m_new_type = [&](auto s)->auto {
-                auto name = FMT("closure#" << closure_count);
+            m_new_type = [&](const char* suffix, auto s)->auto {
+                // TODO: Use a function on `mod` that adds a closure and makes the indexes be per suffix
+                auto name = FMT("closure#" << suffix << (suffix[0] ? "_" : "") << closure_count);
                 closure_count += 1;
                 auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) }) );
                 mod.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
@@ -1292,7 +1296,7 @@ namespace {
                 DEBUG("Function code " << p);
 
                 {
-                    ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_code.m_bindings, m_new_trait_impls, m_new_type);
+                    ExprVisitor_Extract    ev(m_resolve, m_self_type, item.m_code.m_bindings, m_new_trait_impls, p.name, m_new_type);
                     ev.visit_root( *item.m_code );
                 }
 
@@ -1356,6 +1360,8 @@ namespace {
             m_self_type = &impl.m_type;
             auto _ = this->m_resolve.set_impl_generics(impl.m_params);
 
+            // TODO: Re-create m_new_type to store in the source module
+
             ::HIR::Visitor::visit_type_impl(impl);
 
             m_self_type = nullptr;
@@ -1388,7 +1394,7 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
 
     static int closure_count = 0;
     out_impls_t new_trait_impls;
-    new_type_cb_t new_type_cb = [&](auto s)->::HIR::SimplePath {
+    new_type_cb_t new_type_cb = [&](const char* suffix, auto s)->::HIR::SimplePath {
         auto name = RcString::new_interned(FMT("closure#C_" << closure_count));
         closure_count += 1;
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
@@ -1397,7 +1403,7 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
         };
 
     {
-        ExprVisitor_Extract    ev(resolve, self_type, exp.m_bindings, new_trait_impls, new_type_cb);
+        ExprVisitor_Extract    ev(resolve, self_type, exp.m_bindings, new_trait_impls, "", new_type_cb);
         ev.visit_root( *exp );
     }
 
