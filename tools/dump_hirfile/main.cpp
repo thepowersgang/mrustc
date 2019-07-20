@@ -148,7 +148,7 @@ void Dumper::dump_crate(const char* name, const ::HIR::Crate& crate) const
 }
 void Dumper::dump_module(::HIR::ItemPath ip, const ::HIR::Publicity& pub, const ::HIR::Module& mod) const
 {
-    if( !filters.public_only && !pub.is_global() )
+    if( filters.public_only && !pub.is_global() )
     {
         return ;
     }
@@ -216,7 +216,7 @@ void Dumper::dump_function(::HIR::ItemPath ip, const ::HIR::Publicity& pub, cons
     if( !this->filters.types.functions ) {
         return ;
     }
-    if( !filters.public_only && !pub.is_global() ) {
+    if( filters.public_only && !pub.is_global() ) {
         return ;
     }
     ::std::cout << indent << "fn " << ip << fcn.m_params.fmt_args() << "(";
