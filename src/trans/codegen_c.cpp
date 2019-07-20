@@ -1015,9 +1015,16 @@ namespace {
             // Emit a call to box_free for the type
             if( run_destructor )
             {
-                auto inner_ptr = ::HIR::TypeRef::new_pointer( ::HIR::BorrowType::Unique, inner_type.clone() );
-                m_of << indent; emit_ctype(inner_ptr, FMT_CB(ss, ss << "i"; )); m_of << " = "; emit_lvalue(slot); m_of << "._0._0._0;\n";
-                emit_destructor_call( ::MIR::LValue::new_Local(::MIR::LValue::Storage::MAX_ARG), inner_type, true, indent_level );
+                auto inner_ptr =
+                    ::MIR::LValue::new_Field(
+                        ::MIR::LValue::new_Field(
+                            ::MIR::LValue::new_Field(
+                                slot.clone()
+                                ,0)
+                            ,0)
+                        ,0)
+                    ;
+                emit_destructor_call( ::MIR::LValue::new_Deref(mv$(inner_ptr)), inner_type, true, indent_level );
             }
             // TODO: This is specific to the official liballoc's owned_box
             ::HIR::GenericPath  box_free { m_crate.get_lang_item_path(sp, "box_free"), { inner_type.clone() } };
@@ -1371,7 +1378,15 @@ namespace {
             // - Drop Glue
 
             ::std::vector< ::std::pair<::HIR::Pattern,::HIR::TypeRef> > args;
-            if( item.m_markings.has_drop_impl ) {
+            // NOTE: 1.29 has Box impl Drop, but as a no-op - override that here.
+            // - TODO: This override/definition should be done by the caller
+            if( m_resolve.is_type_owned_box(struct_ty) )
+            {
+                m_box_glue_todo.push_back( ::std::make_pair( mv$(struct_ty.m_data.as_Path().path.m_data.as_Generic()), &item ) );
+                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
+                return ;
+            }
+            else if( item.m_markings.has_drop_impl ) {
                 // If the type is defined outside the current crate, define as static (to avoid conflicts when we define it)
                 if( p.m_path.m_crate_name != m_crate.m_crate_name )
                 {
@@ -1384,11 +1399,8 @@ namespace {
                 }
                 m_of << "void " << Trans_Mangle( ::HIR::Path(struct_ty.clone(), m_resolve.m_lang_Drop, "drop") ) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
             }
-            else if( m_resolve.is_type_owned_box(struct_ty) )
-            {
-                m_box_glue_todo.push_back( ::std::make_pair( mv$(struct_ty.m_data.as_Path().path.m_data.as_Generic()), &item ) );
-                m_of << "static void " << Trans_Mangle(drop_glue_path) << "("; emit_ctype(struct_ty_ptr, FMT_CB(ss, ss << "rv";)); m_of << ");\n";
-                return ;
+            else {
+                // No drop impl (magic or no)
             }
 
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << drop_glue_path;), struct_ty_ptr, args, empty_fcn };
