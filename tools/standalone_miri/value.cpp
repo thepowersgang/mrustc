@@ -45,9 +45,10 @@ bool FfiLayout::is_valid_read(size_t o, size_t s) const
     return true;
 }
 
-AllocationHandle Allocation::new_alloc(size_t size)
+AllocationHandle Allocation::new_alloc(size_t size, ::std::string tag)
 {
     Allocation* rv = new Allocation();
+    rv->m_tag = ::std::move(tag);
     rv->refcount = 1;
     rv->data.resize( (size + 8-1) / 8 );    // QWORDS
     rv->mask.resize( (size + 8-1) / 8 );    // bitmap bytes
@@ -318,6 +319,11 @@ void Allocation::check_bytes_valid(size_t ofs, size_t size) const
         }
     }
 }
+::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
+{
+    os << static_cast<const void*>(x) << " A(" << x->tag() << ")";
+    return os;
+}
 void Allocation::mark_bytes_valid(size_t ofs, size_t size)
 {
     assert( ofs+size <= this->mask.size() * 8 );
@@ -345,7 +351,7 @@ Value Allocation::read_value(size_t ofs, size_t size) const
     }
     if( has_reloc || size > sizeof(rv.direct_data.data) )
     {
-        rv.allocation = Allocation::new_alloc(size);
+        rv.allocation = Allocation::new_alloc(size, FMT_STRING("Allocation::read_value(" << ofs << "," << size << ")"));
 
         rv.write_bytes(0, this->data_ptr() + ofs, size);
 
@@ -595,14 +601,14 @@ Value::Value(::HIR::TypeRef ty)
 
     // Fallback: Make a new allocation
     //LOG_TRACE(" Creating allocation for " << ty);
-    this->allocation = Allocation::new_alloc(size);
+    this->allocation = Allocation::new_alloc(size, FMT_STRING(ty));
 }
 Value Value::with_size(size_t size, bool have_allocation)
 {
     Value   rv;
     if(have_allocation)
     {
-        rv.allocation = Allocation::new_alloc(size);
+        rv.allocation = Allocation::new_alloc(size, FMT_STRING("with_size(" << size << ")"));
     }
     else
     {
@@ -662,7 +668,7 @@ Value Value::new_i32(int32_t v) {
 void Value::create_allocation()
 {
     assert(!this->allocation);
-    this->allocation = Allocation::new_alloc(this->direct_data.size);
+    this->allocation = Allocation::new_alloc(this->direct_data.size, "create_allocation");
     if( this->direct_data.size > 0 )
         this->allocation->mask[0] = this->direct_data.mask[0];
     if( this->direct_data.size > 8 )
@@ -862,6 +868,8 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
         case RelocationPtr::Ty::Allocation: {
             const auto& alloc = alloc_ptr.alloc();
 
+            os << "A(" << alloc.tag() << ")@" << v.m_offset << "+" << v.m_size << " ";
+
             auto flags = os.flags();
             os << ::std::hex;
             for(size_t i = v.m_offset; i < ::std::min(alloc.size(), v.m_offset + v.m_size); i++)
@@ -914,6 +922,8 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
     else if( v.m_value && v.m_value->allocation )
     {
         const auto& alloc = *v.m_value->allocation;
+
+        os << "A(" << alloc.tag() << ")@" << v.m_offset << "+" << v.m_size << " ";
 
         auto flags = os.flags();
         os << ::std::hex;

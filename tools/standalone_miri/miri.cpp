@@ -575,7 +575,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     assert( !this->m_stack.empty() );
     assert( !this->m_stack.back().cb );
     auto& cur_frame = this->m_stack.back();
-    TRACE_FUNCTION_R(cur_frame.fcn.my_path, "");
+    TRACE_FUNCTION_R(cur_frame.fcn.my_path << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx, "");
     const auto& bb = cur_frame.fcn.m_mir.blocks.at( cur_frame.bb_idx );
 
     const size_t    MAX_STACK_DEPTH = 40;
@@ -1613,7 +1613,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
 
         // TODO: Use the alignment when making an allocation?
-        rv = Value::new_pointer(rty, 0, RelocationPtr::new_alloc(Allocation::new_alloc(size)));
+        rv = Value::new_pointer(rty, 0, RelocationPtr::new_alloc(Allocation::new_alloc(size, "__rust_alloc")));
     }
     else if( link_name == "__rust_reallocate" || link_name == "__rust_realloc" )
     {

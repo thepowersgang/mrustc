@@ -243,16 +243,18 @@ class Allocation:
     public ValueCommonWrite
 {
     friend class AllocationHandle;
+    ::std::string   m_tag;
     size_t  refcount;
     // TODO: Read-only flag?
     bool is_freed = false;
 public:
     virtual ~Allocation() {}
-    static AllocationHandle new_alloc(size_t size);
+    static AllocationHandle new_alloc(size_t size, ::std::string tag);
 
     const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->data.data()); }
           uint8_t* data_ptr()       { return reinterpret_cast<      uint8_t*>(this->data.data()); }
     size_t size() const { return this->data.size() * 8; }
+    const ::std::string& tag() const { return m_tag; }
 
     ::std::vector<uint64_t> data;
     ::std::vector<uint8_t> mask;

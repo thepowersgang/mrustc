@@ -153,7 +153,7 @@ bool Parser::parse_one()
                 {
                     auto reloc_str = ::std::move(lex.consume().strval);
 
-                    auto a = Allocation::new_alloc( reloc_str.size() );
+                    auto a = Allocation::new_alloc( reloc_str.size(), FMT_STRING("static " << p) );
                     //a.alloc().set_tag();
                     a->write_bytes(0, reloc_str.data(), reloc_str.size());
                     s.val.allocation->relocations.push_back({ ofs, /*size,*/ RelocationPtr::new_alloc(::std::move(a)) });
