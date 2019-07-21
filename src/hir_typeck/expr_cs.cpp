@@ -2867,6 +2867,7 @@ namespace {
                 if( possible_methods.size() != 1 && possible_methods.front().second.m_data.is_UfcsKnown() )
                 {
                     DEBUG("- Multiple options, deferring");
+                    // TODO: If the type is fully known, then this is an error.
                     return;
                 }
                 auto& ad_borrow = possible_methods.front().first;

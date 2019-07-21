@@ -4021,6 +4021,12 @@ bool TraitResolution::find_method(const Span& sp,
                 rv = true;
             }
         }
+
+        // If the method was found on the trait object, prefer that over all others.
+        if( !possibilities.empty() )
+        {
+            return rv;
+        }
     }
 
     // 3. Mutually exclusive searches
