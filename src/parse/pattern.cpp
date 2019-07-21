@@ -251,9 +251,9 @@ AST::Pattern Parse_PatternReal1(TokenStream& lex, bool is_refutable)
         if( auto* n = dynamic_cast<AST::ExprNode_String*>(e.get()) ) {
             return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_String( mv$(n->m_value) ) );
         }
-        //else if( auto* n = dynamic_cast<AST::ExprNode_ByteString*>(e.get()) ) {
-        //    return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_ByteString( mv$(n->m_value) ) );
-        //}
+        else if( auto* n = dynamic_cast<AST::ExprNode_ByteString*>(e.get()) ) {
+            return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_ByteString({ mv$(n->m_value) }) );
+        }
         else if( auto* n = dynamic_cast<AST::ExprNode_Bool*>(e.get()) ) {
             return AST::Pattern( AST::Pattern::TagValue(), lex.end_span(ps), AST::Pattern::Value::make_Integer({CORETYPE_BOOL, n->m_value}) );
         }
