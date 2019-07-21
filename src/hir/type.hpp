@@ -220,7 +220,7 @@ public:
     (Array, struct {
         ::std::unique_ptr<TypeRef>  inner;
         ::std::shared_ptr<::HIR::ExprPtr> size;
-        size_t  size_val;
+        uint64_t  size_val;
         }),
     (Slice, struct {
         ::std::unique_ptr<TypeRef>  inner;
