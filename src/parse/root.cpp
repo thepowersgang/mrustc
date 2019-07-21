@@ -1989,7 +1989,20 @@ namespace {
         // - IF a #[path] attribute was passed, allow
         // - IF in crate root or mod.rs, allow (input flag)
         // - else, disallow and set flag
-        ::std::string path_attr = (meta_items.has("path") ? meta_items.get("path")->string() : "");
+        ::std::string path_attr;
+        for(const auto& a : meta_items.m_items)
+        {
+            if( a.name() == "path" ) {
+                path_attr = a.string();
+            }
+            else if( a.name() == "cfg_attr" && a.items().at(1).name() == "path" ) {
+                if( check_cfg(a.span(), a.items().at(0)) ) {
+                    path_attr = a.items().at(1).string();
+                }
+            }
+            else {
+            }
+        }
 
         //submod.m_file_info = get_submod_file(lex.end_span(ps), mod_fileinfo,  name, path_attr, LOOK_AHEAD(lex) == TOK_SEMICOLON, H::check_item_cfg(meta_items));
 
