@@ -2148,7 +2148,24 @@ namespace {
                 ),
             (Primitive,
                 // Don't have anything to contribute
-                this->m_completed = true;
+                // EXCEPT: `char` can only be casted from `u8` (but what about no-op casts?)
+                // - Hint the input (default) to be `u8`
+                if( e == ::HIR::CoreType::Char )
+                {
+                    if(this->m_is_fallback)
+                    {
+                        this->context.equate_types(sp, src_ty, ::HIR::CoreType::U8);
+                    }
+
+                    if( !this->context.get_type(src_ty).m_data.is_Infer() )
+                    {
+                        this->m_completed = true;
+                    }
+                }
+                else
+                {
+                    this->m_completed = true;
+                }
                 ),
             (Path,
                 this->context.equate_types_coerce(sp, tgt_ty, node.m_value);
