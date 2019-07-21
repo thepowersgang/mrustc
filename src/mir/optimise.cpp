@@ -1429,12 +1429,6 @@ bool MIR_Optimise_Inlining(::MIR::TypeResolve& state, ::MIR::Function& fcn, bool
     return inline_happened;
 }
 
-// TODO: New pass that removes useless borrows
-// ```
-// _$1 = & _$0;
-// (*_$1).1 = 0x0;
-// ```
-
 namespace {
     struct StmtRef {
         unsigned    bb_idx;
@@ -1447,13 +1441,20 @@ namespace {
     }
 
     // Iterates the path between two positions, NOT visiting entry specified by `end`
-    bool iter_path(
+    enum class IterPathRes {
+        Abort,
+        EarlyTrue,
+        Complete,
+    };
+    IterPathRes iter_path(
             const ::MIR::Function& fcn, const StmtRef& start, const StmtRef& end,
             ::std::function<bool(StmtRef, const ::MIR::Statement&)> cb_stmt,
             ::std::function<bool(StmtRef, const ::MIR::Terminator&)> cb_term
             )
     {
-        assert(start.bb_idx == end.bb_idx); // TODO: Support chaining.
+        if( start.bb_idx != end.bb_idx ) { // TODO: Support following Goto/Call
+            return IterPathRes::Abort;
+        }
         assert(start.stmt_idx <= end.stmt_idx);
 
         size_t bb_idx = start.bb_idx;
@@ -1464,19 +1465,19 @@ namespace {
             {
                 if( cb_stmt(ref, bb.statements.at(ref.stmt_idx)) )
                 {
-                    return true;
+                    return IterPathRes::EarlyTrue;
                 }
             }
             else
             {
                 if( cb_term(ref, bb.terminator) )
                 {
-                    return true;
+                    return IterPathRes::EarlyTrue;
                 }
                 break;
             }
         }
-        return false;
+        return IterPathRes::Complete;
     }
 
     ::std::function<bool(const ::MIR::LValue& , ValUsage)> check_invalidates_lvalue_cb(const ::MIR::LValue& val)
@@ -1530,7 +1531,6 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
     bool changed = false;
     TRACE_FUNCTION_FR("", changed);
 
-    // TODO: New algorithm
     // Find all single-use/single-write locals
     // - IF the usage is a RValue::Use, AND the usage destination is not invalidated between set/use
     //  - Replace initialisation destination with usage destination (delete usage statement)
@@ -1623,7 +1623,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
 
                 // - Iterate the path(s) between the two statements to check if the destination would be invalidated
                 //  > The iterate function doesn't (yet) support following BB chains, so assume invalidated if over a jump.
-                bool invalidated = (slot.set_loc.bb_idx != slot.use_loc.bb_idx) || iter_path(fcn, slot.set_loc, slot.use_loc,
+                bool invalidated = IterPathRes::Complete != iter_path(fcn, slot.set_loc, slot.use_loc,
                         [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, dst); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst); }
                         );
@@ -1639,6 +1639,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                             DEBUG("Move destination " << dst << " from " << use_bb.statements[slot.use_loc.stmt_idx] << " to " << set_stmt);
                             se.dst = dst.clone();
                             use_bb.statements[slot.use_loc.stmt_idx] = ::MIR::Statement();
+                            changed = true;
                             }
                         TU_ARMA(Asm, se) {
                             // Initialised from an ASM statement, find the variable in the output parameters
@@ -1670,7 +1671,8 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 const auto& src = set_stmt.as_Assign().src.as_Use();
 
                 // Check if the source of initial assignment is invalidated in the meantime.
-                bool invalidated = (slot.set_loc.bb_idx != slot.use_loc.bb_idx) || iter_path(fcn, slot.set_loc, slot.use_loc,
+                // - TODO: We don't want to check the set statement, just all others after it
+                bool invalidated = IterPathRes::Complete != iter_path(fcn, slot.set_loc, slot.use_loc,
                         [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, src); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, src); }
                         );
@@ -1705,6 +1707,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                         else
                         {
                             set_stmt = ::MIR::Statement();
+                            changed = true;
                         }
                     }
                     else
@@ -1719,6 +1722,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                         else
                         {
                             set_stmt = ::MIR::Statement();
+                            changed = true;
                         }
                     }
                 }
@@ -1730,6 +1734,7 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
             }
 
             // TODO: If the source is a Borrow and the use is a Deref, then propagate forwards
+            // - This would be a simpler version of a var more compliciated algorithm
 
             DEBUG("Can't replace:");
             if( slot.set_loc.stmt_idx < set_bb.statements.size() )
@@ -1753,6 +1758,22 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
 
     return changed;
 }
+
+// TODO: New pass that removes useless borrows
+// ```
+// _$1 = & _$0;
+// (*_$1).1 = 0x0;
+// ```
+//bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+//{
+//    bool changed = false;
+//    TRACE_FUNCTION_FR("", changed);
+//
+//    // Find all single-assign borrows that are only ever used via Deref
+//    // - Direct drop is ignored for this purpose
+//
+//    return changed;
+//}
 
 // --------------------------------------------------------------------
 // Replaces uses of stack slots with what they were assigned with (when
