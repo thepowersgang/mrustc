@@ -398,13 +398,13 @@ struct ValueRef:
         if(m_alloc)
         {
             if( m_alloc.is_alloc() )
-                return m_alloc.alloc().get_relocation(ofs);
+                return m_alloc.alloc().get_relocation(m_offset + ofs);
             else
                 return RelocationPtr();
         }
         else if( m_value )
         {
-            return m_value->get_relocation(ofs);
+            return m_value->get_relocation(m_offset + ofs);
         }
         else
         {
