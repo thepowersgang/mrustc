@@ -2625,6 +2625,15 @@ namespace {
                     // No idea yet
                     return ;
                 }
+                else if( const auto* e = ty.m_data.opt_Borrow() )
+                {
+                    deref_count++;
+                    ty_p = &this->context.get_type(*e->inner);
+                    DEBUG("Deref " << ty << " -> " << *ty_p);
+                    keep_looping = true;
+                    continue;
+                }
+                // TODO: If autoderef is possible, do it and continue. Only look for impls once autoderef fails
                 else
                 {
                     ::HIR::TypeRef  fcn_args_tup;
@@ -2634,8 +2643,12 @@ namespace {
                     // - This will get the TraitObject impl search too
 
                     // Locate an impl of FnOnce (exists for all other Fn* traits)
+                    // TODO: Sometimes there's impls that just forward for wrappers, which can lead to incorrect rules
+                    // e.g. `&mut _` (where `_ = Box<...>`) later will pick the FnMut impl for `&mut T: FnMut` - but Box doesn't have those forwarding impls
+                    // - Maybe just keep applying auto-deref until it's no longer possible?
                     unsigned int count = 0;
                     this->context.m_resolve.find_trait_impls(node.span(), lang_FnOnce, trait_pp, ty, [&](auto impl, auto cmp)->bool {
+                        // TODO: Don't accept if too fuzzy
                         count++;
 
                         auto tup = impl.get_trait_ty_param(0);
@@ -2651,7 +2664,7 @@ namespace {
                     if(count > 1) {
                         return;
                     }
-                    if(count == 1)
+                    if( count == 1 )
                     {
 
                         // 3. Locate the most permissive implemented Fn* trait (Fn first, then FnMut, then assume just FnOnce)
