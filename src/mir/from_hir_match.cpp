@@ -395,6 +395,8 @@ void MIR_LowerHIR_Match( MirBuilder& builder, MirConverter& conv, ::HIR::ExprNod
         else
         {
             ac.has_condition = false;
+            ac.cond_start = ~0u;
+            ac.cond_false = ~0u;
         }
 
         // Code
@@ -1218,7 +1220,12 @@ void PatternRulesetBuilder::append_from(const Span& sp, const ::HIR::Pattern& pa
             )
             }
         TU_ARMA(Union, pbe) {
-            TODO(sp, "Match over union - " << ty);
+            TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
+            ( TODO(sp, "Match over union - " << ty << " with " << pat); ),
+            (Any,
+                this->push_rule( PatternRule::make_Any({}) );
+                )
+            )
             }
         TU_ARMA(ExternType, pbe) {
             TU_MATCH_DEF( ::HIR::Pattern::Data, (pat.m_data), (pe),
