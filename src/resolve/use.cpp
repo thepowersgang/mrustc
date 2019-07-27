@@ -353,8 +353,9 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
             const Span& sp2 = imp_e.sp;
             if( imp_e.name == des_item_name ) {
                 DEBUG("- Named import " << imp_e.name << " = " << imp_e.path);
-                if( !imp_e.path.m_bindings.has_binding() ) {
-                    DEBUG(" > Needs resolve");
+                if( !imp_e.path.m_bindings.has_binding() )
+                {
+                    DEBUG(" > Needs resolve p=" << &imp_e.path);
                     static ::std::vector<const ::AST::Path*> s_mods;
                     if( ::std::find(s_mods.begin(), s_mods.end(), &imp_e.path) == s_mods.end() )
                     {
@@ -364,7 +365,7 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     }
                     else
                     {
-                        DEBUG("Recursion!");
+                        DEBUG("Recursion on path " << &imp_e.path << " " << imp_e.path);
                     }
                 }
                 else {
@@ -389,6 +390,10 @@ void Resolve_Use_Mod(const ::AST::Crate& crate, ::AST::Module& mod, ::AST::Path 
                     {
                         resolve_stack_ptrs.push_back( &imp_data );
                         bindings_ = Resolve_Use_GetBinding(sp2, crate, mod.path(), Resolve_Use_AbsolutisePath(sp2, mod.path(), imp_e.path), parent_modules);
+                        if( bindings_.type.is_Unbound() ) {
+                            DEBUG("Recursion detected, skipping " << imp_e.path);
+                            continue ;
+                        }
                         // *waves hand* I'm not evil.
                         const_cast< ::AST::Path::Bindings&>( imp_e.path.m_bindings ) = bindings_.clone();
                         bindings = &bindings_;
