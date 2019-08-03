@@ -1431,29 +1431,72 @@ namespace {
             ::std::function<bool(StmtRef, const ::MIR::Terminator&)> cb_term
             )
     {
-        if( start.bb_idx != end.bb_idx ) { // TODO: Support following Goto/Call
-            return IterPathRes::Abort;
+        if( start.bb_idx == end.bb_idx ) {
+            assert(start.stmt_idx <= end.stmt_idx);
         }
-        assert(start.stmt_idx <= end.stmt_idx);
 
-        size_t bb_idx = start.bb_idx;
-        for(auto ref = start; ref.stmt_idx < end.stmt_idx; ref.stmt_idx ++)
+        auto visted_bbs = ::std::set<unsigned>();
+        // Loop while not equal (either not in the right block, or before the statement) to the end point
+        for(auto ref = start; ref.bb_idx != end.bb_idx || ref.stmt_idx < end.stmt_idx; )
         {
-            const auto& bb = fcn.blocks.at(bb_idx);
+            const auto& bb = fcn.blocks.at(ref.bb_idx);
             if( ref.stmt_idx < bb.statements.size() )
             {
+                DEBUG(ref << " " << bb.statements.at(ref.stmt_idx));
                 if( cb_stmt(ref, bb.statements.at(ref.stmt_idx)) )
                 {
                     return IterPathRes::EarlyTrue;
                 }
+
+                ref.stmt_idx ++;
             }
             else
             {
+                DEBUG(ref << " " << bb.terminator);
                 if( cb_term(ref, bb.terminator) )
                 {
                     return IterPathRes::EarlyTrue;
                 }
-                break;
+
+                // If this is the end point, break out before checking the terminator for looping
+                if( ref.bb_idx == end.bb_idx )
+                {
+                    // ^ don't need to check the statment index, this is the last "statement"
+                    break;
+                }
+
+                // If this terminator is a Goto, follow it (tracking for loops)
+                if( const auto* te = bb.terminator.opt_Goto() )
+                {
+                    // Possibly loop into the next block
+                    if( !visted_bbs.insert(*te).second ) {
+                        return IterPathRes::Abort;
+                    }
+                    ref.stmt_idx = 0;
+                    ref.bb_idx = *te;
+                }
+                // If it's a call, check that the target block ends with Diverge, and iterate that in-place
+                // - Then follow the success path as usual
+                else if( const auto* te = bb.terminator.opt_Call() )
+                {
+                    // Check the panic arm (should just be a list of destructor calls follwed by a Diverge terminator)
+                    const auto& panic_bb = fcn.blocks[te->panic_block];
+                    ASSERT_BUG(Span(), panic_bb.terminator.is_Diverge(), "Panic arm of call does not end with Diverge");
+                    if( !panic_bb.statements.empty() )
+                    {
+                        TODO(Span(), "Visit call panic block");
+                    }
+                    // Possibly loop into the next block
+                    if( !visted_bbs.insert(te->ret_block).second ) {
+                        return IterPathRes::Abort;
+                    }
+                    ref.stmt_idx = 0;
+                    ref.bb_idx = te->ret_block;
+                }
+                else
+                {
+                    return IterPathRes::Abort;
+                }
             }
         }
         return IterPathRes::Complete;
@@ -1632,8 +1675,11 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                     {
                         auto& set_term = set_bb.terminator;
                         MIR_ASSERT(state, set_term.is_Call(), "Impossibility: Value set using non-call");
-                        // TODO: Update call destination.
-                        MIR_TODO(state, "Update call destination when moving assignment up");
+                        auto& te = set_term.as_Call();
+                        DEBUG("Move destination " << dst << " from " << use_bb.statements[slot.use_loc.stmt_idx] << " to " << set_term);
+                        te.ret_val = dst.clone();
+                        use_bb.statements[slot.use_loc.stmt_idx] = ::MIR::Statement();
+                        changed = true;
                     }
                 }
                 else
@@ -1776,6 +1822,9 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
                 // > Inner-most wrapper is Deref - it's a deref of this variable
                 if( !lv.m_wrappers.empty() && lv.m_wrappers.front().is_Deref() ) {
                     slot.n_deref_read ++;
+                    if( fcn.locals[lv.m_root.as_Local()].m_data.is_Borrow() ) {
+                        DEBUG(lv << " deref use " << cur_loc);
+                    }
                 }
                 // > Write with no wrappers - Assignment
                 else if( lv.m_wrappers.empty() && vu == ValUsage::Write ) {
@@ -1815,7 +1864,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         visit_mir_lvalues(bb.terminator, visit_cb);
     }
 
-    // Look for `_0 = Borrow`
+    // Look single-write/deref-only locals assigned with `_0 = Borrow`
     for(size_t var_idx = 0; var_idx < fcn.locals.size(); var_idx ++)
     {
         const auto& slot = usage_info[var_idx];
@@ -1837,6 +1886,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         }
         const auto& src_lv = src_bb.statements[slot.set_loc.stmt_idx].as_Assign().src.as_Borrow().val;
         // Check that the borrow isn't too complex
+        // TODO: If there's only one use, then no complexity limit?
         if( src_lv.m_wrappers.size() >= 2 )
         {
             DEBUG(this_var << " - Source is too complex - " << src_lv);
@@ -1847,7 +1897,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             DEBUG(this_var << " - Multi-use non-shared borrow, too complex to do");
             continue;
         }
-        DEBUG(this_var << " - Borrow " << src_lv << ", used " << slot.n_deref_read << " times");
+        DEBUG(this_var << " - Borrow of " << src_lv << " at " << slot.set_loc << ", used " << slot.n_deref_read << " times (dropped " << slot.drop_locs << ")");
 
         // Locate usage sites (by walking forwards) and check for invalidation
         auto cur_loc = slot.set_loc;
@@ -1943,7 +1993,7 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
         // If all usage sites were updated, then remove the original assignment
         if(num_replaced == slot.n_deref_read)
         {
-            DEBUG(this_var << " - Erase " << slot.set_loc << " as it is no longer used");
+            DEBUG(this_var << " - Erase " << slot.set_loc << " as it is no longer used (" << src_bb.statements[slot.set_loc.stmt_idx] << ")");
             src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
             for(const auto& drop_loc : slot.drop_locs)
             {
