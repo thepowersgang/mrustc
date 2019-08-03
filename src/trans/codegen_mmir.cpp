@@ -368,8 +368,8 @@ namespace
             };
 
 
-            // TODO: Generate the drop glue (and determine if there is any)
-            bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, ty);
+            // Generate the drop glue (and determine if there is any)
+            bool has_drop_glue = m_resolve.type_needs_drop_glue(sp, ty);
 
             const auto* repr = Target_GetTypeRepr(sp, m_resolve, ty);
             MIR_ASSERT(*m_mir_res, repr, "No repr for struct " << ty);
@@ -393,7 +393,7 @@ namespace
             {
                 m_of << "fn " << drop_glue_path << "(&move " << ty << ") {\n";
                 m_of << "\tlet unit: ();\n";
-                
+
                 if( const auto* ity = m_resolve.is_type_owned_box(ty) )
                 {
                     m_of << "\t0: {\n";
@@ -452,6 +452,51 @@ namespace
             }
             m_mir_res = nullptr;
         }
+        virtual void emit_constructor_enum(const Span& sp, const ::HIR::GenericPath& var_path, const ::HIR::Enum& item, size_t var_idx)
+        {
+            TRACE_FUNCTION_F(var_path);
+
+            ::HIR::TypeRef  tmp;
+            auto monomorph = [&](const auto& x)->const auto& {
+                if( monomorphise_type_needed(x) ) {
+                    tmp = monomorphise_type(sp, item.m_params, var_path.m_params, x);
+                    m_resolve.expand_associated_types(sp, tmp);
+                    return tmp;
+                }
+                else {
+                    return x;
+                }
+                };
+
+            auto enum_path = var_path.clone();
+            enum_path.m_path.m_components.pop_back();
+
+            // Create constructor function
+            const auto& var_ty = item.m_data.as_Data().at(var_idx).type;
+            const auto& e = var_ty.m_data.as_Path().binding.as_Struct()->m_data.as_Tuple();
+            m_of << "fn " << var_path << "(";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ", ";
+                m_of << monomorph(e[i].ent);
+            }
+            m_of << "): " << enum_path << " {\n";
+            m_of << "\tlet var0: " << monomorph(var_ty) << ";\n";
+            m_of << "\t0: {\n";
+            m_of << "\t\tASSIGN var0 = { ";
+            for(unsigned int i = 0; i < e.size(); i ++)
+            {
+                if(i != 0)
+                    m_of << ", ";
+                m_of << "arg" << i;
+            }
+            m_of << " }: " << monomorph(var_ty) << ";\n";
+            m_of << "\t\tASSIGN RETURN = VARIANT " << enum_path << " " << var_idx << " var0;\n";
+            m_of << "\t\tRETURN\n";
+            m_of << "\t}\n";
+            m_of << "}";
+        }
         void emit_constructor_struct(const Span& sp, const ::HIR::GenericPath& p, const ::HIR::Struct& item) override
         {
             TRACE_FUNCTION_F(p);
@@ -466,7 +511,7 @@ namespace
                     return x;
                 }
                 };
-            // Crate constructor function
+            // Create constructor function
             const auto& e = item.m_data.as_Tuple();
             m_of << "fn " << p << "(";
             for(unsigned int i = 0; i < e.size(); i ++)
