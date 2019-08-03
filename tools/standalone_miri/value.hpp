@@ -214,8 +214,7 @@ struct ValueCommonRead
         bool is_mut;
         void* rv = read_pointer_unsafe(rd_ofs, 0, out_size, is_mut);
         if(!is_mut)
-            throw "";
-            //LOG_FATAL("Attempting to get an uninit pointer to immutable data");
+            LOG_FATAL("Attempting to get an uninit pointer to immutable data");
         return rv;
     }
     /// Read a pointer and return a ValueRef to it (mutable data)
@@ -393,7 +392,7 @@ struct ValueRef:
                 }
                 break;
             default:
-                throw "TODO";
+                LOG_TODO("");
             }
         }
     }
@@ -436,7 +435,7 @@ struct ValueRef:
             case RelocationPtr::Ty::StdString:
                 return reinterpret_cast<const uint8_t*>(m_alloc.str().data() + m_offset);
             default:
-                throw "TODO";
+                LOG_TODO("");
             }
         }
         else if( m_value ) {
@@ -446,6 +445,26 @@ struct ValueRef:
             return nullptr;
         }
     }
+    uint8_t* data_ptr_mut() {
+        if( m_alloc ) {
+            switch(m_alloc.get_ty())
+            {
+            case RelocationPtr::Ty::Allocation:
+                return m_alloc.alloc().data_ptr() + m_offset;
+                break;
+            default:
+                LOG_TODO("");
+            }
+        }
+        else if( m_value ) {
+            return m_value->data_ptr() + m_offset;
+        }
+        else {
+            return nullptr;
+        }
+    }
+    void mark_valid(size_t ofs, size_t size);
+
     void read_bytes(size_t ofs, void* dst, size_t size) const {
         if( size == 0 )
             return ;
@@ -464,7 +483,7 @@ struct ValueRef:
                 break;
             default:
                 //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
-                throw "TODO";
+                LOG_TODO("");
             }
         }
         else {
@@ -488,7 +507,7 @@ struct ValueRef:
                 break;
             default:
                 //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
-                throw "TODO";
+                LOG_TODO("");
             }
         }
         else {

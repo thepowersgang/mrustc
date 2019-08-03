@@ -13,6 +13,16 @@
 #include <algorithm>
 #include "debug.hpp"
 
+namespace {
+    static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
+        if( !(ofs < max_size) )
+            return false;
+        if( !(size <= max_size) )
+            return false;
+        return ofs + size <= max_size;
+    }
+};
+
 ::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
 {
     os << "A(" << static_cast<const void*>(x) << " " << x->tag() /*<< " +" << x->size()*/ << ")";
@@ -207,7 +217,7 @@ size_t RelocationPtr::get_size() const
             os << "\"" << x.str() << "\"";
             break;
         case RelocationPtr::Ty::FfiPointer:
-            os << "FFI " << x.ffi().tag_name << " " << x.ffi().ptr_value;
+            os << "FFI '" << x.ffi().tag_name << "' " << x.ffi().ptr_value;
             break;
         }
     }
@@ -314,7 +324,7 @@ void Allocation::resize(size_t new_size)
 
 void Allocation::check_bytes_valid(size_t ofs, size_t size) const
 {
-    if( !(ofs + size <= this->size()) ) {
+    if( !in_bounds(ofs, size, this->size()) ) {
         LOG_FATAL("Out of range - " << ofs << "+" << size << " > " << this->size());
     }
     for(size_t i = ofs; i < ofs + size; i++)
@@ -410,15 +420,7 @@ void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
     if(count == 0)
         return ;
 
-    if(ofs >= this->size() ) {
-        LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-        throw "ERROR";
-    }
-    if(count > this->size() ) {
-        LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-        throw "ERROR";
-    }
-    if(ofs+count > this->size() ) {
+    if( !in_bounds(ofs, count, this->size()) ) {
         LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
@@ -507,15 +509,7 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
     if(count == 0)
         return ;
     TRACE_FUNCTION_R("Allocation::write_bytes " << this << " " << ofs << "+" << count, *this);
-    if(ofs >= this->size() ) {
-        LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
-        throw "ERROR";
-    }
-    if(count > this->size() ) {
-        LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
-        throw "ERROR";
-    }
-    if(ofs+count > this->size() ) {
+    if( !in_bounds(ofs, count, this->size()) ) {
         LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
     }
@@ -690,11 +684,7 @@ void Value::check_bytes_valid(size_t ofs, size_t size) const
         if( size == 0 && this->direct_data.size > 0 ) {
             return ;
         }
-        if( ofs >= this->direct_data.size ) {
-            LOG_ERROR("Read out of bounds " << ofs << "+" << size << " > " << int(this->direct_data.size));
-            throw "ERROR";
-        }
-        if( ofs+size > this->direct_data.size ) {
+        if( !in_bounds(ofs, size, this->direct_data.size) ) {
             LOG_ERROR("Read out of bounds " << ofs+size << " >= " << int(this->direct_data.size));
             throw "ERROR";
         }
@@ -753,15 +743,8 @@ void Value::read_bytes(size_t ofs, void* dst, size_t count) const
     {
         check_bytes_valid(ofs, count);
 
-        if(ofs >= this->direct_data.size ) {
-            LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-            throw "ERROR";
-        }
-        if(count > this->direct_data.size ) {
-            LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
-            throw "ERROR";
-        }
-        if(ofs+count > this->direct_data.size ) {
+        // TODO: Redundant due to above?
+        if( !in_bounds(ofs, count, this->direct_data.size) ) {
             LOG_ERROR("Out of bounds read, " << ofs << "+" << count << " > " << this->size());
             throw "ERROR";
         }
@@ -779,13 +762,7 @@ void Value::write_bytes(size_t ofs, const void* src, size_t count)
     }
     else
     {
-        if(ofs >= this->direct_data.size ) {
-            LOG_BUG("Write to offset outside value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
-        }
-        if(count > this->direct_data.size ){
-            LOG_BUG("Write larger than value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
-        }
-        if(ofs+count > this->direct_data.size ) {
+        if( !in_bounds(ofs, count, this->direct_data.size) ) {
             LOG_BUG("Write extends outside value size (" << ofs << "+" << count << " >= " << (int)this->direct_data.size << ")");
         }
         ::std::memcpy(this->direct_data.data + ofs, src, count);
@@ -905,9 +882,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             break;
         case RelocationPtr::Ty::StdString: {
             const auto& s = alloc_ptr.str();
-            assert(v.m_offset < s.size());
-            assert(v.m_size < s.size());
-            assert(v.m_offset + v.m_size <= s.size());
+            assert( in_bounds(v.m_offset, v.m_size, s.size()) );
             auto flags = os.flags();
             os << ::std::hex;
             for(size_t i = v.m_offset; i < v.m_offset + v.m_size; i++)
@@ -987,7 +962,7 @@ Value ValueRef::read_value(size_t ofs, size_t size) const
 {
     if( size == 0 )
         return Value();
-    if( !(ofs < m_size && size <= m_size && ofs + size <= m_size) ) {
+    if( !in_bounds(ofs, size,  m_size) ) {
         LOG_ERROR("Read exceeds bounds, " << ofs << " + " << size << " > " << m_size << " - from " << *this);
     }
     if( m_alloc ) {
@@ -997,16 +972,19 @@ Value ValueRef::read_value(size_t ofs, size_t size) const
             return m_alloc.alloc().read_value(m_offset + ofs, size);
         case RelocationPtr::Ty::StdString: {
             auto rv = Value::with_size(size, false);
-            //ASSERT_BUG(ofs <= m_alloc.str().size(), "");
-            //ASSERT_BUG(size <= m_alloc.str().size(), "");
-            //ASSERT_BUG(ofs+size <= m_alloc.str().size(), "");
-            assert(m_offset+ofs <= m_alloc.str().size() && size <= m_alloc.str().size() && m_offset+ofs+size <= m_alloc.str().size());
+            LOG_ASSERT(in_bounds(ofs, size, m_alloc.str().size()), "");
             rv.write_bytes(0, m_alloc.str().data() + m_offset + ofs, size);
             return rv;
             }
-        default:
-            //ASSERT_BUG(m_alloc.is_alloc(), "read_value on non-data backed Value - " << );
-            throw "TODO";
+        case RelocationPtr::Ty::FfiPointer: {
+            auto rv = Value::with_size(size, false);
+            LOG_ASSERT(in_bounds(ofs, size, m_alloc.ffi().get_size()), "");
+            rv.write_bytes(0, reinterpret_cast<const char*>(m_alloc.ffi().ptr_value) + m_offset + ofs, size);
+            return rv;
+            }
+        default: {
+            LOG_TODO("read_value from " << m_alloc);
+            }
         }
     }
     else {

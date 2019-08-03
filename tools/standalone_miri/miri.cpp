@@ -12,11 +12,13 @@
 #include <iomanip>
 #include "debug.hpp"
 #include "miri.hpp"
+// VVV FFI
 #include <cstring>  // memrchr
 #ifdef _WIN32
 # define NOMINMAX
 # include <Windows.h>
 #endif
+#include <sys/stat.h>
 #undef DEBUG
 
 unsigned ThreadState::s_next_tls_key = 1;
@@ -800,7 +802,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::Char: new_val.write_u32(0, src_value.read_u32(0) );  break;
                         case RawType::U8:   new_val.write_u32(0, src_value.read_u8(0) );   break;
                         default:
-                            LOG_ERROR("Cat from " << src_ty << " to char isn't valid");
+                            LOG_ERROR("Cast from " << src_ty << " to char isn't valid");
                             break;
                         }
                         break;
@@ -829,8 +831,21 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                             new_val = src_value.read_value(0, re.type.get_size());
                             break;
                         case RawType::Char:
-                            LOG_ASSERT(re.type.inner_type == RawType::U32, "Char can only be casted to u32, instead " << re.type);
-                            new_val = src_value.read_value(0, 4);
+                            switch(re.type.inner_type)
+                            {
+                            case RawType::U8: {
+                                uint32_t v = src_value.read_u32(0);
+                                if( v > 0xFF ) {
+                                    LOG_NOTICE("Casting to u8 from char above 255");
+                                }
+                                new_val.write_u8(0, v & 0xFF);
+                                } break;
+                            case RawType::U32:
+                                new_val = src_value.read_value(0, 4);
+                                break;
+                            default:
+                                LOG_ERROR("Char can only be casted to u32/u8, instead " << re.type);
+                            }
                             break;
                         case RawType::Unit:
                             LOG_FATAL("Cast of unit");
@@ -1947,6 +1962,23 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "pthread_key_delete" )
     {
         rv = Value::new_i32(0);
+    }
+    // - Linux extensions
+    else if( link_name == "stat64" )
+    {
+        const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
+        auto outbuf_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct stat));
+
+        LOG_DEBUG("stat64(\"" << path << "\", " << outbuf_vr << ")");
+        int rv_i = stat(path, reinterpret_cast<struct stat*>(outbuf_vr.data_ptr_mut()));
+        LOG_DEBUG("= " << rv_i);
+
+        rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, rv_i);
+    }
+    else if( link_name == "__errno_location" )
+    {
+        rv = Value::new_ffiptr(FFIPointer::new_const_bytes(&errno, sizeof(errno)));
     }
 #endif
     // std C
