@@ -764,31 +764,6 @@ namespace {
     void visit_blocks(::MIR::TypeResolve& state, const ::MIR::Function& fcn, ::std::function<void(::MIR::BasicBlockId, const ::MIR::BasicBlock&)> cb) {
         visit_blocks_mut(state, const_cast<::MIR::Function&>(fcn), [cb](auto id, auto& blk){ cb(id, blk); });
     }
-
-    bool statement_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& lv)
-    {
-        return visit_mir_lvalues(stmt, [&](const auto& v, auto vu) {
-            if( v == lv ) {
-                return vu != ValUsage::Read;
-            }
-            // TODO: Use a better rule than this, it's not always the case
-            if( v.m_root == lv.m_root ) {
-                return vu != ValUsage::Read;
-            }
-            return false;
-            });
-    }
-    bool terminator_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& lv)
-    {
-        if( const auto* e = term.opt_Call() )
-        {
-            return (e->ret_val.m_root == lv.m_root);
-        }
-        else
-        {
-            return false;
-        }
-    }
 }
 
 
@@ -2622,7 +2597,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                 if( stmt_idx == bb.statements.size() )
                 {
                     DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
-                    if( terminator_invalidates_lvalue(bb.terminator, slot_lvalue) ) {
+                    if( check_invalidates_lvalue(bb.terminator, slot_lvalue) ) {
                         return nullptr;
                     }
                     continue ;
@@ -2656,13 +2631,13 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                                 if(stmt_idx == bb.statements.size())
                                 {
                                     DEBUG("BB" << bb_idx << "/TERM - " << bb.terminator);
-                                    if( terminator_invalidates_lvalue(bb.terminator, src_lval) ) {
+                                    if( check_invalidates_lvalue(bb.terminator, src_lval) ) {
                                         // Invalidated: Return.
                                         return nullptr;
                                     }
                                     continue ;
                                 }
-                                if( statement_invalidates_lvalue(bb.statements[stmt_idx], src_lval) ) {
+                                if( check_invalidates_lvalue(bb.statements[stmt_idx], src_lval) ) {
                                     // Invalidated: Return.
                                     return nullptr;
                                 }
@@ -2676,7 +2651,7 @@ bool MIR_Optimise_PropagateKnownValues(::MIR::TypeResolve& state, ::MIR::Functio
                 }
 
                 // Check if the slot is invalidated (mutated)
-                if( statement_invalidates_lvalue(stmt, slot_lvalue) ) {
+                if( check_invalidates_lvalue(stmt, slot_lvalue) ) {
                     return nullptr;
                 }
             }
@@ -3662,7 +3637,7 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     DEBUG(state << "[find usage] " << stmt2);
 
                     // Check for invalidation (done first, to avoid cases where the source is moved into a struct)
-                    if( statement_invalidates_lvalue(stmt2, e.src.as_Use()) ) {
+                    if( check_invalidates_lvalue(stmt2, e.src.as_Use()) ) {
                         stop = true;
                         break;
                     }
