@@ -956,6 +956,34 @@ void MIR_Cleanup_Param(const ::MIR::TypeResolve& state, MirMutator& mutator, ::M
         MIR_Cleanup_Constant(state, mutator, e);
         )
     )
+
+    // Effectively a copy of the code that handles RValue::Constant below
+    if( p.is_Constant() && p.as_Constant().is_Const() )
+    {
+        const auto& ce = p.as_Constant().as_Const();
+        ::HIR::TypeRef  c_ty;
+        const auto* lit_ptr = MIR_Cleanup_GetConstant(state, *ce.p, c_ty);
+        if( lit_ptr && !lit_ptr->is_Defer() )
+        {
+            DEBUG("Replace constant " << *ce.p << " with " << *lit_ptr);
+            auto new_rval = MIR_Cleanup_LiteralToRValue(state, mutator, *lit_ptr, c_ty.clone(), mv$(*ce.p));
+            if( auto* lv = new_rval.opt_Use() ) {
+                p = ::MIR::Param::make_LValue( ::std::move(*lv) );
+            }
+            else if( auto* c = new_rval.opt_Constant() ) {
+                MIR_Cleanup_Constant(state, mutator, *c);
+                p = ::MIR::Param::make_Constant( ::std::move(*c) );
+            }
+            else {
+                auto tmp_lv = mutator.in_temporary( mv$(c_ty), mv$(new_rval) );
+                p = ::MIR::Param::make_LValue( ::std::move(tmp_lv) );
+            }
+        }
+        else
+        {
+            DEBUG("No replacement for constant " << *ce.p);
+        }
+    }
 }
 
 void MIR_Cleanup(const StaticTraitResolve& resolve, const ::HIR::ItemPath& path, ::MIR::Function& fcn, const ::HIR::Function::args_t& args, const ::HIR::TypeRef& ret_type)
