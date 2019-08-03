@@ -771,6 +771,10 @@ namespace {
             if( v == lv ) {
                 return vu != ValUsage::Read;
             }
+            // TODO: Use a better rule than this, it's not always the case
+            if( v.m_root == lv.m_root ) {
+                return vu != ValUsage::Read;
+            }
             return false;
             });
     }
@@ -1433,7 +1437,7 @@ namespace {
     struct StmtRef {
         unsigned    bb_idx;
         unsigned    stmt_idx;
-        StmtRef(): bb_idx(0), stmt_idx(0) {}
+        StmtRef(): bb_idx(~0u), stmt_idx(0) {}
         StmtRef(unsigned b, unsigned s): bb_idx(b), stmt_idx(s) {}
     };
     ::std::ostream& operator<<(::std::ostream& os, const StmtRef& x) {
@@ -1759,21 +1763,270 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
     return changed;
 }
 
-// TODO: New pass that removes useless borrows
+// Remove useless borrows (locals assigned with a borrow, and never used by value)
 // ```
 // _$1 = & _$0;
 // (*_$1).1 = 0x0;
 // ```
-//bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function& fcn)
-//{
-//    bool changed = false;
-//    TRACE_FUNCTION_FR("", changed);
-//
-//    // Find all single-assign borrows that are only ever used via Deref
-//    // - Direct drop is ignored for this purpose
-//
-//    return changed;
-//}
+bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function& fcn)
+{
+    bool changed = false;
+#if 1
+    TRACE_FUNCTION_FR("", changed);
+
+    // Find all single-assign borrows that are only ever used via Deref
+    // - Direct drop is ignored for this purpose
+    struct LocalUsage {
+        unsigned    n_write;
+        unsigned    n_other_read;
+        unsigned    n_deref_read;
+        StmtRef set_loc;
+        ::std::vector<StmtRef> drop_locs;
+        LocalUsage():
+            n_write(0),
+            n_other_read(0),
+            n_deref_read(0)
+        {
+        }
+    };
+    auto usage_info = ::std::vector<LocalUsage>(fcn.locals.size());
+    for(const auto& bb : fcn.blocks)
+    {
+        StmtRef cur_loc;
+        auto visit_cb = [&](const ::MIR::LValue& lv, auto vu) {
+            if( lv.m_root.is_Local() )
+            {
+                auto& slot = usage_info[lv.m_root.as_Local()];
+                // NOTE: This pass doesn't care about indexing, as we're looking for values that are borrows (which aren't valid indexes)
+                // > Inner-most wrapper is Deref - it's a deref of this variable
+                if( !lv.m_wrappers.empty() && lv.m_wrappers.front().is_Deref() ) {
+                    slot.n_deref_read ++;
+                }
+                // > Write with no wrappers - Assignment
+                else if( lv.m_wrappers.empty() && vu == ValUsage::Write ) {
+                    slot.n_write ++;
+                    slot.set_loc = cur_loc;
+                    //DEBUG(lv << " set");
+                }
+                // Anything else, count as a read
+                else {
+                    slot.n_other_read ++;
+                }
+            }
+            return false;
+            };
+        for(const auto& stmt : bb.statements)
+        {
+            cur_loc = StmtRef(&bb - &fcn.blocks.front(), &stmt - &bb.statements.front());
+
+            // If the statement is a drop of a local, then don't count that as a read
+            // - But do record the location of the drop, so it can be deleted later on?
+            if( stmt.is_Drop() )
+            {
+                const auto& drop_lv = stmt.as_Drop().slot;
+                if( drop_lv.m_root.is_Local() && drop_lv.m_wrappers.empty() )
+                {
+                    auto& slot = usage_info[drop_lv.m_root.as_Local()];
+                    slot.drop_locs.push_back(cur_loc);
+                    continue ;
+                }
+            }
+
+            //DEBUG(cur_loc << ":" << stmt);
+            visit_mir_lvalues(stmt, visit_cb);
+        }
+        cur_loc = StmtRef(&bb - &fcn.blocks.front(), bb.statements.size());
+        //DEBUG(cur_loc << ":" << bb.terminator);
+        visit_mir_lvalues(bb.terminator, visit_cb);
+    }
+
+    // Look for `_0 = Borrow`
+    for(size_t var_idx = 0; var_idx < fcn.locals.size(); var_idx ++)
+    {
+        const auto& slot = usage_info[var_idx];
+        auto this_var = ::MIR::LValue::new_Local(var_idx);
+
+        // This rule only applies to single-write variables, with no use other than via derefs
+        if( !(slot.n_write == 1 && slot.n_other_read == 0) )
+        {
+            //DEBUG(this_var << " - Multi-assign, or use-by-value");
+            continue ;
+        }
+
+        // Check that the source was a borrow statement
+        auto& src_bb = fcn.blocks[slot.set_loc.bb_idx];
+        if( !(slot.set_loc.stmt_idx < src_bb.statements.size() && TU_TEST1(src_bb.statements[slot.set_loc.stmt_idx], Assign, .src.is_Borrow())) )
+        {
+            DEBUG(this_var << " - Source is not a borrow op");
+            continue;
+        }
+        const auto& src_lv = src_bb.statements[slot.set_loc.stmt_idx].as_Assign().src.as_Borrow().val;
+        // Check that the borrow isn't too complex
+        if( src_lv.m_wrappers.size() >= 2 )
+        {
+            DEBUG(this_var << " - Source is too complex - " << src_lv);
+            continue;
+        }
+        if( slot.n_deref_read > 1 && fcn.locals[var_idx].m_data.as_Borrow().type != ::HIR::BorrowType::Shared )
+        {
+            DEBUG(this_var << " - Multi-use non-shared borrow, too complex to do");
+            continue;
+        }
+        DEBUG(this_var << " - Borrow " << src_lv << ", used " << slot.n_deref_read << " times");
+
+        // Locate usage sites (by walking forwards) and check for invalidation
+        auto cur_loc = slot.set_loc;
+        cur_loc.stmt_idx ++;
+        unsigned num_replaced = 0;
+        auto replace_cb = [&](::MIR::LValue& lv, auto _vu) {
+            if( lv.m_root == this_var.m_root )
+            {
+                ASSERT_BUG(Span(), !lv.m_wrappers.empty(), cur_loc << " " << lv);
+                assert(lv.m_wrappers.front().is_Deref());
+                // Make a LValue reference, then overwrite it
+                {
+                    auto lvr = ::MIR::LValue::MRef(lv);
+                    while(lvr.wrapper_count() > 1)
+                        lvr.try_unwrap();
+                    DEBUG(this_var << " " << cur_loc << " - Replace " << lvr << " with " << src_lv << " in " << lv);
+                    lvr.replace(src_lv.clone());
+                }
+                DEBUG("= " << lv);
+                assert(lv.m_root != this_var.m_root);
+                assert(num_replaced < slot.n_deref_read);
+                num_replaced += 1;
+            }
+            return false;
+            };
+        for(bool stop = false; !stop; )
+        {
+            auto& cur_bb = fcn.blocks[cur_loc.bb_idx];
+            for(; cur_loc.stmt_idx < cur_bb.statements.size(); cur_loc.stmt_idx ++)
+            {
+                auto& stmt = cur_bb.statements[cur_loc.stmt_idx];
+                DEBUG(cur_loc << " " << stmt);
+                // Replace usage
+                bool invalidates = check_invalidates_lvalue(stmt, src_lv);
+                visit_mir_lvalues_mut(stmt, replace_cb);
+                if( num_replaced == slot.n_deref_read )
+                {
+                    stop = true;
+                    break;
+                }
+                // Check for invalidation (actual check done before replacement)
+                if( invalidates )
+                {
+                    // Invalidated, stop here.
+                    DEBUG(this_var << " - Source invalidated @ " << cur_loc << " in " << stmt);
+                    stop = true;
+                    break;
+                }
+            }
+            if( stop ) {
+                break;
+            }
+            // Replace usage
+            visit_mir_lvalues_mut(cur_bb.terminator, replace_cb);
+            if( num_replaced == slot.n_deref_read )
+            {
+                stop = true;
+                break;
+            }
+            // Check for invalidation
+            if( check_invalidates_lvalue(cur_bb.terminator, src_lv) )
+            {
+                DEBUG(this_var << " - Source invalidated @ " << cur_loc << " in " << cur_bb.terminator);
+                stop = true;
+                break;
+            }
+
+            TU_MATCH_HDRA( (cur_bb.terminator), { )
+            default:
+                stop = true;
+                break;
+            // TODO: History is needed to avoid infinite loops from triggering infinite looping here.
+            //TU_ARMA(Goto, e) {
+            //    cur_pos.bb_idx = e;
+            //    cur_pos.stmt_idx = 0;
+            //    }
+            // NOTE: `Call` can't work in the presense of unwinding, would need to traverse both paths
+            //TU_ARMA(Call, e) {
+            //    }
+            }
+        }
+
+        // If the source was an inner deref, update its counts
+        if( src_lv.m_root.is_Local() && !src_lv.m_wrappers.empty() && src_lv.m_wrappers.front().is_Deref() )
+        {
+            usage_info[src_lv.m_root.as_Local()].n_deref_read += num_replaced;
+            if(num_replaced == slot.n_deref_read)
+            {
+                usage_info[src_lv.m_root.as_Local()].n_deref_read -= 1;
+            }
+        }
+
+        // If all usage sites were updated, then remove the original assignment
+        if(num_replaced == slot.n_deref_read)
+        {
+            DEBUG(this_var << " - Erase " << slot.set_loc << " as it is no longer used");
+            src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
+            for(const auto& drop_loc : slot.drop_locs)
+            {
+                DEBUG(this_var << " - Drop at " << drop_loc);
+                fcn.blocks[drop_loc.bb_idx].statements[drop_loc.stmt_idx] = ::MIR::Statement();
+            }
+        }
+#if 0
+        else if( num_replaced > 0 )
+        {
+            auto src_rval = ::std::move(src_bb.statements[slot.set_loc.stmt_idx].as_Assign().src);
+            src_bb.statements[slot.set_loc.stmt_idx] = ::MIR::Statement();
+            DEBUG(this_var << " - Move " << slot.set_loc << " to after " << cur_loc);
+            // TODO: Move the source borrow up to this point.
+            auto& cur_bb = fcn.blocks[cur_loc.bb_idx];
+            if( cur_loc.stmt_idx >= cur_bb.statements.size() )
+            {
+                auto push_bb_front = [&fcn,&this_var](unsigned b, ::MIR::RValue s){
+                    fcn.blocks[b].statements.insert(fcn.blocks[b].statements.begin(), ::MIR::Statement::make_Assign({ this_var.clone(), ::std::move(s) }));
+                    // TODO: Update all references to this block?
+                    };
+                // Move the borrow to the next block?
+                // - Terminators shouldn't be able to invalidate...
+                TU_MATCH_HDRA( (cur_bb.terminator), { )
+                default:
+                    TODO(Span(), "Move borrow to after terminator " << cur_bb.terminator);
+                TU_ARMA(Goto, e) {
+                    push_bb_front(e, ::std::move(src_rval));
+                    }
+                TU_ARMA(Call, e) {
+                    push_bb_front(e.ret_block, src_rval.clone());
+                    push_bb_front(e.panic_block, ::std::move(src_rval));
+                    }
+                }
+            }
+            else
+            {
+                // If invalidated, then there _shouldn't_ be more to come (borrow rules)
+                TODO(Span(), "Move borrow to after " << cur_loc);
+            }
+        }
+#endif
+        else
+        {
+            // No replacement, keep the source where it is
+            DEBUG(this_var << " - Keep " << slot.set_loc);
+        }
+
+        // Any replacements? Then there was an actionable change
+        if( num_replaced > 0 )
+        {
+            changed = true;
+        }
+    }
+#endif
+
+    return changed;
+}
 
 // --------------------------------------------------------------------
 // Replaces uses of stack slots with what they were assigned with (when
@@ -1785,6 +2038,7 @@ bool MIR_Optimise_DeTemporary(::MIR::TypeResolve& state, ::MIR::Function& fcn)
     TRACE_FUNCTION_FR("", changed);
 
     changed |= MIR_Optimise_DeTemporary_SingleSetAndUse(state, fcn);
+    changed |= MIR_Optimise_DeTemporary_Borrows(state, fcn);
 
 
     // OLD ALGORITHM.
@@ -3383,10 +3637,6 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                         continue;
                     }
                 }
-                // TODO: Allow any rvalue, but that currently breaks due to chaining
-                //else if( e.src.is_Borrow() )
-                //{
-                //}
                 else
                 {
                     continue ;
@@ -3399,13 +3649,6 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     //return lv == e.dst;
                     };
 
-                // Returns `true` if the passed lvalue is used as a part of the source
-                auto is_lvalue_in_val = [&](const auto& lv) {
-                    return visit_mir_lvalues(e.src, [&](const auto& slv, auto ) {
-                        return lv.m_root == slv.m_root;
-                        //return lv == slv;
-                        });
-                    };
                 // Eligable for replacement
                 // Find where this value is used
                 // - Stop on a conditional block terminator
@@ -3417,6 +3660,12 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                     state.set_cur_stmt(&block - &fcn.blocks.front(), si2);
                     const auto& stmt2 = block.statements[si2];
                     DEBUG(state << "[find usage] " << stmt2);
+
+                    // Check for invalidation (done first, to avoid cases where the source is moved into a struct)
+                    if( statement_invalidates_lvalue(stmt2, e.src.as_Use()) ) {
+                        stop = true;
+                        break;
+                    }
 
                     // Usage found.
                     if( visit_mir_lvalues(stmt2, is_lvalue_usage) )
@@ -3434,14 +3683,6 @@ bool MIR_Optimise_PropagateSingleAssignments(::MIR::TypeResolve& state, ::MIR::F
                             }
                         }
                         found = true;
-                        stop = true;
-                        break;
-                    }
-
-                    // Determine if source is mutated.
-                    // > Assume that any mutating access of the root value counts (over-cautious)
-                    if( visit_mir_lvalues(stmt2, [&](const auto& lv, auto vu){ return /*vu == ValUsage::Write &&*/ is_lvalue_in_val(lv); }) )
-                    {
                         stop = true;
                         break;
                     }
