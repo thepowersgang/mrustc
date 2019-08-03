@@ -269,15 +269,15 @@ struct MirHelpers
         case ::MIR::LValue::Storage::TAGDEAD:    throw "";
         // --> Slots
         TU_ARM(lv_root, Return, _e) {
-            ty = this->frame.fcn.ret_ty;
+            ty = this->frame.fcn->ret_ty;
             return ValueRef(this->frame.ret);
             } break;
         TU_ARM(lv_root, Local, e) {
-            ty = this->frame.fcn.m_mir.locals.at(e);
+            ty = this->frame.fcn->m_mir.locals.at(e);
             return ValueRef(this->frame.locals.at(e));
             } break;
         TU_ARM(lv_root, Argument, e) {
-            ty = this->frame.fcn.args.at(e);
+            ty = this->frame.fcn->args.at(e);
             return ValueRef(this->frame.args.at(e));
             } break;
         TU_ARM(lv_root, Static, e) {
@@ -571,8 +571,8 @@ InterpreterThread::~InterpreterThread()
         }
         else
         {
-            ::std::cout << frame.fcn.my_path << " BB" << frame.bb_idx << "/";
-            if( frame.stmt_idx == frame.fcn.m_mir.blocks.at(frame.bb_idx).statements.size() )
+            ::std::cout << frame.fcn->my_path << " BB" << frame.bb_idx << "/";
+            if( frame.stmt_idx == frame.fcn->m_mir.blocks.at(frame.bb_idx).statements.size() )
                 ::std::cout << "TERM";
             else
                 ::std::cout << frame.stmt_idx;
@@ -594,8 +594,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     assert( !this->m_stack.empty() );
     assert( !this->m_stack.back().cb );
     auto& cur_frame = this->m_stack.back();
-    TRACE_FUNCTION_R(cur_frame.fcn.my_path << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx, "");
-    const auto& bb = cur_frame.fcn.m_mir.blocks.at( cur_frame.bb_idx );
+    TRACE_FUNCTION_R(cur_frame.fcn->my_path << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx, "");
+    const auto& bb = cur_frame.fcn->m_mir.blocks.at( cur_frame.bb_idx );
 
     const size_t    MAX_STACK_DEPTH = 40;
     if( this->m_stack.size() > MAX_STACK_DEPTH )
@@ -795,7 +795,15 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     case RawType::Bool:
                         LOG_TODO("Cast to " << re.type);
                     case RawType::Char:
-                        LOG_TODO("Cast to " << re.type);
+                        switch(src_ty.inner_type)
+                        {
+                        case RawType::Char: new_val.write_u32(0, src_value.read_u32(0) );  break;
+                        case RawType::U8:   new_val.write_u32(0, src_value.read_u8(0) );   break;
+                        default:
+                            LOG_ERROR("Cat from " << src_ty << " to char isn't valid");
+                            break;
+                        }
+                        break;
                     case RawType::USize:
                     case RawType::U8:
                     case RawType::U16:
@@ -1031,6 +1039,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::I8 :  res = res != 0 ? res : Ops::do_compare(v_l.read_i8 (0), v_r.read_i8 (0));   break;
                         case RawType::USize: res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0)); break;
                         case RawType::ISize: res = res != 0 ? res : Ops::do_compare(v_l.read_isize(0), v_r.read_isize(0)); break;
+                        case RawType::Char: res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0)); break;
                         default:
                             LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                         }
@@ -1440,8 +1449,65 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             }
             cur_frame.bb_idx = te.targets.at(found_target);
             } break;
-        TU_ARM(bb.terminator, SwitchValue, _te)
-            LOG_TODO("Terminator::SwitchValue");
+        TU_ARM(bb.terminator, SwitchValue, te) {
+            ::HIR::TypeRef ty;
+            auto v = state.get_value_and_type(te.val, ty);
+            TU_MATCH_HDRA( (te.values), {)
+            TU_ARMA(Unsigned, vals) {
+                LOG_ASSERT(vals.size() == te.targets.size(), "Mismatch in SwitchValue target/value list lengths");
+                // Read an unsigned value 
+                if( ty.get_wrapper() ) {
+                    LOG_ERROR("Terminator::SwitchValue::Unsigned with wrapped type - " << ty);
+                }
+                uint64_t switch_val;
+                switch(ty.inner_type)
+                {
+                case RawType::U8:   switch_val = v.read_u8(0); break;
+                case RawType::U16:  switch_val = v.read_u16(0); break;
+                case RawType::U32:  switch_val = v.read_u32(0); break;
+                case RawType::U64:  switch_val = v.read_u64(0); break;
+                case RawType::U128: LOG_TODO("Terminator::SwitchValue::Unsigned with u128");
+                case RawType::USize:    switch_val = v.read_usize(0); break;
+                default:
+                    LOG_ERROR("Terminator::SwitchValue::Unsigned with unexpected type - " << ty);
+                }
+
+                auto it = ::std::find(vals.begin(), vals.end(), switch_val);
+                if( it != vals.end() )
+                {
+                    auto idx = it - vals.begin();
+                    LOG_TRACE("- " << switch_val << " matched arm " << idx);
+                    cur_frame.bb_idx = te.targets.at(idx);
+                }
+                else
+                {
+                    LOG_TRACE("- " << switch_val << " not matched, taking default arm");
+                    cur_frame.bb_idx = te.def_target;
+                }
+                }
+            TU_ARMA(Signed, vals) {
+                if( ty.get_wrapper() ) {
+                    LOG_ERROR("Terminator::SwitchValue::Signed with wrapped type - " << ty);
+                }
+                int64_t switch_val;
+                switch(ty.inner_type)
+                {
+                case RawType::I8:   switch_val = v.read_i8(0); break;
+                case RawType::I16:  switch_val = v.read_i16(0); break;
+                case RawType::I32:  switch_val = v.read_i32(0); break;
+                case RawType::I64:  switch_val = v.read_i64(0); break;
+                case RawType::I128: LOG_TODO("Terminator::SwitchValue::Signed with i128");
+                case RawType::ISize:    switch_val = v.read_isize(0); break;
+                default:
+                    LOG_ERROR("Terminator::SwitchValue::Signed with unexpected type - " << ty);
+                }
+                LOG_TODO("Terminator::SwitchValue (signed) - " << ty << " " << switch_val);
+                }
+            TU_ARMA(String, vals) {
+                LOG_TODO("Terminator::SwitchValue (string) - " << ty << " " << v);
+                }
+            }
+            }
         TU_ARM(bb.terminator, Call, te) {
             ::std::vector<Value>    sub_args; sub_args.reserve(te.args.size());
             for(const auto& a : te.args)
@@ -1488,7 +1554,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     return false;
                 }
             }
-            LOG_DEBUG(te.ret_val << " = " << rv << " (resume " << cur_frame.fcn.my_path << ")");
+            LOG_DEBUG(te.ret_val << " = " << rv << " (resume " << cur_frame.fcn->my_path << ")");
             state.write_lvalue(te.ret_val, rv);
             cur_frame.bb_idx = te.ret_block;
             } break;
@@ -1528,19 +1594,19 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
         auto& cur_frame = this->m_stack.back();
         MirHelpers  state { *this, cur_frame };
 
-        const auto& blk = cur_frame.fcn.m_mir.blocks.at( cur_frame.bb_idx );
+        const auto& blk = cur_frame.fcn->m_mir.blocks.at( cur_frame.bb_idx );
         if( cur_frame.stmt_idx < blk.statements.size() )
         {
             assert( blk.statements[cur_frame.stmt_idx].is_Drop() );
             cur_frame.stmt_idx ++;
-            LOG_DEBUG("DROP complete (resume " << cur_frame.fcn.my_path << ")");
+            LOG_DEBUG("DROP complete (resume " << cur_frame.fcn->my_path << ")");
         }
         else
         {
             assert( blk.terminator.is_Call() );
             const auto& te = blk.terminator.as_Call();
 
-            LOG_DEBUG(te.ret_val << " = " << res_v << " (resume " << cur_frame.fcn.my_path << ")");
+            LOG_DEBUG(te.ret_val << " = " << res_v << " (resume " << cur_frame.fcn->my_path << ")");
 
             state.write_lvalue(te.ret_val, res_v);
             cur_frame.stmt_idx = 0;
@@ -1552,7 +1618,7 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
 }
 
 InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Value> args):
-    fcn(fcn),
+    fcn(&fcn),
     ret( fcn.ret_ty == RawType::Unreachable ? Value() : Value(fcn.ret_ty) ),
     args( ::std::move(args) ),
     locals( ),
@@ -1633,6 +1699,27 @@ extern "C" {
 #endif
 bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, const ::std::string& abi, ::std::vector<Value> args)
 {
+    struct FfiHelpers {
+        static const char* read_cstr(const Value& v, size_t ptr_ofs, size_t* out_strlen=nullptr)
+        {
+            bool _is_mut;
+            size_t  size;
+            // Get the base pointer and allocation size (checking for at least one valid byte to start with)
+            const char* ptr = reinterpret_cast<const char*>( v.read_pointer_unsafe(0, 1, /*out->*/ size, _is_mut) );
+            size_t len = 0;
+            // Seek until either out of space, or a NUL is found
+            while(size -- && *ptr)
+            {
+                ptr ++;
+                len ++;
+            }
+            if( out_strlen )
+            {
+                *out_strlen = len;
+            }
+            return reinterpret_cast<const char*>(v.read_pointer_const(0, len + 1));  // Final read will trigger an error if the NUL isn't there
+        }
+    };
     if( link_name == "__rust_allocate" || link_name == "__rust_alloc" )
     {
         static unsigned s_alloc_count = 0;
@@ -1923,20 +2010,34 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "strlen" )
     {
         // strlen - custom implementation to ensure validity
-        bool _is_mut;
-        size_t  size;
-        const char* ptr = reinterpret_cast<const char*>( args.at(0).read_pointer_unsafe(0, 1, size, _is_mut) );
         size_t len = 0;
-        while(size -- && *ptr)
-        {
-            ptr ++;
-            len ++;
-        }
-        args.at(0).read_pointer_const(0, len + 1);
+        FfiHelpers::read_cstr(args.at(0), 0, &len);
 
         //rv = Value::new_usize(len);
         rv = Value(::HIR::TypeRef(RawType::USize));
         rv.write_usize(0, len);
+    }
+    else if( link_name == "getenv" )
+    {
+        const auto* name = FfiHelpers::read_cstr(args.at(0), 0);
+        LOG_DEBUG("getenv(\"" << name << "\")");
+        const auto* ret_ptr = getenv(name);
+        if( ret_ptr )
+        {
+            LOG_DEBUG("= \"" << ret_ptr << "\"");
+            rv = Value::new_ffiptr(FFIPointer::new_const_bytes(ret_ptr, strlen(ret_ptr)+1));
+        }
+        else
+        {
+            LOG_DEBUG("= NULL");
+            rv = Value(::HIR::TypeRef(RawType::USize));
+            rv.create_allocation();
+            rv.write_usize(0,0);
+        }
+    }
+    else if( link_name == "setenv" )
+    {
+        LOG_TODO("Allow `setenv` without incurring thread unsafety");
     }
     // Allocators!
     else
@@ -2367,8 +2468,28 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
             for(uint64_t i = 0; i < count; i ++)
             {
                 auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
-                if( !drop_value(ptr, ity) ) {
-                    LOG_TODO("Handle closure looping when dropping a slice");
+                if( !drop_value(ptr, ity) )
+                {
+                    // - This is trying to invoke custom drop glue, need to suspend this operation and come back later
+
+                    // > insert a new frame shim BEFORE the current top (which would be the frame created by
+                    // `drop_value` calling a function)
+                    m_stack.insert( m_stack.end() - 1, StackFrame::make_wrapper([this,pty,ity,ptr_reloc,count, i,ofs](Value& rv, Value drop_rv) mutable {
+                        assert(i < count);
+                        i ++;
+                        if( i < count )
+                        {
+                            auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
+                            ofs += ity.get_size();
+                            assert(!drop_value(ptr, ity));
+                            return false;
+                        }
+                        else
+                        {
+                            return true;
+                        }
+                        }) );
+                    return false;
                 }
                 ofs += ity.get_size();
             }

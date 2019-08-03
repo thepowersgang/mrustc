@@ -36,7 +36,7 @@ class InterpreterThread
     struct StackFrame
     {
         ::std::function<bool(Value&,Value)> cb;
-        const Function& fcn;
+        const Function* fcn;
         Value ret;
         ::std::vector<Value>    args;
         ::std::vector<Value>    locals;
