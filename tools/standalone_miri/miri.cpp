@@ -26,6 +26,7 @@ class PrimitiveValue
 public:
     virtual ~PrimitiveValue() {}
 
+    virtual bool is_zero() const = 0;
     virtual bool add(const PrimitiveValue& v) = 0;
     virtual bool subtract(const PrimitiveValue& v) = 0;
     virtual bool multiply(const PrimitiveValue& v) = 0;
@@ -51,6 +52,9 @@ struct PrimitiveUInt:
     PrimitiveUInt(T v): v(v) {}
     ~PrimitiveUInt() override {}
 
+    virtual bool is_zero() const {
+        return this->v == 0;
+    }
     bool add(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("add");
         T newv = this->v + xp->v;
@@ -111,6 +115,9 @@ struct PrimitiveSInt:
     PrimitiveSInt(T v): v(v) {}
     ~PrimitiveSInt() override {}
 
+    virtual bool is_zero() const {
+        return this->v == 0;
+    }
     // TODO: Make this correct.
     bool add(const PrimitiveValue& x) override {
         const auto* xp = &x.check<Self>("add");
@@ -1628,13 +1635,19 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 {
     if( link_name == "__rust_allocate" || link_name == "__rust_alloc" )
     {
+        static unsigned s_alloc_count = 0;
+
+        auto alloc_idx = s_alloc_count ++;
+        auto alloc_name = FMT_STRING("__rust_alloc#" << alloc_idx);
         auto size = args.at(0).read_usize(0);
         auto align = args.at(1).read_usize(0);
-        LOG_DEBUG("__rust_allocate(size=" << size << ", align=" << align << ")");
+        LOG_DEBUG("__rust_allocate(size=" << size << ", align=" << align << "): name=" << alloc_name);
+        auto alloc = Allocation::new_alloc(size, ::std::move(alloc_name));
+        LOG_TRACE("- alloc=" << alloc << " (" << alloc->size() << " bytes)");
         auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
 
         // TODO: Use the alignment when making an allocation?
-        rv = Value::new_pointer(rty, 0, RelocationPtr::new_alloc(Allocation::new_alloc(size, "__rust_alloc")));
+        rv = Value::new_pointer(rty, 0, RelocationPtr::new_alloc(::std::move(alloc)));
     }
     else if( link_name == "__rust_reallocate" || link_name == "__rust_realloc" )
     {
@@ -1643,8 +1656,9 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto ptr_ofs = args.at(0).read_usize(0);
         LOG_ASSERT(ptr_ofs == 0, "__rust_reallocate with offset pointer");
         auto oldsize = args.at(1).read_usize(0);
-        auto newsize = args.at(2).read_usize(0);
-        auto align = args.at(3).read_usize(0);
+        // NOTE: The ordering here depends on the rust version (1.19 has: old, new, align - 1.29 has: old, align, new)
+        auto align = args.at(true /*1.29*/ ? 2 : 3).read_usize(0);
+        auto newsize = args.at(true /*1.29*/ ? 3 : 2).read_usize(0);
         LOG_DEBUG("__rust_reallocate(ptr=" << alloc_ptr << ", oldsize=" << oldsize << ", newsize=" << newsize << ", align=" << align << ")");
 
         LOG_ASSERT(alloc_ptr, "__rust_reallocate with no backing allocation attached to pointer");
@@ -2197,7 +2211,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
     else if( name == "mul_with_overflow" )
     {
         const auto& ty = ty_params.tys.at(0);
-    
+
         auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
         auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
         bool didnt_overflow = lhs.get().multiply( rhs.get() );
@@ -2211,6 +2225,24 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         rv = Value(::HIR::TypeRef(&dty));
         lhs.get().write_to_value(rv, dty.fields[0].first);
         rv.write_u8( dty.fields[1].first, didnt_overflow ? 0 : 1 ); // Returns true if overflow happened
+    }
+    // - "exact_div" :: Normal divide, but UB if not an exact multiple
+    else if( name == "exact_div" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+
+        auto lhs = PrimitiveValueVirt::from_value(ty, args.at(0));
+        auto rhs = PrimitiveValueVirt::from_value(ty, args.at(1));
+
+        LOG_ASSERT(!rhs.get().is_zero(), "`exact_div` with zero divisor: " << args.at(0) << " / " << args.at(1));
+        auto rem = lhs;
+        rem.get().modulo( rhs.get() );
+        LOG_ASSERT(rem.get().is_zero(), "`exact_div` with yielded non-zero remainder: " << args.at(0) << " / " << args.at(1));
+        bool didnt_overflow = lhs.get().divide( rhs.get() );
+        LOG_ASSERT(didnt_overflow, "`exact_div` failed for unknown reason: " << args.at(0) << " /" << args.at(1));
+
+        rv = Value(ty);
+        lhs.get().write_to_value(rv, 0);
     }
     // Overflowing artithmatic
     else if( name == "overflowing_sub" )
@@ -2248,31 +2280,35 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         size_t ent_size = ty_params.tys.at(0).get_size();
         auto byte_count = ent_count * ent_size;
 
-        LOG_ASSERT(src_alloc, "Source of copy* must have an allocation");
-        LOG_ASSERT(dst_alloc, "Destination of copy* must be a memory allocation");
-        LOG_ASSERT(dst_alloc.is_alloc(), "Destination of copy* must be a memory allocation");
-
-        switch(src_alloc.get_ty())
+        // A count of zero doesn't need to do any of the checks (TODO: Validate this rule)
+        if( byte_count > 0 )
         {
-        case RelocationPtr::Ty::Allocation: {
-            auto v = src_alloc.alloc().read_value(src_ofs, byte_count);
-            LOG_DEBUG("v = " << v);
-            dst_alloc.alloc().write_value(dst_ofs, ::std::move(v));
-            } break;
-        case RelocationPtr::Ty::StdString:
-            LOG_ASSERT(src_ofs <= src_alloc.str().size(), "");
-            LOG_ASSERT(byte_count <= src_alloc.str().size(), "");
-            LOG_ASSERT(src_ofs + byte_count <= src_alloc.str().size(), "");
-            dst_alloc.alloc().write_bytes(dst_ofs, src_alloc.str().data() + src_ofs, byte_count);
-            break;
-        case RelocationPtr::Ty::Function:
-            LOG_FATAL("Attempt to copy* a function");
-            break;
-        case RelocationPtr::Ty::FfiPointer:
-	    LOG_ASSERT(src_alloc.ffi().layout, "");
-	    LOG_ASSERT(src_alloc.ffi().layout->is_valid_read(src_ofs, byte_count), "");
-            dst_alloc.alloc().write_bytes(dst_ofs, reinterpret_cast<const char*>(src_alloc.ffi().ptr_value) + src_ofs, byte_count);
-            break;
+            LOG_ASSERT(src_alloc, "Source of copy* must have an allocation");
+            LOG_ASSERT(dst_alloc, "Destination of copy* must be a memory allocation");
+            LOG_ASSERT(dst_alloc.is_alloc(), "Destination of copy* must be a memory allocation");
+
+            switch(src_alloc.get_ty())
+            {
+            case RelocationPtr::Ty::Allocation: {
+                auto v = src_alloc.alloc().read_value(src_ofs, byte_count);
+                LOG_DEBUG("v = " << v);
+                dst_alloc.alloc().write_value(dst_ofs, ::std::move(v));
+                } break;
+            case RelocationPtr::Ty::StdString:
+                LOG_ASSERT(src_ofs <= src_alloc.str().size(), "");
+                LOG_ASSERT(byte_count <= src_alloc.str().size(), "");
+                LOG_ASSERT(src_ofs + byte_count <= src_alloc.str().size(), "");
+                dst_alloc.alloc().write_bytes(dst_ofs, src_alloc.str().data() + src_ofs, byte_count);
+                break;
+            case RelocationPtr::Ty::Function:
+                LOG_FATAL("Attempt to copy* a function");
+                break;
+            case RelocationPtr::Ty::FfiPointer:
+            LOG_ASSERT(src_alloc.ffi().layout, "");
+            LOG_ASSERT(src_alloc.ffi().layout->is_valid_read(src_ofs, byte_count), "");
+                dst_alloc.alloc().write_bytes(dst_ofs, reinterpret_cast<const char*>(src_alloc.ffi().ptr_value) + src_ofs, byte_count);
+                break;
+            }
         }
     }
     else

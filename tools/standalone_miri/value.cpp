@@ -15,7 +15,7 @@
 
 ::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
 {
-    os << "A(" << static_cast<const void*>(x) << " " << x->tag() << ")";
+    os << "A(" << static_cast<const void*>(x) << " " << x->tag() /*<< " +" << x->size()*/ << ")";
     return os;
 }
 

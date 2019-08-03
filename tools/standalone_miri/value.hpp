@@ -13,6 +13,8 @@
 #include <cstring>	// memcpy
 #include <cassert>
 
+#include "debug.hpp"
+
 namespace HIR {
     struct TypeRef;
     struct Path;
@@ -359,24 +361,36 @@ struct ValueRef:
         m_offset(ofs),
         m_size(size)
     {
+        struct H {
+            static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
+                if( !(ofs < max_size) )
+                    return false;
+                if( !(size <= max_size) )
+                    return false;
+                return ofs + size <= max_size;
+            }
+        };
         if( m_alloc )
         {
             switch(m_alloc.get_ty())
             {
             case RelocationPtr::Ty::Allocation:
-                assert(ofs < m_alloc.alloc().size());
-                assert(size <= m_alloc.alloc().size());
-                assert(ofs+size <= m_alloc.alloc().size());
+                if( !H::in_bounds(ofs, size, m_alloc.alloc().size()) )
+                {
+                    LOG_ERROR("ValueRef exceeds bounds of " << m_alloc << " - " << ofs << "+" << size << " > " << m_alloc.alloc().size());
+                }
                 break;
             case RelocationPtr::Ty::StdString:
-                assert(ofs < m_alloc.str().size());
-                assert(size <= m_alloc.str().size());
-                assert(ofs+size <= m_alloc.str().size());
+                if( !H::in_bounds(ofs, size, m_alloc.str().size()) )
+                {
+                    LOG_ERROR("ValueRef exceeds bounds of string - " << ofs << "+" << size << " > " << m_alloc.str().size());
+                }
                 break;
             case RelocationPtr::Ty::FfiPointer:
-                assert(ofs < m_alloc.ffi().get_size());
-                assert(size <= m_alloc.ffi().get_size());
-                assert(ofs+size <= m_alloc.ffi().get_size());
+                if( !H::in_bounds(ofs, size, m_alloc.ffi().get_size()) )
+                {
+                    LOG_ERROR("ValueRef exceeds bounds of FFI buffer - " << ofs << "+" << size << " > " << m_alloc.ffi().get_size());
+                }
                 break;
             default:
                 throw "TODO";
