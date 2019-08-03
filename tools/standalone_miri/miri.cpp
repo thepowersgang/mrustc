@@ -107,6 +107,20 @@ struct PrimitiveU32: public PrimitiveUInt<uint32_t>
         tgt.write_u32(ofs, this->v);
     }
 };
+struct PrimitiveU16: public PrimitiveUInt<uint16_t>
+{
+    PrimitiveU16(uint16_t v): PrimitiveUInt(v) {}
+    void write_to_value(ValueCommonWrite& tgt, size_t ofs) const override {
+        tgt.write_u16(ofs, this->v);
+    }
+};
+struct PrimitiveU8: public PrimitiveUInt<uint8_t>
+{
+    PrimitiveU8(uint8_t v): PrimitiveUInt(v) {}
+    void write_to_value(ValueCommonWrite& tgt, size_t ofs) const override {
+        tgt.write_u8(ofs, this->v);
+    }
+};
 template<typename T>
 struct PrimitiveSInt:
     public PrimitiveValue
@@ -189,6 +203,12 @@ public:
         LOG_ASSERT(t.get_wrapper() == nullptr, "PrimitiveValueVirt::from_value: " << t);
         switch(t.inner_type)
         {
+        case RawType::U8:
+            new(&rv.buf) PrimitiveU8(v.read_u8(0));
+            break;
+        case RawType::U16:
+            new(&rv.buf) PrimitiveU16(v.read_u16(0));
+            break;
         case RawType::U32:
             new(&rv.buf) PrimitiveU32(v.read_u32(0));
             break;
