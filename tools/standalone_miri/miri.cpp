@@ -305,7 +305,11 @@ struct MirHelpers
                 }
                 else if( wrapper->type == TypeWrapper::Ty::Slice )
                 {
-                    LOG_TODO("Slice index");
+                    ty = ty.get_inner();
+                    LOG_ASSERT(vr.m_metadata, "No slice metadata");
+                    auto len = vr.m_metadata->read_usize(0);
+                    LOG_ASSERT(idx < len, "Slice index out of range");
+                    vr.m_offset += ty.get_size() * idx;
                 }
                 else
                 {
@@ -1098,6 +1102,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         break;
                     case RawType::U8:
                     case RawType::I8:
+                    case RawType::Bool:
                         new_val.write_u8 ( 0, static_cast<uint8_t >(Ops::do_bitwise(v_l.read_u8 (0), v_r.read_u8 (0), re.op)) );
                         break;
                     case RawType::USize:
@@ -1539,7 +1544,7 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
 
 InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Value> args):
     fcn(fcn),
-    ret( fcn.ret_ty ),
+    ret( fcn.ret_ty == RawType::Unreachable ? Value() : Value(fcn.ret_ty) ),
     args( ::std::move(args) ),
     locals( ),
     drop_flags( fcn.m_mir.drop_flags ),
@@ -1550,6 +1555,7 @@ InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Val
     this->locals.reserve( fcn.m_mir.locals.size() );
     for(const auto& ty : fcn.m_mir.locals)
     {
+        LOG_DEBUG("_" << (&ty - &fcn.m_mir.locals.front()) << ": " << ty);
         if( ty == RawType::Unreachable ) {
             // HACK: Locals can be !, but they can NEVER be accessed
             this->locals.push_back( Value() );
