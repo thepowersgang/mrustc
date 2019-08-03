@@ -309,6 +309,10 @@ ValueRef ValueCommonRead::read_pointer_valref_mut(size_t rd_ofs, size_t size)
         return ValueRef(reloc, ofs, size);
     }
 }
+ValueRef ValueCommonRead::deref(size_t ofs, const ::HIR::TypeRef& ty)
+{
+    return read_pointer_valref_mut(ofs, ty.get_size());
+}
 
 
 void Allocation::resize(size_t new_size)
@@ -991,8 +995,8 @@ Value ValueRef::read_value(size_t ofs, size_t size) const
         return m_value->read_value(m_offset + ofs, size);
     }
 }
-bool ValueRef::compare(const void* other, size_t other_len) const
+bool ValueRef::compare(size_t offset, const void* other, size_t other_len) const
 {
-    check_bytes_valid(0, other_len);
-    return ::std::memcmp(data_ptr(), other, other_len) == 0;
+    check_bytes_valid(offset, other_len);
+    return ::std::memcmp(data_ptr() + offset, other, other_len) == 0;
 }

@@ -201,6 +201,9 @@ struct ValueCommonRead
     uint64_t read_usize(size_t ofs) const;
     int64_t read_isize(size_t ofs) const { return static_cast<int64_t>(read_usize(ofs)); }
 
+    /// De-reference a pointer (of target type `ty`) at the given offset, and return a reference to it
+    ValueRef deref(size_t ofs, const ::HIR::TypeRef& ty);
+
     /// Read a pointer from the value, requiring at least `req_valid` valid bytes, saves avaliable space in `size`
     void* read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& size, bool& is_mut) const;
     /// Read a pointer, requiring `req_len` valid bytes
@@ -515,6 +518,6 @@ struct ValueRef:
         }
     }
 
-    bool compare(const void* other, size_t other_len) const;
+    bool compare(size_t offset, const void* other, size_t other_len) const;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v);

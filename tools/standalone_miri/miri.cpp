@@ -830,23 +830,26 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                             LOG_ASSERT(re.type.inner_type == RawType::USize, "Function pointers can only be casted to usize, instead " << re.type);
                             new_val = src_value.read_value(0, re.type.get_size());
                             break;
-                        case RawType::Char:
+                        case RawType::Char: {
+                            uint32_t v = src_value.read_u32(0);
                             switch(re.type.inner_type)
                             {
-                            case RawType::U8: {
-                                uint32_t v = src_value.read_u32(0);
+                            case RawType::U8:
                                 if( v > 0xFF ) {
                                     LOG_NOTICE("Casting to u8 from char above 255");
                                 }
                                 new_val.write_u8(0, v & 0xFF);
-                                } break;
+                                break;
                             case RawType::U32:
                                 new_val = src_value.read_value(0, 4);
+                                break;
+                            case RawType::USize:
+                                new_val.write_usize(0, v);
                                 break;
                             default:
                                 LOG_ERROR("Char can only be casted to u32/u8, instead " << re.type);
                             }
-                            break;
+                            } break;
                         case RawType::Unit:
                             LOG_FATAL("Cast of unit");
                         case RawType::Composite: {
@@ -2093,9 +2096,48 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         {
             it = type_ids.insert(it, ty_T);
         }
-        
+
         rv = Value::with_size(POINTER_SIZE, false);
         rv.write_usize(0, it - type_ids.begin());
+    }
+    else if( name == "discriminant_value" )
+    {
+        const auto& ty = ty_params.tys.at(0);
+        ValueRef val = args.at(0).deref(0, ty);
+
+        size_t fallback = SIZE_MAX;
+        size_t found_index = SIZE_MAX;
+        assert(ty.composite_type);
+        for(size_t i = 0; i < ty.composite_type->variants.size(); i ++)
+        {
+            const auto& var = ty.composite_type->variants[i];
+            if( var.tag_data.size() == 0 )
+            {
+                // Only seen in Option<NonNull>
+                assert(fallback == SIZE_MAX);
+                fallback = i;
+            }
+            else
+            {
+                // Get offset to the tag
+                ::HIR::TypeRef  tag_ty;
+                size_t tag_ofs = ty.get_field_ofs(var.base_field, var.field_path, tag_ty);
+                // Compare
+                if( val.compare(tag_ofs, var.tag_data.data(), var.tag_data.size()) == 0 )
+                {
+                    found_index = i;
+                    break ;
+                }
+            }
+        }
+
+        if( found_index == SIZE_MAX )
+        {
+            LOG_ASSERT(fallback != SIZE_MAX, "Can't find variant of " << ty << " for " << val);
+            found_index = fallback;
+        }
+
+        rv = Value::new_usize(found_index);
     }
     else if( name == "atomic_fence" || name == "atomic_fence_acq" )
     {
@@ -2192,7 +2234,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         rv = Value::with_size( ty_T.get_size() + 1, false );
         rv.write_value(0, data_ref.read_value(0, old_v.size()));
         LOG_DEBUG("> *ptr = " << data_ref);
-        if( data_ref.compare(old_v.data_ptr(), old_v.size()) == true ) {
+        if( data_ref.compare(0, old_v.data_ptr(), old_v.size()) == true ) {
             data_ref.m_alloc.alloc().write_value( data_ref.m_offset, new_v );
             rv.write_u8( old_v.size(), 1 );
         }
