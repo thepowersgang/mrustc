@@ -371,7 +371,9 @@ struct MirHelpers
 
                     size_t    slice_inner_size;
                     if( ty.has_slice_meta(slice_inner_size) ) {
-                        size = (ty.get_wrapper() == nullptr ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
+                        // Slice metadata, add the base size (if it's a struct) to the variable size
+                        // - `get_wrapper` will return non-null for `[T]`, special-case `str`
+                        size = (ty != RawType::Str && ty.get_wrapper() == nullptr ? ty.get_size() : 0) + meta_val->read_usize(0) * slice_inner_size;
                     }
                     //else if( ty == RawType::TraitObject) {
                     //    // NOTE: Getting the size from the allocation is semi-valid, as you can't sub-slice trait objects
