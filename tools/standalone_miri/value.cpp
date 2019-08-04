@@ -241,6 +241,8 @@ void ValueCommonWrite::write_usize(size_t ofs, uint64_t v)
 void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size_t& out_size, bool& out_is_mut) const
 {
     auto ofs = read_usize(rd_ofs);
+    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Deref of invalid pointer");
+    ofs -= Allocation::PTR_BASE;
     auto reloc = get_relocation(rd_ofs);
     if( !reloc )
     {
@@ -260,10 +262,7 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
         {
         case RelocationPtr::Ty::Allocation: {
             auto& a = reloc.alloc();
-            if( ofs > a.size() )
-                LOG_FATAL("Out-of-bounds pointer");
-            if( ofs + req_valid > a.size() )
-                LOG_FATAL("Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << a.size());
+            LOG_ASSERT(in_bounds(ofs, req_valid, a.size()), "Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << a.size() << ")");
             a.check_bytes_valid( ofs, req_valid );
             out_size = a.size() - ofs;
             out_is_mut = true;
@@ -271,10 +270,7 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
             }
         case RelocationPtr::Ty::StdString: {
             const auto& s = reloc.str();
-            if( ofs > s.size() )
-                LOG_FATAL("Out-of-bounds pointer");
-            if( ofs + req_valid > s.size() )
-                LOG_FATAL("Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << s.size());
+            LOG_ASSERT(in_bounds(ofs, req_valid, s.size()), "Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << s.size() << ")");
             out_size = s.size() - ofs;
             out_is_mut = false;
             return const_cast<void*>( static_cast<const void*>(s.data() + ofs) );
@@ -283,11 +279,13 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
             LOG_FATAL("read_pointer w/ function");
         case RelocationPtr::Ty::FfiPointer: {
             const auto& f = reloc.ffi();
+            size_t size = f.get_size();
+            LOG_ASSERT(in_bounds(ofs, req_valid, size), "Out-of-bounds pointer (" << ofs << " + " << req_valid << " > " << size << ")");
             // TODO: Validity?
             //if( req_valid )
             //    LOG_FATAL("Can't request valid data from a FFI pointer");
             // TODO: Have an idea of mutability and available size from FFI
-            out_size = f.get_size() - ofs;
+            out_size = size - ofs;
             out_is_mut = false;
             return reinterpret_cast<char*>(reloc.ffi().ptr_value) + ofs;
             }
@@ -298,6 +296,8 @@ void* ValueCommonRead::read_pointer_unsafe(size_t rd_ofs, size_t req_valid, size
 ValueRef ValueCommonRead::read_pointer_valref_mut(size_t rd_ofs, size_t size)
 {
     auto ofs = read_usize(rd_ofs);
+    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Invalid pointer read");
+    ofs -= Allocation::PTR_BASE;
     auto reloc = get_relocation(rd_ofs);
     if( !reloc )
     {
@@ -305,7 +305,21 @@ ValueRef ValueCommonRead::read_pointer_valref_mut(size_t rd_ofs, size_t size)
     }
     else
     {
-        // TODO: Validate size
+        // Validate size and offset are in bounds
+        switch(reloc.get_ty())
+        {
+        case RelocationPtr::Ty::Allocation:
+            LOG_ASSERT( in_bounds(ofs, size,  reloc.alloc().size()), "Deref with OOB size - " << ofs << "+" << size << " > " << reloc.alloc().size() );
+            break;
+        case RelocationPtr::Ty::StdString:
+            LOG_ASSERT( in_bounds(ofs, size,  reloc.str().size()), "Deref with OOB size - " << ofs << "+" << size << " > " << reloc.str().size() );
+            break;
+        case RelocationPtr::Ty::Function:
+            LOG_FATAL("read_pointer_valref_mut w/ function");
+        case RelocationPtr::Ty::FfiPointer:
+            LOG_ASSERT( in_bounds(ofs, size,  reloc.ffi().get_size()), "Deref with OOB size - " << ofs << "+" << size << " > " << reloc.ffi().get_size() );
+            break;
+        }
         return ValueRef(reloc, ofs, size);
     }
 }
@@ -355,6 +369,7 @@ Value Allocation::read_value(size_t ofs, size_t size) const
     if( this->is_freed )
         LOG_ERROR("Use of freed memory " << this);
     LOG_DEBUG(*this);
+    LOG_ASSERT( in_bounds(ofs, size, this->size()), "Read out of bounds (" << ofs << "+" << size << " > " << this->size() << ")" );
 
     // Determine if this can become an inline allocation.
     bool has_reloc = false;
@@ -539,6 +554,7 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 }
 void Allocation::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
 {
+    LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "Invalid pointer being written");
     this->write_usize(ofs, ptr_ofs);
     this->set_reloc(ofs, POINTER_SIZE, ::std::move(reloc));
 }
@@ -643,7 +659,7 @@ Value Value::new_fnptr(const ::HIR::Path& fn_path)
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::Function }) );
     assert(rv.allocation);
     rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_fcn(fn_path) });
-    rv.allocation->data.at(0) = 0;
+    rv.allocation->data.at(0) = Allocation::PTR_BASE;
     rv.allocation->mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
     return rv;
 }

@@ -13,7 +13,7 @@ struct ThreadState
 {
     static unsigned s_next_tls_key;
     unsigned call_stack_depth;
-    ::std::vector<uint64_t> tls_values;
+    ::std::vector< ::std::pair<uint64_t, RelocationPtr> > tls_values;
 
     ThreadState():
         call_stack_depth(0)

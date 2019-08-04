@@ -255,6 +255,9 @@ public:
     virtual ~Allocation() {}
     static AllocationHandle new_alloc(size_t size, ::std::string tag);
 
+    // NOTE: This should match the value in the MMIR backend
+    static const size_t PTR_BASE = 0x1000;
+
     const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->data.data()); }
           uint8_t* data_ptr()       { return reinterpret_cast<      uint8_t*>(this->data.data()); }
     size_t size() const { return this->data.size() * 8; }

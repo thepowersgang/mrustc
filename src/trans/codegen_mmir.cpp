@@ -18,6 +18,8 @@
 
 namespace
 {
+    size_t PTR_BASE = 0x1000;   // See matching value in standalone_miri value.hpp
+
     template<typename T>
     struct Fmt
     {
@@ -108,6 +110,9 @@ namespace
             } break;
         TU_ARM(e, ItemAddr, v) {
             os << "ADDROF " << *v;
+            } break;
+        TU_ARM(e, Const, v) {
+            BUG(Span(), "Stray named constant in MIR after cleanup - " << e);
             } break;
         default:
             os << e;
@@ -904,7 +909,7 @@ namespace
                 {
                     ASSERT_BUG(sp, lit.is_String(), ty << " not Literal::String - " << lit);
                     const auto& s = lit.as_String();
-                    putsize(0);
+                    putsize(PTR_BASE + 0);
                     putsize(s.size());
                     out_relocations.push_back(Reloc::new_bytes(base_ofs, 8,  s));
                     break;
@@ -918,7 +923,7 @@ namespace
 
                 TU_MATCH_HDRA( (lit), { )
                 TU_ARMA(BorrowPath, le) {
-                    putsize(0);
+                    putsize(PTR_BASE);
                     out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &le));
                     if( is_unsized )
                     {
@@ -930,7 +935,7 @@ namespace
                 TU_ARMA(Integer, le) {
                     ASSERT_BUG(sp, le == 0, "Pointer from integer not 0");
                     ASSERT_BUG(sp, ty.m_data.is_Pointer(), "Borrow from integer");
-                    putsize(0);
+                    putsize(le);
                     if( is_unsized )
                     {
                         putsize(0);
@@ -938,7 +943,7 @@ namespace
                     }
                 TU_ARMA(String, le) {
                     const auto& s = lit.as_String();
-                    putsize(0);
+                    putsize(PTR_BASE);
                     putsize(s.size());
                     out_relocations.push_back(Reloc::new_bytes(base_ofs, 8,  s));
                     }
@@ -948,7 +953,7 @@ namespace
                 } break;
             case ::HIR::TypeRef::Data::TAG_Function:
                 ASSERT_BUG(sp, lit.is_BorrowPath(), ty << " not Literal::BorrowPath - " << lit);
-                putsize(0);
+                putsize(PTR_BASE);
                 out_relocations.push_back(Reloc::new_named(base_ofs, 8,  &lit.as_BorrowPath()));
                 break;
             TU_ARM(ty.m_data, Array, te) {
@@ -1021,7 +1026,7 @@ namespace
             m_of << "static " << p << ": " << vtable_ty << " = \"";
             // - Data
             // Drop
-            emit_str_usize(0);
+            emit_str_usize(PTR_BASE);
             // Align
             emit_str_usize(align);
             // Size
@@ -1029,7 +1034,7 @@ namespace
             // Methods
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {
-                emit_str_usize(0);
+                emit_str_usize(PTR_BASE);
             }
             m_of << "\" {";
 
