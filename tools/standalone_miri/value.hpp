@@ -289,6 +289,8 @@ public:
     void write_value(size_t ofs, Value v);
     void write_bytes(size_t ofs, const void* src, size_t count) override;
     void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) override;
+
+    void set_reloc(size_t ofs, size_t len, RelocationPtr reloc);
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 
@@ -320,6 +322,7 @@ struct Value:
     static Value new_isize(int64_t v);
     static Value new_u32(uint32_t v);
     static Value new_i32(int32_t v);
+    static Value new_i64(int64_t v);
 
     void create_allocation();
     size_t size() const { return allocation ? allocation->size() : direct_data.size; }
@@ -365,6 +368,9 @@ struct ValueRef:
     {
         struct H {
             static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
+                if( size == 0 ) {
+                    return ofs <= max_size;
+                }
                 if( ofs > 0 && !(ofs < max_size) )
                     return false;
                 if( !(size <= max_size) )

@@ -516,7 +516,12 @@ struct MirHelpers
             LOG_BUG("Constant::Const in mmir");
             } break;
         TU_ARM(c, Bytes, ce) {
-            LOG_TODO("Constant::Bytes");
+            ty = ::HIR::TypeRef(RawType::U8).wrap(TypeWrapper::Ty::Slice, 0).wrap(TypeWrapper::Ty::Borrow, 0);
+            Value val = Value(ty);
+            val.write_ptr(0,  0, RelocationPtr::new_ffi(FFIPointer::new_const_bytes(ce.data(), ce.size())));
+            val.write_usize(POINTER_SIZE, ce.size());
+            LOG_DEBUG(c << " = " << val);
+            return val;
             } break;
         TU_ARM(c, StaticString, ce) {
             ty = ::HIR::TypeRef(RawType::Str).wrap(TypeWrapper::Ty::Borrow, 0);
@@ -1104,7 +1109,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 case ::MIR::eBinOp::BIT_SHR: {
                     LOG_ASSERT(ty_l.get_wrapper() == nullptr, "Bitwise operator on non-primitive - " << ty_l);
                     LOG_ASSERT(ty_r.get_wrapper() == nullptr, "Bitwise operator with non-primitive - " << ty_r);
-                    size_t max_bits = ty_r.get_size() * 8;
+                    size_t max_bits = ty_l.get_size() * 8;
                     uint8_t shift;
                     auto check_cast_u = [&](auto v){ LOG_ASSERT(0 <= v && v <= max_bits, "Shift out of range - " << v); return static_cast<uint8_t>(v); };
                     auto check_cast_s = [&](auto v){ LOG_ASSERT(v <= static_cast<int64_t>(max_bits), "Shift out of range - " << v); return static_cast<uint8_t>(v); };
@@ -1121,7 +1126,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     case RawType::USize:  shift = check_cast_u(v_r.read_usize(0));    break;
                     case RawType::ISize:  shift = check_cast_s(v_r.read_isize(0));    break;
                     default:
-                        LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
+                        LOG_TODO("BinOp shift RHS unknown type - " << se.src << " w/ " << ty_r);
                     }
                     new_val = Value(ty_l);
                     switch(ty_l.inner_type)
@@ -1132,9 +1137,11 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     case RawType::U16:  new_val.write_u16(0, Ops::do_bitwise(v_l.read_u16(0), static_cast<uint16_t>(shift), re.op));   break;
                     case RawType::U8 :  new_val.write_u8 (0, Ops::do_bitwise(v_l.read_u8 (0), static_cast<uint8_t >(shift), re.op));   break;
                     case RawType::USize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
-                    // TODO: Is signed allowed?
+                    // Is signed allowed? (yes)
+                    // - What's the exact semantics? For now assuming it's unsigned+reinterpret
+                    case RawType::ISize: new_val.write_usize(0, Ops::do_bitwise(v_l.read_usize(0), static_cast<uint64_t>(shift), re.op));   break;
                     default:
-                        LOG_TODO("BinOp shift rhs unknown type - " << se.src << " w/ " << ty_r);
+                        LOG_TODO("BinOp shift LHS unknown type - " << se.src << " w/ " << ty_l);
                     }
                     } break;
                 case ::MIR::eBinOp::BIT_AND:
@@ -1170,16 +1177,45 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     default:
                         LOG_TODO("BinOp bitwise - " << se.src << " w/ " << ty_l);
                     }
+                    // If the LHS had a relocation, propagate it over
+                    if( auto r = v_l.get_relocation(0) )
+                    {
+                        LOG_DEBUG("- Restore relocation " << r);
+                        new_val.create_allocation();
+                        new_val.allocation->set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), r);
+                    }
 
                     break;
                 default:
                     LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
                     auto val_l = PrimitiveValueVirt::from_value(ty_l, v_l);
                     auto val_r = PrimitiveValueVirt::from_value(ty_r, v_r);
+                    RelocationPtr   new_val_reloc;
                     switch(re.op)
                     {
-                    case ::MIR::eBinOp::ADD:    val_l.get().add( val_r.get() ); break;
-                    case ::MIR::eBinOp::SUB:    val_l.get().subtract( val_r.get() ); break;
+                    case ::MIR::eBinOp::ADD:
+                        LOG_ASSERT(!v_r.get_relocation(0), "RHS of `+` has a relocation");
+                        new_val_reloc = v_l.get_relocation(0);
+                        val_l.get().add( val_r.get() );
+                        break;
+                    case ::MIR::eBinOp::SUB:
+                        if( auto r = v_l.get_relocation(0) )
+                        {
+                            if( v_r.get_relocation(0) )
+                            {
+                                // Pointer difference, no relocation in output
+                            }
+                            else
+                            {
+                                new_val_reloc = ::std::move(r);
+                            }
+                        }
+                        else
+                        {
+                            LOG_ASSERT(!v_r.get_relocation(0), "RHS of `-` has a relocation but LHS does not");
+                        }
+                        val_l.get().subtract( val_r.get() );
+                        break;
                     case ::MIR::eBinOp::MUL:    val_l.get().multiply( val_r.get() ); break;
                     case ::MIR::eBinOp::DIV:    val_l.get().divide( val_r.get() ); break;
                     case ::MIR::eBinOp::MOD:    val_l.get().modulo( val_r.get() ); break;
@@ -1189,6 +1225,11 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     }
                     new_val = Value(ty_l);
                     val_l.get().write_to_value(new_val, 0);
+                    if( new_val_reloc )
+                    {
+                        new_val.create_allocation();
+                        new_val.allocation->set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), ::std::move(new_val_reloc));
+                    }
                     break;
                 }
                 } break;
@@ -2011,6 +2052,11 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         rv = Value::new_i32(0);
     }
+    else if( link_name == "pthread_rwlock_unlock" )
+    {
+        // TODO: Check that this thread holds the lock?
+        rv = Value::new_i32(0);
+    }
     else if( link_name == "pthread_mutexattr_init" || link_name == "pthread_mutexattr_settype" || link_name == "pthread_mutexattr_destroy" )
     {
         rv = Value::new_i32(0);
@@ -2062,6 +2108,20 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         rv = Value::new_i32(0);
     }
+    // - Time
+    else if( link_name == "clock_gettime" )
+    {
+        // int clock_gettime(clockid_t clk_id, struct timespec *tp);
+        auto clk_id = args.at(0).read_u32(0);
+        auto tp_vr = args.at(1).read_pointer_valref_mut(0, sizeof(struct timespec));
+
+        LOG_DEBUG("clock_gettime(" << clk_id << ", " << tp_vr);
+        int rv_i = clock_gettime(clk_id, reinterpret_cast<struct timespec*>(tp_vr.data_ptr_mut()));
+        if(rv_i == 0)
+            tp_vr.mark_bytes_valid(0, tp_vr.m_size);
+        LOG_DEBUG("= " << rv_i << " (" << tp_vr << ")");
+        rv = Value::new_i32(rv_i);
+    }
     // - Linux extensions
     else if( link_name == "open64" )
     {
@@ -2096,6 +2156,14 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     else if( link_name == "__errno_location" )
     {
         rv = Value::new_ffiptr(FFIPointer::new_const_bytes(&errno, sizeof(errno)));
+    }
+    else if( link_name == "syscall" )
+    {
+        auto num = args.at(0).read_u32(0);
+
+        LOG_DEBUG("syscall(" << num << ", ...) - hack return ENOSYS");
+        errno = ENOSYS;
+        rv = Value::new_i64(-1);
     }
 #endif
     // std C
@@ -2410,6 +2478,20 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
     {
         rv = Value(ty_params.tys.at(0));
         rv.mark_bytes_valid(0, rv.size());
+    }
+    else if( name == "write_bytes" )
+    {
+        auto& dst_ptr_v = args.at(0);
+        auto byte = args.at(1).read_u8(0);
+        auto count = args.at(2).read_usize(0);
+
+        LOG_DEBUG("'write_bytes'(" << dst_ptr_v << ", " << byte << ", " << count << ")");
+
+        if( count > 0 )
+        {
+            auto dst_vr = dst_ptr_v.read_pointer_valref_mut(0, count);
+            memset(dst_vr.data_ptr_mut(), byte, count);
+        }
     }
     // - Unsized stuff
     else if( name == "size_of_val" )

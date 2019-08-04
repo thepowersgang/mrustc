@@ -540,7 +540,27 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 void Allocation::write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc)
 {
     this->write_usize(ofs, ptr_ofs);
-    this->relocations.push_back(Relocation { ofs, /*POINTER_SIZE,*/ ::std::move(reloc) });
+    this->set_reloc(ofs, POINTER_SIZE, ::std::move(reloc));
+}
+void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
+{
+    LOG_ASSERT(ofs % POINTER_SIZE == 0, "");
+    LOG_ASSERT(len == POINTER_SIZE, "");
+    // Delete any existing relocation at this position
+    for(auto it = this->relocations.begin(); it != this->relocations.end();)
+    {
+        if( ofs <= it->slot_ofs && it->slot_ofs < ofs + len )
+        {
+            // Slot starts in this updated region
+            // - TODO: Split in half?
+            it = this->relocations.erase(it);
+            continue ;
+        }
+        // TODO: What if the slot ends in the new region?
+        // What if the new region is in the middle of the slot
+        ++ it;
+    }
+    this->relocations.push_back(Relocation { ofs, /*len,*/ ::std::move(reloc) });
 }
 ::std::ostream& operator<<(::std::ostream& os, const Allocation& x)
 {
@@ -662,6 +682,11 @@ Value Value::new_u32(uint32_t v) {
 Value Value::new_i32(int32_t v) {
     auto rv = Value( ::HIR::TypeRef(RawType::I32) );
     rv.write_i32(0, v);
+    return rv;
+}
+Value Value::new_i64(int64_t v) {
+    auto rv = Value( ::HIR::TypeRef(RawType::I64) );
+    rv.write_i64(0, v);
     return rv;
 }
 
