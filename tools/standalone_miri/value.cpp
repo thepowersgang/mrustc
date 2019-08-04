@@ -613,8 +613,7 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
 Value::Value()
 {
     this->direct_data.size = 0;
-    this->direct_data.mask[0] = 0;
-    this->direct_data.mask[1] = 0;
+    memset(this->direct_data.mask, 0, sizeof(this->direct_data.mask));
 }
 Value::Value(::HIR::TypeRef ty)
 {
@@ -642,15 +641,14 @@ Value::Value(::HIR::TypeRef ty)
 Value Value::with_size(size_t size, bool have_allocation)
 {
     Value   rv;
-    if(have_allocation)
+    if(have_allocation || size > sizeof(rv.direct_data.data))
     {
         rv.allocation = Allocation::new_alloc(size, FMT_STRING("with_size(" << size << ")"));
     }
     else
     {
         rv.direct_data.size = static_cast<uint8_t>(size);
-        rv.direct_data.mask[0] = 0;
-        rv.direct_data.mask[1] = 0;
+        memset(rv.direct_data.mask, 0, sizeof(rv.direct_data.mask));
     }
     return rv;
 }
@@ -768,7 +766,7 @@ Value Value::read_value(size_t ofs, size_t size) const
     }
     else
     {
-        // Inline can become inline.
+        // Inline always fits in inline.
         rv.direct_data.size = static_cast<uint8_t>(size);
         rv.write_bytes(0, this->direct_data.data+ofs, size);
         rv.direct_data.mask[0] = this->direct_data.mask[0];
@@ -1033,20 +1031,19 @@ Value ValueRef::read_value(size_t ofs, size_t size) const
         case RelocationPtr::Ty::Allocation:
             return m_alloc.alloc().read_value(m_offset + ofs, size);
         case RelocationPtr::Ty::StdString: {
+            LOG_ASSERT(in_bounds(m_offset + ofs, size, m_alloc.str().size()), "");
             auto rv = Value::with_size(size, false);
-            LOG_ASSERT(in_bounds(ofs, size, m_alloc.str().size()), "");
             rv.write_bytes(0, m_alloc.str().data() + m_offset + ofs, size);
             return rv;
             }
         case RelocationPtr::Ty::FfiPointer: {
+            LOG_ASSERT(in_bounds(m_offset + ofs, size, m_alloc.ffi().get_size()), "");
             auto rv = Value::with_size(size, false);
-            LOG_ASSERT(in_bounds(ofs, size, m_alloc.ffi().get_size()), "");
             rv.write_bytes(0, reinterpret_cast<const char*>(m_alloc.ffi().ptr_value) + m_offset + ofs, size);
             return rv;
             }
-        default: {
+        default:
             LOG_TODO("read_value from " << m_alloc);
-            }
         }
     }
     else {
