@@ -19,6 +19,7 @@
 # include <Windows.h>
 #endif
 #include <sys/stat.h>
+#include <fcntl.h>
 #undef DEBUG
 
 unsigned ThreadState::s_next_tls_key = 1;
@@ -1987,6 +1988,19 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         rv = Value::new_i32(0);
     }
     // - Linux extensions
+    else if( link_name == "open64" )
+    {
+        const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
+        auto flags = args.at(1).read_i32(0);
+        auto mode = (args.size() > 2 ? args.at(2).read_i32(0) : 0);
+
+        LOG_DEBUG("open64(\"" << path << "\", " << flags << ")");
+        int rv_i = open(path, flags, mode);
+        LOG_DEBUG("= " << rv_i);
+
+        rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, rv_i);
+    }
     else if( link_name == "stat64" )
     {
         const auto* path = FfiHelpers::read_cstr(args.at(0), 0);
@@ -1996,6 +2010,53 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         int rv_i = stat(path, reinterpret_cast<struct stat*>(outbuf_vr.data_ptr_mut()));
         LOG_DEBUG("= " << rv_i);
 
+        if( rv_i == 0 )
+        {
+            // TODO: Mark the buffer as valid?
+        }
+
+        rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, rv_i);
+    }
+    else if( link_name == "fcntl" )
+    {
+        // `fcntl` has custom handling for the third argument, as some are pointers
+        int fd = args.at(0).read_i32(0);
+        int command = args.at(1).read_i32(0);
+
+        int rv_i;
+        const char* name;
+        switch(command)
+        {
+        // - No argument
+        case F_GETFD: name = "F_GETFD"; if(0)
+            ;
+            {
+                LOG_DEBUG("fcntl(" << fd << ", " << name << ")");
+                rv_i = fcntl(fd, command);
+            } break;
+        // - Integer arguments
+        case F_DUPFD: name = "F_DUPFD"; if(0)
+        case F_DUPFD_CLOEXEC: name = "F_DUPFD_CLOEXEC"; if(0)
+        case F_SETFD: name = "F_SETFD"; if(0)
+            ;
+            {
+                int arg = args.at(2).read_i32(0);
+                LOG_DEBUG("fcntl(" << fd << ", " << name << ", " << arg << ")");
+                rv_i = fcntl(fd, command, arg);
+            } break;
+        default:
+            if( args.size() > 2 )
+            {
+                LOG_TODO("fnctl(..., " << command << ", " << args[2] << ")");
+            }
+            else
+            {
+                LOG_TODO("fnctl(..., " << command << ")");
+            }
+        }
+
+        LOG_DEBUG("= " << rv_i);
         rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, rv_i);
     }
