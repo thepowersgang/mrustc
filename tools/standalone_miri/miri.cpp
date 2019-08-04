@@ -395,7 +395,7 @@ struct MirHelpers
                 // NOTE: No alloc can happen when dereferencing a zero-sized pointer
                 if( alloc.is_alloc() )
                 {
-                    LOG_DEBUG("Deref - lvr=" << ::MIR::LValue::CRef(lv, &w - &lv.m_wrappers.front()) << " alloc=" << alloc.alloc());
+                    //LOG_DEBUG("Deref - lvr=" << ::MIR::LValue::CRef(lv, &w - &lv.m_wrappers.front()) << " alloc=" << alloc.alloc());
                 }
                 else
                 {
@@ -1044,6 +1044,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
                     int res = 0;
 
+                    auto reloc_l = v_l.get_relocation(0);
+                    auto reloc_r = v_r.get_relocation(0);
+
+
                     // TODO: Handle comparison of the relocations too
                     // - If both sides have a relocation:
                     //   > EQ/NE always valid
@@ -1051,17 +1055,47 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     // - If one side has a relocation:
                     //   > EQ/NE only allow zero on the non-reloc side
                     //   > others are invalid?
-
-                    //const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
-                    //const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
-                    auto reloc_l = /*alloc_l ? */v_l.get_relocation(0)/* : RelocationPtr()*/;
-                    auto reloc_r = /*alloc_r ? */v_r.get_relocation(0)/* : RelocationPtr()*/;
-
-                    if( reloc_l != reloc_r )
+                    if( reloc_l && reloc_r )
                     {
-                        res = (reloc_l < reloc_r ? -1 : 1);
+                        // Both have relocations, check if they're equal
+                        if( reloc_l != reloc_r )
+                        {
+                            switch(re.op)
+                            {
+                            case ::MIR::eBinOp::EQ:
+                            case ::MIR::eBinOp::NE:
+                                res = 1;
+                                break;
+                            default:
+                                LOG_FATAL("Unable to compare " << v_l << " and " << v_r << " - different relocations");
+                            }
+                            // - Equality will always fail
+                            // - Ordering is a bug
+                        }
+                        else
+                        {
+                            // Equal: Allow all comparisons
+                        }
                     }
-                    LOG_DEBUG("res=" << res << ", " << reloc_l << " ? " << reloc_r);
+                    else if( reloc_l || reloc_r )
+                    {
+                        // Only one side
+                        // - Ordering is a bug
+                        // - Equalities are allowed, but only for `0`?
+                        switch(re.op)
+                        {
+                        case ::MIR::eBinOp::EQ:
+                        case ::MIR::eBinOp::NE:
+                            // - Allow success, as addresses can be masked down
+                            break;
+                        default:
+                            LOG_FATAL("Unable to compare " << v_l << " and " << v_r << " - different relocations");
+                        }
+                    }
+                    else
+                    {
+                        // No relocations, no need to check more
+                    }
 
                     if( const auto* w = ty_l.get_wrapper() )
                     {
