@@ -1940,6 +1940,56 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         // TODO: Ensure that this FD is from the set known by the FFI layer
         close(fd);
     }
+    else if( link_name == "isatty" )
+    {
+        auto fd = args.at(0).read_i32(0);
+        LOG_DEBUG("isatty(" << fd << ")");
+        int rv_i = isatty(fd);
+        LOG_DEBUG("= " << rv_i);
+        rv = Value::new_i32(rv_i);
+    }
+    else if( link_name == "fcntl" )
+    {
+        // `fcntl` has custom handling for the third argument, as some are pointers
+        int fd = args.at(0).read_i32(0);
+        int command = args.at(1).read_i32(0);
+
+        int rv_i;
+        const char* name;
+        switch(command)
+        {
+        // - No argument
+        case F_GETFD: name = "F_GETFD"; if(0)
+            ;
+            {
+                LOG_DEBUG("fcntl(" << fd << ", " << name << ")");
+                rv_i = fcntl(fd, command);
+            } break;
+        // - Integer arguments
+        case F_DUPFD: name = "F_DUPFD"; if(0)
+        case F_DUPFD_CLOEXEC: name = "F_DUPFD_CLOEXEC"; if(0)
+        case F_SETFD: name = "F_SETFD"; if(0)
+            ;
+            {
+                int arg = args.at(2).read_i32(0);
+                LOG_DEBUG("fcntl(" << fd << ", " << name << ", " << arg << ")");
+                rv_i = fcntl(fd, command, arg);
+            } break;
+        default:
+            if( args.size() > 2 )
+            {
+                LOG_TODO("fnctl(..., " << command << ", " << args[2] << ")");
+            }
+            else
+            {
+                LOG_TODO("fnctl(..., " << command << ")");
+            }
+        }
+
+        LOG_DEBUG("= " << rv_i);
+        rv = Value(::HIR::TypeRef(RawType::I32));
+        rv.write_i32(0, rv_i);
+    }
     else if( link_name == "sysconf" )
     {
         auto name = args.at(0).read_i32(0);
@@ -2040,48 +2090,6 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             // TODO: Mark the buffer as valid?
         }
 
-        rv = Value(::HIR::TypeRef(RawType::I32));
-        rv.write_i32(0, rv_i);
-    }
-    else if( link_name == "fcntl" )
-    {
-        // `fcntl` has custom handling for the third argument, as some are pointers
-        int fd = args.at(0).read_i32(0);
-        int command = args.at(1).read_i32(0);
-
-        int rv_i;
-        const char* name;
-        switch(command)
-        {
-        // - No argument
-        case F_GETFD: name = "F_GETFD"; if(0)
-            ;
-            {
-                LOG_DEBUG("fcntl(" << fd << ", " << name << ")");
-                rv_i = fcntl(fd, command);
-            } break;
-        // - Integer arguments
-        case F_DUPFD: name = "F_DUPFD"; if(0)
-        case F_DUPFD_CLOEXEC: name = "F_DUPFD_CLOEXEC"; if(0)
-        case F_SETFD: name = "F_SETFD"; if(0)
-            ;
-            {
-                int arg = args.at(2).read_i32(0);
-                LOG_DEBUG("fcntl(" << fd << ", " << name << ", " << arg << ")");
-                rv_i = fcntl(fd, command, arg);
-            } break;
-        default:
-            if( args.size() > 2 )
-            {
-                LOG_TODO("fnctl(..., " << command << ", " << args[2] << ")");
-            }
-            else
-            {
-                LOG_TODO("fnctl(..., " << command << ")");
-            }
-        }
-
-        LOG_DEBUG("= " << rv_i);
         rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, rv_i);
     }
