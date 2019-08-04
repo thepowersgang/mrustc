@@ -2543,13 +2543,15 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         auto& dst_ptr_v = args.at(0);
         auto byte = args.at(1).read_u8(0);
         auto count = args.at(2).read_usize(0);
+        auto bytes = count * ty_params.tys.at(0).get_size();
 
-        LOG_DEBUG("'write_bytes'(" << dst_ptr_v << ", " << byte << ", " << count << ")");
+        LOG_DEBUG("'write_bytes'(" << dst_ptr_v << ", " << (int)byte << ", " << count << "): bytes=" << bytes);
 
         if( count > 0 )
         {
-            auto dst_vr = dst_ptr_v.read_pointer_valref_mut(0, count);
-            memset(dst_vr.data_ptr_mut(), byte, count);
+            auto dst_vr = dst_ptr_v.read_pointer_valref_mut(0, bytes);
+            memset(dst_vr.data_ptr_mut(), byte, bytes);
+            dst_vr.mark_bytes_valid(0, bytes);
         }
     }
     // - Unsized stuff
