@@ -522,7 +522,7 @@ struct MirHelpers
         TU_ARM(c, Bytes, ce) {
             ty = ::HIR::TypeRef(RawType::U8).wrap(TypeWrapper::Ty::Slice, 0).wrap(TypeWrapper::Ty::Borrow, 0);
             Value val = Value(ty);
-            val.write_ptr(0, Allocation::PTR_BASE + 0, RelocationPtr::new_ffi(FFIPointer::new_const_bytes(ce.data(), ce.size())));
+            val.write_ptr(0, Allocation::PTR_BASE + 0, RelocationPtr::new_ffi(FFIPointer::new_const_bytes("Constant::Bytes", ce.data(), ce.size())));
             val.write_usize(POINTER_SIZE, ce.size());
             LOG_DEBUG(c << " = " << val);
             return val;
@@ -1035,7 +1035,14 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 case ::MIR::eBinOp::LE: {
                     LOG_ASSERT(ty_l == ty_r, "BinOp type mismatch - " << ty_l << " != " << ty_r);
                     int res = 0;
+
                     // TODO: Handle comparison of the relocations too
+                    // - If both sides have a relocation:
+                    //   > EQ/NE always valid
+                    //   > others require the same relocation
+                    // - If one side has a relocation:
+                    //   > EQ/NE only allow zero on the non-reloc side
+                    //   > others are invalid?
 
                     //const auto& alloc_l = v_l.m_value ? v_l.m_value->allocation : v_l.m_alloc;
                     //const auto& alloc_r = v_r.m_value ? v_r.m_value->allocation : v_r.m_alloc;
@@ -2171,7 +2178,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "__errno_location" )
     {
-        rv = Value::new_ffiptr(FFIPointer::new_const_bytes(&errno, sizeof(errno)));
+        rv = Value::new_ffiptr(FFIPointer::new_const_bytes("errno", &errno, sizeof(errno)));
     }
     else if( link_name == "syscall" )
     {
@@ -2258,7 +2265,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         if( ret_ptr )
         {
             LOG_DEBUG("= \"" << ret_ptr << "\"");
-            rv = Value::new_ffiptr(FFIPointer::new_const_bytes(ret_ptr, strlen(ret_ptr)+1));
+            rv = Value::new_ffiptr(FFIPointer::new_const_bytes("getenv", ret_ptr, strlen(ret_ptr)+1));
         }
         else
         {
@@ -2660,19 +2667,21 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         size_t ent_count = args.at(2).read_usize(0);
         size_t ent_size = ty_params.tys.at(0).get_size();
         auto byte_count = ent_count * ent_size;
+        LOG_DEBUG("`copy_nonoverlapping`: byte_count=" << byte_count);
 
         // A count of zero doesn't need to do any of the checks (TODO: Validate this rule)
         if( byte_count > 0 )
         {
-            // TODO: is this inefficient?
-            auto src_val = args.at(0).read_pointer_valref_mut(0, byte_count).read_value(0, byte_count);
+            auto src_vr = args.at(0).read_pointer_valref_mut(0, byte_count);
             auto dst_vr = args.at(1).read_pointer_valref_mut(0, byte_count);
-
 
             auto& dst_alloc = dst_vr.m_alloc;
             LOG_ASSERT(dst_alloc, "Destination of copy* must be a memory allocation");
             LOG_ASSERT(dst_alloc.is_alloc(), "Destination of copy* must be a memory allocation");
 
+            // TODO: is this inefficient?
+            auto src_val = src_vr.read_value(0, byte_count);
+            LOG_DEBUG("src_val = " << src_val);
             dst_alloc.alloc().write_value(dst_vr.m_offset, ::std::move(src_val));
         }
     }

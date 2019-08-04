@@ -56,8 +56,8 @@ struct FFIPointer
     const char* tag_name;
     ::std::shared_ptr<FfiLayout>    layout;
 
-    static FFIPointer new_const_bytes(const void* s, size_t size) {
-        return FFIPointer { const_cast<void*>(s), "", ::std::make_shared<FfiLayout>(FfiLayout::new_const_bytes(size)) };
+    static FFIPointer new_const_bytes(const char* name, const void* s, size_t size) {
+        return FFIPointer { const_cast<void*>(s), name, ::std::make_shared<FfiLayout>(FfiLayout::new_const_bytes(size)) };
     };
 
     size_t get_size() const {
