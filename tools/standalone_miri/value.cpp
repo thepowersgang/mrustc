@@ -666,7 +666,7 @@ Value Value::new_ffiptr(FFIPointer ffi)
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::USize }) );
     rv.create_allocation();
     rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_ffi(ffi) });
-    rv.allocation->data.at(0) = 0;
+    rv.allocation->data.at(0) = Allocation::PTR_BASE;
     rv.allocation->mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
     return rv;
 }

@@ -378,9 +378,17 @@ struct MirHelpers
                 // TODO: Move the metadata machinery into `deref` (or at least the logic needed to get the value size)
                 //auto inner_val = vr.deref(0, ty);
                 size_t ofs = vr.read_usize(0);
-                LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Dereferencing invalid pointer");
-                ofs -= Allocation::PTR_BASE;
+                LOG_ASSERT(ofs != 0, "Dereferencing NULL pointer");
                 auto alloc = vr.get_relocation(0);
+                if( alloc )
+                {
+                    // TODO: It's valid to dereference (but not read) a non-null invalid pointer.
+                    LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Dereferencing invalid pointer - " << ofs << " into " << alloc);
+                    ofs -= Allocation::PTR_BASE;
+                }
+                else
+                {
+                }
 
                 // There MUST be a relocation at this point with a valid allocation.
                 LOG_TRACE("Interpret " << alloc << " + " << ofs << " as value of type " << ty);
@@ -2733,6 +2741,7 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
         case TypeWrapper::Ty::Slice: {
             // - Get thin pointer and count
             auto ofs = ptr.read_usize(0);
+            LOG_ASSERT(ofs >= Allocation::PTR_BASE, "");
             auto ptr_reloc = ptr.get_relocation(0);
             auto count = ptr.read_usize(POINTER_SIZE);
 
@@ -2740,7 +2749,7 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
             auto pty = ity.wrapped(TypeWrapper::Ty::Borrow, static_cast<size_t>(::HIR::BorrowType::Move));
             for(uint64_t i = 0; i < count; i ++)
             {
-                auto ptr = Value::new_pointer(pty, Allocation::PTR_BASE + ofs, ptr_reloc);
+                auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
                 if( !drop_value(ptr, ity) )
                 {
                     // - This is trying to invoke custom drop glue, need to suspend this operation and come back later
@@ -2752,7 +2761,7 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
                         i ++;
                         if( i < count )
                         {
-                            auto ptr = Value::new_pointer(pty, Allocation::PTR_BASE + ofs, ptr_reloc);
+                            auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
                             ofs += ity.get_size();
                             assert(!drop_value(ptr, ity));
                             return false;
