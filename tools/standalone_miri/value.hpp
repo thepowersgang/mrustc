@@ -365,7 +365,7 @@ struct ValueRef:
     {
         struct H {
             static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
-                if( !(ofs < max_size) )
+                if( ofs > 0 && !(ofs < max_size) )
                     return false;
                 if( !(size <= max_size) )
                     return false;
@@ -448,6 +448,8 @@ struct ValueRef:
             return nullptr;
         }
     }
+
+    // TODO: Remove these two (move to a helper?)
     uint8_t* data_ptr_mut() {
         if( m_alloc ) {
             switch(m_alloc.get_ty())
@@ -466,7 +468,7 @@ struct ValueRef:
             return nullptr;
         }
     }
-    void mark_valid(size_t ofs, size_t size);
+    void mark_bytes_valid(size_t ofs, size_t size);
 
     void read_bytes(size_t ofs, void* dst, size_t size) const {
         if( size == 0 )

@@ -20,6 +20,7 @@
 #endif
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 #undef DEBUG
 
 unsigned ThreadState::s_next_tls_key = 1;
@@ -1915,6 +1916,30 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         rv = Value::new_isize(val);
     }
+    else if( link_name == "read" )
+    {
+        auto fd = args.at(0).read_i32(0);
+        auto count = args.at(2).read_isize(0);
+        auto buf_vr = args.at(1).read_pointer_valref_mut(0, count);
+
+        LOG_DEBUG("read(" << fd << ", " << buf_vr.data_ptr_mut() << ", " << count << ")");
+        ssize_t val = read(fd, buf_vr.data_ptr_mut(), count);
+        LOG_DEBUG("= " << val);
+
+        if( val > 0 )
+        {
+            buf_vr.mark_bytes_valid(0, val);
+        }
+
+        rv = Value::new_isize(val);
+    }
+    else if( link_name == "close" )
+    {
+        auto fd = args.at(0).read_i32(0);
+        LOG_DEBUG("close(" << fd << ")");
+        // TODO: Ensure that this FD is from the set known by the FFI layer
+        close(fd);
+    }
     else if( link_name == "sysconf" )
     {
         auto name = args.at(0).read_i32(0);
@@ -2224,7 +2249,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
     {
         rv = Value();
     }
-    else if( name == "atomic_store" )
+    else if( name == "atomic_store" || name == "atomic_store_relaxed" )
     {
         auto& ptr_val = args.at(0);
         auto& data_val = args.at(1);

@@ -962,6 +962,23 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
     return os;
 }
 
+void ValueRef::mark_bytes_valid(size_t ofs, size_t size)
+{
+    if( m_alloc ) {
+        switch(m_alloc.get_ty())
+        {
+        case RelocationPtr::Ty::Allocation:
+            m_alloc.alloc().mark_bytes_valid(m_offset + ofs, size);
+            break;
+        default:
+            LOG_TODO("mark_valid in " << m_alloc);
+        }
+    }
+    else {
+        m_value->mark_bytes_valid(m_offset + ofs, size);
+    }
+}
+
 Value ValueRef::read_value(size_t ofs, size_t size) const
 {
     if( size == 0 )
