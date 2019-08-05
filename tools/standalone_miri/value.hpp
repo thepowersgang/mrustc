@@ -363,42 +363,41 @@ struct ValueRef:
     size_t  m_size; // Size in bytes of the referenced value
     ::std::shared_ptr<Value>    m_metadata;
 
+    static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
+        if( size == 0 ) {
+            return ofs <= max_size;
+        }
+        if( ofs > 0 && !(ofs < max_size) )
+            return false;
+        if( !(size <= max_size) )
+            return false;
+        return ofs + size <= max_size;
+    }
+
     ValueRef(RelocationPtr ptr, size_t ofs, size_t size):
         m_alloc(ptr),
         m_value(nullptr),
         m_offset(ofs),
         m_size(size)
     {
-        struct H {
-            static bool in_bounds(size_t ofs, size_t size, size_t max_size) {
-                if( size == 0 ) {
-                    return ofs <= max_size;
-                }
-                if( ofs > 0 && !(ofs < max_size) )
-                    return false;
-                if( !(size <= max_size) )
-                    return false;
-                return ofs + size <= max_size;
-            }
-        };
         if( m_alloc )
         {
             switch(m_alloc.get_ty())
             {
             case RelocationPtr::Ty::Allocation:
-                if( !H::in_bounds(ofs, size, m_alloc.alloc().size()) )
+                if( !in_bounds(ofs, size, m_alloc.alloc().size()) )
                 {
                     LOG_ERROR("ValueRef exceeds bounds of " << m_alloc << " - " << ofs << "+" << size << " > " << m_alloc.alloc().size());
                 }
                 break;
             case RelocationPtr::Ty::StdString:
-                if( !H::in_bounds(ofs, size, m_alloc.str().size()) )
+                if( !in_bounds(ofs, size, m_alloc.str().size()) )
                 {
                     LOG_ERROR("ValueRef exceeds bounds of string - " << ofs << "+" << size << " > " << m_alloc.str().size());
                 }
                 break;
             case RelocationPtr::Ty::FfiPointer:
-                if( !H::in_bounds(ofs, size, m_alloc.ffi().get_size()) )
+                if( !in_bounds(ofs, size, m_alloc.ffi().get_size()) )
                 {
                     LOG_ERROR("ValueRef exceeds bounds of FFI buffer - " << ofs << "+" << size << " > " << m_alloc.ffi().get_size());
                 }
@@ -482,9 +481,7 @@ struct ValueRef:
     void read_bytes(size_t ofs, void* dst, size_t size) const {
         if( size == 0 )
             return ;
-        assert(ofs < m_size);
-        assert(size <= m_size);
-        assert(ofs+size <= m_size);
+        LOG_ASSERT(in_bounds(ofs, size, m_size), "read_bytes(" << ofs << "+" << size << " > " << m_size <<")");
         if( m_alloc ) {
             switch(m_alloc.get_ty())
             {
@@ -507,9 +504,7 @@ struct ValueRef:
     void check_bytes_valid(size_t ofs, size_t size) const {
         if( size == 0 )
             return ;
-        assert(ofs < m_size);
-        assert(size <= m_size);
-        assert(ofs+size <= m_size);
+        LOG_ASSERT(in_bounds(ofs, size, m_size), "check_bytes_valid(" << ofs << "+" << size << " > " << m_size <<")");
         if( m_alloc ) {
             switch(m_alloc.get_ty())
             {

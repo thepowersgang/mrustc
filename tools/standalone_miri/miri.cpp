@@ -1487,11 +1487,15 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     alloc = RelocationPtr::new_alloc( v.m_value->allocation );
                 }
                 size_t ofs = v.m_offset;
-                assert(ty.get_meta_type() == RawType::Unreachable);
+                //LOG_ASSERT(ty.get_meta_type() == RawType::Unreachable, "Dropping an unsized type with Statement::Drop - " << ty);
 
-                auto ptr_ty = ty.wrapped(TypeWrapper::Ty::Borrow, 2);
+                auto ptr_ty = ty.wrapped(TypeWrapper::Ty::Borrow, /*BorrowTy::Unique*/2);
 
                 auto ptr_val = Value::new_pointer(ptr_ty, Allocation::PTR_BASE + ofs, ::std::move(alloc));
+                if( v.m_metadata )
+                {
+                    ptr_val.write_value(POINTER_SIZE, *v.m_metadata);
+                }
 
                 if( !drop_value(ptr_val, ty, /*shallow=*/se.kind == ::MIR::eDropKind::SHALLOW) )
                 {
@@ -1805,8 +1809,17 @@ bool InterpreterThread::call_path(Value& ret, const ::HIR::Path& path, ::std::ve
 
     if( fcn.external.link_name != "" )
     {
-        // External function!
-        return this->call_extern(ret, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        // TODO: Search for a function with both code and this link name
+        if(const auto* ext_fcn = m_modtree.get_ext_function(fcn.external.link_name.c_str()))
+        {
+            this->m_stack.push_back(StackFrame(*ext_fcn, ::std::move(args)));
+            return false;
+        }
+        else
+        {
+            // External function!
+            return this->call_extern(ret, fcn.external.link_name, fcn.external.link_abi, ::std::move(args));
+        }
     }
 
     this->m_stack.push_back(StackFrame(fcn, ::std::move(args)));
@@ -1931,6 +1944,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         {
             return false;
         }
+    }
+    else if( link_name == "panic_impl" )
+    {
+        LOG_TODO("panic_impl");
     }
     else if( link_name == "__rust_start_panic" )
     {
@@ -2121,6 +2138,22 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         rv = Value::new_i32(0);
     }
+    else if( link_name == "pthread_attr_setstacksize" )
+    {
+        // Lie and return succeess
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_create" )
+    {
+        auto thread_handle_out = args.at(0).read_pointer_valref_mut(0, sizeof(pthread_t));
+        auto attrs = args.at(1).read_pointer_const(0, sizeof(pthread_attr_t));
+        auto fcn_path = args.at(2).get_relocation(0).fcn();
+        LOG_ASSERT(args.at(2).read_usize(0) == Allocation::PTR_BASE, "");
+        auto arg = args.at(3);
+        LOG_NOTICE("TODO: pthread_create(" << thread_handle_out << ", " << attrs << ", " << fcn_path << ", " << arg << ")");
+        // TODO: Create a new interpreter context with this thread, use co-operative scheduling
+        rv = Value::new_i32(EPERM);
+    }
     else if( link_name == "pthread_cond_init" || link_name == "pthread_cond_destroy" )
     {
         rv = Value::new_i32(0);
@@ -2229,6 +2262,15 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         LOG_DEBUG("syscall(" << num << ", ...) - hack return ENOSYS");
         errno = ENOSYS;
         rv = Value::new_i64(-1);
+    }
+    else if( link_name == "dlsym" )
+    {
+        auto handle = args.at(0).read_usize(0);
+        const char* name = FfiHelpers::read_cstr(args.at(1), 0);
+
+        LOG_DEBUG("dlsym(0x" << ::std::hex << handle << ", '" << name << "')");
+        LOG_NOTICE("dlsym stubbed to zero");
+        rv = Value::new_usize(0);
     }
 #endif
     // std C
@@ -2346,6 +2388,21 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
 
         rv = Value::with_size(POINTER_SIZE, false);
         rv.write_usize(0, it - type_ids.begin());
+    }
+    else if( name == "type_name" )
+    {
+        const auto& ty_T = ty_params.tys.at(0);
+
+        static ::std::map<HIR::TypeRef, ::std::string>  s_type_names;
+        auto it = s_type_names.find(ty_T);
+        if( it == s_type_names.end() )
+        {
+            it = s_type_names.insert( ::std::make_pair(ty_T, FMT_STRING(ty_T)) ).first;
+        }
+
+        rv = Value::with_size(2*POINTER_SIZE, /*needs_alloc=*/true);
+        rv.write_ptr(0*POINTER_SIZE, Allocation::PTR_BASE, RelocationPtr::new_string(&it->second));
+        rv.write_usize(1*POINTER_SIZE, 0);
     }
     else if( name == "discriminant_value" )
     {
@@ -2582,7 +2639,12 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
             }
             else if( ity->inner_type == RawType::TraitObject )
             {
-                LOG_TODO("size_of_val - Trait Object - " << ty);
+                auto vtable_ty = meta_ty.get_inner();
+                LOG_DEBUG("> vtable_ty = " << vtable_ty << " (size= " << vtable_ty.get_size() << ")");
+                auto vtable = val.deref(POINTER_SIZE, vtable_ty);
+                LOG_DEBUG("> vtable = " << vtable);
+                auto size = vtable.read_usize(1*POINTER_SIZE);
+                flex_size = size;
             }
             else
             {
@@ -2595,6 +2657,40 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         {
             rv.write_usize(0, ty.get_size());
         }
+    }
+    else if( name == "min_align_of_val" )
+    {
+        /*const*/ auto& val = args.at(0);
+        const auto& ty = ty_params.tys.at(0);
+        rv = Value(::HIR::TypeRef(RawType::USize));
+        size_t fixed_size = 0;  // unused
+        size_t flex_align = 0;
+        if( const auto* ity = ty.get_unsized_type(fixed_size) )
+        {
+            if( const auto* w = ity->get_wrapper() )
+            {
+                LOG_ASSERT(w->type == TypeWrapper::Ty::Slice, "align_of_val on wrapped type that isn't a slice - " << *ity);
+                flex_align = ity->get_inner().get_align();
+            }
+            else if( ity->inner_type == RawType::Str )
+            {
+                flex_align = 1;
+            }
+            else if( ity->inner_type == RawType::TraitObject )
+            {
+                const auto meta_ty = ty.get_meta_type();
+                auto vtable_ty = meta_ty.get_inner();
+                LOG_DEBUG("> vtable_ty = " << vtable_ty << " (size= " << vtable_ty.get_size() << ")");
+                auto vtable = val.deref(POINTER_SIZE, vtable_ty);
+                LOG_DEBUG("> vtable = " << vtable);
+                flex_align = vtable.read_usize(2*POINTER_SIZE);
+            }
+            else
+            {
+                LOG_BUG("Inner unsized type unknown - " << *ity);
+            }
+        }
+        rv.write_usize(0, ::std::max( ty.get_align(), flex_align ));
     }
     else if( name == "drop_in_place" )
     {
@@ -2739,6 +2835,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
 // TODO: Use a ValueRef instead?
 bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_shallow/*=false*/)
 {
+    TRACE_FUNCTION_R(ptr << ": " << ty << (is_shallow ? " (shallow)" : ""), "");
     // TODO: After the drop is done, flag the backing allocation for `ptr` as freed
     if( is_shallow )
     {
@@ -2836,7 +2933,21 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
         }
         else if( ty.inner_type == RawType::TraitObject )
         {
-            LOG_TODO("Drop - " << ty << " - trait object");
+            // Get the drop glue from the vtable (first entry)
+            auto inner_ptr = ptr.read_value(0, POINTER_SIZE);
+            auto vtable = ptr.deref(POINTER_SIZE, ty.get_meta_type().get_inner());
+            auto drop_r = vtable.get_relocation(0);
+            if( drop_r )
+            {
+                LOG_ASSERT(drop_r.get_ty() == RelocationPtr::Ty::Function, "");
+                auto fcn = drop_r.fcn();
+                static Value    tmp;
+                return this->call_path(tmp, fcn, { ::std::move(inner_ptr) });
+            }
+            else
+            {
+                // None
+            }
         }
         else
         {

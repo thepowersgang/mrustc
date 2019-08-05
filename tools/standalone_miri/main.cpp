@@ -51,6 +51,7 @@ int main(int argc, const char* argv[])
     try
     {
         tree.load_file(opts.infile);
+        tree.validate();
     }
     catch(const DebugExceptionTodo& /*e*/)
     {
@@ -70,6 +71,7 @@ int main(int argc, const char* argv[])
         }
         return 1;
     }
+
 
     // Create argc/argv based on input arguments
     auto argv_alloc = Allocation::new_alloc((1 + opts.args.size()) * POINTER_SIZE, "argv");

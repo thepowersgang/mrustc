@@ -48,14 +48,18 @@ class ModuleTree
 
     // Hack: Tuples are stored as `::""::<A,B,C,...>`
     ::std::map<::HIR::GenericPath, ::std::unique_ptr<DataType>>  data_types;
+
+    ::std::map<::std::string, const Function*> ext_functions;
 public:
     ModuleTree();
 
     void load_file(const ::std::string& path);
+    void validate();
 
     ::HIR::SimplePath find_lang_item(const char* name) const;
     const Function& get_function(const ::HIR::Path& p) const;
     const Function* get_function_opt(const ::HIR::Path& p) const;
+    const Function* get_ext_function(const char* name) const;
     Static& get_static(const ::HIR::Path& p);
     Static* get_static_opt(const ::HIR::Path& p);
 
@@ -67,16 +71,15 @@ public:
 // struct/union/enum
 struct DataType
 {
+    bool   populated;
     ::HIR::GenericPath my_path;
-    // TODO: Store the name of this type for logging?
-
-    // TODO: Metadata type! (indicates an unsized wrapper)
-    // TODO: Drop glue
 
     size_t  alignment;
     size_t  size;
 
+    // Drop glue
     ::HIR::Path drop_glue;
+    // Metadata type! (indicates an unsized wrapper)
     ::HIR::TypeRef  dst_meta;
 
     // Offset and datatype

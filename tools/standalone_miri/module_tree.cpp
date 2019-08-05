@@ -57,6 +57,24 @@ void ModuleTree::load_file(const ::std::string& path)
         // Keep going!
     }
 }
+void ModuleTree::validate()
+{
+    TRACE_FUNCTION_R("", "");
+    for(const auto& dt : this->data_types)
+    {
+        //LOG_ASSERT(dt.second->populated, "Type " << dt.first << " never defined");
+    }
+
+    for(const auto& fcn : this->functions)
+    {
+        // TODO: This doesn't actually happen yet (this combination can't be parsed)
+        if( fcn.second.external.link_name != "" && !fcn.second.m_mir.blocks.empty() )
+        {
+            LOG_DEBUG(fcn.first << " = '" << fcn.second.external.link_name << "'");
+            ext_functions.insert(::std::make_pair( fcn.second.external.link_name, &fcn.second ));
+        }
+    }
+}
 // Parse a single item from a .mir file
 bool Parser::parse_one()
 {
@@ -185,6 +203,7 @@ bool Parser::parse_one()
         //LOG_TRACE("type " << p);
 
         auto rv = DataType {};
+        rv.populated = true;
         rv.my_path = p;
 
         lex.check_consume('{');
@@ -1259,14 +1278,28 @@ RawType Parser::parse_core_type()
         }
         lex.consume_if(')');
 
+        // Ignore marker traits.
+
         auto rv = ::HIR::TypeRef(RawType::TraitObject);
         if( base_trait != ::HIR::GenericPath() )
         {
             // Generate vtable path
             auto vtable_path = base_trait;
             vtable_path.m_simplepath.ents.back() += "#vtable";
-            // - TODO: Associated types?
+            if( atys.size() > 1 )
+            {
+                LOG_TODO("Handle multiple ATYs in vtable path");
+            }
+            else if( atys.size() == 1 )
+            {
+                vtable_path.m_params.tys.push_back( ::std::move(atys[0].second) );
+            }
+            // - TODO: Associated types? (Need to ensure ordering is correct)
             rv.composite_type = this->get_composite( ::std::move(vtable_path) );
+        }
+        else
+        {
+            // TODO: vtable for empty trait?
         }
         return rv;
     }
@@ -1286,6 +1319,7 @@ const DataType* Parser::get_composite(::HIR::GenericPath gp)
     {
         // TODO: Later on need to check if the type is valid.
         auto v = ::std::make_unique<DataType>(DataType {});
+        v->populated = false;
         v->my_path = gp;
         auto ir = tree.data_types.insert(::std::make_pair( ::std::move(gp), ::std::move(v)) );
         it = ir.first;
@@ -1314,6 +1348,15 @@ const Function* ModuleTree::get_function_opt(const ::HIR::Path& p) const
         return nullptr;
     }
     return &it->second;
+}
+const Function* ModuleTree::get_ext_function(const char* name) const
+{
+    auto it = ext_functions.find(name);
+    if( it == ext_functions.end() )
+    {
+        return nullptr;
+    }
+    return it->second;
 }
 Static& ModuleTree::get_static(const ::HIR::Path& p)
 {

@@ -128,6 +128,7 @@ namespace HIR {
         }
 
         size_t get_size(size_t ofs=0) const;
+        size_t get_align(size_t ofs=0) const;
 
         // Returns true if this (unsized) type is a wrapper around a slice
         // - Fills `out_inner_size` with the size of the slice element

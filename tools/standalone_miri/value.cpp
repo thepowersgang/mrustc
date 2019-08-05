@@ -299,6 +299,7 @@ ValueRef ValueCommonRead::read_pointer_valref_mut(size_t rd_ofs, size_t size)
     LOG_ASSERT(ofs >= Allocation::PTR_BASE, "Invalid pointer read");
     ofs -= Allocation::PTR_BASE;
     auto reloc = get_relocation(rd_ofs);
+    LOG_DEBUG("ValueCommonRead::read_pointer_valref_mut(" << ofs << "+" << size << ", reloc=" << reloc << ")");
     if( !reloc )
     {
         LOG_ERROR("Getting ValRef to null pointer (no relocation)");

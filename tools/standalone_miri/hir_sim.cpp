@@ -77,6 +77,7 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
             return 0;
         case RawType::Composite:
             // NOTE: Don't care if the type has metadata
+            LOG_ASSERT(this->composite_type->populated, "Getting size of non-defined type - " << *this);
             return this->composite_type->size;
         case RawType::Unreachable:
             LOG_BUG("Attempting to get size of an unreachable type, " << *this);
@@ -109,6 +110,53 @@ size_t HIR::TypeRef::get_size(size_t ofs) const
             return POINTER_SIZE;
         }
         throw "";
+    }
+}
+size_t HIR::TypeRef::get_align(size_t ofs) const
+{
+    if( const auto* w = this->get_wrapper(ofs) )
+    {
+        LOG_TODO("get_align " << *this);
+    }
+    else
+    {
+        switch(this->inner_type)
+        {
+        case RawType::Unit:
+            return 1;
+        case RawType::Composite:
+            // NOTE: Don't care if the type has metadata
+            LOG_ASSERT(this->composite_type->populated, "Getting alignment of non-defined type - " << *this);
+            return this->composite_type->alignment;
+        case RawType::TraitObject:
+        case RawType::Str:
+            return 1;
+        case RawType::U8:   case RawType::I8:
+            return 1;
+        case RawType::U16:  case RawType::I16:
+            return 2;
+        case RawType::U32:  case RawType::I32:
+            return 4;
+        case RawType::U64:  case RawType::I64:
+            return 8;
+        case RawType::U128: case RawType::I128:
+            return 16;
+
+        case RawType::Bool:
+            return 1;
+        case RawType::Char:
+            return 4;
+
+        case RawType::F32:
+            return 4;
+        case RawType::F64:
+            return 8;
+
+        case RawType::Function: // This should probably be invalid?
+        case RawType::USize:
+        case RawType::ISize:
+            return POINTER_SIZE;
+        }
     }
 }
 bool HIR::TypeRef::has_slice_meta(size_t& out_inner_size) const
