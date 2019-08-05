@@ -341,7 +341,7 @@ namespace
                     else if( t.m_data.is_Slice() ) {
                         return ::HIR::CoreType::Usize;
                     }
-                    else if( t.m_data.is_TraitObject() ) { 
+                    else if( t.m_data.is_TraitObject() ) {
                         const auto& te = t.m_data.as_TraitObject();
                         //auto vtp = t.m_data.as_TraitObject().m_trait.m_path;
 
@@ -1007,6 +1007,7 @@ namespace
             const size_t ptr_size = Target_GetCurSpec().m_arch.m_pointer_bits / 8;
             const auto& trait_path = p.m_data.as_UfcsKnown().trait;
             const auto& type = *p.m_data.as_UfcsKnown().type;
+            bool has_drop_glue =  m_resolve.type_needs_drop_glue(sp, type);
 
             ::HIR::TypeRef  vtable_ty;
             {
@@ -1016,6 +1017,7 @@ namespace
                     auto aty = ::HIR::TypeRef( ::HIR::Path( type.clone(), trait_path.clone(), ty.first ) );
                     m_resolve.expand_associated_types(sp, aty);
                     vtable_params.m_types.push_back( mv$(aty) );
+                    //vtable_params.m_types.at(ty.second) = ::std::move(aty);
                 }
                 const auto& vtable_ref = m_crate.get_struct_by_path(sp, vtable_sp);
                 vtable_ty = ::HIR::TypeRef( ::HIR::GenericPath(mv$(vtable_sp), mv$(vtable_params)), &vtable_ref );
@@ -1026,7 +1028,7 @@ namespace
             m_of << "static " << p << ": " << vtable_ty << " = \"";
             // - Data
             // Drop
-            emit_str_usize(PTR_BASE);
+            emit_str_usize(has_drop_glue ? PTR_BASE : 0);
             // Align
             emit_str_usize(align);
             // Size
@@ -1041,8 +1043,10 @@ namespace
             // - Relocations
             auto monomorph_cb_trait = monomorphise_type_get_cb(sp, &type, &trait_path.m_params, nullptr);
             // Drop
-            // - TODO: Some types don't have drop glue
-            m_of << "@0+" << ptr_size << " = " << ::HIR::Path(type.clone(), "drop_glue#") << ", ";
+            if( has_drop_glue )
+            {
+                m_of << "@0+" << ptr_size << " = " << ::HIR::Path(type.clone(), "drop_glue#") << ", ";
+            }
             // Methods
             for(unsigned int i = 0; i < trait.m_value_indexes.size(); i ++ )
             {

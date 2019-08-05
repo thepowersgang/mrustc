@@ -4518,6 +4518,7 @@ namespace {
                     m_of << ", "; emit_param(e.args.at(2)); m_of << " * sizeof("; emit_ctype(params.m_types.at(0)); m_of << ")";
                     m_of << ")";
             }
+            // NOTE: This is generic, and fills count*sizeof(T) (unlike memset)
             else if( name == "write_bytes" ) {
                 if( this->type_is_bad_zst(params.m_types.at(0)) ) {
                     m_of << "/* zst */";
