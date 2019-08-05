@@ -749,13 +749,22 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 else if( const auto* src_w = src_ty.get_wrapper() )
                 {
                     if( src_w->type != TypeWrapper::Ty::Pointer && src_w->type != TypeWrapper::Ty::Borrow ) {
-                        LOG_ERROR("Attempting to cast to a non-pointer - " << src_ty);
+                        LOG_ERROR("Attempting to cast from a non-pointer - " << src_ty);
                     }
                     // TODO: MUST be a thin pointer?
 
                     // TODO: MUST be an integer (usize only?)
-                    if( re.type != RawType::USize && re.type != RawType::ISize ) {
-                        LOG_ERROR("Casting from a pointer to non-usize - " << re.type << " to " << src_ty);
+                    switch(re.type.wrappers.empty() ? re.type.inner_type : RawType::Unreachable)
+                    {
+                    case RawType::USize:
+                    case RawType::ISize:
+                        break;
+                    case RawType::U64:
+                    case RawType::I64:
+                        // TODO: Only if 64-bit?
+                        break;
+                    default:
+                        LOG_ERROR("Casting from a pointer to non-usize - " << src_ty << " to " << re.type);
                         throw "ERROR";
                     }
                     new_val = src_value.read_value(0, re.type.get_size());
@@ -2152,7 +2161,28 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto arg = args.at(3);
         LOG_NOTICE("TODO: pthread_create(" << thread_handle_out << ", " << attrs << ", " << fcn_path << ", " << arg << ")");
         // TODO: Create a new interpreter context with this thread, use co-operative scheduling
-        rv = Value::new_i32(EPERM);
+        if( true ) {
+            this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)->bool{
+                out_rv = Value::new_i32(0);
+                return true;
+                }));
+
+            // TODO: Catch the panic out of this.
+            if( this->call_path(rv, fcn_path, { ::std::move(arg) }) )
+            {
+                bool v = this->pop_stack(rv);
+                assert( v == false );
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else {
+            //this->m_parent.create_thread(fcn_path, arg);
+            rv = Value::new_i32(EPERM);
+        }
     }
     else if( link_name == "pthread_cond_init" || link_name == "pthread_cond_destroy" )
     {
