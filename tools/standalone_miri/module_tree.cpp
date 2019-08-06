@@ -117,25 +117,26 @@ bool Parser::parse_one()
             rv_ty = parse_type();
         }
 
+        Function::ExtInfo   ext;
         if( lex.consume_if('=') )
         {
-            auto link_name = ::std::move(lex.check_consume(TokenClass::String).strval);
+            ext.link_name = ::std::move(lex.check_consume(TokenClass::String).strval);
             lex.check_consume(':');
-            auto abi = ::std::move(lex.check_consume(TokenClass::String).strval);
-            lex.check_consume(';');
-
+            ext.link_abi = ::std::move(lex.check_consume(TokenClass::String).strval);
+        }
+        ::MIR::Function body;
+        if( lex.consume_if(';') )
+        {
             LOG_DEBUG(lex << "extern fn " << p);
-            auto p2 = p;
-            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {link_name, abi}, {} }) );
         }
         else
         {
-            auto body = parse_body();
+            body = parse_body();
 
             LOG_DEBUG(lex << "fn " << p);
-            auto p2 = p;
-            tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, {}, ::std::move(body) }) );
         }
+        auto p2 = p;
+        tree.functions.insert( ::std::make_pair(::std::move(p), Function { ::std::move(p2), ::std::move(arg_tys), rv_ty, ::std::move(ext), ::std::move(body) }) );
     }
     else if( lex.consume_if("static") )
     {

@@ -23,7 +23,7 @@ struct Function
     ::HIR::TypeRef   ret_ty;
 
     // If `link_name` is non-empty, then the function is an external
-    struct {
+    struct ExtInfo {
         ::std::string   link_name;
         ::std::string   link_abi;
     } external;

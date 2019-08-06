@@ -638,7 +638,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     TRACE_FUNCTION_R(cur_frame.fcn->my_path << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx, "");
     const auto& bb = cur_frame.fcn->m_mir.blocks.at( cur_frame.bb_idx );
 
-    const size_t    MAX_STACK_DEPTH = 40;
+    const size_t    MAX_STACK_DEPTH = 60;
     if( this->m_stack.size() > MAX_STACK_DEPTH )
     {
         LOG_ERROR("Maximum stack depth of " << MAX_STACK_DEPTH << " exceeded");
@@ -1966,6 +1966,12 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         LOG_TODO("rust_begin_unwind");
     }
+    // GCC unwinding panics
+    else if( link_name == "_Unwind_RaiseException" )
+    {
+        LOG_TODO("_Unwind_RaiseException(" << args.at(0) << ")");
+        // Save the first argument in TLS, then return a status that indicates unwinding should commence.
+    }
 #ifdef _WIN32
     // WinAPI functions used by libstd
     else if( link_name == "AddVectoredExceptionHandler" )
@@ -2109,6 +2115,22 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         rv = Value(::HIR::TypeRef(RawType::I32));
         rv.write_i32(0, rv_i);
     }
+    else if( link_name == "prctl" )
+    {
+        auto option = args.at(0).read_i32(0);
+        int rv_i;
+        switch(option)
+        {
+        case 15: {   // PR_SET_NAME - set thread name
+            auto name = FfiHelpers::read_cstr(args.at(1), 0);
+            LOG_DEBUG("prctl(PR_SET_NAME, \"" << name << "\"");
+            rv_i = 0;
+            } break;
+        default:
+            LOG_TODO("prctl(" << option << ", ...");
+        }
+        rv = Value::new_i32(rv_i);
+    }
     else if( link_name == "sysconf" )
     {
         auto name = args.at(0).read_i32(0);
@@ -2152,6 +2174,25 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         // Lie and return succeess
         rv = Value::new_i32(0);
     }
+    else if( link_name == "pthread_attr_getguardsize" )
+    {
+        const auto attr_p = args.at(0).read_pointer_const(0, 1);
+        auto out_size = args.at(1).deref(0, HIR::TypeRef(RawType::USize));
+
+        out_size.m_alloc.alloc().write_usize(out_size.m_offset, 0x1000);
+
+        rv = Value::new_i32(0);
+    }
+    else if( link_name == "pthread_attr_getstack" )
+    {
+        const auto attr_p = args.at(0).read_pointer_const(0, 1);
+        auto out_ptr = args.at(2).deref(0, HIR::TypeRef(RawType::USize));
+        auto out_size = args.at(2).deref(0, HIR::TypeRef(RawType::USize));
+
+        out_size.m_alloc.alloc().write_usize(out_size.m_offset, 0x4000);
+
+        rv = Value::new_i32(0);
+    }
     else if( link_name == "pthread_create" )
     {
         auto thread_handle_out = args.at(0).read_pointer_valref_mut(0, sizeof(pthread_t));
@@ -2161,9 +2202,13 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto arg = args.at(3);
         LOG_NOTICE("TODO: pthread_create(" << thread_handle_out << ", " << attrs << ", " << fcn_path << ", " << arg << ")");
         // TODO: Create a new interpreter context with this thread, use co-operative scheduling
-        if( true ) {
-            this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)->bool{
+        // HACK: Just run inline
+        if( true )
+        {
+            auto tls = ::std::move(m_thread.tls_values);
+            this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)mutable ->bool {
                 out_rv = Value::new_i32(0);
+                m_thread.tls_values = ::std::move(tls);
                 return true;
                 }));
 
@@ -2727,6 +2772,32 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         auto& val = args.at(0);
         const auto& ty = ty_params.tys.at(0);
         return drop_value(val, ty);
+    }
+    else if( name == "try" )
+    {
+        auto fcn_path = args.at(0).get_relocation(0).fcn();
+        auto arg = args.at(1);
+        auto out_panic_value = args.at(2).read_pointer_valref_mut(0, POINTER_SIZE);
+
+        ::std::vector<Value>    sub_args;
+        sub_args.push_back( ::std::move(arg) );
+
+        this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)->bool{
+            out_rv = Value::new_u32(0);
+            return true;
+            }));
+
+        // TODO: Catch the panic out of this.
+        if( this->call_path(rv, fcn_path, ::std::move(sub_args)) )
+        {
+            bool v = this->pop_stack(rv);
+            assert( v == false );
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
     // ----------------------------------------------------------------
     // Checked arithmatic
