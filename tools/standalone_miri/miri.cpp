@@ -1147,6 +1147,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::USize: res = res != 0 ? res : Ops::do_compare(v_l.read_usize(0), v_r.read_usize(0)); break;
                         case RawType::ISize: res = res != 0 ? res : Ops::do_compare(v_l.read_isize(0), v_r.read_isize(0)); break;
                         case RawType::Char: res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0)); break;
+                        case RawType::Bool: res = res != 0 ? res : Ops::do_compare(v_l.read_u8(0), v_r.read_u8(0)); break;  // TODO: `read_bool` that checks for bool values?
                         default:
                             LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                         }
@@ -1651,7 +1652,19 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 default:
                     LOG_ERROR("Terminator::SwitchValue::Signed with unexpected type - " << ty);
                 }
-                LOG_TODO("Terminator::SwitchValue (signed) - " << ty << " " << switch_val);
+
+                auto it = ::std::find(vals.begin(), vals.end(), switch_val);
+                if( it != vals.end() )
+                {
+                    auto idx = it - vals.begin();
+                    LOG_TRACE("- " << switch_val << " matched arm " << idx);
+                    cur_frame.bb_idx = te.targets.at(idx);
+                }
+                else
+                {
+                    LOG_TRACE("- " << switch_val << " not matched, taking default arm");
+                    cur_frame.bb_idx = te.def_target;
+                }
                 }
             TU_ARMA(String, vals) {
                 LOG_TODO("Terminator::SwitchValue (string) - " << ty << " " << v);
@@ -1989,7 +2002,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         LOG_TODO("rust_begin_unwind");
     }
-    // GCC unwinding panics
+    // libunwind
     else if( link_name == "_Unwind_RaiseException" )
     {
         LOG_DEBUG("_Unwind_RaiseException(" << args.at(0) << ")");
@@ -1997,6 +2010,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         m_thread.panic_active = true;
         m_thread.panic_count += 1;
         m_thread.panic_value = ::std::move(args.at(0));
+    }
+    else if( link_name == "_Unwind_DeleteException" )
+    {
+        LOG_DEBUG("_Unwind_DeleteException(" << args.at(0) << ")");
     }
 #ifdef _WIN32
     // WinAPI functions used by libstd
@@ -2548,7 +2565,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
     {
         rv = Value();
     }
-    else if( name == "atomic_store" || name == "atomic_store_relaxed" )
+    else if( name == "atomic_store" || name == "atomic_store_relaxed" || name == "atomic_store_rel" )
     {
         auto& ptr_val = args.at(0);
         auto& data_val = args.at(1);
@@ -2620,7 +2637,7 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
 
         val_l.get().write_to_value( ptr_alloc.alloc(), ptr_ofs );
     }
-    else if( name == "atomic_xchg" )
+    else if( name == "atomic_xchg" || name == "atomic_xchg_acqrel" )
     {
         const auto& ty_T = ty_params.tys.at(0);
         auto data_ref = args.at(0).read_pointer_valref_mut(0, ty_T.get_size());
@@ -2808,10 +2825,16 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         ::std::vector<Value>    sub_args;
         sub_args.push_back( ::std::move(arg) );
 
-        this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)->bool{
+        this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)mutable->bool{
             if( m_thread.panic_active )
             {
-                LOG_TODO("Panic caught in `try` - " << m_thread.panic_value);
+                assert(m_thread.panic_count > 0);
+                m_thread.panic_active = false;
+                m_thread.panic_count --;
+                LOG_ASSERT(m_thread.panic_value.size() == out_panic_value.m_size, "Panic value " << m_thread.panic_value << " doesn't fit in " << out_panic_value);
+                out_panic_value.m_alloc.alloc().write_value( out_panic_value.m_offset, ::std::move(m_thread.panic_value) );
+                out_rv = Value::new_u32(1);
+                return true;
             }
             else
             {
