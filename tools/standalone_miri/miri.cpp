@@ -1534,7 +1534,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             LOG_TODO("Terminator::Incomplete hit");
         TU_ARM(bb.terminator, Diverge, _te)
             LOG_DEBUG("DIVERGE (continue panic)");
-            assert(m_thread.panic_active);
+            assert(m_thread.panic_count > 0);
+            m_thread.panic_active = true;
             return this->pop_stack(out_thread_result);
         TU_ARM(bb.terminator, Panic, _te)
             LOG_TODO("Terminator::Panic");
@@ -1705,7 +1706,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             // If a panic is in progress (in thread state), take the panic block instead
             if( m_thread.panic_active )
             {
-                //m_thread.panic_active = false;
+                m_thread.panic_active = false;
                 LOG_DEBUG("Panic into " << cur_frame.fcn->my_path);
                 cur_frame.bb_idx = te.panic_block;
             }
@@ -1770,7 +1771,7 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
             // If a panic is in progress (in thread state), take the panic block instead
             if( m_thread.panic_active )
             {
-                //m_thread.panic_active = false;
+                m_thread.panic_active = false;
                 LOG_DEBUG("Panic into " << cur_frame.fcn->my_path);
                 cur_frame.bb_idx = te.panic_block;
             }
@@ -1994,6 +1995,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         LOG_DEBUG("_Unwind_RaiseException(" << args.at(0) << ")");
         // Save the first argument in TLS, then return a status that indicates unwinding should commence.
         m_thread.panic_active = true;
+        m_thread.panic_count += 1;
         m_thread.panic_value = ::std::move(args.at(0));
     }
 #ifdef _WIN32
@@ -2811,8 +2813,12 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
             {
                 LOG_TODO("Panic caught in `try` - " << m_thread.panic_value);
             }
-            out_rv = Value::new_u32(0);
-            return true;
+            else
+            {
+                LOG_ASSERT(m_thread.panic_count == 0, "Panic count non-zero, but previous function returned non-panic");
+                out_rv = Value::new_u32(0);
+                return true;
+            }
             }));
 
         // TODO: Catch the panic out of this.
