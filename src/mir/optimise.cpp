@@ -2848,6 +2848,23 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
             bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
             changed = true;
         }
+        else if( tef.name == "needs_drop" )
+        {
+            // Returns `true` if the actual type given as `T` requires drop glue;
+            // returns `false` if the actual type provided for `T` implements `Copy`. (Either otherwise)
+            // NOTE: libarena assumes that this returns `true` iff T doesn't require drop glue.
+            const auto& ty = tef.params.m_types.at(0);
+            // - Only expand at this stage if there's no generics, and no unbound paths
+            if( !visit_ty_with(ty, [](const ::HIR::TypeRef& ty)->bool{
+                    return ty.m_data.is_Generic() || TU_TEST1(ty.m_data, Path, .binding.is_Unbound());
+                }) )
+            {
+                bool needs_drop = state.m_resolve.type_needs_drop_glue(state.sp, ty);
+                bb.statements.push_back(::MIR::Statement::make_Assign({ mv$(te.ret_val), ::MIR::RValue::make_Constant(::MIR::Constant::make_Bool({needs_drop})) }));
+                bb.terminator = ::MIR::Terminator::make_Goto(te.ret_block);
+                changed = true;
+            }
+        }
         else
         {
             // Ignore any other intrinsics
