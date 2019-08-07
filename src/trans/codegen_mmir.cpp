@@ -1103,11 +1103,6 @@ namespace
             ::MIR::TypeResolve  mir_res { sp, m_resolve, FMT_CB(ss, ss << p;), ret_type, arg_types, *code };
             m_mir_res = &mir_res;
 
-            if( item.m_linkage.name != "" )
-            {
-                // TODO: Save the linkage name.
-            }
-
             // - Signature
             m_of << "fn " << p << "(";
             for(unsigned int i = 0; i < item.m_args.size(); i ++)
@@ -1115,7 +1110,12 @@ namespace
                 if( i != 0 )    m_of << ", ";
                 m_of << params.monomorph(m_resolve, item.m_args[i].second);
             }
-            m_of << "): " << ret_type << " {\n";
+            m_of << "): " << ret_type;
+            if( item.m_linkage.name != "" )
+            {
+                m_of << " = \"" << item.m_linkage.name << "\":\"" << item.m_abi << "\"";
+            }
+            m_of << " {\n";
             // - Locals
             for(unsigned int i = 0; i < code->locals.size(); i ++) {
                 DEBUG("var" << i << " : " << code->locals[i]);

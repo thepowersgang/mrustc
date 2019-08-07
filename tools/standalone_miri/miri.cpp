@@ -1533,7 +1533,9 @@ bool InterpreterThread::step_one(Value& out_thread_result)
         TU_ARM(bb.terminator, Incomplete, _te)
             LOG_TODO("Terminator::Incomplete hit");
         TU_ARM(bb.terminator, Diverge, _te)
-            LOG_TODO("Terminator::Diverge hit");
+            LOG_DEBUG("DIVERGE (continue panic)");
+            assert(m_thread.panic_active);
+            return this->pop_stack(out_thread_result);
         TU_ARM(bb.terminator, Panic, _te)
             LOG_TODO("Terminator::Panic");
         TU_ARM(bb.terminator, Goto, te)
@@ -1700,9 +1702,19 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     return false;
                 }
             }
-            LOG_DEBUG(te.ret_val << " = " << rv << " (resume " << cur_frame.fcn->my_path << ")");
-            state.write_lvalue(te.ret_val, rv);
-            cur_frame.bb_idx = te.ret_block;
+            // If a panic is in progress (in thread state), take the panic block instead
+            if( m_thread.panic_active )
+            {
+                //m_thread.panic_active = false;
+                LOG_DEBUG("Panic into " << cur_frame.fcn->my_path);
+                cur_frame.bb_idx = te.panic_block;
+            }
+            else
+            {
+                LOG_DEBUG(te.ret_val << " = " << rv << " (resume " << cur_frame.fcn->my_path << ")");
+                state.write_lvalue(te.ret_val, rv);
+                cur_frame.bb_idx = te.ret_block;
+            }
             } break;
         }
         cur_frame.stmt_idx = 0;
@@ -1754,9 +1766,19 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
 
             LOG_DEBUG(te.ret_val << " = " << res_v << " (resume " << cur_frame.fcn->my_path << ")");
 
-            state.write_lvalue(te.ret_val, res_v);
             cur_frame.stmt_idx = 0;
-            cur_frame.bb_idx = te.ret_block;
+            // If a panic is in progress (in thread state), take the panic block instead
+            if( m_thread.panic_active )
+            {
+                //m_thread.panic_active = false;
+                LOG_DEBUG("Panic into " << cur_frame.fcn->my_path);
+                cur_frame.bb_idx = te.panic_block;
+            }
+            else
+            {
+                state.write_lvalue(te.ret_val, res_v);
+                cur_frame.bb_idx = te.ret_block;
+            }
         }
 
         return false;
@@ -1969,8 +1991,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     // GCC unwinding panics
     else if( link_name == "_Unwind_RaiseException" )
     {
-        LOG_TODO("_Unwind_RaiseException(" << args.at(0) << ")");
+        LOG_DEBUG("_Unwind_RaiseException(" << args.at(0) << ")");
         // Save the first argument in TLS, then return a status that indicates unwinding should commence.
+        m_thread.panic_active = true;
+        m_thread.panic_value = ::std::move(args.at(0));
     }
 #ifdef _WIN32
     // WinAPI functions used by libstd
@@ -2783,6 +2807,10 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         sub_args.push_back( ::std::move(arg) );
 
         this->m_stack.push_back(StackFrame::make_wrapper([=](Value& out_rv, Value /*rv*/)->bool{
+            if( m_thread.panic_active )
+            {
+                LOG_TODO("Panic caught in `try` - " << m_thread.panic_value);
+            }
             out_rv = Value::new_u32(0);
             return true;
             }));

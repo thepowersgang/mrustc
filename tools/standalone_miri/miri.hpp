@@ -15,8 +15,12 @@ struct ThreadState
     unsigned call_stack_depth;
     ::std::vector< ::std::pair<uint64_t, RelocationPtr> > tls_values;
 
+    bool    panic_active;
+    Value   panic_value;
+
     ThreadState():
         call_stack_depth(0)
+        ,panic_active(false)
     {
     }
 
