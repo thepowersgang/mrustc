@@ -430,6 +430,7 @@ struct MirHelpers
                 }
                 else
                 {
+                    LOG_DEBUG("sizeof(" << ty << ") = " << ty.get_size());
                     LOG_ASSERT(vr.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << vr << ") - " << vr << ": " << ptr_ty);
                     size = ty.get_size();
                     if( !alloc ) {
@@ -1943,8 +1944,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         LOG_ASSERT(alloc_ptr.is_alloc(), "__rust_reallocate with no backing allocation attached to pointer");
         auto& alloc = alloc_ptr.alloc();
         // TODO: Check old size and alignment against allocation.
-        alloc.data.resize( (newsize + 8-1) / 8 );
-        alloc.mask.resize( (newsize + 8-1) / 8 );
+        alloc.resize(newsize);
         // TODO: Should this instead make a new allocation to catch use-after-free?
         rv = ::std::move(args.at(0));
     }

@@ -249,8 +249,14 @@ class Allocation:
     friend class AllocationHandle;
     ::std::string   m_tag;
     size_t  refcount;
+    size_t  m_size;
     // TODO: Read-only flag?
     bool is_freed = false;
+
+    ::std::vector<uint64_t> m_data;
+public:
+    ::std::vector<uint8_t> m_mask;
+    ::std::vector<Relocation>   relocations;
 public:
     virtual ~Allocation() {}
     static AllocationHandle new_alloc(size_t size, ::std::string tag);
@@ -258,14 +264,10 @@ public:
     // NOTE: This should match the value in the MMIR backend
     static const size_t PTR_BASE = 0x1000;
 
-    const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->data.data()); }
-          uint8_t* data_ptr()       { return reinterpret_cast<      uint8_t*>(this->data.data()); }
-    size_t size() const { return this->data.size() * 8; }
+    const uint8_t* data_ptr() const { return reinterpret_cast<const uint8_t*>(this->m_data.data()); }
+          uint8_t* data_ptr()       { return reinterpret_cast<      uint8_t*>(this->m_data.data()); }
+    size_t size() const { return m_size; }
     const ::std::string& tag() const { return m_tag; }
-
-    ::std::vector<uint64_t> data;
-    ::std::vector<uint8_t> mask;
-    ::std::vector<Relocation>   relocations;
 
     RelocationPtr get_relocation(size_t ofs) const override {
         for(const auto& r : relocations) {
@@ -277,7 +279,7 @@ public:
     void mark_as_freed() {
         is_freed = true;
         relocations.clear();
-        for(auto& v : mask)
+        for(auto& v : m_mask)
             v = 0;
     }
 

@@ -66,8 +66,9 @@ AllocationHandle Allocation::new_alloc(size_t size, ::std::string tag)
     Allocation* rv = new Allocation();
     rv->m_tag = ::std::move(tag);
     rv->refcount = 1;
-    rv->data.resize( (size + 8-1) / 8 );    // QWORDS
-    rv->mask.resize( (size + 8-1) / 8 );    // bitmap bytes
+    rv->m_size = size;
+    rv->m_data.resize( (size + 8-1) / 8 );    // QWORDS
+    rv->m_mask.resize( (size + 8-1) / 8 );    // bitmap bytes
     //LOG_DEBUG(rv << " ALLOC");
     LOG_DEBUG(rv);
     return AllocationHandle(rv);
@@ -337,8 +338,9 @@ void Allocation::resize(size_t new_size)
     //size_t old_size = this->size();
     //size_t extra_bytes = (new_size > old_size ? new_size - old_size : 0);
 
-    this->data.resize( (new_size + 8-1) / 8 );
-    this->mask.resize( (new_size + 8-1) / 8 );
+    this->m_size = new_size;
+    this->m_data.resize( (new_size + 8-1) / 8 );
+    this->m_mask.resize( (new_size + 8-1) / 8 );
 }
 
 void Allocation::check_bytes_valid(size_t ofs, size_t size) const
@@ -348,7 +350,7 @@ void Allocation::check_bytes_valid(size_t ofs, size_t size) const
     }
     for(size_t i = ofs; i < ofs + size; i++)
     {
-        if( !(this->mask[i/8] & (1 << (i%8))) )
+        if( !(this->m_mask[i/8] & (1 << (i%8))) )
         {
             LOG_ERROR("Invalid bytes in value - " << ofs << "+" << size << " - " << *this);
             throw "ERROR";
@@ -357,16 +359,16 @@ void Allocation::check_bytes_valid(size_t ofs, size_t size) const
 }
 void Allocation::mark_bytes_valid(size_t ofs, size_t size)
 {
-    assert( ofs+size <= this->mask.size() * 8 );
+    assert( ofs+size <= this->m_mask.size() * 8 );
     for(size_t i = ofs; i < ofs + size; i++)
     {
-        this->mask[i/8] |= (1 << (i%8));
+        this->m_mask[i/8] |= (1 << (i%8));
     }
 }
 Value Allocation::read_value(size_t ofs, size_t size) const
 {
     Value rv;
-    TRACE_FUNCTION_R("Allocation::read_value " << this << " " << ofs << "+" << size, *this << " | " << rv);
+    //TRACE_FUNCTION_R("Allocation::read_value " << this << " " << ofs << "+" << size, *this << " | " << size << "=" << rv);
     if( this->is_freed )
         LOG_ERROR("Use of freed memory " << this);
     LOG_DEBUG(*this);
@@ -401,10 +403,10 @@ Value Allocation::read_value(size_t ofs, size_t size) const
             size_t j = ofs + i;
             const uint8_t test_mask = (1 << (j%8));
             const uint8_t set_mask = (1 << (i%8));
-            bool v = (this->mask[j/8] & test_mask) != 0;
+            bool v = (this->m_mask[j/8] & test_mask) != 0;
             if( v )
             {
-                rv.allocation->mask[i/8] |= set_mask;
+                rv.allocation->m_mask[i/8] |= set_mask;
             }
         }
     }
@@ -422,7 +424,7 @@ Value Allocation::read_value(size_t ofs, size_t size) const
             size_t j = ofs + i;
             const uint8_t tst_mask = 1 << (j%8);
             const uint8_t set_mask = 1 << (i%8);
-            bool v = (this->mask[j/8] & tst_mask) != 0;
+            bool v = (this->m_mask[j/8] & tst_mask) != 0;
             if( v )
             {
                 rv.direct_data.mask[i/8] |= set_mask;
@@ -436,7 +438,7 @@ void Allocation::read_bytes(size_t ofs, void* dst, size_t count) const
     if( this->is_freed )
         LOG_ERROR("Use of freed memory " << this);
 
-    LOG_DEBUG("Allocation::read_bytes " << this << " " << ofs << "+" << count);
+    //LOG_DEBUG("Allocation::read_bytes " << this << " " << ofs << "+" << count);
     if(count == 0)
         return ;
 
@@ -461,7 +463,7 @@ void Allocation::write_value(size_t ofs, Value v)
         size_t  v_size = v.allocation->size();
         const auto& src_alloc = *v.allocation;
         // Take a copy of the source mask
-        auto s_mask = src_alloc.mask;
+        auto s_mask = src_alloc.m_mask;
 
         // Save relocations first, because `Foo = Foo` is valid.
         ::std::vector<Relocation>   new_relocs = src_alloc.relocations;
@@ -489,9 +491,9 @@ void Allocation::write_value(size_t ofs, Value v)
             {
                 uint8_t dbit = 1 << ((ofs+i) % 8);
                 if( s_mask[i/8] & (1 << (i %8)) )
-                    this->mask[ (ofs+i) / 8 ] |= dbit;
+                    this->m_mask[ (ofs+i) / 8 ] |= dbit;
                 else
-                    this->mask[ (ofs+i) / 8 ] &= ~dbit;
+                    this->m_mask[ (ofs+i) / 8 ] &= ~dbit;
             }
         }
         else
@@ -499,7 +501,7 @@ void Allocation::write_value(size_t ofs, Value v)
             // Copy the mask bytes directly
             for(size_t i = 0; i < v_size / 8; i ++)
             {
-                this->mask[ofs/8+i] = s_mask[i];
+                this->m_mask[ofs/8+i] = s_mask[i];
             }
         }
     }
@@ -512,9 +514,9 @@ void Allocation::write_value(size_t ofs, Value v)
         {
             uint8_t dbit = 1 << ((ofs+i) % 8);
             if( v.direct_data.mask[i/8] & (1 << (i %8)) )
-                this->mask[ (ofs+i) / 8 ] |= dbit;
+                this->m_mask[ (ofs+i) / 8 ] |= dbit;
             else
-                this->mask[ (ofs+i) / 8 ] &= ~dbit;
+                this->m_mask[ (ofs+i) / 8 ] &= ~dbit;
         }
     }
 }
@@ -588,7 +590,7 @@ void Allocation::set_reloc(size_t ofs, size_t len, RelocationPtr reloc)
         if( i != 0 )
             os << " ";
 
-        if( x.mask[i/8] & (1 << (i%8)) )
+        if( x.m_mask[i/8] & (1 << (i%8)) )
         {
             os << ::std::setw(2) << ::std::setfill('0') << (int)x.data_ptr()[i];
         }
@@ -657,26 +659,21 @@ Value Value::new_fnptr(const ::HIR::Path& fn_path)
 {
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::Function }) );
     assert(rv.allocation);
-    rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_fcn(fn_path) });
-    rv.allocation->data.at(0) = Allocation::PTR_BASE;
-    rv.allocation->mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
+    rv.allocation->write_ptr(0, Allocation::PTR_BASE, RelocationPtr::new_fcn(fn_path));
     return rv;
 }
 Value Value::new_ffiptr(FFIPointer ffi)
 {
     Value   rv( ::HIR::TypeRef(::HIR::CoreType { RawType::USize }) );
     rv.create_allocation();
-    rv.allocation->relocations.push_back(Relocation { 0, RelocationPtr::new_ffi(ffi) });
-    rv.allocation->data.at(0) = Allocation::PTR_BASE;
-    rv.allocation->mask.at(0) = 0xFF;    // TODO: Get pointer size and make that much valid instead of 8 bytes
+    rv.allocation->write_ptr(0, Allocation::PTR_BASE, RelocationPtr::new_ffi(ffi));
     return rv;
 }
 Value Value::new_pointer(::HIR::TypeRef ty, uint64_t v, RelocationPtr r) {
     assert(ty.get_wrapper());
     assert(ty.get_wrapper()->type == TypeWrapper::Ty::Borrow || ty.get_wrapper()->type == TypeWrapper::Ty::Pointer);
     Value   rv(ty);
-    rv.write_usize(0, v);
-    rv.allocation->relocations.push_back(Relocation { 0, /*POINTER_SIZE,*/ ::std::move(r) });
+    rv.write_ptr(0, v, ::std::move(r));
     return rv;
 }
 Value Value::new_usize(uint64_t v) {
@@ -710,10 +707,10 @@ void Value::create_allocation()
     assert(!this->allocation);
     this->allocation = Allocation::new_alloc(this->direct_data.size, "create_allocation");
     if( this->direct_data.size > 0 )
-        this->allocation->mask[0] = this->direct_data.mask[0];
+        this->allocation->m_mask[0] = this->direct_data.mask[0];
     if( this->direct_data.size > 8 )
-        this->allocation->mask[1] = this->direct_data.mask[1];
-    ::std::memcpy(this->allocation->data.data(), this->direct_data.data, this->direct_data.size);
+        this->allocation->m_mask[1] = this->direct_data.mask[1];
+    ::std::memcpy(this->allocation->data_ptr(), this->direct_data.data, this->direct_data.size);
 }
 void Value::check_bytes_valid(size_t ofs, size_t size) const
 {
@@ -900,7 +897,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
                 if( i != 0 )
                     os << " ";
 
-                if( alloc.mask[i/8] & (1 << i%8) )
+                if( alloc.m_mask[i/8] & (1 << i%8) )
                 {
                     os << ::std::setw(2) << ::std::setfill('0') << (int)alloc.data_ptr()[i];
                 }
@@ -953,7 +950,7 @@ extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v)
             if( i != 0 )
                 os << " ";
 
-            if( alloc.mask[i/8] & (1 << i%8) )
+            if( alloc.m_mask[i/8] & (1 << i%8) )
             {
                 os << ::std::setw(2) << ::std::setfill('0') << (int)alloc.data_ptr()[i];
             }
