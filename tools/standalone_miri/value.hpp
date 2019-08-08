@@ -247,9 +247,13 @@ class Allocation:
     public ValueCommonWrite
 {
     friend class AllocationHandle;
+
+    static uint64_t s_next_index;
+
     ::std::string   m_tag;
     size_t  refcount;
     size_t  m_size;
+    uint64_t m_index;
     // TODO: Read-only flag?
     bool is_freed = false;
 
@@ -296,6 +300,7 @@ public:
     void write_ptr(size_t ofs, size_t ptr_ofs, RelocationPtr reloc) override;
 
     void set_reloc(size_t ofs, size_t len, RelocationPtr reloc);
+    friend ::std::ostream& operator<<(::std::ostream& os, const Allocation* x);
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 
@@ -389,19 +394,19 @@ struct ValueRef:
             case RelocationPtr::Ty::Allocation:
                 if( !in_bounds(ofs, size, m_alloc.alloc().size()) )
                 {
-                    LOG_ERROR("ValueRef exceeds bounds of " << m_alloc << " - " << ofs << "+" << size << " > " << m_alloc.alloc().size());
+                    LOG_NOTICE("ValueRef exceeds bounds of " << m_alloc << " - " << ofs << "+" << size << " > " << m_alloc.alloc().size());
                 }
                 break;
             case RelocationPtr::Ty::StdString:
                 if( !in_bounds(ofs, size, m_alloc.str().size()) )
                 {
-                    LOG_ERROR("ValueRef exceeds bounds of string - " << ofs << "+" << size << " > " << m_alloc.str().size());
+                    LOG_NOTICE("ValueRef exceeds bounds of string - " << ofs << "+" << size << " > " << m_alloc.str().size());
                 }
                 break;
             case RelocationPtr::Ty::FfiPointer:
                 if( !in_bounds(ofs, size, m_alloc.ffi().get_size()) )
                 {
-                    LOG_ERROR("ValueRef exceeds bounds of FFI buffer - " << ofs << "+" << size << " > " << m_alloc.ffi().get_size());
+                    LOG_NOTICE("ValueRef exceeds bounds of FFI buffer - " << ofs << "+" << size << " > " << m_alloc.ffi().get_size());
                 }
                 break;
             default:

@@ -157,6 +157,7 @@ size_t HIR::TypeRef::get_align(size_t ofs) const
         case RawType::ISize:
             return POINTER_SIZE;
         }
+        throw "";
     }
 }
 bool HIR::TypeRef::has_slice_meta(size_t& out_inner_size) const

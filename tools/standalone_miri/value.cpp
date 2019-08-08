@@ -25,7 +25,7 @@ namespace {
 
 ::std::ostream& operator<<(::std::ostream& os, const Allocation* x)
 {
-    os << "A(" << static_cast<const void*>(x) << " " << x->tag() /*<< " +" << x->size()*/ << ")";
+    os << "A(#" << x->m_index << " " << x->tag() /*<< " +" << x->size()*/ << ")";
     return os;
 }
 
@@ -61,9 +61,12 @@ bool FfiLayout::is_valid_read(size_t o, size_t s) const
     return true;
 }
 
+uint64_t Allocation::s_next_index = 0;
+
 AllocationHandle Allocation::new_alloc(size_t size, ::std::string tag)
 {
     Allocation* rv = new Allocation();
+    rv->m_index = s_next_index++;
     rv->m_tag = ::std::move(tag);
     rv->refcount = 1;
     rv->m_size = size;
@@ -530,7 +533,7 @@ void Allocation::write_bytes(size_t ofs, const void* src, size_t count)
 
     if(count == 0)
         return ;
-    TRACE_FUNCTION_R("Allocation::write_bytes " << this << " " << ofs << "+" << count, *this);
+    //TRACE_FUNCTION_R("Allocation::write_bytes " << this << " " << ofs << "+" << count, *this);
     if( !in_bounds(ofs, count, this->size()) ) {
         LOG_ERROR("Out of bounds write, " << ofs << "+" << count << " > " << this->size());
         throw "ERROR";
