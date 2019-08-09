@@ -2272,6 +2272,11 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             rv = Value::new_i32(EPERM);
         }
     }
+    else if( link_name == "pthread_detach" )
+    {
+        // "detach" - Prevent the need to explitly join a thread
+        rv = Value::new_i32(0);
+    }
     else if( link_name == "pthread_cond_init" || link_name == "pthread_cond_destroy" )
     {
         rv = Value::new_i32(0);

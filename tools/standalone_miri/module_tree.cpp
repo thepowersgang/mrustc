@@ -884,7 +884,7 @@ bool Parser::parse_one()
             ::std::vector<unsigned> targets;
             while(lex.next() != '{')
             {
-                targets.push_back( static_cast<unsigned>(lex.consume().integer()) );
+                targets.push_back( static_cast<unsigned>(lex.check_consume(TokenClass::Integer).integer()) );
                 if( !lex.consume_if(',') )
                     break;
             }
