@@ -1502,12 +1502,12 @@ namespace {
         return IterPathRes::Complete;
     }
 
-    ::std::function<bool(const ::MIR::LValue& , ValUsage)> check_invalidates_lvalue_cb(const ::MIR::LValue& val)
+    ::std::function<bool(const ::MIR::LValue& , ValUsage)> check_invalidates_lvalue_cb(const ::MIR::LValue& val, bool also_read=false)
     {
-        bool has_index = ::std::any_of(val.m_wrappers.begin(), val.m_wrappers.end(), [&](const auto& w){ return w.is_Index(); });
+        bool has_index = ::std::any_of(val.m_wrappers.begin(), val.m_wrappers.end(), [](const auto& w){ return w.is_Index(); });
         // Value is invalidated if it's used with ValUsage::Write or ValUsage::Borrow
         // - Same applies to any component of the lvalue
-        return [&val,has_index](const ::MIR::LValue& lv, ValUsage vu) {
+        return [&val,has_index,also_read](const ::MIR::LValue& lv, ValUsage vu) {
             switch(vu)
             {
             case ValUsage::Move:    // A move can invalidate
@@ -1533,18 +1533,20 @@ namespace {
                 }
                 break;
             case ValUsage::Read:
+                if( also_read )
+                    return true;
                 break;
             }
             return false;
             };
     }
-    bool check_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& val)
+    bool check_invalidates_lvalue(const ::MIR::Statement& stmt, const ::MIR::LValue& val, bool also_read=false)
     {
-        return visit_mir_lvalues(stmt, check_invalidates_lvalue_cb(val));
+        return visit_mir_lvalues(stmt, check_invalidates_lvalue_cb(val, also_read));
     }
-    bool check_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& val)
+    bool check_invalidates_lvalue(const ::MIR::Terminator& term, const ::MIR::LValue& val, bool also_read=false)
     {
-        return visit_mir_lvalues(term, check_invalidates_lvalue_cb(val));
+        return visit_mir_lvalues(term, check_invalidates_lvalue_cb(val, also_read));
     }
 }
 
@@ -1646,8 +1648,8 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 // - Iterate the path(s) between the two statements to check if the destination would be invalidated
                 //  > The iterate function doesn't (yet) support following BB chains, so assume invalidated if over a jump.
                 bool invalidated = IterPathRes::Complete != iter_path(fcn, slot.set_loc, slot.use_loc,
-                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, dst); },
-                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst); }
+                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, dst, /*also_read=*/true); },
+                        [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst, /*also_read=*/true); }
                         );
                 if( !invalidated )
                 {
