@@ -713,17 +713,24 @@ namespace {
                         m_of << "}\n";
                     }
 
-                    // TODO: Bind `panic_impl` lang item to the item tagged with `panic_implementation`
+                    // Bind `panic_impl` lang item to the item tagged with `panic_implementation`
                     m_of << "uint32_t panic_impl(uintptr_t payload) {";
                     const auto& panic_impl_path = m_crate.get_lang_item_path(Span(), "mrustc-panic_implementation");
                     m_of << "extern uint32_t " << Trans_Mangle(panic_impl_path) << "(uintptr_t payload);";
                     m_of << "return " << Trans_Mangle(panic_impl_path) << "(payload);";
                     m_of << "}\n";
+
                     // TODO: Bind `oom` lang item to the item tagged with `alloc_error_handler`
                     // - Can do this in enumerate/auto_impls instead, for better iteraction with enum
                     // XXX: HACK HACK HACK - This only works with libcore/libstd's current layout
-                    m_of << "struct s__ZN4core5alloc6Layout_A { uintptr_t a, b; };\n";
-                    m_of << "void oom_impl(struct s__ZN4core5alloc6Layout_A l) { extern void _ZN3std5alloc8rust_oom(struct s__ZN4core5alloc6Layout_A l); _ZN3std5alloc8rust_oom(l); }\n";
+                    auto layout_path = ::HIR::SimplePath("core", {"alloc", "Layout"});
+                    auto oom_method = ::HIR::SimplePath("std", {"alloc", "rust_oom"});
+                    m_of << "struct s_" << Trans_Mangle(layout_path) << "_A { uintptr_t a, b; };\n";
+                    m_of << "void oom_impl(struct s_" << Trans_Mangle(layout_path) << "_A l) {"
+                        << " extern void " << Trans_Mangle(oom_method) << "(struct s_" << Trans_Mangle(layout_path) << "_A l);"
+                        << " " << Trans_Mangle(oom_method) << "(l);"
+                        << " }\n"
+                        ;
                 }
             }
 
