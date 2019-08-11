@@ -3422,7 +3422,10 @@ bool MIR_Optimise_ConstPropagte(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 
 // --------------------------------------------------------------------
 // Split `var = Tuple(...,)` into `varN = ...` if the tuple isn't used by
-// value.
+// value (nor borrowed).
+//
+// NOTE: The "nor borrowed" rule is needed to avoid issues when the first element of a tuple
+// is used as a proxy for the entire tuple.
 // --------------------------------------------------------------------
 bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fcn)
 {
@@ -3476,6 +3479,18 @@ bool MIR_Optimise_SplitAggregates(::MIR::TypeResolve& state, ::MIR::Function& fc
                     auto it = potentials.find(lv.as_Local());
                     if( it != potentials.end() )
                     {
+                        DEBUG(lv << " invalidated due to root usage");
+                        potentials.erase(it);
+                    }
+                }
+                // If the variable is borrowed (even via wrappers)
+                // TODO: Restrict this to when the borrow is just via field accesses
+                if( lv.m_root.is_Local() && vu == ValUsage::Borrow )
+                {
+                    auto it = potentials.find(lv.m_root.as_Local());
+                    if( it != potentials.end() )
+                    {
+                        DEBUG(lv << " invalidate due to any borrow");
                         potentials.erase(it);
                     }
                 }
