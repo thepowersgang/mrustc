@@ -411,7 +411,7 @@ namespace HIR {
                     auto& item = const_cast<::HIR::Constant&>(c);
                     // Challenge: Adding items to the module might invalidate an iterator.
                     ::HIR::ItemPath mod_ip { item.m_value.m_state->m_mod_path };
-                    auto nvs = NewvalState { item.m_value.m_state->m_module, mod_ip, FMT(&c << "$") };
+                    auto nvs = NewvalState { item.m_value.m_state->m_module, mod_ip, FMT("const" << &c << "#") };
                     auto eval = ::HIR::Evaluator { item.m_value.span(), resolve.m_crate, nvs };
                     DEBUG("- Evaluate " << p);
                     DEBUG("- " << ::HIR::ItemPath(p));
@@ -1029,7 +1029,7 @@ namespace {
                         });
                     const auto& template_const = vi.second.as_Constant();
                     if( template_const.m_value_res.is_Defer() ) {
-                        auto nvs = NewvalState { *m_mod, *m_mod_path, FMT("impl" << &impl << "$" << vi.first << "$") };
+                        auto nvs = NewvalState { *m_mod, *m_mod_path, FMT("impl" << &impl << "_" << vi.first << "#") };
                         auto eval = ::HIR::Evaluator { sp, m_crate, nvs };
                         ::HIR::ExprPtr  ep;
                         Trans_Params    tp(sp);
@@ -1094,7 +1094,7 @@ namespace {
                     assert(e.size);
                     assert(*e.size);
                     const auto& expr_ptr = *e.size;
-                    auto ty_name = FMT("ty_" << &ty << "$");
+                    auto ty_name = FMT("ty_" << &ty << "#");
 
                     auto nvs = NewvalState { *m_mod, *m_mod_path, ty_name };
                     auto eval = ::HIR::Evaluator { expr_ptr->span(), m_crate, nvs };
@@ -1113,7 +1113,7 @@ namespace {
             // NOTE: Consteval needed here for MIR match generation to work
             if( item.m_value || item.m_value.m_mir )
             {
-                auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "$") };
+                auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "#") };
                 auto eval = ::HIR::Evaluator { item.m_value.span(), m_crate, nvs };
                 item.m_value_res = eval.evaluate_constant(p, item.m_value, item.m_type.clone(), m_monomorph_state.clone());
 
@@ -1128,7 +1128,7 @@ namespace {
 
             if( item.m_value )
             {
-                auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "$") };
+                auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "#") };
                 auto eval = ::HIR::Evaluator { item.m_value->span(), m_crate, nvs };
                 item.m_value_res = eval.evaluate_constant(p, item.m_value, item.m_type.clone());
 
@@ -1147,7 +1147,7 @@ namespace {
                 {
                     if( var.expr )
                     {
-                        auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "$" << var.name << "$") }; 
+                        auto nvs = NewvalState { *m_mod, *m_mod_path, FMT(p.get_name() << "_" << var.name << "#") }; 
                         auto eval = ::HIR::Evaluator { var.expr->span(), m_crate, nvs };
                         auto val = eval.evaluate_constant(p, var.expr, ty.clone());
                         DEBUG("enum variant: " << p << "::" << var.name << " = " << val);
@@ -1183,7 +1183,7 @@ namespace {
 
                 void visit(::HIR::ExprNode_ArraySized& node) override {
                     assert( node.m_size );
-                    auto name = FMT("array_" << &node << "$");
+                    auto name = FMT("array_" << &node << "#");
                     auto nvs = NewvalState { *m_exp.m_mod, *m_exp.m_mod_path, name };
                     auto eval = ::HIR::Evaluator { node.span(), m_exp.m_crate, nvs };
                     auto val = eval.evaluate_constant( ::HIR::ItemPath(*m_exp.m_mod_path, name.c_str()), node.m_size, ::HIR::CoreType::Usize );
