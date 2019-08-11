@@ -25,11 +25,16 @@ public:
     // - '-' (crate names)
     void fmt_name(const RcString& s)
     {
+        this->fmt_name(s.c_str());
+    }
+    void fmt_name(const char* const s)
+    {
+        size_t size = strlen(s);
         const char* hash_pos = nullptr;
         // - Search the string for the '#' character
-        for(const auto* p = s.c_str(); *p; p++)
+        for(const auto* p = s; *p; p++)
         {
-            if( p == s.c_str() ) {
+            if( p == s ) {
                 ASSERT_BUG(Span(), !isdigit(*p), "Leading digit not valid in '" << s << "'");
             }
 
@@ -51,26 +56,26 @@ public:
         // - Using a 3 character overhead currently (but a letter could work really well)
         if( hash_pos != nullptr )
         {
-            auto pre_hash_len = static_cast<int>(hash_pos - s.c_str());
+            auto pre_hash_len = static_cast<int>(hash_pos - s);
 #if 0
             assert(pre_hash_len < 26);
             // <posletter> <full_len> <body1> <body2>
             m_os << 'a' + pre_hash_len;
-            m_os << s.size() - 1;
-            m_os << ::stdx::string_view(s.c_str(), s.c_str() + pre_hash_len);
+            m_os << size - 1;
+            m_os << ::stdx::string_view(s, s + pre_hash_len);
             m_os << hash_pos + 1;;
 #else
             // 'h' <len1> <body1> <len2> <body2>
             m_os << "h";
             m_os << pre_hash_len;
-            m_os << ::stdx::string_view(s.c_str(), s.c_str() + pre_hash_len);
-            m_os << s.size() - pre_hash_len - 1;
+            m_os << ::stdx::string_view(s, s + pre_hash_len);
+            m_os << size - pre_hash_len - 1;
             m_os << hash_pos + 1;;
 #endif
         }
         else
         {
-            m_os << s.size();
+            m_os << size;
             m_os << s;
         }
     }
@@ -109,7 +114,8 @@ public:
         // Path type
         // - Generic: starts with `G`
         // - Inherent: Starts with `I`
-        // - Trait: Starts with `T`
+        // - Trait: Starts with `Q` (qualified)
+        // - bare type: Starts with `T` (see Trans_MangleType)
         TU_MATCH_HDRA( (p.m_data), {)
         TU_ARMA(Generic, e) {
             m_os << "G";
@@ -122,7 +128,7 @@ public:
             this->fmt_path_params(e.params);
             }
         TU_ARMA(UfcsKnown, e) {
-            m_os << "T";
+            m_os << "Q";
             this->fmt_type(*e.type);
             this->fmt_generic_path(e.trait);
             this->fmt_name(e.item);
@@ -206,8 +212,8 @@ public:
             m_os << (e.is_unsafe ? "u" : "");    // Optional allowed, next is a number
             if( e.m_abi != ABI_RUST )
             {
-                // TODO: Encode the ABI properly
-                //this->fmt_name(e.m_abi);
+                m_os << "e";
+                this->fmt_name(e.m_abi.c_str());
             }
             m_os << e.m_arg_types.size();
             for(const auto& t : e.m_arg_types)
@@ -265,19 +271,19 @@ public:
 
 ::FmtLambda Trans_ManglePath(const ::HIR::Path& p)
 {
-    return FMT_CB(os, os << "ZRp"; Mangler(os).fmt_path(p));
+    return FMT_CB(os, os << "ZR"; Mangler(os).fmt_path(p));
 }
 ::FmtLambda Trans_MangleSimplePath(const ::HIR::SimplePath& p)
 {
-    return FMT_CB(os, os << "ZRpG"; Mangler(os).fmt_simple_path(p); os << "0g";);
+    return FMT_CB(os, os << "ZRG"; Mangler(os).fmt_simple_path(p); Mangler(os).fmt_path_params({}););
 }
 ::FmtLambda Trans_MangleGenericPath(const ::HIR::GenericPath& p)
 {
-    return FMT_CB(os, os << "ZRpG"; Mangler(os).fmt_generic_path(p));
+    return FMT_CB(os, os << "ZRG"; Mangler(os).fmt_generic_path(p));
 }
 ::FmtLambda Trans_MangleType(const ::HIR::TypeRef& p)
 {
-    return FMT_CB(os, os << "ZRt"; Mangler(os).fmt_type(p));
+    return FMT_CB(os, os << "ZRT"; Mangler(os).fmt_type(p));
 }
 
 ::FmtLambda Trans_Mangle(const ::HIR::SimplePath& path) { return Trans_MangleSimplePath(path); }
