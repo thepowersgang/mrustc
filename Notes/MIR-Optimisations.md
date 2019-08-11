@@ -236,3 +236,20 @@ Overview
   for invalidation.
 - If no invalidation found, replace usage with inner of assignment and erase
   assignment.
+
+
+Slice Transmute
+===============
+Purpose: Detect places where slices are createdby transmuting from a (usize,usize) and replace with
+dedicated MIR statement.
+
+Overview
+--------
+- Find transmute calls with a destination type of `&[T]`
+- Check the input type:
+  - `(usize,usize)` : good
+  - `struct Foo { usize, usize }` : good
+- Check if the input was a use/write once local
+- Locate assignment of input
+  - Check if it was a struct/tuple literal
+- Remove assignment, replace transmute with at `MAKEDST` op
