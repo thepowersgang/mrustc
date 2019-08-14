@@ -62,11 +62,13 @@ class InterpreterThread
 
     ModuleTree& m_modtree;
     ThreadState m_thread;
+    size_t  m_instruction_count;
     ::std::vector<StackFrame>   m_stack;
 
 public:
     InterpreterThread(ModuleTree& modtree):
-        m_modtree(modtree)
+        m_modtree(modtree),
+        m_instruction_count(0)
     {
     }
     ~InterpreterThread();

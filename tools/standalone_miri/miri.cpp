@@ -636,7 +636,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     assert( !this->m_stack.empty() );
     assert( !this->m_stack.back().cb );
     auto& cur_frame = this->m_stack.back();
-    TRACE_FUNCTION_R(cur_frame.fcn->my_path << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx, "");
+    auto instr_idx = this->m_instruction_count++;
+    TRACE_FUNCTION_R("#" << instr_idx << " " << cur_frame.fcn->my_path << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx, "#" << instr_idx);
     const auto& bb = cur_frame.fcn->m_mir.blocks.at( cur_frame.bb_idx );
 
     const size_t    MAX_STACK_DEPTH = 60;
