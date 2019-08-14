@@ -14,6 +14,7 @@
 #include <cassert>
 
 #include "debug.hpp"
+#include "u128.hpp"
 
 namespace HIR {
     struct TypeRef;
@@ -192,10 +193,12 @@ struct ValueCommonRead
     uint16_t read_u16(size_t ofs) const { uint16_t rv; read_bytes(ofs, &rv, 2); return rv; }
     uint32_t read_u32(size_t ofs) const { uint32_t rv; read_bytes(ofs, &rv, 4); return rv; }
     uint64_t read_u64(size_t ofs) const { uint64_t rv; read_bytes(ofs, &rv, 8); return rv; }
+    U128 read_u128(size_t ofs) const { U128 rv; read_bytes(ofs, &rv, 16); return rv; }
     int8_t read_i8(size_t ofs) const { return static_cast<int8_t>(read_u8(ofs)); }
     int16_t read_i16(size_t ofs) const { return static_cast<int16_t>(read_u16(ofs)); }
     int32_t read_i32(size_t ofs) const { return static_cast<int32_t>(read_u32(ofs)); }
     int64_t read_i64(size_t ofs) const { return static_cast<int64_t>(read_u64(ofs)); }
+    I128 read_i128(size_t ofs) const { I128 rv; read_bytes(ofs, &rv, 16); return rv; }
     float  read_f32(size_t ofs) const { float rv; read_bytes(ofs, &rv, 4); return rv; }
     double read_f64(size_t ofs) const { double rv; read_bytes(ofs, &rv, 8); return rv; }
     uint64_t read_usize(size_t ofs) const;
@@ -304,11 +307,29 @@ public:
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 
+// TODO: Rename to be `StackSlot`
 struct Value:
     public ValueCommonWrite
 {
+    // TODO: Use this union for more compact representation
+    union Inner {
+        bool    is_alloc;
+        struct {
+            bool    is_alloc;
+            AllocationHandle    alloc;
+        } alloc;
+        // Sizeof = 4+8+8 = 20b (plus vtable?)
+        struct {
+            bool    is_alloc;
+            uint8_t size;
+            uint8_t mask[2];
+            uint8_t data[2*8];
+            RelocationPtr   reloc_0;    // Relocation only for 0+POINTER_SIZE
+        } direct;
+    };
     // If NULL, data is direct
     AllocationHandle    allocation;
+    // TODO: Use an enum and a single relocation slot
     struct {
         // NOTE: Can't pack the mask+size tighter, need 4 bits of size (8-15) leaving 12 bits of mask
         uint8_t data[2*8-3];   // 13 data bytes, plus 16bit mask, plus size = 16 bytes
