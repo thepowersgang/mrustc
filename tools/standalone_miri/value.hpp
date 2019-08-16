@@ -235,10 +235,12 @@ struct ValueCommonWrite:
     void write_u16(size_t ofs, uint16_t v) { write_bytes(ofs, &v, 2); }
     void write_u32(size_t ofs, uint32_t v) { write_bytes(ofs, &v, 4); }
     void write_u64(size_t ofs, uint64_t v) { write_bytes(ofs, &v, 8); }
+    void write_u128(size_t ofs, U128 v) { write_bytes(ofs, &v, 16); }
     void write_i8 (size_t ofs, int8_t  v) { write_u8 (ofs, static_cast<uint8_t >(v)); }
     void write_i16(size_t ofs, int16_t v) { write_u16(ofs, static_cast<uint16_t>(v)); }
     void write_i32(size_t ofs, int32_t v) { write_u32(ofs, static_cast<uint32_t>(v)); }
     void write_i64(size_t ofs, int64_t v) { write_u64(ofs, static_cast<uint64_t>(v)); }
+    void write_i128(size_t ofs, I128 v) { write_bytes(ofs, &v, 16); }
     void write_f32(size_t ofs, float  v) { write_bytes(ofs, &v, 4); }
     void write_f64(size_t ofs, double v) { write_bytes(ofs, &v, 8); }
     void write_usize(size_t ofs, uint64_t v);

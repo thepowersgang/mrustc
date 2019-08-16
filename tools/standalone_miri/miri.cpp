@@ -341,6 +341,7 @@ struct MirHelpers
                     auto len = vr.m_metadata->read_usize(0);
                     LOG_ASSERT(idx < len, "Slice index out of range");
                     vr.m_offset += ty.get_size() * idx;
+                    vr.m_metadata.reset();
                 }
                 else
                 {
@@ -433,8 +434,8 @@ struct MirHelpers
                     LOG_DEBUG("sizeof(" << ty << ") = " << ty.get_size());
                     LOG_ASSERT(vr.m_size == POINTER_SIZE, "Deref of a value that isn't a pointer-sized value (size=" << vr << ") - " << vr << ": " << ptr_ty);
                     size = ty.get_size();
-                    if( !alloc ) {
-                        LOG_ERROR("Deref of a value with no relocation - " << vr);
+                    if( !alloc && size > 0 ) {
+                        LOG_ERROR("Deref of a non-ZST pointer with no relocation - " << vr);
                     }
                 }
 
@@ -502,7 +503,11 @@ struct MirHelpers
             ty = ::HIR::TypeRef(ce.t);
             Value val = Value(ty);
             val.write_bytes(0, &ce.v, ::std::min(ty.get_size(), sizeof(ce.v)));  // TODO: Endian
-            // TODO: i128/u128 need the upper bytes cleared+valid
+            // i128/u128 need the upper bytes cleared+valid
+            if( ce.t.raw_type == RawType::U128 ) {
+                uint64_t    zero = 0;
+                val.write_bytes(8, &zero, 8);
+            }
             return val;
             } break;
         TU_ARM(c, Bool, ce) {
@@ -799,8 +804,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::Bool: throw "ERROR";
                         case RawType::F32:  throw "BUG";
                         case RawType::F64:  dst_val = static_cast<float>( src_value.read_f64(0) ); break;
-                        case RawType::USize:    throw "TODO";// /*dst_val = src_value.read_usize();*/   break;
-                        case RawType::ISize:    throw "TODO";// /*dst_val = src_value.read_isize();*/   break;
+                        case RawType::USize:    LOG_TODO("f32 from " << src_ty);// /*dst_val = src_value.read_usize();*/   break;
+                        case RawType::ISize:    LOG_TODO("f32 from " << src_ty);// /*dst_val = src_value.read_isize();*/   break;
                         case RawType::U8:   dst_val = static_cast<float>( src_value.read_u8 (0) );  break;
                         case RawType::I8:   dst_val = static_cast<float>( src_value.read_i8 (0) );  break;
                         case RawType::U16:  dst_val = static_cast<float>( src_value.read_u16(0) );  break;
@@ -809,8 +814,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::I32:  dst_val = static_cast<float>( src_value.read_i32(0) );  break;
                         case RawType::U64:  dst_val = static_cast<float>( src_value.read_u64(0) );  break;
                         case RawType::I64:  dst_val = static_cast<float>( src_value.read_i64(0) );  break;
-                        case RawType::U128: throw "TODO";// /*dst_val = src_value.read_u128();*/ break;
-                        case RawType::I128: throw "TODO";// /*dst_val = src_value.read_i128();*/ break;
+                        case RawType::U128: LOG_TODO("f32 from " << src_ty);// /*dst_val = src_value.read_u128();*/ break;
+                        case RawType::I128: LOG_TODO("f32 from " << src_ty);// /*dst_val = src_value.read_i128();*/ break;
                         }
                         new_val.write_f32(0, dst_val);
                         } break;
@@ -990,6 +995,13 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                             if(0)
                         case RawType::I64:
                             dst_val = static_cast<uint64_t>( src_value.read_i64(0) );
+                            if(0)
+                        case RawType::U128:
+                            dst_val = static_cast<uint64_t>( src_value.read_u128(0) );
+                            if(0)
+                        case RawType::I128:
+                            LOG_TODO("Cast i128 to " << re.type);
+                            //dst_val = static_cast<uint64_t>( src_value.read_i128(0) );
 
                             switch(re.type.inner_type)
                             {
@@ -1027,13 +1039,20 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                                 throw "";
                             }
                             break;
-                        case RawType::U128: throw "TODO"; /*dst_val = src_value.read_u128();*/ break;
-                        case RawType::I128: throw "TODO"; /*dst_val = src_value.read_i128();*/ break;
                         }
                         } break;
                     case RawType::U128:
-                    case RawType::I128:
-                        LOG_TODO("Cast to " << re.type);
+                    case RawType::I128: {
+                        U128    dst_val;
+                        switch(src_ty.inner_type)
+                        {
+                        case RawType::U8:   dst_val = src_value.read_u8 (0);    break;
+                        case RawType::I8:   dst_val = src_value.read_i8 (0);    break;
+                        default:
+                            LOG_TODO("Cast " << src_ty << " to " << re.type);
+                        }
+                        new_val.write_u128(0, dst_val);
+                        } break;
                     }
                 }
                 } break;
@@ -1150,6 +1169,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::ISize: res = res != 0 ? res : Ops::do_compare(v_l.read_isize(0), v_r.read_isize(0)); break;
                         case RawType::Char: res = res != 0 ? res : Ops::do_compare(v_l.read_u32(0), v_r.read_u32(0)); break;
                         case RawType::Bool: res = res != 0 ? res : Ops::do_compare(v_l.read_u8(0), v_r.read_u8(0)); break;  // TODO: `read_bool` that checks for bool values?
+                        case RawType::U128: res = res != 0 ? res : Ops::do_compare(v_l.read_u128(0), v_r.read_u128(0));   break;
+                        case RawType::I128: res = res != 0 ? res : Ops::do_compare(v_l.read_i128(0), v_r.read_i128(0));   break;
                         default:
                             LOG_TODO("BinOp comparisons - " << se.src << " w/ " << ty_l);
                         }
@@ -1197,6 +1218,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     switch(ty_l.inner_type)
                     {
                     // TODO: U128
+                    case RawType::U128: new_val.write_u128(0, Ops::do_bitwise(v_l.read_u128(0), U128(shift), re.op));   break;
                     case RawType::U64:  new_val.write_u64(0, Ops::do_bitwise(v_l.read_u64(0), static_cast<uint64_t>(shift), re.op));   break;
                     case RawType::U32:  new_val.write_u32(0, Ops::do_bitwise(v_l.read_u32(0), static_cast<uint32_t>(shift), re.op));   break;
                     case RawType::U16:  new_val.write_u16(0, Ops::do_bitwise(v_l.read_u16(0), static_cast<uint16_t>(shift), re.op));   break;
@@ -1217,7 +1239,10 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     new_val = Value(ty_l);
                     switch(ty_l.inner_type)
                     {
-                    // TODO: U128/I128
+                    case RawType::U128:
+                    case RawType::I128:
+                        new_val.write_u128( 0, Ops::do_bitwise(v_l.read_u128(0), v_r.read_u128(0), re.op) );
+                        break;
                     case RawType::U64:
                     case RawType::I64:
                         new_val.write_u64( 0, Ops::do_bitwise(v_l.read_u64(0), v_r.read_u64(0), re.op) );
@@ -1621,6 +1646,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 case RawType::U64:  switch_val = v.read_u64(0); break;
                 case RawType::U128: LOG_TODO("Terminator::SwitchValue::Unsigned with u128");
                 case RawType::USize:    switch_val = v.read_usize(0); break;
+                case RawType::Char:  switch_val = v.read_u32(0); break;
                 default:
                     LOG_ERROR("Terminator::SwitchValue::Unsigned with unexpected type - " << ty);
                 }
@@ -1913,7 +1939,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             return reinterpret_cast<const char*>(v.read_pointer_const(0, len + 1));  // Final read will trigger an error if the NUL isn't there
         }
     };
-    if( link_name == "__rust_allocate" || link_name == "__rust_alloc" )
+    if( link_name == "__rust_allocate" || link_name == "__rust_alloc" || link_name == "__rust_alloc_zeroed" )
     {
         static unsigned s_alloc_count = 0;
 
@@ -1921,10 +1947,15 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto alloc_name = FMT_STRING("__rust_alloc#" << alloc_idx);
         auto size = args.at(0).read_usize(0);
         auto align = args.at(1).read_usize(0);
-        LOG_DEBUG("__rust_allocate(size=" << size << ", align=" << align << "): name=" << alloc_name);
+        LOG_DEBUG(link_name << "(size=" << size << ", align=" << align << "): name=" << alloc_name);
         auto alloc = Allocation::new_alloc(size, ::std::move(alloc_name));
         LOG_TRACE("- alloc=" << alloc << " (" << alloc->size() << " bytes)");
         auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
+
+        if( link_name == "__rust_alloc_zeroed" )
+        {
+            alloc->mark_bytes_valid(0, size);
+        }
 
         // TODO: Use the alignment when making an allocation?
         rv = Value::new_pointer(rty, Allocation::PTR_BASE, RelocationPtr::new_alloc(::std::move(alloc)));
@@ -2412,6 +2443,23 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     {
         rv = Value::new_i32(-1);
     }
+    else if( link_name == "memcmp" )
+    {
+        auto n = args.at(2).read_usize(0);
+        int rv_i;
+        if( n > 0 )
+        {
+            const void* ptr_b = args.at(1).read_pointer_const(0, n);
+            const void* ptr_a = args.at(0).read_pointer_const(0, n);
+
+            rv_i = memcmp(ptr_a, ptr_b, n);
+        }
+        else
+        {
+            rv_i = 0;
+        }
+        rv = Value::new_i32(rv_i);
+    }
     // - `void *memchr(const void *s, int c, size_t n);`
     else if( link_name == "memchr" )
     {
@@ -2695,6 +2743,31 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
 
         rv = ::std::move(args.at(0));
         rv.write_ptr(0, Allocation::PTR_BASE + new_ofs, ptr_alloc);
+    }
+    else if( name == "arith_offset" )   // Doesn't check validity, and allows wrapping
+    {
+        auto ptr_alloc = args.at(0).get_relocation(0);
+        auto ptr_ofs = args.at(0).read_usize(0);
+        //LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "`offset` with invalid pointer - " << args.at(0));
+        //ptr_ofs -= Allocation::PTR_BASE;
+        auto& ofs_val = args.at(1);
+
+        auto delta_counts = ofs_val.read_usize(0);
+        auto new_ofs = ptr_ofs + delta_counts * ty_params.tys.at(0).get_size();
+        if(POINTER_SIZE != 8) {
+            new_ofs &= 0xFFFFFFFF;
+        }
+        //new_ofs += Allocation::PTR_BASE;
+
+        rv = ::std::move(args.at(0));
+        if( ptr_alloc )
+        {
+            rv.write_ptr(0, new_ofs, ptr_alloc);
+        }
+        else
+        {
+            rv.write_usize(0, new_ofs);
+        }
     }
     // effectively ptr::write
     else if( name == "move_val_init" )
