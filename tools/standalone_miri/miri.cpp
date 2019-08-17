@@ -8,6 +8,7 @@
 #include <iostream>
 #include "module_tree.hpp"
 #include "value.hpp"
+#include "string_view.hpp"
 #include <algorithm>
 #include <iomanip>
 #include "debug.hpp"
@@ -478,11 +479,14 @@ struct MirHelpers
         ::HIR::TypeRef  ty;
         auto base_value = get_value_and_type(lv, ty);
 
-        if(base_value.m_alloc) {
-            base_value.m_alloc.alloc().write_value(base_value.m_offset, ::std::move(val));
-        }
-        else {
-            base_value.m_value->write_value(base_value.m_offset, ::std::move(val));
+        if( val.size() > 0 )
+        {
+            if(!base_value.m_value) {
+                base_value.m_alloc.alloc().write_value(base_value.m_offset, ::std::move(val));
+            }
+            else {
+                base_value.m_value->write_value(base_value.m_offset, ::std::move(val));
+            }
         }
     }
 
@@ -1695,7 +1699,22 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 }
                 }
             TU_ARMA(String, vals) {
-                LOG_TODO("Terminator::SwitchValue (string) - " << ty << " " << v);
+                auto size = v.read_usize(POINTER_SIZE);
+                const char* sv_ptr = reinterpret_cast<const char*>(v.read_pointer_const(0, size));
+                auto switch_val = ::stdx::string_view(sv_ptr, sv_ptr+size);
+
+                auto it = ::std::find_if(vals.begin(), vals.end(), [&](const ::std::string& x){ return switch_val == x; });
+                if( it != vals.end() )
+                {
+                    auto idx = it - vals.begin();
+                    LOG_TRACE("- '" << switch_val << "' matched arm " << idx);
+                    cur_frame.bb_idx = te.targets.at(idx);
+                }
+                else
+                {
+                    LOG_TRACE("- '" << switch_val << "' not matched, taking default arm");
+                    cur_frame.bb_idx = te.def_target;
+                }
                 }
             }
             }
