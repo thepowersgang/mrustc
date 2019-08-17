@@ -313,39 +313,85 @@ extern ::std::ostream& operator<<(::std::ostream& os, const Allocation& x);
 struct Value:
     public ValueCommonWrite
 {
-    // TODO: Use this union for more compact representation
+//private:
     union Inner {
         bool    is_alloc;
-        struct {
+        struct Alloc {
             bool    is_alloc;
             AllocationHandle    alloc;
+
+            Alloc(AllocationHandle alloc):
+                is_alloc(true),
+                alloc(::std::move(alloc))
+            {
+            }
         } alloc;
         // Sizeof = 4+8+8 = 20b (plus vtable?)
-        struct {
+        struct Direct {
             bool    is_alloc;
             uint8_t size;
             uint8_t mask[2];
             uint8_t data[2*8];
             RelocationPtr   reloc_0;    // Relocation only for 0+POINTER_SIZE
-        } direct;
-    };
-    // If NULL, data is direct
-    AllocationHandle    allocation;
-    // TODO: Use an enum and a single relocation slot
-    struct {
-        // NOTE: Can't pack the mask+size tighter, need 4 bits of size (8-15) leaving 12 bits of mask
-        uint8_t data[2*8-3];   // 13 data bytes, plus 16bit mask, plus size = 16 bytes
-        uint8_t mask[2];
-        uint8_t size;
-    } direct_data;
 
+            Direct(size_t size):
+                is_alloc(false),
+                size(static_cast<uint8_t>(size)),
+                mask{0,0}
+            {
+            }
+        } direct;
+
+        Inner():
+            direct(0)
+        {
+        }
+        ~Inner() {
+            if(is_alloc) {
+                alloc.~Alloc();
+            }
+            else {
+                direct.~Direct();
+            }
+        }
+        Inner(const Inner& x) {
+            if(x.is_alloc) {
+                new(&this->alloc) Alloc(x.alloc);
+            }
+            else {
+                new(&this->direct) Direct(x.direct);
+            }
+        }
+        Inner(Inner&& x) {
+            if(x.is_alloc) {
+                new(&this->alloc) Alloc(::std::move(x.alloc));
+            }
+            else {
+                new(&this->direct) Direct(::std::move(x.direct));
+            }
+        }
+        Inner& operator=(Inner&& x) {
+            this->~Inner();
+            new(this) Inner(x);
+            return *this;
+        }
+        Inner& operator=(const Inner& x) {
+            this->~Inner();
+            new(this) Inner(x);
+            return *this;
+        }
+    } m_inner;
+
+public:
     Value();
     Value(::HIR::TypeRef ty);
+    ~Value() {
+    }
 
-    //Value(const Value&) = delete;
-    //Value(Value&&) = default;
-    //Value& operator=(const Value&) = delete;
-    //Value& operator=(Value&&) = default;
+    Value(const Value&) = default;
+    Value(Value&&) = default;
+    Value& operator=(const Value& x) = delete;
+    Value& operator=(Value&& x) = default;
 
     static Value with_size(size_t size, bool have_allocation);
     static Value new_fnptr(const ::HIR::Path& fn_path);
@@ -357,16 +403,49 @@ struct Value:
     static Value new_i32(int32_t v);
     static Value new_i64(int64_t v);
 
+    AllocationHandle borrow(::std::string loc) {
+        if( !m_inner.is_alloc )
+            create_allocation(/*loc*/);
+        return m_inner.alloc.alloc;
+    }
+    void ensure_allocation() {
+        if( !m_inner.is_alloc )
+            create_allocation();
+    }
     void create_allocation();
-    size_t size() const { return allocation ? allocation->size() : direct_data.size; }
-    const uint8_t* data_ptr() const { return allocation ? allocation->data_ptr() : direct_data.data; }
-          uint8_t* data_ptr()       { return allocation ? allocation->data_ptr() : direct_data.data; }
+    size_t size() const { return m_inner.is_alloc ? m_inner.alloc.alloc->size() : m_inner.direct.size; }
+    const uint8_t* data_ptr() const { return m_inner.is_alloc ? m_inner.alloc.alloc->data_ptr() : m_inner.direct.data; }
+          uint8_t* data_ptr()       { return m_inner.is_alloc ? m_inner.alloc.alloc->data_ptr() : m_inner.direct.data; }
+    const uint8_t* get_mask() const { return m_inner.is_alloc ? m_inner.alloc.alloc->m_mask.data() : m_inner.direct.mask; }
+          uint8_t* get_mask_mut()   { return m_inner.is_alloc ? m_inner.alloc.alloc->m_mask.data() : m_inner.direct.mask; }
 
     RelocationPtr get_relocation(size_t ofs) const override {
-        if( this->allocation && this->allocation )
-            return this->allocation->get_relocation(ofs);
+        if( m_inner.is_alloc )
+            return m_inner.alloc.alloc->get_relocation(ofs);
+        else if(ofs == 0)
+        {
+            return m_inner.direct.reloc_0;
+        }
         else
+        {
             return RelocationPtr();
+        }
+    }
+    void set_reloc(size_t ofs, size_t size, RelocationPtr p) /*override*/ {
+        if( m_inner.is_alloc )
+        {
+            m_inner.alloc.alloc->set_reloc(ofs, size, ::std::move(p));
+        }
+        else if( ofs == 0 /*&& size == POINTER_SIZE*/ )
+        {
+            m_inner.direct.reloc_0 = ::std::move(p);
+        }
+        else
+        {
+            this->create_allocation();
+            assert( m_inner.is_alloc );
+            m_inner.alloc.alloc->set_reloc(ofs, size, ::std::move(p));
+        }
     }
 
     void check_bytes_valid(size_t ofs, size_t size) const;
@@ -557,3 +636,7 @@ struct ValueRef:
     bool compare(size_t offset, const void* other, size_t other_len) const;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const ValueRef& v);
+//struct ValueRefMut:
+//    public ValueCommonWrite
+//{
+//};

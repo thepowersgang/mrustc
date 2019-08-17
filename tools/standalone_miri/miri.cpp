@@ -562,7 +562,8 @@ struct MirHelpers
             }
             if( const auto* s = this->thread.m_modtree.get_static_opt(*ce) ) {
                 ty = s->ty.wrapped(TypeWrapper::Ty::Borrow, 0);
-                return Value::new_pointer(ty, Allocation::PTR_BASE + 0, RelocationPtr::new_alloc(s->val.allocation));
+                LOG_ASSERT(s->val.m_inner.is_alloc, "Statics should already have an allocation assigned");
+                return Value::new_pointer(ty, Allocation::PTR_BASE + 0, RelocationPtr::new_alloc(s->val.m_inner.alloc.alloc));
             }
             LOG_ERROR("Constant::ItemAddr - " << *ce << " - not found");
             } break;
@@ -683,11 +684,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 if( !alloc && src_base_value.m_value )
                 {
                     LOG_DEBUG("Borrow - Creating allocation for " << src_base_value);
-                    if( !src_base_value.m_value->allocation )
-                    {
-                        src_base_value.m_value->create_allocation();
-                    }
-                    alloc = RelocationPtr::new_alloc( src_base_value.m_value->allocation );
+                    alloc = RelocationPtr::new_alloc( src_base_value.m_value->borrow("Borrow") );
                 }
                 if( alloc.is_alloc() )
                     LOG_DEBUG("Borrow - alloc=" << alloc << " (" << alloc.alloc() << ")");
@@ -1275,8 +1272,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     if( auto r = v_l.get_relocation(0) )
                     {
                         LOG_DEBUG("- Restore relocation " << r);
-                        new_val.create_allocation();
-                        new_val.allocation->set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), r);
+                        new_val.set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), r);
                     }
 
                     break;
@@ -1321,8 +1317,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                     val_l.get().write_to_value(new_val, 0);
                     if( new_val_reloc )
                     {
-                        new_val.create_allocation();
-                        new_val.allocation->set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), ::std::move(new_val_reloc));
+                        new_val.set_reloc(0, ::std::min(POINTER_SIZE, new_val.size()), ::std::move(new_val_reloc));
                     }
                     break;
                 }
@@ -1518,15 +1513,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 auto v = state.get_value_and_type(se.slot, ty);
 
                 // - Take a pointer to the inner
-                auto alloc = v.m_alloc;
-                if( !alloc )
-                {
-                    if( !v.m_value->allocation )
-                    {
-                        v.m_value->create_allocation();
-                    }
-                    alloc = RelocationPtr::new_alloc( v.m_value->allocation );
-                }
+                auto alloc = (v.m_value ? RelocationPtr::new_alloc(v.m_value->borrow("drop")) : v.m_alloc);
                 size_t ofs = v.m_offset;
                 //LOG_ASSERT(ty.get_meta_type() == RawType::Unreachable, "Dropping an unsized type with Statement::Drop - " << ty);
 
@@ -1587,6 +1574,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             auto v = state.get_value_and_type(te.val, ty);
             LOG_ASSERT(ty.get_wrapper() == nullptr, "Matching on wrapped value - " << ty);
             LOG_ASSERT(ty.inner_type == RawType::Composite, "Matching on non-coposite - " << ty);
+            LOG_DEBUG("Switch v = " << v);
 
             // TODO: Convert the variant list into something that makes it easier to switch on.
             size_t found_target = SIZE_MAX;
@@ -1615,6 +1603,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         continue ;
                     if( ::std::memcmp(tmp.data(), var.tag_data.data(), tmp.size()) == 0 )
                     {
+                        LOG_DEBUG("Explicit match " << i);
                         found_target = i;
                         break ;
                     }
@@ -1623,6 +1612,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
 
             if( found_target == SIZE_MAX )
             {
+                LOG_DEBUG("Default match " << default_target);
                 found_target = default_target;
             }
             if( found_target == SIZE_MAX )
@@ -1825,7 +1815,8 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
             assert( blk.terminator.is_Call() );
             const auto& te = blk.terminator.as_Call();
 
-            LOG_DEBUG(te.ret_val << " = " << res_v << " (resume " << cur_frame.fcn->my_path << ")");
+            LOG_DEBUG("Resume " << cur_frame.fcn->my_path);
+            LOG_DEBUG(te.ret_val << " = " << res_v);
 
             cur_frame.stmt_idx = 0;
             // If a panic is in progress (in thread state), take the panic block instead
@@ -1967,6 +1958,8 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto size = args.at(0).read_usize(0);
         auto align = args.at(1).read_usize(0);
         LOG_DEBUG(link_name << "(size=" << size << ", align=" << align << "): name=" << alloc_name);
+
+        // TODO: Use the alignment when making an allocation?
         auto alloc = Allocation::new_alloc(size, ::std::move(alloc_name));
         LOG_TRACE("- alloc=" << alloc << " (" << alloc->size() << " bytes)");
         auto rty = ::HIR::TypeRef(RawType::Unit).wrap( TypeWrapper::Ty::Pointer, 0 );
@@ -1976,12 +1969,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
             alloc->mark_bytes_valid(0, size);
         }
 
-        // TODO: Use the alignment when making an allocation?
         rv = Value::new_pointer(rty, Allocation::PTR_BASE, RelocationPtr::new_alloc(::std::move(alloc)));
     }
     else if( link_name == "__rust_reallocate" || link_name == "__rust_realloc" )
     {
-        LOG_ASSERT(args.at(0).allocation, "__rust_reallocate first argument doesn't have an allocation");
         auto alloc_ptr = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
         auto oldsize = args.at(1).read_usize(0);
@@ -2001,7 +1992,6 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "__rust_deallocate" || link_name == "__rust_dealloc" )
     {
-        LOG_ASSERT(args.at(0).allocation, "__rust_deallocate first argument doesn't have an allocation");
         auto alloc_ptr = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
         LOG_ASSERT(ptr_ofs == Allocation::PTR_BASE, "__rust_deallocate with offset pointer");
@@ -2350,10 +2340,9 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         {
             const auto& e = m_thread.tls_values[key];
             rv = Value::new_usize(e.first);
-            rv.create_allocation();
             if( e.second )
             {
-                rv.allocation->set_reloc(0, POINTER_SIZE, e.second);
+                rv.set_reloc(0, POINTER_SIZE, e.second);
             }
         }
         else
@@ -2490,11 +2479,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const void* ret = memchr(ptr, c, n);
 
         rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.create_allocation();
         if( ret )
         {
-            rv.write_usize(0, args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) ));
-            rv.allocation->relocations.push_back({ 0, ptr_alloc });
+            auto rv_ofs = args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) );
+            rv.write_ptr(0, rv_ofs, ptr_alloc);
         }
         else
         {
@@ -2511,11 +2499,10 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         const void* ret = memrchr(ptr, c, n);
 
         rv = Value(::HIR::TypeRef(RawType::USize));
-        rv.create_allocation();
         if( ret )
         {
-            rv.write_usize(0, args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) ));
-            rv.allocation->relocations.push_back({ 0, ptr_alloc });
+            auto rv_ofs = args.at(0).read_usize(0) + ( static_cast<const uint8_t*>(ret) - static_cast<const uint8_t*>(ptr) );
+            rv.write_ptr(0, rv_ofs, ptr_alloc);
         }
         else
         {

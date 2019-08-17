@@ -152,8 +152,7 @@ bool Parser::parse_one()
         Static s;
         s.val = Value(ty);
         // - Statics need to always have an allocation (for references)
-        if( !s.val.allocation )
-            s.val.create_allocation();
+        s.val.ensure_allocation();
         s.val.write_bytes(0, data.data(), data.size());
         s.ty = ty;
 
@@ -173,14 +172,13 @@ bool Parser::parse_one()
                     auto reloc_str = ::std::move(lex.consume().strval);
 
                     auto a = Allocation::new_alloc( reloc_str.size(), FMT_STRING("static " << p) );
-                    //a.alloc().set_tag();
                     a->write_bytes(0, reloc_str.data(), reloc_str.size());
-                    s.val.allocation->relocations.push_back({ ofs, /*size,*/ RelocationPtr::new_alloc(::std::move(a)) });
+                    s.val.set_reloc( ofs, size, RelocationPtr::new_alloc(::std::move(a)) );
                 }
                 else if( lex.next() == "::" || lex.next() == "<" )
                 {
                     auto reloc_path = parse_path();
-                    s.val.allocation->relocations.push_back({ ofs, /*size,*/ RelocationPtr::new_fcn(reloc_path) });
+                    s.val.set_reloc( ofs, size, RelocationPtr::new_fcn(reloc_path) );
                 }
                 else
                 {
