@@ -59,6 +59,7 @@ namespace
             bool prev_was_num = was_num; was_num = false;
             switch(w.tag())
             {
+            case ::MIR::LValue::Wrapper::TAGDEAD:   throw "";
             TU_ARM(w, Deref, e)
                 os << ")";
                 break;
@@ -190,6 +191,20 @@ namespace
                 m_of << "\t\tRETURN\n";
                 m_of << "\t}\n";
                 m_of << "}\n";
+
+                {
+                    // Bind `panic_impl` lang item to the item tagged with `panic_implementation`
+                    const auto& panic_impl_path = m_crate.get_lang_item_path(Span(), "mrustc-panic_implementation");
+                    m_of << "fn ::panic_impl#(usize): u32 = \"panic_impl\":\"Rust\" {\n";
+                    m_of << "\t0: {\n";
+                    m_of << "\t\tCALL RETURN = " << panic_impl_path << "(arg0) goto 1 else 2\n";
+                    m_of << "\t}\n";
+                    m_of << "\t1: { RETURN }\n";
+                    m_of << "\t2: { DIVERGE }\n";
+                    m_of << "}\n";
+
+                    // TODO: OOM impl?
+                }
             }
 
             m_of.flush();
