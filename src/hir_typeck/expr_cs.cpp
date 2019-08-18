@@ -2284,17 +2284,17 @@ namespace {
                     // TODO: In some rare cases, this ivar could be completely
                     // unrestricted. If in fallback mode
                     const auto& dst_inner = this->context.get_type(*e.inner);
-                    if(this->m_is_fallback)
+                    if( dst_inner.m_data.is_Infer() )
                     {
-                        if( dst_inner.m_data.is_Infer() )
+                        if(this->m_is_fallback)
                         {
                             DEBUG("- Fallback mode, assume inner types are equal");
                             this->context.equate_types(sp, *e.inner, *s_e.inner);
                         }
-                    }
-                    else if( dst_inner.m_data.is_Infer() )
-                    {
-                        return ;
+                        else
+                        {
+                            return ;
+                        }
                     }
                     else
                     {
@@ -8468,51 +8468,6 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
         } // `if peek_changed` (ivar possibilities)
 
-        if( !context.m_ivars.peek_changed() )
-        {
-            DEBUG("--- Node revisits (fallback)");
-            for( auto it = context.to_visit.begin(); it != context.to_visit.end(); )
-            {
-                ::HIR::ExprNode& node = **it;
-                ExprVisitor_Revisit visitor { context, true };
-                DEBUG("> " << &node << " " << typeid(node).name() << " -> " << context.m_ivars.fmt_type(node.m_res_type));
-                node.visit( visitor );
-                //  - If the node is completed, remove it
-                if( visitor.node_completed() ) {
-                    DEBUG("- Completed " << &node << " - " << typeid(node).name());
-                    it = context.to_visit.erase(it);
-                }
-                else {
-                    ++ it;
-                }
-            }
-            #if 0
-            for( auto it = context.adv_revisits.begin(); it != context.adv_revisits.end(); )
-            {
-                auto& ent = **it;
-                if( ent.revisit(context, true) ) {
-                    it = context.adv_revisits.erase(it);
-                }
-                else {
-                    ++ it;
-                }
-            }
-            #endif
-        } // `if peek_changed` (node revisits)
-
-        if( !context.m_ivars.peek_changed() )
-        {
-            size_t  len = context.adv_revisits.size();
-            for(size_t i = 0; i < len; i ++)
-            {
-                auto& ent = *context.adv_revisits[i];
-                ent.revisit(context, /*is_fallback=*/true);
-                if( context.m_ivars.peek_changed() ) {
-                    break;
-                }
-            }
-        }
-
 #if 0
         if( !context.m_ivars.peek_changed() )
         {
@@ -8597,6 +8552,52 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             }
 #endif
         } // `if peek_changed` (ivar possibilities #2)
+
+        if( !context.m_ivars.peek_changed() )
+        {
+            DEBUG("--- Node revisits (fallback)");
+            for( auto it = context.to_visit.begin(); it != context.to_visit.end(); )
+            {
+                ::HIR::ExprNode& node = **it;
+                ExprVisitor_Revisit visitor { context, true };
+                DEBUG("> " << &node << " " << typeid(node).name() << " -> " << context.m_ivars.fmt_type(node.m_res_type));
+                node.visit( visitor );
+                //  - If the node is completed, remove it
+                if( visitor.node_completed() ) {
+                    DEBUG("- Completed " << &node << " - " << typeid(node).name());
+                    it = context.to_visit.erase(it);
+                }
+                else {
+                    ++ it;
+                }
+            }
+            #if 0
+            for( auto it = context.adv_revisits.begin(); it != context.adv_revisits.end(); )
+            {
+                auto& ent = **it;
+                if( ent.revisit(context, true) ) {
+                    it = context.adv_revisits.erase(it);
+                }
+                else {
+                    ++ it;
+                }
+            }
+            #endif
+        } // `if peek_changed` (node revisits)
+
+        if( !context.m_ivars.peek_changed() )
+        {
+            size_t  len = context.adv_revisits.size();
+            for(size_t i = 0; i < len; i ++)
+            {
+                auto& ent = *context.adv_revisits[i];
+                ent.revisit(context, /*is_fallback=*/true);
+                if( context.m_ivars.peek_changed() ) {
+                    break;
+                }
+            }
+        }
+
 #if 1
         if( !context.m_ivars.peek_changed() )
         {
