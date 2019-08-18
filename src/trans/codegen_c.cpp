@@ -3819,6 +3819,11 @@ namespace {
                 {
                     omit_assign = true;
                 }
+
+                if( this->type_is_bad_zst( m_mir_res->get_lvalue_type(tmp, e.ret_val) ) )
+                {
+                    omit_assign = true;
+                }
             }
 
             TU_MATCHA( (e.fcn), (e2),
