@@ -2964,9 +2964,9 @@ namespace {
 
                 ::HIR::TypeRef  tmp;
                 const auto& ty = mir_res.get_lvalue_type(tmp, e.dst);
-                if( e.dst.is_Deref() && this->type_is_bad_zst(ty) )
+                if( /*(e.dst.is_Deref() || e.dst.is_Field()) &&*/ this->type_is_bad_zst(ty) )
                 {
-                    m_of << "/* ZST deref */";
+                    m_of << "/* ZST assign */\n";
                     break;
                 }
 
