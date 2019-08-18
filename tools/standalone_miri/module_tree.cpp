@@ -1229,7 +1229,14 @@ RawType Parser::parse_core_type()
         {
             ret_ty = ::HIR::TypeRef::unit();
         }
-        return ::HIR::TypeRef(RawType::Function);
+        auto ft = FunctionType {
+            is_unsafe,
+            ::std::move(abi),
+            ::std::move(args),
+            ::std::move(ret_ty)
+            };
+        const auto* ft_p = &*tree.function_types.insert(::std::move(ft)).first;
+        return ::HIR::TypeRef(ft_p);
         // TODO: Use abi/ret_ty/args as part of that
     }
     else if( lex.consume_if("dyn") )
@@ -1294,7 +1301,7 @@ RawType Parser::parse_core_type()
                 vtable_path.m_params.tys.push_back( ::std::move(atys[0].second) );
             }
             // - TODO: Associated types? (Need to ensure ordering is correct)
-            rv.composite_type = this->get_composite( ::std::move(vtable_path) );
+            rv.ptr.composite_type = this->get_composite( ::std::move(vtable_path) );
         }
         else
         {

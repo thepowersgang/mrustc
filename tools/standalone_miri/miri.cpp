@@ -909,7 +909,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         case RawType::Unit:
                             LOG_FATAL("Cast of unit");
                         case RawType::Composite: {
-                            const auto& dt = *src_ty.composite_type;
+                            const auto& dt = src_ty.composite_type();
                             if( dt.variants.size() == 0 ) {
                                 LOG_FATAL("Cast of composite - " << src_ty);
                             }
@@ -1418,10 +1418,18 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 state.get_value_and_type(se.dst, dst_ty);
                 new_val = Value(dst_ty);
 
-                for(size_t i = 0; i < re.vals.size(); i++)
+                if( dst_ty.inner_type == RawType::Unit )
                 {
-                    auto fld_ofs = dst_ty.composite_type->fields.at(i).first;
-                    new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                    LOG_ASSERT(re.vals.size() == 0 , "");
+                }
+                else
+                {
+                    LOG_ASSERT(dst_ty.inner_type == RawType::Composite, dst_ty);
+                    for(size_t i = 0; i < re.vals.size(); i++)
+                    {
+                        auto fld_ofs = dst_ty.composite_type().fields.at(i).first;
+                        new_val.write_value(fld_ofs, state.param_to_value(re.vals[i]));
+                    }
                 }
                 } break;
             TU_ARM(se.src, Array, re) {
@@ -1489,7 +1497,8 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                 ::HIR::TypeRef  dst_ty;
                 state.get_value_and_type(se.dst, dst_ty);
                 new_val = Value(dst_ty);
-                LOG_ASSERT(dst_ty.composite_type == &data_ty, "Destination type of RValue::Struct isn't the same as the input");
+                LOG_ASSERT(dst_ty.inner_type == RawType::Composite, dst_ty);
+                LOG_ASSERT(dst_ty.ptr.composite_type == &data_ty, "Destination type of RValue::Struct isn't the same as the input");
 
                 for(size_t i = 0; i < re.vals.size(); i++)
                 {
@@ -1579,9 +1588,9 @@ bool InterpreterThread::step_one(Value& out_thread_result)
             // TODO: Convert the variant list into something that makes it easier to switch on.
             size_t found_target = SIZE_MAX;
             size_t default_target = SIZE_MAX;
-            for(size_t i = 0; i < ty.composite_type->variants.size(); i ++)
+            for(size_t i = 0; i < ty.composite_type().variants.size(); i ++)
             {
-                const auto& var = ty.composite_type->variants[i];
+                const auto& var = ty.composite_type().variants[i];
                 if( var.tag_data.size() == 0 )
                 {
                     // Save as the default, error for multiple defaults
@@ -2589,10 +2598,10 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
 
         size_t fallback = SIZE_MAX;
         size_t found_index = SIZE_MAX;
-        assert(ty.composite_type);
-        for(size_t i = 0; i < ty.composite_type->variants.size(); i ++)
+        LOG_ASSERT(ty.inner_type == RawType::Composite, "discriminant_value " << ty);
+        for(size_t i = 0; i < ty.composite_type().variants.size(); i ++)
         {
-            const auto& var = ty.composite_type->variants[i];
+            const auto& var = ty.composite_type().variants[i];
             if( var.tag_data.size() == 0 )
             {
                 // Only seen in Option<NonNull>
@@ -3135,10 +3144,10 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
                     m_stack.insert( m_stack.end() - 1, StackFrame::make_wrapper([this,pty,ity,ptr_reloc,count, i,ofs](Value& rv, Value drop_rv) mutable {
                         assert(i < count);
                         i ++;
+                        ofs += ity.get_size();
                         if( i < count )
                         {
                             auto ptr = Value::new_pointer(pty, ofs, ptr_reloc);
-                            ofs += ity.get_size();
                             assert(!drop_value(ptr, ity));
                             return false;
                         }
@@ -3162,12 +3171,12 @@ bool InterpreterThread::drop_value(Value ptr, const ::HIR::TypeRef& ty, bool is_
     {
         if( ty.inner_type == RawType::Composite )
         {
-            if( ty.composite_type->drop_glue != ::HIR::Path() )
+            if( ty.composite_type().drop_glue != ::HIR::Path() )
             {
                 LOG_DEBUG("Drop - " << ty);
 
                 Value   tmp;
-                return this->call_path(tmp, ty.composite_type->drop_glue, { ptr });
+                return this->call_path(tmp, ty.composite_type().drop_glue, { ptr });
             }
             else
             {

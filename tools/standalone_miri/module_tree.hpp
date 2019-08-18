@@ -49,6 +49,8 @@ class ModuleTree
     // Hack: Tuples are stored as `::""::<A,B,C,...>`
     ::std::map<::HIR::GenericPath, ::std::unique_ptr<DataType>>  data_types;
 
+    ::std::set<FunctionType>    function_types; // note: insertion doesn't invaliate pointers.
+
     ::std::map<::std::string, const Function*> ext_functions;
 public:
     ModuleTree();
@@ -94,4 +96,22 @@ struct DataType
         ::std::string tag_data;
     };
     ::std::vector<VariantValue> variants;
+};
+
+struct FunctionType
+{
+    bool    unsafe;
+    ::std::string   abi;
+    ::std::vector<HIR::TypeRef> args;
+    HIR::TypeRef    ret;
+
+    bool operator<(const FunctionType& x) const {
+        #define _(f)    if(f != x.f) return f < x.f
+        _(unsafe);
+        _(abi);
+        _(args);
+        _(ret);
+        #undef _
+        return false;
+    }
 };

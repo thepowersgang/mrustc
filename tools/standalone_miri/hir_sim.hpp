@@ -28,6 +28,7 @@ enum Ordering
 #endif
 
 struct DataType;
+struct FunctionType;
 
 enum class RawType
 {
@@ -77,7 +78,6 @@ struct TypeWrapper
     }
 };
 
-
 namespace HIR {
 
     enum class BorrowType
@@ -97,24 +97,35 @@ namespace HIR {
         // Top to bottom list of wrappers (first entry is the outermost wrapper)
         ::std::vector<TypeWrapper>  wrappers;
         RawType inner_type = RawType::Unit;
-        const DataType* composite_type = nullptr;
+        union {
+            const DataType* composite_type;
+            const FunctionType* function_type;
+        } ptr;
 
         TypeRef()
         {
+            ptr.composite_type = nullptr;
         }
 
         explicit TypeRef(const DataType* dt):
-            inner_type(RawType::Composite),
-            composite_type(dt)
+            inner_type(RawType::Composite)
         {
+            ptr.composite_type = dt;
+        }
+        explicit TypeRef(const FunctionType* fp):
+            inner_type(RawType::Function)
+        {
+            ptr.function_type = fp;
         }
         explicit TypeRef(RawType rt):
             inner_type(rt)
         {
+            ptr.composite_type = nullptr;
         }
         explicit TypeRef(CoreType ct):
             inner_type(ct.raw_type)
         {
+            ptr.composite_type = nullptr;
         }
         static TypeRef diverge() {
             TypeRef rv;
@@ -165,6 +176,17 @@ namespace HIR {
         // Get the offset and type of a field (recursing using `other_idx`)
         size_t get_field_ofs(size_t idx, const ::std::vector<size_t>& other_idx,  TypeRef& ty) const;
 
+        const DataType& composite_type() const {
+            assert(inner_type == RawType::Composite || inner_type == RawType::TraitObject);
+            assert(ptr.composite_type);
+            return *ptr.composite_type;
+        }
+        const FunctionType& function_type() const {
+            assert(inner_type == RawType::Function);
+            assert(ptr.function_type);
+            return *ptr.function_type;
+        }
+
         bool operator==(const RawType& x) const {
             if( this->wrappers.size() != 0 )
                 return false;
@@ -176,7 +198,7 @@ namespace HIR {
         Ordering ord(const TypeRef& x) const {
             __ORD(wrappers);
             __ORD_C(int, inner_type);
-            __ORD_C(uintptr_t, composite_type);
+            __ORD_C(uintptr_t, ptr.composite_type); // pointer comparison only
             return OrdEqual;
         }
         bool operator==(const TypeRef& x) const {
