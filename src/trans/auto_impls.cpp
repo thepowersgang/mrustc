@@ -77,7 +77,7 @@ namespace {
 
             // Stub panic handling (TODO: Make this iterate `values` and drop all of them)
             ::MIR::BasicBlock   panic_bb;
-            bb.terminator = ::MIR::Terminator::make_Diverge({});
+            panic_bb.terminator = ::MIR::Terminator::make_Diverge({});
             mir_fcn.blocks.push_back(::std::move( panic_bb ));
 
             // Save the output of the `clone` call
