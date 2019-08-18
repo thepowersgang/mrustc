@@ -20,6 +20,7 @@ DebugSink::~DebugSink()
 {
     m_inner << "\n";
     m_inner.flush();
+    m_inner.flags({});
     if( m_stderr_too )
     {
         ::std::cerr << ::std::endl;

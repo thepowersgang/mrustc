@@ -41,6 +41,9 @@ class InterpreterThread
     friend struct MirHelpers;
     struct StackFrame
     {
+        static unsigned s_next_frame_index;
+        unsigned    frame_index;
+
         ::std::function<bool(Value&,Value)> cb;
         const Function* fcn;
         Value ret;

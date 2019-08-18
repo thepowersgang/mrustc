@@ -616,7 +616,7 @@ InterpreterThread::~InterpreterThread()
     for(size_t i = 0; i < m_stack.size(); i++)
     {
         const auto& frame = m_stack[m_stack.size() - 1 - i];
-        ::std::cout << "#" << i << ": ";
+        ::std::cout << "#" << i << ": F" << frame.frame_index << " ";
         if( frame.cb )
         {
             ::std::cout << "WRAPPER";
@@ -650,7 +650,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     TRACE_FUNCTION_R("#" << instr_idx << " " << cur_frame.fcn->my_path << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx, "#" << instr_idx);
     const auto& bb = cur_frame.fcn->m_mir.blocks.at( cur_frame.bb_idx );
 
-    const size_t    MAX_STACK_DEPTH = 60;
+    const size_t    MAX_STACK_DEPTH = 90;
     if( this->m_stack.size() > MAX_STACK_DEPTH )
     {
         LOG_ERROR("Maximum stack depth of " << MAX_STACK_DEPTH << " exceeded");
@@ -661,7 +661,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     if( cur_frame.stmt_idx < bb.statements.size() )
     {
         const auto& stmt = bb.statements[cur_frame.stmt_idx];
-        LOG_DEBUG("=== BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx << ": " << stmt);
+        LOG_DEBUG("=== F" << cur_frame.frame_index << " BB" << cur_frame.bb_idx << "/" << cur_frame.stmt_idx << ": " << stmt);
         switch(stmt.tag())
         {
         case ::MIR::Statement::TAGDEAD: throw "";
@@ -1098,7 +1098,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                                 res = 1;
                                 break;
                             default:
-                                LOG_FATAL("Unable to compare " << v_l << " and " << v_r << " - different relocations");
+                                LOG_FATAL("Unable to compare " << v_l << " and " << v_r << " - different relocations (" << reloc_l << " != " << reloc_r << ")");
                             }
                             // - Equality will always fail
                             // - Ordering is a bug
@@ -1113,6 +1113,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                         // Only one side
                         // - Ordering is a bug
                         // - Equalities are allowed, but only for `0`?
+                        //  > TODO: If the side with no reloation doesn't have value `0` then error?
                         switch(re.op)
                         {
                         case ::MIR::eBinOp::EQ:
@@ -1120,7 +1121,12 @@ bool InterpreterThread::step_one(Value& out_thread_result)
                             // - Allow success, as addresses can be masked down
                             break;
                         default:
-                            LOG_FATAL("Unable to compare " << v_l << " and " << v_r << " - different relocations");
+                            if( reloc_l )
+                                res = 1;
+                            else// if( reloc_r )
+                                res = -1;
+                            //LOG_FATAL("Unable to order " << v_l << " and " << v_r << " - different relocations");
+                            break;
                         }
                     }
                     else
@@ -1554,7 +1560,7 @@ bool InterpreterThread::step_one(Value& out_thread_result)
     }
     else
     {
-        LOG_DEBUG("=== BB" << cur_frame.bb_idx << "/TERM: " << bb.terminator);
+        LOG_DEBUG("=== F" << cur_frame.frame_index << "  BB" << cur_frame.bb_idx << "/TERM: " << bb.terminator);
         switch(bb.terminator.tag())
         {
         case ::MIR::Terminator::TAGDEAD:    throw "";
@@ -1825,7 +1831,7 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
             const auto& te = blk.terminator.as_Call();
 
             LOG_DEBUG("Resume " << cur_frame.fcn->my_path);
-            LOG_DEBUG(te.ret_val << " = " << res_v);
+            LOG_DEBUG("F" << cur_frame.frame_index << " " << te.ret_val << " = " << res_v);
 
             cur_frame.stmt_idx = 0;
             // If a panic is in progress (in thread state), take the panic block instead
@@ -1846,7 +1852,9 @@ bool InterpreterThread::pop_stack(Value& out_thread_result)
     }
 }
 
+unsigned InterpreterThread::StackFrame::s_next_frame_index = 0;
 InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Value> args):
+    frame_index(s_next_frame_index++),
     fcn(&fcn),
     ret( fcn.ret_ty == RawType::Unreachable ? Value() : Value(fcn.ret_ty) ),
     args( ::std::move(args) ),
@@ -1855,7 +1863,7 @@ InterpreterThread::StackFrame::StackFrame(const Function& fcn, ::std::vector<Val
     bb_idx(0),
     stmt_idx(0)
 {
-    LOG_DEBUG("- Initializing " << fcn.m_mir.locals.size() << " locals");
+    LOG_DEBUG("F" << frame_index << " - Initializing " << fcn.m_mir.locals.size() << " locals");
     this->locals.reserve( fcn.m_mir.locals.size() );
     for(const auto& ty : fcn.m_mir.locals)
     {
@@ -2747,11 +2755,13 @@ bool InterpreterThread::call_intrinsic(Value& rv, const RcString& name, const ::
         auto ptr_alloc = args.at(0).get_relocation(0);
         auto ptr_ofs = args.at(0).read_usize(0);
         LOG_ASSERT(ptr_ofs >= Allocation::PTR_BASE, "`offset` with invalid pointer - " << args.at(0));
-        ptr_ofs -= Allocation::PTR_BASE;
         auto& ofs_val = args.at(1);
 
         auto delta_counts = ofs_val.read_usize(0);
-        auto new_ofs = ptr_ofs + delta_counts * ty_params.tys.at(0).get_size();
+        auto ty_size = ty_params.tys.at(0).get_size();
+        LOG_DEBUG("\"offset\": 0x" << ::std::hex << ptr_ofs << " + 0x" << delta_counts << " * 0x" << ty_size);
+        ptr_ofs -= Allocation::PTR_BASE;
+        auto new_ofs = ptr_ofs + delta_counts * ty_size;
         if(POINTER_SIZE != 8) {
             new_ofs &= 0xFFFFFFFF;
         }
