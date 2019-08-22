@@ -23,6 +23,7 @@ public:
     Expr(ExprNode* node);
     Expr();
 
+    operator bool() const { return is_valid(); }
     bool is_valid() const { return m_node.get() != nullptr; }
     const ExprNode& node() const { assert(m_node.get()); return *m_node; }
           ExprNode& node()       { assert(m_node.get()); return *m_node; }

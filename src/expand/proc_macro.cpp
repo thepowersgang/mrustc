@@ -231,6 +231,7 @@ private:
 
 ProcMacroInv ProcMacro_Invoke_int(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path)
 {
+    TRACE_FUNCTION_F(mac_path);
     // 1. Locate macro in HIR list
     const auto& crate_name = mac_path.front();
     const auto& ext_crate = crate.m_extern_crates.at(crate_name);
@@ -708,12 +709,15 @@ namespace {
             {
                 this->visit_attrs(v.m_attrs);
                 m_pmi.send_ident(v.m_name.c_str());
-                TU_MATCH(AST::EnumVariantData, (v.m_data), (e),
-                (Value,
-                    m_pmi.send_symbol("=");
-                    this->visit_nodes(e.m_value);
-                    ),
-                (Tuple,
+                TU_MATCH_HDRA( (v.m_data), { )
+                TU_ARMA(Value, e) {
+                    if( e.m_value )
+                    {
+                        m_pmi.send_symbol("=");
+                        this->visit_nodes(e.m_value);
+                    }
+                    }
+                TU_ARMA(Tuple, e) {
                     m_pmi.send_symbol("(");
                     for(const auto& st : e.m_sub_types)
                     {
@@ -722,8 +726,8 @@ namespace {
                         m_pmi.send_symbol(",");
                     }
                     m_pmi.send_symbol(")");
-                    ),
-                (Struct,
+                    }
+                TU_ARMA(Struct, e) {
                     m_pmi.send_symbol("{");
                     for(const auto& f : e.m_fields)
                     {
@@ -734,8 +738,8 @@ namespace {
                         m_pmi.send_symbol(",");
                     }
                     m_pmi.send_symbol("}");
-                    )
-                )
+                    }
+                }
                 m_pmi.send_symbol(",");
             }
             m_pmi.send_symbol("}");
@@ -817,6 +821,7 @@ ProcMacroInv::ProcMacroInv(const Span& sp, const char* executable, const ::HIR::
     posix_spawn_file_actions_addclose(&file_actions, stdout_pipes[1]);
 
     char*   argv[3] = { const_cast<char*>(executable), const_cast<char*>(proc_macro_desc.name.c_str()), nullptr };
+    DEBUG(argv[0] << " " << argv[1]);
     //char*   envp[] = { nullptr };
     int rv = posix_spawn(&this->child_pid, executable, &file_actions, nullptr, argv, environ);
     if( rv != 0 )
