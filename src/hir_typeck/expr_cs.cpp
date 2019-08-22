@@ -5813,6 +5813,12 @@ namespace {
                     // Literal infer, keep going (but remember how many times we dereferenced?)
                 }
 
+                if( TU_TEST1(out_ty.m_data, Path, .binding.is_Unbound()) )
+                {
+                    DEBUG("Src derefed to unbound type (" << out_ty << "), return Unknown");
+                    return CoerceResult::Unknown;
+                }
+
                 types.push_back( out_ty.clone() );
 
                 // Types aren't equal
@@ -6089,8 +6095,10 @@ namespace {
         // If the destination is an Unbound path, return Unknown
         if( TU_TEST1(dst.m_data, Path, .binding.is_Unbound()) )
         {
+            DEBUG("Unbound destination");
             return CoerceResult::Unknown;
         }
+
 
         DEBUG("Reached end of check_unsize_tys, return Equality");
         // TODO: Determine if this unsizing could ever happen.
