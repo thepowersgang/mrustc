@@ -1878,6 +1878,11 @@ bool MIR_Optimise_DeTemporary_Borrows(::MIR::TypeResolve& state, ::MIR::Function
             //DEBUG(this_var << " - Multi-assign, or use-by-value");
             continue ;
         }
+        if( slot.n_deref_read == 0 )
+        {
+            //DEBUG(this_var << " - Not used");
+            continue ;
+        }
 
         // Check that the source was a borrow statement
         auto& src_bb = fcn.blocks[slot.set_loc.bb_idx];
