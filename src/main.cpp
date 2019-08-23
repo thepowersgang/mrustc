@@ -729,9 +729,10 @@ int main(int argc, char *argv[])
             // Needs: An executable (the actual macro handler), metadata (for `extern crate foo;`)
 
             // 1. Generate code for the plugin itself
-            TransList items = CompilePhase<TransList>("Trans Enumerate", [&]() { return Trans_Enumerate_Main(*hir_crate); });
-            CompilePhaseV("Trans Monomorph", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
-            CompilePhaseV("MIR Optimise Inline", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
+            TransList items = CompilePhase<TransList>("Trans Enumerate PM", [&]() { return Trans_Enumerate_Main(*hir_crate); });
+            CompilePhaseV("Trans Auto Impls PM", [&]() { Trans_AutoImpls(*hir_crate, items); });
+            CompilePhaseV("Trans Monomorph PM", [&]() { Trans_Monomorphise_List(*hir_crate, items); });
+            CompilePhaseV("MIR Optimise Inline PM", [&]() { MIR_OptimiseCrate_Inlining(*hir_crate, items); });
             // - Save a very basic HIR dump, making sure that there's no lang items in it (e.g. `mrustc-main`)
             CompilePhaseV("HIR Serialise", [&]() {
                 auto saved_lang_items = ::std::move(hir_crate->m_lang_items); hir_crate->m_lang_items.clear();
