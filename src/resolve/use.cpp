@@ -751,6 +751,14 @@ namespace {
         {
             rv.macro = ::AST::PathBinding_Macro::make_MacroRules({ &ec, &*it->second });
         }
+
+        {
+            auto it = ::std::find_if( ec.m_hir->m_proc_macros.begin(), ec.m_hir->m_proc_macros.end(), [&](const auto& pm){ return pm.name == name;} );
+            if( it != ec.m_hir->m_proc_macros.end() )
+            {
+                rv.macro = ::AST::PathBinding_Macro::make_ProcMacro({ &ec, name });
+            }
+        }
     }
     return rv;
 }

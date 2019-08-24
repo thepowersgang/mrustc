@@ -315,6 +315,10 @@
             serialise_vec(ig.non_named);
             serialise_vec(ig.generic);
         }
+        void serialise(const ::HIR::Crate::MacroImport& e)
+        {
+            serialise(e.path);
+        }
 
         void serialise_crate(const ::HIR::Crate& crate)
         {
@@ -326,6 +330,7 @@
             serialise_pathmap(crate.m_marker_impls);
 
             serialise_strmap(crate.m_exported_macros);
+            serialise_strmap(crate.m_proc_macro_reexports);
             {
                 decltype(crate.m_lang_items)    lang_items_filtered;
                 for(const auto& ent : crate.m_lang_items)

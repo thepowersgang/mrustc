@@ -65,6 +65,11 @@ class CMacroUseHandler:
                     mod.m_macro_imports.push_back(AST::Module::MacroImport{ false, p.path.m_components.back(), p.path.m_components, nullptr });
                     mod.m_macro_imports.back().path.insert( mod.m_macro_imports.back().path.begin(), p.path.m_crate_name );
                 }
+                for(const auto& p : ec.m_hir->m_proc_macro_reexports)
+                {
+                    mod.m_macro_imports.push_back(AST::Module::MacroImport{ /*is_pub=*/ false, p.first, p.second.path.m_components, nullptr });
+                    mod.m_macro_imports.back().path.insert( mod.m_macro_imports.back().path.begin(), p.second.path.m_crate_name );
+                }
             }
         )
         else TU_IFLET( ::AST::Item, i, Module, submod,

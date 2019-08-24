@@ -456,6 +456,13 @@ void Resolve_Index_Module_Wildcard__use_stmt(AST::Crate& crate, AST::Module& dst
         DEBUG("Glob crate " << i_data.path);
         const auto& hmod = e.crate_->m_hir->m_root_module;
         Resolve_Index_Module_Wildcard__glob_in_hir_mod(sp, crate, dst_mod, hmod, i_data.path, is_pub);
+        // TODO: Macros too
+        for(const auto& pm : e.crate_->m_hir->m_proc_macros)
+        {
+            dst_mod.m_macro_imports.push_back({
+                is_pub, pm.name, make_vec2(e.crate_->m_hir->m_crate_name, pm.name), nullptr
+                });
+        }
     )
     else TU_IFLET(::AST::PathBinding_Type, b, Module, e,
         DEBUG("Glob mod " << i_data.path);

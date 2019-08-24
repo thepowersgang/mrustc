@@ -38,6 +38,7 @@ class Static;
 
 class ValueItem;
 class TypeItem;
+class MacroItem;
 
 class ItemPath;
 
@@ -382,6 +383,17 @@ public:
     {}
 };
 
+class ProcMacro
+{
+public:
+    // Name of the macro
+    RcString   name;
+    // Path to the handler
+    ::HIR::SimplePath   path;
+    // A list of attributes to hand to the handler
+    ::std::vector<::std::string>    attributes;
+};
+
 class Module
 {
 public:
@@ -392,6 +404,8 @@ public:
     ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<ValueItem>> > m_value_items;
     // Contains types, traits, and modules
     ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<TypeItem>> > m_mod_items;
+    // Macros!
+    ::std::unordered_map< RcString, ::std::unique_ptr<VisEnt<MacroItem>> > m_macro_items;
 
     ::std::vector< ::std::pair<RcString, Static> >  m_inline_statics;
 
@@ -421,6 +435,11 @@ TAGGED_UNION(ValueItem, Import,
     (StructConstant,    struct { ::HIR::SimplePath ty; }),
     (Function,  Function),
     (StructConstructor, struct { ::HIR::SimplePath ty; })
+    );
+TAGGED_UNION(MacroItem, Import,
+    (Import, struct { ::HIR::SimplePath path; }),
+    (MacroRules, MacroRulesPtr),
+    (ProcMacro, ProcMacro)
     );
 
 // --------------------------------------------------------------------
@@ -510,16 +529,6 @@ class ExternLibrary
 public:
     ::std::string   name;
 };
-class ProcMacro
-{
-public:
-    // Name of the macro
-    RcString   name;
-    // Path to the handler
-    ::HIR::SimplePath   path;
-    // A list of attributes to hand to the handler
-    ::std::vector<::std::string>    attributes;
-};
 class Crate
 {
 public:
@@ -571,6 +580,12 @@ public:
 
     /// Macros exported by this crate
     ::std::unordered_map< RcString, ::MacroRulesPtr >  m_exported_macros;
+    /// Macros re-exported by this crate
+    struct MacroImport {
+        ::HIR::SimplePath   path;
+        //bool    is_proc_macro;
+    };
+    ::std::unordered_map< RcString, MacroImport >  m_proc_macro_reexports;
     /// Procedural macros presented
     ::std::vector< ::HIR::ProcMacro>    m_proc_macros;
 

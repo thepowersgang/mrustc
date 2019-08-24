@@ -1395,6 +1395,9 @@ void _add_mod_ns_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub
 void _add_mod_val_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub,  ::HIR::ValueItem ti) {
     mod.m_value_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::ValueItem> { is_pub, mv$(ti) }) ) );
 }
+void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pub,  ::HIR::MacroItem ti) {
+    mod.m_macro_items.insert( ::std::make_pair( mv$(name), ::make_unique_ptr(::HIR::VisEnt< ::HIR::MacroItem> { is_pub, mv$(ti) }) ) );
+}
 
 ::HIR::Module LowerHIR_Module(const ::AST::Module& ast_mod, ::HIR::ItemPath path, ::std::vector< ::HIR::SimplePath> traits)
 {
@@ -1587,6 +1590,16 @@ void _add_mod_val_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
                 }
             }
             _add_mod_val_item(mod, ie.first, get_pub(ie.second.is_pub), mv$(vi));
+        }
+    }
+
+    for( const auto& ie : ast_mod.m_macro_imports )
+    {
+        //const auto& sp = mod_span;
+        if( ie.is_pub )
+        {
+            auto mi = ::HIR::MacroItem::make_Import({ ::HIR::SimplePath(ie.path.front(), ::std::vector<RcString>(ie.path.begin()+1, ie.path.end())) });
+            _add_mod_mac_item( mod, ie.name, get_pub(true), mv$(mi) );
         }
     }
 
@@ -1881,6 +1894,12 @@ public:
         {
             if( mac.is_pub )
             {
+                if( !mac.macro_ptr ) {
+                    // Add to the re-export list
+                    auto path = ::HIR::SimplePath(mac.path.front(), ::std::vector<RcString>(mac.path.begin()+1, mac.path.end()));;
+                    rv.m_proc_macro_reexports.insert( ::std::make_pair( mac.name, ::HIR::Crate::MacroImport { path } ));
+                    continue ;
+                }
                 // TODO: Why does this to such a move?
                 auto v = ::std::make_pair( mac.name, MacroRulesPtr(new MacroRules( mv$(*const_cast<MacroRules*>(mac.macro_ptr)) )) );
 

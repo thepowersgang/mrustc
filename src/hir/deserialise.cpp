@@ -849,6 +849,12 @@
         rv.generic = d.deserialise_vec< ::std::unique_ptr<T> >();
         return rv;
         )
+    template<>
+    DEF_D( ::HIR::Crate::MacroImport,
+        ::HIR::Crate::MacroImport   rv;
+        rv.path = d.deserialise_simplepath();
+        return rv;
+        )
     template<> DEF_D( ::HIR::ExternLibrary, return d.deserialise_extlib(); )
 
     ::HIR::LifetimeDef HirDeserialiser::deserialise_lifetimedef()
@@ -1340,6 +1346,7 @@
         rv.m_marker_impls = deserialise_pathmap< ::HIR::Crate::ImplGroup<::HIR::MarkerImpl>>();
 
         rv.m_exported_macros = deserialise_istrumap< ::MacroRulesPtr>();
+        rv.m_proc_macro_reexports = deserialise_istrumap< ::HIR::Crate::MacroImport>();
         rv.m_lang_items = deserialise_strumap< ::HIR::SimplePath>();
 
         {
