@@ -409,6 +409,10 @@ struct ExprNode_Index:
     ::HIR::ExprNodeP    m_value;
     ::HIR::ExprNodeP    m_index;
 
+    struct {
+        ::HIR::TypeRef  index_ty;
+    } m_cache;
+
     ExprNode_Index(Span sp, ::HIR::ExprNodeP val, ::HIR::ExprNodeP index):
         ExprNode(mv$(sp)),
         m_value( mv$(val) ),

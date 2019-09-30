@@ -1074,10 +1074,12 @@ namespace {
 
             TRACE_FUNCTION_F(&node << " ... [ ... ]");
             this->context.add_ivars( node.m_value->m_res_type );
+            node.m_cache.index_ty = this->context.m_ivars.new_ivar_tr();
             this->context.add_ivars( node.m_index->m_res_type );
 
             node.m_value->visit( *this );
             node.m_index->visit( *this );
+            this->context.equate_types_coerce(node.m_index->span(), node.m_cache.index_ty, node.m_index);
 
             this->context.add_revisit(node);
         }
@@ -2345,7 +2347,8 @@ namespace {
         void visit(::HIR::ExprNode_Index& node) override {
             const auto& lang_Index = this->context.m_crate.get_lang_item_path(node.span(), "index");
             const auto& val_ty = this->context.get_type(node.m_value->m_res_type);
-            const auto& idx_ty = this->context.get_type(node.m_index->m_res_type);
+            //const auto& idx_ty = this->context.get_type(node.m_index->m_res_type);
+            const auto& idx_ty = this->context.get_type(node.m_cache.index_ty);
             TRACE_FUNCTION_F("Index: val=" << val_ty << ", idx=" << idx_ty << "");
 
             this->context.equate_types_from_shadow(node.span(), node.m_res_type);
