@@ -576,6 +576,22 @@ namespace {
         return true;
     }
 
+    class ExprVisitor_AddIvars:
+        public HIR::ExprVisitorDef
+    {
+        Context& context;
+    public:
+        ExprVisitor_AddIvars(Context& context):
+            context(context)
+        {
+        }
+
+        void visit_type(::HIR::TypeRef& ty)
+        {
+            this->context.add_ivars(ty);
+        }
+    };
+
     // -----------------------------------------------------------------------
     // Enumeration visitor
     //
@@ -2468,6 +2484,8 @@ namespace {
                 {
                     // Can't do anything, the place is still unknown
                     DEBUG("Place unknown, wait");
+                    //this->context.equate_types_to_shadow(sp, placer_ty);
+                    this->context.equate_types_to_shadow(sp, data_ty);
                     return ;
                 }
 
@@ -2497,6 +2515,7 @@ namespace {
                         auto boxed_ty = ::HIR::TypeRef::new_path( ::HIR::GenericPath(lang_Boxed, {data_ty.clone()}), &str );
                         this->context.possible_equate_type_coerce_from( exp_ty.m_data.as_Infer().index, boxed_ty );
                     }
+                    this->context.equate_types_to_shadow(sp, data_ty);
                     return ;
                 }
                 // Assert that the expected result is a Path::Generic type.
@@ -6209,15 +6228,23 @@ namespace {
         // - Recurse/unsize inner value
         if( src.m_data.is_Infer() && TU_TEST2(dst.m_data, Path, .binding, Struct, ->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None) )
         {
+#if 0
             auto new_src = H::make_pruned(context, dst);
             context.equate_types(sp, src, new_src);
+#else
+            context.possible_equate_type_coerce_to(src.m_data.as_Infer().index, dst);
+#endif
             // TODO: Avoid needless loop return
             return CoerceResult::Unknown;
         }
         if( dst.m_data.is_Infer() && TU_TEST2(src.m_data, Path, .binding, Struct, ->m_struct_markings.coerce_unsized != ::HIR::StructMarkings::Coerce::None) )
         {
+#if 0
             auto new_dst = H::make_pruned(context, src);
             context.equate_types(sp, dst, new_dst);
+#else
+            context.possible_equate_type_coerce_from(dst.m_data.as_Infer().index, src);
+#endif
             // TODO: Avoid needless loop return
             return CoerceResult::Unknown;
         }
@@ -7087,6 +7114,8 @@ namespace {
                 }
 
                 bool is_source() const { return this->can_deref; }
+                bool is_dest() const { return !this->can_deref; }
+                static bool is_dest_s(const PossibleType& self) { return self.is_dest(); }
             };
 
             bool allow_unsized = !(i < context.m_ivars_sized.size() ? context.m_ivars_sized.at(i) : false);
@@ -7188,6 +7217,18 @@ namespace {
                     return false;
                 }
             }
+
+            // TODO: Single destination, and all sources are coerce-able
+            // - Pick the single destination
+            #if 0
+            if( !ivar_ent.force_no_to && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )
+            {
+                auto ent = *::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s);
+                DEBUG("One destination, setting to " << *ent.ty);
+                context.equate_types(sp, ty_l, *ent.ty);
+                return true;
+            }
+            #endif
 
             // Filter out ivars
             // - TODO: Should this also remove &_ types? (maybe not, as they give information about borrow classes)
@@ -7593,7 +7634,8 @@ namespace {
                     }
                 }
                 // TODO: Unsized types? Don't pick an unsized if coercions are present?
-                if( num_distinct > 1 && dest_type )
+                // TODO: If in a fallback mode, then don't require >1 (just require dest_type)
+                if( (num_distinct > 1 || fallback_ty == IvarPossFallbackType::Assume) && dest_type )
                 {
                     DEBUG("- Most-restrictive destination " << *dest_type);
                     context.equate_types(sp, ty_l, *dest_type);
@@ -8305,6 +8347,13 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             return false;
             });
 
+        if(true)
+        {
+            ExprVisitor_AddIvars    visitor(context);
+            context.add_ivars(root_ptr->m_res_type);
+            root_ptr->visit(visitor);
+        }
+
         ExprVisitor_Enum    visitor(context, ms.m_traits, result_type);
         context.add_ivars(root_ptr->m_res_type);
         root_ptr->visit(visitor);
@@ -8433,8 +8482,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
             // Check the possible equations
             DEBUG("--- IVar possibilities");
             // TODO: De-duplicate this with the block ~80 lines below
-            for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
-            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            //for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
+            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i]) ) {
                     static Span sp;
@@ -8489,7 +8538,7 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
                 auto& src_ty = (**ent.right_node_ptr).m_res_type;
                 //src_ty = context.m_resolve.expand_associated_types( sp, mv$(src_ty) );
                 ent.left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent.left_ty) );
-                DEBUG("- Equate coercion " << ent.left_ty << " := " << src_ty);
+                DEBUG("- Equate coercion R" << ent.rule_idx << " " << ent.left_ty << " := " << src_ty);
 
                 context.equate_types(sp, ent.left_ty, src_ty);
             }
@@ -8500,22 +8549,41 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             // Check the possible equations
             DEBUG("--- IVar possibilities (fallback 1)");
-            for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
-            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            //for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
+            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i], IvarPossFallbackType::Assume) ) {
                     break;
                 }
             }
         }
+#if 0
+        if( !context.m_ivars.peek_changed() )
+        {
+            DEBUG("--- Coercion consume");
+            if( ! context.link_coerce.empty() )
+            {
+                auto ent = mv$(context.link_coerce.front());
+                context.link_coerce.erase( context.link_coerce.begin() );
+
+                const auto& sp = (*ent.right_node_ptr)->span();
+                auto& src_ty = (**ent.right_node_ptr).m_res_type;
+                //src_ty = context.m_resolve.expand_associated_types( sp, mv$(src_ty) );
+                ent.left_ty = context.m_resolve.expand_associated_types( sp, mv$(ent.left_ty) );
+                DEBUG("- Equate coercion R" << ent.rule_idx << " " << ent.left_ty << " := " << src_ty);
+
+                context.equate_types(sp, ent.left_ty, src_ty);
+            }
+        }
+#endif
         // If nothing has changed, run check_ivar_poss again but ignoring the 'disable' flag
 #if 1
         if( !context.m_ivars.peek_changed() )
         {
             // Check the possible equations
             DEBUG("--- IVar possibilities (fallback)");
-            for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
-            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            //for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
+            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i], IvarPossFallbackType::IgnoreWeakDisable) ) {
 # if 1
@@ -8611,8 +8679,8 @@ void Typecheck_Code_CS(const typeck::ModuleState& ms, t_args& args, const ::HIR:
         {
             // Check the possible equations
             DEBUG("--- IVar possibilities (final fallback)");
-            for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
-            //for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
+            //for(unsigned int i = context.possible_ivar_vals.size(); i --; ) // NOTE: Ordering is a hack for libgit2
+            for(unsigned int i = 0; i < context.possible_ivar_vals.size(); i ++ )
             {
                 if( check_ivar_poss(context, i, context.possible_ivar_vals[i], IvarPossFallbackType::FinalOption) ) {
                     break;

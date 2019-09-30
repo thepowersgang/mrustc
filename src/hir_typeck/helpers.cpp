@@ -558,30 +558,38 @@ void HMTypeInferrence::set_ivar_to(unsigned int slot, ::HIR::TypeRef type)
     DEBUG("set_ivar_to(" << slot << " { " << *root_ivar.type << " }, " << type << ")");
 
     // If the left type was '_', alias the right to it
-    TU_IFLET(::HIR::TypeRef::Data, type.m_data, Infer, l_e,
-        assert( l_e.index != slot );
-        DEBUG("Set IVar " << slot << " = @" << l_e.index);
-
-        if( l_e.ty_class != ::HIR::InferClass::None ) {
+    if( const auto* l_e = type.m_data.opt_Infer() ) 
+    {
+        assert( l_e->index != slot );
+        if( l_e->ty_class != ::HIR::InferClass::None ) {
             TU_MATCH_DEF(::HIR::TypeRef::Data, (root_ivar.type->m_data), (e),
             (
                 ERROR(sp, E0000, "Type unificiation of literal with invalid type - " << *root_ivar.type);
                 ),
             (Primitive,
-                check_type_class_primitive(sp, type, l_e.ty_class, e);
+                check_type_class_primitive(sp, type, l_e->ty_class, e);
                 ),
             (Infer,
                 // Check for right having a ty_class
-                if( e.ty_class != ::HIR::InferClass::None && e.ty_class != l_e.ty_class ) {
+                if( e.ty_class != ::HIR::InferClass::None && e.ty_class != l_e->ty_class ) {
                     ERROR(sp, E0000, "Unifying types with mismatching literal classes - " << type << " := " << *root_ivar.type);
                 }
                 )
             )
         }
 
-        root_ivar.alias = l_e.index;
+        #if 1
+        // Alias `l_e.index` to this slot
+        DEBUG("Set IVar " << l_e->index << " = @" << slot);
+        auto& r_ivar = this->get_pointed_ivar(l_e->index);
+        r_ivar.alias = slot;
+        r_ivar.type.reset();
+        #else
+        DEBUG("Set IVar " << slot << " = @" << l_e->index);
+        root_ivar.alias = l_e->index;
         root_ivar.type.reset();
-    )
+        #endif
+    }
     else if( *root_ivar.type == type ) {
         return ;
     }
@@ -2869,6 +2877,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             auto i = idx % 256;
             ASSERT_BUG(sp, !impl_params[i], "Placeholder to populated type returned - " << *impl_params[i] << " vs " << ty);
             auto& ph = placeholders[i];
+            // TODO: Only want to do this if ... what?
+            // - Problem: This can poison the output if the result was fuzzy
+            // - E.g. `Q: Borrow<V>` can equate Q and V
             if( ph.m_data.is_Generic() && ph.m_data.as_Generic().binding == idx ) {
                 DEBUG("[ftic_check_params:cb_match] Bind placeholder " << i << " to " << ty);
                 ph = ty.clone();
@@ -2906,6 +2917,9 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             }
             return *impl_params[ge.binding];
             };
+    //::std::vector<::HIR::TypeRef> saved_ph;
+    //for(const auto& t : placeholders)
+    //    saved_ph.push_back(t.clone());
 
     // Check bounds for this impl
     // - If a bound fails, then this can't be a valid impl
@@ -2917,6 +2931,7 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
         (TypeLifetime,
             ),
         (TraitBound,
+
             DEBUG("Check bound " << be.type << " : " << be.trait);
             auto real_type = monomorphise_type_with(sp, be.type, monomorph, false);
             auto real_trait = monomorphise_traitpath_with(sp, be.trait, monomorph, false);
@@ -2940,8 +2955,15 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("- Bounded type is an ivar, assuming fuzzy match");
                 found_fuzzy_match = true;
             }
+            // TODO: Save the placeholder state and restore if the result was Fuzzy
+            ::std::vector<::HIR::TypeRef> saved_ph;
+            for(const auto& t : placeholders)
+                saved_ph.push_back(t.clone());
+            ::std::vector<::HIR::TypeRef> fuzzy_ph;
+            unsigned num_fuzzy = 0;
             // TODO: Pass the `match_test_generics` callback? Or another one that handles the impl placeholders.
             auto rv = this->find_trait_impls(sp, real_trait_path.m_path, real_trait_path.m_params, real_type, [&](auto impl, auto impl_cmp) {
+                // TODO: Save and restore placeholders if this isn't a full match
                 DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", impl = " << impl);
                 auto cmp = impl_cmp;
                 if( cmp == ::HIR::Compare::Fuzzy )
@@ -2984,22 +3006,41 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                     {
                     case ::HIR::Compare::Equal:
                         DEBUG("Equal");
-                        continue;
+                        break;
                     case ::HIR::Compare::Unequal:
                         DEBUG("Assoc `" << assoc_bound.first << "` didn't match - " << ty << " != " << assoc_bound.second);
-                        return false;
+                        cmp = ::HIR::Compare::Unequal;
+                        break;
                     case ::HIR::Compare::Fuzzy:
                         // TODO: When a fuzzy match is encountered on a conditional bound, returning `false` can lead to an false negative (and a compile error)
                         // BUT, returning `true` could lead to it being selected. (Is this a problem, should a later validation pass check?)
                         DEBUG("[ftic_check_params] Fuzzy match assoc bound between " << ty << " and " << assoc_bound.second);
                         cmp = ::HIR::Compare::Fuzzy;
-                        continue ;
+                        break ;
                     }
+                    if( cmp == ::HIR::Compare::Unequal )
+                        break;
                 }
 
                 DEBUG("[ftic_check_params] impl_cmp = " << impl_cmp << ", cmp = " << cmp);
-                if( cmp == ::HIR::Compare::Fuzzy ) {
-                    found_fuzzy_match = true;
+                if( cmp == ::HIR::Compare::Fuzzy )
+                {
+                    found_fuzzy_match |= true;
+                    num_fuzzy += 1;
+                    if( num_fuzzy )
+                    {
+                        fuzzy_ph = ::std::move(placeholders);
+                        placeholders.resize(fuzzy_ph.size());
+                    }
+                }
+                if( cmp != ::HIR::Compare::Equal )
+                {
+                    // Restore placeholders
+                    // - Maybe save the results for later?
+                    DEBUG("[ftic_check_params] Restore placeholders: " << saved_ph);
+                    DEBUG("[ftic_check_params] OVERWRITTEN placeholders: " << placeholders);
+                    for(size_t i = 0; i < placeholders.size(); i ++)
+                        placeholders[i] = saved_ph[i].clone();
                 }
                 // If the match isn't a concrete equal, return false (to keep searching)
                 return (cmp == ::HIR::Compare::Equal);
@@ -3009,6 +3050,15 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             }
             else if( found_fuzzy_match ) {
                 DEBUG("- Bound " << real_type << " : " << real_trait_path << " fuzzed");
+                if( num_fuzzy == 1 )
+                {
+                    DEBUG("Use placeholders " << fuzzy_ph);
+                    placeholders = ::std::move(fuzzy_ph);
+                }
+                else
+                {
+                    DEBUG("TODO: Multiple fuzzy matches, which placeholder set to use?");
+                }
                 match = ::HIR::Compare::Fuzzy;
             }
             else if( TU_TEST1(real_type.m_data, Infer, .ty_class == ::HIR::InferClass::None) ) {
@@ -3023,6 +3073,10 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
                 DEBUG("- Bound " << real_type << " : " << real_trait_path << " failed");
                 return ::HIR::Compare::Unequal;
             }
+
+            //if( !rv ) {
+            //    placeholders = ::std::move(saved_ph);
+            //}
             ),
         (TypeEquality,
             TODO(sp, "Check bound " << be.type << " = " << be.other_type);
@@ -3046,6 +3100,10 @@ bool TraitResolution::find_trait_impls_crate(const Span& sp,
             }
         }
     }
+
+    //if( match == ::HIR::Compare::Fuzzy ) {
+    //    placeholders = ::std::move(saved_ph);
+    //}
 
     return match;
 }
