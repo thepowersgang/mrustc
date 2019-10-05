@@ -829,12 +829,15 @@ namespace {
                         for( const auto& crate2 : m_crate.m_ext_crates )
                         {
                             // TODO: Better rule than this
-                            bool is_dylib = (crate2.second.m_path.compare(crate2.second.m_path.size() - 5, 5, ".rlib") != 0);
+                            bool is_dylib = false;
+                            is_dylib |= (crate2.second.m_path.compare(crate2.second.m_path.size() - 3, 3, ".so") == 0);
+                            is_dylib |= (crate2.second.m_path.compare(crate2.second.m_path.size() - 4, 4, ".dll") == 0);
                             if( is_dylib )
                             {
                                 for(const auto& subcrate : crate2.second.m_data->m_ext_crates)
                                 {
                                     if( subcrate.second.m_path == crate.second.m_path ) {
+                                        DEBUG(crate.first << " referenced by dylib " << crate2.first);
                                         is_in_dylib = true;
                                     }
                                 }
