@@ -6279,6 +6279,11 @@ namespace {
             }
         }
 
+        // If either side is an unbound UFCS, can't know yet
+        if( TU_TEST1(dst.m_data, Path, .binding.is_Unbound()) || TU_TEST1(src.m_data, Path, .binding.is_Unbound()) )
+        {
+            return CoerceResult::Unknown;
+        }
 
         // Any other type, check for pointer
         // - If not a pointer, return Equality
@@ -7150,6 +7155,7 @@ namespace {
             {
                 possible_tys.push_back(PossibleType { false, false, &new_ty });
             }
+            DEBUG("possible_tys = " << possible_tys);
 
             // If exactly the same type is both a source and destination, equate.
             // - This is always correct, even if one of the types is an ivar (you can't go A -> B -> A with a coercion)
@@ -7175,7 +7181,6 @@ namespace {
                     }
                 }
             }
-            DEBUG("possible_tys = " << possible_tys);
 
             if( ty_l.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge )
             {
