@@ -7123,6 +7123,7 @@ namespace {
 
                 bool is_source() const { return this->can_deref; }
                 bool is_dest() const { return !this->can_deref; }
+                static bool is_source_s(const PossibleType& self) { return self.is_source(); }
                 static bool is_dest_s(const PossibleType& self) { return self.is_dest(); }
             };
 
@@ -7182,6 +7183,25 @@ namespace {
                 }
             }
 
+#if 1
+            if( ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s) == 1 && !ivar_ent.force_no_from )
+            {
+                // Single source, pick it?
+                const auto& ent = *::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_source_s);
+                // - Only if there's no ivars
+                if( !context.m_ivars.type_contains_ivars(*ent.ty) )
+                {
+                    if( !check_ivar_poss__fails_bounds(sp, context, ty_l, *ent.ty) )
+                    {
+                        DEBUG("Single concrete source, " << *ent.ty);
+                        context.equate_types(sp, ty_l, *ent.ty);
+                        return true;
+                    }
+                }
+            }
+#endif
+
+
             if( ty_l.m_data.as_Infer().ty_class == ::HIR::InferClass::Diverge )
             {
                 // There's a coercion (not an unsizing) AND there's no sources
@@ -7190,6 +7210,14 @@ namespace {
                  && ::std::none_of(possible_tys.begin(), possible_tys.end(), [](const PossibleType& ent){ return ent.can_deref; })
                  )
                 {
+                    if( !ivar_ent.force_no_to && ::std::count_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s) == 1 )
+                    {
+                        auto ent = *::std::find_if(possible_tys.begin(), possible_tys.end(), PossibleType::is_dest_s);
+                        DEBUG("One destination (diverge, no source), setting to " << *ent.ty);
+                        context.equate_types(sp, ty_l, *ent.ty);
+                        return true;
+                    }
+
                     // There are no source possibilities, this has to be a `!`
                     DEBUG("- Diverge with no source types, force setting to !");
                     DEBUG("Set IVar " << i << " = !");
