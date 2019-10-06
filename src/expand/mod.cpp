@@ -104,7 +104,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
             // TODO: Pass attributes _after_ this attribute
-            d.handle(sp, a, crate, path, mod, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a), item);
+            d.handle(sp, a, crate, path, mod, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a + 1), item);
         }
         });
 }

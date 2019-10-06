@@ -2107,7 +2107,7 @@ static const Deriver* find_impl(const RcString& trait_name)
 }
 
 template<typename T>
-static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::Path& path, const T& item)
+static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mod, const AST::Attribute& attr, const AST::Path& path, slice<const AST::Attribute> attrs, const T& item)
 {
     if( !attr.has_sub_items() ) {
         //ERROR(sp, E0000, "#[derive()] requires a list of known traits to derive");
@@ -2153,7 +2153,8 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
                 }
                 else {
                     // proc_macro - Invoke the handler.
-                    auto lex = ProcMacro_Invoke(sp, crate, mac_path.path, path.nodes().back().name().c_str(), item);
+                    DEBUG("proc_macro " << mac_path.path << ", attrs = " << attrs);
+                    auto lex = ProcMacro_Invoke(sp, crate, mac_path.path, attrs, path.nodes().back().name().c_str(), item);
                     if( lex )
                     {
                         Parse_ModRoot_Items(*lex, mod);
@@ -2194,13 +2195,13 @@ public:
             // Ignore, it's been deleted
             ),
         (Union,
-            derive_item(sp, crate, mod, attr, path, e);
+            derive_item(sp, crate, mod, attr, path, attrs, e);
             ),
         (Enum,
-            derive_item(sp, crate, mod, attr, path, e);
+            derive_item(sp, crate, mod, attr, path, attrs, e);
             ),
         (Struct,
-            derive_item(sp, crate, mod, attr, path, e);
+            derive_item(sp, crate, mod, attr, path, attrs, e);
             )
         )
     }

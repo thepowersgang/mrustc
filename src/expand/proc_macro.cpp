@@ -611,12 +611,27 @@ namespace {
             TODO(sp, "ExprNode_UniOp");
         }
 
+        void visit_top_attrs(slice<const ::AST::Attribute>& attrs)
+        {
+            for(const auto& a : attrs)
+            {
+                if( m_pmi.attr_is_used(a.name()) )
+                {
+                    DEBUG("Send " << a);
+                    m_pmi.send_symbol("#");
+                    m_pmi.send_symbol("[");
+                    this->visit_meta_item(a);
+                    m_pmi.send_symbol("]");
+                }
+            }
+        }
         void visit_attrs(const ::AST::AttributeList& attrs)
         {
             for(const auto& a : attrs.m_items)
             {
                 if( m_pmi.attr_is_used(a.name()) )
                 {
+                    DEBUG("Send " << a);
                     m_pmi.send_symbol("#");
                     m_pmi.send_symbol("[");
                     this->visit_meta_item(a);
@@ -750,7 +765,7 @@ namespace {
         }
     };
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const ::std::string& item_name, const ::AST::Struct& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Struct& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
@@ -758,31 +773,37 @@ namespace {
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
     // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
-    Visitor(sp, pmi).visit_struct(item_name, false, i);
+    Visitor v(sp, pmi);
+    v.visit_top_attrs(attrs);
+    v.visit_struct(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const ::std::string& item_name, const ::AST::Enum& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Enum& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
-    Visitor(sp, pmi).visit_enum(item_name, false, i);
+    Visitor v(sp, pmi);
+    v.visit_top_attrs(attrs);
+    v.visit_enum(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
 }
-::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, const ::std::string& item_name, const ::AST::Union& i)
+::std::unique_ptr<TokenStream> ProcMacro_Invoke(const Span& sp, const ::AST::Crate& crate, const ::std::vector<RcString>& mac_path, slice<const AST::Attribute> attrs, const ::std::string& item_name, const ::AST::Union& i)
 {
     // 1. Create ProcMacroInv instance
     auto pmi = ProcMacro_Invoke_int(sp, crate, mac_path);
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
-    Visitor(sp, pmi).visit_union(item_name, false, i);
+    Visitor v(sp, pmi);
+    v.visit_top_attrs(attrs);
+    v.visit_union(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance
     return box$(pmi);
