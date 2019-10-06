@@ -86,7 +86,8 @@ void Expand_Attrs_CfgAttr(AST::AttributeList& attrs)
         auto& a = *it;
         if( a.name() == "cfg_attr" ) {
             if( check_cfg(a.span(), a.items().at(0)) ) {
-                a = mv$(a.items().at(1));
+                auto inner_attr = mv$(a.items().at(1));
+                a = mv$(inner_attr);
                 ++ it;
             }
             else {
@@ -103,7 +104,7 @@ void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Cr
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){
         if(!item.is_None()) {
             // TODO: Pass attributes _after_ this attribute
-            d.handle(sp, a, crate, path, mod, item/*, attrs*/);
+            d.handle(sp, a, crate, path, mod, slice<const AST::Attribute>(&a, &attrs.m_items.back() - &a), item);
         }
         });
 }

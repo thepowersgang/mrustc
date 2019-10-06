@@ -41,7 +41,7 @@ class CMacroUseHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TRACE_FUNCTION_F("path=" << path);
 
@@ -125,7 +125,7 @@ class CMacroExportHandler:
 {
     AttrStage stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() ) {
         }
@@ -152,7 +152,7 @@ class CMacroReexportHandler:
     public ExpandDecorator
 {
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( !i.is_Crate() ) {
             ERROR(sp, E0000, "Use of #[macro_reexport] on non-crate - " << i.tag_str());

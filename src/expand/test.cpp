@@ -14,7 +14,7 @@ class CTestHandler:
 {
     AttrStage   stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[test] can only be put on functions - found on " << i.tag_str());
         }
@@ -42,7 +42,7 @@ class CTestHandler_SP:
 {
     AttrStage   stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[should_panic] can only be put on functions - found on " << i.tag_str());
         }
@@ -76,7 +76,7 @@ class CTestHandler_Ignore:
 {
     AttrStage   stage() const override { return AttrStage::Post; }
 
-    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item&i) const override {
+    void handle(const Span& sp, const AST::Attribute& mi, ::AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item&i) const override {
         if( ! i.is_Function() ) {
             ERROR(sp, E0000, "#[ignore] can only be put on functions - found on " << i.tag_str());
         }

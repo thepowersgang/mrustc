@@ -173,7 +173,7 @@ class Decorator_LangItem:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TU_MATCH_DEF(::AST::Item, (i), (e),
         (
@@ -250,7 +250,7 @@ class Decorator_Main:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         if( i.is_None() ) {
             // Ignore.
@@ -274,7 +274,7 @@ class Decorator_Start:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TU_IFLET(::AST::Item, i, Function, e,
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-start"), ::AST::Path(path) ));
@@ -295,7 +295,7 @@ class Decorator_PanicImplementation:
 {
 public:
     AttrStage stage() const override { return AttrStage::Post; }
-    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, AST::Item& i) const override
+    void handle(const Span& sp, const AST::Attribute& attr, AST::Crate& crate, const AST::Path& path, AST::Module& mod, slice<const AST::Attribute> attrs, AST::Item& i) const override
     {
         TU_IFLET(::AST::Item, i, Function, e,
             auto rv = crate.m_lang_items.insert(::std::make_pair( ::std::string("mrustc-panic_implementation"), ::AST::Path(path) ));
