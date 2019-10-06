@@ -121,12 +121,12 @@ void Expand_ProcMacro(::AST::Crate& crate)
     auto newmod = ::AST::Module { ::AST::Path("", { ::AST::PathNode("proc_macro#") }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
-    newmod.add_ext_crate(false, "proc_macro", "proc_macro", {});
+    newmod.add_ext_crate(Span(), false, "proc_macro", "proc_macro", {});
 
-    newmod.add_item(false, "main", mv$(main_fn), {});
-    newmod.add_item(false, "MACROS", mv$(tests_list), {});
+    newmod.add_item(Span(), false, "main", mv$(main_fn), {});
+    newmod.add_item(Span(), false, "MACROS", mv$(tests_list), {});
 
-    crate.m_root_module.add_item(false, "proc_macro#", mv$(newmod), {});
+    crate.m_root_module.add_item(Span(), false, "proc_macro#", mv$(newmod), {});
     crate.m_lang_items["mrustc-main"] = ::AST::Path("", { AST::PathNode("proc_macro#"), AST::PathNode("main") });
 }
 
@@ -757,6 +757,7 @@ namespace {
     if( !pmi.check_good() )
         return ::std::unique_ptr<TokenStream>();
     // 2. Feed item as a token stream.
+    // TODO: Get attributes from the caller, filter based on the macro's options then pass to the child.
     Visitor(sp, pmi).visit_struct(item_name, false, i);
     pmi.send_done();
     // 3. Return boxed invocation instance

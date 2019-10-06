@@ -131,28 +131,28 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
         // - Types/modules only
         (Module,
             p.m_bindings.type = ::AST::PathBinding_Type::make_Module({&e});
-            _add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
+            _add_item(i.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Crate,
-            ASSERT_BUG(i.data.span, crate.m_extern_crates.count(e.name) > 0, "Referenced crate '" << e.name << "' isn't loaded for `extern crate`");
+            ASSERT_BUG(i.span, crate.m_extern_crates.count(e.name) > 0, "Referenced crate '" << e.name << "' isn't loaded for `extern crate`");
             p.m_bindings.type = ::AST::PathBinding_Type::make_Crate({ &crate.m_extern_crates.at(e.name) });
-            _add_item(i.data.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
+            _add_item(i.span, mod, IndexName::Namespace, i.name, i.is_pub,  mv$(p));
             ),
         (Enum,
             p.m_bindings.type = ::AST::PathBinding_Type::make_Enum({&e});
-            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         (Union,
             p.m_bindings.type = ::AST::PathBinding_Type::make_Union({&e});
-            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         (Trait,
             p.m_bindings.type = ::AST::PathBinding_Type::make_Trait({&e});
-            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         (Type,
             p.m_bindings.type = ::AST::PathBinding_Type::make_TypeAlias({&e});
-            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         // - Mixed
         (Struct,
@@ -160,18 +160,18 @@ void Resolve_Index_Module_Base(const AST::Crate& crate, AST::Module& mod)
             // - If the struct is a tuple-like struct (or unit-like), it presents in the value namespace
             if( ! e.m_data.is_Struct() ) {
                 p.m_bindings.value = ::AST::PathBinding_Value::make_Struct({&e});
-                _add_item_value(i.data.span, mod, i.name, i.is_pub,  p);
+                _add_item_value(i.span, mod, i.name, i.is_pub,  p);
             }
-            _add_item_type(i.data.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_type(i.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         // - Values only
         (Function,
             p.m_bindings.value = ::AST::PathBinding_Value::make_Function({&e});
-            _add_item_value(i.data.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_value(i.span, mod, i.name, i.is_pub,  mv$(p));
             ),
         (Static,
             p.m_bindings.value = ::AST::PathBinding_Value::make_Static({&e});
-            _add_item_value(i.data.span, mod, i.name, i.is_pub,  mv$(p));
+            _add_item_value(i.span, mod, i.name, i.is_pub,  mv$(p));
             )
         )
     }
@@ -761,7 +761,7 @@ void Resolve_Index_Module_Normalise(const ::AST::Crate& crate, const Span& mod_s
     for( auto& item : mod.items() )
     {
         TU_IFLET(AST::Item, item.data, Module, e,
-            Resolve_Index_Module_Normalise(crate, item.data.span, e);
+            Resolve_Index_Module_Normalise(crate, item.span, e);
         )
     }
 

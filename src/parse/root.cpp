@@ -653,7 +653,7 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         ::AST::MacroInvocation  inv;
         if( Parse_MacroInvocation_Opt(lex, inv) )
         {
-            return AST::Named<AST::Item>( "", AST::Item(mv$(inv)), false );
+            return AST::Named<AST::Item>( lex.end_span(ps), mv$(item_attrs), false, "", AST::Item(mv$(inv)) );
         }
     }
 
@@ -772,8 +772,7 @@ AST::Named<AST::Item> Parse_Trait_Item(TokenStream& lex)
         throw ParseError::Unexpected(lex, tok);
     }
 
-    rv.attrs = ::std::move( item_attrs );
-    return ::AST::Named<::AST::Item>( mv$(name), mv$(rv), true );
+    return ::AST::Named<::AST::Item>( lex.end_span(ps), mv$(item_attrs), true, mv$(name), mv$(rv) );
 }
 
 AST::Trait Parse_TraitDef(TokenStream& lex, const AST::AttributeList& meta_items)
@@ -1189,7 +1188,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         if( Parse_MacroInvocation_Opt(lex,  inv) )
         {
             impl.add_macro_invocation( mv$(inv) );
-            impl.items().back().data->attrs = mv$(item_attrs);
+            impl.items().back().attrs = mv$(item_attrs);
             return ;
         }
     }
@@ -1214,8 +1213,9 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
         auto name = tok.istr();
         GET_CHECK_TOK(tok, lex, TOK_EQUAL);
-        impl.add_type(is_public, is_specialisable, name, Parse_Type(lex));
+        auto ty = Parse_Type(lex);
         GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
+        impl.add_type(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, name, mv$(ty));
         break; }
     case TOK_RWORD_UNSAFE:
         fn_is_unsafe = true;
@@ -1235,7 +1235,7 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
                 GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
                 auto i = ::AST::Static(AST::Static::CONST, mv$(ty), mv$(val));
-                impl.add_static( is_public, is_specialisable, mv$(name),  mv$(i) );
+                impl.add_static( lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, mv$(name),  mv$(i) );
                 break ;
             }
             else if( tok.type() == TOK_RWORD_UNSAFE )
@@ -1266,15 +1266,12 @@ void Parse_Impl_Item(TokenStream& lex, AST::Impl& impl)
         DEBUG("Function " << name);
         // - Self allowed, can't be prototype-form
         auto fcn = Parse_FunctionDefWithCode(lex, abi, true,  fn_is_unsafe, fn_is_const);
-        impl.add_function(is_public, is_specialisable, mv$(name), mv$(fcn));
+        impl.add_function(lex.end_span(ps), mv$(item_attrs), is_public, is_specialisable, mv$(name), mv$(fcn));
         break; }
 
     default:
         throw ParseError::Unexpected(lex, tok);
     }
-
-    impl.items().back().data->span = lex.end_span(ps);
-    impl.items().back().data->attrs = mv$(item_attrs);    // Empty for functions
 }
 
 AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::AttributeList& block_attrs)
@@ -1305,10 +1302,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             auto i = ::AST::Item( Parse_FunctionDef(lex, abi, false, true,  true,false) );
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
-            i.attrs = mv$(meta_items);
-            i.span = lex.end_span(ps);
-
-            rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
+            rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), is_public, mv$(name), mv$(i) } );
             break; }
         case TOK_RWORD_STATIC: {
             bool is_mut = false;
@@ -1323,9 +1317,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             GET_CHECK_TOK(tok, lex, TOK_SEMICOLON);
 
             auto i = ::AST::Item(::AST::Static( (is_mut ? ::AST::Static::MUT : ::AST::Static::STATIC),  mv$(type), ::AST::Expr() ));
-            i.attrs = mv$(meta_items);
-            i.span = lex.end_span(ps);
-            rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
+            rv.add_item( AST::Named<AST::Item> { lex.end_span(ps), mv$(meta_items), is_public,  mv$(name), mv$(i) } );
             break; }
         case TOK_RWORD_TYPE: {
             GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -1334,9 +1326,7 @@ AST::ExternBlock Parse_ExternBlock(TokenStream& lex, ::std::string abi, ::AST::A
             auto sp = lex.end_span(ps);
             //TODO(sp, "Extern type");
             auto i = ::AST::Item(::AST::TypeAlias( ::AST::GenericParams(), ::TypeRef(sp) ));
-            i.attrs = mv$(meta_items);
-            i.span = mv$(sp);
-            rv.add_item( AST::Named<AST::Item> { mv$(name), mv$(i), is_public } );
+            rv.add_item( AST::Named<AST::Item> { mv$(sp), mv$(meta_items), is_public, mv$(name), mv$(i) } );
             break; }
         default:
             throw ParseError::Unexpected(lex, tok, {TOK_RWORD_FN, TOK_RWORD_STATIC, TOK_RWORD_TYPE});
@@ -1643,7 +1633,7 @@ namespace {
         auto rv = tok.take_frag_item();
         // Transfer new attributes onto the item
         for(auto& mi : meta_items.m_items)
-            rv.data.attrs.m_items.push_back( mv$(mi) );
+            rv.attrs.m_items.push_back( mv$(mi) );
         return rv;
     }
 
@@ -1656,11 +1646,7 @@ namespace {
         ::AST::MacroInvocation  inv;
         if( Parse_MacroInvocation_Opt(lex, inv) )
         {
-            item_data = ::AST::Item( mv$(inv) );
-            item_data.attrs = mv$(meta_items);
-            item_data.span = lex.end_span(ps);
-
-            return ::AST::Named< ::AST::Item> { "", mv$(item_data), false };
+            return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(meta_items), false, "", ::AST::Item( mv$(inv) ) };
         }
     }
 
@@ -1849,7 +1835,7 @@ namespace {
             else {
                 BUG(lex.point_span(), "Parse_Impl returned a variant other than Impl or NegImpl");
             }
-            return ::AST::Named< ::AST::Item> { "", mv$(impl), false };
+            return ::AST::Named< ::AST::Item> { Span(), {}, false, "", mv$(impl) };
             }
         // `unsafe auto trait`
         case TOK_IDENT:
@@ -1915,7 +1901,7 @@ namespace {
         break;
     // `impl`
     case TOK_RWORD_IMPL:
-        return ::AST::Named< ::AST::Item> { "", Parse_Impl(lex, mv$(meta_items)), false };
+        return ::AST::Named< ::AST::Item> { Span(), {}, false, "", Parse_Impl(lex, mv$(meta_items)) };
     // `trait`
     case TOK_RWORD_TRAIT:
         GET_CHECK_TOK(tok, lex, TOK_IDENT);
@@ -2121,10 +2107,7 @@ namespace {
         throw ParseError::Unexpected(lex, tok);
     }
 
-    item_data.attrs = mv$(meta_items);
-    item_data.span = lex.end_span(ps);
-
-    return ::AST::Named< ::AST::Item> { mv$(item_name), mv$(item_data), is_public };
+    return ::AST::Named< ::AST::Item> { lex.end_span(ps), mv$(meta_items), is_public, mv$(item_name), mv$(item_data) };
 }
 
 void Parse_Mod_Item(TokenStream& lex, AST::Module& mod, AST::AttributeList meta_items)

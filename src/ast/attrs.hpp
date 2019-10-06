@@ -8,6 +8,7 @@
 #ifndef _AST_ATTRS_HPP_
 #define _AST_ATTRS_HPP_
 
+#include <tagged_union.hpp>
 
 namespace AST {
 

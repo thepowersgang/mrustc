@@ -393,7 +393,7 @@ class Deriver_Debug:
         AST::GenericParams  params = get_params_with_bounds(sp, p, debug_trait, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, debug_trait), type.clone() ) );
-        rv.add_function(false, false, "fmt", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "fmt", mv$(fcn));
         return mv$(rv);
     }
 
@@ -564,7 +564,7 @@ class Deriver_PartialEq:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "eq", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "eq", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP compare_and_ret(Span sp, const RcString& core_name, AST::ExprNodeP v1, AST::ExprNodeP v2) const
@@ -716,7 +716,7 @@ class Deriver_PartialOrd:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "partial_cmp", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "partial_cmp", mv$(fcn));
         return mv$(rv);
     }
 
@@ -906,7 +906,7 @@ class Deriver_Eq:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "assert_receiver_is_total_eq", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "assert_receiver_is_total_eq", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP assert_is_eq(const AST::Path& method_path, AST::ExprNodeP val) const {
@@ -1042,7 +1042,7 @@ class Deriver_Ord:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "cmp", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "cmp", mv$(fcn));
         return mv$(rv);
     }
 
@@ -1225,7 +1225,7 @@ class Deriver_Clone:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "clone", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "clone", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP clone_val_ref(const RcString& core_name, AST::ExprNodeP val) const {
@@ -1425,7 +1425,7 @@ class Deriver_Default:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "default", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "default", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP default_call(const RcString& core_name) const {
@@ -1511,7 +1511,7 @@ class Deriver_Hash:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "hash", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "hash", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP hash_val_ref(const RcString& core_name, AST::ExprNodeP val) const {
@@ -1657,7 +1657,7 @@ class Deriver_RustcEncodable:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "encode", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "encode", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP enc_val_direct(AST::ExprNodeP val) const {
@@ -1887,7 +1887,7 @@ class Deriver_RustcDecodable:
         AST::GenericParams  params = get_params_with_bounds(sp, p, trait_path, mv$(types_to_bound));
 
         AST::Impl   rv( AST::ImplDef( AST::AttributeList(), mv$(params), make_spanned(sp, trait_path), type.clone() ) );
-        rv.add_function(false, false, "decode", mv$(fcn));
+        rv.add_function(sp, {}, false, false, "decode", mv$(fcn));
         return mv$(rv);
     }
     AST::ExprNodeP dec_val() const {
@@ -2135,7 +2135,7 @@ static void derive_item(const Span& sp, const AST::Crate& crate, AST::Module& mo
         DEBUG("- " << trait.name());
         auto dp = find_impl(trait.name());
         if( dp ) {
-            mod.add_item(false, "", dp->handle_item(sp, opts, params, type, item), {} );
+            mod.add_item(sp, false, "", dp->handle_item(sp, opts, params, type, item), {} );
             continue ;
         }
 

@@ -976,13 +976,13 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
     for( unsigned int idx = 0; idx < impl.items().size(); idx ++ )
     {
         auto& i = impl.items()[idx];
-        DEBUG("  - " << i.name << " :: " << i.data->attrs);
+        DEBUG("  - " << i.name << " :: " << i.attrs);
 
         // TODO: Make a path from the impl definition? Requires having the impl def resolved to be correct
         // - Does it? the namespace is essentially the same. There may be issues with wherever the path is used though
         //::AST::Path path = modpath + i.name;
 
-        auto attrs = mv$(i.data->attrs);
+        auto attrs = mv$(i.attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, *i.data);
 
         TU_MATCH_DEF(AST::Item, (*i.data), (e),
@@ -1037,8 +1037,8 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
             auto& i = impl.items()[idx];
             Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, *i.data);
             // TODO: How would this be populated? It got moved out?
-            if( i.data->attrs.m_items.size() == 0 )
-                i.data->attrs = mv$(attrs);
+            if( i.attrs.m_items.size() == 0 )
+                i.attrs = mv$(attrs);
         }
     }
 
@@ -1085,7 +1085,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     if( crate.m_prelude_path != AST::Path() )
     {
         if( mod.m_insert_prelude && ! mod.is_anon() ) {
-            mod.add_item(false, "", ::AST::UseItem { Span(), ::make_vec1(::AST::UseItem::Ent { Span(), crate.m_prelude_path, "" }) }, {});
+            mod.add_item(Span(), false, "", ::AST::UseItem { Span(), ::make_vec1(::AST::UseItem::Ent { Span(), crate.m_prelude_path, "" }) }, {});
         }
     }
 
@@ -1094,10 +1094,10 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
     {
         auto& i = mod.items()[idx];
 
-        DEBUG("- " << modpath << "::" << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.data.attrs);
+        DEBUG("- " << modpath << "::" << i.name << " (" << ::AST::Item::tag_to_str(i.data.tag()) << ") :: " << i.attrs);
         ::AST::Path path = modpath + i.name;
 
-        auto attrs = mv$(i.data.attrs);
+        auto attrs = mv$(i.attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, path, mod, i.data);
 
         auto dat = mv$(i.data);
@@ -1159,7 +1159,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             // Can't recurse into an `extern crate`
             if(crate.m_extern_crates.count(e.name) == 0)
             {
-                e.name = crate.load_extern_crate( i.data.span, e.name );
+                e.name = crate.load_extern_crate( i.span, e.name );
             }
             }
 
@@ -1257,7 +1257,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             {
                 auto& ti = trait_items[idx];
                 DEBUG(" - " << ti.name << " " << ti.data.tag_str());
-                auto attrs = mv$(ti.data.attrs);
+                auto attrs = mv$(ti.attrs);
                 Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, ti.data);
 
                 TU_MATCH_DEF(AST::Item, (ti.data), (e),
@@ -1312,8 +1312,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                     auto& ti = trait_items[idx];
 
                     Expand_Attrs(attrs, AttrStage::Post,  crate, AST::Path(), mod, ti.data);
-                    if( ti.data.attrs.m_items.size() == 0 )
-                        ti.data.attrs = mv$(attrs);
+                    if( ti.attrs.m_items.size() == 0 )
+                        ti.attrs = mv$(attrs);
                 }
             }
             }
@@ -1344,8 +1344,8 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 i.data = mv$(dat);
             }
             // TODO: When would this _not_ be empty?
-            if( i.data.attrs.m_items.size() == 0 )
-                i.data.attrs = mv$(attrs);
+            if( i.attrs.m_items.size() == 0 )
+                i.attrs = mv$(attrs);
         }
     }
 
@@ -1408,7 +1408,7 @@ void Expand(::AST::Crate& crate)
         crate.m_extern_crates.at("std").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );
             });
-        crate.m_root_module.add_ext_crate(false, "std", "std", ::AST::AttributeList {});
+        crate.m_root_module.add_ext_crate(Span(), /*is_pub=*/false, "std", "std", /*attrs=*/{});
         break;
     case ::AST::Crate::LOAD_CORE:
         if( crate.m_prelude_path == AST::Path() )
@@ -1416,7 +1416,7 @@ void Expand(::AST::Crate& crate)
         crate.m_extern_crates.at("core").with_all_macros([&](const auto& name, const auto& mac) {
             crate.m_root_module.add_macro_import( name, mac );
             });
-        crate.m_root_module.add_ext_crate(false, "core", "core", ::AST::AttributeList {});
+        crate.m_root_module.add_ext_crate(Span(), /*is_pub=*/false, "core", "core", /*attrs=*/{});
         break;
     case ::AST::Crate::LOAD_NONE:
         break;

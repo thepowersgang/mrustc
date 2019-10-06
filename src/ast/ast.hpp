@@ -223,9 +223,9 @@ public:
     const NamedList<Item>& items() const { return m_items; }
           NamedList<Item>& items()       { return m_items; }
 
-    void add_type(RcString name, AttributeList attrs, TypeRef type);
-    void add_function(RcString name, AttributeList attrs, Function fcn);
-    void add_static(RcString name, AttributeList attrs, Static v);
+    void add_type(Span sp, RcString name, AttributeList attrs, TypeRef type);
+    void add_function(Span sp, RcString name, AttributeList attrs, Function fcn);
+    void add_static(Span sp, RcString name, AttributeList attrs, Static v);
 
     void set_is_marker();
     bool is_marker() const;
@@ -424,6 +424,8 @@ class Impl
 {
 public:
     struct ImplItem {
+        Span    sp;
+        AttributeList   attrs;
         bool    is_pub; // Ignored for trait impls
         bool    is_specialisable;
         RcString   name;
@@ -446,9 +448,9 @@ public:
     {}
     Impl& operator=(Impl&&) = default;
 
-    void add_function(bool is_public, bool is_specialisable, RcString name, Function fcn);
-    void add_type(bool is_public, bool is_specialisable, RcString name, TypeRef type);
-    void add_static(bool is_public, bool is_specialisable, RcString name, Static v);
+    void add_function(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Function fcn);
+    void add_type(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, TypeRef type);
+    void add_static(Span sp, AttributeList attrs, bool is_public, bool is_specialisable, RcString name, Static v);
     void add_macro_invocation( MacroInvocation inv );
 
     const ImplDef& def() const { return m_def; }
@@ -570,8 +572,8 @@ public:
     ::std::shared_ptr<AST::Module> add_anon();
 
     void add_item(Named<Item> item);
-    void add_item(bool is_pub, RcString name, Item it, AttributeList attrs);
-    void add_ext_crate(bool is_public, RcString ext_name, RcString imp_name, AttributeList attrs);
+    void add_item(Span sp, bool is_pub, RcString name, Item it, AttributeList attrs);
+    void add_ext_crate(Span sp, bool is_pub, RcString ext_name, RcString imp_name, AttributeList attrs);
     void add_macro_invocation(MacroInvocation item);
 
     void add_macro(bool is_exported, RcString name, MacroRulesPtr macro);
@@ -621,12 +623,8 @@ TAGGED_UNION_EX(Item, (), None,
     (Static, Static)
     ),
 
-    (, attrs(mv$(x.attrs))), (attrs = mv$(x.attrs);),
+    (), (),
     (
-    public:
-        AttributeList  attrs;
-        Span    span;
-
         Item clone() const;
     )
     );

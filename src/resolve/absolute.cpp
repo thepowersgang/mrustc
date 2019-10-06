@@ -2030,19 +2030,19 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::AST::NamedList< ::AST:
         TU_MATCH(AST::Item, (i.data), (e),
         (None, ),
         (MacroInv,
-            //BUG(i.data.span, "Resolve_Absolute_ImplItems - MacroInv");
+            //BUG(i.span, "Resolve_Absolute_ImplItems - MacroInv");
             ),
-        (ExternBlock, BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
-        (Impl,        BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
-        (NegImpl,     BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
-        (Macro,    BUG(i.data.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
-        (Use,    BUG(i.data.span, "Resolve_Absolute_ImplItems - Use");),
-        (Module, BUG(i.data.span, "Resolve_Absolute_ImplItems - Module");),
-        (Crate , BUG(i.data.span, "Resolve_Absolute_ImplItems - Crate");),
-        (Enum  , BUG(i.data.span, "Resolve_Absolute_ImplItems - Enum");),
-        (Trait , BUG(i.data.span, "Resolve_Absolute_ImplItems - Trait");),
-        (Struct, BUG(i.data.span, "Resolve_Absolute_ImplItems - Struct");),
-        (Union , BUG(i.data.span, "Resolve_Absolute_ImplItems - Union");),
+        (ExternBlock, BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (Impl,        BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (NegImpl,     BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (Macro,    BUG(i.span, "Resolve_Absolute_ImplItems - " << i.data.tag_str());),
+        (Use,    BUG(i.span, "Resolve_Absolute_ImplItems - Use");),
+        (Module, BUG(i.span, "Resolve_Absolute_ImplItems - Module");),
+        (Crate , BUG(i.span, "Resolve_Absolute_ImplItems - Crate");),
+        (Enum  , BUG(i.span, "Resolve_Absolute_ImplItems - Enum");),
+        (Trait , BUG(i.span, "Resolve_Absolute_ImplItems - Trait");),
+        (Struct, BUG(i.span, "Resolve_Absolute_ImplItems - Struct");),
+        (Union , BUG(i.span, "Resolve_Absolute_ImplItems - Union");),
         (Type,
             DEBUG("Type - " << i.name);
             assert( e.params().ty_params().size() == 0 );
@@ -2077,17 +2077,17 @@ void Resolve_Absolute_ImplItems(Context& item_context,  ::std::vector< ::AST::Im
         (None, ),
         (MacroInv, ),
 
-        (Impl  , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (NegImpl, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (ExternBlock, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (Macro , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (Use   , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (Module, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (Crate , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (Enum  , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (Trait , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (Struct, BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
-        (Union , BUG(i.data->span, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Impl  , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (NegImpl, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (ExternBlock, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Macro , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Use   , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Module, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Crate , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Enum  , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Trait , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Struct, BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
+        (Union , BUG(i.sp, "Resolve_Absolute_ImplItems - " << i.data->tag_str());),
         (Type,
             DEBUG("Type - " << i.name);
             assert( e.params().ty_params().size() == 0 );
@@ -2253,7 +2253,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             {
                 TU_MATCH_DEF(AST::Item, (i2.data), (e2),
                 (
-                    BUG(i2.data.span, "Unexpected item in ExternBlock - " << i2.data.tag_str());
+                    BUG(i.span, "Unexpected item in ExternBlock - " << i2.data.tag_str());
                     ),
                 (None,
                     ),
@@ -2281,7 +2281,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
                 Resolve_Absolute_Generic(item_context,  def.params());
 
                 if( e.items().size() != 0 ) {
-                    ERROR(i.data.span, E0000, "impl Trait for .. with methods");
+                    ERROR(i.span, E0000, "impl Trait for .. with methods");
                 }
 
                 item_context.pop(def.params());
@@ -2318,7 +2318,7 @@ void Resolve_Absolute_Mod( Context item_context, ::AST::Module& mod )
             item_context.m_ibl_target_generics = &impl_def.params();
             Resolve_Absolute_Type(item_context, impl_def.type());
             if( !impl_def.trait().ent.is_valid() )
-                BUG(i.data.span, "Encountered negative impl with no trait");
+                BUG(i.span, "Encountered negative impl with no trait");
             Resolve_Absolute_Path(item_context, impl_def.trait().sp, Context::LookupMode::Type, impl_def.trait().ent);
             item_context.m_ibl_target_generics = nullptr;
 

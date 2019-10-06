@@ -1194,7 +1194,7 @@ namespace {
 
         TU_MATCH_DEF(::AST::Item, (item.data), (i),
         (
-            BUG(item.data.span, "Encountered unexpected item type in trait");
+            BUG(item.span, "Encountered unexpected item type in trait");
             ),
         (None,
             // Ignore.
@@ -1212,18 +1212,18 @@ namespace {
             {
                 TU_MATCH(::HIR::GenericBound, (b), (be),
                 (TypeLifetime,
-                    ASSERT_BUG(item.data.span, be.type == ::HIR::TypeRef("Self", 0xFFFF), "Invalid lifetime bound on associated type");
+                    ASSERT_BUG(item.span, be.type == ::HIR::TypeRef("Self", 0xFFFF), "Invalid lifetime bound on associated type");
                     lifetime_bound = mv$(be.valid_for);
                     ),
                 (TraitBound,
-                    ASSERT_BUG(item.data.span, be.type == ::HIR::TypeRef("Self", 0xFFFF), "Invalid trait bound on associated type");
+                    ASSERT_BUG(item.span, be.type == ::HIR::TypeRef("Self", 0xFFFF), "Invalid trait bound on associated type");
                     trait_bounds.push_back( mv$(be.trait) );
                     ),
                 (Lifetime,
-                    BUG(item.data.span, "Unexpected lifetime-lifetime bound on associated type");
+                    BUG(item.span, "Unexpected lifetime-lifetime bound on associated type");
                     ),
                 (TypeEquality,
-                    BUG(item.data.span, "Unexpected type equality bound on associated type");
+                    BUG(item.span, "Unexpected type equality bound on associated type");
                     )
                 )
             }
@@ -1236,7 +1236,7 @@ namespace {
             ),
         (Function,
             ::HIR::TypeRef  self_type {"Self", 0xFFFF};
-            auto fcn = LowerHIR_Function(item_path, item.data.attrs, i, self_type);
+            auto fcn = LowerHIR_Function(item_path, item.attrs, i, self_type);
             fcn.m_save_code = true;
             rv.m_values.insert( ::std::make_pair(item.name, ::HIR::TraitValueItem::make_Function( mv$(fcn) )) );
             ),
@@ -1434,7 +1434,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
 
     for( const auto& item : ast_mod.items() )
     {
-        const auto& sp = item.data.span;
+        const auto& sp = item.span;
         auto item_path = ::HIR::ItemPath(path, item.name.c_str());
         DEBUG(item_path << " " << item.data.tag_str());
         TU_MATCH(::AST::Item, (item.data), (e),
@@ -1452,7 +1452,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
                 TODO(sp, "Expand ExternBlock");
             }
             // Insert a record of the `link` attribute
-            for(const auto& a : item.data.attrs.m_items)
+            for(const auto& a : item.attrs.m_items)
             {
                 if( a.name() != "link" )    continue ;
 
@@ -1484,7 +1484,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             // Ignore - The index is used to add `Import`s
             ),
         (Module,
-            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Module(e, mv$(item_path)) );
+            _add_mod_ns_item( mod, item.name, get_pub(item.is_pub), LowerHIR_Module(e, mv$(item_path)) );
             ),
         (Crate,
             // All 'extern crate' items should be normalised into a list in the crate root
@@ -1496,7 +1496,7 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             {
                 if( !e.params().lft_params().empty() || !e.params().ty_params().empty() || !e.params().bounds().empty() )
                 {
-                    ERROR(item.data.span, E0000, "Generics on extern type");
+                    ERROR(item.span, E0000, "Generics on extern type");
                 }
                 _add_mod_ns_item(mod, item.name, get_pub(item.is_pub), ::HIR::ExternType {});
                 break;
@@ -1513,20 +1513,20 @@ void _add_mod_mac_item(::HIR::Module& mod, RcString name, ::HIR::Publicity is_pu
             }
             else {
             }
-            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Struct(item_path, e, item.data.attrs) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Struct(item_path, e, item.attrs) );
             ),
         (Enum,
-            auto enm = LowerHIR_Enum(item_path, e, item.data.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, get_pub(item.is_pub), mv$(str)); });
+            auto enm = LowerHIR_Enum(item_path, e, item.attrs, [&](auto name, auto str){ _add_mod_ns_item(mod, name, get_pub(item.is_pub), mv$(str)); });
             _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), mv$(enm) );
             ),
         (Union,
-            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Union(item_path, e, item.data.attrs) );
+            _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Union(item_path, e, item.attrs) );
             ),
         (Trait,
             _add_mod_ns_item( mod,  item.name, get_pub(item.is_pub), LowerHIR_Trait(item_path.get_simple_path(), e) );
             ),
         (Function,
-            _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  LowerHIR_Function(item_path, item.data.attrs, e, ::HIR::TypeRef{}));
+            _add_mod_val_item(mod, item.name, get_pub(item.is_pub),  LowerHIR_Function(item_path, item.attrs, e, ::HIR::TypeRef{}));
             ),
         (Static,
             if( e.s_class() == ::AST::Static::CONST )
@@ -1660,7 +1660,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                     ::HIR::ItemPath    item_path(path, item.name.c_str());
                     TU_MATCH_DEF(::AST::Item, (*item.data), (e),
                     (
-                        BUG(item.data->span, "Unexpected item type in trait impl - " << item.data->tag_str());
+                        BUG(item.sp, "Unexpected item type in trait impl - " << item.data->tag_str());
                         ),
                     (None,
                         ),
@@ -1676,7 +1676,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                                 } }) );
                         }
                         else {
-                            TODO(item.data->span, "Associated statics in trait impl");
+                            TODO(item.sp, "Associated statics in trait impl");
                         }
                         ),
                     (Type,
@@ -1685,7 +1685,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                         ),
                     (Function,
                         DEBUG("- method " << item.name);
-                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(item_path, item.data->attrs, e, type) }) );
+                        methods.insert( ::std::make_pair(item.name, ::HIR::TraitImpl::ImplEnt< ::HIR::Function> { item.is_specialisable, LowerHIR_Function(item_path, item.attrs, e, type) }) );
                         )
                     )
                 }
@@ -1738,7 +1738,7 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                 ::HIR::ItemPath    item_path(path, item.name.c_str());
                 TU_MATCH_DEF(::AST::Item, (*item.data), (e),
                 (
-                    BUG(item.data->span, "Unexpected item type in inherent impl - " << item.data->tag_str());
+                    BUG(item.sp, "Unexpected item type in inherent impl - " << item.data->tag_str());
                     ),
                 (None,
                     ),
@@ -1753,12 +1753,12 @@ void LowerHIR_Module_Impls(const ::AST::Module& ast_mod,  ::HIR::Crate& hir_crat
                             } }) );
                     }
                     else {
-                        TODO(item.data->span, "Associated statics in inherent impl");
+                        TODO(item.sp, "Associated statics in inherent impl");
                     }
                     ),
                 (Function,
                     methods.insert( ::std::make_pair(item.name, ::HIR::TypeImpl::VisImplEnt< ::HIR::Function> {
-                        get_pub(item.is_pub), item.is_specialisable, LowerHIR_Function(item_path, item.data->attrs, e, type)
+                        get_pub(item.is_pub), item.is_specialisable, LowerHIR_Function(item_path, item.attrs, e, type)
                         } ) );
                     )
                 )

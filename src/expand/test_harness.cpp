@@ -114,12 +114,12 @@ void Expand_TestHarness(::AST::Crate& crate)
     auto newmod = ::AST::Module { ::AST::Path("", { ::AST::PathNode("test#") }) };
     // - TODO: These need to be loaded too.
     //  > They don't actually need to exist here, just be loaded (and use absolute paths)
-    newmod.add_ext_crate(false, "std", "std", {});
-    newmod.add_ext_crate(false, "test", "test", {});
+    newmod.add_ext_crate(Span(), false, "std", "std", {});
+    newmod.add_ext_crate(Span(), false, "test", "test", {});
 
-    newmod.add_item(false, "main", mv$(main_fn), {});
-    newmod.add_item(false, "TESTS", mv$(tests_list), {});
+    newmod.add_item(Span(), false, "main", mv$(main_fn), {});
+    newmod.add_item(Span(), false, "TESTS", mv$(tests_list), {});
 
-    crate.m_root_module.add_item(false, "test#", mv$(newmod), {});
+    crate.m_root_module.add_item(Span(), false, "test#", mv$(newmod), {});
     crate.m_lang_items["mrustc-main"] = ::AST::Path("", { AST::PathNode("test#"), AST::PathNode("main") });
 }

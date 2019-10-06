@@ -653,7 +653,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         if( !item.data.is_Crate() )    continue ;
         const auto& e = item.data.as_Crate();
 
-        print_attrs(item.data.attrs);
+        print_attrs(item.attrs);
         m_os << indent() << "extern crate \"" << e.name << "\" as " << item.name << ";\n";
     }
 
@@ -662,7 +662,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         if( !item.data.is_ExternBlock() )    continue ;
         const auto& e = item.data.as_ExternBlock();
 
-        print_attrs(item.data.attrs);
+        print_attrs(item.attrs);
         m_os << indent() << "extern \"" << e.abi() << "\" {}\n";
     }
 
@@ -690,7 +690,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
             m_os << "\n";
             need_nl = false;
         }
-        print_attrs(item.data.attrs);
+        print_attrs(item.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "type " << item.name;
         print_params(e.params());
         m_os << " = " << e.type();
@@ -705,7 +705,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Struct();
 
         m_os << "\n";
-        print_attrs(item.data.attrs);
+        print_attrs(item.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "struct " << item.name;
         handle_struct(e);
     }
@@ -716,7 +716,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Enum();
 
         m_os << "\n";
-        print_attrs(item.data.attrs);
+        print_attrs(item.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "enum " << item.name;
         handle_enum(e);
     }
@@ -727,7 +727,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Trait();
 
         m_os << "\n";
-        print_attrs(item.data.attrs);
+        print_attrs(item.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "") << "trait " << item.name;
         handle_trait(e);
     }
@@ -741,7 +741,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
             m_os << "\n";
             need_nl = false;
         }
-        print_attrs(item.data.attrs);
+        print_attrs(item.attrs);
         m_os << indent() << (item.is_pub ? "pub " : "");
         switch( e.s_class() )
         {
@@ -760,7 +760,7 @@ void RustPrinter::handle_module(const AST::Module& mod)
         const auto& e = item.data.as_Function();
 
         m_os << "\n";
-        print_attrs(item.data.attrs);
+        print_attrs(item.attrs);
         handle_function(item.is_pub, item.name, e);
     }
 

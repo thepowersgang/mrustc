@@ -32,12 +32,13 @@ namespace {
         fcn(mod);
         for( auto& sm : mod.items() )
         {
-            TU_IFLET(::AST::Item, sm.data, Module, e,
-                if( check_item_cfg(sm.data.attrs) )
+            if( auto* e = sm.data.opt_Module() )
+            {
+                if( check_item_cfg(sm.attrs) )
                 {
-                    iterate_module(e, fcn);
+                    iterate_module(*e, fcn);
                 }
-            )
+            }
         }
         // TODO: What about if an anon mod has been #[cfg]-d out?
         // - For now, disable
@@ -61,12 +62,13 @@ void Crate::load_externs()
     auto cb = [this](Module& mod) {
         for( /*const*/ auto& it : mod.items() )
         {
-            TU_IFLET(AST::Item, it.data, Crate, c,
-                if( check_item_cfg(it.data.attrs) )
+            if( auto* c = it.data.opt_Crate() )
+            {
+                if( check_item_cfg(it.attrs) )
                 {
-                    c.name = load_extern_crate( it.data.span, c.name.c_str() );
+                    c->name = load_extern_crate( it.span, c->name.c_str() );
                 }
-            )
+            }
         }
         };
     iterate_module(m_root_module, cb);

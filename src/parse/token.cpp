@@ -110,8 +110,8 @@ Token::Token(const InterpolatedFragment& frag)
     case InterpolatedFragment::ITEM: {
         m_type = TOK_INTERPOLATED_ITEM;
         const auto& named = *reinterpret_cast<const AST::Named<AST::Item>*>(frag.m_ptr);
-        ::AST::Item item = named.data.clone();
-        m_data = new AST::Named<AST::Item>( named.name, mv$(item), named.is_pub );
+        auto item = named.data.clone();
+        m_data = new AST::Named<AST::Item>( named.span, named.attrs.clone(), named.is_pub, named.name, mv$(item) );
         break; }
     }
 }
