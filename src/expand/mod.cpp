@@ -72,30 +72,42 @@ void Expand_Attr(const Span& sp, const ::AST::Attribute& a, AttrStage stage,  ::
         //WARNING(sp, W0000, "Unknown attribute " << a.name());
     }
 }
-void Expand_Attrs(/*const */::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
+void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::std::function<void(const Span& sp, const ExpandDecorator& d,const ::AST::Attribute& a)> f)
 {
     for( auto& a : attrs.m_items )
     {
+        Expand_Attr(a.span(), a, stage, f);
+    }
+}
+void Expand_Attrs_CfgAttr(AST::AttributeList& attrs)
+{
+    for(auto it = attrs.m_items.begin(); it != attrs.m_items.end(); )
+    {
+        auto& a = *it;
         if( a.name() == "cfg_attr" ) {
             if( check_cfg(a.span(), a.items().at(0)) ) {
-                // Wait? Why move?
-                auto inner_attr = mv$(a.items().at(1));
-                Expand_Attr(inner_attr.span(), inner_attr, stage, f);
-                a = mv$(inner_attr);
+                a = mv$(a.items().at(1));
+                ++ it;
             }
             else {
+                it = attrs.m_items.erase(it);
             }
         }
         else {
-            Expand_Attr(a.span(), a, stage, f);
+            ++ it;
         }
     }
 }
-void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
+void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, const ::AST::Path& path, ::AST::Module& mod, ::AST::Item& item)
 {
-    Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ if(!item.is_None()) d.handle(sp, a, crate, path, mod, item); });
+    Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){
+        if(!item.is_None()) {
+            // TODO: Pass attributes _after_ this attribute
+            d.handle(sp, a, crate, path, mod, item/*, attrs*/);
+        }
+        });
 }
-void Expand_Attrs(::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
+void Expand_Attrs(const ::AST::AttributeList& attrs, AttrStage stage,  ::AST::Crate& crate, ::AST::Module& mod, ::AST::ImplDef& impl)
 {
     Expand_Attrs(attrs, stage,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, mod, impl); });
 }
@@ -378,6 +390,7 @@ struct CExpandExpr:
         if(cnode.get())
         {
             auto attrs = mv$(cnode->attrs());
+            Expand_Attrs_CfgAttr(attrs);
             Expand_Attrs(attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, cnode); });
             if(cnode.get())
                 cnode->attrs() = mv$(attrs);
@@ -526,6 +539,7 @@ struct CExpandExpr:
 
             if( auto* node_mac = dynamic_cast<::AST::ExprNode_Macro*>(it->get()) )
             {
+                Expand_Attrs_CfgAttr( (*it)->attrs() );
                 Expand_Attrs((*it)->attrs(), AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, this->crate, *it); });
                 if( !it->get() ) {
                     it = node.m_nodes.erase( it );
@@ -678,6 +692,7 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_val);
         for(auto& arm : node.m_arms)
         {
+            Expand_Attrs_CfgAttr( arm.m_attrs );
             Expand_Attrs(arm.m_attrs, AttrStage::Pre ,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  arm); });
             if( arm.m_patterns.size() == 0 )
                 continue ;
@@ -724,6 +739,7 @@ struct CExpandExpr:
         this->visit_nodelete(node, node.m_base_value);
         for(auto& val : node.m_values)
         {
+            Expand_Attrs_CfgAttr(val.attrs);
             Expand_Attrs(val.attrs, AttrStage::Pre ,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate,  val); });
             if( !val.value )
                 continue ;
@@ -962,6 +978,7 @@ void Expand_BareExpr(const ::AST::Crate& crate, const AST::Module& mod, ::std::u
 void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::Impl& impl)
 {
     TRACE_FUNCTION_F(impl.def());
+    Expand_Attrs_CfgAttr(impl.def().attrs());
     Expand_Attrs(impl.def().attrs(), AttrStage::Pre,  crate, mod, impl.def());
     if( impl.def().type().is_wildcard() ) {
         DEBUG("Deleted");
@@ -983,6 +1000,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
         //::AST::Path path = modpath + i.name;
 
         auto attrs = mv$(i.attrs);
+        Expand_Attrs_CfgAttr(attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, *i.data);
 
         TU_MATCH_DEF(AST::Item, (*i.data), (e),
@@ -1046,6 +1064,7 @@ void Expand_Impl(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST:
 }
 void Expand_ImplDef(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::Path modpath, ::AST::Module& mod, ::AST::ImplDef& impl_def)
 {
+    Expand_Attrs_CfgAttr(impl_def.attrs());
     Expand_Attrs(impl_def.attrs(), AttrStage::Pre,  crate, mod, impl_def);
     if( impl_def.type().is_wildcard() ) {
         DEBUG("Deleted");
@@ -1098,6 +1117,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         ::AST::Path path = modpath + i.name;
 
         auto attrs = mv$(i.attrs);
+        Expand_Attrs_CfgAttr(attrs);
         Expand_Attrs(attrs, AttrStage::Pre,  crate, path, mod, i.data);
 
         auto dat = mv$(i.data);
@@ -1171,6 +1191,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             (Struct,
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;
+                    Expand_Attrs_CfgAttr(si.m_attrs);
                     Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
                     Expand_Type(crate, modstack, mod,  si.m_type);
                     Expand_Attrs(si.m_attrs, AttrStage::Post, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
@@ -1184,6 +1205,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             (Tuple,
                 for(auto it = sd.ents.begin(); it != sd.ents.end(); ) {
                     auto& si = *it;
+                    Expand_Attrs_CfgAttr(si.m_attrs);
                     Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
                     Expand_Type(crate, modstack, mod,  si.m_type);
                     Expand_Attrs(si.m_attrs, AttrStage::Post, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
@@ -1199,6 +1221,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
         TU_ARMA(Enum, e) {
             Expand_GenericParams(crate, modstack, mod,  e.params());
             for(auto& var : e.variants()) {
+                Expand_Attrs_CfgAttr(var.m_attrs);
                 Expand_Attrs(var.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, var); });
                 TU_MATCH(::AST::EnumVariantData, (var.m_data), (e),
                 (Value,
@@ -1212,6 +1235,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 (Struct,
                     for(auto it = e.m_fields.begin(); it != e.m_fields.end(); ) {
                         auto& si = *it;
+                        Expand_Attrs_CfgAttr(si.m_attrs);
                         Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
                         Expand_Type(crate, modstack, mod,  si.m_type);
                         Expand_Attrs(si.m_attrs, AttrStage::Post, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
@@ -1240,6 +1264,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
             for(auto it = e.m_variants.begin(); it != e.m_variants.end(); )
             {
                 auto& si = *it;
+                Expand_Attrs_CfgAttr(si.m_attrs);
                 Expand_Attrs(si.m_attrs, AttrStage::Pre, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
                 Expand_Type(crate, modstack, mod,  si.m_type);
                 Expand_Attrs(si.m_attrs, AttrStage::Post, [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate, si); });
@@ -1258,6 +1283,7 @@ void Expand_Mod(::AST::Crate& crate, LList<const AST::Module*> modstack, ::AST::
                 auto& ti = trait_items[idx];
                 DEBUG(" - " << ti.name << " " << ti.data.tag_str());
                 auto attrs = mv$(ti.attrs);
+                Expand_Attrs_CfgAttr(attrs);
                 Expand_Attrs(attrs, AttrStage::Pre,  crate, AST::Path(), mod, ti.data);
 
                 TU_MATCH_DEF(AST::Item, (ti.data), (e),
@@ -1396,6 +1422,7 @@ void Expand(::AST::Crate& crate)
     auto modstack = LList<const ::AST::Module*>(nullptr, &crate.m_root_module);
 
     // 1. Crate attributes
+    Expand_Attrs_CfgAttr(crate.m_attrs);
     Expand_Attrs(crate.m_attrs, AttrStage::Pre,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
 
     // Insert magic for libstd/libcore
@@ -1434,6 +1461,8 @@ void Expand(::AST::Crate& crate)
 
     // 3. Module tree
     Expand_Mod(crate, modstack, ::AST::Path("",{}), crate.m_root_module);
+
+    //Expand_Attrs(crate.m_attrs, AttrStage::Post,  [&](const auto& sp, const auto& d, const auto& a){ d.handle(sp, a, crate); });
 
     // Post-process
     Expand_Mod_IndexAnon(crate, crate.m_root_module);
