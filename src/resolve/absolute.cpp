@@ -743,7 +743,7 @@ namespace {
         np.m_bindings = path.m_bindings.clone();
         return np;
     }
-    AST::Path split_into_ufcs_ty(const Span& sp, AST::Path path, unsigned int i /*item_name_idx*/)
+    AST::Path split_into_ufcs_ty(const Span& sp, const AST::Path& path, unsigned int i /*item_name_idx*/)
     {
         const auto& path_abs = path.m_class.as_Absolute();
         auto type_path = ::AST::Path( path );
@@ -752,6 +752,8 @@ namespace {
         auto new_path = ::AST::Path(::AST::Path::TagUfcs(), ::TypeRef(sp, mv$(type_path)), ::AST::Path());
         for( unsigned int j = i+1; j < path_abs.nodes.size(); j ++ )
             new_path.nodes().push_back( mv$(path_abs.nodes[j]) );
+
+        DEBUG(path << " -> " << new_path);
 
         return new_path;
     }
@@ -923,8 +925,15 @@ namespace {
                 auto newpath = AST::Path(e.path.m_crate_name, {});
                 for(const auto& n : e.path.m_components)
                     newpath.nodes().push_back( AST::PathNode(n) );
+                if( newpath.nodes().empty() ) {
+                    ASSERT_BUG(sp, n.args().is_empty(), "Params present, but name resolves to a crate root - " << path << " #" << i << " -> " << newpath);
+                }
+                else {
+                    newpath.nodes().back().args() = mv$(path.nodes()[i].args());
+                }
                 for(unsigned int j = i + 1; j < path.nodes().size(); j ++)
                     newpath.nodes().push_back( mv$(path.nodes()[j]) );
+                DEBUG("> Recurse with " << newpath);
                 path = mv$(newpath);
                 // TODO: Recursion limit
                 Resolve_Absolute_Path_BindAbsolute(context, sp, mode, path);
