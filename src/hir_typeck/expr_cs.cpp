@@ -861,6 +861,11 @@ namespace {
                 this->equate_types_inner_coerce(node.span(), node.m_res_type, arm.m_code);
                 arm.m_code->visit( *this );
             }
+
+            if( node.m_arms.empty() ) {
+                DEBUG("Empty match");
+                this->context.equate_types(node.span(), node.m_res_type, ::HIR::TypeRef::new_diverge());
+            }
         }
 
         void visit(::HIR::ExprNode_If& node) override
