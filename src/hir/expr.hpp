@@ -797,6 +797,7 @@ struct ExprNode_Closure:
         Mut,
         Once,
     } m_class = Class::Unknown;
+    bool m_is_copy = false;
 
     // - Path to the generated closure type
     ::HIR::GenericPath  m_obj_path_base;

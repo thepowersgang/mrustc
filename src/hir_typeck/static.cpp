@@ -1497,6 +1497,7 @@ bool StaticTraitResolve::type_is_copy(const Span& sp, const ::HIR::TypeRef& ty) 
         if( TARGETVER_1_29 )
         {
             // TODO: Auto-gerated impls
+            return e.node->m_is_copy;
         }
         return false;
         ),
@@ -1592,7 +1593,11 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
         return true;
         ),
     (Closure,
-        // TODO: Auto-gerated impls
+        if( TARGETVER_1_29 )
+        {
+            // TODO: Auto-gerated impls
+            return e.node->m_is_copy;
+        }
         return false;
         ),
     (Infer,

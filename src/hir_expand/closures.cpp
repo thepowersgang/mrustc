@@ -769,13 +769,31 @@ namespace {
                 fixup.visit_type(ty_mono);
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty_mono) } );
             }
+
+            // --- ---
+            switch(node.m_class)
+            {
+            case ::HIR::ExprNode_Closure::Class::Unknown:
+            case ::HIR::ExprNode_Closure::Class::NoCapture:
+            case ::HIR::ExprNode_Closure::Class::Shared:
+                node.m_is_copy = true;
+                break;
+            case ::HIR::ExprNode_Closure::Class::Mut:
+                break;
+            case ::HIR::ExprNode_Closure::Class::Once:
+                // TODO: Check if captures are Copy?
+                break;
+            }
+
+            auto str = ::HIR::Struct {
+                params.clone(),
+                ::HIR::Struct::Repr::Rust,
+                ::HIR::Struct::Data::make_Tuple(mv$(capture_types))
+                };
+            str.m_markings.is_copy = node.m_is_copy;
             auto closure_struct_path = m_new_type(
                 m_new_type_suffix,
-                ::HIR::Struct {
-                    params.clone(),
-                    ::HIR::Struct::Repr::Rust,
-                    ::HIR::Struct::Data::make_Tuple(mv$(capture_types))
-                    }
+                mv$(str)
                 );
             const auto& closure_struct_ref = m_resolve.m_crate.get_struct_by_path(sp, closure_struct_path);
 
@@ -815,6 +833,19 @@ namespace {
                 fixup.visit_type( args_ty );
                 fixup.visit_type( ret_type );
                 // TODO: Replace erased types too
+            }
+
+            if( node.m_is_copy )
+            {
+                auto& v = const_cast<::HIR::Crate&>(m_resolve.m_crate).m_trait_impls[m_resolve.m_crate.get_lang_item_path(sp, "copy")].get_list_for_type_mut(closure_type);
+                v.push_back(box$(::HIR::TraitImpl {
+                    params.clone(), {}, closure_type.clone(),
+                    {},
+                    {},
+                    {},
+                    {},
+                    /*source module*/::HIR::SimplePath()
+                    }));
             }
 
             // ---
