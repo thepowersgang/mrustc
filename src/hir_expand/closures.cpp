@@ -844,7 +844,7 @@ namespace {
                     {},
                     {},
                     {},
-                    /*source module*/::HIR::SimplePath()
+                    /*source module*/::HIR::SimplePath(m_resolve.m_crate.m_crate_name, {})
                     }));
             }
 
