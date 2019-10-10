@@ -323,7 +323,7 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
         // No library, add one pointing to lib.rs
         if( ::std::ifstream(package_dir / "src" / "main.rs").good() )
         {
-            DEBUG("- Implicit library");
+            DEBUG("- Implicit binary");
             rv.m_targets.push_back(PackageTarget { PackageTarget::Type::Bin });
         }
     }
@@ -343,8 +343,13 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
                     tgt.m_path = "src/main.rs";
                 }
                 else {
-                    // TODO: What about src/bin/foo/main.rs?
+                    // TODO: Error if both exist
+                    // TODO: More complex search rules
                     tgt.m_path = ::helpers::path("src") / "bin" / tgt.m_name.c_str() + ".rs";
+                    if( !::std::ifstream(package_dir / tgt.m_path).good() )
+                        tgt.m_path = ::helpers::path("src") / "bin" / tgt.m_name.c_str() / "main.rs";
+                    //if( !::std::ifstream(package_dir / tgt.m_path).good() )
+                    //    throw ::std::runtime_error(format("Unable to find source file for ", tgt.m_name, " - ", package_dir / tgt.m_path));
                 }
                 break;
             case PackageTarget::Type::Test:
