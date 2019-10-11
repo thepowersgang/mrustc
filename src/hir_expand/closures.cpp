@@ -731,6 +731,7 @@ namespace {
             ::std::vector< ::HIR::ExprNodeP>    capture_nodes;
             capture_types.reserve( ent.captured_vars.size() );
             capture_nodes.reserve( ent.captured_vars.size() );
+            node.m_is_copy = true;
             for(const auto binding : ent.captured_vars)
             {
                 const auto binding_idx = binding.first;
@@ -767,22 +768,17 @@ namespace {
                 // - Fix type to replace closure types with known paths
                 ExprVisitor_Fixup   fixup { m_resolve.m_crate, &params, monomorph_cb };
                 fixup.visit_type(ty_mono);
+                if( !m_resolve.type_is_copy(sp, ty_mono) )
+                {
+                    node.m_is_copy = false;
+                }
                 capture_types.push_back( ::HIR::VisEnt< ::HIR::TypeRef> { ::HIR::Publicity::new_none(), mv$(ty_mono) } );
             }
 
             // --- ---
-            switch(node.m_class)
+            if( node.m_is_copy )
             {
-            case ::HIR::ExprNode_Closure::Class::Unknown:
-            case ::HIR::ExprNode_Closure::Class::NoCapture:
-            case ::HIR::ExprNode_Closure::Class::Shared:
-                node.m_is_copy = true;
-                break;
-            case ::HIR::ExprNode_Closure::Class::Mut:
-                break;
-            case ::HIR::ExprNode_Closure::Class::Once:
-                // TODO: Check if captures are Copy?
-                break;
+                DEBUG("Copy closure");
             }
 
             auto str = ::HIR::Struct {
