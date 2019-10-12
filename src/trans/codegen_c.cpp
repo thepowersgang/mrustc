@@ -824,15 +824,18 @@ namespace {
                 case CodegenOutput::Executable:
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
-                        // TODO: If this crate is included in a dylib crate, ignore it
+                        auto is_dylib = [](const ::HIR::ExternCrate& c) {
+                            bool rv = false;
+                            // TODO: Better rule than this
+                            rv |= (c.m_path.compare(c.m_path.size() - 3, 3, ".so") == 0);
+                            rv |= (c.m_path.compare(c.m_path.size() - 4, 4, ".dll") == 0);
+                            return rv;
+                            };
+                        // If this crate is included in a dylib crate, ignore it
                         bool is_in_dylib = false;
                         for( const auto& crate2 : m_crate.m_ext_crates )
                         {
-                            // TODO: Better rule than this
-                            bool is_dylib = false;
-                            is_dylib |= (crate2.second.m_path.compare(crate2.second.m_path.size() - 3, 3, ".so") == 0);
-                            is_dylib |= (crate2.second.m_path.compare(crate2.second.m_path.size() - 4, 4, ".dll") == 0);
-                            if( is_dylib )
+                            if( is_dylib(crate2.second) )
                             {
                                 for(const auto& subcrate : crate2.second.m_data->m_ext_crates)
                                 {
@@ -850,8 +853,11 @@ namespace {
                         else if( crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") == 0 ) {
                             args.push_back(crate.second.m_path + ".o");
                         }
-                        else {
+                        else if( is_dylib(crate.second) ) {
                             args.push_back(crate.second.m_path);
+                        }
+                        else {
+                            // Proc macro.
                         }
                     }
                     for(const auto& path : link_dirs )
