@@ -64,3 +64,18 @@
 +        //assert!(mem::size_of::<ty::TypeVariants>() <= 24);
 +        //#[cfg(target_pointer_width = "64")]
 +        //assert!(mem::size_of::<ty::TyS>() <= 32);
+
+--- src/stdsimd/stdsimd/arch/detect/os/x86.rs
++++ src/stdsimd/stdsimd/arch/detect/os/x86.rs
+@@ -14,5 +14,11 @@
+ /// Performs run-time feature detection.
+ #[inline]
++#[cfg(not(rust_compiler="mrustc"))]
+ pub fn check_for(x: Feature) -> bool {
+     cache::test(x as u32, detect_features)
+ }
++#[inline]
++#[cfg(rust_compiler="mrustc")]
++pub fn check_for(x: Feature) -> bool {
++    false
++}
