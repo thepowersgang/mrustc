@@ -141,6 +141,8 @@ $(OUTDIR)cargo-build/libcurl-0_4_6.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/vendor/curl --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
 $(OUTDIR)cargo-build/libterm-0_4_5.rlib: $(MRUSTC) LIBS
 	$(MINICARGO) $(RUSTCSRC)src/vendor/term --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) $(MINICARGO_FLAGS)
+$(OUTDIR)cargo-build/libfailure-0_1_2.rlib: $(MRUSTC) LIBS
+	$(MINICARGO) $(RUSTCSRC)src/vendor/failure --vendor-dir $(RUSTCSRC)src/vendor --output-dir $(dir $@) -L $(OUTDIR) --features std,derive,backtrace,failure_derive $(MINICARGO_FLAGS)
 
 #
 # Testing
