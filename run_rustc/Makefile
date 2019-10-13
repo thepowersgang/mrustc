@@ -11,11 +11,12 @@ endif
 
 RUSTC_TARGET := x86_64-unknown-linux-gnu
 
-PREFIX := prefix$(OUTDIR_SUF)/
+OUTDIR := output$(OUTDIR_SUF)/
+PREFIX := $(OUTDIR)prefix/
 BINDIR := $(PREFIX)bin/
 LIBDIR := $(PREFIX)lib/rustlib/$(RUSTC_TARGET)/lib/
 CARGO_HOME := $(PREFIX)cargo_home/
-PREFIX_S := prefix-s$(OUTDIR_SUF)/
+PREFIX_S := $(OUTDIR)prefix-s/
 LIBDIR_S := $(PREFIX_S)lib/rustlib/$(RUSTC_TARGET)/lib/
 BINDIR_S := $(PREFIX_S)bin/
 
@@ -49,20 +50,24 @@ $(BINDIR)cargo: ../output$(OUTDIR_SUF)/cargo
 	$Vcp $< $@
 
 $(CARGO_HOME)config: Makefile
-	mkdir -p $(dir $@)
-	echo "[source.crates-io]" > $@
-	echo "replace-with = \"vendored-sources\"" >> $@
-	echo "[source.vendored-sources]" >> $@
-	echo "directory = \"$(abspath $(RUST_SRC)vendor)\"" >> $@
+	@mkdir -p $(dir $@)
+	@echo "[create] $@"
+	$Vecho "[source.crates-io]" > $@
+	$Vecho "replace-with = \"vendored-sources\"" >> $@
+	$Vecho "[source.vendored-sources]" >> $@
+	$Vecho "directory = \"$(abspath $(RUST_SRC)vendor)\"" >> $@
 
 # Actual libstd build (using cargo)
 $(LIBDIR)libstd.rlib: $(BINDIR_S)rustc $(BINDIR)cargo $(LIBDIR_S)libstd.rlib $(CARGO_HOME)config
-	@mkdir -p ./build/libstd
-	RUSTC=$(BINDIR_S)rustc CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build -Z unstable-options --manifest-path $(RUST_SRC)libstd/Cargo.toml --out-dir $(LIBDIR) --target-dir build$(OUTDIR_SUF) -j 1 --release --verbose
+	@mkdir -p $(OUTDIR)build-std
+	@echo [CARGO] $(RUST_SRC)libstd/Cargo.toml
+	$VRUSTC=$(BINDIR_S)rustc CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build -Z unstable-options --manifest-path $(RUST_SRC)libstd/Cargo.toml --out-dir $(LIBDIR) --target-dir $(OUTDIR)build-std -j 1 --release --features panic-unwind
+	cp $(OUTDIR)build-std/release/deps/lib*-*.rlib $(LIBDIR)
+	#cp $(OUTDIR)build-std/release/deps/lib*-*.so $(LIBDIR)
 $(LIBDIR)libproc_macro.rlib: $(LIBDIR)libstd.rlib $(CARGO_HOME)config
-	@mkdir -p ./build$(OUTDIR_SUF)
-	RUSTC=$(BINDIR)rustc CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build -Z unstable-options --manifest-path $(RUST_SRC)libproc_macro/Cargo.toml --out-dir $(LIBDIR) --target-dir build$(OUTDIR_SUF) -j 1 --verbose
-#	MINICARGO_COMPILER=$(BINDIR)rustc ../tools/bin/minicargo --vendor-dir $(RUST_SRC)vendor --output-dir build$(OUTDIR_SUF) $(RUST_SRC)libproc_macro
+	@mkdir -p $(OUTDIR)build-pm
+	@echo [CARGO] $(RUST_SRC)libproc_macro/Cargo.toml
+	$VRUSTC=$(BINDIR)rustc RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build -Z unstable-options --manifest-path $(RUST_SRC)libproc_macro/Cargo.toml --out-dir $(LIBDIR) --target-dir $(OUTDIR)build-pm -j 1 --verbose
 
 $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(BINDIR)rustc
 	@mkdir -p $(dir $@)
