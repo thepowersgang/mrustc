@@ -15,10 +15,10 @@ public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
-        if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
-            //ERROR(sp, E0000, "Multiple #![crate_type] attributes");
-            return ;
-        }
+        //if( crate.m_crate_type != AST::Crate::Type::Unknown ) {
+        //    //ERROR(sp, E0000, "Multiple #![crate_type] attributes");
+        //    return ;
+        //}
         if( !mi.has_string() ) {
             ERROR(sp, E0000, "#![crate_type] requires a string argument");
         }
@@ -42,9 +42,9 @@ public:
     AttrStage stage() const override { return AttrStage::Pre; }
 
     void handle(const Span& sp, const AST::Attribute& mi, AST::Crate& crate) const override {
-        if( crate.m_crate_name != "" ) {
-            ERROR(sp, E0000, "Multiple #![crate_name] attributes");
-        }
+        //if( crate.m_crate_name != "" ) {
+        //    ERROR(sp, E0000, "Multiple #![crate_name] attributes");
+        //}
         if( !mi.has_string() || mi.string() == "" ) {
             ERROR(sp, E0000, "#![crate_name] requires a non-empty string argument");
         }

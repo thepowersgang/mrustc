@@ -252,6 +252,10 @@ int main(int argc, char *argv[])
             crate.load_externs();
             });
 
+        if( params.crate_name != "" ) {
+            crate.m_crate_name = params.crate_name;
+        }
+
         // Iterate all items in the AST, applying syntax extensions
         CompilePhaseV("Expand", [&]() {
             Expand(crate);
