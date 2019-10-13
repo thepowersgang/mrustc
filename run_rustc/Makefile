@@ -61,15 +61,22 @@ $(CARGO_HOME)config: Makefile
 $(LIBDIR)libstd.rlib: $(BINDIR_S)rustc $(BINDIR)cargo $(LIBDIR_S)libstd.rlib $(CARGO_HOME)config
 	@mkdir -p $(OUTDIR)build-std
 	@echo [CARGO] $(RUST_SRC)libstd/Cargo.toml
-	$VRUSTC=$(BINDIR_S)rustc CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build -Z unstable-options --manifest-path $(RUST_SRC)libstd/Cargo.toml --out-dir $(LIBDIR) --target-dir $(OUTDIR)build-std -j 1 --release --features panic-unwind
-	@cp --remove-destination $(OUTDIR)build-std/release/deps/lib*-*.rlib $(LIBDIR)
-	#cp $(OUTDIR)build-std/release/deps/lib*-*.so $(LIBDIR)
-$(LIBDIR)libproc_macro.rlib: $(LIBDIR)libstd.rlib $(CARGO_HOME)config
+	$VCARGO_TARGET_DIR=$(OUTDIR)build-std RUSTC=$(BINDIR_S)rustc CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build --manifest-path $(RUST_SRC)libstd/Cargo.toml  -j 1 --release --features panic-unwind
+	$Vcp --remove-destination $(OUTDIR)build-std/release/deps/*.rlib $(LIBDIR)
+	$Vcp --remove-destination $(OUTDIR)build-std/release/deps/*.so $(LIBDIR)
+$(LIBDIR)libtest.rlib: $(LIBDIR)libstd.rlib $(CARGO_HOME)config
+	@mkdir -p $(OUTDIR)build-test
+	@echo [CARGO] $(RUST_SRC)libtest/Cargo.toml
+	$VCARGO_TARGET_DIR=$(OUTDIR)build-test RUSTC=$(BINDIR)rustc CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) RUSTFLAGS="-Z force-unstable-if-unmarked" $(BINDIR)cargo build --manifest-path $(RUST_SRC)libtest/Cargo.toml  -j 1 --release
+	@mkdir -p $(LIBDIR)
+	$Vcp --remove-destination $(OUTDIR)build-test/release/deps/*.rlib $(LIBDIR)
+	$Vcp --remove-destination $(OUTDIR)build-test/release/deps/*.so $(LIBDIR)
+$(LIBDIR)libproc_macro.rlib: $(LIBDIR)libstd.rlib $(LIBDIR)libtest.rlib $(CARGO_HOME)config
 	@mkdir -p $(OUTDIR)build-pm
 	@echo [CARGO] $(RUST_SRC)libproc_macro/Cargo.toml
-	$VRUSTC=$(BINDIR)rustc RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTFLAGS="-Z force-unstable-if-unmarked" RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build -Z unstable-options --manifest-path $(RUST_SRC)libproc_macro/Cargo.toml --out-dir $(LIBDIR) --target-dir $(OUTDIR)build-pm --release -j 1
-	@cp --remove-destination $(OUTDIR)build-pm/release/deps/lib*.so $(LIBDIR)
-	@cp --remove-destination $(OUTDIR)build-pm/release/deps/lib*.rlib $(LIBDIR)
+	$VCARGO_TARGET_DIR=$(OUTDIR)build-pm RUSTC=$(BINDIR)rustc RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTFLAGS="-Z force-unstable-if-unmarked" RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build --manifest-path $(RUST_SRC)libproc_macro/Cargo.toml --release -j 1
+	$Vcp --remove-destination $(OUTDIR)build-pm/release/deps/lib*.so $(LIBDIR)
+	$Vcp --remove-destination $(OUTDIR)build-pm/release/deps/lib*.rlib $(LIBDIR)
 
 $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(BINDIR)rustc
 	@mkdir -p $(dir $@)
@@ -79,14 +86,14 @@ $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(B
 # 
 # - Build libstd in a hacky hard-coded way first, to allow build scripts to work
 # 
-$(LIBDIR_S)lib%.rlib: $(RUST_SRC)lib%/lib.rs $(BINDIR)rustc
+$(LIBDIR_S)lib%.rlib: $(RUST_SRC)lib%/lib.rs $(BINDIR_S)rustc
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(DBG) $(BINDIR)rustc --crate-type rlib --crate-name $* -L $(LIBDIR_S) $< -o $@ $(RUSTFLAGS_$*)
-$(LIBDIR_S)lib%.rlib: $(RUST_SRC)lib%/src/lib.rs $(BINDIR)rustc
+	$Vtime $(DBG) $(BINDIR_S)rustc --crate-type rlib --crate-name $* -L $(LIBDIR_S) $< -o $@ $(RUSTFLAGS_$*)
+$(LIBDIR_S)lib%.rlib: $(RUST_SRC)lib%/src/lib.rs $(BINDIR_S)rustc
 	@mkdir -p $(dir $@)
 	@echo "[RUSTC] -o $@"
-	$Vtime $(DBG) $(BINDIR)rustc --crate-type rlib --crate-name $* -L $(LIBDIR_S) $< -o $@ $(RUSTFLAGS_$*)
+	$Vtime $(DBG) $(BINDIR_S)rustc --crate-type rlib --crate-name $* -L $(LIBDIR_S) $< -o $@ $(RUSTFLAGS_$*)
 
 fcn_extcrate = $(patsubst %,$(LIBDIR_S)lib%.rlib,$(1))
 
@@ -94,9 +101,9 @@ $(LIBDIR_S)libarena.rlib: $(call fcn_extcrate, std)
 $(LIBDIR_S)liballoc.rlib: $(call fcn_extcrate, core compiler_builtins)
 ifeq ($(RUSTC_VERSION),1.29.0)
 $(LIBDIR_S)liballoc.rlib: $(call fcn_extcrate, alloc_system)
-$(LIBDIR_S)liballoc_system.rlib: $(call fcn_extcrate, core libc)
-$(LIBDIR_S)libpanic_unwind.rlib: $(call fcn_extcrate, alloc)
 endif
+$(LIBDIR_S)liballoc_system.rlib: $(call fcn_extcrate, core libc)
+$(LIBDIR_S)libpanic_unwind.rlib: $(call fcn_extcrate, core alloc libc unwind)
 $(LIBDIR_S)libstd_unicode.rlib: $(call fcn_extcrate, core compiler_builtins)
 $(LIBDIR_S)libcollections.rlib: $(call fcn_extcrate, core alloc std_unicode compiler_builtins)
 $(LIBDIR_S)librand.rlib: $(call fcn_extcrate, core compiler_builtins)
