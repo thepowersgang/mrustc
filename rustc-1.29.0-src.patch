@@ -36,10 +36,14 @@
  extern crate syntax_pos;
 +extern crate rustc_codegen_llvm;
  
-@@ -259,2 +260,3 @@
-         let backend = match &codegen_name[..] {
-+            "llvm" => rustc_codegen_llvm::__rustc_codegen_backend,
-             "metadata_only" => {
+@@ -296,3 +296,7 @@
+     }
+ 
++    if backend_name == "llvm" {
++        return rustc_codegen_llvm::__rustc_codegen_backend;
++    }
++
+     let target = session::config::host_triple();
 # No workspace support in minicargo, patch cargo's Cargo.toml
 --- src/tools/cargo/Cargo.toml
 +++ src/tools/cargo/Cargo.toml
