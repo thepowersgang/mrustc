@@ -20,6 +20,18 @@ PREFIX_S := $(OUTDIR)prefix-s/
 LIBDIR_S := $(PREFIX_S)lib/rustlib/$(RUSTC_TARGET)/lib/
 BINDIR_S := $(PREFIX_S)bin/
 
+LLVM_CONFIG := $(RUST_SRC)../build/bin/llvm-config
+LLVM_TARGETS ?= X86;ARM;AArch64#;Mips;PowerPC;SystemZ;JSBackend;MSP430;Sparc;NVPTX
+
+RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
+RUSTC_ENV_VARS += LLVM_CONFIG=$(abspath $(LLVM_CONFIG))
+RUSTC_ENV_VARS += CFG_RELEASE=
+RUSTC_ENV_VARS += CFG_RELEASE_CHANNEL=$(RUSTC_CHANNEL)
+RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-$(RUSTC_CHANNEL)-mrustc
+RUSTC_ENV_VARS += CFG_PREFIX=mrustc
+RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
+RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath output)
+
 V ?= @
 
 
@@ -39,7 +51,7 @@ RUSTFLAGS_compiler_builtins := --cfg feature=\"compiler-builtins\"
 ../output$(OUTDIR_SUF)/cargo:
 	make -C ../ output$(OUTDIR_SUF)/cargo -j 3
 
-$(BINDIR)rustc: ../output$(OUTDIR_SUF)/rustc
+$(BINDIR)rustc_m: ../output$(OUTDIR_SUF)/rustc
 	@mkdir -p $(dir $@)
 	$Vcp $< $@
 $(BINDIR_S)rustc: ../output$(OUTDIR_SUF)/rustc
@@ -57,26 +69,34 @@ $(CARGO_HOME)config: Makefile
 	$Vecho "[source.vendored-sources]" >> $@
 	$Vecho "directory = \"$(abspath $(RUST_SRC)vendor)\"" >> $@
 
-# Actual libstd build (using cargo)
+# Actual libstd build (using cargo, and using manually-build libstd as deps)
 $(LIBDIR)libstd.rlib: $(BINDIR_S)rustc $(BINDIR)cargo $(LIBDIR_S)libstd.rlib $(CARGO_HOME)config
 	@mkdir -p $(OUTDIR)build-std
+	@mkdir -p $(LIBDIR)
 	@echo [CARGO] $(RUST_SRC)libstd/Cargo.toml
 	$VCARGO_TARGET_DIR=$(OUTDIR)build-std RUSTC=$(BINDIR_S)rustc CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build --manifest-path $(RUST_SRC)libstd/Cargo.toml  -j 1 --release --features panic-unwind
 	$Vcp --remove-destination $(OUTDIR)build-std/release/deps/*.rlib $(LIBDIR)
 	$Vcp --remove-destination $(OUTDIR)build-std/release/deps/*.so $(LIBDIR)
-$(LIBDIR)libtest.rlib: $(LIBDIR)libstd.rlib $(CARGO_HOME)config
+# libtest
+$(LIBDIR)libtest.rlib: $(BINDIR)rustc_m $(LIBDIR)libstd.rlib $(CARGO_HOME)config
 	@mkdir -p $(OUTDIR)build-test
 	@echo [CARGO] $(RUST_SRC)libtest/Cargo.toml
-	$VCARGO_TARGET_DIR=$(OUTDIR)build-test RUSTC=$(BINDIR)rustc CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) RUSTFLAGS="-Z force-unstable-if-unmarked" $(BINDIR)cargo build --manifest-path $(RUST_SRC)libtest/Cargo.toml  -j 1 --release
+	$VCARGO_TARGET_DIR=$(OUTDIR)build-test RUSTC=$(BINDIR)rustc_m CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) RUSTFLAGS="-Z force-unstable-if-unmarked" $(BINDIR)cargo build --manifest-path $(RUST_SRC)libtest/Cargo.toml  -j 1 --release
 	@mkdir -p $(LIBDIR)
 	$Vcp --remove-destination $(OUTDIR)build-test/release/deps/*.rlib $(LIBDIR)
 	$Vcp --remove-destination $(OUTDIR)build-test/release/deps/*.so $(LIBDIR)
 $(LIBDIR)libproc_macro.rlib: $(LIBDIR)libstd.rlib $(LIBDIR)libtest.rlib $(CARGO_HOME)config
 	@mkdir -p $(OUTDIR)build-pm
 	@echo [CARGO] $(RUST_SRC)libproc_macro/Cargo.toml
-	$VCARGO_TARGET_DIR=$(OUTDIR)build-pm RUSTC=$(BINDIR)rustc RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTFLAGS="-Z force-unstable-if-unmarked" RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build --manifest-path $(RUST_SRC)libproc_macro/Cargo.toml --release -j 1
+	$VCARGO_TARGET_DIR=$(OUTDIR)build-pm RUSTC=$(BINDIR)rustc_m RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET) RUSTFLAGS="-Z force-unstable-if-unmarked" RUSTC_BOOTSTRAP=1 CARGO_HOME=$(CARGO_HOME) $(BINDIR)cargo build --manifest-path $(RUST_SRC)libproc_macro/Cargo.toml --release -j 1
 	$Vcp --remove-destination $(OUTDIR)build-pm/release/deps/lib*.so $(LIBDIR)
 	$Vcp --remove-destination $(OUTDIR)build-pm/release/deps/lib*.rlib $(LIBDIR)
+
+# - Build rustc with itself (so we have a rustc with the right ABI)
+$(BINDIR)rustc: $(BINDIR)rustc_m $(BINDIR)cargo $(CARGO_HOME)config $(LIBDIR)libtest.rlib
+	@mkdir -p $(PREFIX)tmp
+	@echo [CARGO] $(RUST_SRC)rustc/Cargo.toml
+	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) CARGO_TARGET_DIR=$(OUTDIR)build-rustc RUSTC=$(BINDIR)rustc_m CARGO_HOME=$(CARGO_HOME) RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) RUSTC_BOOTSTRAP=1 RUSTFLAGS="-Z force-unstable-if-unmarked" $(BINDIR)cargo build --manifest-path $(RUST_SRC)rustc/Cargo.toml --release -j 1 --verbose
 
 $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(BINDIR)rustc
 	@mkdir -p $(dir $@)
