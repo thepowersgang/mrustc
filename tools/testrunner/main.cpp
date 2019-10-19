@@ -316,7 +316,9 @@ int main(int argc, const char* argv[])
         ::std::sort(tests.begin(), tests.end(), [](const auto& a, const auto& b){ return a.m_name < b.m_name; });
 
         // ---
-        auto compiler_ts = getenv("TESTRUNNER_NOCOMPILERDEP") ? Timestamp::infinite_past() : Timestamp::for_file(MRUSTC_PATH);
+        const bool SKIP_PASS = (getenv("TESTRUNNER_SKIPPASS") != nullptr);
+        const bool NO_COMPILER_DEP = (getenv("TESTRUNNER_NOCOMPILERDEP") != nullptr);
+        const auto compiler_ts = Timestamp::for_file(MRUSTC_PATH);
         unsigned n_skip = 0;
         unsigned n_cfail = 0;
         unsigned n_fail = 0;
@@ -349,10 +351,23 @@ int main(int argc, const char* argv[])
 
             //DEBUG(">> " << test.m_name);
             auto depdir = outdir / "deps-" + test.m_name.c_str();
-            auto outfile = outdir / test.m_name + ".exe";
+            auto test_exe = outdir / test.m_name + ".exe";
+            auto test_output = outdir / test.m_name + ".out";
 
-            auto test_output_ts = Timestamp::for_file(outfile);
-            if( test_output_ts == Timestamp::infinite_past() || test_output_ts < compiler_ts )
+            auto test_exe_ts = Timestamp::for_file(test_exe);
+            auto test_output_ts = Timestamp::for_file(test_output);
+            // (Optional) if the target file doesn't exist, force a re-compile IF the compiler is newer than the
+            // executable.
+            if( SKIP_PASS )
+            {
+                // If output is missing (the last run didn't succeed), and the compiler is newer than the executable
+                if( test_output_ts == Timestamp::infinite_past() && test_exe_ts < compiler_ts )
+                {
+                    // Force a recompile
+                    test_exe_ts = Timestamp::infinite_past();
+                }
+            }
+            if( test_exe_ts == Timestamp::infinite_past() || (!NO_COMPILER_DEP && !SKIP_PASS && test_exe_ts < compiler_ts) )
             {
                 bool pre_build_failed = false;
                 for(const auto& file : test.m_pre_build)
@@ -385,8 +400,8 @@ int main(int argc, const char* argv[])
                     depdir = ::helpers::path();
                 }
 
-                auto compile_logfile = outdir / test.m_name + "-build.log";
-                if( !run_compiler(opts, test.m_path, outfile, test.m_extra_flags, depdir) )
+                auto compile_logfile = test_exe + "-build.log";
+                if( !run_compiler(opts, test.m_path, test_exe, test.m_extra_flags, depdir) )
                 {
                     DEBUG("COMPILE FAIL " << test.m_name << ", log in " << compile_logfile);
                     n_cfail ++;
@@ -395,19 +410,18 @@ int main(int argc, const char* argv[])
                     else
                         continue;
                 }
-                test_output_ts = Timestamp::for_file(outfile);
+                test_exe_ts = Timestamp::for_file(test_exe);
             }
             // - Run the test
-            auto run_out_file = outdir / test.m_name + ".out";
-            if( Timestamp::for_file(run_out_file) < test_output_ts )
+            if( test_output_ts < test_exe_ts )
             {
-                auto run_out_file_tmp = run_out_file + ".tmp";
-                if( !run_executable(outfile, { outfile.str().c_str() }, run_out_file_tmp, 10) )
+                auto run_out_file_tmp = test_output + ".tmp";
+                if( !run_executable(test_exe, { test_exe.str().c_str() }, run_out_file_tmp, 10) )
                 {
                     DEBUG("RUN FAIL " << test.m_name);
 
                     // Move the failing output file
-                    auto fail_file = run_out_file + "_failed";
+                    auto fail_file = test_output + "_failed";
                     remove(fail_file.str().c_str());
                     rename(run_out_file_tmp.str().c_str(), fail_file.str().c_str());
                     DEBUG("- Output in " << fail_file);
@@ -420,8 +434,8 @@ int main(int argc, const char* argv[])
                 }
                 else
                 {
-                    remove(run_out_file.str().c_str());
-                    rename(run_out_file_tmp.str().c_str(), run_out_file.str().c_str());
+                    remove(test_output.str().c_str());
+                    rename(run_out_file_tmp.str().c_str(), test_output.str().c_str());
                 }
             }
             else
