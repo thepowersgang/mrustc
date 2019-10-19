@@ -13,7 +13,7 @@ struct Evaluator
         virtual ::HIR::Path new_static(::HIR::TypeRef type, ::HIR::Literal value) = 0;
     };
 
-    const Span& root_span;
+    Span    root_span;
     StaticTraitResolve  resolve;
     Newval& nvs;
 
