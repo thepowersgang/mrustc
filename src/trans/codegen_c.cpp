@@ -848,12 +848,15 @@ namespace {
                             if( is_in_dylib )
                                 break;
                         }
-                        if( is_in_dylib ) {
+                        // NOTE: Only exclude non-dylibs referenced by other dylibs
+                        if( is_in_dylib && !is_dylib(crate.second) ) {
                         }
                         else if( crate.second.m_path.compare(crate.second.m_path.size() - 5, 5, ".rlib") == 0 ) {
                             args.push_back(crate.second.m_path + ".o");
                         }
                         else if( is_dylib(crate.second) ) {
+                            // TODO: Get the dir and base name (strip `lib` and `.so` off)
+                            // and emit -L/-Wl,-rpath if that path isn't already emitted.
                             args.push_back(crate.second.m_path);
                         }
                         else {
