@@ -588,7 +588,7 @@ void PackageRef::fill_from_kv(bool was_added, const TomlKeyValue& key_val, size_
         else
         {
             // TODO: Error
-            throw ::std::runtime_error(::format("ERROR: Unkown depencency attribute `", attr, "` on dependency `", this->m_name, "`"));
+            throw ::std::runtime_error(::format("ERROR: Unkown dependency attribute `", attr, "` on dependency `", this->m_name, "`"));
         }
     }
 }
