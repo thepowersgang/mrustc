@@ -324,7 +324,7 @@ int main(int argc, char *argv[])
             switch( crate.m_crate_type )
             {
             case ::AST::Crate::Type::RustLib:
-                params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name << ".hir");
+                params.outfile = FMT(params.output_dir << "lib" << crate.m_crate_name << ".rlib");
                 break;
             case ::AST::Crate::Type::Executable:
                 params.outfile = FMT(params.output_dir << crate.m_crate_name);
