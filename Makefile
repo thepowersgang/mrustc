@@ -167,9 +167,6 @@ output$(OUTDIR_SUF)/rustc output$(OUTDIR_SUF)/cargo: output$(OUTDIR_SUF)/libtest
 	$(MAKE_MINICARGO) $@
 
 TEST_DEPS := output$(OUTDIR_SUF)/libstd.rlib output$(OUTDIR_SUF)/libtest.rlib output$(OUTDIR_SUF)/libpanic_unwind.rlib
-ifeq ($(RUSTC_VERSION),1.19.0)
-TEST_DEPS += output$(OUTDIR_SUF)/librust_test_helpers.a
-endif
 
 fcn_extcrate = $(patsubst %,output$(OUTDIR_SUF)/lib%.rlib,$(1))
 
@@ -235,15 +232,20 @@ rust_tests: RUST_TESTS_run-pass
 
 .PHONY: RUST_TESTS RUST_TESTS_run-pass
 RUST_TESTS: RUST_TESTS_run-pass
-RUST_TESTS_run-pass:
+RUST_TESTS_run-pass: output$(OUTDIR_SUF)/test/librust_test_helpers.a
 	@$(MAKE) -C tools/testrunner
 	@mkdir -p output$(OUTDIR_SUF)/rust_tests/run-pass
 	make -f minicargo.mk output$(OUTDIR_SUF)/test/libtest.so
 	./tools/bin/testrunner -L output$(OUTDIR_SUF)/test -o output$(OUTDIR_SUF)/rust_tests/run-pass $(RUST_TESTS_DIR)run-pass --exceptions disabled_tests_run-pass.txt
-output$(OUTDIR_SUF)/librust_test_helpers.a: output$(OUTDIR_SUF)/rust_test_helpers.o
+output$(OUTDIR_SUF)/test/librust_test_helpers.a: output$(OUTDIR_SUF)/test/rust_test_helpers.o
 	@mkdir -p $(dir $@)
 	ar cur $@ $<
-output$(OUTDIR_SUF)/rust_test_helpers.o: $(RUSTCSRC)src/rt/rust_test_helpers.c
+ifeq ($(RUSTC_VERSION),1.19.0)
+RUST_TEST_HELPERS_C := $(RUSTCSRC)src/rt/rust_test_helpers.c
+else
+RUST_TEST_HELPERS_C := $(RUSTCSRC)src/test/auxiliary/rust_test_helpers.c
+endif
+output$(OUTDIR_SUF)/test/rust_test_helpers.o: $(RUST_TEST_HELPERS_C)
 	@mkdir -p $(dir $@)
 	$(CC) -c $< -o $@
 
