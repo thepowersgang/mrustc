@@ -58,6 +58,12 @@ struct TestDesc
     ::std::vector<::std::string>    m_pre_build;
     ::std::vector<::std::string>    m_extra_flags;
     bool ignore;
+    bool no_run;
+    TestDesc()
+        :ignore(false)
+        ,no_run(false)
+    {
+    }
 };
 struct Timestamp
 {
@@ -273,6 +279,10 @@ int main(int argc, const char* argv[])
                 {
                     td.ignore = true;
                 }
+                else if( line.substr(start, 4+1+7) == "skip-codegen" )
+                {
+                    td.no_run = true;
+                }
                 else if( line.substr(start, 14) == "compile-flags:" )
                 {
                     auto end = line.find(' ', 3+14);
@@ -413,7 +423,13 @@ int main(int argc, const char* argv[])
                 test_exe_ts = Timestamp::for_file(test_exe);
             }
             // - Run the test
-            if( test_output_ts < test_exe_ts )
+            if( test.no_run )
+            {
+                ::std::ofstream(test_output.str()) << "";
+                if( opts.debug_level > 0 )
+                    DEBUG("No run " << test.m_name);
+            }
+            else if( test_output_ts < test_exe_ts )
             {
                 auto run_out_file_tmp = test_output + ".tmp";
                 if( !run_executable(test_exe, { test_exe.str().c_str() }, run_out_file_tmp, 10) )
