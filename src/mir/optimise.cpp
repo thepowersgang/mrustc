@@ -1645,10 +1645,13 @@ bool MIR_Optimise_DeTemporary_SingleSetAndUse(::MIR::TypeResolve& state, ::MIR::
                 // Move the usage up to original assignment (if destination isn't invalidated)
                 const auto& dst = use_bb.statements[slot.use_loc.stmt_idx].as_Assign().dst;
 
+                // TODO: If the destination slot was ever borrowed mutably, don't move.
+                // - Maybe, if there's a drop skip? (as the drop could be &mut to the target value)
+
                 // - Iterate the path(s) between the two statements to check if the destination would be invalidated
                 //  > The iterate function doesn't (yet) support following BB chains, so assume invalidated if over a jump.
                 bool invalidated = IterPathRes::Complete != iter_path(fcn, slot.set_loc, slot.use_loc,
-                        [&](auto loc, const auto& stmt)->bool{ return check_invalidates_lvalue(stmt, dst, /*also_read=*/true); },
+                        [&](auto loc, const auto& stmt)->bool{ return stmt.is_Drop() || check_invalidates_lvalue(stmt, dst, /*also_read=*/true); },
                         [&](auto loc, const auto& term)->bool{ return check_invalidates_lvalue(term, dst, /*also_read=*/true); }
                         );
                 if( !invalidated )
