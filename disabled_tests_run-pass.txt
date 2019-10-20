@@ -20,6 +20,8 @@ sepcomp-fns-backwards   # ^
 sepcomp-statics     # ^
 sepcomp-unwind      # ^
 sepcomp-lib-lto     # -C lto
+lto-many-codegen-units      # ^
+lto-still-runs-thread-dtor  # ^
 mir_overflow_off    # -Z force-overflow-checks=off
 no-landing-pads     # -Z no-landing-pads
 num-wrapping        # -C debug-assertions
@@ -28,6 +30,8 @@ slice-of-zero-size-elements # ^
 optimization-fuel-0 # -Z fuel=foo=0
 optimization-fuel-1 # ^
 warn-ctypes-inhibit # -D improper-ctypes
+z-crate-attr        # -Z crate-attr
+thin-lto-global-allocator   # -Z thinlto
 
 # Requires unwinding panics
 unwind-resource
@@ -65,6 +69,7 @@ test-should-fail-good-message
 unit-like-struct-drop-run
 unwind-unique
 vector-sort-panic-safe
+test-allow-fail-attr
 
 # LEX
 lex-bare-cr-nondoc-comment  # Don't treat \r as a new line
@@ -241,6 +246,8 @@ wrapping-int-api    # Implicit integer truncation with `<large_literal> as u64`
 fat-ptr-cast    # Array unsize missed
 issue-20797     # Trait unsize runthrough
 issue-26905     # Manual CoerceUnsized not working?
+# - Unsupported features
+unsized-tuple-impls # Unsized tuples, no CoerceUnsized impl
 
 # MIR GEN:
 issue-18352     # append_from_lit - Match literal Borrow
@@ -343,6 +350,13 @@ abi-sysv64-arg-passing  # ERROR: Empty struct arguments to FFI aren't actually e
 extern-pass-empty   # ^
 thread-local-extern-static  # TODO: #[no_mangle] on statatic definition
 
+# SIMD (minimal support in mrustc, all SIMD ops abort)
+simd-intrinsic-float-math
+simd-intrinsic-float-minmax
+simd-intrinsic-generic-gather
+simd-intrinsic-generic-reduction
+simd-intrinsic-generic-select
+
 # HIR MISC
 xcrate-associated-type-defaults	# type_is_specialisable - Handle missing type in impl(0x17e3018) ::"xcrate_associated_type_defaults"::Foo<u32,> for () {}, name = Out
 default-associated-types        # ^
@@ -358,6 +372,7 @@ linkage1    # "extern_weak" linkage
 reexport-test-harness-main  # NOT A BUG: Tests an implementation detail of the test harness
 test-runner-hides-start # BUG: Test harness doesn't hide #[start]
 tls-dtors-are-run-in-a-static-binary    # Thread-local destructors aren't being run.
+issue-42747 # 27 deep enum chain, VERY long time in gcc
 
 # TEST RUNNER
 exec-env    # Runtime environment variable
@@ -371,6 +386,7 @@ backtrace-debuginfo-aux
 issue-24313     # Not sure if this is unwinding or TLS problems...
 box-of-array-of-drop-1
 box-of-array-of-drop-2
+builtin-clone-unwind
 catch-unwind-bang
 cleanup-rvalue-temp-during-incomplete-alloc
 drop-trait-enum
@@ -382,6 +398,7 @@ issue-26655
 issue-29485
 issue-29948
 issue-30018-panic
+issue-42148
 issue-8460  # .. except it fails because there's no overflow checks
 multi-panic
 nested-vec-3
