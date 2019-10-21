@@ -27,7 +27,7 @@ RUSTC_ENV_VARS := CFG_COMPILER_HOST_TRIPLE=$(RUSTC_TARGET)
 RUSTC_ENV_VARS += LLVM_CONFIG=$(abspath $(LLVM_CONFIG))
 RUSTC_ENV_VARS += CFG_RELEASE=
 RUSTC_ENV_VARS += CFG_RELEASE_CHANNEL=$(RUSTC_CHANNEL)
-RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-$(RUSTC_CHANNEL)-mrustc
+RUSTC_ENV_VARS += CFG_VERSION=$(RUSTC_VERSION)-stable-mrustc
 RUSTC_ENV_VARS += CFG_PREFIX=mrustc
 RUSTC_ENV_VARS += CFG_LIBDIR_RELATIVE=lib
 RUSTC_ENV_VARS += LD_LIBRARY_PATH=$(abspath output)
@@ -40,7 +40,8 @@ CARGO_ENV += RUSTFLAGS="-Z force-unstable-if-unmarked"
 V ?= @
 
 
-all: $(BINDIR)rustc $(LIBDIR)libstd.rlib $(LIBDIR)libproc_macro.rlib $(BINDIR)hello_world
+all: $(BINDIR)rustc $(LIBDIR)libstd.rlib $(BINDIR)hello_world
+# $(LIBDIR)libproc_macro.rlib
 all: $(BINDIR)cargo
 
 RUSTFLAGS_core := 
@@ -102,6 +103,14 @@ $(BINDIR)rustc: $(BINDIR)rustc_m $(BINDIR)cargo $(CARGO_HOME)config $(LIBDIR)lib
 	@mkdir -p $(PREFIX)tmp
 	@echo [CARGO] $(RUST_SRC)rustc/Cargo.toml
 	$V$(RUSTC_ENV_VARS) TMPDIR=$(abspath $(PREFIX)tmp) CARGO_TARGET_DIR=$(OUTDIR)build-rustc RUSTC=$(BINDIR)rustc_m RUSTC_ERROR_METADATA_DST=$(abspath $(PREFIX)) $(CARGO_ENV) $(BINDIR)cargo build --manifest-path $(RUST_SRC)rustc/Cargo.toml --release -j 1
+	cp $(OUTDIR)build-rustc/release/deps/*.so $(LIBDIR)
+ifeq ($(RUSTC_VERSION),1.19.0)
+	cp $(OUTDIR)build-rustc/release/rustc $(BINDIR)rustc_binary
+else
+	cp $(OUTDIR)build-rustc/release/rustc_binary $(BINDIR)rustc_binary
+endif
+	echo '#!/bin/sh\nd=$$(dirname $$0)\nLD_LIBRARY_PATH="$(abspath $(LIBDIR))" $$d/rustc_binary $$@' >$@
+	chmod +x $@
 
 $(BINDIR)hello_world: $(RUST_SRC)test/run-pass/hello.rs $(LIBDIR)libstd.rlib $(BINDIR)rustc
 	@mkdir -p $(dir $@)
