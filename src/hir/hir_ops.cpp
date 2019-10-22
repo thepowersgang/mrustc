@@ -11,6 +11,7 @@
 #include <hir_typeck/expr_visit.hpp>    // for invoking typecheck
 #include "item_path.hpp"
 #include "expr_state.hpp"
+#include <hir_conv/main_bindings.hpp>
 #include <hir_expand/main_bindings.hpp>
 #include <mir/main_bindings.hpp>
 
@@ -1086,6 +1087,16 @@ const ::MIR::Function* HIR::Crate::get_or_gen_mir(const ::HIR::ItemPath& ip, con
             ASSERT_BUG(Span(), ep.m_state, "No ExprState for " << ip);
 
             auto& ep_mut = const_cast<::HIR::ExprPtr&>(ep);
+
+            // TODO: Ensure that all referenced items have constants evaluated
+            if( ep.m_state->stage < ::HIR::ExprState::Stage::ConstEval )
+            {
+                if( ep.m_state->stage == ::HIR::ExprState::Stage::ConstEvalRequest )
+                    ERROR(Span(), E0000, "Loop in constant evaluation");
+                ep.m_state->stage = ::HIR::ExprState::Stage::ConstEvalRequest;
+                ConvertHIR_ConstantEvaluate_Expr(*this, ip, ep_mut);
+                ep.m_state->stage = ::HIR::ExprState::Stage::ConstEval;
+            }
 
             // Ensure typechecked
             if( ep.m_state->stage < ::HIR::ExprState::Stage::Typecheck )

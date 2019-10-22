@@ -9,6 +9,8 @@
 
 namespace HIR {
     class Crate;
+    class ItemPath;
+    class ExprPtr;
 };
 
 extern void ConvertHIR_ExpandAliases(::HIR::Crate& crate);
@@ -17,3 +19,6 @@ extern void ConvertHIR_ResolveUFCS_Outer(::HIR::Crate& crate);
 extern void ConvertHIR_ResolveUFCS(::HIR::Crate& crate);
 extern void ConvertHIR_Markings(::HIR::Crate& crate);
 extern void ConvertHIR_ConstantEvaluate(::HIR::Crate& hir_crate);
+
+extern void ConvertHIR_ConstantEvaluate_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& exp);
+

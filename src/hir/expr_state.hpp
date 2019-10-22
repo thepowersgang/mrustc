@@ -23,6 +23,8 @@ public:
 
     enum class Stage {
         Created,
+        ConstEvalRequest,
+        ConstEval,
         TypecheckRequest,
         Typecheck,
         MirRequest,

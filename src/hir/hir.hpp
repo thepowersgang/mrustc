@@ -71,6 +71,13 @@ public:
     friend ::std::ostream& operator<<(::std::ostream& os, const Publicity& x);
 };
 
+enum class ConstEvalState
+{
+    None,
+    Active,
+    Complete,
+};
+
 template<typename Ent>
 struct VisEnt
 {
@@ -323,6 +330,8 @@ public:
 
     TraitMarkings   m_markings;
     StructMarkings  m_struct_markings;
+
+    ConstEvalState  const_eval_state = ConstEvalState::None;
 };
 extern ::std::ostream& operator<<(::std::ostream& os, const Struct::Repr& x);
 class Union

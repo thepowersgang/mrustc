@@ -961,12 +961,14 @@ namespace {
         const ::HIR::Module*  m_mod;
         const ::HIR::ItemPath*  m_mod_path;
         MonomorphState  m_monomorph_state;
+        bool m_recurse_types;
 
     public:
         Expander(const ::HIR::Crate& crate):
             m_crate(crate),
             m_mod(nullptr),
             m_mod_path(nullptr)
+            ,m_recurse_types(false)
         {}
 
         void visit_module(::HIR::ItemPath p, ::HIR::Module& mod) override
@@ -1105,10 +1107,37 @@ namespace {
                 }
                 DEBUG("Array " << ty << " - size = " << e.size_val);
             )
+
+            if( m_recurse_types )
+            {
+                m_recurse_types = false;
+                if( const auto* te = ty.m_data.opt_Path() )
+                {
+                    TU_MATCH_HDRA( (te->binding), {)
+                    TU_ARMA(Unbound, _) {
+                        }
+                    TU_ARMA(Opaque, _) {
+                        }
+                    TU_ARMA(Struct, pbe) {
+                        // If this struct hasn't been visited already, visit it
+                        this->visit_struct(te->path.m_data.as_Generic().m_path, const_cast<::HIR::Struct&>(*pbe));
+                        }
+                    TU_ARMA(Union, pbe) {
+                        }
+                    TU_ARMA(Enum, pbe) {
+                        }
+                    TU_ARMA(ExternType, pbe) {
+                        }
+                    }
+                }
+                m_recurse_types = true;
+            }
         }
         void visit_constant(::HIR::ItemPath p, ::HIR::Constant& item) override
         {
+            m_recurse_types = true;
             ::HIR::Visitor::visit_constant(p, item);
+            m_recurse_types = false;
 
             // NOTE: Consteval needed here for MIR match generation to work
             if( item.m_value || item.m_value.m_mir )
@@ -1124,7 +1153,9 @@ namespace {
         }
         void visit_static(::HIR::ItemPath p, ::HIR::Static& item) override
         {
+            m_recurse_types = true;
             ::HIR::Visitor::visit_static(p, item);
+            m_recurse_types = false;
 
             if( item.m_value )
             {
@@ -1158,6 +1189,15 @@ namespace {
                 }
             }
             ::HIR::Visitor::visit_enum(p, item);
+        }
+        void visit_struct(::HIR::ItemPath p, ::HIR::Struct& item) override {
+            if( item.const_eval_state != HIR::ConstEvalState::Complete )
+            {
+                ASSERT_BUG(Span(), item.const_eval_state == HIR::ConstEvalState::None, "Constant evaluation loop involving " << p);
+                item.const_eval_state = HIR::ConstEvalState::Active;
+                ::HIR::Visitor::visit_struct(p, item);
+                item.const_eval_state = HIR::ConstEvalState::Complete;
+            }
         }
 
         void visit_expr(::HIR::ExprPtr& expr) override
@@ -1197,7 +1237,9 @@ namespace {
             if( expr.get() != nullptr )
             {
                 Visitor v { *this };
+                //m_recurse_types = true;
                 (*expr).visit(v);
+                //m_recurse_types = false;
             }
         }
     };
@@ -1237,4 +1279,11 @@ void ConvertHIR_ConstantEvaluate(::HIR::Crate& crate)
     exp.visit_crate( crate );
 
     ExpanderApply().visit_crate(crate);
+}
+void ConvertHIR_ConstantEvaluate_Expr(const ::HIR::Crate& crate, const ::HIR::ItemPath& ip, ::HIR::ExprPtr& expr_ptr)
+{
+    TRACE_FUNCTION_F(ip);
+    // Check innards but NOT the value
+    Expander    exp { crate };
+    exp.visit_expr( expr_ptr );
 }
