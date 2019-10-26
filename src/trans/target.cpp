@@ -718,7 +718,7 @@ bool Target_GetAlignOf(const Span& sp, const StaticTraitResolve& resolve, const 
 {
     size_t  ignore_size;
     bool rv = Target_GetSizeAndAlignOf(sp, resolve, ty, ignore_size, out_align);
-    if( ignore_size == SIZE_MAX )
+    if( rv && ignore_size == SIZE_MAX )
         BUG(sp, "Getting alignment of Unsized type - " << ty);
     return rv;
 }
