@@ -196,6 +196,13 @@ public:
     (Path, struct {
         ::HIR::Path path;
         TypePathBinding binding;
+
+        bool is_closure() const {
+            return path.m_data.is_Generic()
+                && path.m_data.as_Generic().m_path.m_components.back().size() > 8
+                && path.m_data.as_Generic().m_path.m_components.back().compare(0,8, "closure#") == 0
+                ;
+        }
         }),
     (Generic, struct {
         RcString    name;

@@ -106,8 +106,9 @@ bool StaticTraitResolve::find_impl(
             }
         }
         else if( TARGETVER_1_29 && trait_path == m_lang_Clone ) {
+            // NOTE: Duplicated check for enumerate
             if( type.m_data.is_Tuple() || type.m_data.is_Array() || type.m_data.is_Function() || type.m_data.is_Closure()
-                    || TU_TEST2(type.m_data, Path, .path.m_data, Generic, .m_path.m_components.back().compare(0, 8, "closure#") == 0 ) )
+                    || TU_TEST1(type.m_data, Path, .is_closure()) )
             {
                 if( this->type_is_clone(sp, type) ) {
                     return found_cb( ImplRef(&type, &null_params, &null_assoc), false );
@@ -1576,7 +1577,7 @@ bool StaticTraitResolve::type_is_clone(const Span& sp, const ::HIR::TypeRef& ty)
             if( it != m_clone_cache.end() )
                 return it->second;
         }
-        if( TU_TEST1(e.path.m_data, Generic, .m_path.m_components.back().compare(0, 8, "closure#") == 0 ) )
+        if( e.is_closure() )
         {
             bool rv = true;
             // TODO: Check all captures
