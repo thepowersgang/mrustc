@@ -9,9 +9,9 @@
 #include <iostream>
 #include <cstring>  // strcmp
 #include <map>
-#include "debug.h"
+#include <debug.h>
 #include "manifest.h"
-#include "helpers.h"
+#include <helpers.h>
 #include "repository.h"
 #include "build.h"
 

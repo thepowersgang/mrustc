@@ -636,6 +636,7 @@ struct ExprNode_UniOp:
 class NodeVisitor
 {
 public:
+    virtual ~NodeVisitor() = default;
     inline void visit(const unique_ptr<ExprNode>& cnode) {
         if(cnode.get())
             cnode->visit(*this);

@@ -156,6 +156,7 @@ struct DeriveOpts
 /// Interface for derive handlers
 struct Deriver
 {
+    virtual ~Deriver() = default;
     virtual const char* trait_name() const = 0;
     virtual AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Struct& str) const = 0;
     virtual AST::Impl handle_item(Span sp, const DeriveOpts& opts, const AST::GenericParams& p, const TypeRef& type, const AST::Enum& enm) const = 0;

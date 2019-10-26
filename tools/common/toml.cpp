@@ -80,11 +80,8 @@ struct Token
 };
 
 TomlFile::TomlFile(const ::std::string& filename):
-    m_if(filename)
+    m_lexer(filename)
 {
-    if( !m_if.is_open() ) {
-        throw ::std::runtime_error("Unable to open file '" + filename + "'");
-    }
 }
 TomlFileIter TomlFile::begin()
 {
@@ -99,12 +96,14 @@ TomlFileIter TomlFile::end()
 
 TomlKeyValue TomlFile::get_next_value()
 {
-    auto t = Token::lex_from(m_if);
+    auto t = m_lexer.get_token();
 
     if(m_current_composite.empty())
     {
         while( t.m_type == Token::Type::Newline )
-            t = Token::lex_from(m_if);
+        {
+            t = m_lexer.get_token();
+        }
 
         // Expect '[', a string, or an identifier
         switch(t.m_type)
@@ -116,32 +115,32 @@ TomlKeyValue TomlFile::get_next_value()
             m_current_block.clear();
             do
             {
-                t = Token::lex_from(m_if);
+                t = m_lexer.get_token();
                 bool is_array = false;
                 if(t.m_type == Token::Type::SquareOpen)
                 {
                     is_array = true;
-                    t = Token::lex_from(m_if);
+                    t = m_lexer.get_token();
                 }
                 assert(t.m_type == Token::Type::Ident || t.m_type == Token::Type::String);
                 m_current_block.push_back(t.as_string());
                 if(is_array)
                 {
                     m_current_block.push_back(::format(m_array_counts[t.as_string()]++));
-                    t = Token::lex_from(m_if);
+                    t = m_lexer.get_token();
                     assert(t.m_type == Token::Type::SquareClose);
                 }
 
-                t = Token::lex_from(m_if);
+                t = m_lexer.get_token();
             } while(t.m_type == Token::Type::Dot);
             if( t.m_type != Token::Type::SquareClose )
             {
-                throw ::std::runtime_error(::format("Unexpected token in block header - ", t));
+                throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in block header - ", t));
             }
-            t = Token::lex_from(m_if);
+            t = m_lexer.get_token();
             if (t.m_type != Token::Type::Newline)
             {
-                throw ::std::runtime_error(::format("Unexpected token after block block - ", t));
+                throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after block block - ", t));
             }
             DEBUG("Start block " << m_current_block);
             // Recurse!
@@ -156,7 +155,7 @@ TomlKeyValue TomlFile::get_next_value()
         if( t.m_type == Token::Type::Eof )
         {
             // EOF isn't allowed here
-            throw ::std::runtime_error(::format("Unexpected EOF in composite"));
+            throw ::std::runtime_error(::format(m_lexer, ": Unexpected EOF in composite"));
         }
     }
     switch (t.m_type)
@@ -165,14 +164,14 @@ TomlKeyValue TomlFile::get_next_value()
     case Token::Type::Ident:
         break;
     default:
-        throw ::std::runtime_error(::format("Unexpected token for key - ", t));
+        throw ::std::runtime_error(::format(m_lexer, ": Unexpected token for key - ", t));
     }
     ::std::string   key_name = t.as_string();
-    t = Token::lex_from(m_if);
+    t = m_lexer.get_token();
 
     if(t.m_type != Token::Type::Assign)
-        throw ::std::runtime_error(::format("Unexpected token after key - ", t));
-    t = Token::lex_from(m_if);
+        throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after key - ", t));
+    t = m_lexer.get_token();
 
     // --- Value ---
     TomlKeyValue    rv;
@@ -193,10 +192,12 @@ TomlKeyValue TomlFile::get_next_value()
         rv.path.push_back(key_name);
 
         rv.value.m_type = TomlValue::Type::List;
-        while( (t = Token::lex_from(m_if)).m_type != Token::Type::SquareClose )
+        while( (t = m_lexer.get_token()).m_type != Token::Type::SquareClose )
         {
             while( t.m_type == Token::Type::Newline )
-                t = Token::lex_from(m_if);
+            {
+                t = m_lexer.get_token();
+            }
             if( t.m_type == Token::Type::SquareClose )
                 break;
 
@@ -208,15 +209,15 @@ TomlKeyValue TomlFile::get_next_value()
                 rv.value.m_sub_values.push_back(TomlValue { t.as_string() });
                 break;
             default:
-                throw ::std::runtime_error(::format("Unexpected token in array value position - ", t));
+                throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in array value position - ", t));
             }
 
-            t = Token::lex_from(m_if);
+            t = m_lexer.get_token();
             if(t.m_type != Token::Type::Comma)
                 break;
         }
         if(t.m_type != Token::Type::SquareClose)
-            throw ::std::runtime_error(::format("Unexpected token after array - ", t));
+            throw ::std::runtime_error(::format(m_lexer, ": Unexpected token after array - ", t));
         break;
     case Token::Type::BraceOpen:
         m_current_composite.push_back(key_name);
@@ -228,7 +229,7 @@ TomlKeyValue TomlFile::get_next_value()
         rv.path.insert(rv.path.end(), m_current_composite.begin(), m_current_composite.end());
         rv.path.push_back(key_name);
         rv.value = TomlValue { t.m_intval };
-        return rv;
+        break;
     case Token::Type::Ident:
         if( t.m_data == "true" )
         {
@@ -247,31 +248,55 @@ TomlKeyValue TomlFile::get_next_value()
         }
         else
         {
-            throw ::std::runtime_error(::format("Unexpected identifier in value position - ", t));
+            throw ::std::runtime_error(::format(m_lexer, ": Unexpected identifier in value position - ", t));
         }
         break;
     default:
-        throw ::std::runtime_error(::format("Unexpected token in value position - ", t));
+        throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in value position - ", t));
     }
 
-    t = Token::lex_from(m_if);
+    t = m_lexer.get_token();
     while (!m_current_composite.empty() && t.m_type == Token::Type::BraceClose)
     {
         DEBUG("Leave composite block " << m_current_block << ", " << m_current_composite);
         m_current_composite.pop_back();
-        t = Token::lex_from(m_if);
+        t = m_lexer.get_token();
     }
     if( m_current_composite.empty() )
     {
         if(t.m_type != Token::Type::Newline && t.m_type != Token::Type::Eof)
-            throw ::std::runtime_error(::format("Unexpected token in TOML file after entry - ", t));
+            throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in TOML file after entry - ", t));
     }
     else
     {
         if( t.m_type != Token::Type::Comma )
-            throw ::std::runtime_error(::format("Unexpected token in TOML file after composite entry - ", t));
+            throw ::std::runtime_error(::format(m_lexer, ": Unexpected token in TOML file after composite entry - ", t));
     }
     return rv;
+}
+
+TomlLexer::TomlLexer(const ::std::string& filename)
+    :m_if(filename)
+    ,m_filename(filename)
+    ,m_line(1)
+{
+    if( !m_if.is_open() ) {
+        throw ::std::runtime_error("Unable to open file '" + filename + "'");
+    }
+}
+Token TomlLexer::get_token()
+{
+    auto rv = Token::lex_from(m_if);
+    if( rv.m_type == Token::Type::Newline )
+    {
+        m_line ++;
+    }
+    return rv;
+}
+::std::ostream& operator<<(::std::ostream& os, const TomlLexer& x)
+{
+    os << x.m_filename << ":" << x.m_line;
+    return os;
 }
 
 Token Token::lex_from(::std::ifstream& is)

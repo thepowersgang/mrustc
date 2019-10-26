@@ -46,6 +46,7 @@ struct Context
     class Revisitor
     {
     public:
+        virtual ~Revisitor() = default;
         virtual const Span& span() const = 0;
         virtual void fmt(::std::ostream& os) const = 0;
         virtual bool revisit(Context& context, bool is_fallback) = 0;
@@ -6667,13 +6668,8 @@ namespace {
                 if( H::type_is_num(left) && H::type_is_num(right) ) {
                     DEBUG("- Magic inferrence link for binops on numerics");
                     context.equate_types(sp, res, left);
-                    const auto& right = context.get_type(v.params.m_types.at(0));
-                    context.equate_types_to_shadow(sp, right);
                 }
-                else
-                {
-                    context.equate_types_to_shadow(sp, right);
-                }
+                context.equate_types_to_shadow(sp, /*right*/v.params.m_types.at(0)); // RHS, can't use `right` because it might be freed by the above equate.
             }
             else
             {

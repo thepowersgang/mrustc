@@ -229,6 +229,7 @@ Token Token::clone() const
             BUG(m_pos, "Fragment with invalid token type (" << *this << ")");
             break;
         }
+        assert(rv.m_data.is_Fragment());
         )
     )
     return rv;

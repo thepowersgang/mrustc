@@ -168,10 +168,16 @@ bool is_token_vis(eTokenType tt) {
     }
 }
 
+MacroRulesPtr::MacroRulesPtr(MacroRules* p):
+    m_ptr(p)
+{
+    //::std::cout << "MRP new " << m_ptr << ::std::endl;
+}
 MacroRulesPtr::~MacroRulesPtr()
 {
     if(m_ptr)
     {
+        //::std::cout << "MRP delete " << m_ptr << ::std::endl;
         delete m_ptr;
         m_ptr = nullptr;
     }

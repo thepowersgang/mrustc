@@ -23,6 +23,8 @@ RcString::RcString(const char* s, unsigned int len):
         for(unsigned int j = 0; j < len; j ++ )
             data_mut[j] = s[j];
         data_mut[len] = '\0';
+
+        //::std::cout << "RcString(" << m_ptr << " \"" << *this << "\") - " << *m_ptr << " (creation)" << ::std::endl;
     }
 }
 RcString::~RcString()
@@ -30,7 +32,7 @@ RcString::~RcString()
     if(m_ptr)
     {
         *m_ptr -= 1;
-        //::std::cout << "RcString(\"" << *this << "\") - " << *m_ptr << " refs left" << ::std::endl;
+        //::std::cout << "RcString(" << m_ptr << " \"" << *this << "\") - " << *m_ptr << " refs left (drop)" << ::std::endl;
         if( *m_ptr == 0 )
         {
             delete[] m_ptr;

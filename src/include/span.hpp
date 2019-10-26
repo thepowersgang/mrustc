@@ -29,9 +29,9 @@ struct ProtoSpan
     unsigned int start_line;
     unsigned int start_ofs;
 };
-class Span
+struct Span
 {
-public:
+//public:
     ::std::shared_ptr<Span> outer_span; // Expansion target for macros
     RcString    filename;
 
@@ -47,9 +47,13 @@ public:
         end_line(end_line),
         end_ofs(end_ofs)
     {}
-    Span(const Span& x);
+    Span(const Span& x) = default;
+    Span(Span&& x) = default;
     Span(const Position& position);
     Span();
+
+    Span& operator=(const Span& x) = default;
+    Span& operator=(Span&& x) = default;
 
     void bug(::std::function<void(::std::ostream&)> msg) const;
     void error(ErrorType tag, ::std::function<void(::std::ostream&)> msg) const;

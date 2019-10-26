@@ -17,22 +17,32 @@
 const TargetArch ARCH_X86_64 = {
     "x86_64",
     64, false,
-    { /*atomic(u8)=*/true, false, true, true,  true }
+    TargetArch::Atomics(/*atomic(u8)=*/true, false, true, true,  true),
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
     };
 const TargetArch ARCH_X86 = {
     "x86",
     32, false,
-    { /*atomic(u8)=*/true, false, true, false,  true }
+    { /*atomic(u8)=*/true, false, true, false,  true },
+    TargetArch::Alignments(2, 4, /*u64*/4, /*u128*/4, 4, 4, /*ptr*/4)    // u128 has the same alignment as u64, which is u32's alignment. And f64 is 4 byte aligned
 };
 const TargetArch ARCH_ARM64 = {
     "aarch64",
     64, false,
-    { /*atomic(u8)=*/true, true, true, true,  true }
+    { /*atomic(u8)=*/true, true, true, true,  true },
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 8)
 };
 const TargetArch ARCH_ARM32 = {
     "arm",
     32, false,
-    { /*atomic(u8)=*/true, false, true, false,  true }
+    { /*atomic(u8)=*/true, false, true, false,  true },
+    TargetArch::Alignments(2, 4, 8, 16, 4, 8, 4) // Note, all types are natively aligned (but i128 will be emulated)
+};
+const TargetArch ARCH_M68K = {
+    "m68k",
+    32, true,
+    { /*atomic(u8)=*/true, false, true, false,  true },
+    TargetArch::Alignments(2, 2, 2, 2, 2, 2, 2)
 };
 TargetSpec  g_target;
 
@@ -108,6 +118,10 @@ namespace
                         {
                             rv.m_arch = ARCH_X86_64;
                         }
+                        else if( key_val.value.as_string() == ARCH_M68K.m_name )
+                        {
+                            rv.m_arch = ARCH_M68K;
+                        }
                         else
                         {
                             // Error.
@@ -149,6 +163,11 @@ namespace
                         {
                             check_path_length(key_val, 3);
                             rv.m_backend_c.m_c_compiler = key_val.value.as_string();
+                        }
+                        else if( key_val.path[2] == "emulate-i128" )
+                        {
+                            check_path_length(key_val, 3);
+                            rv.m_backend_c.m_emulated_i128 = key_val.value.as_bool();
                         }
                         else if( key_val.path[2] == "compiler-opts" )
                         {
@@ -224,6 +243,42 @@ namespace
                         check_path_length(key_val, 2);
                         rv.m_arch.m_atomics.ptr = key_val.value.as_bool();
                     }
+                    else if( key_val.path[1] == "alignments" )
+                    {
+                        check_path_length(key_val, 3);
+                        if( key_val.path[2] == "u16" )
+                        {
+                            rv.m_arch.m_alignments.u16 = key_val.value.as_int();
+                        }
+                        else if( key_val.path[2] == "u32" )
+                        {
+                            rv.m_arch.m_alignments.u32 = key_val.value.as_int();
+                        }
+                        else if( key_val.path[2] == "u64" )
+                        {
+                            rv.m_arch.m_alignments.u64  = key_val.value.as_int();
+                        }
+                        else if( key_val.path[2] == "u128" )
+                        {
+                            rv.m_arch.m_alignments.u128 = key_val.value.as_int();
+                        }
+                        else if( key_val.path[2] == "f32" )
+                        {
+                            rv.m_arch.m_alignments.f32 = key_val.value.as_int();
+                        }
+                        else if( key_val.path[2] == "f64" )
+                        {
+                            rv.m_arch.m_alignments.f64 = key_val.value.as_int();
+                        }
+                        else if( key_val.path[2] == "ptr" )
+                        {
+                            rv.m_arch.m_alignments.ptr = key_val.value.as_int();
+                        }
+                        else
+                        {
+                            ::std::cerr << "WARNING: Unknown field arch.alignments." << key_val.path[1] << " in " << filename << ::std::endl;
+                        }
+                    }
                     else
                     {
                         ::std::cerr << "WARNING: Unknown field arch." << key_val.path[1] << " in " << filename << ::std::endl;
@@ -281,10 +336,10 @@ namespace
             << "[backend.c]\n"
             << "variant = \"" << H::c_variant_name(spec.m_backend_c.m_codegen_mode) << "\"\n"
             << "target = \"" << spec.m_backend_c.m_c_compiler << "\"\n"
-            << "compiler-opts = [" << spec.m_backend_c.m_compiler_opts << "]\n"
-            << "linker-opts = [" << spec.m_backend_c.m_linker_opts << "]\n"
+            << "compiler-opts = ["; for(const auto& s : spec.m_backend_c.m_compiler_opts) of << "\"" << s << "\","; of << "]\n"
+            << "linker-opts = ["; for(const auto& s : spec.m_backend_c.m_linker_opts) of << "\"" << s << "\","; of << "]\n"
             << "\n"
-            << "[arch]"
+            << "[arch]\n"
             << "name = \"" << spec.m_arch.m_name << "\"\n"
             << "pointer-bits = " << spec.m_arch.m_pointer_bits << "\n"
             << "is-big-endian = " << H::tfstr(spec.m_arch.m_big_endian) << "\n"
@@ -293,6 +348,16 @@ namespace
             << "has-atomic-u32 = " << H::tfstr(spec.m_arch.m_atomics.u32) << "\n"
             << "has-atomic-u64 = " << H::tfstr(spec.m_arch.m_atomics.u64) << "\n"
             << "has-atomic-ptr = " << H::tfstr(spec.m_arch.m_atomics.ptr) << "\n"
+            << "alignments = {"
+                << " u16 = "  << static_cast<int>(spec.m_arch.m_alignments.u16 ) << ","
+                << " u32 = "  << static_cast<int>(spec.m_arch.m_alignments.u32 ) << ","
+                << " u64 = "  << static_cast<int>(spec.m_arch.m_alignments.u64 ) << ","
+                << " u128 = " << static_cast<int>(spec.m_arch.m_alignments.u128) << ","
+                << " f32 = "  << static_cast<int>(spec.m_arch.m_alignments.f32 ) << ","
+                << " f64 = "  << static_cast<int>(spec.m_arch.m_alignments.f64 ) << ","
+                << " ptr = "  << static_cast<int>(spec.m_arch.m_alignments.ptr )
+                << " }\n"
+            << "\n"
             ;
     }
     TargetSpec init_from_spec_name(const ::std::string& target_name)
@@ -307,42 +372,49 @@ namespace
         else if(target_name == "i586-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", {CodegenMode::Gnu11, "i586-linux-gnu", BACKEND_C_OPTS_GNU},
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, true, "i586-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_X86
                 };
         }
         else if(target_name == "x86_64-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", {CodegenMode::Gnu11, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "x86_64-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "arm-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", {CodegenMode::Gnu11, "arm-elf-eabi", BACKEND_C_OPTS_GNU},
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, true, "arm-elf-eabi", BACKEND_C_OPTS_GNU},
                 ARCH_ARM32
                 };
         }
         else if(target_name == "aarch64-linux-gnu")
         {
             return TargetSpec {
-                "unix", "linux", "gnu", {CodegenMode::Gnu11, "aarch64-linux-gnu", BACKEND_C_OPTS_GNU},
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, false, "aarch64-linux-gnu", BACKEND_C_OPTS_GNU},
                 ARCH_ARM64
+                };
+        }
+        else if(target_name == "m68k-linux-gnu")
+        {
+            return TargetSpec {
+                "unix", "linux", "gnu", {CodegenMode::Gnu11, true, "m68k-linux-gnu", BACKEND_C_OPTS_GNU},
+                ARCH_M68K
                 };
         }
         else if(target_name == "i586-windows-gnu")
         {
             return TargetSpec {
-                "windows", "windows", "gnu", {CodegenMode::Gnu11, "mingw32", BACKEND_C_OPTS_GNU},
+                "windows", "windows", "gnu", {CodegenMode::Gnu11, true, "mingw32", BACKEND_C_OPTS_GNU},
                 ARCH_X86
             };
         }
         else if(target_name == "x86_64-windows-gnu")
         {
             return TargetSpec {
-                "windows", "windows", "gnu", {CodegenMode::Gnu11, "x86_64-w64-mingw32", BACKEND_C_OPTS_GNU},
+                "windows", "windows", "gnu", {CodegenMode::Gnu11, false, "x86_64-w64-mingw32", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
@@ -350,84 +422,84 @@ namespace
         {
             // TODO: Should this include the "kernel32.lib" inclusion?
             return TargetSpec {
-                "windows", "windows", "msvc", {CodegenMode::Msvc, "x86", {}, {}},
+                "windows", "windows", "msvc", {CodegenMode::Msvc, true, "x86", {}, {}},
                 ARCH_X86
             };
         }
         else if (target_name == "x86_64-windows-msvc")
         {
             return TargetSpec {
-                "windows", "windows", "msvc", {CodegenMode::Msvc, "amd64", {}, {}},
+                "windows", "windows", "msvc", {CodegenMode::Msvc, true, "amd64", {}, {}},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "i686-unknown-freebsd")
         {
             return TargetSpec {
-                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, "i686-unknown-freebsd", BACKEND_C_OPTS_GNU},
+                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, true, "i686-unknown-freebsd", BACKEND_C_OPTS_GNU},
                 ARCH_X86
                 };
         }
         else if(target_name == "x86_64-unknown-freebsd")
         {
             return TargetSpec {
-                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, "x86_64-unknown-freebsd", BACKEND_C_OPTS_GNU},
+                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, false, "x86_64-unknown-freebsd", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "arm-unknown-freebsd")
         {
             return TargetSpec {
-                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, "arm-unknown-freebsd", BACKEND_C_OPTS_GNU},
+                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, true, "arm-unknown-freebsd", BACKEND_C_OPTS_GNU},
                 ARCH_ARM32
                 };
         }
         else if(target_name == "aarch64-unknown-freebsd")
         {
             return TargetSpec {
-                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, "aarch64-unknown-freebsd", BACKEND_C_OPTS_GNU},
+                "unix", "freebsd", "gnu", {CodegenMode::Gnu11, false, "aarch64-unknown-freebsd", BACKEND_C_OPTS_GNU},
                 ARCH_ARM64
                 };
         }
         else if(target_name == "x86_64-unknown-netbsd")
         {
             return TargetSpec {
-                "unix", "netbsd", "gnu", {CodegenMode::Gnu11, "x86_64-unknown-netbsd", BACKEND_C_OPTS_GNU},
+                "unix", "netbsd", "gnu", {CodegenMode::Gnu11, false, "x86_64-unknown-netbsd", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "i686-unknown-openbsd")
         {
             return TargetSpec {
-                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, "i686-unknown-openbsd", BACKEND_C_OPTS_GNU},
+                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, true, "i686-unknown-openbsd", BACKEND_C_OPTS_GNU},
                 ARCH_X86
                 };
         }
         else if(target_name == "x86_64-unknown-openbsd")
         {
             return TargetSpec {
-                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, "x86_64-unknown-openbsd", BACKEND_C_OPTS_GNU},
+                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, false, "x86_64-unknown-openbsd", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
         else if(target_name == "arm-unknown-openbsd")
         {
             return TargetSpec {
-                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, "arm-unknown-openbsd", BACKEND_C_OPTS_GNU},
+                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, true, "arm-unknown-openbsd", BACKEND_C_OPTS_GNU},
                 ARCH_ARM32
                 };
         }
         else if(target_name == "aarch64-unknown-openbsd")
         {
             return TargetSpec {
-                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, "aarch64-unknown-openbsd", BACKEND_C_OPTS_GNU},
+                "unix", "openbsd", "gnu", {CodegenMode::Gnu11, false, "aarch64-unknown-openbsd", BACKEND_C_OPTS_GNU},
                 ARCH_ARM64
                 };
         }
         else if(target_name == "x86_64-unknown-dragonfly")
         {
             return TargetSpec {
-                "unix", "dragonfly", "gnu", {CodegenMode::Gnu11, "x86_64-unknown-dragonfly", BACKEND_C_OPTS_GNU},
+                "unix", "dragonfly", "gnu", {CodegenMode::Gnu11, false, "x86_64-unknown-dragonfly", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
@@ -435,7 +507,21 @@ namespace
         {
             // NOTE: OSX uses Mach-O binaries, which don't fully support the defaults used for GNU targets
             return TargetSpec {
-                "unix", "macos", "gnu", {CodegenMode::Gnu11, "x86_64-apple-darwin", {}, {}},
+                "unix", "macos", "gnu", {CodegenMode::Gnu11, false, "x86_64-apple-darwin", {}, {}},
+                ARCH_X86_64
+                };
+        }
+        else if(target_name == "arm-unknown-haiku")
+        {
+            return TargetSpec {
+                "unix", "haiku", "gnu", {CodegenMode::Gnu11, true, "arm-unknown-haiku", {}, {}},
+                ARCH_ARM32
+                };
+        }
+        else if(target_name == "x86_64-unknown-haiku")
+        {
+            return TargetSpec {
+                "unix", "haiku", "gnu", {CodegenMode::Gnu11, false, "x86_64-unknown-haiku", {}, {}},
                 ARCH_X86_64
                 };
         }
@@ -536,48 +622,45 @@ bool Target_GetSizeAndAlignOf(const Span& sp, const StaticTraitResolve& resolve,
         case ::HIR::CoreType::U8:
         case ::HIR::CoreType::I8:
             out_size = 1;
-            out_align = 1;
+            out_align = 1;  // u8 is always 1 aligned
             return true;
         case ::HIR::CoreType::U16:
         case ::HIR::CoreType::I16:
             out_size = 2;
-            out_align = 2;
+            out_align = g_target.m_arch.m_alignments.u16;
             return true;
         case ::HIR::CoreType::U32:
         case ::HIR::CoreType::I32:
         case ::HIR::CoreType::Char:
             out_size = 4;
-            out_align = 4;
+            out_align = g_target.m_arch.m_alignments.u32;
             return true;
         case ::HIR::CoreType::U64:
         case ::HIR::CoreType::I64:
             out_size = 8;
-            // TODO: on x86, u64/i64 has an alignment of 4, while x86_64 has 8. What do other platforms have?
-            out_align = g_target.m_arch.m_name == "x86" ? 4 : 8;
+            out_align = g_target.m_arch.m_alignments.u64;
             return true;
         case ::HIR::CoreType::U128:
         case ::HIR::CoreType::I128:
             out_size = 16;
             // TODO: If i128 is emulated, this can be 8 (as it is on x86, where it's actually 4 due to the above comment)
-            if( g_target.m_arch.m_name == "x86" )
-                out_align = 4;
-            else if( /*g_target.m_arch.m_name == "x86_64" && */g_target.m_backend_c.m_codegen_mode == CodegenMode::Msvc )
-                out_align = 8;
-            else 
-                out_align = 16;
+            if( g_target.m_backend_c.m_emulated_i128 )
+                out_align = g_target.m_arch.m_alignments.u64;
+            else
+                out_align = g_target.m_arch.m_alignments.u128;
             return true;
         case ::HIR::CoreType::Usize:
         case ::HIR::CoreType::Isize:
             out_size = g_target.m_arch.m_pointer_bits / 8;
-            out_align = g_target.m_arch.m_pointer_bits / 8;
+            out_align = g_target.m_arch.m_alignments.ptr;
             return true;
         case ::HIR::CoreType::F32:
             out_size = 4;
-            out_align = 4;
+            out_align = g_target.m_arch.m_alignments.f32;
             return true;
         case ::HIR::CoreType::F64:
             out_size = 8;
-            out_align = g_target.m_arch.m_name == "x86" ? 4 : 8;
+            out_align = g_target.m_arch.m_alignments.f64;
             return true;
         case ::HIR::CoreType::Str:
             DEBUG("sizeof on a `str` - unsized");

@@ -11,15 +11,6 @@
 #include <parse/lex.hpp>
 #include <common.hpp>
 
-Span::Span(const Span& x):
-    outer_span(x.outer_span),
-    filename(x.filename),
-    start_line(x.start_line),
-    start_ofs(x.start_ofs),
-    end_line(x.end_line),
-    end_ofs(x.end_ofs)
-{
-}
 Span::Span(const Position& pos):
     outer_span(),
     filename(pos.filename),

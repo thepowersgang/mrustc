@@ -200,20 +200,23 @@ namespace {
             m_outfile_path_c(outfile + ".c"),
             m_of(m_outfile_path_c)
         {
+            m_options.emulated_i128 = Target_GetCurSpec().m_backend_c.m_emulated_i128;
             switch(Target_GetCurSpec().m_backend_c.m_codegen_mode)
             {
             case CodegenMode::Gnu11:
                 m_compiler = Compiler::Gcc;
-                m_options.emulated_i128 = false;
-                if( Target_GetCurSpec().m_arch.m_pointer_bits < 64 )
+                if( Target_GetCurSpec().m_arch.m_pointer_bits < 64 && !m_options.emulated_i128 )
                 {
-                    m_options.emulated_i128 = true;
+                    WARNING(Span(), W0000, "Potentially misconfigured target, 32-bit targets require i128 emulation");
                 }
                 m_options.disallow_empty_structs = true;
                 break;
             case CodegenMode::Msvc:
                 m_compiler = Compiler::Msvc;
-                m_options.emulated_i128 = true;
+                if( !m_options.emulated_i128 )
+                {
+                    WARNING(Span(), W0000, "Potentially misconfigured target, MSVC requires i128 emulation");
+                }
                 m_options.disallow_empty_structs = true;
                 break;
             }
@@ -297,7 +300,7 @@ namespace {
                 // 64-bit bit ops (gcc intrinsics)
                 m_of
                     << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
-                    << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
+                    << "\treturn ( (v >> 32) != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
                     << "}\n"
                     << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
@@ -322,10 +325,10 @@ namespace {
                     << "static inline uint64_t __builtin_popcount(uint64_t v) {\n"
                     << "\treturn (v >> 32 != 0 ? __popcnt64(v>>32) : 32 + __popcnt64(v));\n"
                     << "}\n"
-                    << "static inline int __builtin_ctz(uint32_t v) { int rv; _BitScanReverse(&rv, v); return rv; }\n"
-                    << "static inline int __builtin_clz(uint32_t v) { int rv; _BitScanForward(&rv, v); return rv; }\n"
+                    << "static inline int __builtin_ctz(uint32_t v) { int rv; _BitScanForward(&rv, v); return rv; }\n"
+                    << "static inline int __builtin_clz(uint32_t v) { int rv; _BitScanReverse(&rv, v); return 31 - rv; }\n"
                     << "static inline uint64_t __builtin_clz64(uint64_t v) {\n"
-                    << "\treturn (v >> 32 != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v));\n"
+                    << "\treturn ( (v >> 32) != 0 ? __builtin_clz(v>>32) : 32 + __builtin_clz(v) );\n"
                     << "}\n"
                     << "static inline uint64_t __builtin_ctz64(uint64_t v) {\n"
                     << "\treturn ((v&0xFFFFFFFF) == 0 ? __builtin_ctz(v>>32) + 32 : __builtin_ctz(v));\n"
@@ -776,13 +779,14 @@ namespace {
                     if( getenv(varname.c_str()) ) {
                         args.push_back( getenv(varname.c_str()) );
                     }
+                    else if (system(("which " + Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" + " >/dev/null 2>&1").c_str()) == 0) {
+                        args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
+                    }
                     else if( getenv("CC") ) {
                         args.push_back( getenv("CC") );
                     }
                     else {
-                        // TODO: Determine if the compiler can't be found, and fall back to `gcc` if that's the case
-                        args.push_back( Target_GetCurSpec().m_backend_c.m_c_compiler + "-gcc" );
-                        //args.push_back( "gcc" );
+                        args.push_back("gcc");
                     }
                 }
                 for( const auto& a : Target_GetCurSpec().m_backend_c.m_compiler_opts )
@@ -1561,7 +1565,7 @@ namespace {
                 assert(1 + union_fields.size() + 1 >= repr->fields.size());
                 // Make the union!
                 // NOTE: The way the structure generation works is that enum variants are always first, so the field index = the variant index
-                // TODO: 
+                // TODO:
                 if( !this->type_is_bad_zst(repr->fields[0].ty) || ::std::any_of(union_fields.begin(), union_fields.end(), [this,repr](auto x){ return !this->type_is_bad_zst(repr->fields[x].ty); }) )
                 {
                     m_of << "\tunion {\n";
@@ -2176,7 +2180,11 @@ namespace {
             (String,
                 m_of << "{ ";
                 this->print_escaped_string(e);
-                m_of << ", " << e.size() << "}";
+                // TODO: Better type checking?
+                if( !ty.m_data.is_Array() ) {
+                    m_of << ", " << e.size();
+                }
+                m_of << "}";
                 )
             )
         }
@@ -2219,9 +2227,8 @@ namespace {
                             m_of << "\\x0" << (unsigned int)static_cast<uint8_t>(v);
                         else
                             m_of << "\\x" << (unsigned int)static_cast<uint8_t>(v);
-                        // If the next character is a hex digit,
-                        // close/reopen the string.
-                        if( isxdigit(*(&v+1)) )
+                        // If the next character is a hex digit, close/reopen the string.
+                        if( &v < &s.back() && isxdigit(*(&v+1)) )
                             m_of << "\"\"";
                     }
                 }
@@ -3927,7 +3934,7 @@ namespace {
             m_of << "(";
             for(unsigned int j = 0; j < e.args.size(); j ++) {
                 if(j != 0)  m_of << ",";
-                m_of << " "; 
+                m_of << " ";
                 if( m_options.disallow_empty_structs && TU_TEST1(e.args[j], LValue, .is_Field()) )
                 {
                     ::HIR::TypeRef tmp;
@@ -4176,7 +4183,7 @@ namespace {
         void emit_intrinsic_call(const RcString& name, const ::HIR::PathParams& params, const ::MIR::Terminator::Data_Call& e)
         {
             const auto& mir_res = *m_mir_res;
-            enum class Ordering 
+            enum class Ordering
             {
                 SeqCst,
                 Acquire,
@@ -4341,7 +4348,7 @@ namespace {
                             m_of << "*(volatile uint8_t*)";
                         else
                             m_of << "*(volatile int8_t*)";
-                        emit_param(e.args.at(0)); 
+                        emit_param(e.args.at(0));
                         switch(op)
                         {
                         case AtomicOp::Add: m_of << " += "; break;

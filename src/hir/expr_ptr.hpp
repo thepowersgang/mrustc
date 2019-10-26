@@ -12,7 +12,7 @@
 
 #include <mir/mir_ptr.hpp>
 
-class Span;
+struct Span;
 
 namespace HIR {
 

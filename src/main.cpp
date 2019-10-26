@@ -38,6 +38,7 @@ TargetVersion	gTargetVersion = TargetVersion::Rustc1_29;
 
 void init_debug_list()
 {
+    g_debug_disable_map.insert( "Target Load" );
     g_debug_disable_map.insert( "Parse" );
     g_debug_disable_map.insert( "LoadCrates" );
     g_debug_disable_map.insert( "Expand" );
@@ -159,6 +160,9 @@ struct ProgramParams
 
     bool test_harness = false;
 
+    // NOTE: If populated, nothing happens except for loading the target
+    ::std::string   target_saveback;
+
     ::std::vector<const char*> lib_search_dirs;
     ::std::vector<const char*> libraries;
     ::std::map<::std::string, ::std::string>    crate_overrides;    // --extern name=path
@@ -217,8 +221,21 @@ int main(int argc, char *argv[])
     Cfg_SetValueCb("feature", [&params](const ::std::string& s) {
         return params.features.count(s) != 0;
         });
-    Target_SetCfg(params.target);
+    CompilePhaseV("Target Load", [&]() {
+        Target_SetCfg(params.target);
+        });
 
+    if( params.target_saveback != "")
+    {
+        Target_ExportCurSpec(params.target_saveback);
+        return 0;
+    }
+
+    if( params.infile == "" )
+    {
+        ::std::cerr << "No input file passed" << ::std::endl;
+        return 1;
+    }
 
     if( params.test_harness )
     {
@@ -1100,6 +1117,13 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 }
                 this->target = argv[++i];
             }
+            else if( strcmp(arg, "--dump-target-spec") == 0 ) {
+                if (i == argc - 1) {
+                    ::std::cerr << "Flag " << arg << " requires an argument" << ::std::endl;
+                    exit(1);
+                }
+                this->target_saveback = argv[++i];
+            }
             else if( strcmp(arg, "--test") == 0 ) {
                 this->test_harness = true;
             }
@@ -1108,12 +1132,6 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 exit(1);
             }
         }
-    }
-
-    if (this->infile == "")
-    {
-        ::std::cerr << "No input file passed" << ::std::endl;
-        exit(1);
     }
 
 
