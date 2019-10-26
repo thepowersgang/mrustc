@@ -30,7 +30,7 @@ install:
 
 script:
  - set -e
- - make -f minicargo.mk output/libtest.hir      # libstd
+ - make -f minicargo.mk output/libtest.rlib      # libstd
  - make test    # hello_world
 # Tests
  - set +e
