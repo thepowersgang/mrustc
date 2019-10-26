@@ -19,7 +19,7 @@ namespace {
 
 namespace {
 
-    typedef ::std::function< ::HIR::SimplePath(const char* suffix, ::HIR::Struct )>   new_type_cb_t;
+    typedef ::std::function< ::std::pair<::HIR::SimplePath, const ::HIR::Struct*>(const char* suffix, ::HIR::Struct )>   new_type_cb_t;
     typedef ::std::vector< ::std::pair< ::HIR::ExprNode_Closure::Class, ::HIR::TraitImpl> > out_impls_t;
 
     template<typename K, typename V>
@@ -151,7 +151,7 @@ namespace {
             assert( node_ptr );
             auto& node = *node_ptr;
             const char* node_ty = typeid(node).name();
-            TRACE_FUNCTION_FR(&node << " " << node_ty << " : " << node.m_res_type, node_ty);
+            TRACE_FUNCTION_FR("[_Mutate] " << &node << " " << node_ty << " : " << node.m_res_type, node_ty);
             node.visit(*this);
 
             if( m_replacement ) {
@@ -179,7 +179,9 @@ namespace {
                 auto binding_it = ::std::find(m_local_vars.begin(), m_local_vars.end(), node.m_slot);
                 if( binding_it != m_local_vars.end() ) {
                     // NOTE: Offset of 1 is for `self` (`args` is destructured)
-                    node.m_slot = 1 + binding_it - m_local_vars.begin();
+                    auto new_slot = 1 + binding_it - m_local_vars.begin();
+                    DEBUG("_Variable: #" << node.m_slot << " -> #" << new_slot);
+                    node.m_slot = new_slot;
                     return ;
                 }
             }
@@ -201,6 +203,7 @@ namespace {
                         m_replacement = NEWNODE(node.m_res_type.clone(), Deref, node.span(),  mv$(m_replacement));
                     }
                     m_replacement->m_usage = node.m_usage;
+                    DEBUG("_Variable: #" << node.m_slot << " -> capture");
                     return ;
                 }
             }
@@ -259,7 +262,7 @@ namespace {
             TU_IFLET( ::HIR::TypeRef::Data, ty.m_data, Closure, e,
                 DEBUG("Closure: " << e.node->m_obj_path_base);
                 auto path = monomorphise_genericpath_with(sp, e.node->m_obj_path_base, monomorph_cb, false);
-                const auto& str = crate.get_struct_by_path(sp, path.m_path);
+                const auto& str = *e.node->m_obj_ptr;
                 DEBUG(ty << " -> " << path);
                 ty = ::HIR::TypeRef::new_path( mv$(path), ::HIR::TypeRef::TypePathBinding::make_Struct(&str) );
             )
@@ -320,7 +323,7 @@ namespace {
                 auto trait_params = ::HIR::PathParams( ::HIR::TypeRef(mv$(arg_types)) );
                 auto res_ty = ::HIR::TypeRef(mv$(fcn_ty_inner));
 
-                const auto& str = m_crate.get_struct_by_path(sp, src_te.node->m_obj_path.m_path);
+                const auto& str = *src_te.node->m_obj_ptr;
                 auto closure_type = ::HIR::TypeRef::new_path( src_te.node->m_obj_path.clone(), &str );
                 auto fn_path = ::HIR::Path(mv$(closure_type), "call_free");
                 fn_path.m_data.as_UfcsInherent().impl_params = src_te.node->m_obj_path.m_params.clone();
@@ -582,6 +585,8 @@ namespace {
 
             TRACE_FUNCTION_F("Extract closure - " << node.m_res_type);
 
+            ASSERT_BUG(sp, node.m_obj_path == ::HIR::GenericPath(), "Closure path already set? " << node.m_obj_path);
+
             // --- Determine borrow set ---
             m_closure_stack.push_back( ClosureScope(node) );
 
@@ -787,13 +792,13 @@ namespace {
                 ::HIR::Struct::Data::make_Tuple(mv$(capture_types))
                 };
             str.m_markings.is_copy = node.m_is_copy;
-            auto closure_struct_path = m_new_type(
-                m_new_type_suffix,
-                mv$(str)
-                );
-            const auto& closure_struct_ref = m_resolve.m_crate.get_struct_by_path(sp, closure_struct_path);
+            ::HIR::SimplePath   closure_struct_path;
+            const ::HIR::Struct* closure_struct_ptr;
+            ::std::tie(closure_struct_path, closure_struct_ptr) = m_new_type(m_new_type_suffix, mv$(str));
+            const auto& closure_struct_ref = *closure_struct_ptr;
 
             // Mark the object pathname in the closure.
+            node.m_obj_ptr = &closure_struct_ref;
             node.m_obj_path = ::HIR::GenericPath( closure_struct_path, mv$(constructor_path_params) );
             node.m_obj_path_base = node.m_obj_path.clone();
             node.m_captures = mv$(capture_nodes);
@@ -1029,6 +1034,7 @@ namespace {
         }
         void visit(::HIR::ExprNode_Variable& node) override
         {
+            DEBUG("_Variable: #" << node.m_slot << " '" << node.m_name << "' " << node.m_usage);
             if( !m_closure_stack.empty() )
             {
                 mark_used_variable(node.span(), node.m_slot, node.m_usage);
@@ -1258,8 +1264,9 @@ namespace {
                 auto name = RcString::new_interned(FMT("closure#I_" << closure_count));
                 closure_count += 1;
                 auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
+                auto* ret_ptr = &boxed->ent.as_Struct();
                 crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
-                return ::HIR::SimplePath(crate.m_crate_name, {}) + name;
+                return ::std::make_pair( ::HIR::SimplePath(crate.m_crate_name, {}) + name, ret_ptr );
                 };
 
             ::HIR::Visitor::visit_crate(crate);
@@ -1274,21 +1281,29 @@ namespace {
             auto path = p.get_simple_path();
             m_cur_mod_path = &path;
 
+            ::std::vector< ::std::pair<RcString, std::unique_ptr< ::HIR::VisEnt< ::HIR::TypeItem> > >>  new_types;
+
             unsigned int closure_count = 0;
             auto saved_nt = mv$(m_new_type);
             m_new_type = [&](const char* suffix, auto s)->auto {
                 // TODO: Use a function on `mod` that adds a closure and makes the indexes be per suffix
-                auto name = FMT("closure#" << suffix << (suffix[0] ? "_" : "") << closure_count);
+                auto name = RcString( FMT("closure#" << suffix << (suffix[0] ? "_" : "") << closure_count) );
                 closure_count += 1;
                 auto boxed = box$( (::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) }) );
-                mod.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
-                return (p + name).get_simple_path();
+                auto* ret_ptr = &boxed->ent.as_Struct(); 
+                new_types.push_back( ::std::make_pair(name, mv$(boxed)) );
+                return ::std::make_pair( (p + name).get_simple_path(), ret_ptr );
                 };
 
             ::HIR::Visitor::visit_module(p, mod);
 
             m_cur_mod_path = saved;
             m_new_type = mv$(saved_nt);
+
+            for(auto& e : new_types)
+            {
+                mod.m_mod_items.insert( mv$(e) );
+            }
         }
 
         // NOTE: This is left here to ensure that any expressions that aren't handled by higher code cause a failure
@@ -1421,12 +1436,13 @@ void HIR_Expand_Closures_Expr(const ::HIR::Crate& crate_ro, ::HIR::ExprPtr& exp)
 
     static int closure_count = 0;
     out_impls_t new_trait_impls;
-    new_type_cb_t new_type_cb = [&](const char* suffix, auto s)->::HIR::SimplePath {
+    new_type_cb_t new_type_cb = [&](const char* suffix, auto s)->auto {
         auto name = RcString::new_interned(FMT("closure#C_" << closure_count));
         closure_count += 1;
         auto boxed = box$(( ::HIR::VisEnt< ::HIR::TypeItem> { ::HIR::Publicity::new_none(), ::HIR::TypeItem( mv$(s) ) } ));
+        auto* ret_ptr = &boxed->ent.as_Struct();
         crate.m_root_module.m_mod_items.insert( ::std::make_pair(name, mv$(boxed)) );
-        return ::HIR::SimplePath(crate.m_crate_name, {}) + name;
+        return ::std::make_pair( ::HIR::SimplePath(crate.m_crate_name, {}) + name, ret_ptr );
         };
 
     {

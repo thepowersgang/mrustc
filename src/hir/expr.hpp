@@ -800,6 +800,7 @@ struct ExprNode_Closure:
     bool m_is_copy = false;
 
     // - Path to the generated closure type
+    const ::HIR::Struct*    m_obj_ptr = nullptr;
     ::HIR::GenericPath  m_obj_path_base;
     ::HIR::GenericPath  m_obj_path;
     ::std::vector< ::HIR::ExprNodeP>    m_captures;
