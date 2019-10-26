@@ -31,7 +31,7 @@ Span::Span(const Position& pos):
 }
 Span::Span():
     outer_span(),
-    filename("")/*,
+    filename(""),
     start_line(0), start_ofs(0),
     end_line(0), end_ofs(0) // */
 {
