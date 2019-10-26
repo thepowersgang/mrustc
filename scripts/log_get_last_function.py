@@ -11,7 +11,12 @@ def main():
     fcn_lines = []
     found_fcn = False
     for line in args.logfile:
-        if 'visit_function: ' in line or 'Trans_Monomorphise_List: ' in line or 'Trans_Codegen: FUNCTION CODE' in line or 'Trans_Codegen- emit_' in line:
+        if 'visit_function: ' in line \
+            or 'evaluate_constant: ' in line \
+            or 'Trans_Monomorphise_List: ' in line \
+            or 'Trans_Codegen: FUNCTION CODE' in line \
+            or 'Trans_Codegen- emit_' in line \
+            :
             if found_fcn:
                 break
             fcn_lines = []
