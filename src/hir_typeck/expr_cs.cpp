@@ -6549,6 +6549,38 @@ namespace {
                 return CoerceResult::Equality;
             }
         }
+        else if( const auto* se = src.m_data.opt_Function() )
+        {
+            if( const auto* de = dst.m_data.opt_Function() )
+            {
+                auto& node_ptr = *node_ptr_ptr;
+                auto span = node_ptr->span();
+                DEBUG("Function pointer coercion");
+                // ABI must match
+                if( se->m_abi != de->m_abi )
+                    return CoerceResult::Equality;
+                // const can be removed
+                //if( se->is_const != de->is_const && de->is_const ) // Error going TO a const function pointer
+                //    return CoerceResult::Equality;
+                // unsafe can be added
+                if( se->is_unsafe != de->is_unsafe && se->is_unsafe ) // Error going FROM an unsafe function pointer
+                    return CoerceResult::Equality;
+                // argument/return types must match
+                if( de->m_arg_types.size() != se->m_arg_types.size() )
+                    return CoerceResult::Equality;
+                for(size_t i = 0; i < de->m_arg_types.size(); i++)
+                {
+                    context.equate_types(sp, de->m_arg_types[i], se->m_arg_types[i]);
+                }
+                context.equate_types(sp, *de->m_rettype, *se->m_rettype);
+                node_ptr = NEWNODE( dst.clone(), span, _Cast,  mv$(node_ptr), dst.clone() );
+                return CoerceResult::Custom;
+            }
+            else
+            {
+                return CoerceResult::Equality;
+            }
+        }
         else
         {
             // TODO: ! should be handled above or in caller?

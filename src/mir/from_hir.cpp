@@ -1279,6 +1279,11 @@ namespace {
             TU_MATCH_HDRA( (ty_out.m_data), {)
             default:
                 BUG(node.span(), "Invalid cast to " << ty_out << " from " << ty_in);
+            TU_ARMA(Function, de) {
+                // Just trust the previous stages.
+                ASSERT_BUG(node.span(), ty_in.m_data.is_Function(), ty_in);
+                ASSERT_BUG(node.span(), de.m_arg_types == ty_in.m_data.as_Function().m_arg_types, ty_in);
+                }
             TU_ARMA(Pointer, de) {
                 if( ty_in.m_data.is_Primitive() ) {
                     const auto& ie = ty_in.m_data.as_Primitive();

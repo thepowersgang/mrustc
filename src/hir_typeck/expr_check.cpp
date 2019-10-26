@@ -365,8 +365,21 @@ namespace {
                 default:
                     ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty);
                     break;
-                //TU_ARMA(Function, se) {
-                //    }
+                TU_ARMA(Function, se) {
+                    if( se.is_unsafe != de.is_unsafe && se.is_unsafe )
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - removing unsafe");
+                    if( se.m_abi != de.m_abi )
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - different ABI");
+                    if( *se.m_rettype != *de.m_rettype )
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - return type different");
+                    if( se.m_arg_types.size() != de.m_arg_types.size() )
+                        ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - argument count different");
+                    for( size_t i = 0; i < se.m_arg_types.size(); i ++)
+                    {
+                        if( se.m_arg_types[i] != de.m_arg_types[i] )
+                            ERROR(sp, E0000, "Invalid cast to " << dst_ty << " from " << src_ty << " - argument " << i << " different");
+                    }
+                    }
                 TU_ARMA(Closure, se) {
                     // Allowed, but won't exist after expansion
                     // TODO: Check argument types
