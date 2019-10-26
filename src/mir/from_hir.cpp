@@ -19,6 +19,7 @@
 #include <mir/visit_crate_mir.hpp>
 #include <hir/expr_state.hpp>
 #include <trans/target.hpp> // Target_GetSizeAndAlignOf - for `box`
+#include <cctype>   // isdigit
 
 namespace {
 

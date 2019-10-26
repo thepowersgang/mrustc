@@ -655,7 +655,7 @@ public:
     ~EnumCachePtr();
     EnumCachePtr(EnumCachePtr&& x): p(x.p) { x.p = nullptr; }
     EnumCachePtr& operator=(EnumCachePtr&& x) { this->~EnumCachePtr(); p = x.p; x.p = nullptr; return *this; }
-    operator bool() { return p; }
+    operator bool() { return p != nullptr; }
     const EnumCache& operator*() const { return *p; }
     const EnumCache* operator->() const { return p; }
 };

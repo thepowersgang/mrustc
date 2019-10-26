@@ -58,7 +58,9 @@ public:
             switch( GET_TOK(tok, lex) )
             {
             // TODO: Allow any reserved word
-            case TOK_RWORD_PUB ... TOK_RWORD_UNSIZED:
+            default:
+                if( !(TOK_RWORD_PUB <= tok.type() && tok.type() <= TOK_RWORD_UNSIZED) )
+                    throw ParseError::Unexpected(lex, tok);
             case TOK_IDENT: {
                 auto name = tok.type() == TOK_IDENT ? tok.istr() : RcString::new_interned(FMT(tok));
                 GET_CHECK_TOK(tok, lex, TOK_COLON);
@@ -123,8 +125,6 @@ public:
                     throw ParseError::Unexpected(lex, tok);
                 }
                 break; }
-            default:
-                throw ParseError::Unexpected(lex, tok);
             }
             break;
         case TOK_EOF:

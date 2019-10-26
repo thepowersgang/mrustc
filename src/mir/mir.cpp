@@ -6,6 +6,7 @@
  * - MIR (Middle Intermediate Representation) definitions
  */
 #include <mir/mir.hpp>
+#include <algorithm>    // std::min
 
 namespace MIR {
     ::std::ostream& operator<<(::std::ostream& os, const Constant& v) {

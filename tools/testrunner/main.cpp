@@ -170,12 +170,15 @@ int main(int argc, const char* argv[])
         return v;
     }
 
+#ifdef _WIN32
+#else
     {
         struct sigaction    sa = {0};
         sa.sa_handler = sigalrm_handler;
         sigaction(SIGALRM, &sa, NULL);
         signal(SIGINT, sigint_handler);
     }
+#endif
 
     ::std::vector<::std::string>    skip_list;
     //  > Filter out tests listed in an exceptions file (newline separated, supports comments)

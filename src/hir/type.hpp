@@ -93,6 +93,15 @@ struct LifetimeRef
     // Values below 2^16 are parameters/static, values above are per-function region IDs allocated during region inferrence.
     uint32_t  binding = UNKNOWN;
 
+    LifetimeRef()
+        :binding(UNKNOWN)
+    {
+    }
+    LifetimeRef(uint32_t binding)
+        :binding(binding)
+    {
+    }
+
     static LifetimeRef new_static() {
         LifetimeRef rv;
         rv.binding = STATIC;

@@ -98,9 +98,6 @@
     <ClCompile Include="..\src\hir_expand\closures.cpp">
       <Filter>Source Files\hir_expand</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\hir_expand\const_eval_full.cpp">
-      <Filter>Source Files\hir_expand</Filter>
-    </ClCompile>
     <ClCompile Include="..\src\hir_conv\bind.cpp">
       <Filter>Source Files\hir_conv</Filter>
     </ClCompile>
@@ -210,9 +207,6 @@
       <Filter>Source Files\mir</Filter>
     </ClCompile>
     <ClCompile Include="..\src\trans\monomorphise.cpp">
-      <Filter>Source Files\trans</Filter>
-    </ClCompile>
-    <ClCompile Include="..\src\trans\mangling.cpp">
       <Filter>Source Files\trans</Filter>
     </ClCompile>
     <ClCompile Include="..\src\expand\lang_item.cpp">
@@ -391,6 +385,21 @@
     </ClCompile>
     <ClCompile Include="..\src\version.cpp">
       <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\mrustc-merge_attempt_one\src\trans\auto_impls.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\mrustc-merge_attempt_one\src\trans\mangling_v2.cpp">
+      <Filter>Source Files\trans</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hir_conv\resolve_ufcs_outer.cpp">
+      <Filter>Source Files\hir_conv</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\hir\hir_ops.cpp">
+      <Filter>Source Files\hir</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\expand\assert.cpp">
+      <Filter>Source Files\expand</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

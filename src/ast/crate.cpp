@@ -12,7 +12,12 @@
 #include <hir/hir.hpp>  // HIR::Crate
 #include <hir/main_bindings.hpp>    // HIR_Deserialise
 #include <fstream>
-#include <dirent.h>
+#ifdef _WIN32
+# define NOGDI  // prevent ERROR from being defined
+# include <Windows.h>
+#else
+# include <dirent.h>
+#endif
 
 ::std::vector<::std::string>    AST::g_crate_load_dirs = { };
 ::std::map<::std::string, ::std::string>    AST::g_crate_overrides;
@@ -167,6 +172,17 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
             path = "";
 
             // Search for `p+"/lib"+name+"-*.rlib" (which would match e.g. libnum-0.11.rlib)
+#ifdef _WIN32
+            WIN32_FIND_DATA find_data;
+            auto mask = p + "\\*";
+            HANDLE find_handle = FindFirstFile( mask.c_str(), &find_data );
+            if( find_handle == INVALID_HANDLE_VALUE ) {
+                continue ;
+            }
+            do
+            {
+                const auto* fname = find_data.cFileName;
+#else
             auto dp = opendir(p.c_str());
             if( !dp ) {
                 continue ;
@@ -174,12 +190,15 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
             struct dirent *ent;
             while( (ent = readdir(dp)) != nullptr && path == "" )
             {
+                const auto* fname = ent->d_name;
+#endif
+
                 // AND the start is "lib"+name
-                size_t len = strlen(ent->d_name);
-                if( len > (sizeof(RLIB_SUFFIX)-1) && strcmp(ent->d_name + len - (sizeof(RLIB_SUFFIX)-1), RLIB_SUFFIX) == 0 )
+                size_t len = strlen(fname);
+                if( len > (sizeof(RLIB_SUFFIX)-1) && strcmp(fname + len - (sizeof(RLIB_SUFFIX)-1), RLIB_SUFFIX) == 0 )
                 {
                 }
-                else if( len > (sizeof(RDYLIB_SUFFIX)-1) && strcmp(ent->d_name + len - (sizeof(RDYLIB_SUFFIX)-1), RDYLIB_SUFFIX) == 0 )
+                else if( len > (sizeof(RDYLIB_SUFFIX)-1) && strcmp(fname + len - (sizeof(RDYLIB_SUFFIX)-1), RDYLIB_SUFFIX) == 0 )
                 {
                 }
                 else
@@ -187,14 +206,19 @@ RcString Crate::load_extern_crate(Span sp, const RcString& name, const ::std::st
                     continue ;
                 }
 
-                DEBUG(ent->d_name << " vs " << name_prefix);
+                DEBUG(fname << " vs " << name_prefix);
                 // Check if the entry ends with .rlib
-                if( strncmp(name_prefix.c_str(), ent->d_name, name_prefix.size()) != 0 )
+                if( strncmp(name_prefix.c_str(), fname, name_prefix.size()) != 0 )
                     continue ;
 
-                paths.push_back( p + "/" + ent->d_name );
+                paths.push_back( p + "/" + fname );
+#ifdef _WIN32
+            } while( FindNextFile(find_handle, &find_data) );
+            FindClose(find_handle);
+#else
             }
             closedir(dp);
+#endif
             if( paths.size() > 0 )
                 break;
         }

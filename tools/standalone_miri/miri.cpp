@@ -5,6 +5,7 @@
  * miri.cpp
  * - Interpreter core
  */
+#define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include "module_tree.hpp"
 #include "value.hpp"
@@ -15,13 +16,14 @@
 #include "miri.hpp"
 // VVV FFI
 #include <cstring>  // memrchr
+#include <sys/stat.h>
+#include <fcntl.h>
 #ifdef _WIN32
 # define NOMINMAX
 # include <Windows.h>
+#else
+# include <unistd.h>
 #endif
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
 #undef DEBUG
 
 unsigned ThreadState::s_next_tls_key = 1;
@@ -2082,7 +2084,6 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
     }
     else if( link_name == "GetModuleHandleW" )
     {
-        LOG_ASSERT(args.at(0).allocation, "");
         const auto& tgt_alloc = args.at(0).get_relocation(0);
         const void* arg0 = (tgt_alloc ? tgt_alloc.alloc().data_ptr() : nullptr);
         //extern void* GetModuleHandleW(const void* s);
@@ -2096,7 +2097,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
         auto ret = GetModuleHandleW(static_cast<LPCWSTR>(arg0));
         if(ret)
         {
-            rv = Value::new_ffiptr(FFIPointer { "GetModuleHandleW", ret, 0 });
+            rv = Value::new_ffiptr(FFIPointer::new_void("GetModuleHandleW", ret));
         }
         else
         {
@@ -2121,7 +2122,7 @@ bool InterpreterThread::call_extern(Value& rv, const ::std::string& link_name, c
 
         if( ret )
         {
-            rv = Value::new_ffiptr(FFIPointer { "GetProcAddress", ret, 0 });
+            rv = Value::new_ffiptr(FFIPointer::new_void("GetProcAddress", ret));
         }
         else
         {

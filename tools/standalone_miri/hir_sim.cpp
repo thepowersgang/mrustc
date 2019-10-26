@@ -156,6 +156,8 @@ size_t HIR::TypeRef::get_align(size_t ofs) const
         case RawType::USize:
         case RawType::ISize:
             return POINTER_SIZE;
+        case RawType::Unreachable:
+            LOG_BUG("Getting alignment of unreachable type");
         }
         throw "";
     }

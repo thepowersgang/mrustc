@@ -323,6 +323,22 @@ public:
         (Named, t_struct_fields)
         );
 
+    Struct(GenericParams params, Repr repr, Data data)
+        :m_params(mv$(params))
+        ,m_repr(mv$(repr))
+        ,m_data(mv$(data))
+    {
+    }
+    Struct(GenericParams params, Repr repr, Data data, unsigned align, TraitMarkings tm, StructMarkings sm)
+        :m_params(mv$(params))
+        ,m_repr(mv$(repr))
+        ,m_data(mv$(data))
+        ,m_forced_alignment(align)
+        ,m_markings(mv$(tm))
+        ,m_struct_markings(mv$(sm))
+    {
+    }
+
     GenericParams   m_params;
     Repr    m_repr;
     Data    m_data;

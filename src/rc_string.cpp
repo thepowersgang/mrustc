@@ -9,6 +9,7 @@
 #include <cstring>
 #include <string>
 #include <iostream>
+#include <algorithm>    // std::max
 
 RcString::RcString(const char* s, unsigned int len):
     m_ptr(nullptr)

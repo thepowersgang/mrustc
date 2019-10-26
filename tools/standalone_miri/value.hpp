@@ -57,6 +57,9 @@ struct FFIPointer
     const char* tag_name;
     ::std::shared_ptr<FfiLayout>    layout;
 
+    static FFIPointer new_void(const char* name, const void* v) {
+        return FFIPointer { const_cast<void*>(v), name, ::std::make_shared<FfiLayout>() };
+    }
     static FFIPointer new_const_bytes(const char* name, const void* s, size_t size) {
         return FFIPointer { const_cast<void*>(s), name, ::std::make_shared<FfiLayout>(FfiLayout::new_const_bytes(size)) };
     };
@@ -511,7 +514,7 @@ struct ValueRef:
                     LOG_NOTICE("ValueRef exceeds bounds of FFI buffer - " << ofs << "+" << size << " > " << m_alloc.ffi().get_size());
                 }
                 break;
-            default:
+            case RelocationPtr::Ty::Function:
                 LOG_TODO("");
             }
         }

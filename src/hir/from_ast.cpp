@@ -31,10 +31,10 @@ const ::AST::Crate* g_ast_crate_ptr;
 // --------------------------------------------------------------------
 HIR::LifetimeRef LowerHIR_LifetimeRef(const ::AST::LifetimeRef& r)
 {
-    return HIR::LifetimeRef {
+    return HIR::LifetimeRef(
         // TODO: names?
         r.binding()
-        };
+        );
 }
 
 ::HIR::GenericParams LowerHIR_GenericParams(const ::AST::GenericParams& gp, bool* self_is_sized)

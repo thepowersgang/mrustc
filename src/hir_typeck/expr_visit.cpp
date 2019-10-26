@@ -65,6 +65,12 @@ namespace typeck {
             TU_ARMA(Function, e) {
                 m_item_generics = &e.m_params;
                 }
+            TU_ARMA(Constant, e) {
+                m_item_generics = &e.m_params;
+                }
+            TU_ARMA(Static, e) {
+                m_item_generics = nullptr;
+                }
             }
         }
         else if( ip.parent->ty )
@@ -91,6 +97,7 @@ namespace typeck {
                 }
             TU_ARMA(StructConstant, _e) BUG(sp, ip << " is StructConstant");
             TU_ARMA(StructConstructor, _e) BUG(sp, ip << " is StructConstructor");
+            TU_ARMA(Import, _e) BUG(sp, ip << " is Import");
             }
         }
     }

@@ -29,8 +29,9 @@ struct ProtoSpan
     unsigned int start_line;
     unsigned int start_ofs;
 };
-struct Span
+class Span
 {
+public:
     ::std::shared_ptr<Span> outer_span; // Expansion target for macros
     RcString    filename;
 
