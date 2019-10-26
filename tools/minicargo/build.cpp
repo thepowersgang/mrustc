@@ -1086,6 +1086,9 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         env.push_back("PROFILE", "release");
         // TODO: All cfg(foo_bar) become CARGO_CFG_FOO_BAR
         env.push_back("CARGO_CFG_TARGET_POINTER_WIDTH", "32");
+        // - Needed for `regex`'s build script, make mrustc pretend to be rustc
+        env.push_back("RUSTC", this->m_compiler_path);
+
         for(const auto& dep : manifest.dependencies())
         {
             if( ! dep.is_disabled() )
