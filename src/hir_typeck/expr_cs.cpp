@@ -6635,8 +6635,13 @@ namespace {
                 if( H::type_is_num(left) && H::type_is_num(right) ) {
                     DEBUG("- Magic inferrence link for binops on numerics");
                     context.equate_types(sp, res, left);
+                    const auto& right = context.get_type(v.params.m_types.at(0));
+                    context.equate_types_to_shadow(sp, right);
                 }
-                context.equate_types_to_shadow(sp, right);
+                else
+                {
+                    context.equate_types_to_shadow(sp, right);
+                }
             }
             else
             {
