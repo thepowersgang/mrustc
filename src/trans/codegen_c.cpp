@@ -417,6 +417,18 @@ namespace {
                     << "static inline uint8_t InterlockedExchangeAcquire8(volatile uint8_t* v, uint8_t n){ return InterlockedExchange8(v, n); }\n"
                     << "static inline uint8_t InterlockedExchangeRelease8(volatile uint8_t* v, uint8_t n){ return InterlockedExchange8(v, n); }\n"
                     ;
+                // Atomic hackery
+                for(int sz = 8; sz <= 64; sz *= 2)
+                {
+                    m_of
+                        << "static inline uint"<<sz<<"_t __mrustc_atomicloop"<<sz<<"(volatile uint"<<sz<<"_t* slot, uint"<<sz<<"_t param, uint"<<sz<<"_t (*cb)(uint"<<sz<<"_t, uint"<<sz<<"_t)) {"
+                        << " for(;;) {"
+                        << " uint"<<sz<<"_t v = InterlockedCompareExchange" << sz << "(slot, 0,0);"
+                        << " if( InterlockedCompareExchange" << sz << "(slot, v, cb(v, param)) == v ) return v;"
+                        << " }"
+                        << "}\n"
+                        ;
+                }
                 break;
             }
 
@@ -577,15 +589,15 @@ namespace {
                 << "}\n"
                 // Map of reversed nibbles                       0  1  2  3  4  5  6  7   8  9 10 11 12 14 15
                 << "static const uint8_t __mrustc_revmap[16] = { 0, 8, 4,12, 2,10, 6,14,  1, 9, 5,13, 3, 7,15};\n"
-                << "static inline uint8_t __mrustc_bitrev8(uint8_t v) { if(v==0||v==0xFF) return v; uint8_t rv = __mrustc_revmap[v>>4]|(__mrustc_revmap[v&15]<<4); }\n"
-                << "static inline uint16_t __mrustc_bitrev16(uint16_t v) { if(v==0) return 0; uint16_t rv = ((uint16_t)__mrustc_bitrev8(v>>8))|((uint16_t)__mrustc_bitrev8(v)<<8); }\n"
-                << "static inline uint32_t __mrustc_bitrev32(uint32_t v) { if(v==0) return 0; uint32_t rv = ((uint32_t)__mrustc_bitrev16(v>>16))|((uint32_t)__mrustc_bitrev16(v)<<16); }\n"
-                << "static inline uint64_t __mrustc_bitrev64(uint64_t v) { if(v==0) return 0; uint64_t rv = ((uint64_t)__mrustc_bitrev32(v>>32))|((uint64_t)__mrustc_bitrev32(v)<<32); }\n"
+                << "static inline uint8_t __mrustc_bitrev8(uint8_t v) { if(v==0||v==0xFF) return v; return __mrustc_revmap[v>>4]|(__mrustc_revmap[v&15]<<4); }\n"
+                << "static inline uint16_t __mrustc_bitrev16(uint16_t v) { if(v==0) return 0; return ((uint16_t)__mrustc_bitrev8(v>>8))|((uint16_t)__mrustc_bitrev8(v)<<8); }\n"
+                << "static inline uint32_t __mrustc_bitrev32(uint32_t v) { if(v==0) return 0; return ((uint32_t)__mrustc_bitrev16(v>>16))|((uint32_t)__mrustc_bitrev16(v)<<16); }\n"
+                << "static inline uint64_t __mrustc_bitrev64(uint64_t v) { if(v==0) return 0; return ((uint64_t)__mrustc_bitrev32(v>>32))|((uint64_t)__mrustc_bitrev32(v)<<32); }\n"
                 // TODO: 128
                 ;
             if( m_options.emulated_i128 )
             {
-                m_of << "static inline uint128_t __mrustc_bitrev128(uint128_t v) { uint128_t rv = { __mrustc_bitrev64(v>>64)), __mrustc_bitrev64(v) }; return rv; }\n";
+                m_of << "static inline uint128_t __mrustc_bitrev128(uint128_t v) { uint128_t rv = { __mrustc_bitrev64(v.hi), __mrustc_bitrev64(v.lo) }; return rv; }\n";
             }
             else
             {
@@ -2371,7 +2383,16 @@ namespace {
 
             m_of << "// EXTERN extern \"" << item.m_abi << "\" " << p << "\n";
             // For MSVC, make a static wrapper that goes and calls the actual function
-            if( item.m_linkage.name != "" && m_compiler == Compiler::Msvc )
+            if( item.m_linkage.name.rfind("llvm.", 0) == 0 )
+            {
+                m_of << "static ";
+                emit_function_header(p, item, params);
+                // TODO: Hand off to compiler-specific intrinsics
+                m_of << " { abort(); }\n";
+                m_mir_res = nullptr;
+                return ;
+            }
+            else if( item.m_linkage.name != "" && m_compiler == Compiler::Msvc )
             {
                 m_of << "static ";
             }
@@ -2387,15 +2408,6 @@ namespace {
                 m_of << "\tlongjmp(*mrustc_panic_target, 1);\n";
                 m_of << "}\n";
                 return;
-            }
-            else if( item.m_linkage.name.rfind("llvm.", 0) == 0 )
-            {
-                m_of << "static ";
-                emit_function_header(p, item, params);
-                // TODO: Hand off to compiler-specific intrinsics
-                m_of << " { abort(); }\n";
-                m_mir_res = nullptr;
-                return ;
             }
             else
             {
@@ -4041,34 +4053,86 @@ namespace {
         {
             auto indent = RepeatLitStr{ "\t", static_cast<int>(indent_level) };
 
-            if( e.tpl == "fnstcw $0" )
+            struct H {
+                static bool check_list(const std::vector<std::pair<std::string, MIR::LValue>>& have, const ::std::initializer_list<const char*>& exp)
+                {
+                    if( have.size() != exp.size() )
+                        return false;
+                    auto h_it = have.begin();
+                    auto e_it = exp.begin();
+                    for(; h_it != have.end(); ++ h_it, ++e_it)
+                    {
+                        if( h_it->first != *e_it )
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+                }
+            };
+            auto matches_template = [&e,&mir_res](const char* tpl, ::std::initializer_list<const char*> inputs, ::std::initializer_list<const char*> outputs)->bool {
+                    if( e.tpl == tpl )
+                    {
+                        if( !H::check_list(e.inputs, inputs) || !H::check_list(e.outputs, outputs) )
+                        {
+                            MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
+                        }
+                        return true;
+                    }
+                    return false;
+                };
+
+            if( matches_template("fnstcw $0", /*input=*/{}, /*output=*/{"*m"}) )
             {
                 // HARD CODE: `fnstcw` -> _control87
-                if( !(e.inputs.size() == 0 && e.outputs.size() == 1 && e.outputs[0].first == "=*m") )
-                    MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
                 m_of << indent << "*("; emit_lvalue(e.outputs[0].second); m_of << ") = _control87(0,0);\n";
                 return ;
             }
-            else if( e.tpl == "fldcw $0" )
+            else if( matches_template("fldcw $0", /*input=*/{"m"}, /*output=*/{}) )
             {
                 // HARD CODE: `fldcw` -> _control87
-                if( !(e.inputs.size() == 1 && e.inputs[0].first == "m" && e.outputs.size() == 0) )
-                    MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
                 m_of << indent << "_control87("; emit_lvalue(e.inputs[0].second); m_of << ", 0xFFFF);\n";
                 return ;
             }
-            else if( e.tpl == "int $$0x29" )
+            else if( matches_template("int $$0x29", /*input=*/{"{ecx}"}, /*output=*/{}) )
             {
-                if( !(e.inputs.size() == 1 && e.inputs[0].first == "{ecx}" && e.outputs.size() == 0) )
-                    MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
                 m_of << indent << "__fastfail("; emit_lvalue(e.inputs[0].second); m_of << ");\n";
                 return ;
             }
-            else if( e.tpl == "pause" )
+            else if( matches_template("pause", /*input=*/{}, /*output=*/{}) )
             {
-                if( !(e.inputs.size() == 0 && e.outputs.size() == 0) )
-                    MIR_BUG(mir_res, "Hard-coded asm translation doesn't apply - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
                 m_of << indent << "_mm_pause();\n";
+                return ;
+            }
+            else if( matches_template("cpuid\n", /*input=*/{"{eax}", "{ecx}"}, /*output=*/{"={eax}", "={ebx}", "={ecx}", "={edx}"}) )
+            {
+                m_of << indent << "{";
+                m_of << " int cpuid_out[4];";
+                m_of << " __cpuidex(cpuid_out, "; emit_lvalue(e.inputs[0].second); m_of << ", "; emit_lvalue(e.inputs[1].second); m_of << ");";
+                m_of << " "; emit_lvalue(e.outputs[0].second); m_of << " = cpuid_out[0];";
+                m_of << " "; emit_lvalue(e.outputs[1].second); m_of << " = cpuid_out[1];";
+                m_of << " "; emit_lvalue(e.outputs[2].second); m_of << " = cpuid_out[2];";
+                m_of << " "; emit_lvalue(e.outputs[3].second); m_of << " = cpuid_out[3];";
+                m_of << " }\n";
+                return ;
+            }
+            else if( matches_template("pushfq; popq $0", /*input=*/{}, /*output=*/{"=r"}) )
+            {
+                m_of << indent; emit_lvalue(e.outputs[0].second); m_of << " = __readeflags();\n";
+                return ;
+            }
+            else if( matches_template("pushq $0; popfq", /*input=*/{"r"}, /*output=*/{}) )
+            {
+                m_of << indent << "__writeflags("; emit_lvalue(e.inputs[0].second); m_of << ");\n";
+                return ;
+            }
+            else if( matches_template("xgetbv", /*input=*/{"{ecx}"}, /*output=*/{"={eax}", "={edx}"}) )
+            {
+                m_of << indent << "{";
+                m_of << " unsigned __int64 v = _xgetbv("; emit_lvalue(e.inputs[0].second); m_of << ");";
+                m_of << " "; emit_lvalue(e.outputs[0].second); m_of << " = (uint32_t)(v & 0xFFFFFFFF);";
+                m_of << " "; emit_lvalue(e.outputs[1].second); m_of << " = (uint32_t)(v >> 32);";
+                m_of << " }\n";
                 return ;
             }
             else
@@ -4076,6 +4140,9 @@ namespace {
                 // No hard-coded translations.
             }
 
+            if( Target_GetCurSpec().m_backend_c.m_c_compiler == "amd64" ) {
+                MIR_TODO(mir_res, "MSVC amd64 doesn't support inline assembly, need to have a transform for '" << e.tpl << "'");
+            }
             if( !e.inputs.empty() || !e.outputs.empty() )
             {
                 MIR_TODO(mir_res, "Inputs/outputs in msvc inline assembly - `" << e.tpl << "` inputs=" << e.inputs << " outputs=" << e.outputs);
@@ -4089,9 +4156,6 @@ namespace {
 #endif
             }
 
-            if( Target_GetCurSpec().m_backend_c.m_c_compiler == "amd64" ) {
-                MIR_TODO(mir_res, "MSVC amd64 doesn't support inline assembly, need to have a transform for '" << e.tpl << "'");
-            }
             m_of << indent << "__asm {\n";
 
             m_of << indent << "\t";
@@ -5142,7 +5206,12 @@ namespace {
                 auto ordering = get_atomic_ordering(name, 7+4+1);
                 const auto& ty = params.m_types.at(0);
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ", __mrustc_op_and_not" << get_prim_size(ty);
+                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                    if( m_compiler == Compiler::Gcc )
+                    {
+                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    }
+                    m_of << ", __mrustc_op_and_not" << get_prim_size(ty);
                     m_of << ")";
             }
             else if( name == "atomic_or" || name.compare(0, 7+2+1, "atomic_or_") == 0 ) {
@@ -5159,7 +5228,12 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 const char* op = (name.c_str()[7+1] == 'a' ? "imax" : "imin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ", __mrustc_op_" << op << get_prim_size(ty);
+                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                    if( m_compiler == Compiler::Gcc )
+                    {
+                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    }
+                    m_of << ", __mrustc_op_" << op << get_prim_size(ty);
                     m_of << ")";
             }
             else if( name == "atomic_umax" || name.compare(0, 7+4+1, "atomic_umax_") == 0
@@ -5168,7 +5242,12 @@ namespace {
                 const auto& ty = params.m_types.at(0);
                 const char* op = (name.c_str()[7+2] == 'a' ? "umax" : "umin");    // m'a'x vs m'i'n
                 emit_lvalue(e.ret_val); m_of << " = __mrustc_atomicloop" << get_prim_size(ty) << "(";
-                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ", __mrustc_op_" << op << get_prim_size(ty);
+                    emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1));
+                    if( m_compiler == Compiler::Gcc )
+                    {
+                        m_of << ", " << get_atomic_ty_gcc(ordering);
+                    }
+                    m_of << ", __mrustc_op_" << op << get_prim_size(ty);
                     m_of << ")";
             }
             else if( name == "atomic_load" || name.compare(0, 7+4+1, "atomic_load_") == 0 ) {
