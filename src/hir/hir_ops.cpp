@@ -324,10 +324,12 @@ namespace {
             TODO(sp, "ErasedType - " << left);
             ),
         (Function,
-            TU_IFLET(::HIR::TypeRef::Data, right.m_data, Function, re,
+            if(/*const auto* re =*/ right.m_data.opt_Function() ) {
+                if( left == right )
+                    return ::OrdEqual;
                 TODO(sp, "Function - " << left << " vs " << right);
-                //return typelist_ord_specific(sp, le.arg_types, re.arg_types);
-            )
+                //return typelist_ord_specific(sp, le.arg_types, re->arg_types);
+            }
             else {
                 BUG(sp, "Mismatched types - " << left << " and " << right);
             }

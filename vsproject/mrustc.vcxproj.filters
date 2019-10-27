@@ -386,10 +386,10 @@
     <ClCompile Include="..\src\version.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\mrustc-merge_attempt_one\src\trans\auto_impls.cpp">
+    <ClCompile Include="..\src\trans\auto_impls.cpp">
       <Filter>Source Files\trans</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\mrustc-merge_attempt_one\src\trans\mangling_v2.cpp">
+    <ClCompile Include="..\src\trans\mangling_v2.cpp">
       <Filter>Source Files\trans</Filter>
     </ClCompile>
     <ClCompile Include="..\src\hir_conv\resolve_ufcs_outer.cpp">
