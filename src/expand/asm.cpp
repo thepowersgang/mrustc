@@ -166,7 +166,7 @@ class CAsmExpander:
         {
             GET_TOK(tok, lex);
 
-            if( GET_TOK(tok, lex) == TOK_IDENT && tok.str() == "volatile" )
+            if( GET_TOK(tok, lex) == TOK_IDENT && tok.istr() == "volatile" )
             {
                 flags.push_back( "volatile" );
             }

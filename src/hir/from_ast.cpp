@@ -959,8 +959,8 @@ namespace {
             }
             else if( repr_str == "align" ) {
                 //ASSERT_BUG(a.span(), a.has_string(), "#[repr(aligned)] attribute malformed, " << *attr_repr);
-                ASSERT_BUG(a.span(), rv.m_repr == ::HIR::Struct::Repr::Rust, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
-                rv.m_repr = ::HIR::Struct::Repr::Aligned;
+                ASSERT_BUG(a.span(), rv.m_repr != ::HIR::Struct::Repr::Packed, "Conflicting #[repr] attributes - " << rv.m_repr << ", " << repr_str);
+                //rv.m_repr = ::HIR::Struct::Repr::Aligned;
                 //rv.m_forced_alignment = ::std::stol(a.string());
             }
             else {

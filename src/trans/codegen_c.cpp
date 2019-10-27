@@ -416,6 +416,7 @@ namespace {
                     << "static inline uint8_t InterlockedExchangeNoFence8(volatile uint8_t* v, uint8_t n){ return InterlockedExchange8(v, n); }\n"
                     << "static inline uint8_t InterlockedExchangeAcquire8(volatile uint8_t* v, uint8_t n){ return InterlockedExchange8(v, n); }\n"
                     << "static inline uint8_t InterlockedExchangeRelease8(volatile uint8_t* v, uint8_t n){ return InterlockedExchange8(v, n); }\n"
+                    << "static inline uint8_t InterlockedCompareExchange32(volatile uint32_t* v, uint32_t n, uint32_t e){ return InterlockedCompareExchange(v, n, e); }\n"
                     ;
                 // Atomic hackery
                 for(int sz = 8; sz <= 64; sz *= 2)
@@ -717,7 +718,7 @@ namespace {
                             H::ty_args(args, method.args[j]);
                         H::emit_proto(m_of, method, "__rust_", args); m_of << " {\n";
                         m_of << "\textern "; H::emit_proto(m_of, method, alloc_prefix, args); m_of << ";\n";
-                        m_of << "\t" << alloc_prefix << method.name << "(";
+                        m_of << "\treturn " << alloc_prefix << method.name << "(";
                         for(size_t j = 0; j < args.size(); j ++)
                         {
                             if( j != 0 )
@@ -938,6 +939,8 @@ namespace {
                 {
                 case CodegenOutput::Executable:
                 case CodegenOutput::DynamicLibrary:
+                    args.push_back(FMT("/Fe" << m_outfile_path));
+
                     switch(out_ty)
                     {
                     case CodegenOutput::Executable:
@@ -949,8 +952,6 @@ namespace {
                     default:
                         throw "bug";
                     }
-
-                    args.push_back(FMT("/Fe" << m_outfile_path));
 
                     for( const auto& crate : m_crate.m_ext_crates )
                     {
@@ -1873,7 +1874,7 @@ namespace {
                     // Handled with asm() later
                     break;
                 case Compiler::Msvc:
-                    //m_of << "#pragma comment(linker, \"/alternatename:_" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                    //m_of << "#pragma comment(linker, \"/alternatename:" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
                     m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
                     break;
                 //case Compiler::Std11:
@@ -2394,7 +2395,8 @@ namespace {
             }
             else if( item.m_linkage.name != "" && m_compiler == Compiler::Msvc )
             {
-                m_of << "static ";
+                m_of << "#pragma comment(linker, \"/alternatename:" << Trans_Mangle(p) << "=" << item.m_linkage.name << "\")\n";
+                m_of << "extern ";
             }
             else if( item.m_linkage.name == "_Unwind_RaiseException" )
             {
@@ -2422,48 +2424,6 @@ namespace {
                     m_of << " asm(\"" << item.m_linkage.name << "\")";
                     break;
                 case Compiler::Msvc:
-                    m_of << " {\n";
-                    // A few hacky hard-coded signatures
-                    if( item.m_linkage.name == "SetFilePointerEx" )
-                    {
-                        // LARGE_INTEGER
-                        m_of << "\tLARGE_INTEGER    arg1_v;\n";
-                        m_of << "\targ1_v.QuadPart = arg1;\n";
-                        m_of << "\treturn SetFilePointerEx(arg0, arg1_v, arg2, arg3);\n";
-                    }
-                    else if( item.m_linkage.name == "CopyFileExW" )
-                    {
-                        // Not field access to undo an Option<fn()>
-                        m_of << "\treturn CopyFileExW(arg0, arg1, arg2.DATA.var_1._0, arg3, arg4, arg5);\n";
-                    }
-                    // BUG: libtest defines this as returning an i32, but it's void
-                    else if( item.m_linkage.name == "GetSystemInfo" )
-                    {
-                        m_of << "\tGetSystemInfo(arg0);\n";
-                        m_of << "\treturn 0;\n";
-                    }
-                    else
-                    {
-                        m_of << "\t";
-                        if( TU_TEST1(item.m_return.m_data, Tuple, .size() == 0) )
-                            ;
-                        else if( item.m_return.m_data.is_Diverge() )
-                            ;
-                        else {
-                            m_of << "return ";
-                            if( item.m_return.m_data.is_Pointer() )
-                                m_of << "(void*)";
-                        }
-                        m_of << item.m_linkage.name << "(";
-                        for(size_t i = 0; i < item.m_args.size(); i ++ )
-                        {
-                            if( i > 0 )
-                                m_of << ", ";
-                            m_of << "arg" << i;
-                        }
-                        m_of << ");\n";
-                    }
-                    m_of << "}";
                     break;
                 }
             }
@@ -2481,6 +2441,7 @@ namespace {
             m_of << "// PROTO extern \"" << item.m_abi << "\" " << p << "\n";
             if( item.m_linkage.name != "" )
             {
+                // If this function is implementing an external ABI, just rename it (don't bother with per-compiler trickery).
                 m_of << "#define " << Trans_Mangle(p) << " " << item.m_linkage.name << "\n";
             }
             if( is_extern_def )
@@ -4123,7 +4084,7 @@ namespace {
             }
             else if( matches_template("pushq $0; popfq", /*input=*/{"r"}, /*output=*/{}) )
             {
-                m_of << indent << "__writeflags("; emit_lvalue(e.inputs[0].second); m_of << ");\n";
+                m_of << indent << "__writeeflags("; emit_lvalue(e.inputs[0].second); m_of << ");\n";
                 return ;
             }
             else if( matches_template("xgetbv", /*input=*/{"{ecx}"}, /*output=*/{"={eax}", "={edx}"}) )
