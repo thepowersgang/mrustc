@@ -998,7 +998,14 @@ ProgramParams::ProgramParams(int argc, char *argv[])
                 exit(0);
             }
             else if( strcmp(arg, "--version" ) == 0 ) {
-                ::std::cout << "MRustC " << Version_GetString() << ::std::endl;
+                const char* rustc_target = "unknown";
+                switch(gTargetVersion)
+                {
+                case TargetVersion::Rustc1_19:  rustc_target = "1.19";  break;
+                case TargetVersion::Rustc1_29:  rustc_target = "1.29";  break;
+                }
+                // NOTE: Starts the version with "rustc 1.29.100" so build scripts don't get confused
+                ::std::cout << "rustc " << rustc_target << ".100 (mrustc " << Version_GetString() << ")" << ::std::endl;
                 ::std::cout << "- Build time: " << gsVersion_BuildTime << ::std::endl;
                 ::std::cout << "- Commit: " << gsVersion_GitHash << (gbVersion_GitDirty ? " (dirty tree)" : "") << ::std::endl;
                 exit(0);
