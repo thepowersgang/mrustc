@@ -241,29 +241,34 @@ PackageManifest PackageManifest::load_from_toml(const ::std::string& path)
             // If so, parse as if the path was `real_section....`
             if( success )
             {
-                if( real_section == "dependencies" )
+                if( real_section == "dependencies"
+                    || real_section == "dev-dependencies" 
+                    || real_section == "build-dependencies" 
+                    )
                 {
+                    ::std::vector<PackageRef>& dep_list =
+                        real_section == "dependencies" ? rv.m_dependencies :
+                        real_section == "build-dependencies" ? rv.m_build_dependencies :
+                        /*real_section == "dev-dependencies" ? */ rv.m_dev_dependencies /*:
+                        throw ""*/
+                        ;
                     assert(key_val.path.size() > 3);
 
                     const auto& depname = key_val.path[3];
 
                     // Find/create dependency descriptor
-                    auto it = ::std::find_if(rv.m_dependencies.begin(), rv.m_dependencies.end(), [&](const auto& x) { return x.m_name == depname; });
-                    bool was_added = (it == rv.m_dependencies.end());
+                    auto it = ::std::find_if(dep_list.begin(), dep_list.end(), [&](const auto& x) { return x.m_name == depname; });
+                    bool was_added = (it == dep_list.end());
                     if( was_added )
                     {
-                        it = rv.m_dependencies.insert(it, PackageRef{ depname });
+                        it = dep_list.insert(it, PackageRef{ depname });
                     }
 
                     it->fill_from_kv(was_added, key_val, 4);
                 }
-                else if( real_section == "dev-dependencies" )
-                {
-                    // TODO: Developemnt (test/bench) deps
-                }
                 else
                 {
-                    TODO("Unknown manifest section for target - " << real_section);
+                    TODO(toml_file.lexer() << ": Unknown manifest section '" << real_section << "' in `target`");
                 }
             }
         }
