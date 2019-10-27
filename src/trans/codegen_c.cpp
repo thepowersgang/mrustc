@@ -5233,11 +5233,7 @@ namespace {
                     m_of << "atomic_store_explicit("; emit_atomic_cast(); emit_param(e.args.at(0)); m_of << ", "; emit_param(e.args.at(1)); m_of << ", " << get_atomic_ty_gcc(ordering) << ")";
                     break;
                 case Compiler::Msvc:
-                    emit_msvc_atomic_op("InterlockedCompareExchange", ordering, true); emit_param(e.args.at(0)); m_of << ", ";
-                    emit_param(e.args.at(1));
-                    m_of << ", ";
-                    emit_param(e.args.at(1));
-                    m_of << ")";
+                    m_of << "*"; emit_param(e.args.at(0)); m_of << " = "; emit_param(e.args.at(1));
                     break;
                 }
             }
