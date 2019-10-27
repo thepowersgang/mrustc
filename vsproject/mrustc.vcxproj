@@ -157,8 +157,8 @@
     <ProjectReference />
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\mrustc-merge_attempt_one\src\trans\auto_impls.cpp" />
-    <ClCompile Include="..\..\mrustc-merge_attempt_one\src\trans\mangling_v2.cpp" />
+    <ClCompile Include="..\src\trans\auto_impls.cpp" />
+    <ClCompile Include="..\src\trans\mangling_v2.cpp" />
     <ClCompile Include="..\src\ast\ast.cpp" />
     <ClCompile Include="..\src\ast\crate.cpp" />
     <ClCompile Include="..\src\ast\dump.cpp" />
