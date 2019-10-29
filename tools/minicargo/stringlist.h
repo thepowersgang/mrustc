@@ -78,7 +78,7 @@ public:
 };
 class StringListKV: private StringList
 {
-    ::std::vector<const char*>  m_keys;
+    StringList  m_keys;
 public:
     StringListKV()
     {
@@ -99,6 +99,16 @@ public:
         m_keys.push_back(k);
         StringList::push_back(v);
     }
+    void push_back(::std::string k, ::std::string v)
+    {
+        m_keys.push_back(k);
+        StringList::push_back(v);
+    }
+    void push_back(::std::string k, const char* v)
+    {
+        m_keys.push_back(k);
+        StringList::push_back(v);
+    }
 
     struct Iter {
         const StringListKV&   v;
@@ -108,7 +118,7 @@ public:
             this->i++;
         }
         ::std::pair<const char*,const char*> operator*() {
-            return ::std::make_pair(this->v.m_keys[this->i], this->v.get_vec()[this->i]);
+            return ::std::make_pair(this->v.m_keys.get_vec()[this->i], this->v.get_vec()[this->i]);
         }
         bool operator!=(const Iter& x) const {
             return this->i != x.i;
@@ -118,7 +128,7 @@ public:
         return Iter { *this, 0 };
     }
     Iter end() const {
-        return Iter { *this, m_keys.size() };
+        return Iter { *this, m_keys.get_vec().size() };
     }
 
     friend ::std::ostream& operator<<(::std::ostream& os, const StringListKV& x) {

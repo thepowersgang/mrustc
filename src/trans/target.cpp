@@ -404,21 +404,21 @@ namespace
                 ARCH_M68K
                 };
         }
-        else if(target_name == "i586-windows-gnu")
+        else if(target_name == "i586-pc-windows-gnu")
         {
             return TargetSpec {
                 "windows", "windows", "gnu", {CodegenMode::Gnu11, true, "mingw32", BACKEND_C_OPTS_GNU},
                 ARCH_X86
             };
         }
-        else if(target_name == "x86_64-windows-gnu")
+        else if(target_name == "x86_64-pc-windows-gnu")
         {
             return TargetSpec {
                 "windows", "windows", "gnu", {CodegenMode::Gnu11, false, "x86_64-w64-mingw32", BACKEND_C_OPTS_GNU},
                 ARCH_X86_64
                 };
         }
-        else if (target_name == "x86-windows-msvc")
+        else if (target_name == "x86-pc-windows-msvc")
         {
             // TODO: Should this include the "kernel32.lib" inclusion?
             return TargetSpec {
@@ -426,7 +426,7 @@ namespace
                 ARCH_X86
             };
         }
-        else if (target_name == "x86_64-windows-msvc")
+        else if (target_name == "x86_64-pc-windows-msvc")
         {
             return TargetSpec {
                 "windows", "windows", "msvc", {CodegenMode::Msvc, true, "amd64", {}, {}},

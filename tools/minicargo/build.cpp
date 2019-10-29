@@ -1082,13 +1082,13 @@ bool Builder::build_target(const PackageManifest& manifest, const PackageTarget&
         StringListKV    env;
         env.push_back("CARGO_MANIFEST_DIR", manifest.directory().to_absolute());
         //env.push_back("CARGO_MANIFEST_LINKS", manifest.m_links);
-        //for(const auto& feat : manifest.m_active_features)
-        //{
-        //    ::std::string   fn = "CARGO_FEATURE_";
-        //    for(char c : feat)
-        //        fn += c == '-' ? '_' : tolower(c);
-        //    env.push_back(fn, manifest.m_links);
-        //}
+        for(const auto& feat : manifest.active_features())
+        {
+            ::std::string   fn = "CARGO_FEATURE_";
+            for(char c : feat)
+                fn += c == '-' ? '_' : toupper(c);
+            env.push_back(fn, "1");
+        }
         //env.push_back("CARGO_CFG_RELEASE", "");
         env.push_back("OUT_DIR", out_dir);
         env.push_back("TARGET", m_opts.target_name ? m_opts.target_name : HOST_TARGET);
@@ -1206,6 +1206,7 @@ bool Builder::spawn_process(const char* exe_name, const StringList& args, const 
 #else
     for(auto kv : env)
     {
+        DEBUG("putenv " << kv.first << "=" << kv.second);
         _putenv_s(kv.first, kv.second);
     }
 #endif
