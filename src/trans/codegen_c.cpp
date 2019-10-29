@@ -4096,6 +4096,43 @@ namespace {
                 m_of << " }\n";
                 return ;
             }
+            // parking_lot src/elision.rs
+            else if( matches_template("xacquire; lock; cmpxchgl $2, $1", /*input=*/{"r", "{rax}"}, /*output=*/{"={rax}", "+*m"}) )
+            {
+                m_of << indent << "InterlockedCompareExchangeAcquire(";
+                emit_lvalue(e.outputs[1].second); m_of << ",";
+                emit_lvalue(e.inputs[0].second); m_of << ",";
+                emit_lvalue(e.inputs[1].second);
+                m_of << ");\n";
+                return ;
+            }
+            else if( matches_template("xrelease; lock; cmpxchgl $2, $1", /*input=*/{"r", "{rax}"}, /*output=*/{"={rax}", "+*m"}) )
+            {
+                m_of << indent << "InterlockedCompareExchangeRelease(";
+                emit_lvalue(e.outputs[1].second); m_of << ",";
+                emit_lvalue(e.inputs[0].second); m_of << ",";
+                emit_lvalue(e.inputs[1].second);
+                m_of << ");\n";
+                return ;
+            }
+            else if( matches_template("xacquire; lock; cmpxchgq $2, $1", /*input=*/{"r", "{rax}"}, /*output=*/{"={rax}", "+*m"}) )
+            {
+                m_of << indent << "InterlockedCompareExchange64Acquire(";
+                emit_lvalue(e.outputs[1].second); m_of << ",";
+                emit_lvalue(e.inputs[0].second); m_of << ",";
+                emit_lvalue(e.inputs[1].second);
+                m_of << ");\n";
+                return ;
+            }
+            else if( matches_template("xrelease; lock; cmpxchgq $2, $1", /*input=*/{"r", "{rax}"}, /*output=*/{"={rax}", "+*m"}) )
+            {
+                m_of << indent << "InterlockedCompareExchange64Release(";
+                emit_lvalue(e.outputs[1].second); m_of << ",";
+                emit_lvalue(e.inputs[0].second); m_of << ",";
+                emit_lvalue(e.inputs[1].second);
+                m_of << ");\n";
+                return ;
+            }
             else
             {
                 // No hard-coded translations.
