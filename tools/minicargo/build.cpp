@@ -554,7 +554,7 @@ Builder::Builder(BuildOptions opts):
     ::helpers::path minicargo_path { buf };
     minicargo_path.pop_component();
 # ifdef __MINGW32__
-    m_compiler_path = (minicargo_path / "..\\..\\bin\\mrustc.exe").normalise();
+    m_compiler_path = (minicargo_path / "mrustc.exe").normalise();
 # else
     // MSVC, minicargo and mrustc are in the same dir
     m_compiler_path = minicargo_path / "mrustc.exe";
@@ -593,7 +593,7 @@ Builder::Builder(BuildOptions opts):
 
     ::helpers::path minicargo_path { buf };
     minicargo_path.pop_component();
-    m_compiler_path = (minicargo_path / "../../bin/mrustc").normalise();
+    m_compiler_path = (minicargo_path / "mrustc").normalise();
 #endif
 }
 

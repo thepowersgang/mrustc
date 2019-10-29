@@ -52,3 +52,6 @@
 /bnf/rust.tab.h
 /bnf/rust.output
 /bnf/test.bin
+
+# CMake build folder
+build/

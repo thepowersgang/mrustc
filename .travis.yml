@@ -18,24 +18,36 @@ matrix:
          - g++-6
          - zlib1g-dev
          - valgrind
+         - ninja-build
+         - git
+
    # OSX
    - os: osx
   allow_failures:
    - os: osx
 
-install:
- # Build mrustc
- - make RUSTCSRC
- - make -j 2
- - make -C tools/minicargo
+#install:
+# Build mrustc
+#- make RUSTCSRC
+#- make -j 2
+#- make -C tools/minicargo
 
 script:
- - set -e
- - make -f minicargo.mk output/libtest.hir      # libstd
- - make test    # hello_world
+ - git status
+ # - set -e
+ - mkdir build
+ - cd build
+ - cmake ..
+ - make mrustc -j4
+ - make minicargo -j4
+ # - make rust_standard_libs -j4
+
+# Test
+# - make -f minicargo.mk output/libtest.hir      # libstd
+# - make test    # hello_world
 # Tests
- - set +e
- - make local_tests -k
+# - set +e
+# - make local_tests -k
 # - CC=gcc-6 make rust_tests -k
 # rustc (DISABLED: llvm build)
 # - make -f minicargo.mk output/rustc
